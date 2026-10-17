@@ -16,6 +16,7 @@ import extdeps.boards.supermicro_h11ssl {
 }
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   supermicro_h11ssl_first_contact_receipt, supermicro_h11ssl_factory_login_producer_admitted,
+  supermicro_h11ssl_redfish_root_answered, H11sslFirstContactReceipt, ServiceRootRefused,
 }
 
 // The 4-DIMM guides differ by CPU family: the 7001 guide is C1,A1,E1,H1 and the 7002 guide is
@@ -67,4 +68,14 @@ test fn w_lan2_has_no_efi_option_rom() -> Bool {
 
 test fn w_rejected_default_login_does_not_admit_factory_producer() -> Bool {
   !supermicro_h11ssl_factory_login_producer_admitted(r: supermicro_h11ssl_first_contact_receipt)
+}
+
+// The pre-activation receipt (refusal only) is not an answered root; the full receipt is.
+test fn w_redfish_root_answered_only_after_activation() -> Bool {
+  let r = supermicro_h11ssl_first_contact_receipt
+  let before = H11sslFirstContactReceipt {
+    board: r.board, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac,
+    observations: filter(r.observations, o => match o.outcome { ServiceRootRefused { message_id: _ } => true  _ => false }), licences: [], label: r.label,
+  }
+  supermicro_h11ssl_redfish_root_answered(r: r) && !supermicro_h11ssl_redfish_root_answered(r: before)
 }

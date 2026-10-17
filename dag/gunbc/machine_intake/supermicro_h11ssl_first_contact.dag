@@ -30,12 +30,25 @@ data supermicro_h11ssl_unit_variant_standing: CitedFigureStanding = TranscribedU
 
 type H11sslCredentialTried = FactoryDefaultAdminAdmin | BoardLabelCredential
 
-type H11sslObservationInstrument = WebLoginCgi | RedfishServiceRoot
+// LicenceActivationCgi is POST /cgi/ipmi.cgi op=BIOS_LINCENSE_ACTIVATE.XML (the firmware's spelling).
+type H11sslObservationInstrument = WebLoginCgi | RedfishServiceRoot | LicenceActivationCgi
+
+// The members of an answered Redfish ServiceRoot, as the unit named them.
+type H11sslRedfishRootMember
+  = Systems | Chassis | Managers | Tasks | SessionService | AccountService | EventService
+  | UpdateService | Registries
 
 type H11sslObservationOutcome
   = SessionIssued
   | LoginRejected
   | ServiceRootRefused { message_id: NonEmptyStr }
+  | LicenceActivated { check_attribute: Nat }
+  | ServiceRootAnswered {
+      redfish_version: NonEmptyStr
+      root_schema: NonEmptyStr
+      uuid: NonEmptyStr
+      members: List<H11sslRedfishRootMember>
+    }
 
 // One typed observation per probe: instrument, time, observer, outcome, and whether the probe
 // changed anything on the unit.
@@ -53,6 +66,15 @@ type H11sslObservation {
 type H11sslCredentialSource
   = BoardLabelPhotoHeldByOperator { document_url: NonEmptyStr }
 
+// A licence is carried ONLY as a reference to the operator-held certificate; the key value is
+// never stored here, and the key is keyed by the BMC MAC it was activated for.
+type H11sslLicenceSource = OperatorHeldCertificate { certificate_number: NonEmptyStr, store: NonEmptyStr }
+type H11sslLicenceActivation {
+  product_code: NonEmptyStr
+  bmc_mac: NonEmptyStr
+  source: H11sslLicenceSource
+}
+
 type H11sslLabelObservation {
   top_label_serial_barcode: NonEmptyStr
   lan_macs: List<NonEmptyStr>
@@ -65,6 +87,7 @@ type H11sslFirstContactReceipt {
   bmc_address: NonEmptyStr
   bmc_mac: NonEmptyStr
   observations: List<H11sslObservation>
+  licences: List<H11sslLicenceActivation>
   label: H11sslLabelObservation
 }
 
@@ -76,6 +99,11 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
     H11sslObservation { instrument: WebLoginCgi, credential: Present { value: FactoryDefaultAdminAdmin }, observed_on: "2026-10-17", observed_by: "merry-fox-82", outcome: LoginRejected, unit_state_changed: false },
     H11sslObservation { instrument: WebLoginCgi, credential: Present { value: BoardLabelCredential }, observed_on: "2026-10-17", observed_by: "merry-fox-82", outcome: SessionIssued, unit_state_changed: false },
     H11sslObservation { instrument: RedfishServiceRoot, credential: Absent, observed_on: "2026-10-17", observed_by: "merry-fox-82", outcome: ServiceRootRefused { message_id: "Base.v1_4_0.OemLicenseNotPassed" }, unit_state_changed: false },
+    H11sslObservation { instrument: LicenceActivationCgi, credential: Present { value: BoardLabelCredential }, observed_on: "2026-10-17", observed_by: "merry-fox-82", outcome: LicenceActivated { check_attribute: 1 }, unit_state_changed: true },
+    H11sslObservation { instrument: RedfishServiceRoot, credential: Absent, observed_on: "2026-10-17", observed_by: "merry-fox-82", outcome: ServiceRootAnswered { redfish_version: "1.0.1", root_schema: "ServiceRoot.v1_1_0", uuid: "00000000-0000-0000-0000-AC1F6BE3F57B", members: [Systems, Chassis, Managers, Tasks, SessionService, AccountService, EventService, UpdateService, Registries] }, unit_state_changed: false },
+  ],
+  licences: [
+    H11sslLicenceActivation { product_code: "SFT-OOB-LIC", bmc_mac: "AC:1F:6B:E3:F5:7B", source: OperatorHeldCertificate { certificate_number: "0823170253", store: "operator's Drive (keys held by the operator)" } },
   ],
   label: H11sslLabelObservation {
     top_label_serial_barcode: "55503A0100160200000EAJ0A1",
@@ -105,4 +133,13 @@ fn rejects_factory_default(o: H11sslObservation) -> Bool {
 // The factory-default producer is admitted only if no observation rejected that credential.
 fn supermicro_h11ssl_factory_login_producer_admitted(r: H11sslFirstContactReceipt) -> Bool {
   !any(r.observations, o => rejects_factory_default(o: o))
+}
+
+// True once some probe saw the Redfish service root answer; consumer: arrival intake choosing
+// whether the Redfish path may be tried on this unit.
+fn supermicro_h11ssl_redfish_root_answered(r: H11sslFirstContactReceipt) -> Bool {
+  any(r.observations, o => match o.outcome {
+    ServiceRootAnswered { redfish_version: _, root_schema: _, uuid: _, members: _ } => true
+    _ => false
+  })
 }
