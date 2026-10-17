@@ -1857,7 +1857,7 @@ mod counting_allocator_tests {
     #[test]
     fn a_process_without_the_provider_reads_unobservable_not_zero() {
         // This test process allocates but selected no counting allocator and registered none.
-        let work: Vec<u8> = Vec::with_capacity(64);
+        let work: std::vec::Vec<u8> = std::vec::Vec::with_capacity(64);
         assert!(work.capacity() >= 64);
         assert!(registered_allocation_provider().is_none());
         assert_eq!(allocation_reading(None, AllocationAxis::Operations), None);

@@ -5982,7 +5982,7 @@ mod compiler_tests {
             emit_native_claim_driver_main_rs(
                 "c".to_string(),
                 "m".to_string(),
-                std::rc::Rc::new(bindings),
+                std::rc::Rc::new(bindings.into()),
             )
             .content
             .clone()

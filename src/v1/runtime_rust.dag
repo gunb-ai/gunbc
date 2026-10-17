@@ -1573,7 +1573,7 @@ fn rt_realization_measurement() -> String {
     "    #[test]\n",
     "    fn a_process_without_the_provider_reads_unobservable_not_zero() \{\n",
     "        // This test process allocates but selected no counting allocator and registered none.\n",
-    "        let work: Vec<u8> = Vec::with_capacity(64);\n",
+    "        let work: std::vec::Vec<u8> = std::vec::Vec::with_capacity(64);\n",
     "        assert!(work.capacity() >= 64);\n",
     "        assert!(registered_allocation_provider().is_none());\n",
     "        assert_eq!(allocation_reading(None, AllocationAxis::Operations), None);\n",

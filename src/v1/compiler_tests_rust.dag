@@ -1837,7 +1837,7 @@ fn ct_allocator_is_installed_only_by_demand_test() -> String {
     "    fn the_counting_allocator_is_installed_only_by_demand() {\n",
     "        use crate::v1_compiler_emit_rust::emit_native_claim_driver_main_rs;\n",
     "        let render = |bindings: Vec<std::rc::Rc<crate::v1_compiler_emit_rust::NativeEffectBindingText>>| -> String {\n",
-    "            emit_native_claim_driver_main_rs(\"c\".to_string(), \"m\".to_string(), std::rc::Rc::new(bindings)).content.clone()\n",
+    "            emit_native_claim_driver_main_rs(\"c\".to_string(), \"m\".to_string(), std::rc::Rc::new(bindings.into())).content.clone()\n",
     "        };\n",
     "        let other = std::rc::Rc::new(crate::v1_compiler_emit_rust::NativeEffectBindingText {\n",
     "            var: \"fs\".to_string(),\n",
