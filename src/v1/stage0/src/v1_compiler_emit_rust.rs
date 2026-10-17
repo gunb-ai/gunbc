@@ -14852,31 +14852,33 @@ Rc::new(vec![Rc::new(RustUseLine {
                     .iter()
                     .cloned()
                     {
-                        let declaring_mod = graph_type_import_module_filename(
-                            en.clone(),
-                            import_module.clone(),
-                            mod_name.clone(),
-                            typed_modules.clone(),
-                            export_sets.clone(),
-                            source_indices.clone(),
-                            module_index.clone(),
-                        );
-                        __result.push(Rc::new(RustUseLine {
-                            target_module: declaring_mod.clone(),
-                            text: v1_rt::concat(
-                                v1_rt::concat(
+                        __result.push({
+                            let declaring_mod = graph_type_import_module_filename(
+                                en.clone(),
+                                import_module.clone(),
+                                mod_name.clone(),
+                                typed_modules.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            );
+                            Rc::new(RustUseLine {
+                                target_module: declaring_mod.clone(),
+                                text: v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            "use crate::".to_string(),
-                                            declaring_mod.clone(),
+                                            v1_rt::concat(
+                                                "use crate::".to_string(),
+                                                declaring_mod.clone(),
+                                            ),
+                                            "::".to_string(),
                                         ),
-                                        "::".to_string(),
+                                        en.clone(),
                                     ),
-                                    en.clone(),
+                                    "::*;".to_string(),
                                 ),
-                                "::*;".to_string(),
-                            ),
-                        }));
+                            })
+                        });
                     }
                     __result
                 });
