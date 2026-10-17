@@ -312,7 +312,9 @@ import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.build_cache.build_cache_unit { build_cache_unit_text }
 import gunbc.host.build_cache_daemon_ensure {
+  BuildCacheDigestRefusal,
   BuildCacheEnsureExecuted,
+  BuildCacheEnsureFold,
   BuildCachePlanRefused,
   EnsureOps,
   BuildCacheEnsureOp,
@@ -331,7 +333,12 @@ import gunbc.host.build_cache_daemon_ensure {
   build_cache_daemon_ensure_plan,
   build_cache_daemon_presence_command,
   build_cache_daemon_stats_command,
+  build_cache_ensure_fold_digest_line,
+  build_cache_ensure_fold_is_progressing,
+  build_cache_ensure_run,
+  build_cache_ensure_run_legs,
   build_cache_ensure_is_needed,
+  build_cache_plan_remainder,
   build_cache_matched_stats_fragment,
   build_cache_observe_observed,
   build_cache_read_back_observation,
@@ -3917,7 +3924,48 @@ fn build_cache_ensure_executed(
     ) {
       BuildCachePlanRefused { reason: r } => EnsurePlanRefused { reason: r }
       EnsureOps { ops: ops } => {
-        let outcome = build_cache_run_ensure_ops(ops: ops, unit_bytes: unit_bytes, transport: transport)
+        // PASS ONE RUNS WHAT MAY RUN BEFORE ANYTHING IS KNOWN ABOUT THE DIGEST: for a plan that installs,
+        // the fetch and the read and nothing past them; for a plan that does not (the binary is already at
+        // the destination), every leg, since there is no gate to wait behind. The fold's carrier comes
+        // back with the digest line the read produced, which is the only thing that can decide pass two.
+        let prefix = build_cache_ensure_run_legs(
+          run: build_cache_ensure_run(ops: ops, digest: digest, observed_digest_line: none),
+        )
+        let first = build_cache_run_ensure_ops(
+          state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+          ops: prefix,
+          unit_bytes: unit_bytes,
+          transport: transport,
+        )
+        let outcome =
+          if !build_cache_ensure_fold_is_progressing(fold_state: first) {
+            // A leg of the prefix itself stopped the sequence — a fetch that could not download, a read
+            // that could not hash the file. That arm names the operation and the host's own capture, and
+            // pass two does not run.
+            first.executed
+          } else {
+            match build_cache_ensure_run(
+              ops: ops,
+              digest: digest,
+              observed_digest_line: build_cache_ensure_fold_digest_line(fold_state: first),
+            ) {
+              // THE GATE REFUSED: the line the read produced does not match the pinned release. This is
+              // reported and NOTHING AFTER THE READ RUNS — no extraction, no move into /usr/local/bin, no
+              // chmod — and the refusal carried both digests. The legs permitted here are exactly the ones
+              // pass one already ran, so this arm is not merely a report bolted onto a sequence that
+              // installed anyway.
+              RefusedBeforeInstall { legs: _, op: gate, refusal: why } => EnsureDigestRefused { op: gate, refusal: why }
+              Runs { legs: legs } => {
+                let rest = build_cache_plan_remainder(all: legs, already_run: list_length(items: prefix))
+                build_cache_run_ensure_ops(
+                  state: first,
+                  ops: rest,
+                  unit_bytes: unit_bytes,
+                  transport: transport,
+                ).executed
+              }
+            }
+          }
         let _ = run_argv_over_host_effect_transport(command: discard, transport: transport)
         outcome
       }
@@ -3929,36 +3977,82 @@ fn build_cache_ensure_executed(
 // only op whose payload crosses as stdin, which is what makes the retired heredoc's safety property
 // structural rather than a quoting discipline.
 //
+// THE CARRIER IS RETURNED, NOT JUST THE TERMINAL ARM. A caller cannot tell "nothing ran because the
+// sequence was skipped" from "nothing ran because the digest gate refused" without the line the read
+// produced, and that distinction is the entire content of the gate — so the fold hands it back rather than
+// dropping it at the end of the loop.
+//
 // THE DISCARD'S OWN OUTCOME IS DELIBERATELY NOT PROPAGATED. The staged sibling is a file this fold created
 // moments earlier in a directory it does not otherwise touch; if its removal fails, the operation the
 // operator needs to hear about is the one that failed first, and letting a cleanup failure overwrite that
 // report would be a worse diagnostic, not a better one. What is NOT done is the reverse: the cleanup is
 // never skipped, and never conditional on success.
 fn build_cache_run_ensure_ops(
+  state: BuildCacheEnsureFold,
   ops: List<BuildCacheEnsureOp>,
   unit_bytes: String,
   transport: HostEffectTransport,
-) -> BuildCacheEnsureExecuted {
+) -> BuildCacheEnsureFold {
   fold(
     ops,
-    init: EnsureCompleted,
-    f: (acc, op) => match acc {
-      EnsureCompleted =>
-        if op.unit_bytes_on_stdin {
-          build_cache_op_executed(
-            op: op,
-            ran: run_argv_stdin_over_host_effect_transport(
-              command: op.argv,
-              stdin_payload: unit_bytes,
-              transport: transport,
-            ),
-          )
-        } else {
-          build_cache_op_executed(op: op, ran: run_argv_over_host_effect_transport(command: op.argv, transport: transport))
-        }
-      _ => acc
-    },
+    init: state,
+    f: (acc, op) =>
+      // THE FOLD'S SHARE OF `set -e`: once a leg has stopped the sequence the legs after it are NOT run,
+      // and the terminal arm already carried is the receipt. Without this guard a refused digest would
+      // still be followed by the extraction and the move, and what the effect reported would be whichever
+      // leg happened to fail last rather than the one that stopped the host.
+      if !build_cache_ensure_fold_is_progressing(fold_state: acc) {
+        acc
+      } else if op.unit_bytes_on_stdin {
+        build_cache_fold_op_executed(
+          acc: acc,
+          op: op,
+          ran: run_argv_stdin_over_host_effect_transport(
+            command: op.argv,
+            stdin_payload: unit_bytes,
+            transport: transport,
+          ),
+        )
+      } else {
+        build_cache_fold_op_executed(
+          acc: acc,
+          op: op,
+          ran: run_argv_over_host_effect_transport(command: op.argv, transport: transport),
+        )
+      },
   )
+}
+
+// ONE OP'S OUTCOME, FOLDED INTO THE CARRIER. The terminal arm comes from build_cache_op_executed, which is
+// the single place exit codes become receipt arms; the carrier's digest_line is updated HERE, against the
+// leg's DECLARED kind, so the second pass is decided by a pure fn over a recorded observation rather than
+// by an if buried in the loop. A leg of any other kind leaves the line untouched — inventing a digest line
+// from a fetch or a chmod would be the same silent default this effect removes.
+fn build_cache_fold_op_executed(acc: BuildCacheEnsureFold, op: BuildCacheEnsureOp, ran: RunArgvTransportOutcome) -> BuildCacheEnsureFold {
+  match ran {
+    RunArgvTransportRefused { reason: r } =>
+      BuildCacheEnsureFold {
+        executed: EnsureTransportBlocked { op: op, reason: r },
+        digest_line: acc.digest_line,
+      }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 {
+        BuildCacheEnsureFold {
+          executed: EnsureFailed {
+            op: op,
+            observed: BuildCacheHostRunObserved { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr },
+          },
+          digest_line: acc.digest_line,
+        }
+      } else if op.kind == ReadDigest {
+        BuildCacheEnsureFold {
+          executed: EnsureCompleted,
+          digest_line: Present { value: o.stdout },
+        }
+      } else {
+        BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: acc.digest_line }
+      }
+  }
 }
 
 // ONE OP'S OUTCOME AS A RECORD. exit 0 is completion; a non-zero exit carries the op and everything the

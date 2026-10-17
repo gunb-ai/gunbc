@@ -25,9 +25,16 @@ import gunbc.shell_command_text { shell_command_text_of_argv }
 import gunbc.host.verified_binary_install {
   VerifiedBinaryInstallParams,
   VerifiedBinaryInstallPresence,
+  VerifiedBinaryInstallPlan,
+  verified_binary_install_admission,
+  verified_binary_install_admitted_plan,
   verified_binary_install_destination_present,
   verified_binary_install_destination_present_command,
+  verified_binary_install_fetch_step,
   verified_binary_install_install_steps,
+  verified_binary_install_plan_refusal_reason,
+  verified_binary_install_verify_line,
+  verified_binary_install_verify_step,
 }
 import gunbc.host.sccache_verified_install { sccache_verified_install_params }
 
@@ -86,11 +93,37 @@ type BuildCacheObserve
 // positionally with it: a label list would be a second representation of the sequence and would drift the
 // moment an operation was inserted, at which point the refusal would name the wrong operation — the worst
 // possible failure for a diagnostic.
-type BuildCacheEnsureOp { argv: ArgvCommand, unit_bytes_on_stdin: Bool }
+// WHICH OPERATION A PLAN LEG IS, declared by the plan rather than read back out of argv after the fact.
+// The distinction is not cosmetic: two of these legs are PRECONDITIONS whose failure must stop the
+// sequence, and the fold has to know that before it runs them. `set -e` carried the same information
+// implicitly — everything stopped at the first non-zero exit — which is exactly why the receipt protocol
+// could not say WHICH operation stopped it, or that a stop was a refusal to install rather than a failed
+// unit write.
+type BuildCacheEnsureKind =
+  | FetchArchive
+  | ReadDigest
+  | InstallStep
+  | UnitStep
+
+// WHAT A FAILED DIGEST READ REFUSED, as the effect states it. The two digests are carried, not just the
+// fact of a mismatch: "the download is corrupt" and "the archive was swapped" are different incidents, and
+// a refusal that collapses them cannot be triaged. Same posture as
+// gunbc.host.verified_binary_install.VerifiedBinaryInstallPlan.RefusedToInstall, whose verdict this is.
+type BuildCacheDigestRefusal = DigestRefused { reason: String, expected_hex: String, observed_line: String }
+
+// ONE PLAN LEG: what to run, how to run it, and what kind of leg it is. The `kind` field is derived when
+// the plan is BUILT, at the one site that knows what each operation is for; a caller cannot re-derive it
+// by pattern-matching argv later, which is where a re-derivation would drift the moment an operation is
+// inserted.
+type BuildCacheEnsureOp {
+  kind: BuildCacheEnsureKind,
+  argv: ArgvCommand,
+  unit_bytes_on_stdin: Bool,
+}
 
 // THE ENSURE PLAN, derived before anything runs — the thing `mktemp -d` made impossible, since a fold
 // cannot name operations whose paths are invented at run time. A dry witness can therefore read every
-// argv and the order they run in.
+// argv, every leg's kind, and the order they run in.
 type BuildCacheDaemonEnsurePlan = EnsureOps { ops: List<BuildCacheEnsureOp> } | BuildCachePlanRefused { reason: String }
 
 // WHAT THE ENSURE DID, supplied by the caller after it ran the plan. Every arm says something that is true
@@ -113,6 +146,268 @@ type BuildCacheEnsureExecuted
   | EnsureCompleted
   | EnsureFailed { op: BuildCacheEnsureOp, observed: BuildCacheHostRunObserved }
   | EnsureTransportBlocked { op: BuildCacheEnsureOp, reason: String }
+  | EnsureDigestRefused { op: BuildCacheEnsureOp, refusal: BuildCacheDigestRefusal }
+
+// WHAT DECIDING ONE LEG PRODUCES, as ONE value so the caller cannot read a stop as a success. `LegPassed`
+// means this leg ran and the sequence may continue; `LegStopped` carries the terminal arm the fold reports
+// and NOTHING AFTER IT RUNS — which is the whole point of the digest gate: a refused verification has to
+// stop the install, not merely be reported alongside it.
+type BuildCacheEnsureLegVerdict = LegPassed | LegStopped { executed: BuildCacheEnsureExecuted }
+
+// WHICH LEGS THE PLAN PERMITS, given what is known about the digest. A value rather than a branch inside
+// the executor, so a claim can ask the question twice — once with the matching line, once with a mismatch
+// — and read the two lists, without a host in sight.
+//
+// `RefusedBeforeInstall` is the arm that carries the ruling: the legs listed are exactly the plan through
+// the digest read, the install legs are NOT in it, and the refusal names both digests so the caller does
+// not have to reconstruct why. `Runs` means the sequence may run as planned — including the whole plan
+// when there is no gate to apply.
+type BuildCacheEnsureRun =
+  | Runs { legs: List<BuildCacheEnsureOp> }
+  | RefusedBeforeInstall {
+      legs: List<BuildCacheEnsureOp>,
+      op: BuildCacheEnsureOp,
+      refusal: BuildCacheDigestRefusal,
+    }
+
+// THE LEGS A RUN DECISION PERMITS, in order. The executor iterates this and nothing else; a witness reads
+// the same accessor, which is what keeps "the executor ran exactly these" a check rather than an assumption.
+fn build_cache_ensure_run_legs(run: BuildCacheEnsureRun) -> List<BuildCacheEnsureOp> {
+  match run {
+    Runs { legs: legs } => legs
+    RefusedBeforeInstall { legs: legs, op: _, refusal: _ } => legs
+  }
+}
+
+// THE FIRST READ-DIGEST LEG, which is the gate itself — reported by its own argv when it refuses, on the
+// same principle as every other failure in this effect: the operator is told WHICH command, not that
+// "something" in the sequence stopped.
+fn build_cache_plan_gate_op(ops: List<BuildCacheEnsureOp>) -> Optional<BuildCacheEnsureOp> {
+  fold(
+    ops,
+    init: none,
+    f: (acc, op) =>
+      match acc {
+        Present { value: seen } => Present { value: seen }
+        Absent => if op.kind == ReadDigest { Present { value: op } } else { none }
+      },
+  )
+}
+
+// THE REFUSAL FOR ONE OBSERVED LINE, as the value the effect reports: the cited admission's reason plus
+// BOTH digests. Absent means the line is admitted (or was never read, which is not a match) — the caller
+// asks this only after build_cache_ensure_run says RefusedBeforeInstall, so a missing refusal can never be
+// read as a passed gate.
+fn build_cache_digest_refusal(
+  digest: Digest,
+  observed_sha256sum_line: String,
+) -> Optional<BuildCacheDigestRefusal> {
+  match verified_binary_install_admission(expected: digest, observed_sha256sum_line: observed_sha256sum_line) {
+    Verified { observed: _ } => none
+    Refused { reason: why, expected: e, observed_line: read } =>
+      Present {
+        value: DigestRefused {
+          reason: why,
+          expected_hex: e.hex as String,
+          observed_line: read,
+        },
+      }
+  }
+}
+
+// THE DECISION FOR ONE LEG, PURE, so the `set -e` this effect replaces is something a claim can exercise
+// without a host. `set -e` said two things with one exit code — this operation failed, AND therefore
+// nothing after it runs. Splitting them is what lets a stop be a REPORTED refusal rather than an accident
+// of ordering. The digest gate is a separate decision, in build_cache_ensure_run below, because a digest
+// read that EXITS ZERO and still does not match the pin is not a success.
+fn build_cache_ensure_leg_verdict(op: BuildCacheEnsureOp, observed: BuildCacheHostRunObserved) -> BuildCacheEnsureLegVerdict {
+  if observed.exit_code != 0 {
+    LegStopped { executed: EnsureFailed { op: op, observed: observed } }
+  } else {
+    LegPassed
+  }
+}
+
+// THE SCAN CARRIER: the legs taken so far, and whether the gate has been reached. A record rather than a
+// tuple because the grammar has no tuple patterns, and the two fields say exactly what the scan is doing.
+data BuildCacheGateScan { legs: List<BuildCacheEnsureOp>, at_gate: Bool }
+
+// WALK THE PLAN AS FAR AS THE GATE, IN ONE PASS. The gate is the plan's first ReadDigest leg; `at_gate`
+// records whether the walk found one at all, which is what distinguishes "this plan needs no verification"
+// (no such leg, the binary was already at the destination) from "verification is pending".
+fn build_cache_gate_scan(ops: List<BuildCacheEnsureOp>) -> BuildCacheGateScan {
+  fold(
+    ops,
+    init: BuildCacheGateScan { legs: [], at_gate: false },
+    f: (acc, op) =>
+      if acc.at_gate {
+        acc
+      } else if op.kind == ReadDigest {
+        BuildCacheGateScan { legs: append(acc.legs, items: [op]), at_gate: true }
+      } else {
+        BuildCacheGateScan { legs: append(acc.legs, items: [op]), at_gate: false }
+      },
+  )
+}
+
+// THE LEGS THAT MAY RUN BEFORE ANYTHING IS KNOWN ABOUT THE DIGEST: fetch, then the read, and nothing
+// past it. The executor's first pass runs exactly this, so an unread digest can never be the reason an
+// install ran — which is the shape the dropped leg left behind.
+fn build_cache_ensure_gate_prefix(ops: List<BuildCacheEnsureOp>) -> List<BuildCacheEnsureOp> {
+  build_cache_gate_scan(ops: ops).legs
+}
+
+// THE GATE ITSELF, reported by its own argv when it refuses — the same principle as every other failure in
+// this effect: the operator is told WHICH command, not that "something" in the sequence stopped. Absent
+// when the plan has no gate, i.e. when there is nothing to verify.
+fn build_cache_plan_gate_op(ops: List<BuildCacheEnsureOp>) -> Optional<BuildCacheEnsureOp> {
+  let scan = build_cache_gate_scan(ops: ops)
+  fold(
+    scan.legs,
+    init: none,
+    f: (acc, op) =>
+      if !scan.at_gate {
+        none
+      } else {
+        match acc {
+          Present { value: seen } => Present { value: seen }
+          Absent => if op.kind == ReadDigest { Present { value: op } } else { none }
+        }
+      },
+  )
+}
+
+// WHETHER ONE OBSERVED LINE SATISFIES THE PIN. Delegates to the cited
+// gunbc.host.verified_binary_install admission — the same fn PR-a's generic verified-download effect uses,
+// so the build-cache site and that effect cannot drift apart on what counts as verified. Absent is NOT a
+// match: treating an unread digest as verified is exactly the silent default this effect exists to remove.
+fn build_cache_digest_line_is_admitted(digest: Digest, observed_sha256sum_line: Optional<String>) -> Bool {
+  match observed_sha256sum_line {
+    Absent => false
+    Present { value: line } =>
+      match verified_binary_install_admission(expected: digest, observed_sha256sum_line: line) {
+        Verified { observed: _ } => true
+        Refused { reason: _, expected: _, observed_line: _ } => false
+      }
+  }
+}
+
+// THE REFUSAL FOR ONE OBSERVED LINE: the cited admission's reason plus BOTH digests. Absent means the line
+// is admitted, so the caller must ask build_cache_ensure_run whether a refusal applies rather than reading
+// a missing refusal as a passed gate.
+fn build_cache_digest_refusal(digest: Digest, observed_sha256sum_line: String) -> Optional<BuildCacheDigestRefusal> {
+  match verified_binary_install_admission(expected: digest, observed_sha256sum_line: observed_sha256sum_line) {
+    Verified { observed: _ } => none
+    Refused { reason: why, expected: e, observed_line: read } =>
+      Present {
+        value: DigestRefused {
+          reason: why,
+          expected_hex: e.hex as String,
+          observed_line: read,
+        },
+      }
+  }
+}
+
+// WHICH LEGS THE PLAN PERMITS, given what is known about the digest. A value rather than a branch inside
+// the executor, so a claim can ask the same question twice — once with the matching line, once with a
+// mismatch — and read the two lists back, with no host in sight. This is the single authority on which
+// legs run: the executor asks and runs what it is told, so the two cannot drift apart.
+//
+// A plan with no gate leg (the binary was already at the destination) returns every leg under either
+// reading of `observed_digest_line`, so a host that needs no install is not gated on a read it does not
+// need — main's `if [ ! -x ... ]` guard, expressed as the absence of the legs rather than a runtime test.
+//
+// `RefusedBeforeInstall` is the arm that carries the ruling. Its `legs` are the plan through the gate,
+// which is where "NOTHING INSTALLS" lives: it is a computed list, not prose, and the legs it drops are
+// exactly the archive extraction, the move into /usr/local/bin, the chmod and the two cleanups.
+fn build_cache_ensure_run(
+  ops: List<BuildCacheEnsureOp>,
+  digest: Digest,
+  observed_digest_line: Optional<String>,
+) -> BuildCacheEnsureRun {
+  let scan = build_cache_gate_scan(ops: ops)
+  if !scan.at_gate {
+    Runs { legs: ops }
+  } else if build_cache_digest_line_is_admitted(digest: digest, observed_sha256sum_line: observed_digest_line) {
+    Runs { legs: ops }
+  } else {
+    match build_cache_plan_gate_op(ops: ops) {
+      Absent => Runs { legs: ops }
+      Present { value: gate } =>
+        match observed_digest_line {
+          Absent => Runs { legs: scan.legs } // Nothing has been refused yet; only the prefix is permitted.
+          Present { value: line } =>
+            match build_cache_digest_refusal(digest: digest, observed_sha256sum_line: line) {
+              Absent => Runs { legs: ops }
+              Present { value: why } =>
+                RefusedBeforeInstall { legs: scan.legs, op: gate, refusal: why }
+            }
+        }
+    }
+  }
+}
+
+// THE LEGS A RUN DECISION PERMITS, in order. The executor iterates this and nothing else, and a witness
+// reads the same accessor — which is what makes "the executor ran exactly these" a check.
+fn build_cache_ensure_run_legs(run: BuildCacheEnsureRun) -> List<BuildCacheEnsureOp> {
+  match run {
+    Runs { legs: legs } => legs
+    RefusedBeforeInstall { legs: legs, op: _, refusal: _ } => legs
+  }
+}
+
+// WHAT THE EXECUTOR'S FOLD CARRIES. Two fields because the fold has to answer a question afterwards that
+// `set -e` never had to answer: not only "did something stop me" but "what did the digest read say", which
+// is what the second pass is gated on. `executed` is the terminal arm once one exists and EnsureCompleted
+// while the sequence is still progressing, so a stop can never be overwritten by a later leg.
+data BuildCacheEnsureFold { executed: BuildCacheEnsureExecuted, digest_line: Optional<String> }
+
+// THE DIGEST LINE THE SEQUENCE OBSERVED, Absent when no ReadDigest leg ran. The second pass is asked with
+// this, and Absent there means "not admitted" — so a fold that somehow skipped the read cannot produce a
+// full-length second pass.
+fn build_cache_ensure_fold_digest_line(fold_state: BuildCacheEnsureFold) -> Optional<String> {
+  fold_state.digest_line
+}
+
+// WHETHER A FOLD STATE IS STILL PROGRESSING. The fold consults this before running each leg, which is the
+// fold's share of preserving `set -e`: once a leg has stopped the sequence, the legs after it are not run
+// and the terminal arm is carried forward untouched.
+fn build_cache_ensure_fold_is_progressing(fold_state: BuildCacheEnsureFold) -> Bool {
+  match fold_state.executed {
+    EnsureCompleted => true
+    EnsureSkipped => false
+    EnsurePlanRefused { reason: _ } => false
+    EnsureFailed { op: _, observed: _ } => false
+    EnsureTransportBlocked { op: _, reason: _ } => false
+    EnsureDigestRefused { op: _, refusal: _ } => false
+  }
+}
+
+// THE LEGS THAT REMAIN after the first pass, i.e. everything in the permitted list beyond the `already_run`
+// legs already executed. Counted by position rather than filtered by argv because two legs can share argv
+// text (both cleanups begin with rm) and a by-value filter would drop the wrong one.
+data BuildCacheRemainderScan { index: Int, remaining: List<BuildCacheEnsureOp> }
+
+fn build_cache_plan_remainder(all: List<BuildCacheEnsureOp>, already_run: Int) -> List<BuildCacheEnsureOp> {
+  fold(
+    all,
+    init: BuildCacheRemainderScan { index: 0, remaining: [] },
+    f: (acc, op) =>
+      if acc.index < already_run {
+        BuildCacheRemainderScan { index: acc.index + 1, remaining: acc.remaining }
+      } else {
+        BuildCacheRemainderScan { index: acc.index + 1, remaining: append(acc.remaining, items: [op]) }
+      },
+  ).remaining
+}
+
+// THE LEGS THE PLAN ASKS FOR, by kind. For witnesses and for the refusal text: an arm that has to say
+// "no install ran" says it by counting the legs of the kind it refused to run rather than by asserting a
+// number that would be true even if the plan had never derived them at all.
+fn build_cache_plan_legs_of_kind(ops: List<BuildCacheEnsureOp>, kind: BuildCacheEnsureKind) -> List<BuildCacheEnsureOp> {
+  fold(ops, init: [], f: (acc, op) => if op.kind == kind { append(acc, items: [op]) } else { acc })
+}
 
 // THE TYPED BUILD-CACHE DAEMON ENSURE (shell->dag W7, effect grain).
 //
@@ -387,35 +682,73 @@ fn build_cache_daemon_ensure_plan(
   } else {
     let staged = build_cache_unit_staged_path(instance: instance)
     let dest = build_cache_unit_system_path(instance: instance)
+    // THE INSTALL LEGS, IN ORDER, AND ONLY WHEN THE BINARY IS ACTUALLY ABSENT. Three parts in a
+    // load-bearing order: the archive has to EXIST before it can be hashed, and it has to be HASHED before
+    // anything is extracted from it or moved into /usr/local/bin. These are the three legs main's retired
+    // installer body carried — curl, the digest line, then extract/move/chmod/cleanups — and before this
+    // commit the site emitted only the last group: it would tar-extract an archive that had never been
+    // downloaded, and whatever landed was never compared with the pinned release digest.
+    //
+    // verified_binary_install_fetch_step and verified_binary_install_verify_step are PR-a's cited curl and
+    // sha256sum operations, so this is the SAME download-then-verify machinery the generic effect uses
+    // rather than a second actuation of it.
+    //
+    // The `kind` of each leg is fixed HERE, at the one site that knows what the operation is for. A caller
+    // that re-derived kind by matching argv would silently misclassify any operation inserted between
+    // these, and the digest gate keys on kind.
+    let install_legs =
+      if build_cache_install_is_derivable(install: install) {
+        let params = sccache_verified_install_params(rel: sccache_release_0_15_0, arch: arch_token, digest: digest)
+        let preflight = [
+          BuildCacheEnsureOp {
+            kind: FetchArchive,
+            argv: verified_binary_install_fetch_step(p: params),
+            unit_bytes_on_stdin: false,
+          },
+          BuildCacheEnsureOp {
+            kind: ReadDigest,
+            argv: verified_binary_install_verify_step(p: params),
+            unit_bytes_on_stdin: false,
+          },
+        ]
+        append(
+          preflight,
+          items: map(
+            verified_binary_install_install_steps(p: params),
+            step => BuildCacheEnsureOp { kind: InstallStep, argv: step, unit_bytes_on_stdin: false },
+          ),
+        )
+      } else {
+        []
+      }
     EnsureOps {
       ops: append(
-        if build_cache_install_is_derivable(install: install) {
-          map(
-            verified_binary_install_install_steps(
-              p: sccache_verified_install_params(rel: sccache_release_0_15_0, arch: arch_token, digest: digest),
-            ),
-            step => BuildCacheEnsureOp { argv: step, unit_bytes_on_stdin: false },
-          )
-        } else {
-          []
-        },
+        install_legs,
         items: [
           BuildCacheEnsureOp {
+            kind: UnitStep,
             argv: sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: staged))),
             unit_bytes_on_stdin: true,
           },
           BuildCacheEnsureOp {
+            kind: UnitStep,
             argv: sudo_elevate_command(
               command: coreutils_install_file_argv(mode: build_cache_unit_file_mode, source: staged, dest: dest),
             ),
             unit_bytes_on_stdin: false,
           },
-          BuildCacheEnsureOp { argv: systemctl_daemon_reload_command(), unit_bytes_on_stdin: false },
           BuildCacheEnsureOp {
+            kind: UnitStep,
+            argv: systemctl_daemon_reload_command(),
+            unit_bytes_on_stdin: false,
+          },
+          BuildCacheEnsureOp {
+            kind: UnitStep,
             argv: sudo_elevate_command(command: systemctl_enable_argv(unit: instance.intended_unit)),
             unit_bytes_on_stdin: false,
           },
           BuildCacheEnsureOp {
+            kind: UnitStep,
             argv: sudo_elevate_command(command: systemctl_restart_argv(unit: instance.intended_unit)),
             unit_bytes_on_stdin: false,
           },
@@ -505,6 +838,12 @@ fn build_cache_ensure_executed_observation(
               DaemonUnresponsive { detail: build_cache_failure_detail(op: o, observed: f) as NonEmptyStr }
             EnsureTransportBlocked { op: o, reason: r } =>
               DaemonUnresponsive { detail: build_cache_op_blocked_detail(op: o, reason: r) as NonEmptyStr }
+            // THE DIGEST GATE, as the operator sees it. Its text carries BOTH digests and says outright
+            // that nothing was installed, because the incident it reports is "an unverified release came
+            // off the network and we did not run it" — an observation that has to be legible without the
+            // reader having to infer it from an arm name.
+            EnsureDigestRefused { op: o, refusal: why } =>
+              DaemonUnresponsive { detail: build_cache_digest_refusal_detail(op: o, refusal: why) as NonEmptyStr }
             EnsureCompleted => build_cache_read_back_observation(read_back: rb, placement: placement)
           }
       }
@@ -579,6 +918,36 @@ fn build_cache_failure_detail(op: BuildCacheEnsureOp, observed: BuildCacheHostRu
     ],
     "",
   )
+}
+
+// THE DIGEST REFUSAL, AS THE OPERATOR READS IT. Both digests appear, named as such, and the text says
+// outright that nothing was installed — which is not decoration: this arm is the effect's own statement
+// that an unverified release came off the network and did not reach the filesystem. A reader who has to
+// infer that from an arm name has not been told, and an empty plan would have told them even less.
+//
+// The observed line is quoted VERBATIM rather than parsed into "the digest was X" because a malformed line
+// is itself the evidence: sha256sum's own output, including the case where the file it was asked to hash
+// was not the archive it expected.
+fn build_cache_digest_refusal_detail(op: BuildCacheEnsureOp, refusal: BuildCacheDigestRefusal) -> String {
+  match refusal {
+    DigestRefused { reason: why, expected_hex: expected, observed_line: line } =>
+      join(
+        [
+          "the build-cache ensure refused to install: ",
+          why,
+          "; the pinned release digest is ",
+          expected,
+          " and the download reported ",
+          line,
+          "; the verification step was ",
+          shell_command_text_of_argv(argv: argv_words(command: op.argv)),
+          ", and nothing was extracted, moved into ",
+          sccache_installed_binary_path(),
+          ", or made executable",
+        ],
+        "",
+      )
+  }
 }
 
 fn build_cache_exit_detail(observed: BuildCacheHostRunObserved) -> String {

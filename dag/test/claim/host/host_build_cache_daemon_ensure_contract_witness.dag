@@ -474,6 +474,7 @@ test fn the_read_blocked_and_misconfigured_observe_arms_refuse_in_their_own_shap
 // production plan never produces, and cannot drift from it either.
 fn build_cache_contract_elevated_restart_op() -> BuildCacheEnsureOp {
   BuildCacheEnsureOp {
+    kind: UnitStep,
     argv: sudo_elevate_command(command: systemctl_restart_argv(unit: build_cache_contract_instance().intended_unit)),
     unit_bytes_on_stdin: false,
   }
