@@ -400,7 +400,7 @@ fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readabl
     round_index: index,
     chassis: ChassisPowerRead { power_on: power_on },
     chassis_raw: "",
-    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent }, undecoded_lines: [] } } else { ThermalUnreadable },
+    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent }, undecoded_line_count: sdr_undecoded_line_count(count: 0) } } else { ThermalUnreadable },
     fans: FanSensorsRead {
       lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
       undecoded_lines: [],
