@@ -909,25 +909,25 @@ fn every_row_citation_resolves(rows: List<RuntimeIdentityAxisRow>) -> Bool {
 // from it, and a drift is exactly what a witness exists to catch (review 38602 finding, round 2).
 fn classifies_as_match(verdict: RuntimeIdentityVerdict) -> Bool {
   match verdict {
-    Match { axes_matched: _, unit: _ } => true
-    Mismatch { diverged: _, unit: _ } => false
-    Unprovable { why: _, unit: _ } => false
+    Match { axes_matched: _, pre_unit: _, post_unit: _ } => true
+    Mismatch { diverged: _, pre_unit: _, post_unit: _ } => false
+    Unprovable { why: _, pre_unit: _, post_unit: _ } => false
   }
 }
 
 fn classifies_as_mismatch(verdict: RuntimeIdentityVerdict) -> Bool {
   match verdict {
-    Match { axes_matched: _, unit: _ } => false
-    Mismatch { diverged: _, unit: _ } => true
-    Unprovable { why: _, unit: _ } => false
+    Match { axes_matched: _, pre_unit: _, post_unit: _ } => false
+    Mismatch { diverged: _, pre_unit: _, post_unit: _ } => true
+    Unprovable { why: _, pre_unit: _, post_unit: _ } => false
   }
 }
 
 fn classifies_as_unprovable(verdict: RuntimeIdentityVerdict) -> Bool {
   match verdict {
-    Match { axes_matched: _, unit: _ } => false
-    Mismatch { diverged: _, unit: _ } => false
-    Unprovable { why: _, unit: _ } => true
+    Match { axes_matched: _, pre_unit: _, post_unit: _ } => false
+    Mismatch { diverged: _, pre_unit: _, post_unit: _ } => false
+    Unprovable { why: _, pre_unit: _, post_unit: _ } => true
   }
 }
 
