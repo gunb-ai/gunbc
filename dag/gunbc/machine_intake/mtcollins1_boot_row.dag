@@ -1,0 +1,225 @@
+module gunbc.machine_intake.mtcollins1_boot_row
+
+// ── THE mtcollins1 BOOT ROW ─────────────────────────────────────────────────────────
+//
+// Everything a boot on mtcollins1 depends on that is a fact MEASURED ON mtcollins1 lives here, on
+// mtcollins1's row -- not in the MegaRAC adapter (gunbc.machine_intake.megarac_boot_diagnostic_bundle)
+// and not in the neutral boot module (gunbc.host.boot_attempt). The adapter takes a MegaRacBootRow as
+// a parameter and can assemble a bundle for ANY MegaRAC board; this module is what makes it boot
+// mtcollins1.
+//
+// THE HOST SEAM. mtcollins1_boot_row takes the observed controller endpoint -- the same endpoint the
+// BMC access observation records and the managed host binding secures. A caller that passes an endpoint
+// other than the one these receipts were measured against is REFUSED, not served another machine's
+// numbers: how many IPMI reads an attempt makes, how many Redfish pages the census walks, which sockets
+// the sensor table must cover, and where evidence is retained were all read off THIS board.
+//
+// THE RETIRED ROOT. Cut 4d-ii deleted the old mtcollins1 boot-diagnostic-bundle root; this module is
+// the receipts that survived it, after the host-generic procedure moved out to the adapter. The
+// receipts stay, the procedure goes. Nothing here reads a BMC or renders a bundle -- it says only what
+// mtcollins1 is, and hands the adapter the answer to "which machine am I booting".
+
+import std.types { NonEmptyStr, String }
+import std.measure { Second, second, ByteSize, byte_size }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import gunbc.host.boot_attempt {
+  ConsoleReading, CaptureContents, console, console_reading, publish_allowance,
+}
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  MegaRacBootRow, MegaRacIpmiReadPolicy, MegaRacRedfishReadPolicy, MegaRacAccountReceipt,
+  MegaRacConsoleReference,
+}
+import gunbc.machine_intake.mtcollins1_access_observation {
+  mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after,
+}
+import gunbc.machine_intake.mtcollins1_memory_census_observation {
+  mtcollins1_slots, mtcollins1_census_sol_artifact_path,
+}
+import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake.ampere_smpro_observation { smpro_site_probe_bound }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.mtcollins1_power_on_account {
+  PowerOnEvidence, mtcollins1_power_on_account, mtcollins1_power_on_account_text,
+  mtcollins1_power_on_account_notes,
+}
+
+// ── THE RECEIPTS ─────────────────────────────────────────────────────────────────────
+
+// Where this machine keeps the evidence one boot retains. A path this row owns; the adapter asks
+// rather than knowing, so a second board keeps its own artifacts under its own prefix.
+data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-boot-"
+data mtcollins1_boot_diagnostics_path: String = "artifacts/mtcollins1-boot-diagnostics.txt"
+
+// The Redfish service root this BMC answers on, and the three EXPLICIT POLICY BUDGETS one attempt's
+// inventory walk may spend. Each is a bound this row sets for itself -- no external or versioned
+// authority fixes these numbers, and none is a domain unit needing a std.measure carrier (they count
+// reads, pages and members). What grounds each is stated with it, and what a bound does when it is hit
+// is a REFUSAL that names the bound in the bundle, never a silent truncation.
+//
+// DEADLINE: one Redfish read runs under this coreutils bound, the same one the IPMI reads use.
+data mtcollins1_boot_redfish_read_deadline: Second = second(count: 15)
+
+// READ BUDGET: reads are counted against it and a read the budget cannot pay for is NOT made -- that
+// section records BmcDeadlineReached naming what was not reached, and the attempt still shreds its
+// netrc and writes the bundle. So the worst case is a sum of bounds and an unbounded collection cannot
+// push the step past its timeout before cleanup and publish run.
+//
+// 48 is sized for this board's inventory AS THE CENSUS OBSERVED IT -- the service root, 1 Systems page,
+// the system, 1 Processors page and 2 processors, 1 Memory page and 32 slots: 39 reads -- with room for
+// extra pages. A firmware that pages more finely spends the rest and says so. These are the row's own
+// receipts (mtcollins1_census_sockets and the slot population below), so the measurement that sized the
+// budget and the budget itself live on the same row.
+data mtcollins1_boot_redfish_read_budget: Int = 48
+
+// PAGE BOUND: how many pages the collector will follow through Members@odata.nextLink before refusing.
+// 8 admits this BMC's measured walk -- the census found one page per collection, two collections --
+// with seven spare. Hitting it is CollectionFetchFailed { cause: BmcCollectionIncomplete } naming the
+// bound reached with a nextLink still pending, because a controller that pages that finely is not
+// answering the way this row was measured answering.
+data mtcollins1_boot_collection_page_bound: Int = 8
+
+// MEMBER BOUND: the largest Members@odata.count the collector will accept. 40 clears this board's
+// census population (32 slots on the two sockets mtcollins1_census_sockets reports) with headroom for
+// a population change, and refuses above it: a count over the bound is CollectionRefused naming the
+// count and the bound, rather than a truncation that would report a partial inventory as the whole
+// one. A second board sets its own from ITS population; it is not handed this row's.
+data mtcollins1_boot_collection_member_bound: Int = 40
+
+data mtcollins1_boot_redfish_service_root_path: NonEmptyStr = "/redfish/v1/"
+
+// THE REFERENCE THIS ROW'S CONSOLE CAPTURES ARE COMPARED AGAINST: the census run of 2026-09-10/11,
+// which reported two sockets and 160 CPUs and printed both the firmware summary and the Ampere
+// controller summary for both sockets. What a later capture matches or fails to match is evidence only
+// under the firmware and population THAT run was taken with, so both scopes are this row's receipt
+// about its own reference (the run itself is gunbc.machine_intake.mtcollins1_memory_census_observation).
+data mtcollins1_census_reference_firmware_scope: NonEmptyStr = "the vendor firmware set installed before the 2026-10-02 update"
+data mtcollins1_census_reference_configuration_scope: NonEmptyStr = "two sockets, sixteen DIMMs (the 2026-09-10/11 census population)"
+
+// THE SOCKETS THIS MACHINE HAS, as its own memory census recorded them. The adapter's sensor check
+// calls a missing socket a finding only against a row that claims it, so the population is the row's
+// claim to make and nobody else's to assume.
+fn mtcollins1_census_sockets() -> List<Int> {
+  let empty: List<Int> = []
+  fold(map(mtcollins1_slots, s => s.processor_socket as Int), init: empty,
+    f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
+}
+
+// How many IPMI reads one mtcollins1 attempt makes: the four always-made reads (chassis power before
+// and after, boot flags, SEL) plus one per SMpro register this board's site exposes.
+fn mtcollins1_boot_ipmi_read_count() -> Int {
+  4 + smpro_site_probe_bound(standing: mtcollins1_smpro_site())
+}
+
+// How many sockets this row's census reported. Derived from the population above, never restated: a
+// consumer that wants the number asks the row, and a row whose population changes changes this too.
+fn mtcollins1_census_socket_count() -> Int {
+  count(mtcollins1_census_sockets())
+}
+
+// Where this row retains the KVM observer capture for one attempt. The path shape is the row's own
+// artifact convention, built from its retained-artifact prefix so the KVM capture lands beside the
+// rest of the attempt's evidence rather than at an unrelated hard-coded prefix.
+fn mtcollins1_kvm_observer_dir(attempt: String) -> String {
+  concat(mtcollins1_boot_retained_artifact_prefix, "kvm-", attempt)
+}
+
+// The console capture this row retains, decided by the neutral module against THIS row's reference. The
+// decision (size bound, reference comparison, checkpoint relations) is gunbc.host.boot_attempt's; the
+// measured facts it runs on are this row's.
+fn mtcollins1_boot_console(path: String) -> ConsoleReading {
+  console(
+    path: path,
+    retained_prefix: mtcollins1_boot_retained_artifact_prefix as NonEmptyStr,
+    census_sol_reference_path: mtcollins1_census_sol_artifact_path,
+    reference_firmware_scope: mtcollins1_census_reference_firmware_scope,
+    reference_configuration_scope: mtcollins1_census_reference_configuration_scope,
+  )
+}
+
+// The console READING this row retains, for a capture that was actually attempted. Same rule as
+// mtcollins1_boot_console: the classification (retained / not retained / over bound / unread, and
+// what the capture text says) is the neutral module's, and only mtcollins1's own receipts -- its
+// retained-artifact prefix, its census SOL reference path, its two reference scopes, its expected
+// socket population -- come from here. Another row gets its own numbers by calling the same neutral
+// function with its own receipts.
+fn mtcollins1_boot_console_reading(
+  path: String,
+  size: ByteSize,
+  capture: CaptureContents,
+  reference: CaptureContents,
+) -> ConsoleReading {
+  console_reading(
+    path: path,
+    size: size,
+    capture: capture,
+    reference: reference,
+    retained_prefix: mtcollins1_boot_retained_artifact_prefix as NonEmptyStr,
+    census_sol_reference_path: mtcollins1_census_sol_artifact_path,
+    reference_firmware_scope: mtcollins1_census_reference_firmware_scope,
+    reference_configuration_scope: mtcollins1_census_reference_configuration_scope,
+  )
+}
+
+// What mtcollins1 says about its own power-on account, in the shape the adapter carries. The account
+// MODEL is this row's (gunbc.machine_intake.mtcollins1_power_on_account); the adapter only renders what
+// the row hands it, so no other machine's account classification can leak into a mtcollins1 bundle and
+// vice versa.
+fn mtcollins1_boot_account_receipt(e: PowerOnEvidence) -> MegaRacAccountReceipt {
+  let a = mtcollins1_power_on_account(e: e)
+  MegaRacAccountReceipt {
+    account: a,
+    text: mtcollins1_power_on_account_text(a: a),
+    notes: mtcollins1_power_on_account_notes(a: a),
+  }
+}
+
+// ── THE ROW ITSELF ───────────────────────────────────────────────────────────────────
+
+// A row whose receipts were measured against a different endpoint. There is no way to ask this row
+// about another board: its numbers are mtcollins1's.
+type MegaRacBootRowStanding
+  = BootRowFor { row: MegaRacBootRow }
+  | BootRowEndpointMismatch { expected: NonEmptyStr, observed: NonEmptyStr }
+
+// THE ROW, once. Every reading of mtcollins1's row -- the checked one below, the run procedure's
+// -- is this same value, so no consumer can be handed a row that disagrees with another's.
+data mtcollins1_boot_row_value: MegaRacBootRow = MegaRacBootRow {
+        controller: mtcollins1_endpoint,
+        operator_host: operator_host_mtcollins1 as NonEmptyStr,
+        // What mtcollins1 calls itself. This is the row's word, not the adapter's: a MegaRAC adapter
+        // has no name to print.
+        label: "mtcollins1",
+        ipmi: MegaRacIpmiReadPolicy {
+          deadline: mtcollins1_boot_ipmi_read_deadline,
+          kill_after: mtcollins1_boot_ipmi_kill_after,
+          planned_reads: mtcollins1_boot_ipmi_read_count(),
+        },
+        redfish: MegaRacRedfishReadPolicy {
+          read_deadline: mtcollins1_boot_redfish_read_deadline,
+          read_budget: mtcollins1_boot_redfish_read_budget,
+          collection_page_bound: mtcollins1_boot_collection_page_bound,
+          collection_member_bound: mtcollins1_boot_collection_member_bound,
+          service_root_path: mtcollins1_boot_redfish_service_root_path,
+        },
+        publish_allowance: publish_allowance,
+        sensor_sockets: mtcollins1_census_sockets(),
+        retained_artifact_prefix: mtcollins1_boot_retained_artifact_prefix,
+        diagnostics_path: mtcollins1_boot_diagnostics_path,
+        console_reference: MegaRacConsoleReference {
+          census_sol_artifact_path: mtcollins1_census_sol_artifact_path as NonEmptyStr,
+          reference_firmware_scope: mtcollins1_census_reference_firmware_scope,
+          reference_configuration_scope: mtcollins1_census_reference_configuration_scope,
+        },
+}
+
+// THE ROW, checked. `controller` must be the endpoint mtcollins1's access observation records;
+// anything else is refused rather than answered with mtcollins1's measurements. The admitted row IS
+// mtcollins1_boot_row_value -- checked admission chooses whether you get the row at all, it does not
+// build a second copy of it.
+fn mtcollins1_boot_row(controller: BmcControllerEndpoint) -> MegaRacBootRowStanding {
+  if controller.host != mtcollins1_endpoint.host {
+    BootRowEndpointMismatch { expected: mtcollins1_endpoint.host, observed: controller.host }
+  } else {
+    BootRowFor { row: mtcollins1_boot_row_value }
+  }
+}
