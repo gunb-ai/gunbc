@@ -581,6 +581,17 @@ mod probe {
         let mut selected: BTreeSet<String> = Default::default();
         if mode.trim() == "ALL" {
             selected = candidate_paths.clone();
+        } else if let Some(rest) = mode.trim().strip_prefix("LISTFILE=") {
+            // the MEASURED candidate list, from a file: 7 KB of paths cannot travel through a shell
+            // argument, and a list the measurement carries itself is auditable
+            let text =
+                std::fs::read_to_string(rest).unwrap_or_else(|e| panic!("probe list {rest}: {e}"));
+            for p in text.split([',', '\n']) {
+                let p = p.trim();
+                if !p.is_empty() {
+                    selected.insert(p.to_string());
+                }
+            }
         } else {
             for p in mode.split(',').map(|l| l.trim()).filter(|l| !l.is_empty()) {
                 selected.insert(p.to_string());
