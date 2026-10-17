@@ -82,7 +82,8 @@ fn ambient_census_unindexed_files() -> List<AmbientCensusFixtureFile> {
 // The rows the fixture must produce, each as its whole printed line. examples.partial is the
 // partial-record RED: its resolve refuses (not_declared_anywhere is unbound), so it prints
 // binding_unreached and no binding row, and the references its accepted sites answered (the codomain's
-// Int, the imported helper) appear as binding_partial rows. The headless record `{ a: 1 }` under
+// Int, the imported helper) appear as binding_partial rows, followed by its binding_partial_module validity
+// line (two rows, no conflicting record, no unreadable spelling). The headless record `{ a: 1 }` under
 // `PairAlias` is the elided-head RED: its head binds by the expected type, alias-unfolded to
 // examples.decls.Pair, while the annotation's own occurrence binds examples.decls.PairAlias -- two rows,
 // two targets, so a wave retargeting the alias is seen at the head. The list literal `[1]` is the
@@ -109,6 +110,7 @@ fn ambient_census_fixture_expected() -> List<String> {
     "binding_unanswered\tstd.algebra\tstd.algebra.FreeMonoid\t0\tdeclared_order",
     "binding_partial\texamples.partial\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
     "binding_partial\texamples.partial\thelper\t0\tdeclared\texamples.decls.helper",
+    "binding_partial_module\texamples.partial\t2\t0\t0",
     "binding_unanswered\texamples.decls\tstd.algebra.FreeMonoid\t0\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t0\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t1\tdeclared_order",
@@ -146,7 +148,7 @@ fn field_at(line: String, index: Int) -> String {
 }
 
 fn fixture_join_failure(stdout: String) -> Optional<String> {
-  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t") || starts_with(s: l, prefix: "binding_partial\t"))
+  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t") || starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t"))
   let expected = ambient_census_fixture_expected()
   let missing = expected |> filter(e => count(lines |> filter(l => l == e)) == 0)
   let unexpected = lines |> filter(l => count(expected |> filter(e => e == l)) == 0)
@@ -265,11 +267,13 @@ fn census_observation_text(tree_stdout: String) -> String {
     + (distinct_lines(lines: partial_lines(stdout: tree_stdout)) |> join(separator: "\n")) + "\n"
 }
 
-// A REFUSED MODULE'S PARTIAL ROWS (v2.compiler.occurrence_binding_census occurrence_binding_partial_lines),
-// forwarded as their own kind. They never count as observation of the module: observed_modules reads
-// only binding_module, and the module's binding_unreached line still stands.
+// A REFUSED MODULE'S PARTIAL ROWS AND ITS binding_partial_module VALIDITY LINE (v2.compiler.occurrence_binding_census
+// occurrence_binding_partial_lines), forwarded as printed. They never count as observation of the module:
+// observed_modules reads only binding_module, and the module's binding_unreached line still stands. The
+// validity line travels with the rows, so a later reader sees a conflicting count (rows withheld) and an
+// unreadable count beside them rather than a silently shortened row set.
 fn partial_lines(stdout: String) -> List<String> {
-  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_partial\t"))
+  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t"))
 }
 
 fn ambient_name_census_standing(

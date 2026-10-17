@@ -10,7 +10,7 @@ import v2.std.text { String }
 import v2.std.node { Node, Symbol, symbol_lexeme, Edge, ArrowSignatureOrderEdge, edge_is_core }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string, declaration_reference_path_optional }
 import v2.compiler.resolve {
-  ResolvedTree, OccurrenceBinding, OccurrenceBindingRecord, OccurrenceBindingEntry, ResolvedReferenceIdentity,
+  ResolvedTree, OccurrenceBinding, OccurrenceBindingRecord, OccurrenceBindingEntry, occurrence_binding_duplicates, ResolvedReferenceIdentity,
   ResolvedToKernelSymbol, ResolvedToDeclaration,
   BoundByLexicalBinder, BoundToParameter, BoundToTypeParameter, BoundToDeclaration, BoundAmbient, BoundByExpectedType, BoundByGeneratedReference,
   AmbientBindingTable, AmbientKernelTypeSpelling, AmbientKernelCanonicalSymbol, AmbientPrimitiveAuthority, AmbientCollectionRoster
@@ -318,17 +318,37 @@ fn occurrence_binding_contribution_lines(c: OccurrenceBindingContribution) -> Li
   )
 }
 
-// THE PARTIAL ROWS OF A MODULE WHOSE RESOLVE REFUSED: the bindings its accepted sites recorded
+// THE PARTIAL OBSERVATION OF A MODULE WHOSE RESOLVE REFUSED: the bindings its accepted sites recorded
 // (v2.compiler.resolve ResolveWalkRefused.partial), keyed exactly as a resolved module's rows -- per
-// spelling, ordinal by occurrence order -- and printed as their own kind, binding_partial, which no
-// reader can mistake for a complete module: the module still prints binding_unreached and stays refused.
-// What they add is occurrence grain inside a refused module, so a wave that moves one name of a module
-// still refused for other names is judged by the binding diff instead of passing as unreached.
-// An occurrence recorded twice keeps its first record, as the resolved tree's map does.
-fn occurrence_binding_partial_lines(module: String, entries: List<OccurrenceBindingEntry>) -> List<String> {
+// spelling, ordinal by occurrence order among the recorded, readable module-level occurrences -- and
+// printed as their own kind, binding_partial, which no reader can mistake for a complete module: the
+// module still prints binding_unreached and stays refused.
+//
+// Its VALIDITY is carried here, in the observation channel, never in resolve, with the exactly-one-source
+// semantics a resolved module already has (v2.compiler.resolve occurrence_binding_duplicates): a repeat
+// EQUAL to the first record is one occurrence recorded twice and dedupes; a record that DISAGREES makes
+// the whole partial observation unusable, so its rows are withheld and only the count is printed; an
+// occurrence whose authored spelling did not read is counted, never keyed under a guessed spelling.
+// Every refused module that recorded anything prints exactly one
+//   binding_partial_module <module> <rows> <conflicting> <unreadable>
+// and a reader admits nothing from a module whose conflicting field is not 0.
+//
+// The ordinal is NOT an ordinal over every authored occurrence (it is assigned after the
+// module-level filter, over what the refused walk reached), and these rows carry no source locus, so a
+// count or ordinal match between two compilations does not establish which occurrence corresponds to
+// which. Admission of a wave from partial rows stays gated on a verified occurrence correspondence.
+type OccurrenceBindingPartial {
+  module: String
+  rows: List<OccurrenceBindingCensusRow>
+  conflicting: Int
+  unreadable: Int
+}
+
+fn occurrence_binding_partial(module: String, entries: List<OccurrenceBindingEntry>) -> OccurrenceBindingPartial {
   let records = fold_list(xs: entries, empty: empty_map(), cons: fn(m, e) {
     if map_contains_key(m: m, key: e.reference) { m } else { map_insert(m: m, key: e.reference, value: e.record) }
   })
+  let conflicting = map_support_keys(m: fold_list(xs: occurrence_binding_duplicates(entries: entries), empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }))
   let ids = list_sort_by_key(xs: map_support_keys(m: records), key: fn(id) { id.value }, order: int_total_order())
   let folded = fold_list(xs: ids, empty: BindingCensusFold { ordinals: empty_map(), rows: [], unreadable: 0 }, cons: fn(acc, id) {
     match map_lookup(m: records, key: id) {
@@ -336,6 +356,18 @@ fn occurrence_binding_partial_lines(module: String, entries: List<OccurrenceBind
       Present { value: record } => binding_census_step(module: module, acc: acc, record: record)
     }
   })
-  fold_list(xs: folded.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: "binding_partial" + occurrence_binding_row_fields(row: row)) })
+  OccurrenceBindingPartial {
+    module: module,
+    rows: if length(xs: conflicting) == 0 { folded.rows } else { [] },
+    conflicting: length(xs: conflicting),
+    unreadable: folded.unreadable
+  }
 }
 
+fn occurrence_binding_partial_lines(module: String, entries: List<OccurrenceBindingEntry>) -> List<String> {
+  let p = occurrence_binding_partial(module: module, entries: entries)
+  list_snoc_item(
+    xs: fold_list(xs: p.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: "binding_partial" + occurrence_binding_row_fields(row: row)) }),
+    item: "binding_partial_module\t" + module + "\t" + to_string(length(xs: p.rows)) + "\t" + to_string(p.conflicting) + "\t" + to_string(p.unreadable)
+  )
+}
