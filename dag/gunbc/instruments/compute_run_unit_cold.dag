@@ -468,13 +468,21 @@ fn miss_set_within(missed: List<String>, declared: List<String>) -> Bool {
   fold(missed, init: true, f: (ok, c) => ok && contains(declared, c))
 }
 
-// An UNREADABLE miss line is no observation, never zero misses (DESIGN §5: no fabricated default).
+// sccache prints no "Cache misses (Rust)" line when an arm missed nothing (run 38988326364: A2 hits=111 and D hits=111
+// carry only the hits line). So zero misses is READ from a present hits line with no miss line; a text carrying
+// NEITHER line is no observation, never zero misses (DESIGN §5: no fabricated default).
 fn arm_rust_misses_are_zero(text: String) -> Bool {
-  match rust_sccache_misses(text: text) { Present { value: m } => m == 0  Absent => false }
+  match rust_sccache_misses(text: text) {
+    Present { value: m } => m == 0
+    Absent => match rust_sccache_hits(text: text) { Present { value: _ } => true  Absent => false }
+  }
 }
 
 fn arm_rust_misses_readable(text: String) -> Bool {
-  match rust_sccache_misses(text: text) { Present { value: _ } => true  Absent => false }
+  match rust_sccache_misses(text: text) {
+    Present { value: _ } => true
+    Absent => match rust_sccache_hits(text: text) { Present { value: _ } => true  Absent => false }
+  }
 }
 
 fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String, checkout_at: String?, target_at: String?, stable_at: String?, stop_observation: ComputeUnitStopObservation) -> CliWireResponse {
