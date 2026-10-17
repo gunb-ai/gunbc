@@ -6,19 +6,18 @@ use self::OverflowReturnValueRule::*;
 use self::QualifiedOctetsResult::*;
 use self::Signedness::*;
 use self::UInt8Result::*;
-pub use crate::std_algebra::collection_concat_shape;
 pub use crate::std_algebra::{AbelianGroup, GroupCompletion};
 pub use crate::std_induction::int_pow_bounded;
-pub use crate::std_machine_constraints::PointerWidth;
-pub use crate::std_machine_constraints::{Compose, MachineWidth};
+pub use crate::std_machine_constraints::{Compose, MachineWidth, PointerWidth};
 pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
 use crate::std_nat::DecimalDigit::{D0, D1, D2, D3, D4, D5, D6, D7, D8, D9};
 use crate::std_nat::DecimalDigitSuccessor::{DecimalDigitCarry, DecimalDigitNext};
-pub use crate::std_nat::{decimal_digit_glyph, decimal_digit_successor, decimal_digit_value};
-pub use crate::std_nat::{DecimalDigit, DecimalDigitSuccessor, Nat};
+pub use crate::std_nat::{
+    decimal_digit_glyph, decimal_digit_successor, decimal_digit_value, DecimalDigit,
+    DecimalDigitSuccessor, Nat,
+};
 pub use crate::std_optional::Optional;
-pub use crate::std_types::gt_zero;
-pub use crate::std_types::List;
+pub use crate::std_types::{gt_zero, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

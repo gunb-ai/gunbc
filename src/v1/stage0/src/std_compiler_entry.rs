@@ -9,12 +9,9 @@ use self::NativeDriverCostRowStanding::*;
 use self::NativeDriverExclusiveRowKey::*;
 use self::NativeEffectClass::*;
 use self::NativeEffectScope::*;
-pub use crate::std_algebra::collection_map_shape;
-pub use crate::std_decl_ref::decl_ref;
-pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_measure::Nanosecond;
+pub use crate::std_decl_ref::{decl_ref, DeclarationRef};
 pub use crate::std_measure::{
-    millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count,
+    millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count, Nanosecond,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
