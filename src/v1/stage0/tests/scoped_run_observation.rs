@@ -413,3 +413,49 @@ fn scoped_declaration_identity_follows_the_selected_function_node() {
     assert!(!qualified_right.status.success(), "{qualified_right:?}");
     let _ = std::fs::remove_dir_all(&fixture_root);
 }
+
+/// Walked control (merry-fox-82): an unparseable module outside the entry's
+/// layout closure must not change `gunbc run`'s result or exit code.
+#[test]
+fn unparseable_outside_closure_leaves_gunbc_run_exit_unchanged() {
+    let root = repo_root().join("target").join(format!(
+        "gunbc-run-garbage-sibling-{}-{}",
+        std::process::id(),
+        FIXTURE_ID.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&root).expect("fixture");
+    let entry = root.join("entry.dag");
+    std::fs::write(
+        &entry,
+        "module test.fixtures.demand_run_garbage_control\nfn main() -> Bool { true }\n",
+    )
+    .expect("entry");
+    let run = |with_garbage: bool| {
+        if with_garbage {
+            std::fs::write(root.join("garbage.dag"), "this is not a module ((((").expect("garbage");
+        }
+        Command::new(env!("CARGO_BIN_EXE_gunbc"))
+            .current_dir(repo_root())
+            .env("GITHUB_ACTIONS", "1")
+            .args([
+                "run",
+                "--source-root",
+                root.to_str().expect("utf8"),
+                "--entry",
+                entry.to_str().expect("utf8"),
+                "--function",
+                "main",
+            ])
+            .output()
+            .expect("gunbc run")
+    };
+    let without = run(false);
+    let with = run(true);
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(
+        without.status.code(),
+        with.status.code(),
+        "without={without:?} with={with:?}"
+    );
+    assert_eq!(without.stdout, with.stdout);
+}

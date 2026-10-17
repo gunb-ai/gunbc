@@ -14,9 +14,10 @@ import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_lis
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
 import extdeps.posix.getent { getent_passwd_command }
 import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
-import extdeps.jobserver { jobserver_makeflags_env_name }
+import extdeps.tools.make { make_makeflags_env_name }
+import gunbc.host.ctrl_jobserver_residue { ctrl_jobserver_unit, ctrl_jobserver_residue_files, ctrl_jobserver_residue_directories }
 import std.measure { HardwareThreadCount, hardware_thread_count_value }
-import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path, gunbc_runner_jobserver_service }
+import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path }
 import gunbc.host.host_axis_caps { cap_dropin_content }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -724,7 +725,7 @@ fn classify_slot_allocation(reading: RunnerSlotUnitReading, expect: RunnerSlotEx
     SlotAllocationNotEffective { detail: join(["CPUQuotaPerSecUSec=", trim(s: reading.cpu_quota_per_sec), " want=", expect.cpu_quota_identity, "us"], "") }
   } else {
     let env = trim(s: reading.environment)
-    if expect.forbid_makeflags && slot_environment_names(environment: env, name: jobserver_makeflags_env_name) {
+    if expect.forbid_makeflags && slot_environment_names(environment: env, name: make_makeflags_env_name) {
       SlotAllocationNotEffective { detail: "Environment still carries MAKEFLAGS" }
     } else {
       match expect.compile_jobs {
@@ -1365,7 +1366,7 @@ fn runner_job_user_uid_reading_line(reading: RunnerJobUserUidReading) -> String 
 // WHAT THE RETIRED DAEMON LEFT ON A HOST, AS ITS INSTALLER PLACED IT. Cited from gunb-ai/ctrl
 // scripts/session-dashboard/host/install-ctrl-jobserver.sh: the daemon at /usr/local/sbin, its unit
 // at /etc/systemd/system, its knobs at /etc/default, and the FIFO's directory /var/lib/ctrl/jobserver
-// (the FIFO is gunbc.host.host_converge gunbc_runner_jobserver_default_fifo inside it). Operator
+// (the FIFO lived inside it; the names are gunbc.host.ctrl_jobserver_residue). Operator
 // ruling 2026-10-14 retires it: allocation is declared up front as each slot's CPU ceiling, so
 // nothing lends permits at runtime and nothing can leak them.
 //
@@ -1381,13 +1382,9 @@ type RetiredHostResidue {
 }
 
 data ctrl_jobserver_retired_residue: RetiredHostResidue = RetiredHostResidue {
-  unit: gunbc_runner_jobserver_service as NonEmptyStr,
-  files: [
-    "/etc/systemd/system/ctrl-jobserver.service",
-    "/etc/default/ctrl-jobserver",
-    "/usr/local/sbin/ctrl-jobserver",
-  ],
-  directories: ["/var/lib/ctrl/jobserver"],
+  unit: ctrl_jobserver_unit,
+  files: ctrl_jobserver_residue_files,
+  directories: ctrl_jobserver_residue_directories,
 }
 
 type RetiredResidueObservation

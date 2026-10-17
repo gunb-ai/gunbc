@@ -1,0 +1,20 @@
+module std.durable_transfer
+
+import std.content_hash { ContentHash }
+
+// THE TYPED TWO-PHASE ACCEPTANCE PAIR. gunbc.fleet_observation.capture_chunk instantiates
+// LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> and
+// DownstreamAcceptanceStanding<CapturePersistenceRefusal>. The capture-specific
+// DurableCommitProof seal and CapturePersistenceRefusal stay with the capture module:
+// they are how THAT store proves a commit, not the transfer shape. Cause is a type
+// parameter so a consumer names its own refusal without forking the pair.
+
+type LocalCommitStanding<Proof, Cause>
+  = LocallyCommitted { proof: Proof }
+  | LocalCommitFailed { cause: Cause }
+  | LocalCommitNotAttempted
+
+type DownstreamAcceptanceStanding<Cause>
+  = DownstreamAccepted { accepted_content: ContentHash }
+  | DownstreamRejected { cause: Cause }
+  | DownstreamNotOffered

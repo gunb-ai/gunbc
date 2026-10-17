@@ -27,7 +27,7 @@ import extdeps.http.client { http_client_get_unix_socket_argv }
 import std.measure { second }
 import gunbc.live_deploy.readiness {
   ServiceReadiness, ServiceReadyEvidence, ServiceProbeUnanswered, ServiceReadinessIdentityPending, ServiceTailnetDoorPending,
-  ProcessRevisionMismatch, HealthzBodyRead, HealthzProbeRefused,
+  ProcessRevisionMismatch, HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused,
   service_readiness_with_tailnet_door, service_readiness_reason, live_deploy_healthz_get_for_socket,
 }
 
@@ -146,6 +146,8 @@ fn is_door_pending_naming(r: ServiceReadiness, text: String) -> Bool {
         && string_contains(s: service_readiness_reason(r: r), pattern: door_socket())
         && string_contains(s: service_readiness_reason(r: r), pattern: text)
     Pending { cause: ServiceProbeUnanswered { detail: _ } } => false
+    // An answered-unhealthy door is not the door this claim is naming either.
+    Pending { cause: ServiceObservedUnhealthy { status: _, detail: _ } } => false
     Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
     Ready { evidence: _ } => false
     Refused { cause: _ } => false
@@ -183,6 +185,7 @@ test fn the_door_probe_over_an_unanswering_socket_is_a_refused_probe() -> Bool {
   (match read {
     HealthzProbeRefused { probe_error: _ } => true
     HealthzBodyRead { body: _ } => false
+    HealthzAnsweredUnhealthy { status: _, detail: _ } => false
   })
     && string_contains(s: argv, pattern: join(["--unix-socket ", door_socket(), " "], ""))
     && !string_contains(s: argv, pattern: "127.0.0.1")

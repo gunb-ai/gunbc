@@ -3,10 +3,10 @@ module test.claim.rung_drop_superseded_standing_witness
 import std.types { String, Bool, NonEmptyStr, List }
 import std.markdown { MarkdownDocument }
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.rung_drop { RungDrop, RungDropStanding, Standing, Retired, Superseded, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.rung_drop { dissolved_is_admissible, RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.roster { rung_drop_roster }
-import gunbc.rung_drop.standing { superseded_loss_holders_stand }
+import gunbc.rung_drop.standing { standing_rung_drops_of, dissolved_populations_empty, superseded_loss_holders_stand }
 import gunbc.design_ledgers { rung_drop_standing_suffix, rung_drop_standing_blocks }
 import gunbc.rung_drop_amendment { standing_sentence }
 import gunbc.rung_drop.rust_unit_tests_over_their_cap { rust_unit_tests_over_their_cap }
@@ -29,13 +29,13 @@ fn superseded_fixture_text() -> String {
     ruling: "fixture ruling" as NonEmptyStr,
     decision_record: "fixture decision record" as NonEmptyStr,
     loss_holder: "fixture_loss_holder" as NonEmptyStr
-  }) })
+  }, admissible: true) })
 }
 
 fn retired_fixture_text() -> String {
   rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: Retired {
     trigger_fired: supersession_fixture as NonEmptyStr
-  }) })
+  }, admissible: true) })
 }
 
 // RED, AND ITS CONTROL. The superseded rendering carries the ruling, the decision record and the
@@ -54,9 +54,9 @@ test fn w_RED_a_superseded_row_never_renders_as_trigger_fired() -> Bool {
 test fn the_heading_suffix_names_the_arm() -> Bool {
   rung_drop_standing_suffix(standing: Superseded {
     ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, loss_holder: "h" as NonEmptyStr
-  }) == " · SUPERSEDED"
-    && rung_drop_standing_suffix(standing: Retired { trigger_fired: "t" as NonEmptyStr }) == " · RETIRED"
-    && rung_drop_standing_suffix(standing: Standing) == ""
+  }, admissible: true) == " · SUPERSEDED"
+    && rung_drop_standing_suffix(standing: Retired { trigger_fired: "t" as NonEmptyStr }, admissible: true) == " · RETIRED"
+    && rung_drop_standing_suffix(standing: Standing, admissible: true) == ""
 }
 
 // THE AMENDMENT'S CLOSING SENTENCE IS DERIVED FROM THE SAME ARM, so an amended superseded row
@@ -64,7 +64,7 @@ test fn the_heading_suffix_names_the_arm() -> Bool {
 test fn the_amendment_sentence_for_a_superseded_row_says_the_trigger_did_not_fire() -> Bool {
   let s = standing_sentence(standing: Superseded {
     ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, loss_holder: "the_holder" as NonEmptyStr
-  })
+  }, admissible: true)
   s.contains("did NOT fire") && s.contains("the_holder")
     && (s.contains("has since fired") == false) && (s.contains("stands whole") == false)
 }
@@ -76,9 +76,10 @@ test fn the_live_over_cap_row_is_superseded_and_names_its_loss_holder() -> Bool 
     Superseded { ruling: _, decision_record: d, loss_holder: h } =>
       (h as String) == "v1_integration_tests_deleted_from_the_unit_lane"
         && (d as String).contains("msg_a8b84443")
-        && (rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: rust_unit_tests_over_their_cap.standing) }).contains("TRIGGER FIRED.") == false)
+        && (rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: rust_unit_tests_over_their_cap.standing, admissible: true) }).contains("TRIGGER FIRED.") == false)
     Standing => false
     Retired { trigger_fired: _ } => false
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
   }
 }
 
@@ -133,9 +134,77 @@ test fn w_RED_a_holder_named_twice_is_refused() -> Bool {
 // standing drop, and the roster carries at least one supersession, so the join is not vacuous.
 test fn the_live_roster_loss_holders_resolve_and_stand() -> Bool {
   superseded_loss_holders_stand(drops: rung_drop_roster, roster: rung_drop_roster)
+    && dissolved_populations_empty(drops: rung_drop_roster)
     && any(rung_drop_roster, d => match d.standing {
       Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
       Standing => false
       Retired { trigger_fired: _ } => false
+      Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
     })
+}
+
+// THE DISSOLVED ARM: its rendering says the trigger did not fire and that the population is gone,
+// carries no loss holder, and joins to no roster row (nothing holds the loss).
+test fn a_dissolved_row_renders_as_not_fired_and_needs_no_loss_holder() -> Bool {
+  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
+  let r = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: st, admissible: true) })
+  r.contains("DISSOLVED") && r.contains("gone") && (r.contains("TRIGGER FIRED.") == false)
+    && rung_drop_standing_suffix(standing: st, admissible: true) == " · DISSOLVED"
+    && superseded_loss_holders_stand(drops: [holder_fixture(id: "fixture.dissolved", standing: st)], roster: [holder_fixture(id: "fixture.dissolved", standing: st)])
+}
+
+// THE DISSOLVED ADMISSION LAW. RED: a Dissolved row over a non-empty typed population is refused.
+// Positive control: the same row over an empty population is admitted; the live roster is checked
+// by the_live_roster_loss_holders_resolve_and_stand.
+test fn w_RED_a_dissolved_row_over_a_live_population_is_refused() -> Bool {
+  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
+  let live = RungDrop {
+    identity: "fixture.dissolved" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
+  }
+  let empty = RungDrop {
+    identity: "fixture.dissolved" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
+  }
+  (dissolved_populations_empty(drops: [live]) == false) && dissolved_populations_empty(drops: [empty])
+}
+
+// THE LAW LIVES IN THE CONSUMER, NOT ONLY THE WITNESS. RED: standing_rung_drops_of, the accounting that
+// erases a loss, must still count a Dissolved row over a live population (fail closed) and must erase
+// one over an empty population (the sha256 shape). Mutating dissolved_is_admissible to always admit
+// makes the first conjunct fail.
+test fn w_RED_the_standing_accounting_keeps_an_invalid_dissolved_row_live() -> Bool {
+  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
+  let live = RungDrop {
+    identity: "fixture.live" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
+  }
+  let empty = RungDrop {
+    identity: "fixture.empty" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
+  }
+  let kept = map(standing_rung_drops_of(ds: [live, empty]), d => d.identity as String)
+  length(xs: filter(kept, i => i == "fixture.live")) == 1 && length(xs: filter(kept, i => i == "fixture.empty")) == 0
+}
+
+// THE RENDERERS ASK THE SAME PREDICATE AS THE ACCOUNTING. RED: a Dissolved row over a live population,
+// rendered with the admissibility derived from the row, must not assert dissolution in the ledger
+// heading, block or amendment sentence; the empty-population row still does.
+test fn w_RED_an_invalid_dissolved_row_does_not_render_as_dissolved() -> Bool {
+  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
+  let live = RungDrop {
+    identity: "fixture.live" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
+  }
+  let empty = RungDrop {
+    identity: "fixture.empty" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
+  }
+  let bad = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: live.standing, admissible: dissolved_is_admissible(drop: live)) })
+  let good = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: empty.standing, admissible: dissolved_is_admissible(drop: empty)) })
+  let bad_sentence = standing_sentence(standing: live.standing, admissible: dissolved_is_admissible(drop: live))
+  bad.contains("INVALID DISSOLVED") && (bad.contains("NO LONGER EXISTS") == false)
+    && rung_drop_standing_suffix(standing: live.standing, admissible: dissolved_is_admissible(drop: live)) == " · INVALID DISSOLVED"
+    && bad_sentence.contains("INVALID DISSOLVED") && (bad_sentence.contains("nothing remains") == false)
+    && good.contains("NO LONGER EXISTS")
 }

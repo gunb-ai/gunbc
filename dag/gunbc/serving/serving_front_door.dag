@@ -1,7 +1,8 @@
 module gunbc.serving.serving_front_door
 
-import std.types { String, Bool, NonEmptyStr, List, EpochSecs }
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import std.measure { Second, second, second_count }
 import std.optional { Present, Absent }
 import extdeps.crypto.mac {
@@ -16,7 +17,8 @@ import gunbc.auth.request_authentication {
 }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
 import std.access { AccessDecision, Permit, Deny, AccessRefusal, AccessRefusalLocation, AccessPolicyRefused }
-import product.capacity.lease { LeaseGrant, GrantIdentity, QuiescenceFact }
+import product.capacity.lease { LeaseGrant, GrantIdentity }
+import std.durable_exclusive_hold { DurableHoldHolderLiveness }
 import product.capacity.redemption {
   RedemptionRefusal, RedemptionRecovery, redemption_refusal_wire, redemption_recovery,
   RecoveryNoUseToRecover, RecoveryReleaseOwed, RecoveryHoldCharged, RecoveryEndThenRelease, RecoveryUndecidable,
@@ -100,7 +102,7 @@ type ServingSeatPermitClaims {
   class: ServingCoTenancyClass
   seat: HarnessSeatReference
   grant: GrantIdentity
-  generation: Nat
+  generation: CasGeneration
   caller: PrincipalRef
   granted_at: EpochSecs
   expires_at: EpochSecs
@@ -159,7 +161,7 @@ fn serving_seat_permit_signing_input(c: ServingSeatPermitClaims) -> NonEmptyStr 
         serving_co_tenancy_class_wire(c: c.class) as String,
         harness_seat_reference_wire(r: c.seat) as String,
         c.grant as String,
-        to_string(c.generation),
+        to_string(cas_generation_count(g: c.generation)),
         principal_ref_label(p: c.caller),
         to_string(c.granted_at),
         to_string(c.expires_at),
@@ -278,7 +280,7 @@ type SeatGrantCurrency
   | SeatGrantAdmittedByAnother { admitted_by: EventId }
   | SeatGrantAmountNotOneSeat { amount: Nat }
   | SeatGrantAcquiredMoreThanOnce { acquisitions: Nat }
-  | SeatGrantFenceGenerationDisagrees { claimed: Nat, recorded: Nat }
+  | SeatGrantFenceGenerationDisagrees { claimed: Int, recorded: Int }
   | SeatGrantNotInterpretedUnderPool { detail: String }
   | SeatGrantUnread { detail: String }
 
@@ -305,7 +307,7 @@ type SeatLedgerScan {
   released: NonEmptyStr?
 }
 
-fn seat_grant_currency_of(pool: HarnessSeatPoolIdentity, walk: ChainWalk<PoolEvent>, reference: NonEmptyStr, grant: GrantIdentity, generation: Nat) -> SeatGrantCurrency {
+fn seat_grant_currency_of(pool: HarnessSeatPoolIdentity, walk: ChainWalk<PoolEvent>, reference: NonEmptyStr, grant: GrantIdentity, generation: Int) -> SeatGrantCurrency {
   match walk {
     ChainIncomplete { missing: m, newest_first_so_far: _ } =>
       SeatGrantUnread { detail: join(["the seat partition chain is missing event ", m as String], "") }
@@ -342,8 +344,8 @@ fn seat_grant_currency_of(pool: HarnessSeatPoolIdentity, walk: ChainWalk<PoolEve
               SeatGrantAmountNotOneSeat { amount: a.amount }
             } else if (a.id as String) != (grant as String) {
               SeatGrantAdmittedByAnother { admitted_by: a.id }
-            } else if a.generation != generation {
-              SeatGrantFenceGenerationDisagrees { claimed: generation, recorded: a.generation }
+            } else if (a.generation as Int) != generation {
+              SeatGrantFenceGenerationDisagrees { claimed: generation, recorded: a.generation as Int }
             } else {
               match pool_fold(root: pool.root, oldest_first: xs) {
                 PoolFoldRefused { at_event: e, wire: w } =>
@@ -361,7 +363,7 @@ fn seat_grant_currency_of(pool: HarnessSeatPoolIdentity, walk: ChainWalk<PoolEve
   }
 }
 
-fn seat_grant_currency_on_store(store: FabricStorageBinding, pool: HarnessSeatPoolIdentity, reference: NonEmptyStr, grant: GrantIdentity, generation: Nat) -> SeatGrantCurrency {
+fn seat_grant_currency_on_store(store: FabricStorageBinding, pool: HarnessSeatPoolIdentity, reference: NonEmptyStr, grant: GrantIdentity, generation: Int) -> SeatGrantCurrency {
   match event_log_read_partition(store: store, partition: pool.partition, budget: 4096) {
     PartitionReadRefused { cause: c } => SeatGrantUnread { detail: join(["the seat partition could not be read: ", event_log_refusal_wire(cause: c)], "") }
     PartitionReadOk { head: _, walk: w } => seat_grant_currency_of(pool: pool, walk: w, reference: reference, grant: grant, generation: generation)
@@ -426,7 +428,7 @@ type FrontDoorRefusal
   | DoorSeatAdmittedByAnother { admitted_by: EventId }
   | DoorSeatAmountNotOneSeat { amount: Nat }
   | DoorSeatAcquiredMoreThanOnce { acquisitions: Nat }
-  | DoorSeatFenceGenerationDisagrees { claimed: Nat, recorded: Nat }
+  | DoorSeatFenceGenerationDisagrees { claimed: Int, recorded: Int }
   | DoorSeatNotInterpretedUnderPool { detail: String }
   | DoorSeatLedgerUnread { detail: String }
   | DoorSeatHeldByAnotherCaller { ledger_actor: NonEmptyStr, caller: PrincipalRef }
@@ -531,7 +533,7 @@ fn front_door_admit(
   door: FrontDoorIdentity,
   observed_at: EpochSecs,
   request: NonEmptyStr,
-  ledger: fn(HarnessSeatPoolIdentity, NonEmptyStr, GrantIdentity, Nat) -> SeatGrantCurrency,
+  ledger: fn(HarnessSeatPoolIdentity, NonEmptyStr, GrantIdentity, Int) -> SeatGrantCurrency,
   redeem: fn(HarnessSeatPoolIdentity, NonEmptyStr, NonEmptyStr) -> FrontDoorRedemption,
 ) -> FrontDoorVerdict {
   match front_door_caller(evidence: evidence) {
@@ -552,7 +554,7 @@ fn front_door_admit_presented(
   door: FrontDoorIdentity,
   observed_at: EpochSecs,
   request: NonEmptyStr,
-  ledger: fn(HarnessSeatPoolIdentity, NonEmptyStr, GrantIdentity, Nat) -> SeatGrantCurrency,
+  ledger: fn(HarnessSeatPoolIdentity, NonEmptyStr, GrantIdentity, Int) -> SeatGrantCurrency,
   redeem: fn(HarnessSeatPoolIdentity, NonEmptyStr, NonEmptyStr) -> FrontDoorRedemption,
 ) -> FrontDoorVerdict {
   let c = permit.claims
@@ -583,7 +585,7 @@ fn front_door_admit_authenticated(
   door: FrontDoorIdentity,
   observed_at: EpochSecs,
   request: NonEmptyStr,
-  ledger: fn(HarnessSeatPoolIdentity, NonEmptyStr, GrantIdentity, Nat) -> SeatGrantCurrency,
+  ledger: fn(HarnessSeatPoolIdentity, NonEmptyStr, GrantIdentity, Int) -> SeatGrantCurrency,
   redeem: fn(HarnessSeatPoolIdentity, NonEmptyStr, NonEmptyStr) -> FrontDoorRedemption,
 ) -> FrontDoorVerdict {
   let c = claims
@@ -611,7 +613,7 @@ fn front_door_admit_authenticated(
           door_refuse(cause: DoorPermitPartitionNotThisPool { partition: c.partition, pool_partition: pool.partition })
         } else {
           let reference = harness_seat_reference_wire(r: c.seat)
-          match ledger(pool, reference, c.grant, c.generation) {
+          match ledger(pool, reference, c.grant, cas_generation_count(g: c.generation)) {
             SeatGrantHeld { actor: a, recorded_at: at, term: term } =>
               front_door_admit_held(caller: caller, claims: c, pool: pool, reference: reference, ledger_actor: a, recorded_at: at, term: term, observed_at: observed_at, request: request, redeem: redeem)
             SeatGrantReleased { reason: why } => door_refuse(cause: DoorSeatReleased { reason: why })
@@ -756,11 +758,11 @@ fn front_door_recovery_plan(recovery: RedemptionRecovery) -> FrontDoorRecoveryPl
   }
 }
 
-fn front_door_recover(store: FabricStorageBinding, pool: HarnessSeatPoolIdentity, reference: NonEmptyStr, quiescence: QuiescenceFact, proxy: NonEmptyStr, now: EpochSecs) -> FrontDoorRecovery {
+fn front_door_recover(store: FabricStorageBinding, pool: HarnessSeatPoolIdentity, reference: NonEmptyStr, holder: DurableHoldHolderLiveness, proxy: NonEmptyStr, now: EpochSecs) -> FrontDoorRecovery {
   match fabric_redemption_read(store: store, pool_partition: pool.partition, reference: reference) {
     RedemptionReadRefused { cause: c } => RecoveryRefused { detail: event_log_refusal_wire(cause: c) }
     RedemptionReadAt { head: _, state: st } =>
-      match front_door_recovery_plan(recovery: redemption_recovery(state: st, quiescence: quiescence)) {
+      match front_door_recovery_plan(recovery: redemption_recovery(state: st, holder: holder)) {
         PlanLeaveWithHolder => RecoveryLeftWithHolder
         PlanHoldCharged { request: q, holder: h, since: s } => RecoveryHeldCharged { request: q, holder: h, since: s }
         PlanRefuse { detail: d } => RecoveryRefused { detail: d }
