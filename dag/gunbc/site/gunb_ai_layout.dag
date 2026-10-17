@@ -10,7 +10,7 @@ import extdeps.languages.css.properties {
   GridTemplateColumns, LineHeight, MarginBottom, MarginLeft, MarginRight, MarginTop,
   MaxWidth, Padding, RawProperty, CustomProperty,
 }
-import extdeps.languages.css.selectors { ElementSelector, ClassSelector, PseudoSuffix }
+import extdeps.languages.css.selectors { SelectorSubject, ElementSelector, ClassSelector, PseudoSuffix }
 import extdeps.languages.css.media_queries { MediaCondition, MediaMaxWidth }
 import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, decl, serialize_rules }
 import gunbc.design.scale {
@@ -101,33 +101,73 @@ fn grid_choice_admissible(choice: GridChoice) -> Bool {
 
 // ----------------------------------------------------------- axis 2: the breakpoints
 
-// The live page breaks at 480/540/700/760. 540 and 760 exist only to re-stack what
-// 700 has already stacked (their rules set the same single-column tracks), so the
-// modelled set is the two that change something; the parity audit compares RENDERED
-// pages, not selector counts.
-data breakpoint_stack: MediaCondition = MediaMaxWidth { max: CssLength { n: 700, unit: Px } }
-data breakpoint_compact: MediaCondition = MediaMaxWidth { max: CssLength { n: 480, unit: Px } }
+// What the live page does at each width — instrument, and read it rather than trusting
+// this paraphrase:
+//   curl -s https://gunb.ai/assets/site.css | grep -n "@media" -A 8
+//   760 stacks .hero-spine and caps .hero-left h1 at 18ch; 700 stacks .specimen-body and
+//   turns .story-ledger into a scroller; 540 stacks .card-receipt-row; 480 tightens
+//   .masthead margins and .carved-rule.
+// Only the card grid is modelled here, because the card grid is what this layer owns.
+// 760 and 540 are NOT modelled: they restack .hero-spine and .card-receipt-row, elements
+// this layer does not model — they belong to the primitives and pages layers, and go on
+// that layer's parity list rather than being silently dropped. They are not redundant with
+// the 700 rule; the instrument above shows each width targets different selectors.
+//
+// The 480 point also does NOT repeat the 700 rule. An earlier draft emitted the
+// single-column rule at both widths; every viewport under 480 is under 700 too, so the
+// second rule could never fire anything the first had not — duplicated work (§2), and on a
+// ballot a fabricated choice, since the two options rendered identically while the caption
+// claimed the tighter one did something (§5, "no plausible output is fabricated"). A
+// response point therefore carries WHAT it changes, not only where. The tightening below is
+// this layer's proposal for its own element (.cards), put to the operator on the ballot; the
+// live site's 480 rules touch .masthead and .carved-rule, which arrive with the primitives
+// layer.
+
+type ResponsePoint {
+  condition: MediaCondition
+  subject: SelectorSubject
+  decls: List<CssDecl>
+}
+
+// Below 700: the card tracks collapse to one column — the response the live site hand-
+// wrote for that width.
+data stack_point: ResponsePoint = ResponsePoint {
+  condition: MediaMaxWidth { max: CssLength { n: 700, unit: Px } },
+  subject: ClassSelector { name: "cards" },
+  decls: [decl(prop: GridTemplateColumns, value: tracks_single())]
+}
+
+// Below 480: the measure narrows the room it needs — the card gutter and the card's own
+// padding drop one step on the gap scale. Same fact shape as the live site's compact
+// tier (spacing, not tracks), read from the same gap scale the rest of the layer uses.
+data compact_point: ResponsePoint = ResponsePoint {
+  condition: MediaMaxWidth { max: CssLength { n: 480, unit: Px } },
+  subject: ClassSelector { name: "cards" },
+  decls: [
+    decl(prop: Gap, value: scale_var(t: gap_sm)),
+    decl(prop: Padding, value: scale_var(t: gap_sm)),
+  ]
+}
 
 type BreakpointChoice
   = AdoptLiveBreakpoints
-  | TwoTier
+  | StackOnly
 
 data breakpoints_adopt_live: BreakpointChoice = AdoptLiveBreakpoints
-data breakpoints_two_tier: BreakpointChoice = TwoTier
+data breakpoints_stack_only: BreakpointChoice = StackOnly
 
-// The response points, as the TYPED CONDITIONS the rules consume. A breakpoint is not
-// a ScaleToken row: extdeps forbids var() inside a media query (no substitution in that
-// grammar), so a breakpoint is never read as a custom property — only as a condition.
-// Modelling it as the condition itself is what makes "a breakpoint that is not a length"
-// UNWRITABLE (DESIGN §5: correctness by construction, not validation): the axis carries
-// MediaCondition directly, so there is no partial match, no runtime admissibility check
-// over ScaleValue arms, and no fabricated sentinel condition standing in for a case the
-// type already excludes. The number stays one fact: it is named once, in CssLength form,
-// and both the rule and the witness derive their text from it through the upstream wires.
-fn breakpoint_conditions(choice: BreakpointChoice) -> List<MediaCondition> {
+// The points each option asks for. A point is typed end to end: its condition is the
+// MediaCondition the rule consumes, so "a breakpoint that is not a length" is not a value
+// this language can express (§5, correctness by construction) — there is no runtime
+// admissibility check over ScaleValue arms and no sentinel condition standing in for a
+// case the type already excludes. Lengths and property names are named once, here, and
+// both the page and the witness derive their text from these rows through the upstream
+// wires. Consumer: layout_rules, and test.claim.site_gunb_ai_layout_witness
+// (witness_breakpoints_come_from_the_axis, witness_ballot_options_are_distinguishable).
+fn breakpoint_points(choice: BreakpointChoice) -> List<ResponsePoint> {
   match choice {
-    AdoptLiveBreakpoints => [breakpoint_stack, breakpoint_compact]
-    TwoTier => [breakpoint_stack]
+    AdoptLiveBreakpoints => [stack_point, compact_point]
+    StackOnly => [stack_point]
   }
 }
 
@@ -213,7 +253,7 @@ fn layout_rules(grid: GridChoice, breakpoints: BreakpointChoice, scheme: SchemeC
   concat(
     concat(
       shell_rules(grid: grid),
-      map(breakpoint_conditions(choice: breakpoints), c => cards_stack_rule(condition: c))
+      map(breakpoint_points(choice: breakpoints), pt => response_rule(point: pt))
     ),
     scheme_rules(scheme: scheme)
   )
@@ -284,15 +324,14 @@ fn shell_rules(grid: GridChoice) -> List<BuildRule> {
   ]
 }
 
-// Below a response point the card tracks collapse to one column: the response the live
-// site hand-wrote, as a MediaRule over the modelled MediaCondition. The condition is
-// handed in typed, so this rule cannot be given a breakpoint that is not a length — no
-// partial match, no sentinel standing in for a case the type already excludes.
-fn cards_stack_rule(condition: MediaCondition) -> BuildRule {
+// A response point becomes a MediaRule over the modelled MediaCondition, through
+// material's typed rule. The point is handed in whole, so this function cannot be given a
+// condition without its effect or an effect without its condition.
+fn response_rule(point: ResponsePoint) -> BuildRule {
   MediaRule {
-    condition: condition,
-    selector: ClassSelector { name: "cards" },
-    decls: [decl(prop: GridTemplateColumns, value: tracks_single())],
+    condition: point.condition,
+    selector: point.subject,
+    decls: point.decls,
   }
 }
 

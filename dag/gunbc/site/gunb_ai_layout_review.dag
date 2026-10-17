@@ -3,12 +3,12 @@ module gunbc.site.gunb_ai_layout_review
 import std.types { String, List, Int }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
-import std.optional { Absent, Present }
+import std.optional { Optional, Absent, Present }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.site.gunb_ai_layout {
   BallotRequest, BallotRender, BallotHtml, BallotRefused, ballot_render,
   grid_flow, grid_fixed_3, grid_autofill,
-  breakpoints_adopt_live, breakpoints_two_tier,
+  breakpoints_adopt_live, breakpoints_stack_only,
   scheme_dark_only, scheme_light_alt,
 }
 
@@ -67,18 +67,18 @@ data ballot_entries: List<BallotRequest> = [
     slug: "layout-bp-a-live",
     axis: "breakpoints (A)",
     label: "A — the live site's two",
-    note: "Stacks at 700, tightens at 480 — the widths gunb.ai already breaks at. The 540/760 rules in the hand-written CSS re-stack what 700 already stacks, so they are not modelled; parity is judged on rendered pages.",
+    note: "Cards stack at 700; below 480 the card gutter and padding drop one step on the gap scale. The live site also breaks at 760 and 540, but those restack .hero-spine and .card-receipt-row, elements the primitives and pages layers own, so they sit on that layer's parity list instead of being dropped here. Instrument: curl -s https://gunb.ai/assets/site.css | grep -n @media -A 8",
     grid: grid_fixed_3,
     breakpoints: breakpoints_adopt_live,
     scheme: scheme_dark_only,
   },
   BallotRequest {
-    slug: "layout-bp-b-twotier",
+    slug: "layout-bp-b-stackonly",
     axis: "breakpoints (B)",
-    label: "B — two tiers",
-    note: "One stack breakpoint at 700 and nothing below it. Fewer rules, one behaviour per tier; the compact tier is whatever the fluid track does on its own.",
+    label: "B — stack only",
+    note: "One response point: cards stack at 700 and nothing changes below it. Fewer rules; below 700 the fluid track does whatever it does on its own.",
     grid: grid_fixed_3,
-    breakpoints: breakpoints_two_tier,
+    breakpoints: breakpoints_stack_only,
     scheme: scheme_dark_only,
   },
   BallotRequest {
@@ -105,20 +105,53 @@ type BallotRun
   = BallotWritten { paths: List<String> }
   | BallotRefusedRun { reason: String }
 
-// A run stops at the first entry that is refused or fails to write, keeping that
-// entry's cause — the shape gunbc.design.brand_mark_assets_cli's brand_assets_write
-// uses for the same job (fold over targets, a stopped arm that absorbs the rest). A
-// partial ballot is never published.
-fn ballot_write(dir: String) -> BallotRun {
-  fold(ballot_entries, init: BallotWritten { paths: [] }, f: (run, entry) => match run {
+// TWO PHASES, because "nothing is written on refusal" has to mean nothing (DESIGN §5:
+// every path succeeds fully or fails with a typed, located diagnostic). Phase one renders
+// every entry and refuses at the first refusal; phase two writes only once the whole
+// ballot exists. Writing inside the fold, as an earlier draft did, left entries 0..k-1 on
+// disk when entry k was refused — a partial ballot published to the review site, while the
+// header claimed the opposite.
+// The entries are a parameter, not a captured constant, so a claim can drive this
+// function with an entry list it chooses — which is how
+// test.claim.site_gunb_ai_layout_witness.witness_refusal_leaves_nothing_on_disk makes a
+// refusal happen for real and then lists the directory. The entry points pass the modelled
+// ballot.
+fn ballot_write_entries(dir: String, entries: List<BallotRequest>) -> BallotRun {
+  match render_all(entries: entries) {
+    RenderRefused { reason: r } => BallotRefusedRun { reason: r }
+    RenderedAll { pages } => write_all(dir: dir, pages: pages)
+  }
+}
+
+// The render phase reports WHICH entry refused, with the location ballot_render already
+// carries (the slug inside the layout layer's own refusal text). Collapsing this to a bare
+// Absent would make the failure true but useless to whoever has to fix the ballot.
+type RenderPhase
+  = RenderedAll { pages: List<RenderedPage> }
+  | RenderRefused { reason: String }
+
+type RenderedPage { slug: String, html: String }
+
+// Phase 1: render only. No Filesystem.Write is reachable from here.
+fn render_all(entries: List<BallotRequest>) -> RenderPhase {
+  fold(entries, init: RenderedAll { pages: [] }, f: (acc, entry) => match acc {
+    RenderRefused { reason: _ } => acc
+    RenderedAll { pages } => match ballot_render(req: entry) {
+      BallotRefused { reason: r } => RenderRefused { reason: r }
+      BallotHtml { html: h, slug: slug } =>
+        RenderedAll { pages: concat(pages, [RenderedPage { slug: slug, html: h }]) }
+    }
+  })
+}
+
+// Phase 2: write bytes that already exist, keeping the first failure's cause.
+fn write_all(dir: String, pages: List<RenderedPage>) -> BallotRun {
+  fold(pages, init: BallotWritten { paths: [] }, f: (run, page) => match run {
     BallotRefusedRun { reason: _ } => run
-    BallotWritten { paths } => match ballot_render(req: entry) {
-      BallotRefused { reason: r } => BallotRefusedRun { reason: r }
-      BallotHtml { html: h, slug: slug } => {
-        let path = join([dir, "/", slug, ".html"], "")
-        let wrote = Filesystem.Write(path: path, content: h)
-        if wrote.success { BallotWritten { paths: concat(paths, [path]) } } else { BallotRefusedRun { reason: join([path, ": ", wrote.error], "") } }
-      }
+    BallotWritten { paths } => {
+      let path = join([dir, "/", page.slug, ".html"], "")
+      let wrote = Filesystem.Write(path: path, content: page.html)
+      if wrote.success { BallotWritten { paths: concat(paths, [path]) } } else { BallotRefusedRun { reason: join([path, ": ", wrote.error], "") } }
     }
   })
 }
@@ -131,6 +164,10 @@ fn ballot_exit(run: BallotRun) -> ProcessExit {
 }
 
 // Named-arg entry, for `gunbc run --function ballot_write_arg --arg dir=<out>`.
+fn ballot_write(dir: String) -> BallotRun {
+  ballot_write_entries(dir: dir, entries: ballot_entries)
+}
+
 fn ballot_write_arg(dir: String) -> ProcessExit {
   ballot_exit(run: ballot_write(dir: dir))
 }

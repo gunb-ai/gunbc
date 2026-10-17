@@ -3,19 +3,24 @@ module test.claim.site_gunb_ai_layout_witness
 import std.types { Bool, Int, List, String }
 import std.algebra { string_contains }
 import std.optional { Optional, Absent, Present }
-import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, AmbientRule, ResponseRule, serialize_rules }
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, AmbientRule, ResponseRule, decl, serialize_rules }
+import extdeps.languages.css.properties { GridTemplateColumns }
+import extdeps.languages.css.selectors { ClassSelector }
 import gunbc.site.gunb_ai_layout {
   BallotRequest, BallotHtml, BallotRefused, tracks_fixed, tracks_single,
-  ballot_render, layout_rules, layout_css, layout_scale_tokens,
+  ballot_render, layout_rules, layout_css, ballot_css, layout_scale_tokens,
   FixedColumns,
   grid_flow, grid_fixed_3, grid_autofill, column_count_max,
-  breakpoints_adopt_live, breakpoints_two_tier, breakpoint_conditions,
-  breakpoint_stack, breakpoint_compact,
+  breakpoints_adopt_live, breakpoints_stack_only, ResponsePoint, breakpoint_points,
+  response_rule, stack_point, compact_point,
   scheme_dark_only, scheme_light_alt, day_bindings_complete, day_bindings_rows, day_scope_class,
 }
-import gunbc.site.gunb_ai_layout_review { ballot_entries }
+import gunbc.site.gunb_ai_layout_review { ballot_entries, ballot_write_entries, BallotRun, BallotWritten, BallotRefusedRun }
 import gunbc.site.gunb_ai_tokens { token_root_decls, token_swatches }
-import extdeps.languages.css.media_queries { MediaCondition, MediaMaxWidth, css_media_rule_wire }
+import std.list { duplicated_by_key }
+import extdeps.languages.css.media_queries { MediaMaxWidth }
 import extdeps.languages.css.values { CssLength, Px }
 import gunbc.design.palette { swatch_paint, swatches_of }
 import gunbc.design.gunb_ai_hues { gunb_ai_hues }
@@ -64,7 +69,7 @@ test fn witness_inadmissible_grid_refuses_by_slug() -> Bool {
 test fn witness_layout_values_resolve() -> Bool {
   all(layout_rules(grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_light_alt), r =>
     all(rule_decl_values(rule: r), v => value_is_bound(v: v)))
-    && all(layout_rules(grid: grid_fixed_3, breakpoints: breakpoints_two_tier, scheme: scheme_dark_only), r =>
+    && all(layout_rules(grid: grid_fixed_3, breakpoints: breakpoints_stack_only, scheme: scheme_dark_only), r =>
       all(rule_decl_values(rule: r), v => value_is_bound(v: v)))
     && all(layout_rules(grid: grid_autofill, breakpoints: breakpoints_adopt_live, scheme: scheme_light_alt), r =>
       all(rule_decl_values(rule: r), v => value_is_bound(v: v)))
@@ -174,7 +179,7 @@ fn all_rule_arms() -> List<BuildRule> {
   concat(
     concat(
       layout_rules(grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only),
-      layout_rules(grid: grid_fixed_3, breakpoints: breakpoints_two_tier, scheme: scheme_light_alt)),
+      layout_rules(grid: grid_fixed_3, breakpoints: breakpoints_stack_only, scheme: scheme_light_alt)),
     layout_rules(grid: grid_autofill, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only))
 }
 
@@ -192,15 +197,29 @@ fn row_is_read(name: String) -> Bool {
 // The exact text the layer owes for one response point: the condition and the
 // single-column body, each assembled by the same upstream wires the page is serialized
 // through (material assembles a MediaRule exactly this way). Never typed by hand.
-fn block_for(condition: MediaCondition) -> String {
-  css_media_rule_wire(condition: condition, body: stacked_block(tracks: tracks_single()))
+fn block_for(point: ResponsePoint) -> String {
+  serialize_rules(rules: [response_rule(point: point)])
+}
+
+// The point's EFFECT alone: its selector and declarations, with the condition stripped.
+// Two points under different widths that do the identical thing are the same work twice,
+// and comparing whole blocks would hide that (the condition text differs).
+fn effect_for(point: ResponsePoint) -> String {
+  serialize_rules(rules: [StaticRule { selector: point.subject, decls: point.decls }])
 }
 
 // A response point NO axis declares, used only as a witness-side probe. It is a test
 // input, never rendered: its block must be ABSENT from every page, which is what makes
 // the positive checks above non-decorative (a page that emitted an unconditional or
 // invented media block is caught even when the expected blocks happen to be present).
-data probe_condition: MediaCondition = MediaMaxWidth { max: CssLength { n: 4199, unit: Px } }
+// A response point NO axis declares, used only as a witness-side probe. It is a test
+// input, never rendered: its block must be ABSENT from every page, so an invented or
+// unconditional media block is caught even when the expected blocks happen to be present.
+data probe_point: ResponsePoint = ResponsePoint {
+  condition: MediaMaxWidth { max: CssLength { n: 4199, unit: Px } },
+  subject: ClassSelector { name: "cards" },
+  decls: [decl(prop: GridTemplateColumns, value: tracks_single())]
+}
 
 fn all_rules_css() -> String {
   join(map(all_rule_arms(), r => arm_text(rule: r)), "\n")
@@ -214,33 +233,130 @@ fn arm_reads(r: BuildRule, needle: String) -> Bool {
   fold(rule_decl_values(rule: r), init: false, f: (acc, v) => acc || string_contains(s: v, pattern: needle))
 }
 
-// 5. The BREAKPOINT AXIS drives the response, and only the axis does. For each choice,
-//    every condition the axis declares has its exact media block in the rendered page
-//    (text re-derived through extdeps' own serializer, so no number is typed here), and
-//    the tiered choice carries the stack block WITHOUT the compact one — so a dropped
-//    tier, an extra tier, a moved length or a broken block all redden this. A probe
-//    condition no axis declares must appear in no page.
-//    RED CONTROLS (three, each run on the runner; each reddens THIS claim only):
-//    1. drop breakpoint_compact from the AdoptLiveBreakpoints arm — the fold over the
-//       axis and the positive check disagree once a tier is missing;
-//    2. make cards_stack_rule emit the wrong tracks (tracks_fixed(count: 3) instead of
-//       tracks_single()) — block_for derives its body from the same upstream wires;
-//    3. make cards_stack_rule ignore its argument and hard-code a MediaMaxWidth of 400px
-//       — the condition no longer comes from the axis.
-//    A control that only removes a field is NOT a control: it fails to typecheck, so no
-//    claim runs and nothing is proven. Each edit below was applied with its pattern
-//    asserted first, and the run's FAIL line read back.
+// 5. The BREAKPOINT AXIS drives the response, and only the axis does. Every point the
+//    axis declares must appear in the rendered page as its exact media block — text
+//    produced by the layer's own response_rule through material's serializer, the same
+//    route the page takes, so no length, selector or property name is typed in this
+//    witness. And a point no axis declares must appear in NO page.
+//    RED CONTROLS (each run on the runner, pattern asserted before writing, the run's
+//    FAIL line read back; each reddens THIS claim only):
+//    1. drop compact_point from the AdoptLiveBreakpoints arm — the fold over the axis and
+//       the page disagree once a point is missing;
+//    2. make response_rule ignore its argument's decls (emit tracks instead of the
+//       point's own declarations) — the block text no longer comes from the point;
+//    3. change compact_point's condition to 400px — the page's block no longer matches
+//       what the axis declares.
+//    A control that only DELETES a field is not a control: it fails to typecheck, so no
+//    claim runs and nothing is proven. An earlier attempt at control 2 did exactly that,
+//    produced no FAIL line, and is not claimed here.
 test fn witness_breakpoints_come_from_the_axis() -> Bool {
   let live = layout_css(grid: grid_fixed_3, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only)
-  let tier = layout_css(grid: grid_fixed_3, breakpoints: breakpoints_two_tier, scheme: scheme_dark_only)
-  all(breakpoint_conditions(choice: breakpoints_adopt_live), c =>
-    string_contains(s: live, pattern: block_for(condition: c)))
-    && string_contains(s: live, pattern: block_for(condition: breakpoint_stack))
-    && string_contains(s: live, pattern: block_for(condition: breakpoint_compact))
-    && string_contains(s: tier, pattern: block_for(condition: breakpoint_stack))
-    && !string_contains(s: tier, pattern: block_for(condition: breakpoint_compact))
-    && !string_contains(s: live, pattern: block_for(condition: probe_condition))
-    && !string_contains(s: tier, pattern: block_for(condition: probe_condition))
+  let tier = layout_css(grid: grid_fixed_3, breakpoints: breakpoints_stack_only, scheme: scheme_dark_only)
+  all(breakpoint_points(choice: breakpoints_adopt_live), pt =>
+    string_contains(s: live, pattern: block_for(point: pt)))
+    && all(breakpoint_points(choice: breakpoints_stack_only), pt =>
+      string_contains(s: tier, pattern: block_for(point: pt)))
+    && string_contains(s: live, pattern: block_for(point: compact_point))
+    && !string_contains(s: tier, pattern: block_for(point: compact_point))
+    && !string_contains(s: live, pattern: block_for(point: probe_point))
+    && !string_contains(s: tier, pattern: block_for(point: probe_point))
+}
+
+// 5b. A response point must CHANGE something, and no two points in one axis may be the
+//     same work twice. The first draft of this axis emitted the single-column rule at both
+//     700 and 480; every viewport under 480 is also under 700, so the second rule could
+//     never fire anything the first had not — duplicated work (§2), and on a ballot a
+//     fabricated choice (§5: "no plausible output is fabricated"). The comparison is over
+//     the EFFECT (selector + declarations, condition stripped) rather than the whole block:
+//     identical declarations under different widths are exactly the defect, and a block
+//     comparison would have passed it. Distinctness is a dedup over derived text, not a
+//     count copied from the tree.
+test fn witness_response_points_act_and_differ() -> Bool {
+  let live = breakpoint_points(choice: breakpoints_adopt_live)
+  all(live, pt => pt.decls.length() > 0)
+    && duplicated_by_key(xs: map(live, pt => effect_for(point: pt)), key: e => e).length() == 0
+}
+
+// 5c. THE BALLOT IS A REAL CHOICE. Within one axis, no two options may render the same
+//     STYLE — the page's own stylesheet, not its labels. This is the property that would
+//     have caught the fabricated 480 tier: the two breakpoint options differed only in
+//     their caption, because the compact tier changed nothing. Note the key deliberately
+//     excludes the slug, label and note: keying on the whole page (which prints its own
+//     caption) would make every pair distinct by construction and the claim vacuous. Two
+//     refusals in one axis collide too — an option that cannot render is not a choice.
+test fn witness_ballot_options_are_distinguishable() -> Bool {
+  all(ballot_entries, a => all(ballot_entries, b =>
+    !(family_of(axis: a.axis) == family_of(axis: b.axis)
+      && a.slug != b.slug
+      && rendered_style(req: a) == rendered_style(req: b))))
+}
+
+// The page's stylesheet, produced by the same route the writer publishes through.
+fn rendered_style(req: BallotRequest) -> String {
+  match ballot_render(req: req) {
+    BallotHtml { html: _, slug: _ } => ballot_css(req: req)
+    BallotRefused { reason: _ } => "REFUSED"
+  }
+}
+
+// "breakpoints (A)" and "breakpoints (B)" are one family; the option letter is not part of
+// the family, so the two are compared. Derived by cutting at the first " (" — no copied
+// family list to maintain when a fourth axis is added.
+fn family_of(axis: String) -> String {
+  match index_of(haystack: axis, needle: " (", at: 0, limit: string_length(s: axis)) {
+    Present { value: at } => substring(s: axis, start: 0, end: at)
+    Absent => axis
+  }
+}
+
+// 5d. NOTHING IS WRITTEN ON REFUSAL — proven, not promised. The writer's header claimed a
+//     refused run writes nothing, while an earlier draft wrote each entry inside the render
+//     fold: a refusal at entry k left entries 0..k-1 published as a partial ballot. A comment
+//     that was true of intent and false of behaviour, and exactly what §5 refuses ("a
+//     plausible output is fabricated" includes a review site that looks complete).
+//     The claim MAKES the refusal happen — a ballot whose last entry asks for a column count
+//     outside 1..column_count_max, which the layout layer refuses — in a directory the claim
+//     created, after a CLEAN run into the same directory. The clean arm is not decoration: it
+//     proves the writer writes when it should, so the claim cannot pass because the writer
+//     never wrote at all, and it proves the listing is real rather than an answer about a
+//     directory that never existed.
+//     RED CONTROL: move the Filesystem.Write call back into render_all (write while
+//     rendering, as the first draft did) — w-ok-first then lands on disk before w-bad-last is
+//     refused, this claim goes red, and the clean arm stays green.
+test fn witness_refusal_leaves_nothing_on_disk() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let outcome = refusal_scenario(dir: dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && outcome && cleaned.success
+}
+
+fn refusal_scenario(dir: String) -> Bool {
+  let clean = ballot_write_entries(dir: dir, entries: [
+    BallotRequest { slug: "w-clean-entry", axis: "grid (A)", label: "clean", note: "clean",
+      grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only }
+  ])
+  let refused = ballot_write_entries(dir: dir, entries: [
+    BallotRequest { slug: "w-ok-first", axis: "grid (A)", label: "ok", note: "ok",
+      grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only },
+    BallotRequest { slug: "w-bad-last", axis: "grid (Z)", label: "bad", note: "bad",
+      grid: FixedColumns { count: column_count_max + 1 },
+      breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only },
+  ])
+  let listed = Filesystem.List(path: dir)
+  match clean {
+    BallotWritten { paths } => paths.length() == 1
+      && listed.success
+      && string_contains(s: listed.entries, pattern: "w-clean-entry")
+      && !string_contains(s: listed.entries, pattern: "w-ok-first")
+      && !string_contains(s: listed.entries, pattern: "w-bad-last")
+    BallotRefusedRun { reason: _ } => false
+  }
+    && match refused {
+      BallotRefusedRun { reason: r } =>
+        // The refusal names which entry was refused, not just that one was.
+        string_contains(s: r, pattern: "w-bad-last")
+      BallotWritten { paths } => false
+    }
 }
 
 // The two .cards blocks, assembled from the pieces material assembles them from: the
@@ -248,10 +364,6 @@ test fn witness_breakpoints_come_from_the_axis() -> Bool {
 // spellings are asserted so a change to either surface is noticed.
 fn cards_block_with(tracks: String) -> String {
   join([".cards { display: grid; gap: var(--gap-md); grid-template-columns: ", tracks, " }"], "")
-}
-
-fn stacked_block(tracks: String) -> String {
-  join([".cards { grid-template-columns: ", tracks, " }"], "")
 }
 
 // 6. The axes are independent, which is the ballot's contract: changing only the grid
