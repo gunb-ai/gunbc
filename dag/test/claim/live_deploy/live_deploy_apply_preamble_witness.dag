@@ -33,12 +33,19 @@ import extdeps.network.ipv4 { ipv4_address }
 import gunbc.ci.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_dropin_body }
 import gunbc.host.host_effect_realize {
-  LiveDeployPreambleLeg, LiveDeployPreambleLegResult, LiveDeployPreambleLegState,
-  LiveDeployPreambleInjected, LiveDeployPreambleRun, LiveDeployPreambleStep,
-  LiveDeployPreambleVerdict,
+  // Sums AND every arm they are matched or constructed with: an arm is a name in its own right here,
+  // and a claim that cannot resolve one fails to compile rather than failing red.
+  LiveDeployPreambleStep, ScratchAcquire, SudoersStage, SudoersVisudoCheck, SudoersInstall,
+  SudoersPolicyFinal, GrantAdmission, PrincipalCheck, PrincipalEnsure, ScratchCleanup,
+  LiveDeployPreambleLeg, PreambleArgv, PreambleStdin, PreambleEffect, PreambleEither,
+  LiveDeployPreambleLegState, PreambleLegOk, PreambleLegFailed,
+  LegTransportRefused, LegExited, LegEffectRefusedArm,
+  LiveDeployPreambleInjected, AllLegsSucceed, PrincipalAbsent,
+  LiveDeployPreambleRun,
+  LiveDeployPreambleVerdict, PreambleConverged, PreambleRefused,
   live_deploy_preamble_step_name, live_deploy_preamble_leg_step, live_deploy_preamble_legs,
-  live_deploy_preamble_fold, live_deploy_preamble_verdict, live_deploy_preamble_result_calls,
-  live_deploy_preamble_consumed, live_deploy_apply_preamble_on_host,
+  live_deploy_preamble_fold, live_deploy_preamble_verdict,
+  live_deploy_apply_preamble_on_host,
 }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet.fleet_intent { srv1_host }
