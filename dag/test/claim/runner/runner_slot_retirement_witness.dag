@@ -42,6 +42,7 @@ import gunbc.runner.runner_width_transition {
   transition_population_agreement,
   TransitionPopulationAgrees,
   TransitionPopulationDisagrees,
+  slot_width_transition_26_25,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
 import gunbc.host.host_operation_exec {
@@ -996,8 +997,27 @@ test fn srv1s_declared_grant_does_not_cover_the_width_7_retirees() -> Bool {
     )
 }
 
+// THE 2026-10-16 GRANT COVERS THE TWO CUTS' RETIREES AND NOTHING srv1 STILL RUNS. Without it the 7-to-5
+// and 5-to-3 cuts left srv1-03..06 required with no permission, and the admission below refused. The
+// composed grant must cover 03..06 and 22 (the 09-17 part) and must not reach the committed 01 and 02,
+// or 07 (whose retirement is admitted by readback, not by permission). Slot 13 is not asserted here:
+// the 09-17 scope is 13..50 and this change does not edit it.
+test fn srv1s_composed_grant_covers_the_width_cut_retirees_and_not_the_committed_population() -> Bool {
+  match interruption_authorization_for_host(host: operator_host_srv1) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+    HostInterruptionAuthorizationPresent { authorization: auth } =>
+      interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-03.service")
+        && interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-06.service")
+        && interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-22.service")
+        && !interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-01.service")
+        && !interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-02.service")
+        && !interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-07.service")
+  }
+}
+
 // SUPPLIED COMPLETE STANDINGS ARE THIS RUN'S READBACK, not a stored Actions run id. 07..12
-// complete drop out of the coverage demand; 14..50 remain and the 13..50 grant covers them.
+// complete drop out of the coverage demand; 03..06 are covered by the 2026-10-16 grant and 14..50 by
+// the 09-17 grant.
 test fn srv1_admission_with_complete_readback_for_07_through_12_is_present() -> Bool {
   let required = known_obligation_of(host: operator_host_srv1)
   let completed = [
@@ -1277,17 +1297,29 @@ test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Boo
 // PERMISSION AND OBLIGATION STAY DIFFERENT FACTS. srv1's recorded interruption authorization still
 // covers 13-50; that is what the operator permitted, not what this transition requires, and it is
 // not edited to match.
+//
+// THE HOST IS TAKEN FROM THE OPEN TRANSITIONS FOR THE SAME REASON. This row then read srv4, whose
+// committed width came to equal its prior (21), so its obligation emptied and the row failed on
+// Absent before reaching the decision, red on main while the agreeing arm went unexecuted on the
+// real path. The first open transition whose obligation is non-empty is the specimen; the supplied
+// arm is the_same_surplus_with_a_derived_obligation_is_decided, and this row stays the real-path
+// read of required_retirees_for_host. When no open transition owes a retiree there is no
+// inhabitant, and the row fails rather than passing vacuously.
 test fn a_surplus_inside_the_manifest_agrees() -> Bool {
-  match known_obligation_of(host: operator_host_srv4).first() {
+  match slot_width_transition_26_25 |> filter(t => list_length(known_obligation_of(host: t.host)) > 0) |> first() {
     Absent => false
-    Present { value: required_unit } =>
-      match transition_population_agreement(
-        host: operator_host_srv4,
-        observed_surplus: [required_unit],
-      ) {
-        TransitionPopulationAgrees => true
-        TransitionPopulationDisagrees { unexpected: _ } => false
-        TransitionPopulationUndecidable { host: _, cause: _ } => false
+    Present { value: open } =>
+      match known_obligation_of(host: open.host).first() {
+        Absent => false
+        Present { value: required_unit } =>
+          match transition_population_agreement(
+            host: open.host,
+            observed_surplus: [required_unit],
+          ) {
+            TransitionPopulationAgrees => true
+            TransitionPopulationDisagrees { unexpected: _ } => false
+            TransitionPopulationUndecidable { host: _, cause: _ } => false
+          }
       }
   }
 }

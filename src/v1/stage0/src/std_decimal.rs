@@ -5,12 +5,12 @@ use self::ExactDecimalAdmission::*;
 use self::ExactDecimalDifference::*;
 pub use crate::std_algebra::string_concat_join;
 use crate::std_checked_arithmetic::CheckedInt::{CheckedIntOverflow, CheckedIntReady};
-pub use crate::std_checked_arithmetic::{checked_int_multiply, checked_int_subtract};
-pub use crate::std_checked_arithmetic::{CheckedInt, IntegerOverflow};
+pub use crate::std_checked_arithmetic::{
+    checked_int_multiply, checked_int_subtract, CheckedInt, IntegerOverflow,
+};
 pub use crate::std_error_primitives::pure_dag_seam_unreachable;
 pub use crate::std_render_repeat_string_bootstrap::repeat_string;
-pub use crate::std_types::range;
-pub use crate::std_types::Bool;
+pub use crate::std_types::{range, Bool};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

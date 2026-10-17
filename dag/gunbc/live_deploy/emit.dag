@@ -22,7 +22,8 @@ import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import gunbc.runner.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_root }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence, belt_credential_recovery_backstop }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
+import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.release_locus {
@@ -81,6 +82,28 @@ import gunbc.live_deploy.repository_convergence_placement {
   convergence_receipt_path,
   convergence_unit_doc,
   convergence_placement_entry_path,
+}
+import extdeps.git.inspect {
+  git_config_get_exit_unset,
+}
+import extdeps.git.partial_clone {
+  ObjectSourceServeAdmission,
+  ObjectSourceCanServe,
+  ObjectSourceCannotServe,
+  ObjectSourceServeDecideAtApplyPwd,
+  PartialCloneStanding,
+  PartialCloneUnreadable,
+  ObjectSourceServeProbe,
+  ProbeConfigGet,
+  ProbeConfigGetRegexp,
+  ProbeShallow,
+  object_source_serve_probes,
+  object_source_serve_probe_git_tail,
+  object_source_serve_probe_set_standing,
+  object_source_serve_probe_unreadable_detail,
+  object_source_serve_refusal_text,
+  object_source_serve_refusal_printf_format,
+  object_source_serve_admission,
 }
 import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -256,6 +279,7 @@ import gunbc.host.host_layout {
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
   slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
+  SliceControlUnit,
 }
 import gunbc.host.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
@@ -271,7 +295,7 @@ import gunbc.host.host_axis_caps {
   deploy_slice_control_converge_script,
 }
 import gunbc.ownership { Ownership }
-import std.algebra { list_tail }
+import std.algebra { FreeSemigroup, list_tail }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
@@ -318,6 +342,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_assign,
   bash_build_command_from_lits,
   bash_build_if_from_stmts,
+  bash_build_if_else,
+  bash_build_stmt_list_from_nodes,
   bash_build_test_bracket,
   bash_build_word_cmdsubst,
   bash_build_word_lit,
@@ -347,8 +373,6 @@ data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 data live_deploy_apply_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy APPLY intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so the committed .github/live-deploy-srv1-apply.sh drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
 
 data live_deploy_retract_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy RETRACT intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so the committed .github/live-deploy-srv1-retract.sh drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
-
-data live_deploy_ensure_dep_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy ensure-dependency intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid reconcile-step shell, so the per-dep ConvergePlan step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
 
 data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ systemd runtime-retirement intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid deploy shell, so the committed retract artifact drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
 
@@ -945,7 +969,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
     ],
     service: concat([
       ServiceType { mode: OneshotMode },
-      TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+      TimeoutStartSec { duration: systemd_time_span_of_seconds(d: instance_obligation_run_bound(kind: LaunchObligation)) },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
@@ -977,9 +1001,9 @@ fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
 // because a tick creates worktrees and launches provider sessions; this unit reads documents and
 // writes documents, so it is handed one argument -- the instance root whose spool it answers -- and
 // nothing that would let it act on a tree.
-fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
+fn live_deploy_publication_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   let svc = spec.service
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+  ServiceUnitFile {
     unit: [
       Description { text: "gunbc roadmap publication helper (answers publication requests under its own principal)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
@@ -1000,7 +1024,11 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
       ], "") as NonEmptyStr },
     ],
     install: NotInstallable,
-  }))
+  }
+}
+
+fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_publication_service_unit_file(spec: spec)))
 }
 
 // THE HELPER RUNS WHEN A REQUEST LANDS, not on a clock. A publication request is a file in the
@@ -1341,9 +1369,9 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // manager is up is rescued by its own stop hook instead (belt_attempt_obligations_enqueue).
 //
 // THE PUBLICATION ANSWER PATH IS AN EDGE: answers are kept, not moved, so a level would fire forever.
-// A change while discovery is running is coalesced into that run; discovery reads every attempt's
-// evidence, so the coalesced answer is still seen. refused/ is the same edge for a quarantine:
-// the helper left the pending set without an answer, and discovery is the re-ask (PublishObligation).
+// It starts the publication-answer drain, which enqueues that attempt's obligation directly. It
+// does not start discovery. refused/ is the same edge for a quarantine: the helper left the pending
+// set without an answer, and the drain re-enqueues PublishObligation.
 fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: String, function: String, install: SystemdInstallSection) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
@@ -1378,7 +1406,7 @@ fn live_deploy_belt_exit_drain_service_unit_file(spec: DeploymentSpec) -> System
 }
 
 fn live_deploy_belt_discovery_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
-  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt discovery (queues outstanding obligations, bounded)", function: "belt_discover_once_cli", install: NotInstallable)
+  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt publication-answer drain (enqueues the attempt's publish obligation)", function: "belt_publication_answer_drain_cli", install: NotInstallable)
 }
 
 fn live_deploy_belt_credential_recovery_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
@@ -1890,7 +1918,7 @@ fn apply_repository_convergence_unit_write_step(
       receipt_path: convergence_receipt_path(instance_root: spec.service.instance_root as String),
       working_directory: "%s",
     ),
-    expansion_var: "PWD",
+    expansion_var: apply_tree_src_expansion_var,
   ))
 }
 
@@ -2576,23 +2604,29 @@ fn slice_control_refused_command(host: HostIdentity, cause: String) -> String {
   )
 }
 
-fn apply_slice_control_converge_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  match slice_control_plan_for(host: spec.target.host.identity) {
-    SliceControlPlanDerived { units: _ } =>
-      [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
-    SliceControlPlanNotOwed => []
-    SliceControlPlanRefused { cause: _ } => []
-  }
+// THE SLICE-CONTROL MUTATE STEP, OVER AN ALREADY-DISCRIMINATED ROSTER.
+//
+// THIS USED TO TAKE THE SPEC AND RE-DERIVE THE PLAN, and that re-derivation is a fail-open: the two
+// arms it did not act on -- SliceControlPlanNotOwed and SliceControlPlanRefused -- both returned [],
+// so a host whose slice control was REFUSED got a plan with no slice step and no complaint. Its
+// sibling apply_slice_control_converge_fragments poisoned on Refused, which is what kept the hole
+// latent rather than live, but a helper whose type accepts a refused plan is a helper that will
+// eventually be called from somewhere that does not poison. The parameter is now the Derived
+// roster's units, so a refused plan has no representation here at all: the discrimination the
+// caller already made cannot be silently undone one layer down. (For the same reason the content
+// producer below, slice_control_converge_stmts, takes units rather than a host identity.)
+fn apply_slice_control_converge_steps(units: FreeSemigroup<SliceControlUnit>) -> List<PipelineStep> {
+  [deploy_raw(command: deploy_slice_control_converge_script(units: units))]
 }
 
 fn apply_slice_control_converge_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
   let host = spec.target.host.identity
   match slice_control_plan_for(host: host) {
     SliceControlPlanNotOwed => []
-    SliceControlPlanDerived { units: _ } =>
+    SliceControlPlanDerived { units } =>
       host_script_member_proceed(
         member: "slice-control" as NonEmptyStr,
-        mutate_steps: apply_slice_control_converge_steps(spec: spec),
+        mutate_steps: apply_slice_control_converge_steps(units: units),
       )
     SliceControlPlanRefused { cause } =>
       host_script_member_refused(
@@ -3502,7 +3536,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       deploy_raw(command: deploy_stage_write_expansion_command(
         stage_name: "gunbc-tree-sync.env",
         format: "GUNBC_TREE_SRC=%s\n",
-        expansion_var: "PWD",
+        expansion_var: apply_tree_src_expansion_var,
       )),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: "gunbc-tree-sync.env",
@@ -3606,7 +3640,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
       deploy_raw(command: deploy_stage_write_expansion_command(
         stage_name: "gunbc-tree-sync.env",
         format: "GUNBC_TREE_SRC=%s\n",
-        expansion_var: "PWD",
+        expansion_var: apply_tree_src_expansion_var,
       )),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: "gunbc-tree-sync.env",
@@ -4410,6 +4444,128 @@ fn apply_step_fragments(
   }
 }
 
+fn object_source_cannot_serve_command(source: String, cause: String) -> String {
+  concat(
+    object_source_serve_refusal_text(admission: ObjectSourceCannotServe { source: source, cause: cause }),
+    "\n",
+  )
+}
+
+// THE TRANSFER SOURCE IS THE APPLY SCRIPT'S $PWD, written as GUNBC_TREE_SRC by
+// deploy_stage_write_expansion_command. Decide inspects that same expansion, not the
+// emitting process's git toplevel. Wet names ObjectSourceServeDecideAtApplyPwd, not
+// CanServe: the host walks object_source_serve_probes, the same table as
+// partial_clone_standing_of_observations.
+data apply_tree_src_expansion_var: String = "PWD"
+
+fn apply_object_source_serve_deferred_to_pwd() -> ObjectSourceServeAdmission {
+  ObjectSourceServeDecideAtApplyPwd
+}
+
+fn git_in_apply_pwd_command(tail: List<String>) -> Node {
+  bash_build_command_with_words(words: concat(
+    [
+      bash_build_word_lit(text: "git"),
+      bash_build_word_lit(text: "-C"),
+      bash_build_word_var(name: apply_tree_src_expansion_var),
+    ],
+    map(tail, a => bash_build_word_lit(text: a)),
+  ))
+}
+
+fn apply_object_source_pwd_refuse_stmts(cause: String) -> List<Node> {
+  [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "printf"),
+      bash_build_word_lit(text: object_source_serve_refusal_printf_format),
+      bash_build_word_var(name: apply_tree_src_expansion_var),
+      bash_build_word_lit(text: cause),
+    ]),
+    bash_build_command_from_lits(lits: ["false"]),
+  ]
+}
+
+// THE EMITTED REFUSAL IS THE ADMISSION'S: a standing that cannot serve refuses with the admission's own
+// cause; a standing that can serve emits no refusal.
+fn apply_object_source_pwd_refuse_standing(standing: PartialCloneStanding) -> List<Node> {
+  match object_source_serve_admission(source: apply_tree_src_expansion_var, standing: standing) {
+    ObjectSourceCannotServe { source: _, cause: c } => apply_object_source_pwd_refuse_stmts(cause: c)
+    ObjectSourceCanServe { source: _ } => [] as List<Node>
+    ObjectSourceServeDecideAtApplyPwd => [] as List<Node>
+  }
+}
+
+fn apply_object_source_pwd_config_classify(tail: List<String>, set_standing: PartialCloneStanding, unreadable_detail: String) -> Node {
+  bash_build_if_else(
+    cond: git_in_apply_pwd_command(tail: tail),
+    then_body: bash_build_stmt_list_from_nodes(stmts: apply_object_source_pwd_refuse_standing(standing: set_standing)),
+    else_body: bash_build_if_else(
+      cond: bash_build_test_bracket(words: [
+        bash_build_word_var(name: "?"),
+        bash_build_word_lit(text: "-eq"),
+        bash_build_word_lit(text: to_string(value: git_config_get_exit_unset)),
+      ]),
+      then_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
+      else_body: bash_build_stmt_list_from_nodes(stmts: apply_object_source_pwd_refuse_standing(
+        standing: PartialCloneUnreadable { detail: unreadable_detail },
+      )),
+    ),
+  )
+}
+
+fn apply_object_source_pwd_probe_stmt(probe: ObjectSourceServeProbe) -> Node {
+  match probe {
+    ProbeShallow =>
+      bash_build_if_else(
+        cond: git_in_apply_pwd_command(tail: object_source_serve_probe_git_tail(probe: probe)),
+        then_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
+        else_body: bash_build_stmt_list_from_nodes(stmts: apply_object_source_pwd_refuse_standing(
+          standing: PartialCloneUnreadable { detail: object_source_serve_probe_unreadable_detail(probe: probe) },
+        )),
+      )
+    ProbeConfigGet { key: _, set_kind: _ } =>
+      apply_object_source_pwd_config_classify(
+        tail: object_source_serve_probe_git_tail(probe: probe),
+        set_standing: object_source_serve_probe_set_standing(probe: probe),
+        unreadable_detail: object_source_serve_probe_unreadable_detail(probe: probe),
+      )
+    ProbeConfigGetRegexp { pattern: _, set_kind: _ } =>
+      apply_object_source_pwd_config_classify(
+        tail: object_source_serve_probe_git_tail(probe: probe),
+        set_standing: object_source_serve_probe_set_standing(probe: probe),
+        unreadable_detail: object_source_serve_probe_unreadable_detail(probe: probe),
+      )
+  }
+}
+
+fn apply_object_source_pwd_serve_decide_command() -> String {
+  shell_command_text_of_stmts(stmts: map(object_source_serve_probes, p => apply_object_source_pwd_probe_stmt(probe: p)))
+}
+
+fn apply_object_source_pwd_host_decide_fragments() -> List<HostScriptFragment> {
+  host_script_member_fragments(
+    member: "object-source" as NonEmptyStr,
+    standing: HostScriptProceed,
+    decide_steps: [deploy_raw(command: apply_object_source_pwd_serve_decide_command())],
+    mutate_steps: [],
+  )
+}
+
+fn apply_object_source_serve_fragments(object_source_serve: ObjectSourceServeAdmission) -> List<HostScriptFragment> {
+  match object_source_serve {
+    ObjectSourceCanServe { source: _ } =>
+      apply_object_source_pwd_host_decide_fragments()
+    ObjectSourceServeDecideAtApplyPwd =>
+      apply_object_source_pwd_host_decide_fragments()
+    ObjectSourceCannotServe { source: s, cause: c } =>
+      host_script_member_refused(
+        member: "object-source" as NonEmptyStr,
+        cause: object_source_serve_refusal_text(admission: object_source_serve),
+        command: concat("__GUNBC_DEPLOY_REFUSED__ ", object_source_cannot_serve_command(source: s, cause: c)),
+      )
+  }
+}
+
 fn apply_intent_fragments(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
@@ -4417,14 +4573,22 @@ fn apply_intent_fragments(
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
+  object_source_serve: ObjectSourceServeAdmission,
 ) -> List<HostScriptFragment> {
   concat(
     concat(
-      [
-        Decide { member: "frame" as NonEmptyStr, standing: HostScriptProceed, steps: deploy_apply_frame_decide_steps(spec: spec) },
-        Mutate { member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps() },
-        Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },
-      ],
+      concat(
+        concat(
+          [
+            Decide { member: "frame" as NonEmptyStr, standing: HostScriptProceed, steps: deploy_apply_frame_decide_steps(spec: spec) },
+          ],
+          apply_object_source_serve_fragments(object_source_serve: object_source_serve),
+        ),
+        [
+          Mutate { member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps() },
+          Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },
+        ],
+      ),
       concat(
         owned_directory_fragments(spec: spec, plan: plan),
         concat(
@@ -4451,6 +4615,7 @@ fn apply_intent_from_effects(
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
+  object_source_serve: ObjectSourceServeAdmission,
 ) -> Pipeline {
   compose_host_script(fragments: apply_intent_fragments(
     spec: spec,
@@ -4459,6 +4624,7 @@ fn apply_intent_from_effects(
     plan: plan,
     cap_authorization: cap_authorization,
     oidc_now: oidc_now,
+    object_source_serve: object_source_serve,
   ))
 }
 
@@ -4713,6 +4879,7 @@ fn live_deploy_apply_script_for(
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
   access: DeployAccess,
+  object_source_serve: ObjectSourceServeAdmission,
 ) -> String {
   match spec.target.lab_plan {
     LabPlanRefused { cause: c } => lab_plan_refused_emit_line(cause: c, fold_label: "apply")
@@ -4727,6 +4894,7 @@ fn live_deploy_apply_script_for(
               cap_authorization: cap_authorization,
               oidc_now: oidc_now,
               access: access,
+              object_source_serve: object_source_serve,
             )
             ScopedRemovalSupported { observed: _ } => live_deploy_apply_script_when_client_observed(
               spec: spec,
@@ -4734,6 +4902,7 @@ fn live_deploy_apply_script_for(
               cap_authorization: cap_authorization,
               oidc_now: oidc_now,
               access: access,
+              object_source_serve: object_source_serve,
             )
           }
       }
@@ -4746,6 +4915,7 @@ fn live_deploy_apply_script_when_client_observed(
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
   access: DeployAccess,
+  object_source_serve: ObjectSourceServeAdmission,
 ) -> String {
   match membership_effects(plan: deployment_apply_plan(spec: spec)) {
     EffectsReady { effects: es } =>
@@ -4757,6 +4927,7 @@ fn live_deploy_apply_script_when_client_observed(
           plan: plan,
           cap_authorization: cap_authorization,
           oidc_now: oidc_now,
+          object_source_serve: object_source_serve,
         ),
         refused: live_deploy_apply_emit_refused_poison
       )
@@ -4804,6 +4975,7 @@ fn live_deploy_apply_script_for_wet(
     plan: plan,
     cap_authorization: cap_authorization,
     oidc_now: tracker_web_oidc_deploy_now_epoch(),
+    object_source_serve: apply_object_source_serve_deferred_to_pwd(),
   )
 }
 
@@ -4811,12 +4983,15 @@ fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionB
   render(doc: emit_systemd_unit_doc(spec: spec, revision: revision, now_epoch: now_epoch), proto: live_deploy_protocol)
 }
 
-fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
-  Pipeline {
-    steps: ensure_dependency_steps(dep: dep, privileged: false),
-    on_failure: FailFast
-  }
-}
+// THE SERVE ROUTE BUILDER BELOW IS THE PATTERN this site's ensure-dependency route followed when
+// it dissolved (#13988). Its companion, `deployment_ensure_dependency_script`, is gone: the
+// ensure-dependency route now runs its probe/install and write/install trees as typed effects at
+// the site in gunbc.host.host_effect_realize (realize_live_deploy_ensure_dependency_on_host), so
+// no script of its is rendered here any more. What remains in this module is the PIPELINE the
+// bulk-apply frame still embeds (ensure_dependency_steps, used by the bulk apply plan's
+// mutate_steps) -- that route composes steps inside a larger pipeline the frame itself renders,
+// which is a different consumer with a different owner (the retained bulk-apply script), not this
+// site's.
 
 // ONE SERVE ROUTE, WRITTEN OR TURNED OFF, as a typed command of its own: the same privileged argv the
 // mapping member's apply and teardown steps carry, for the tailnet door cutover
@@ -4835,10 +5010,6 @@ fn deployment_serve_route_command(endpoint: TailscaleServeEndpoint, enabled: Boo
   sudo_elevate_command(
     command: concat(["tailscale"], if enabled { tailscale_serve_enable_argv(endpoint: endpoint) } else { tailscale_serve_off_argv(endpoint: endpoint) }),
   )
-}
-
-fn deployment_ensure_dependency_script(dep: DeploymentDependencyStep) -> String {
-  emit_pipeline_or_poison(p: deployment_ensure_dependency_intent(dep: dep), refused: live_deploy_ensure_dep_emit_refused_poison)
 }
 
 // THE ORACLE THIS PR'S OWN DIAGNOSIS ARGUES FOR AND DOES NOT YET BUILD, written down rather than

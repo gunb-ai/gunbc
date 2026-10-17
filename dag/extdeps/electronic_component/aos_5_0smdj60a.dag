@@ -1,0 +1,46 @@
+module extdeps.electronic_component.aos_5_0smdj60a
+
+import std.measure { volt, millivolt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.alpha_and_omega_semiconductor { alpha_and_omega_semiconductor }
+import extdeps.electronic_component.types { ElectronicComponentRow, TvsDiodeSpec, TvsSpecification, Unidirectional }
+
+// Alpha and Omega Semiconductor's 5.0SMDJ60A datasheet, Rev.2.2 July 2021, read 2026-10-15. Its
+// electrical table pairs 5.0SMDJ60A (unipolar) with marking 5PGK -- the same code Bourns's table gives
+// its own 5.0SMDJ60A -- with VBR 66.70 to 73.70 V at 1 mA, VRWM 60.0 V, Vc 96.8 V, Ipp 53.2 A and
+// IR 2.0 uA. Two makers printing one code on one electrical class is why a board reading of 5PGK
+// identifies the class and not the maker.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.aosmd.com/sites/default/files/res/datasheets/5.0SMDJ60A.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.aos_5_0smdj60a",
+      decl_name: "aos_tvs_5_0smdj60a",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data aos_tvs_5_0smdj60a: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: alpha_and_omega_semiconductor,
+  ordering_code: "5.0SMDJ60A",
+  package: "DO-214AB",
+  top_marking: "5PGK",
+  specification: TvsDiodeSpec { tvs: TvsSpecification {
+    polarity: Unidirectional,
+    reverse_standoff: volt(count: 60),
+    breakdown_minimum: millivolt(count: 66700),
+    breakdown_maximum: millivolt(count: 73700),
+  } },
+  vendor_application_statements: [],
+}

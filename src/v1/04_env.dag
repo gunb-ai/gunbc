@@ -321,6 +321,22 @@ fn bare_occurrence_import(index: SymbolIndex, name: String, reference: Node) -> 
   }
 }
 
+// THE ONE QUESTION "IS THIS A CALL INTO A MODULE, OR SOMETHING ELSE", ANSWERED FROM DECLARATIONS.
+// A name qualifies exactly when its owner prefix IS a module of the census (module_named_imports is
+// keyed by every census module's authored path), never because the spelling contains a dot: a
+// dotted spelling whose prefix is a value, a service or a type is not a module call, and a bare
+// spelling is never one. Every call path -- direct call, pipe callee, method form on a module
+// path, signature lookup, census borrow -- reads this result; a site that re-derives the answer
+// from the spelling is the fork gunbc.recurring_failure_mode
+// a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling records.
+fn declared_module_owner(index: SymbolIndex, name: String) -> String? {
+  let owner = qualified_all_but_last(name: name)
+  match map_get(index.module_named_imports, owner) {
+    Present { value: _ } => Present { value: owner }
+    Absent => none
+  }
+}
+
 fn symbol_index_named_import_source(index: SymbolIndex, module_path: String, name: String) -> String? {
   match map_get(index.module_named_imports, module_path) {
     Absent => none
@@ -1279,6 +1295,47 @@ fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitV
         } else { UnitVariantPhantomAbsent }
       Absent => UnitVariantPhantomAbsent
     }
+  }
+}
+
+// THE NAT-INDEXED WIDTH ARM, BY DECLARATION IDENTITY. std.machine_constraints declares
+// `type WidthResolution = StaticWidthIndex | PointerWidth`; the StaticWidthIndex arm is the one a
+// width Nat literal inhabits. The declaration is found in the symbol index by its qualified name
+// and the arm must be one of its unit variants, so a coproduct that merely spells StaticWidthIndex
+// in another module is a different declaration and is not this arm. NOMINAL CEILING, STATED: the
+// arm declares no index, so the index type (std.nat Nat) is not carried by the declaration; that
+// is the carrier a declared-index arm would supply, and until then this constant triple is the
+// one place the fact is spelled.
+fn static_width_index_arm_name() -> String { "StaticWidthIndex" }
+
+fn width_resolution_qualified_name() -> String { "std.machine_constraints.WidthResolution" }
+
+fn width_resolution_declaration(env: TypeEnv) -> Node? {
+  match symbol_index_lookup(index: env.symbol_index, qualified_name: width_resolution_qualified_name()) {
+    Present { value: decl } =>
+      if decl.children |> any(v => is_unit_variant_node(variant: v) && authored_name_at(source_indices: env.source_indices, node: v) == static_width_index_arm_name()) {
+        Present { value: decl }
+      } else { none }
+    Absent => none
+  }
+}
+
+// True exactly when `coproduct` IS the declaration width_resolution_declaration resolves and
+// `variant_name` is its Nat-indexed arm.
+fn is_static_width_index_arm(env: TypeEnv, coproduct: Node, variant_name: String) -> Bool {
+  variant_name == static_width_index_arm_name()
+    && match width_resolution_declaration(env: env) {
+      Present { value: decl } => decl.span.file == coproduct.span.file && decl.span.start == coproduct.span.start
+      Absent => false
+    }
+}
+
+// The module that DECLARES the arm, read from the declaration's file through the symbol index's
+// file-to-module census (the module-to-path mapping is one authority, never re-spelled here).
+fn static_width_index_declaring_module(env: TypeEnv) -> String? {
+  match width_resolution_declaration(env: env) {
+    Present { value: decl } => map_get(env.symbol_index.file_modules, decl.span.file)
+    Absent => none
   }
 }
 

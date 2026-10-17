@@ -59,7 +59,7 @@ import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed }
 import gunbc.machine_intake.mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
 import gunbc.machine_intake.megarac_kvm_still { megarac_kvm_observer_release_allowance }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
@@ -103,7 +103,8 @@ import gunbc.host.managed_host_unit_hold {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
-import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account, iam_converge_token_lifetime }
+import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account }
+import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
 import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { ProdRoleRealization, ProdRoleRealizationRefusal, prod_role_realization, prod_role_realization_refusal_detail }
@@ -2908,6 +2909,11 @@ data fleet_converge_approval_keyring_converge_step_if: String = fleet_converge_m
 data fleet_converge_approval_device_enrolment_code_issue_step_if: String = fleet_converge_mode_step_if(mode: ApprovalDeviceEnrolmentCodeIssue)
 data fleet_converge_mtcollins1_boot_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1Boot)
 
+// THE BOOT RUNS ONLY ON AN OBSERVED FAN READING (operator ruling 2026-10-16: 'stop the boot for all'):
+// the fan_policy_phase step output, written from its typed receipt, must say observed. A refused or
+// absent outcome leaves the boot ineligible; the fan step also fails on refusal, so the job stops.
+data fleet_converge_mtcollins1_boot_step_if_observed: String = join([fleet_converge_mtcollins1_boot_step_if, " && steps.fan_policy_phase.outputs.", mtcollins1_fan_boot_phase_outcome_output, " == '", mtcollins1_fan_boot_phase_outcome_observed, "'"], "")
+
 data fleet_converge_microvm_runner_group_ensure_step_if: String = fleet_converge_mode_step_if(mode: MicrovmRunnerGroupEnsure)
 
 // THE MICROVM RUNNER GROUP ENSURE (gunbc.runner.runner_group_restriction_ensure_run). It reaches GitHub over
@@ -3019,7 +3025,7 @@ fn fleet_converge_mtcollins1_boot_step() -> Step {
       kv(key: boot_attempt_nonce_env_name as String, value: yaml_string(s: "${{ github.event.inputs.transaction_nonce }}")),
     ] },
     working_directory: none,
-    if_condition: Present { value: fleet_converge_mtcollins1_boot_step_if },
+    if_condition: Present { value: fleet_converge_mtcollins1_boot_step_if_observed },
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(mtcollins1_boot_step_timeout_minutes()) }
   }
@@ -4069,11 +4075,11 @@ fn fleet_converge_mtcollins1_boot_wif_auth_step() -> Step {
 // (cut 7); the unit is this job. The invoke is gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
 // the IPMI SDR series (fan_observe / bmc_fan_observation), so the step name is that series' name
 // — not Cooling Manager / PWM REST. The standalone mtcollins1_fan_observe mode stays fail-closed.
-// NON-GATING BY THE MODEL, NOT BY A FLAG: every failure the phase can be handed - admission refusal,
+// GATING (operator ruling 2026-10-16): every failure the phase models - admission refusal,
 // credential-path absence, a refused Secret Manager fetch or decode - is a typed
-// FanObserveBootPhaseRefused receipt with ExitSuccess, so the boot step is scheduled because the
-// entry said so in a receipt, not because an exit code was absorbed (review 81077). An unmodeled
-// failure fails the job at this step, before the boot. A step timeout bounds a hang the same way.
+// FanObserveBootPhaseRefused receipt; the step's tail writes the fan_outcome step output from that
+// receipt and fails the step on refusal, and the boot step's if: requires the output to say observed.
+// An unmodeled failure also fails the job at this step, before the boot. A step timeout bounds a hang the same way.
 // GET get_manager_status / get_fan_info plus PWM write / guard / restore is a named follow-up.
 // Steps in one job run strictly sequentially, so this interpreter exits before the boot step's
 // concurrent pair.
@@ -4090,8 +4096,8 @@ fn fleet_converge_fan_policy_phase_step() -> Step {
     if_condition: none,
     // NO continue-on-error (review 81077). Every failure this step MODELS - admission refusal,
     // credential-path absence, a Secret Manager fetch or decode that came back refused - is a typed
-    // FanObserveBootPhaseRefused receipt with ExitSuccess INSIDE the entry, so the boot stays
-    // scheduled by the model, not by an absorbed exit code. What remains - an interpreter crash, a
+    // FanObserveBootPhaseRefused receipt; the prelude tail turns it into the fan_outcome output and
+    // fails the step (ruling 2026-10-16), so the boot is ineligible - by the model, not an absorbed exit code. What remains - an interpreter crash, a
     // hung bounded call, the step timeout - is unmodeled and must fail the job HERE, before the boot
     // step, located. continue-on-error absorbed exactly those, and the job still finished green: the
     // operator addendum this step exists for forbids a machine sitting on a controller default

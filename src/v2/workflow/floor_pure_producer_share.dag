@@ -1166,7 +1166,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.body_lowering.single_arm_match",
     claims: [
       SingleClaimFillDebtClaim { claim: "three_arm_match_keeps_every_arm_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "zero_arm_match_still_refuses_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "zero_arm_match_lowers_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {

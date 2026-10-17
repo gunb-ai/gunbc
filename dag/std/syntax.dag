@@ -1,5 +1,7 @@
 module std.syntax
 
+import std.types { List }
+
 type BinOp
   = Add | Sub | Mul | Div | Mod
   | Eq | Ne | Lt | Gt | Le | Ge

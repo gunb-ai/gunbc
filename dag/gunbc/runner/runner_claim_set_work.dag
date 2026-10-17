@@ -7,7 +7,9 @@ import extdeps.bazel.label { Label }
 import extdeps.crypto.hash { Sha256, Sha512 }
 import product.fabric.work { ExecutionRequirements }
 import gunbc.repository { gunbc_repository }
-import gunbc.repo.repo_self_build { repo_self_build_all_bins_command }
+import gunbc.repo.repo_self_build { repo_self_build_package }
+import extdeps.rust.cargo_build { cargo_build_release_bin_offline_command }
+import extdeps.exec.command { argv_words }
 import gunbc.cli_invoke { gunbc_bin_name, release_bin_rel_path }
 import gunbc.runner.microvm_guest_artifacts {
   GuestBaseArtifact, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
@@ -35,7 +37,8 @@ import gunbc.fabric.fabric_witness_run {
 //   (gunbc.runner.microvm_guest_artifacts), plus rust-toolchain.toml read from the verified tree.
 //   The channel is not restated here: that file is its sole authority and the tree already pins it.
 //   An artifact without a pinned digest refuses rather than entering identity as a name.
-// - executable: the release build of this repository, once, and the gunbc binary the claims invoke.
+// - executable: the one binary the claims invoke, built once, offline and locked, by exactly the
+//   command the guest unit runs (gunbc.runner.runner_revision_job_guest), and its path.
 // - environment: the guest job's PATH and HOME (gunbc.runner.runner_guest_image).
 // - cache: none. Every run starts from a fresh rootfs and a fresh target directory; closure reuse by
 //   revision is the next rung, after a receipt makes the job trustworthy.
@@ -98,7 +101,7 @@ fn claim_set_run_work_with_guest(
         source: source,
         checkout_materialization: claim_set_checkout_materialization,
         toolchain_provenance: toolchain,
-        executable_provenance: [repo_self_build_all_bins_command() as NonEmptyStr, release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr],
+        executable_provenance: [join(argv_words(command: cargo_build_release_bin_offline_command(package: repo_self_build_package as String, bin: gunbc_bin_name as String)), " ") as NonEmptyStr, release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr],
         environment: [
           FabricCiEnvironmentEntry { name: runner_guest_job_path_name, value: runner_guest_job_path_value },
           FabricCiEnvironmentEntry { name: runner_guest_job_home_name, value: runner_guest_job_home_value },

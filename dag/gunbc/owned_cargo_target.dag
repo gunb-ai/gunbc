@@ -1,0 +1,12 @@
+module gunbc.owned_cargo_target
+
+import std.types { String }
+
+// The PARTITION of an owned cargo target directory, keyed by its owner (C4): <base>/<owner>/target.
+// Ownership is policy, not an upstream fact (extdeps.cache.cargo names the cache, not who may write
+// it), so the partition lives in this gunbc module. Owners: devboot (work_root, subject token), the
+// compute provider (work root, request identity_hex, so the identity-scoped lease bounds the writable
+// target), and the host-seed sites as they stop sharing the ambient host target. One fn, one shape.
+fn owned_cargo_target_dir(base_root: String, owner: String) -> String {
+  join([base_root, "/", owner, "/target"], "")
+}
