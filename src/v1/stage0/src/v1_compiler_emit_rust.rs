@@ -67,7 +67,7 @@ pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, TypeDeclIndex, TypeSurfaceOccurrence, TypeRepr, TypeDeclResolution};
 pub use crate::v1_compiler_infer_emit_info::{type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences};
 pub use crate::v1_compiler_infer_env::{TypeEnv, TypeBinding, GlobalBareLookupState, BareOccurrenceBinding, UnitVariantPhantomLookup};
-pub use crate::v1_compiler_infer_env::{is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup};
+pub use crate::v1_compiler_infer_env::{is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, node_with_children, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup};
 pub use crate::v1_compiler_infer_items::{ItemLookup, ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 pub use crate::v1_compiler_infer_items::{item_kind, item_is_effectful_callee};
 pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
@@ -481,16 +481,16 @@ pub fn render_rust_type_without_applied_binding(
                     ) {
                         match n.children.clone().first().cloned() {
                             Some(key_child) => {
-                                let key_node = crate::v1_compiler_infer_types::child_type_node(
-                                    key_child.clone(),
-                                );
+                                let key_node =
+                                    rust_type_argument_node(key_child.clone(), emit_info.clone());
                                 let val_node = match n.children.clone().get((1) as usize).cloned() {
                                     Some(val_child) => {
                                         if rust_type_node_is_arrow(val_child.clone()) {
                                             val_child.clone()
                                         } else {
-                                            crate::v1_compiler_infer_types::child_type_node(
+                                            rust_type_argument_node(
                                                 val_child.clone(),
+                                                emit_info.clone(),
                                             )
                                         }
                                     }
@@ -552,8 +552,9 @@ pub fn render_rust_type_without_applied_binding(
                                     let elem_node = if rust_type_node_is_arrow(elem_child.clone()) {
                                         elem_child.clone()
                                     } else {
-                                        crate::v1_compiler_infer_types::child_type_node(
+                                        rust_type_argument_node(
                                             elem_child.clone(),
+                                            emit_info.clone(),
                                         )
                                     };
                                     let inner_str = render_rust_type(
@@ -25375,7 +25376,7 @@ pub fn rust_empty_map_value_type_str(
     match map_type.children.clone().get((1) as usize).cloned() {
         Some(value_child) => {
             let rendered = render_rust_type(
-                crate::v1_compiler_infer_types::child_type_node(value_child.clone()),
+                rust_type_argument_node(value_child.clone(), emit_info.clone()),
                 shared_types.clone(),
                 source_indices.clone(),
                 emit_info.clone(),
@@ -25399,7 +25400,7 @@ pub fn rust_empty_map_kv_type_str(
     {
         let key_str = match map_type.children.clone().first().cloned() {
             Some(key_child) => render_rust_type(
-                crate::v1_compiler_infer_types::child_type_node(key_child.clone()),
+                rust_type_argument_node(key_child.clone(), emit_info.clone()),
                 shared_types.clone(),
                 source_indices.clone(),
                 emit_info.clone(),
@@ -25452,70 +25453,25 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
     }
 }
 
-pub fn type_node_carries_applicationless_parametric_head(
-    n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let mut __found = false;
-        for c in n.children.clone().iter().cloned() {
-            if {
-                let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
-                (rust_type_renders_bare_parametric_head(
-                    t.clone(),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                    emit_info.clone(),
-                ) || type_node_carries_applicationless_parametric_head(
-                    t.clone(),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                    emit_info.clone(),
-                ))
-            } {
-                __found = true;
-                break;
+pub fn rust_type_argument_node(ch: Rc<Node>, emit_info: Rc<EmitGraphInfo>) -> Rc<Node> {
+    {
+        let t = crate::v1_compiler_infer_types::child_type_node(ch.clone());
+        match crate::v1_compiler_infer_env::lookup_type_for(
+            emit_info.fn_type_env.clone(),
+            t.clone(),
+        ) {
+            Some(binding) => {
+                let arity = (binding.params.clone().len() as i64);
+                if (((arity.clone() > 0) && ((t.children.clone().len() as i64) != arity.clone()))
+                    && ((ch.children.clone().len() as i64) == arity.clone()))
+                {
+                    crate::v1_compiler_infer_env::node_with_children(t.clone(), ch.children.clone())
+                } else {
+                    t.clone()
+                }
             }
+            std::option::Option::None => t.clone(),
         }
-        __found
-    })
-}
-
-pub fn rust_type_renders_bare_parametric_head(
-    t: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> bool {
-    if !type_node_declares_parameters(t.clone(), emit_info.fn_type_env.clone()) {
-        false
-    } else {
-        {
-            let head = crate::v1_std_core::qualified_last_segment(
-                crate::v1_std_core::authored_name_at(source_indices.clone(), t.clone()),
-            );
-            let rendered = render_rust_type(
-                t.clone(),
-                shared_types.clone(),
-                source_indices.clone(),
-                emit_info.clone(),
-            );
-            ((rendered.clone() == head.clone())
-                || (rendered.clone()
-                    == v1_rt::concat(
-                        v1_rt::concat("Rc<".to_string(), head.clone()),
-                        ">".to_string(),
-                    )))
-        }
-    }
-}
-
-pub fn type_node_declares_parameters(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
-        Some(binding) => ((binding.params.clone().len() as i64) > 0),
-        std::option::Option::None => false,
     }
 }
 
@@ -25537,19 +25493,13 @@ pub fn rust_empty_map_init_expr(
                 "HashMap::new() /* BRIDGE: empty_map value type unresolved */".to_string(),
             )
         } else {
-            if (((rust_fold_rendered_type_has_any_spurious_generic(
+            if ((rust_fold_rendered_type_has_any_spurious_generic(
                 v1_rt::concat(
                     v1_rt::concat("<".to_string(), kv_type_str.clone()),
                     ">".to_string(),
                 ),
                 emit_info.fn_generic_param_names.clone(),
             ) || type_node_carries_erased_type_argument(map_type.clone()))
-                || type_node_carries_applicationless_parametric_head(
-                    map_type.clone(),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                    emit_info.clone(),
-                ))
                 || {
                     let mut __found = false;
                     for c in map_type.children.clone().iter().cloned() {
@@ -29332,19 +29282,12 @@ pub fn emit_rust_fold_method_call(
         );
         let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
             && crate::std_types::is_container_type(acc_type_name.clone()));
-        let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(
-            acc_type_node.clone(),
-            shared_types.clone(),
-            scope.type_env.clone().source_indices.clone(),
-            fold_emit_info.clone(),
-        );
-        let lambda_acc_type_str = if ((((((is_bare_container.clone()
+        let lambda_acc_type_str = if (((((is_bare_container.clone()
             || acc_type_is_type_var.clone())
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
             || acc_has_closure_unbound_generic.clone())
             || acc_render_has_spurious_generic.clone())
-            || acc_carries_bare_parametric_head.clone())
         {
             "_".to_string()
         } else {
