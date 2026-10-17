@@ -1,0 +1,120 @@
+module v2.test.claim.optional_declaration_identity
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty, fold_list, length, list_snoc_item }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Disj, TypeNode, symbol_lexeme }
+import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_from_dotted_string }
+import v2.std.symbol_index { symbol_index_lookup }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, List, String }
+
+// SUBJECT: THE ONE OPTIONAL DECLARATION IDENTITY (ruling gunbc.design_ruling
+// optional_sugar_is_declaration_bound). v2.std.qualified_name.optional_declaration_identity is the single
+// spelling of `std.optional.Optional` that every declaration-keyed reader of an OPTIONAL TYPE answers with
+// — the wrapper model (v2.std.optional_layers occupancy_declaration_spelling) and the seed-kernel mint row
+// (gunbc.structural_realization_bindings optional_declaration_ref, #14087) both read it, and neither spells
+// the path. A second copy of the three segments is the drift this claim refuses.
+// BOUNDARY: the path is checked against the corpus, not against a string. The claim assembles a real
+// std.optional over the production route (assemble_program_from_ingest) and looks the identity up in the
+// tree resolve produced. An identity that names no declaration, or names one that is not the coproduct,
+// fails — a claim that only compared three lexemes would pass while everything behind the sugar pointed at
+// nothing.
+// NOT HERE: the shared reader that consumes this identity, and the match rows that depend on it. Those are
+// the reader PR; this claim is the identity's own standing, so #14087 can import it before that PR lands.
+// RETIREMENT DIRECTION: the Occupancy wrapper is to dissolve into the declaration. This claim pins the
+// declaration as what the sugar denotes, which is the direction that retirement walks; it adds no field to
+// the wrapper and no new consumer of it.
+
+data odd_artifact: Artifact = Artifact { kind: SourceFile, id: ^optional_declaration_identity_artifact, file_path: "src/v2/pilot/odd_pilot.dag" }
+data odd_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^optional_declaration_identity_std_artifact, file_path: "src/v2/pilot/odd_std_pilot.dag" }
+
+fn odd_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^optional_declaration_identity_cu,
+    source_root: V2Tree
+  }
+}
+
+// The conforming std.optional, spelled as dag/std/optional.dag spells it — the same specimen
+// v2.test.claim.optional_sugar_declaration_bound enrolls, so one declaration stands behind the sugar in
+// both claims and the two cannot drift apart.
+fn odd_std_optional() -> String {
+  "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n"
+}
+
+fn odd_assemble(sources: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: sources,
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn odd_resolved_std_optional() -> Optional<ResolvedTree> {
+  match odd_assemble(sources: [
+    odd_witness(src: odd_std_optional(), artifact: odd_std_artifact),
+    odd_witness(src: "module p\n\nimport std.optional { Optional }\n\nfn use_optional(x: Int) -> Int {\n  x\n}\n", artifact: odd_artifact)
+  ]) {
+    Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+// THE IDENTITY NAMES A DECLARATION THAT IS ACTUALLY THERE, and it is the coproduct: a Disj, reached by
+// looking the identity up in the resolved tree the route built.
+test fn odi_the_identity_names_the_resolved_optional_coproduct() -> Bool {
+  match odd_resolved_std_optional() {
+    Absent => false
+    Present { value: tree } =>
+      match symbol_index_lookup(index: tree.resolved_declarations, qualified_path: optional_declaration_identity()) {
+        Absent => false
+        Present { value: declared } =>
+          match declared.kind {
+            TypeNode { connective: Disj } => true
+            _ => false
+          }
+      }
+  }
+}
+
+// THE IDENTITY IS THE PATH THIS MODULE'S OWN PARSER PRODUCES FOR `std.optional.Optional`: the wrapper's
+// spelling and an authored qualified reference to the same declaration cannot become two paths, because
+// both are the path the parser yields and this row is that path.
+fn odi_lexemes(xs: QualifiedName) -> List<String> {
+  fold_list(
+    xs: xs,
+    empty: [],
+    cons: fn(acc, s) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: s)) }
+  )
+}
+
+test fn odi_the_identity_is_the_parsed_qualified_path() -> Bool {
+  odi_lexemes(xs: optional_declaration_identity()) == odi_lexemes(xs: qualified_name_from_dotted_string(dotted: "std.optional.Optional"))
+}
+
+// THE IDENTITY IS NOT SATISFIED BY A LOCAL HOMONYM. A corpus that declares only its own `Optional` must
+// leave the identity resolving to nothing, which is what keeps the seed mint (#14087) and the wrapper
+// pointing at std.optional rather than at whatever else in scope is named Optional. The same lookup that
+// passes above must miss when the coproduct is not there.
+test fn odi_a_local_homonym_is_not_reached_through_the_identity() -> Bool {
+  match odd_assemble(sources: [
+    odd_witness(src: "module p\n\nfn uses_local_optional(x: Int) -> Int {\n  x\n}\n\ntype Optional<T>\n  = Nothing\n  | Something { value: T }\n", artifact: odd_artifact)
+  ]) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match symbol_index_lookup(index: tree.resolved_declarations, qualified_path: optional_declaration_identity()) {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
