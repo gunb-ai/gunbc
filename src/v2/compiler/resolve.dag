@@ -245,7 +245,7 @@ fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -
 // qualified name is read from the root's own header, so a declaration is keyed at its full path (p.Pos).
 // A root whose module name cannot be read yields the empty index -- every lookup through it refuses.
 fn resolved_declarations_of(root: Node) -> SymbolIndex {
-  symbol_index_fill_module_declarations(index: empty_symbol_index(), root: root, record_declarations: Empty, resource_declarations: Empty)
+  symbol_index_fill_module_declarations(index: empty_symbol_index(), root: root, record_declarations: Empty, resource_declarations: Empty, admitted: Absent)
 }
 
 // THE ONE CONSTRUCTOR of an accepted resolution's carrier: the root, the index it was resolved
@@ -398,7 +398,8 @@ fn resolved_declarations_over(closure: SymbolIndex, subject: Node) -> SymbolInde
     index: closure,
     root: subject,
     record_declarations: Empty,
-    resource_declarations: Empty
+    resource_declarations: Empty,
+    admitted: Absent
   )
 }
 
@@ -851,7 +852,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
-    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: normalized_tree_record_declarations(t: tree), resource_declarations: normalized_tree_resource_declarations(t: tree)),
+    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: normalized_tree_record_declarations(t: tree), resource_declarations: normalized_tree_resource_declarations(t: tree), admitted: Absent),
     module_qn: declared_in,
     test_code: test_code_index_add_module(
       index: test_code_index_empty(),

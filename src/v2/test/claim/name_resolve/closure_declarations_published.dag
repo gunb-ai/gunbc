@@ -7,6 +7,8 @@ import v2.compiler.source_root_eval {
   NativeModuleResolveAccepted
 }
 import v2.compiler.name_resolve { closure_declarations_demand }
+import v2.compiler.source_root_eval { native_test_infer_resolved }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
@@ -101,4 +103,74 @@ test fn a_subject_importing_a_record_sees_the_declarers_record_in_its_resolved_d
         _ => false
       }
   }
+}
+
+// A PARTLY-REFUSED DECLARER. `broken` names an unbound identifier, so its declaration is refused and the
+// module is observed with Rec DeclarationAvailable beside it. The closure index is derived from the same
+// per-declaration outcome (v2.compiler.name_resolve closure_available_names), so Rec is indexed and
+// `broken` is not. `fixed` is the all-resolving positive control with the same shape.
+data cdp_part_broken_source: String = "module v2.test.cdp.part\n\nimport std.types { Int }\n\ntype Rec { value: Int }\nfn broken() -> Int { cdp_unbound_name }\n"
+
+data cdp_part_fixed_source: String = "module v2.test.cdp.part\n\nimport std.types { Int }\n\ntype Rec { value: Int }\nfn broken() -> Int { 1 }\n"
+
+data cdp_part_user_source: String = "module v2.test.cdp.partuser\n\nimport std.types { Int }\nimport v2.test.cdp.part { Rec }\nfn mk() -> Rec { Rec { value: 1 } }\n"
+
+fn cdp_part_ingest(declarer: String) -> List<DagSourceReadWitness> {
+  [
+    cdp_read(text: declarer, id: ^cdp_part, path: "src/v2/test/fixture/cdp/part.dag", root: DagTree),
+    cdp_read(text: cdp_part_user_source, id: ^cdp_partuser, path: "src/v2/test/fixture/cdp/partuser.dag", root: DagTree)
+  ]
+}
+
+fn cdp_part_closure_has(declarer: String, path: QualifiedName) -> Bool {
+  match native_test_context_from_ingest(ingest: cdp_part_ingest(declarer: declarer)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match c.resolution {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: shared, diagnostics: _ } =>
+          match symbol_index_lookup(index: closure_declarations_demand(shared: shared).declarations, qualified_path: path) {
+            Absent => false
+            Present { value: _ } => true
+          }
+      }
+  }
+}
+
+// The importer constructs the declarer's record. It has no refusal of its own, so it infers exactly when
+// the construction's tag reads as the declarer's record by identity.
+fn cdp_part_importer_infers(declarer: String) -> Bool {
+  match native_test_context_from_ingest(ingest: cdp_part_ingest(declarer: declarer)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match native_module_resolve_verdict(
+        context: c,
+        refusal_index: native_lane_file_refusal_index(refusals: c.file_refusals),
+        module: "v2.test.cdp.partuser",
+        path: ^cdp_partuser
+      ).verdict {
+        NativeModuleResolveAccepted { resolved: r } =>
+          match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: "v2.test.cdp.partuser"), resolved: r) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn an_available_record_of_a_partly_refused_module_is_in_the_closure_index() -> Bool {
+  cdp_part_closure_has(declarer: cdp_part_broken_source, path: [^v2, ^test, ^cdp, ^part, ^Rec])
+}
+
+test fn a_refused_declaration_of_a_partly_refused_module_is_not_in_the_closure_index() -> Bool {
+  !cdp_part_closure_has(declarer: cdp_part_broken_source, path: [^v2, ^test, ^cdp, ^part, ^broken])
+}
+
+test fn an_importer_constructing_the_record_of_a_partly_refused_module_infers() -> Bool {
+  cdp_part_importer_infers(declarer: cdp_part_broken_source)
+}
+
+test fn an_importer_constructing_the_record_of_an_all_resolving_module_infers() -> Bool {
+  cdp_part_importer_infers(declarer: cdp_part_fixed_source)
 }
