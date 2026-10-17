@@ -1,0 +1,42 @@
+module test.claim.runner.runner_revision_job_image_witness
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import gunbc.runner.runner_revision_job_image {
+  revision_job_fstab, revision_job_cargo_config, revision_job_rust_dist_unpacked_dir, revision_job_image_tree_commands,
+  revision_job_image_build, RevisionJobImageToolchainClosureMissing,
+}
+import gunbc.runner.runner_revision_job_guest { revision_job_vendor_dir, revision_job_cargo_config_steps }
+import extdeps.exec.command { argv_words }
+
+// THE IMAGE'S DECLARED CONTENT, AT ITS INTERFACE. The build itself runs on the host that owns the
+// pinned artifacts (S4b-3b's stand-in); these claims pin what it writes: the work disk mounted at
+// /work from vdf, the source replacement pointing at the very vendor dir the guest unpacks into, the
+// dist directory derived from the pinned archive's name, and a tree that refuses unless git, tar,
+// cargo and rustc are executable.
+
+test fn the_image_mounts_the_work_disk_and_points_cargo_at_the_staged_vendor_set() -> Bool {
+  revision_job_fstab() == "/dev/vdf /work ext2 defaults 0 2\n"
+    && string_contains(s: revision_job_cargo_config(), pattern: "replace-with = \"vendored\"")
+    && string_contains(s: revision_job_cargo_config(), pattern: concat(concat("directory = \"", revision_job_vendor_dir), "\""))
+    && revision_job_rust_dist_unpacked_dir() == "rust-1.93.0-aarch64-unknown-linux-gnu"
+}
+
+test fn the_tree_refuses_without_git_tar_cargo_and_rustc() -> Bool {
+  let words = map(revision_job_image_tree_commands(root: "/r", rust_dist_dir: "/d", toolchain: []), c => join(argv_words(command: c), " "))
+  count(filter(words, w => w == "test -x /r/revision-job-tree/usr/bin/git")) == 1
+    && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/bin/tar")) == 1
+    && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/local/bin/cargo")) == 1
+    && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/local/bin/rustc")) == 1
+    && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/bin/cc")) == 1
+    && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/bin/ld")) == 1
+    && count(revision_job_cargo_config_steps()) == 2
+}
+
+// UNTIL S4b-3c SUPPLIES THE CLOSURE, THE BUILD REFUSES BY NAME before touching anything.
+test fn the_image_build_refuses_without_the_toolchain_closure_naming_what_is_missing() -> Bool {
+  match revision_job_image_build(root: "/nonexistent", rust_dist_dir: "/nonexistent", closure: none) {
+    RevisionJobImageToolchainClosureMissing { missing: m } => join(m, ",") == "git,cc,ld,libc6-dev"
+    _ => false
+  }
+}

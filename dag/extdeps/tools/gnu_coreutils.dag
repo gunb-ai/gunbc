@@ -138,6 +138,12 @@ fn cp_command(source: String, destination: String) -> ArgvCommand {
   argv_command(program: cp_program(), arguments: [source, destination])
 }
 
+// `--update=none` (coreutils 9.3+, "cp invocation"): copy only when the destination does not exist,
+// and exit 0 either way -- a postinst's "install from default if absent", not an overwrite.
+fn cp_preserve_if_absent_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: cp_program(), arguments: ["-p", "--update=none", source, destination])
+}
+
 // install(1) COPYING /dev/null CREATES AN EMPTY FILE WITH ITS FINAL OWNER AND MODE IN ONE STEP.
 // The point is the ORDER it makes possible: a file that will later hold a secret exists with its
 // restrictive mode before a single secret byte is written, so there is no window in which the bytes
