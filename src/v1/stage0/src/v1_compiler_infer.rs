@@ -4322,6 +4322,70 @@ pub fn match_arm_body_is_present_payload_binding(
     }
 }
 
+pub fn type_is_optional_declaration(t: Rc<Node>) -> bool {
+    ((t.connective.clone() == Connective::Disj)
+        && match t.declaration.clone() {
+            Some(d) => {
+                crate::std_decl_ref::declaration_ref_eq(d.clone(), optional_declaration_ref())
+            }
+            std::option::Option::None => false,
+        })
+}
+
+pub fn arm_is_bare_declaration_of_sibling(t: Rc<Node>, siblings: Rc<Vec<Rc<Node>>>) -> bool {
+    ((t.connective.clone() == Connective::Disj) && {
+        let mut __found = false;
+        for s in siblings.iter().cloned() {
+            if ((((s.clone() != t.clone())
+                && (t.declaration.clone() != std::option::Option::None))
+                && (s.declaration.clone() == t.declaration.clone()))
+                || ((s.return_cardinality.clone() == Cardinality::CardOptional)
+                    && type_is_optional_declaration(t.clone())))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+pub fn inhabited_join_types(types: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
+    {
+        let kept = Rc::new({
+            let mut __result = Vec::new();
+            for t in types.clone().iter().cloned() {
+                if !arm_is_bare_declaration_of_sibling(t.clone(), types.clone()) {
+                    __result.push(t);
+                }
+            }
+            __result
+        });
+        if ((kept.clone().len() as i64) == 0) {
+            types.clone()
+        } else {
+            kept.clone()
+        }
+    }
+}
+
+pub fn fold_init_joined_with_expected(
+    init_type: Rc<Node>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Rc<Node> {
+    match expected.clone() {
+        Some(exp) => {
+            if arm_is_bare_declaration_of_sibling(init_type.clone(), Rc::new(vec![exp.clone()])) {
+                exp.clone()
+            } else {
+                init_type.clone()
+            }
+        }
+        std::option::Option::None => init_type.clone(),
+    }
+}
+
 pub fn match_arm_join_diagnostics(
     unified_arm_type: Rc<Node>,
     arm: Rc<ArmInferResult>,
@@ -13664,8 +13728,12 @@ Rc::new(InferResult {
                                 expected.clone(),
                             );
                             let call_fold_acc_type = match call_fold_info.clone() {
-                                Some(fi) => Some(crate::v1_compiler_infer_types::resolved_type(
-                                    crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                                Some(fi) => Some(fold_init_joined_with_expected(
+                                    crate::v1_compiler_infer_types::resolved_type(
+                                        crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                                    ),
+                                    expected.clone(),
+                                    scope.clone(),
                                 )),
                                 std::option::Option::None => std::option::Option::None,
                             };
@@ -14638,8 +14706,12 @@ Rc::new(InferResult {
                         expected.clone(),
                     );
                     let fold_acc_type = match fold_info.clone() {
-                        Some(fi) => Some(crate::v1_compiler_infer_types::resolved_type(
-                            crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                        Some(fi) => Some(fold_init_joined_with_expected(
+                            crate::v1_compiler_infer_types::resolved_type(
+                                crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                            ),
+                            expected.clone(),
+                            scope.clone(),
                         )),
                         std::option::Option::None => std::option::Option::None,
                     };
@@ -14970,8 +15042,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     }
                 },
             };
-            let unified_arm_type = match arm_body_types.clone().first().cloned() {
-                Some(first_type) => Rc::new(v1_rt::list_skip(&arm_body_types.clone(), 1))
+            let joined_arm_types = inhabited_join_types(arm_body_types.clone(), scope.clone());
+            let unified_arm_type = match joined_arm_types.clone().first().cloned() {
+                Some(first_type) => Rc::new(v1_rt::list_skip(&joined_arm_types.clone(), 1))
                     .iter()
                     .cloned()
                     .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
@@ -15287,13 +15360,24 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     let else_diags = else_result.diagnostics.clone();
                     let then_rt = crate::v1_compiler_infer_types::resolved_type(then_typed.clone());
                     let else_rt = crate::v1_compiler_infer_types::resolved_type(else_typed.clone());
-                    let optional_representations = optional_representations_join(
-                        then_rt.clone(),
-                        else_rt.clone(),
+                    let inhabited_branch_types = inhabited_join_types(
+                        Rc::new(vec![then_rt.clone(), else_rt.clone()]),
                         scope.clone(),
                     );
-                    let unified = match optional_representations.clone() {
-                        Some(joined) => joined.clone(),
+                    let branch_declaration_yields =
+                        ((inhabited_branch_types.clone().len() as i64) == 1);
+                    let unified = match inhabited_branch_types.clone().first().cloned() {
+                        Some(only) => {
+                            if branch_declaration_yields.clone() {
+                                only.clone()
+                            } else {
+                                crate::v1_compiler_infer_types::prefer_specific_type(
+                                    then_rt.clone(),
+                                    else_rt.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                )
+                            }
+                        }
                         std::option::Option::None => {
                             crate::v1_compiler_infer_types::prefer_specific_type(
                                 then_rt.clone(),
@@ -15302,8 +15386,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             )
                         }
                     };
-                    let branch_diags = if (((optional_representations.clone()
-                        != std::option::Option::None)
+                    let branch_diags = if ((branch_declaration_yields.clone()
                         || crate::v1_compiler_infer_types::node_type_compatible(
                             then_rt.clone(),
                             else_rt.clone(),
@@ -17727,28 +17810,6 @@ pub fn node_is_std_optional(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
     match (*optional_declaration_reading(n.clone(), scope.clone())).clone() {
         OptionalDeclarationReading::IsStdOptional => true,
         _ => false,
-    }
-}
-
-pub fn optional_representations_join(
-    left: Rc<Node>,
-    right: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> Option<Rc<Node>> {
-    if (((left.return_cardinality.clone() == Cardinality::CardOptional)
-        && (right.return_cardinality.clone() != Cardinality::CardOptional))
-        && node_is_std_optional(right.clone(), scope.clone()))
-    {
-        Some(left.clone())
-    } else {
-        if (((right.return_cardinality.clone() == Cardinality::CardOptional)
-            && (left.return_cardinality.clone() != Cardinality::CardOptional))
-            && node_is_std_optional(left.clone(), scope.clone()))
-        {
-            Some(right.clone())
-        } else {
-            std::option::Option::None
-        }
     }
 }
 
