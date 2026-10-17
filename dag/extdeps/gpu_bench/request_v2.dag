@@ -251,7 +251,7 @@ fn gpu_bench_parse_jsonl(text: String) -> GpuBenchRequestV2Stream {
             } else {
               match gpu_bench_request_v2_from_line(line: line) {
                 GpuBenchRequestV2Unreadable { cause: c } => GpuBenchParseRefused { line: n, cause: c }
-                GpuBenchRequestV2Read { record: r } => GpuBenchParseOpen { records: concat(rs, [r]), next_line: n + 1 }
+                GpuBenchRequestV2Read { record: r } => GpuBenchParseOpen { records: rs |> list_push(r), next_line: n + 1 }
               }
             }
         }
