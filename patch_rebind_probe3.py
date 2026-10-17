@@ -105,11 +105,11 @@ fn rebind_probe_walk(
     // Node.params (v1_std_core.rs:1570) is "this node's own declared parameters" -- the field v1 and v2
     // never printed, and the only mechanical reading of the parent's "its leaves are its own declared
     // parameters". Read directly; no peer fn called.
-    for p in n.params.clone().iter() {
+    for p in n.params.clone().iter().cloned() {
         if p.name.clone().len() > 0 {
             agg.params.push(p.name.clone());
         }
-        for gp in p.params.clone().iter() {
+        for gp in p.params.clone().iter().cloned() {
             if gp.name.clone().len() > 0 {
                 agg.params.push(gp.name.clone());
             }
@@ -127,7 +127,7 @@ fn rebind_probe_walk(
         },
         None => agg.infer_none += 1,
     }
-    for c in kids.iter() {
+    for c in kids.clone().iter().cloned() {
         rebind_probe_walk(&c.clone(), depth + 1, fuel, seen, agg);
     }
 }
@@ -135,6 +135,9 @@ fn rebind_probe_walk(
 struct RebindAgg {
     nodes: i64,
     revisit: i64,
+    // `Vec` here is im::Vector (file-level import at line 391), which is fine -- push/sort/truncate/
+    // len/contains all exist -- but it is deliberately spelled so nobody reading this helper thinks a
+    // std Vec method (dedup, retain, drain) is available.
     leaves: Vec<String>,
     params: Vec<String>,
     compiler_error: i64,
@@ -143,6 +146,22 @@ struct RebindAgg {
     divergent: i64,
     infer_none: i64,
     caps_depth: i64,
+}
+
+fn rebind_probe_join(v: &Vec<String>, sep: &str) -> String {
+    // im::Vector (this crate's `Vec`, line 391) has no join(); the emission builds such strings by
+    // iteration, so this helper does too. A join() here compiles against a std-Vec stub and fails
+    // remotely, which is precisely the class of bug the local gate exists to make cheap.
+    let mut out = String::new();
+    let mut first = true;
+    for it in v.clone().iter().cloned() {
+        if !first {
+            out.push_str(sep);
+        }
+        out.push_str(&it);
+        first = false;
+    }
+    out
 }
 
 impl RebindAgg {
@@ -169,17 +188,22 @@ impl RebindAgg {
         if trunc {
             v.truncate(limit as usize);
         }
-        format!("{}{}", v.join(","), if trunc { ",..TRUNC" } else { "" })
+        format!("{}{}", rebind_probe_join(&v, ","), if trunc { ",..TRUNC" } else { "" })
     }
     fn param_field(&self, limit: i64) -> String {
+        // NO v.dedup(): in THIS emitted file `Vec` is not std's Vec -- line 391 reads
+        // `use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};`, so a bare Vec<String>
+        // is im::Vector, which has sort/truncate/len/contains/push but NO dedup. My local stubcheck
+        // missed it because its stub typed these fields as std Vec -- a gate that lies about the
+        // environment is worse than no gate, and it cost a 21-minute dispatch to learn. Params may
+        // therefore repeat in this field; that is cosmetic, the membership test is what matters.
         let mut v = self.params.clone();
         v.sort();
-        v.dedup();
         let trunc = v.len() as i64 > limit;
         if trunc {
             v.truncate(limit as usize);
         }
-        format!("{}{}", v.join(","), if trunc { ",..TRUNC" } else { "" })
+        format!("{}{}", rebind_probe_join(&v, ","), if trunc { ",..TRUNC" } else { "" })
     }
     /// EVERY leaf name appears among that side's own declared parameter names. Empty leaves => false,
     /// never vacuously true: a vacuous control once let a row pose as a control (parent, msg_70dfb7e1).

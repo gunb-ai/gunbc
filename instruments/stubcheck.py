@@ -1,4 +1,12 @@
-#!/usr/bin/env python3
+# ENVIRONMENT FIDELITY IS THE GATE'S WHOLE VALUE. It passed a helper that then failed remotely with
+# E0599 `no method named dedup found for im::Vector`, because the EMITTED file does
+# `use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec}` (v1_compiler_infer.rs:391) while
+# my stub typed the fields as std Vec. A gate that models the wrong environment is worse than no gate: it
+# converts a 30-second local failure into a 21-minute remote one, and it manufactures confidence. So the
+# stub below aliases Vec to a minimal im::Vector-shaped type whose inherent methods are exactly the ones
+# the real im::Vector has -- sort, truncate, len, contains, push, iter, clone -- and NO dedup/retain/drain.
+# Anything std-only in a probe helper now fails HERE.
+
 """Typecheck a probe helper LOCALLY, against a stub crate carrying the REAL field sets, before any
 dispatch costs 27 minutes.
 
@@ -95,9 +103,62 @@ pub fn generic_head_matches_application(_h: Rc<Node>, _a: Rc<Node>, _si: Rc<Hash
 # The call site, with the locals the refusal actually has in scope (verified from the emitted seed:
 # unify_generics' TCO loop binds formal/actual/generic_names/source_indices/acc/text/module_name, and
 # bind_name is bound just above the refusal).
+# Stand-in for im::Vector: only the inherent methods the real one has. Inherent methods win over the
+# HashMap-style trait path, so an accidental std-only call (dedup, retain, drain, dedup_by_key) is a
+# hard E0599 here exactly as it is in the emitted crate.
+IM_VECTOR = '''
+pub struct Vector<A> { items: std::vec::Vec<A> }
+// Methods are split by MINIMAL BOUND, mirroring the real im::Vector. A single impl block with
+// `A: Clone + PartialEq + Ord` made len() demand Node: Ord, which the real type never asks for, and the
+// gate then rejected code that compiles remotely. A gate that is stricter than reality is as useless as
+// one that is laxer: both cost a dispatch to discover.
+impl<A> Vector<A> {
+    pub fn new() -> Vector<A> { Vector { items: std::vec::Vec::new() } }
+    pub fn len(&self) -> i64 { self.items.len() as i64 }
+}
+// the emitted crate's `vec!` is im's macro (line 391 `use im::{vector as vec, ...}`), so the stub needs
+// one too or the stub SEED fails to build and the helper is never actually typechecked.
+#[macro_export]
+macro_rules! vec {
+    ( $( $x:expr ),* $(,)? ) => {{
+        let mut __v = Vector::new();
+        $( __v.push($x); )*
+        __v
+    }};
+}
+impl<A: Clone> Vector<A> {
+    pub fn push(&mut self, a: A) { self.items.push(a); }
+    // yields &A, like im::Vector::iter, so the emission's own x.clone().iter().cloned() idiom typechecks
+    pub fn iter(&self) -> std::slice::Iter<'_, A> { self.items.iter() }
+    pub fn truncate(&mut self, n: usize) { self.items.truncate(n); }
+}
+impl<A: PartialEq> Vector<A> {
+    pub fn contains(&self, a: &A) -> bool { self.items.contains(a) }
+}
+impl<A: Ord> Vector<A> {
+    pub fn sort(&mut self) { self.items.sort(); }
+}
+impl<A> Clone for Vector<A> where A: Clone { fn clone(&self) -> Vector<A> { Vector { items: self.items.clone() } } }
+// The real im::Vector<A> implements Debug / PartialEq / Eq / Hash / Default / Ord when A does, and the
+// stub's Node derives Debug+PartialEq over Rc<Vec<Rc<Node>>> fields -- so these must exist here too, or
+// the gate fails on its OWN stub rather than on the helper (which is how the first attempt at this block
+// presented: 4 errors, all inside the stub, none about the probe).
+impl<A: std::fmt::Debug> std::fmt::Debug for Vector<A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { self.items.fmt(f) }
+}
+impl<A: PartialEq> PartialEq for Vector<A> { fn eq(&self, o: &Vector<A>) -> bool { self.items == o.items } }
+impl<A: Eq> Eq for Vector<A> {}
+impl<A: std::hash::Hash> std::hash::Hash for Vector<A> {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) { self.items.hash(h) }
+}
+impl<A> Default for Vector<A> { fn default() -> Vector<A> { Vector { items: std::vec::Vec::default() } } }
+'''
 PREAMBLE = '''#![allow(dead_code, unused_variables, unused_imports)]
 use std::collections::HashMap;
 use std::rc::Rc;
+''' + IM_VECTOR + '''
+// the emitted file's own alias (v1_compiler_infer.rs:391): Vec in this crate IS im::Vector
+use Vector as Vec;
 ''' + REAL_NODE + REAL_FNS + '''
 pub fn type_mismatch_error(_m: String) -> Rc<Node> { unimplemented!() }
 fn type_node_label(_n: Rc<Node>, _si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String { "T".into() }
@@ -167,8 +228,19 @@ fn _r(
     errs = [l for l in (p.stderr or '').splitlines() if l.startswith('error')]
     if p.returncode != 0:
         print("STUBCHECK FAIL: rustc rc=%d" % p.returncode)
-        for l in (p.stderr or '').splitlines()[:60]:
-            print("  ", l[:220])
+        lines = (p.stderr or '').splitlines()
+        shown = 0
+        for i, l in enumerate(lines):
+            if l.startswith('error'):
+                for j in range(i, min(i + 14, len(lines))):
+                    print("  ", lines[j][:240])
+                shown += 1
+                if shown >= 8:
+                    break
+        if shown == 0:
+            print("   (no line starts with 'error'; raw tail follows)")
+            for l in lines[-40:]:
+                print("  ", l[:240])
         return 1
     print("STUBCHECK OK: helper typechecks against the real field sets")
     warn = [l for l in (p.stderr or '').splitlines() if 'error' in l]
