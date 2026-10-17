@@ -9,10 +9,9 @@ import extdeps.tools.gnu_coreutils { rm_force_command, cp_command, mv_exact_dest
 import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised, NinferModelsUnreadable, ninfer_serve_launch_argv }
 import gunbc.harness.operator_pod_launch { operator_pod_listen_port }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
-import gunbc.serving.rented_ninfer_source {
-  rented_engine_source, rented_ninfer_81c8ce09_sm120_engine_artifact, rented_weights_source, rented_qwen3_8_27b_nvfp4_weights_placement,
-  ninfer_serve_81c8ce09_sm120_release,
-}
+import gunbc.serving.rented_ninfer_source { rented_engine_source, rented_ninfer_81c8ce09_sm120_engine_artifact }
+import product.fabric.serving_recipe { serving_recipe_qwen3_8_27b_nvfp4_ninfer }
+import gunbc.serving.serving_provision_derivation { ServingProvisionDerived, serving_provision_derive }
 import gunbc.serving.serving_artifact_placement {
   ServingStoreRoots, ServingProtectedPaths, ServingCopyVerified, ServingCopyAbsent, ServingCopyDiffers, ServingCopyUnreadable, ServingFetchFailed, ServingFetchSucceeded,
   ServingFetchRefusedMintEntryUnbuilt, serving_fetch_leg, serving_digest_path, serving_artifact_sequence, serving_artifact_commands, ServingArtifactRefusedCopyDiffers, ServingArtifactRefusedCopyUnreadable, serving_link_switch, ServingLinkSwitchRefusedUnreadable, ServingLinkUnreadable, serving_sequence_endangers,
@@ -74,33 +73,44 @@ test fn removing_a_verified_digest_path_or_its_parent_is_refused() -> Bool {
 
 // THE FETCH LEG REFUSES TYPED ON THE UNBUILT MINT.
 test fn the_fetch_leg_refuses_on_the_unbuilt_mint_for_both_artifacts() -> Bool {
-  let engine = serving_fetch_leg(source: rented_engine_source(artifact: rented_ninfer_81c8ce09_sm120_engine_artifact))
-  let weights = serving_fetch_leg(source: rented_weights_source(placement: rented_qwen3_8_27b_nvfp4_weights_placement))
-  (match engine { ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
-    && (match weights { ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
+  match serving_provision_derive(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    ServingProvisionDerived { inputs: i } => {
+      let engine = serving_fetch_leg(source: rented_engine_source(artifact: rented_ninfer_81c8ce09_sm120_engine_artifact))
+      let weights = serving_fetch_leg(source: i.source)
+      (match engine { ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
+        && (match weights { ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
+    }
+    _ => false
+  }
 }
 
 // ENGINE VERIFICATION REFUSES WHEN THE INSTALLED BINARY'S DIGEST DIFFERS FROM THE PIN.
 test fn engine_verification_passes_on_the_pinned_files() -> Bool {
-  let r = ninfer_serve_81c8ce09_sm120_release
-  match serving_engine_verdict(
-    engine: r,
-    binary: ServingInstalledFileRead { bytes: r.binary.bytes, sha256: r.binary.sha256 },
-    rev_file: ServingInstalledFileRead { bytes: r.rev_file.bytes, sha256: r.rev_file.sha256 },
-  ) {
-    ServingEngineVerified => true
+  match serving_provision_derive(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    ServingProvisionDerived { inputs: i } =>
+      match serving_engine_verdict(
+        engine: i.engine,
+        binary: ServingInstalledFileRead { bytes: i.engine.binary.bytes, sha256: i.engine.binary.sha256 },
+        rev_file: ServingInstalledFileRead { bytes: i.engine.rev_file.bytes, sha256: i.engine.rev_file.sha256 },
+      ) {
+        ServingEngineVerified => true
+        _ => false
+      }
     _ => false
   }
 }
 
 test fn engine_verification_refuses_a_binary_whose_digest_differs() -> Bool {
-  let r = ninfer_serve_81c8ce09_sm120_release
-  match serving_engine_verdict(
-    engine: r,
-    binary: ServingInstalledFileRead { bytes: r.binary.bytes, sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" } },
-    rev_file: ServingInstalledFileRead { bytes: r.rev_file.bytes, sha256: r.rev_file.sha256 },
-  ) {
-    ServingEngineFileDigestDiffers { relative_path: _, pinned: _, observed: _ } => true
+  match serving_provision_derive(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    ServingProvisionDerived { inputs: i } =>
+      match serving_engine_verdict(
+        engine: i.engine,
+        binary: ServingInstalledFileRead { bytes: i.engine.binary.bytes, sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" } },
+        rev_file: ServingInstalledFileRead { bytes: i.engine.rev_file.bytes, sha256: i.engine.rev_file.sha256 },
+      ) {
+        ServingEngineFileDigestDiffers { relative_path: _, pinned: _, observed: _ } => true
+        _ => false
+      }
     _ => false
   }
 }

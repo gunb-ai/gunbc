@@ -133,7 +133,7 @@ pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
     close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_decl_index,
     empty_type_env, empty_type_summary_index, is_enum_in_summaries, lookup_emit_type_summary,
-    type_decl_index_insert, type_decl_index_with_qualified_names, type_summary_lookup,
+    type_decl_index_with_qualified_names, type_summary_lookup,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary, TypeSummaryIndex, TypeSummaryLookup,
@@ -4345,6 +4345,81 @@ pub fn match_arm_body_is_present_payload_binding(
                 })
         }
         _ => false,
+    }
+}
+
+pub fn type_is_kernel_optional_declaration(t: Rc<Node>, owner: Option<Rc<Node>>) -> bool {
+    match owner.clone() {
+        Some(o) => ((t.connective.clone() == Connective::Disj) && (t.clone() == o.clone())),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn arm_is_bare_declaration_of_sibling(
+    t: Rc<Node>,
+    siblings: Rc<Vec<Rc<Node>>>,
+    optional_owner: Option<Rc<Node>>,
+) -> bool {
+    ((t.connective.clone() == Connective::Disj) && {
+        let mut __found = false;
+        for s in siblings.iter().cloned() {
+            if ((((s.clone() != t.clone())
+                && (t.declaration.clone() != std::option::Option::None))
+                && (s.declaration.clone() == t.declaration.clone()))
+                || ((s.return_cardinality.clone() == Cardinality::CardOptional)
+                    && type_is_kernel_optional_declaration(t.clone(), optional_owner.clone())))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+pub fn inhabited_join_types(types: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
+    {
+        let optional_owner =
+            kernel_optional_owner_declaring(scope.type_env.clone(), "Absent".to_string());
+        let kept = Rc::new({
+            let mut __result = Vec::new();
+            for t in types.clone().iter().cloned() {
+                if !arm_is_bare_declaration_of_sibling(
+                    t.clone(),
+                    types.clone(),
+                    optional_owner.clone(),
+                ) {
+                    __result.push(t);
+                }
+            }
+            __result
+        });
+        if ((kept.clone().len() as i64) == 0) {
+            types.clone()
+        } else {
+            kept.clone()
+        }
+    }
+}
+
+pub fn fold_init_joined_with_expected(
+    init_type: Rc<Node>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Rc<Node> {
+    match expected.clone() {
+        Some(exp) => {
+            if arm_is_bare_declaration_of_sibling(
+                init_type.clone(),
+                Rc::new(vec![exp.clone()]),
+                kernel_optional_owner_declaring(scope.type_env.clone(), "Absent".to_string()),
+            ) {
+                exp.clone()
+            } else {
+                init_type.clone()
+            }
+        }
+        std::option::Option::None => init_type.clone(),
     }
 }
 
@@ -13736,8 +13811,12 @@ Rc::new(InferResult {
                                 expected.clone(),
                             );
                             let call_fold_acc_type = match call_fold_info.clone() {
-                                Some(fi) => Some(crate::v1_compiler_infer_types::resolved_type(
-                                    crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                                Some(fi) => Some(fold_init_joined_with_expected(
+                                    crate::v1_compiler_infer_types::resolved_type(
+                                        crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                                    ),
+                                    expected.clone(),
+                                    scope.clone(),
                                 )),
                                 std::option::Option::None => std::option::Option::None,
                             };
@@ -14710,8 +14789,12 @@ Rc::new(InferResult {
                         expected.clone(),
                     );
                     let fold_acc_type = match fold_info.clone() {
-                        Some(fi) => Some(crate::v1_compiler_infer_types::resolved_type(
-                            crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                        Some(fi) => Some(fold_init_joined_with_expected(
+                            crate::v1_compiler_infer_types::resolved_type(
+                                crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                            ),
+                            expected.clone(),
+                            scope.clone(),
                         )),
                         std::option::Option::None => std::option::Option::None,
                     };
@@ -15042,8 +15125,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     }
                 },
             };
-            let unified_arm_type = match arm_body_types.clone().first().cloned() {
-                Some(first_type) => Rc::new(v1_rt::list_skip(&arm_body_types.clone(), 1))
+            let joined_arm_types = inhabited_join_types(arm_body_types.clone(), scope.clone());
+            let unified_arm_type = match joined_arm_types.clone().first().cloned() {
+                Some(first_type) => Rc::new(v1_rt::list_skip(&joined_arm_types.clone(), 1))
                     .iter()
                     .cloned()
                     .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
@@ -15384,23 +15468,46 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     let else_diags = else_result.diagnostics.clone();
                     let then_rt = crate::v1_compiler_infer_types::resolved_type(then_typed.clone());
                     let else_rt = crate::v1_compiler_infer_types::resolved_type(else_typed.clone());
-                    let unified = crate::v1_compiler_infer_types::prefer_specific_type(
-                        then_rt.clone(),
-                        else_rt.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    );
-                    let branch_diags = if (crate::v1_compiler_infer_types::node_type_compatible(
-                        then_rt.clone(),
-                        else_rt.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                        Rc::new(TextJudgment::TextJudgedIn {
-                            env: scope.type_env.clone(),
-                        }),
-                    ) || if_branch_types_agree_through_alias_identity(
-                        then_rt.clone(),
-                        else_rt.clone(),
+                    let inhabited_branch_types = inhabited_join_types(
+                        Rc::new(vec![then_rt.clone(), else_rt.clone()]),
                         scope.clone(),
-                    )) {
+                    );
+                    let branch_declaration_yields =
+                        ((inhabited_branch_types.clone().len() as i64) == 1);
+                    let unified = match inhabited_branch_types.clone().first().cloned() {
+                        Some(only) => {
+                            if branch_declaration_yields.clone() {
+                                only.clone()
+                            } else {
+                                crate::v1_compiler_infer_types::prefer_specific_type(
+                                    then_rt.clone(),
+                                    else_rt.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                )
+                            }
+                        }
+                        std::option::Option::None => {
+                            crate::v1_compiler_infer_types::prefer_specific_type(
+                                then_rt.clone(),
+                                else_rt.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            )
+                        }
+                    };
+                    let branch_diags = if ((branch_declaration_yields.clone()
+                        || crate::v1_compiler_infer_types::node_type_compatible(
+                            then_rt.clone(),
+                            else_rt.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            Rc::new(TextJudgment::TextJudgedIn {
+                                env: scope.type_env.clone(),
+                            }),
+                        ))
+                        || if_branch_types_agree_through_alias_identity(
+                            then_rt.clone(),
+                            else_rt.clone(),
+                            scope.clone(),
+                        )) {
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![inference_error(
@@ -32962,27 +33069,58 @@ pub fn build_emit_graph_info(
             structural_alias_fn_surface_names: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             structural_alias_direct_fn_names: v1_rt::rc_empty_set::<String>(),
         });
-        let built_raw = modules.iter().cloned().fold(init.clone(), |state: Rc<EmitInfoBuildState>, typed_module: Rc<TypedModule>| {
-            let module_name = crate::v1_std_core::authored_name_at(typed_module.type_env.clone().source_indices.clone(), typed_module.module.clone());
-typed_module.items.clone().iter().cloned().fold(state, |inner_state: Rc<EmitInfoBuildState>, item: Rc<Node>| if item_declares_kernel_grounded_carrier(item.clone(), module_name.clone(), typed_module.type_env.clone().source_indices.clone()) {
-                {
-                    let carrier_name = crate::v1_std_core::authored_name_at(typed_module.type_env.clone().source_indices.clone(), item.clone());
-if (carrier_name.clone() == "".to_string()) {
-                        inner_state.clone()
-                    } else {
-                        Rc::new(EmitInfoBuildState {
-    type_summaries: inner_state.type_summaries.clone(),
-    type_decl_items: crate::v1_compiler_infer_emit_info::type_decl_index_insert(inner_state.type_decl_items.clone(), module_name.clone(), carrier_name.clone(), item.clone()),
-    fn_decl_items: inner_state.fn_decl_items.clone(),
-    structural_alias_fn_surface_names: inner_state.structural_alias_fn_surface_names.clone(),
-    structural_alias_direct_fn_names: inner_state.structural_alias_direct_fn_names.clone(),
-})
-                    }
-}
-            } else {
-                crate::v1_compiler_infer_emit_info::add_emit_item_summary(inner_state.clone(), module_name.clone(), item.clone(), typed_module.type_env.clone().source_indices.clone())
-            })
-});
+        let built_raw = modules.iter().cloned().fold(
+            init.clone(),
+            |state: Rc<EmitInfoBuildState>, typed_module: Rc<TypedModule>| {
+                let module_name = crate::v1_std_core::authored_name_at(
+                    typed_module.type_env.clone().source_indices.clone(),
+                    typed_module.module.clone(),
+                );
+                typed_module.items.clone().iter().cloned().fold(
+                    state,
+                    |inner_state: Rc<EmitInfoBuildState>, item: Rc<Node>| {
+                        if item_declares_kernel_grounded_carrier(
+                            item.clone(),
+                            module_name.clone(),
+                            typed_module.type_env.clone().source_indices.clone(),
+                        ) {
+                            let carrier_name = crate::v1_std_core::authored_name_at(
+                                typed_module.type_env.clone().source_indices.clone(),
+                                item.clone(),
+                            );
+                            if (carrier_name.clone() == "") {
+                                inner_state.clone()
+                            } else {
+                                Rc::new(EmitInfoBuildState {
+                                    type_summaries: inner_state.type_summaries.clone(),
+                                    type_decl_items:
+                                        crate::v1_compiler_infer_emit_info::type_decl_index_insert(
+                                            inner_state.type_decl_items.clone(),
+                                            module_name.clone(),
+                                            carrier_name.clone(),
+                                            item.clone(),
+                                        ),
+                                    fn_decl_items: inner_state.fn_decl_items.clone(),
+                                    structural_alias_fn_surface_names: inner_state
+                                        .structural_alias_fn_surface_names
+                                        .clone(),
+                                    structural_alias_direct_fn_names: inner_state
+                                        .structural_alias_direct_fn_names
+                                        .clone(),
+                                })
+                            }
+                        } else {
+                            crate::v1_compiler_infer_emit_info::add_emit_item_summary(
+                                inner_state.clone(),
+                                module_name.clone(),
+                                item.clone(),
+                                typed_module.type_env.clone().source_indices.clone(),
+                            )
+                        }
+                    },
+                )
+            },
+        );
         let built = Rc::new(EmitInfoBuildState {
             type_summaries: crate::v1_compiler_infer_emit_info::close_fn_fields(
                 built_raw.type_summaries.clone(),
