@@ -265,13 +265,12 @@ import gunbc.dispatch_credential_snapshot {
   DispatchSnapshotRefused,
   dispatch_snapshot_refusal_text,
   dispatch_credential_snapshot_take,
-  dispatch_credential_snapshot_discard,
   CredentialSnapshotTombstoned,
   CredentialSnapshotTombstoneFailed,
   credential_snapshot_tombstone_body,
   credential_snapshot_after_read_disposition,
 }
-import gunbc.dispatch_credential_acquisition { credential_register_then_take }
+import gunbc.dispatch_credential_acquisition { credential_register_then_take, credential_discard_taken_attempt }
 import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
 import gunbc.worker_turn_snapshot_custody {
   claude_worker_turn_snapshot_custody,
@@ -664,7 +663,7 @@ fn dispatch_credential_snapshot_path_for_attempt(attempt: DispatchAttempt, execu
 // A selection that refuses after its take discards the snapshot it took; a discard that does not
 // occupy it with a tombstone is appended to the refusal, never dropped.
 fn selection_refused_discarding(reason: NonEmptyStr, snapshot: TakenCredentialSnapshot) -> DispatchAttemptSelection {
-  match dispatch_credential_snapshot_discard(snapshot: snapshot) {
+  match credential_discard_taken_attempt(snapshot: snapshot) {
     CredentialSnapshotTombstoned => DispatchAttemptSelectionRefused { reason: reason }
     CredentialSnapshotTombstoneFailed { reason: failed } =>
       DispatchAttemptSelectionRefused { reason: join([reason as String, "; and ", failed as String], "") as NonEmptyStr }
