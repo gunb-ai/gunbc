@@ -26,6 +26,17 @@ Instrument honesty rules enforced in the parser itself:
 """
 import sys, collections, json
 
+# V3's LEAF FIELD IS DEAD, and this is why the join in h_hypothesis_join.py exists.
+# rebind_probe_walk called a leaf "nc == 0 AND the printed shape contains no '('". But node_type_shape
+# prints a leaf AS Primitive(Symbol) -- with parens -- so the predicate matched nothing and EVERY row
+# reported lleafn=rleafn=0 (254/254). The parser therefore excludes truncated/capped rows and labels
+# empty-leaf rows, and the HYPOTHESIS WAS ANSWERED FROM v2 INSTEAD: v2 already printed, per node, the
+# child count and the name, so joining v2's per-node tree to v3's params by
+# (module, bind, lshape, rshape) -- 254/254 rows joined, 0 unmatched -- recovers the leaf multisets at
+# zero dispatch cost. Lesson kept in the open: when a field reads 0 on EVERY row, suspect the instrument
+# before believing the data; a uniformly-empty field is the signature of a broken predicate, not of a
+# clean corpus.
+
 def parse(line):
     b = line[len('REBINDV3|'):].rstrip('\n')
     d = {}
