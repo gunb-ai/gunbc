@@ -8,6 +8,11 @@ import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.crypto.hash { sha256_digest, sha512_digest }
 import extdeps.external_authority { TranscribedUncited }
 import extdeps.provisioning.ubuntu_arm64_network_origin {
+  Noble2404Point5,
+  pinned_artefact,
+  ubuntu_installer_filesystem_url,
+}
+import gunbc.provisioning.ubuntu_arm64_network_origin_observation {
   ArtefactRead,
   ArtefactNotFetched,
   OriginObserved,
@@ -16,15 +21,8 @@ import extdeps.provisioning.ubuntu_arm64_network_origin {
   OriginKernel,
   OriginInitrd,
   OriginInstallerFilesystem,
-  Noble2404Point5,
-  pinned_artefact,
   verify_ubuntu_network_origin,
   ubuntu_noble_arm64_network_origin,
-  ubuntu_noble_arm64_kernel_pin,
-  ubuntu_noble_arm64_initrd_pin,
-  ubuntu_noble_arm64_installer_filesystem_pin,
-  ubuntu_installer_filesystem_url,
-  ubuntu_cdimage_architecture_token,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
