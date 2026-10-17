@@ -320,6 +320,8 @@ import gunbc.host.build_cache_daemon_ensure {
   BuildCacheEnsureFold,
   BuildCachePlanRefused,
   EnsureOps,
+  LegPassed,
+  LegStopped,
   BuildCacheEnsureOp,
   BuildCacheHostRunObserved,
   BuildCacheHostRunOutcome,
@@ -341,6 +343,7 @@ import gunbc.host.build_cache_daemon_ensure {
   build_cache_daemon_presence_command,
   build_cache_daemon_stats_command,
   build_cache_ensure_fold_digest_line,
+  build_cache_ensure_leg_verdict,
   build_cache_ensure_fold_is_progressing,
   build_cache_ensure_run,
   build_cache_ensure_run_legs,
@@ -4033,22 +4036,27 @@ fn build_cache_fold_op_executed(acc: BuildCacheEnsureFold, op: BuildCacheEnsureO
         executed: EnsureTransportBlocked { op: op, reason: r },
         digest_line: acc.digest_line,
       }
+    // THE `set -e` DECISION IS NOT MADE HERE. It is the cited build_cache_ensure_leg_verdict, in the module
+    // that owns the effect: this site turns the transport's outcome into that fn's input and reports what it
+    // returned. An `if o.exit_code != 0` written here instead would put the same rule in two places, where
+    // the digest gate already sits in one — and the two would be free to disagree, silently, about whether a
+    // given leg stops the sequence.
     RunArgvTransportObserved { observed: o } =>
-      if o.exit_code != 0 {
-        BuildCacheEnsureFold {
-          executed: EnsureFailed {
-            op: op,
-            observed: BuildCacheHostRunObserved { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr },
-          },
-          digest_line: acc.digest_line,
-        }
-      } else if op.kind == ReadDigest {
-        BuildCacheEnsureFold {
-          executed: EnsureCompleted,
-          digest_line: Present { value: o.stdout },
-        }
-      } else {
-        BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: acc.digest_line }
+      match build_cache_ensure_leg_verdict(
+        op: op,
+        observed: BuildCacheHostRunObserved { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr },
+      ) {
+        LegStopped { executed: stopped } =>
+          BuildCacheEnsureFold { executed: stopped, digest_line: acc.digest_line }
+        LegPassed =>
+          if op.kind == ReadDigest {
+            BuildCacheEnsureFold {
+              executed: EnsureCompleted,
+              digest_line: Present { value: o.stdout },
+            }
+          } else {
+            BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: acc.digest_line }
+          }
       }
   }
 }
