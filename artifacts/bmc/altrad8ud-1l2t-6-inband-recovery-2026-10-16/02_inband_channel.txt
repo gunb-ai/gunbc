@@ -1,0 +1,84 @@
+### uname
+Linux ubuntu-server 6.8.0-139-generic #139-Ubuntu SMP PREEMPT_DYNAMIC Sat Aug  1 03:32:48 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+### ssh server (dropbear vs openssh, this is the rescue OS)
+ii  openssh-server 1:9.6p1-3ubuntu13.19 arm64        secure shell (SSH) server, for secure access from remote machines
+### /dev/ipmi device nodes
+crw------- 1 root root 235, 0 Oct 16 06:27 /dev/ipmi0
+### lsmod ipmi
+acpi_ipmi              24576  0
+ipmi_ssif              40960  1
+ipmi_devintf           20480  0
+ipmi_msghandler       102400  3 ipmi_devintf,acpi_ipmi,ipmi_ssif
+### ipmitool version
+ipmitool version 1.8.19
+### mc info (in-band, no -I lanplus, no credential => passwordless system interface; ipmi_ssif loaded above => SSIF, not KCS)
+Device ID                 : 32
+Device Revision           : 1
+Firmware Revision         : 3.22
+IPMI Version              : 2.0
+Manufacturer ID           : 49622
+Manufacturer Name         : ASRock Rack Incorporation
+Product ID                : 8245 (0x2035)
+Product Name              : Unknown (0x2035)
+Device Available          : yes
+Provides Device SDRs      : no
+Additional Device Support :
+    Sensor Device
+    SDR Repository Device
+    SEL Device
+    FRU Inventory Device
+    IPMB Event Receiver
+    IPMB Event Generator
+    Chassis Device
+Aux Firmware Rev Info     : 
+    0x00
+    0x00
+    0x00
+    0x00
+### channel 1 info
+Channel 0x1 info:
+  Channel Medium Type   : 802.3 LAN
+  Channel Protocol Type : IPMB-1.0
+  Session Support       : multi-session
+  Active Session Count  : 0
+  Protocol Vendor ID    : 7154
+  Volatile(active) Settings
+    Alerting            : enabled
+    Per-message Auth    : enabled
+    User Level Auth     : enabled
+    Access Mode         : always available
+  Non-Volatile Settings
+    Alerting            : enabled
+    Per-message Auth    : enabled
+    User Level Auth     : enabled
+    Access Mode         : always available
+### user list 1 (ADMINISTRATOR account id readback)
+ID  Name	     Callin  Link Auth	IPMI Msg   Channel Priv Limit
+1   root             false   true       true       ADMINISTRATOR
+2                    true    false      false      NO ACCESS
+3                    true    false      false      NO ACCESS
+4                    true    false      false      NO ACCESS
+5                    true    false      false      NO ACCESS
+6                    true    false      false      NO ACCESS
+7                    true    false      false      NO ACCESS
+8                    true    false      false      NO ACCESS
+9                    true    false      false      NO ACCESS
+10                   true    false      false      NO ACCESS
+11                   true    false      false      NO ACCESS
+12                   true    false      false      NO ACCESS
+13                   true    false      false      NO ACCESS
+14                   true    false      false      NO ACCESS
+15                   true    false      false      NO ACCESS
+### lan print 1
+IP Address Source       : DHCP Address
+IP Address              : 192.168.1.250
+MAC Address             : 9c:6b:00:e7:c9:fa
+### factory-password refusal (IPMI, not Redfish): setting published 7-char 0penBmc is rejected by OpenBMC policy; a rejected set changes nothing
+$ sudo ipmitool user set password 1 '0penBmc'
+IPMI command failed: Invalid data field in request
+Set User Password command failed (user 1)
+exit=1
+$ sudo ipmitool user set password 1 '0penBmc' 20
+IPMI command failed: Invalid data field in request
+Set User Password command failed (user 1)
+exit=1
