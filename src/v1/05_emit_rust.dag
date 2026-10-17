@@ -6215,13 +6215,39 @@ fn emit_import_name(owner_module: String, n: String, registry: Map<String, ItemI
 // filename is what the emitted path needs; the PATH is what the registry is keyed on, and deriving
 // one from the other by re-spelling would be a second reduction of the same fact. Both read the same
 // re-export resolution, so they cannot disagree about which module owns the name.
+// THE DECLARING MODULE OF ANY IMPORTED ITEM, not only a type: the module whose own items carry the
+// name, reached by following the specific-import hop from the importing module. A relay that merely
+// imports a data item declares nothing, so the walk continues to the module that does.
+fn item_declaring_module_name(name: String, import_module: String, visited: List<String>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String? {
+  if visited |> any(v => v == import_module) {
+    Absent
+  } else {
+    match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+      Absent => Absent
+      Present { value: tm } =>
+        if tm.items |> any(item => authored_name_at(source_indices: source_indices, node: item) == name) {
+          Present { value: import_module }
+        } else {
+          match explicit_import_source_module_for_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+            Present { value: hop } => item_declaring_module_name(name: name, import_module: hop, visited: concat(visited, [import_module]), typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+            Absent => Absent
+          }
+        }
+    }
+  }
+}
+
 fn graph_type_import_module_path(name: String, import_module: String, mod_name: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
   if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: mod_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
     import_module
   } else {
     match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
       Present { value: src } => src
-      Absent => import_module
+      Absent =>
+        match item_declaring_module_name(name: name, import_module: import_module, visited: [], typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+          Present { value: src } => src
+          Absent => import_module
+        }
     }
   }
 }
@@ -6640,7 +6666,11 @@ fn graph_type_import_module_filename(name: String, import_module: String, mod_na
   } else {
     match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
       Present { value: src } => module_to_filename(name: src)
-      Absent => mod_name
+      Absent =>
+        match item_declaring_module_name(name: name, import_module: import_module, visited: [], typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+          Present { value: src } => module_to_filename(name: src)
+          Absent => mod_name
+        }
     }
   }
 }
@@ -7345,17 +7375,11 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
       ) == false
     )
     let merged_direct_names = unique_strings(items: concat(direct_names, local_parent_names))
-    let type_direct_names = merged_direct_names |> filter(n =>
-      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum)
-    )
-    let other_direct_names = merged_direct_names |> filter(n =>
-      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) == false
-    )
-    let type_direct_mods = unique_strings(items: type_direct_names |> map(n =>
+    let direct_mods = unique_strings(items: merged_direct_names |> map(n =>
       graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
     ))
-    let type_direct_lines = type_direct_mods |> flat_map(def_mod =>
-      let group = type_direct_names |> filter(n =>
+    let direct_lines = direct_mods |> flat_map(def_mod =>
+      let group = merged_direct_names |> filter(n =>
         graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) == def_mod
       )
       if group |> count > 0 {
@@ -7365,13 +7389,6 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
         [RustUseLine { target_module: def_mod, text: concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};") }]
       } else { [] }
     )
-    let other_direct_line = if other_direct_names |> count > 0 {
-      let names_str = other_direct_names |> map(n =>
-        emit_import_name(owner_module: import_module, n: n, registry: registry)
-      ) |> join(separator: ", ")
-      [RustUseLine { target_module: mod_name, text: concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};") }]
-    } else { [] }
-    let direct_lines = concat(type_direct_lines, other_direct_line)
     let parent_defining_mods = unique_strings(items: remote_parent_list |> map(p =>
       let rep_variant = deduped_names |> filter(n =>
         match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -12461,10 +12478,15 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 // rustc E0107 (v2.compiler.resolve type_param_value_binders, #14084). The fact asked is the declaration's own
 // parameter count from the env binding, not a name: a node whose binding declares parameters but renders as its bare
 // head has lost its application, so the position defers to the target's inference exactly as an erased argument does.
+// The children of a Disj node are its ARMS, not type arguments: lookup_type_for resolves an arm's name to the
+// owning parametric declaration, so an arm such as std.list FirstDuplicateNotFound read as the declaration named
+// without its arguments, the fold lambda's accumulator widened to `_` beside the `_` seed, and rustc E0282 had
+// nothing to infer from. A bare head is a type REFERENCE (a Map argument, a field), never an arm; the arms'
+// own children are still searched. Dissolution: adhoc-65526d74-43f, with the rest of this compensation.
 fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
   n.children |> any(c =>
     let t = child_type_node(ch: c)
-    rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    (n.connective != Disj && rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
       || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
 }
 
