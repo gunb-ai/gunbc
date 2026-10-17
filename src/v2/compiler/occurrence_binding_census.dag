@@ -12,7 +12,7 @@ import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string, d
 import v2.compiler.resolve {
   ResolvedTree, OccurrenceBinding, OccurrenceBindingRecord, ResolvedReferenceIdentity,
   ResolvedToKernelSymbol, ResolvedToDeclaration,
-  BoundByLexicalBinder, BoundToParameter, BoundToTypeParameter, BoundToDeclaration, BoundAmbient, BoundByExpectedType,
+  BoundByLexicalBinder, BoundToParameter, BoundToTypeParameter, BoundToDeclaration, BoundAmbient, BoundByExpectedType, BoundByGeneratedReference,
   AmbientBindingTable, AmbientKernelTypeSpelling, AmbientKernelCanonicalSymbol, AmbientPrimitiveAuthority, AmbientCollectionRoster
 }
 
@@ -37,6 +37,7 @@ type BindingSourceClass
   | SourceDeclared
   | SourceAmbient { table: AmbientBindingTable }
   | SourceExpectedType
+  | SourceGeneratedReference
 
 type OccurrenceBindingCensusRow {
   module: String
@@ -75,6 +76,7 @@ fn binding_source_label(source: BindingSourceClass) -> String {
     SourceDeclared => "declared"
     SourceAmbient { table: t } => "ambient:" + ambient_binding_table_label(table: t)
     SourceExpectedType => "expected_type"
+    SourceGeneratedReference => "generated"
   }
 }
 
@@ -97,6 +99,7 @@ fn occurrence_binding_source(binding: OccurrenceBinding) -> BindingSourceClass {
     BoundToDeclaration { identity: _ } => SourceDeclared
     BoundAmbient { table: t, identity: _ } => SourceAmbient { table: t }
     BoundByExpectedType { identity: _ } => SourceExpectedType
+    BoundByGeneratedReference { identity: _ } => SourceGeneratedReference
   }
 }
 
@@ -108,6 +111,7 @@ fn occurrence_binding_target(binding: OccurrenceBinding) -> String {
     BoundToDeclaration { identity: i } => resolved_identity_target(identity: i)
     BoundAmbient { table: _, identity: i } => resolved_identity_target(identity: i)
     BoundByExpectedType { identity: i } => resolved_identity_target(identity: i)
+    BoundByGeneratedReference { identity: i } => resolved_identity_target(identity: i)
   }
 }
 
@@ -181,6 +185,9 @@ fn occurrence_binding_is_module_level(binding: OccurrenceBinding) -> Bool {
     // An elided head is bound by the expected type's head after alias unfolding, so a wave that retargets
     // an alias moves it while the annotation's own row stays put: it is a row of its own.
     BoundByExpectedType { identity: _ } => true
+    // A generated reference is a binding the compiler wrote; a wave that lowers a name to one (ruling H3:
+    // `none` to std.optional Absent) moves exactly this population, so it is a row of its own.
+    BoundByGeneratedReference { identity: _ } => true
   }
 }
 

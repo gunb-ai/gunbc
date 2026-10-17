@@ -572,6 +572,11 @@ type OccurrenceBinding
   // expectation, not by a name the author wrote. Its own source is recorded so every reference carries
   // exactly one, and the binding census reads it as a row of its own (source expected_type).
   | BoundByExpectedType { identity: ResolvedReferenceIdentity }
+  // A GENERATED REFERENCE: a marked declaration reference the compiler wrote (a list literal's head,
+  // lower_list_introduction), answered by its declaring path in resolve_generated_declaration_reference,
+  // not by a name the author wrote. Its own source is recorded so every reference carries exactly one,
+  // and the binding census reads it as a row of its own (source generated), keyed by the declaring path.
+  | BoundByGeneratedReference { identity: ResolvedReferenceIdentity }
 
 // One answered reference: the reference's own minted occurrence and the binding that answered it. The
 // walk accumulates these beside the tree it builds (ResolveWalkAccepted.bindings). A reference with no
@@ -606,6 +611,21 @@ fn occurrence_binding_authored(n: Node) -> Optional<QualifiedName> {
 // THE ENTRY FOR A NODE'S OWN OCCURRENCE, or none when the node carries no minted key.
 fn occurrence_binding_entries(n: Node, binding: OccurrenceBinding) -> List<OccurrenceBindingEntry> {
   let record = OccurrenceBindingRecord { authored: occurrence_binding_authored(n: n), binding: binding }
+  match n.occurrence_id {
+    OccurrenceMinted { id: id } => [OccurrenceBindingEntry { reference: id, record: record }]
+    OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceBindingEntry { reference: id, record: record }]
+    OccurrenceSynthetic => []
+    OccurrencePending { caused_by: _ } => []
+  }
+}
+
+// THE GENERATED REFERENCE'S ENTRY. No author wrote it, so its spelling is the declaring path it carries:
+// the key the binding census reads it under, distinct from any authored spelling of the same name.
+fn generated_reference_binding_entries(n: Node, path: QualifiedName) -> List<OccurrenceBindingEntry> {
+  let record = OccurrenceBindingRecord {
+    authored: optional_present(value: path),
+    binding: BoundByGeneratedReference { identity: ResolvedToDeclaration { path: path } }
+  }
   match n.occurrence_id {
     OccurrenceMinted { id: id } => [OccurrenceBindingEntry { reference: id, record: record }]
     OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceBindingEntry { reference: id, record: record }]
@@ -4111,7 +4131,12 @@ fn resolve_node_walk_entered(
       resolve_transform_children(ctx: ctx, n: n)
     TypeNode { connective: Conj } =>
       match declaration_reference_path_optional(node: n) {
-        Present { value: path } => resolve_walk_of_outcome(o: resolve_generated_declaration_reference(ctx: ctx, n: n, path: path))
+        Present { value: path } =>
+          match resolve_generated_declaration_reference(ctx: ctx, n: n, path: path) {
+            Accepted { value: v, diagnostics: d } =>
+              ResolveWalkAccepted { value: v, diagnostics: d, bindings: generated_reference_binding_entries(n: n, path: path) }
+            Rejected { diagnostics: r } => resolve_walk_refused_one(chain: r)
+          }
         Absent =>
       if resolve_is_where_refinement_clause(n: n) {
         resolve_where_refinement_clause(ctx: ctx, n: n)

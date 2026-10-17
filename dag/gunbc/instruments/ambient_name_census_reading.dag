@@ -56,8 +56,12 @@ fn ambient_census_fixture_files() -> List<AmbientCensusFixtureFile> {
       content: "module examples.decls\n\nfn helper() -> Int {\n  1\n}\n\ntype Pair {\n  a: Int\n}\n\ntype PairAlias = Pair\n"
     },
     AmbientCensusFixtureFile {
+      path: "std/algebra.dag",
+      content: "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
+    },
+    AmbientCensusFixtureFile {
       path: "examples/uses.dag",
-      content: "module examples.uses\n\nimport examples.decls { helper, PairAlias }\n\nfn twice() -> Int {\n  helper() + helper()\n}\n\nfn yes() -> Bool {\n  true\n}\n\ndata p: PairAlias = { a: 1 }\n"
+      content: "module examples.uses\n\nimport examples.decls { helper, PairAlias }\nimport std.algebra { FreeMonoid }\n\nfn twice() -> Int {\n  helper() + helper()\n}\n\nfn yes() -> Bool {\n  true\n}\n\ndata p: PairAlias = { a: 1 }\n\ndata xs: FreeMonoid<Int> = [1]\n"
     }
   ]
 }
@@ -74,7 +78,9 @@ fn ambient_census_unindexed_files() -> List<AmbientCensusFixtureFile> {
 // The rows the fixture must produce, each as its whole printed line. The headless record `{ a: 1 }` under
 // `PairAlias` is the elided-head RED: its head binds by the expected type, alias-unfolded to
 // examples.decls.Pair, while the annotation's own occurrence binds examples.decls.PairAlias -- two rows,
-// two targets, so a wave retargeting the alias is seen at the head.
+// two targets, so a wave retargeting the alias is seen at the head. The list literal `[1]` is the
+// generated-reference RED: its head is the compiler's reference to std.algebra.FreeMonoid, a row of its
+// own (source generated) keyed by that path, beside the annotation's authored `FreeMonoid` row.
 fn ambient_census_fixture_expected() -> List<String> {
   [
     "binding\texamples.decls\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
@@ -86,7 +92,11 @@ fn ambient_census_fixture_expected() -> List<String> {
     "binding\texamples.uses\thelper\t0\tdeclared\texamples.decls.helper",
     "binding\texamples.uses\thelper\t1\tdeclared\texamples.decls.helper",
     "binding\texamples.uses\tBool\t0\tambient:kernel_type_spelling\tkernel:bool_node_symbol",
-    "binding\texamples.uses\tdag_token_kw_true\t0\tambient:kernel_canonical_symbol\tkernel:dag_token_kw_true"
+    "binding\texamples.uses\tdag_token_kw_true\t0\tambient:kernel_canonical_symbol\tkernel:dag_token_kw_true",
+    "binding\texamples.uses\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid",
+    "binding\texamples.uses\tInt\t1\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
+    "binding\texamples.uses\tstd.algebra.FreeMonoid\t0\tgenerated\tstd.algebra.FreeMonoid",
+    "binding\tstd.algebra\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid"
   ]
 }
 
