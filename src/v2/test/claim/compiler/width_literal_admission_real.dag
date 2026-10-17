@@ -53,7 +53,10 @@ fn wlr_ingest(src: String) -> List<DagSourceReadWitness> {
 // every one of them, so the program as a whole may be Rejected for reasons that are not this literal's. The claim
 // is about the literal, so it asks whether THIS refusal is present, not whether the program is accepted.
 fn wlr_has(literal: String, reason: Symbol) -> Bool {
-  let src = concat(concat("module p\n\nimport std.integer { UInt8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  g(n: ", literal), ")\n}\n")
+  wlr_has_src(src: concat(concat("module p\n\nimport std.integer { UInt8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  g(n: ", literal), ")\n}\n"), reason: reason)
+}
+
+fn wlr_has_src(src: String, reason: Symbol) -> Bool {
   match assemble_program_from_ingest(
     ingest: wlr_ingest(src: src),
     admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
@@ -82,3 +85,6 @@ test fn wlr_real_uint8_300_refuses_at_inhabitance_before_the_width() -> Bool {
   wlr_has(literal: "300", reason: ^application_argument_does_not_inhabit)
     && !wlr_has(literal: "300", reason: ^infer_reason_literal_outside_machine_width)
 }
+
+test fn wlr_probe_base_inhabit() -> Bool { wlr_has_src(src: "module p\n\nimport std.integer { UInt8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  true\n}\n", reason: ^application_argument_does_not_inhabit) }
+test fn wlr_probe_base_accepted() -> Bool { wlr_has_src(src: "module p\n\nimport std.integer { UInt8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  true\n}\n", reason: ^accepted) }
