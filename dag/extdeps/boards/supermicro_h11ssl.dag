@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.measure {
   Bandwidth, bandwidth, Gigabyte, gigabyte, MegatransfersPerSecond, megatransfers_per_second,
 }
-import extdeps.boards.types { DimmPopulation, PopulationAdmission, admit_population }
+import extdeps.boards.types { HeldManualRevision, DimmPopulation, PopulationAdmission, admit_population }
 import extdeps.vendor.supermicro { supermicro }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -51,22 +51,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // What a CPU-support row is conditioned on; p.15 conditions 7002 on revision 2.x.
 type H11sslRevisionCondition = NoRevisionConditionStated | BoardMajorRevisionAtLeast { major: Nat }
 
-type HeldManual {
-  title: NonEmptyStr
-  revision_label: NonEmptyStr
-  released_label: NonEmptyStr
-  pdf_pages: Nat
-  sha256_hex: NonEmptyStr
-  authority: ExternalAuthority
-}
-
 // Consumer: supermicro_h11ssl_board_authority readers (arrival intake receipt cites the sha256).
-data supermicro_h11ssl_manual_held: HeldManual = HeldManual {
-  title: "H11SSL-I/C/NC USER'S MANUAL",
-  revision_label: "1.1",
-  released_label: "November 18, 2019",
-  pdf_pages: 130,
-  sha256_hex: "9400160cdaa057a0dfc875988f3006ebec7645dc54b4d2c8390386360c091c6b",
+data supermicro_h11ssl_manual_held: HeldManualRevision = HeldManualRevision {
+  title: Present { value: "H11SSL-I/C/NC USER'S MANUAL" },
+  version_label: "1.1",
+  published_label: "November 18, 2019",
+  page_count: 130,
+  sha256_hex: Present { value: "9400160cdaa057a0dfc875988f3006ebec7645dc54b4d2c8390386360c091c6b" },
   authority: extdeps_external_authority_anchor,
 }
 
