@@ -15,6 +15,11 @@ import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.machine_intake.mtcollins1_eight_rdimm_boot_observation {
+  mtcollins1_eight_rdimm_attestation_matches_firmware, mtcollins1_eight_rdimm_firmware_read_module_count,
+  mtcollins1_eight_rdimm_one_rank_module_count, mtcollins1_eight_rdimm_two_rank_module_count,
+  mtcollins1_eight_rdimm_trained_megatransfers,
+}
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation { MtCollins1Socket1InvestigationBoot, mtcollins1_socket1_investigation_boots }
 import gunbc.host.host_memory_observation {
   HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
@@ -204,7 +209,7 @@ test fn mtcollins1_carries_no_sessions_and_owes_no_reservation() -> Bool {
 test fn mtcollins1_census_capture_file_is_the_committed_receipt() -> Bool {
   let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path())
   read.success
-    && string_contains(s: mtcollins1_census_boot_capture_path(), pattern: "38979496315")
+    && string_contains(s: mtcollins1_census_boot_capture_path(), pattern: "39010930690")
     && string_contains(s: read.content, pattern: "MemTotal:")
 }
 
@@ -295,10 +300,10 @@ test fn mtcollins1_production_committed_width_is_unresolved_until_catalog_enrolm
   }
 }
 
-test fn mtcollins1_census_usable_ram_is_below_one_declared_slot() -> Bool {
+test fn mtcollins1_census_usable_ram_holds_at_least_one_declared_slot() -> Bool {
   match gunbc_ci_host_usable_ram_for(host: operator_host_mtcollins1) {
     HostUsableRamMeasured { bytes: u, provenance: _ } =>
-      (byte_size_count(b: u) as Int) < gunbc_runner_slot_memory_max_bytes
+      (byte_size_count(b: u) as Int) >= gunbc_runner_slot_memory_max_bytes
     _ => false
   }
 }
@@ -332,10 +337,10 @@ fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) ->
   }
 }
 
-test fn mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_zero_slots() -> Bool {
+test fn mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_five_slots() -> Bool {
   let real = host_width_facts(host: operator_host_mtcollins1)
   match committed_width_of(f: mtcollins1_supplied_facts(ram: real.usable_ram, overhead: real.fixed_overhead)) {
-    RunnerWidthDerived { slots: n } => n == 0
+    RunnerWidthDerived { slots: n } => n == 5
     RunnerWidthUnresolved { cause: _ } => false
   }
 }
@@ -420,4 +425,12 @@ fn mtcollins1_supplied_standing_text() -> String {
     HostRunnerDeploymentDerived { deployment: d } => concat("derived runner_count=", to_string(d.runner_count))
     HostRunnerDeploymentRefused { refusal: r } => host_deployment_refusal_text(c: r.cause)
   }
+}
+
+test fn mtcollins1_eight_rdimm_attestation_contradicts_the_firmware_reading() -> Bool {
+  !mtcollins1_eight_rdimm_attestation_matches_firmware
+    && mtcollins1_eight_rdimm_firmware_read_module_count
+      == mtcollins1_eight_rdimm_one_rank_module_count + mtcollins1_eight_rdimm_two_rank_module_count
+    && mtcollins1_eight_rdimm_firmware_read_module_count == 8
+    && mtcollins1_eight_rdimm_trained_megatransfers == 2133
 }
