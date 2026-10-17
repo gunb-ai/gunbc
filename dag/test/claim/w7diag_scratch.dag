@@ -1,0 +1,70 @@
+module test.claim.w7diag_scratch
+
+// TEMPORARY SCRATCH FOR DIAGNOSING ONE UNOBSERVED CLAIM. Deleted before the PR is marked ready.
+// Each claim isolates ONE sub-expression of design_witness_classifier_is_a_fold_not_an_unrolled_chain so the
+// runtime raise names the expression that fails to infer, instead of the "error type cascade" the whole
+// claim produces. `error type cascade` is emitted where the BASE of a field access resolved to a compiler
+// error type (v1_compiler_infer.rs:13541), so the suspect set is: the record-returning call, the `let`
+// binding, and the record's field access.
+
+// D1: field access on the record RETURNED DIRECTLY from the call (no `let`).
+test fn d1_field_on_direct_call() -> Bool {
+  match build_cache_fragment_probe().first {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// D2: field access through a `let` binding -- the exact shape of the failing claim's first step.
+test fn d2_field_on_let_binding() -> Bool {
+  let probe = build_cache_fragment_probe()
+  match probe.first {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// D3: the classifier call alone, no record involved.
+test fn d3_classifier_alone() -> Bool {
+  match build_cache_matched_stats_fragment(capture: "anything at all") {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// D4: the capture builder alone -- a plain String in, String out.
+test fn d4_capture_builder_alone() -> Bool {
+  build_cache_two_fragment_capture(first: "aaa", second: "bbb") == "something aaa then bbb"
+}
+
+// D5: the fragment list the two helpers fold over, reached through the same import path.
+test fn d5_fragment_list_reachable() -> Bool {
+  fold(sccache_misconfigured_log_fragments, init: 0, f: (acc, _f) => acc + 1) > 0
+}
+
+// D6: constructing the record HERE and reading a field -- separates "the record type is unusable from
+//     another module" from "that particular function's return type is what fails".
+test fn d6_local_record_construction() -> Bool {
+  let p = BuildCacheFragmentProbe { first: Present { value: "x" }, second: Absent }
+  match p.first {
+    Absent => false
+    Present { value: v } => v == "x"
+  }
+}
+
+// D7: the whole failing chain, verbatim, so the message can be compared with D1-D6 in one run.
+test fn d7_whole_chain_verbatim() -> Bool {
+  let probe = build_cache_fragment_probe()
+  match probe.first {
+    Absent => false
+    Present { value: a } =>
+      match probe.second {
+        Absent => false
+        Present { value: b } =>
+          match build_cache_matched_stats_fragment(capture: build_cache_two_fragment_capture(first: a, second: b)) {
+            Present { value: got } => got == a
+            Absent => false
+          }
+      }
+  }
+}
