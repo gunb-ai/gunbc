@@ -3155,7 +3155,8 @@ fn population_refusal_framed(stderr: &str, parts: &[&str]) -> bool {
 /// supply the observations, so these walks are the inhabitance that the BUILT binary reads real
 /// directories and decides with the real verdicts -- deleting the integration makes a control here
 /// fail. `check-layout` holds over the live governed roots (`dag` and `src/v2`); `parse-population` is
-/// walked over fixture roots only (`gunbc.rung_drop.required_live_root_parse_population_withdrawn`).
+/// walked over the live roots by the workflow's parse-verdict steps (`gunbc.parse_verdict_restore`), and
+/// over fixture roots here.
 /// Every other control differs from a holding one in a single fact:
 ///
 /// - `parse-population` over the door fixture's root refuses every declared refusal the root does not
@@ -3228,12 +3229,11 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             &layout_live,
         ));
     }
-    // PARSE-POPULATION IS NOT WALKED OVER THE LIVE ROOTS ON `witnesses`: the whole-population parse cost
-    // ~18 minutes of every run and pushed the required job past its 90-minute cap. A module's parse
-    // verdict outside the two emitted closures is not judged on the required path, which is the loss
-    // `gunbc.rung_drop.required_live_root_parse_population_withdrawn` declares; the fixture roots below still
-    // walk the verb on real directories, so deleting the integration keeps a control red.
-    eprintln!("v2-native-cli: live roots — check-layout held; parse-population not walked over the live roots");
+    // `parse-population` over the live roots is walked by the workflow's parse-verdict steps (reusing the
+    // base commit's receipts on a pull request); the fixture roots below walk the verb on real directories.
+    eprintln!(
+        "v2-native-cli: live roots — check-layout held; parse-population walked by the workflow"
+    );
 
     // PARSE: the door root is refused for the declaration alone, the malformed specimen is refused by file.
     let door = run_cli_door(
@@ -3457,7 +3457,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         ));
     }
     eprintln!(
-        "v2-native-cli: population controls held (live roots hold both verbs; door root parses one module, \
+        "v2-native-cli: population controls held (check-layout holds over the live roots; door root parses one module, \
          the malformed specimen and an empty or absent root refuse, and a malformed module outside a compile's \
          closure refuses the parse and leaves the compile unchanged; misplaced and undeclared files are \
          refused by file; usage refusals)"
