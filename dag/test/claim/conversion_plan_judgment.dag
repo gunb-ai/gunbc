@@ -10,6 +10,7 @@ import std.coercion {
 }
 import gunbc.structural_realization_bindings { conversion_plan_rows, unicode_scalar_literal_homomorphism }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

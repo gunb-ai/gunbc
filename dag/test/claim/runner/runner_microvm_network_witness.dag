@@ -52,6 +52,7 @@ import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit,
   EnsureOwnedDirectory, SystemdDaemonReload, SystemdEnableUnit, SystemdRestartUnit,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

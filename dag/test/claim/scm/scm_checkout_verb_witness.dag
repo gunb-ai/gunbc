@@ -99,6 +99,7 @@ import gunbc.scm.checkout {
   CheckoutReferenceUnresolved,
   checkout_repository_at,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

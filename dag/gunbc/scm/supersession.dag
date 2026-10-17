@@ -44,6 +44,7 @@ import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
   LoadDocumentMalformed, LoadIdentityCollision, LoadRequirementAtWrongKind,
 }
+import std.optional { Present }
 
 // A NAMED PLACE HOLDING EXACTLY ONE GENERATION. The slot is the unit supersession destroys, so it
 // is the unit the compare-and-swap is denominated in. `generation` is a content address rather than

@@ -1,5 +1,7 @@
 module v2.test.manual.parse_tree_content_hash_witness
 
+import std.optional { Absent, Present }
+
 
 fn parse_tree_content_hash_for_path(path: String) -> Optional<Hash> {
   let lm = dag_language_model()

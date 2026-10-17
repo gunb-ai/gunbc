@@ -13,6 +13,7 @@ import gunbc.host.memory_configuration {
 }
 import gunbc.host.memory_observation { MemoryEvaluationEvidence }
 import gunbc.host.memory_configuration_evaluation { MemoryConfigurationAssessment, evaluate_memory_configuration }
+import std.optional { Present }
 
 // Pure workflow evaluation, not execution. These values have no constructor
 // path to MemoryCollectorReceipt or ConfigurationQualificationReceipt.

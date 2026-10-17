@@ -61,6 +61,7 @@ import gunbc.roadmap.roadmap_authority {
   RoadmapAcceptanceReceiptsProjected,
   RoadmapAcceptanceReceiptsProjectionRefused,
 }
+import std.optional { Present }
 
 // A forecast projects what may happen; a CycleTimeObservation records what did happen. They are
 // separate nominal record types with no conversion in either direction. ScheduleForecast exposes

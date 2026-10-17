@@ -11,6 +11,7 @@ import extdeps.uri_path {
   ParsedPathTemplate, MalformedPathTemplate, parse_path_template,
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
+import std.optional { Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

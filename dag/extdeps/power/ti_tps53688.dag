@@ -14,6 +14,7 @@ import extdeps.land_pattern.types {
   QuadRowLandGeometry,
   VendorRecommendedLandPattern,
 }
+import std.optional { Present }
 
 // The TPS53688 datasheet, read 2026-08-14 for its mechanical pages only. The package drawing it
 // reprints is RSB0040A, stamped 4215000/A, 08/2016.

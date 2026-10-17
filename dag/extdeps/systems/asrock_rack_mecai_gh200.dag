@@ -23,6 +23,7 @@ import extdeps.systems.types {
 }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog }
 import extdeps.boards.asrock_rack_arlington_mb { asrock_rack_arlington_mb }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

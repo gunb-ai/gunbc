@@ -1,6 +1,7 @@
 module gunbc.install_media
 
 import std.upsert_decision { ObservationVerdict }
+import std.optional { Absent }
 
 type SeededInstallMediaObservation
   = MediaAbsent

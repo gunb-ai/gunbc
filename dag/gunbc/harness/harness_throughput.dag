@@ -12,6 +12,7 @@ import gunbc.harness.harness_wire {
   HarnessIntRead, IntRead, IntAbsent, IntDuplicated, IntNotAnObject, IntNotANumber, IntNotAnInteger,
   harness_member_int, harness_int_read_gap,
 }
+import std.optional { Present }
 
 // READING THE ROUND.USAGE STREAM THE HARNESS WRITES. This module sits beside the writer rather than
 // beside the dashboard that renders it, because the events file's shape is the harness's fact: the

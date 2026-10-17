@@ -69,6 +69,7 @@ import std.language_target_identity {
   registry_integrity_clean,
   count_rows,
 }
+import std.optional { Present }
 
 // NO INVISIBLE REMAINDER (operator requirement C, 2026-08-04). This registry may not read as
 // complete because two specimen rows exist. Every target-bearing surface this repository currently

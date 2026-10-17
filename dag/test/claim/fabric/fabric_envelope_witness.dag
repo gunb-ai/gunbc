@@ -18,6 +18,7 @@ import product.fabric.supply {
   MemoryNotOffered, ArchitectureNotOffered,
   VramNotCovered, GpuNotOffered, GpuRuntimeNotOffered, GpuCountNotCovered,
 }
+import std.optional { Present }
 
 fn shape_of(threads: Int, arch: Architecture?, bytes: Int) -> Shape {
   Shape {

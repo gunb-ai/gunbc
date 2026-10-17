@@ -13,6 +13,7 @@ import gunbc.codex_runtime_paths {
   codex_bundled_executable_at_current_link,
 }
 import gunbc.package_delivery { codex_linux_arm64_native_executable_rel }
+import std.optional { Present }
 
 // The ONE authority for the srv1 gunbc host paths (lane agreement with royal-carp-451, 2026-07-20). Five facts must agree with their
 // consumers or in-process dispatch breaks: srv1_gunbc_repo_root is BOTH the tree `gunbc serve`

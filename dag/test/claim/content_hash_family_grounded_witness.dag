@@ -53,6 +53,7 @@ import extdeps.container.oci.digest {
   render_oci_content_digest_wire,
 }
 import extdeps.container.oci.media_types { media_type_oci_image_layer_v1_tar_gzip }
+import std.optional { Absent }
 
 data witness_note: String = "feature:content-hash-family-grounded Phase A — family coproduct, per-family eq, carrier construction walls (OciContentDigest/ GateRosterHash/ GitObjectId/ pin CrossFamilyIdentityIncomparable). Phase B (union `==` typecheck refusal) is dissolve-on remainder; R0 interpreter backstop receipted in content_hash_cross_family_eq_v1_seed_bridge_note."
 

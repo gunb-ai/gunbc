@@ -3,6 +3,7 @@ module gunbc.roadmap.roadmap_lineage
 import std.types { String, Int, Bool, List, Map }
 import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.roadmap.roadmap_model { RoadmapNode, NodeParent, MemberOf, AdmittedRoot, Closes }
+import std.optional { Present }
 
 // THE ONE PARENT WALK. Every consumer that asks where a node sits -- the alignment chain, the
 // readiness predicate, the derived closing-contract minting, the page's project tree -- reads the

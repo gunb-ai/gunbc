@@ -10,6 +10,7 @@ import gunbc.runner.runner_microvm_cell_readiness {
   WriteRefusedAttemptAlreadyRecorded, WriteRefusedNotAdmitted, WriteRefusedStoreUnsound,
   WriteRefusedRecoveryOwed, WriteRefusedIncoherent,
 }
+import std.optional { Present }
 // The records an accepted write leaves; every refusal is named so a new refusal arm must decide here.
 fn cell_readiness_write_accepted_records(result: CellReadinessWriteResult) -> List<CellReadinessRecord>? {
   match result {

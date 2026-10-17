@@ -66,6 +66,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_file_observation,
   filesystem_read_outcome,
 }
+import std.optional { Present }
 
 data witness_note: String = "Hermetic witnesses for the supervised-runner slice: std.temporal_effect HeldLease fences one WorkerTurn attempt; thread idle without a runner terminal receipt refuses turn/start (continuity receipt trap); busy thread refuses until the runner writes a receipt; parse_supervised_turn_stdout correlates thread/start and turn/start ids and turn/completed notifications into a terminal receipt with client_command_id."
 

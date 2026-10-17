@@ -30,6 +30,7 @@ import gunbc.machine_intake.dimm_row_orientation {
   expected_firmware_readback, readback_unresolved, board_sockets, figure_population_identity, slot_colour, chassis_end_text,
   chassis_end_landmark, trained_slot_text, figure_bet_agreement, slot_map_line_text, damage_standing_text, agreement_text, gap_text,
 }
+import std.optional { Absent }
 
 // THE PHYSICAL ORIENTATION OF A MANAGED HOST'S DIMM ROW. The board is read off the access observation
 // gunbc.host.managed_host managed_host_binding bound (never stored beside it), its figure is selected by

@@ -30,6 +30,7 @@ import gunbc.runner.runner_slot_retirement {
   observe_slot_cgroup_occupancy, CgroupAbsent, CgroupObservedEmpty,
   CgroupObservedPopulated, CgroupUnobserved, CgroupOccupancy,
 }
+import std.optional { Present }
 
 // Operator maintenance consumes the SAME dependency the commissioning planner emitted.
 // These entries are not enrolled in workspace_dispatch_functions or any job-user sudo grant.

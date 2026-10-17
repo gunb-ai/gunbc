@@ -49,6 +49,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 import gunbc.roadmap.roadmap_model {  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, NotDispatchable, NodeParent, MemberOf, AdmittedRoot }
 import gunbc.roadmap.roadmap_status { TicketLine, TicketFields, Unsigned }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContract, ExecutionContractUnspecified, NotAgentWork }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

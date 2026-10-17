@@ -15,6 +15,7 @@ import gunbc.host.boot_medium { BootImageExport, BootMedium, BootMediumReadbackH
 import gunbc.machine_intake.boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake.mtcollins1_census_image { CensusMediumQualification, CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, census_medium_qualification, boot_image_export_text, mtcollins1_census_image, CensusImage, CensusImageDerived, CensusImageRefused }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, ubuntu_seeded_install_media_record_path, seeded_install_media_build_key }
+import std.optional { Present }
 
 // THE PUBLICATION RECEIPT IS NOT BOOT-TIME EVIDENCE. The medium row carries the digest the publish
 // measured; between that run and this boot the file the BMC will mount over NFS could have been

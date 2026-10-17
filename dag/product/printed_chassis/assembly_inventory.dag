@@ -11,6 +11,7 @@ import extdeps.languages.json.emit { JsonArray, JsonString, serialize_json }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalInspected, GoalObservationRefused }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.process { ExitSuccess, exit_failure }
+import std.optional { Present }
 
 
 // One desired slot per placed printed occurrence, never per interface demand.

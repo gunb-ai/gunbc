@@ -53,6 +53,7 @@ import product.compute_board.article {
   BoardPowerInterfaceArticle,
 }
 import std.algebra { Cons, Empty, map_insert }
+import std.optional { Present }
 
 // THE VERILOG PROJECTION, NOW A MAPPING RATHER THAN A PRINTER. This module names no Verilog
 // keyword, no punctuation and no layout: it folds board vocabulary onto the target AST and

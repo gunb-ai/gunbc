@@ -21,6 +21,7 @@ import gunbc.code_change_workflow {
   CodeChangePolicyNotPermitted,
   decide_code_change_transition, classify_github_pr_terminal_anchor,
 }
+import std.optional { Present }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

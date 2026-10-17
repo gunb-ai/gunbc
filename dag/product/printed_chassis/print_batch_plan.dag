@@ -12,6 +12,7 @@ import gunbc.fleet.printer_selection {select_printer,PrinterSelected}
 import std.measure {micrometer}
 import std.checked_arithmetic {checked_int_to_nat}
 import product.printed_chassis.print_preparation {PlatePlacement,PlatePreparation,placement_admitted}
+import std.optional { Present }
 
 type PlateSpec {attempt:String,plan:PlatePreparation}
 type PrinterSpec {printer:PhysicalAssetIdentity,version:NonEmptyStr,plates:List<PlateSpec>}

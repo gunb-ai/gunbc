@@ -31,6 +31,7 @@ import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.execution { Attempt }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
 import std.types { NonEmptyStr, List, Bool }
+import std.optional { Present }
 
 // RECONCILIATION IS A PURE FOLD AND DOES NOTHING. It draws a conclusion from admitted evidence;
 // actuation consumes the conclusion. A fold that could also act would decide and do in one step,

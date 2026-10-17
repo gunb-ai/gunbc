@@ -23,6 +23,7 @@ import std.scoped_authorization { AttemptIdentity }
 import std.logic { Bool }
 import extdeps.languages.json.emit { json_bool }
 import gunbc.auth.approval_device_redemption { redemption_response_of, DeviceLostTheRace, DeviceChallengeExpired, DeviceSignedForAnotherRequest, DeviceEnrollmentRevoked, DeviceEnrollmentUnknown }
+import std.optional { Present }
 
 // ── The cross-language byte contract ─────────────────────────────────────────────────────────
 // The iOS app builds the signing input and the enrolment transcript in Swift; the server builds

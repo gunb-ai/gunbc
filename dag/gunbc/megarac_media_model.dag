@@ -3,6 +3,7 @@ module gunbc.megarac_media_model
 import std.types { Bool, Int, List, String }
 import std.measure { Second, second, second_count }
 import std.algebra { list_snoc_item }
+import std.optional { Present }
 
 // THE BMC's VIRTUAL-MEDIA SUBSYSTEM (AMI MegaRAC SP-X, firmware 0.32): the same controller as
 // gunbc.bmc_model, held as its own record because its state -- web sessions, the NFS share binding,

@@ -36,6 +36,7 @@ import gunbc.review_sheet_drive_converge {
   review_sheet_search_query,
   review_sheet_marker_property_key,
 }
+import std.optional { Present }
 
 // EVERY CLAIM HERE SUPPLIES ITS INPUTS AT ONE BOUNDARY -- a Drive response shape -- rather than
 // reaching a live Drive to obtain one. That is the point: these are claims about what the FOLD

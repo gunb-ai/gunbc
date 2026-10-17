@@ -5,6 +5,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, MeasureSubtraction, M
 import std.checked_arithmetic { nat_magnitude }
 import std.dissolution { DissolutionCondition }
 import gunbc.floor.floor_demand { floor_beat_reading_primitive_boundary }
+import std.optional { Present }
 
 // WHAT A REMOVAL SAVES, DECIDED HERE; THE HOST ONLY READS THE ALLOCATOR. The leave-one-out reading
 // (//gunbc/instruments:typed-graph-exclusive-bytes and its -floor-subject row) resolves a fresh

@@ -57,6 +57,7 @@ import v2.workflow.required_floor {
   CompletedWithinSafetyLimits,
   SafetyInterrupted
 }
+import std.optional { Present }
 
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS, FOR THE ARTIFACT THE SCHEMA ALREADY DESCRIBES.
 //

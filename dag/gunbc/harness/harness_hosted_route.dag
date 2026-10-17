@@ -60,6 +60,7 @@ import gunbc.harness.harness_reasoning_wire {
   harness_openrouter_level_effort, harness_reasoning_kwargs_for, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
   harness_unit_model_id, harness_serving_unit_wire,
 }
+import std.optional { Absent, Present }
 
 // A HOSTED HARNESS ROUTE: a unit the harness reaches through an upstream it does not operate, admitted by
 // leasing that upstream's quota rather than by taking a seat on a serving group. The seat model

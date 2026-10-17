@@ -34,6 +34,7 @@ import product.supplier.cloudflare_r2 {
 }
 import extdeps.cloudflare.r2_buckets { R2BucketResponse, R2BucketRead, R2BucketPresent, R2BucketAbsent }
 import gunbc.cloudflare.r2_origin { FabricDurableOrigin, FabricBootOrigin }
+import std.optional { Present }
 
 data r2_witness_customer_profile: NonEmptyStr = "r2-witness-customer-profile"
 data r2_witness_data_handling_profile: NonEmptyStr = "r2-witness-data-handling-profile"

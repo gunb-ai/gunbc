@@ -6,6 +6,7 @@ module test.claim.roadmap.roadmap_belt_dispatch_instance_selection_witness
 
 import std.types { Bool, String }
 import gunbc.roadmap.roadmap_belt_actuate { belt_dispatch_instance_selected }
+import std.optional { Present }
 
 test fn an_unset_selection_refuses_instead_of_defaulting_to_srv1_live() -> Bool {
   match belt_dispatch_instance_selected(raw: none) {

@@ -10,6 +10,7 @@ import gunbc.fabric.fabric_event_log { event_log_append, EventAppended, EventApp
 import gunbc.instruments.fabric_partition_read {
   PartitionReadReport, PartitionReadReported, PartitionReadUnreported, partition_read_report,
 }
+import std.optional { Present }
 
 // Wet controls for the read-only partition entry, against a fabric DB in a temporary directory: the
 // readout reports what the log holds and nothing about seats, and it refuses rather than reporting a

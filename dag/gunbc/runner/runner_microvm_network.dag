@@ -39,6 +39,7 @@ import extdeps.tools.conntrack {
 }
 import extdeps.access.posix { FileMode }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
+import std.optional { Present }
 
 data runner_microvm_network_disposition: ConstructionMechanism = SingleAuthority
 

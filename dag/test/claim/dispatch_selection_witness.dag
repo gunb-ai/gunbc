@@ -115,6 +115,7 @@ import gunbc.dispatch_selection {
   NoDerivedSizingExpectation,
   DerivedSizingExpectation,
 }
+import std.optional { Present }
 
 fn fixture_multibucket_codex_standing_inventory(
   instance: HostDashboardInstance,

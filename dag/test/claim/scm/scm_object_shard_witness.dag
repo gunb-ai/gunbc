@@ -33,6 +33,7 @@ import gunbc.scm.repository_envelope {
 }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -2,6 +2,7 @@ module gunbc.artifact_acquisition
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.nat { Nat }
+import std.optional { Present }
 
 // THE SUBJECT-AGNOSTIC ACQUISITION UPSERT: bring a named artifact into a place it is not, keyed on
 // what the artifact IS rather than on whether somebody remembers having fetched it.

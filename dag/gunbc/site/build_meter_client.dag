@@ -14,6 +14,7 @@ import gunbc.site.element.build_meter {
   build_meter_walk_property, build_meter_walk_steps_property, build_meter_from_width_property, build_meter_to_width_property,
   BuildMeterSettleAtOnce, build_meter_settle_key, BuildMeterLeaving, BuildMeterArriving, build_meter_side_key,
 }
+import std.optional { Present }
 
 // The build meter's pointer decoration. It sets a look attribute and three state classes on the
 // element and nothing else: the element's own rules (gunbc.site.element.build_meter) decide what

@@ -41,6 +41,7 @@ import gunbc.fleet.app_control_plane_inspection {
   HookStanding, HookInspectedStanding, HookConfigUnread, HookNotAttempted,
   hook_standing_of, app_control_plane_failure,
 }
+import std.optional { Present }
 
 // ---------------------------------------------------------------------------------------------
 // R1 - THE REGISTRATION, OBSERVED GOAL-BLIND AND ASSESSED THROUGH inspect_goal.

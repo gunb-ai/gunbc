@@ -75,6 +75,7 @@ import extdeps.realization.materialization_store_local {
   store_read_observation,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -23,6 +23,7 @@ import gunbc.roadmap.roadmap_authority { authored_merged_prs }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_daily_page, fx_ready_task_ids }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -160,6 +160,7 @@ import gunbc.fabric.engram_materialization {
   project_route_candidate, component_route_assessment,
 }
 import extdeps.uri { uri_https }
+import std.optional { Absent }
 
 
 // ── FIXTURE SCAFFOLDING FOR THE TWO CONTROLS THAT NEED A SETTLED SUBJECT ───────────────────────

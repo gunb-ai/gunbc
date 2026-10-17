@@ -15,6 +15,7 @@ import std.measure {
   money_per_month_micros,
 }
 import std.nat { Nat, nat_max }
+import std.optional { Present }
 
 // Both reads here are DERIVED at read time from cited rows (DESIGN section 2): the bottom-up floor
 // prices a declared per-user resource envelope against a cited infrastructure price row, and the

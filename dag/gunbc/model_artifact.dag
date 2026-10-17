@@ -5,6 +5,7 @@ import std.content_hash { ContentHash, Sha256Digest, as_content_hash_cryptograph
 import std.decl_ref { decl_ref }
 import extdeps.pin { TrackedReferenceResolution }
 import extdeps.ollama.api { OllamaModelRef, OllamaModelDigest, ollama_model_ref_wire, ollama_model_content_hash }
+import std.optional { Present }
 
 // WHAT A SERVED MODEL IS, modeled before anything serves one, because the alternative is retrofitting
 // identity onto a deployment that already pinned a name.

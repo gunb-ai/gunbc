@@ -10,6 +10,7 @@ import extdeps.systemd.systemd_run {
   SummaryAbsence, summary_absence_wire,
 }
 import std.algebra { Cons, Empty }
+import std.optional { Present }
 
 // A WORK REQUEST RESERVES AN AMOUNT PER CLASS, AND THE AMOUNT IS A GRANT WITH ITS OBSERVATIONS
 // ATTACHED (operator ruling 2026-09-21: do not raise a global ceiling; size a job's reservation per

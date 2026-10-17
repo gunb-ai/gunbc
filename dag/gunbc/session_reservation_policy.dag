@@ -11,6 +11,7 @@ import gunbc.session_residency {
   SessionsObservedPresent, SessionsObservedAbsent, SessionsOperatorDeclaredAbsent, SessionsUnobserved,
   host_session_evidence,
 }
+import std.optional { Present }
 
 // WHAT WAS OBSERVED AND WHAT WAS CHOSEN ARE TWO FACTS, AND THE OLD CARRIER HAD ONE FIELD FOR BOTH.
 // gunbc_ci_session_reservation_mode declared SessionAggregateMeasured { 21474836480 } -- the

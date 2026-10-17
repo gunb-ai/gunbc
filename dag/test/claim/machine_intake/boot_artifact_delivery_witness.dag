@@ -217,6 +217,7 @@ import gunbc.os_install_mechanism {
   VirtualMediaInstall,
   os_install_solution_of_delivery,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

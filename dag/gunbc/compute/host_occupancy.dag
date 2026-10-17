@@ -20,6 +20,7 @@ import extdeps.systemd {
   parse_systemd_unit_active_state, systemd_unit_active_state_wire_label,
 }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
+import std.optional { Present }
 
 // ── WHO IS ALREADY USING THIS HOST: A READING, TAKEN ON THE HOST, BEFORE AN EFFECT IS ADMITTED ─
 //

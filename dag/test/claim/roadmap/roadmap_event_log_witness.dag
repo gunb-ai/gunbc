@@ -19,6 +19,7 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_event_admitted_after, roadmap_results_for_attempt,
   RoadmapResultBinding, RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
 }
+import std.optional { Present }
 
 fn node() -> RoadmapNodeId { "demo-node" as RoadmapNodeId }
 

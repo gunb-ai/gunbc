@@ -9,6 +9,7 @@ import std.access {
 import std.authorization_profile {
   EffectAuthorizationAction, EffectRequest, effect_access_request,
 }
+import std.optional { Present }
 // P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned
 // silent-ibex-417). An effect target is a POSITION in a containment tree that already exists;
 // permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace

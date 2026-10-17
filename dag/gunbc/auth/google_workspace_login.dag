@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, List }
 import extdeps.auth.jwt { JwtStringOrUri, JwtUriString, NumericDate }
 import extdeps.auth.oidc { OidcHostedDomain, OidcIdTokenVerdictPolicy }
 import gunbc.principal_projection { google_oidc_issuer }
+import std.optional { Present }
 
 // gunb.ai POLICY OVER GOOGLE OIDC (docs/plans/human-identity-authorization.md authority
 // placement): the Workspace-domain gate, the per-client audience roster, and the login

@@ -34,6 +34,7 @@ import v2.std.compilers.target_model {
   FunctionTypePosition,
   FunctionTypeRealizationRow,
 }
+import std.optional { Absent, Present }
 
 // THE RUST TARGET MODEL'S FUNCTION-TYPE ROWS ARE PINNED TO AN EXECUTED SELECTION. Each claim runs
 // std.decision select_realization for one position (gunbc.rust_function_type_selection) and

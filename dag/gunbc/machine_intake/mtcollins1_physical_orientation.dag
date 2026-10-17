@@ -37,6 +37,7 @@ import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   MtCollins1SocketDamageReport, MtCollins1SocketEvidenceGate, SocketEvidenceRequiresInspectionSince,
   SocketEvidenceRequiresInspectionUndated, socket_evidence_gate,
 }
+import std.optional { Absent }
 
 // MT. COLLINS UNIT 1'S DIMM-ROW READINGS AND ITS SOCKET-1 DIAGNOSIS. A receipt in the observing
 // layer (DESIGN §3). The orientation logic is host-generic and lives in

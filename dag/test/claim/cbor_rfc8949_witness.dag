@@ -12,6 +12,7 @@ import extdeps.standards.rfc_8949 {
   CborMemberLookup, CborMemberFound, CborMemberAbsent, CborMemberDuplicated, CborMemberNotAMap, cbor_map_unique_text_member,
   cbor_nesting_limit,
 }
+import std.optional { Present }
 
 // Every accepted vector below is a row of RFC 8949 Appendix A (Examples of Encoded CBOR Data
 // Items); the refused ones are the same appendix's indefinite-length and floating-point rows,

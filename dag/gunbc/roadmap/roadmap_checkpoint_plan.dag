@@ -21,6 +21,7 @@ import gunbc.roadmap.roadmap_alignment {
   alignment_chain_fingerprint,
   alignment_levels,
 }
+import std.optional { Present }
 
 // ------------------------------------------------------------------------------------------------
 // The checkpoint-probe plan (review 5358022153, lane C): the PURE checkpoint-subject/probe-

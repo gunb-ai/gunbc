@@ -30,6 +30,7 @@ import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
   WorkflowSegmentActive, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
+import std.optional { Present }
 
 fn te(child: String, parent: String) -> RoadmapMembership {
   RoadmapMembership { project: child, member: parent, contribution: "fixture contribution" }

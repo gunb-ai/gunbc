@@ -45,6 +45,7 @@ import gunbc.machine_intake.megarac_boot_media_attach {
   stale_power_off_look_owed,
   stale_power_off_observed,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

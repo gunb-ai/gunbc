@@ -10,6 +10,7 @@ import extdeps.package_managers.brew   { brew_install_url }
 import extdeps.package_managers.apt { apt_installed_bin_path }
 import extdeps.version { VersionConstraint }
 import extdeps.exec.program { ProgramIdentity }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

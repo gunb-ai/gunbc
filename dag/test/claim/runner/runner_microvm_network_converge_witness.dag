@@ -31,6 +31,7 @@ import gunbc.runner.runner_microvm_network_converge {
   SlotProbeReading, SlotProbeRead, SlotProbeUnread,
   IpForwardingUnread, SlotAddressUnread, SlotRouteUnread,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

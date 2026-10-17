@@ -70,6 +70,7 @@ import gunbc.roadmap.roadmap_review_criteria { review_criterion_by_key }
 import gunbc.design_argument { design_propositions }
 import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
 import extdeps.uri { Uri, Https }
+import std.optional { Absent, Present }
 
 data id_a: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a")
 data id_b: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_b")

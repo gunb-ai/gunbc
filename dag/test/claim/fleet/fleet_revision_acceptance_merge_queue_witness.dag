@@ -25,6 +25,7 @@ import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestResp
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
 import test.claim.rest_exchange_replay { replay_frame, fixture_for }
 import test.fixture.rest_exchange_replay_probe
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

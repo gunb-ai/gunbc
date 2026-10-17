@@ -71,6 +71,7 @@ import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly, ipxe_bui
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacParseError }
 import gunbc.site_uefi_arm64_pxe_edge { SiteEdgeRoster, site_edge_proxy_dhcp_config, first_onboarding_known_client_mac }
 import gunbc.fleet.fleet_physical_inventory { operator_site }
+import std.optional { Absent, Present }
 
 // THE FIRST ONBOARDING SEGMENT'S EDGE, CONVERGED ON srv4 THROUGH THE FLEET-CONVERGE WORKFLOW.
 // Operator ruling (PXE-FABRIC 0C, via sleek-carp-159): the serving host is a converged executor on

@@ -10,6 +10,7 @@ import gunbc.compute.test_selection {
   witness_label_of_path, select_witness_files, test_function_names, module_path_of, classify_witness_module,
   WitnessModuleSelected, WitnessModuleNotAWitness, WitnessPlanned, WitnessDeclined,
 }
+import std.optional { Present }
 
 fn parsed(text: String) -> TargetPattern? {
   match parse_target_pattern(text: text) {

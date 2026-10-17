@@ -34,6 +34,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
+import std.optional { Present }
 
 // RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): THE ONE ANSWER to `may THIS cause start
 // THIS node NOW?`. Before this module the daily-workspace action derivation, POST

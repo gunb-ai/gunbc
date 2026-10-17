@@ -2,6 +2,7 @@ module std.primitive_projection
 
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.types { List, NonEmptyStr, String }
+import std.optional { Present }
 
 // The declaration-to-primitive projection is a seed-consumed substrate authority, so its import
 // closure stops at std.decl_ref/std.types and never reaches a target roster or v2 module. This

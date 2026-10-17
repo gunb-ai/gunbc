@@ -56,6 +56,7 @@ import gunbc.runner.runner_connectivity_recovery {
   runner_connectivity_max_replacements_per_host_per_tick,
   HostReplacementCapExceeded,
 }
+import std.optional { Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

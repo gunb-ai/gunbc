@@ -16,6 +16,7 @@ import gunbc.design.interaction_cause {
 import extdeps.languages.css.properties { CssPropertyName, Transition, Animation, css_property_wire }
 import extdeps.languages.css.selectors { SelectorSubject, selector_subject_wire }
 import extdeps.languages.css.media_queries { MediaCondition, css_media_rule_wire, reduced_motion }
+import std.optional { Absent, Present }
 // Layer 2 of the site stack: materials, themes, scales. Register laws living here as CONSTRUCTION.
 // ChromaByArea: a Material carries its AreaClass; saturation ceilings are per-area. GlareEnvelope
 // (operator seventh pass, 2026-07-20: the bright saturated cyan read as low-taste gamer blue): a

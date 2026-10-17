@@ -130,6 +130,7 @@ import gunbc.network_boot_delivery {
   NetworkBootManifestRefusal,
   NetworkBootRequirement,
 }
+import std.optional { Present }
 
 // ONE OBLIGATION, N CONSTRUCTORS (machine-intake ruling 2026-08-29 §3, bound by ruling 3
 // §1-§2). 'Virtual CD' is not a phase. Redfish VirtualMedia, the MegaRAC OEM REST remote

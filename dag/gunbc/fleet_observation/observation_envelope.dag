@@ -59,6 +59,7 @@ import gunbc.fleet_observation.capture_chunk {
   CommitNoReceipt,
   range_end,
 }
+import std.optional { Absent, Present }
 
 // THE PUBLISHED INTERFACE. gunbc's acquisition half records bytes; the interpretation half
 // (SEL generation/cursor ingestion, attempt assessment, replay, the derived machine timeline)

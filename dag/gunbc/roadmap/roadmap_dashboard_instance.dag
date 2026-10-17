@@ -82,6 +82,7 @@ import gunbc.host.host_layout {
   srv1_host_layout,
   srv2_host_layout,
 }
+import std.optional { Present }
 
 type DashboardActuationPosture
   = DashboardObserveOnly

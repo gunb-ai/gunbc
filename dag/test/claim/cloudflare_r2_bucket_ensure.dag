@@ -36,6 +36,7 @@ import gunbc.cloudflare.r2_bucket_ensure {
   R2EnsureSigningRefused,
 }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import std.optional { Present }
 
 // THE WITNESS SUPPLIES THE READ AND RUNS THE REAL CLASSIFIERS. The two classifiers are the whole
 // decision surface: classify_r2_bucket_get turns an HTTP outcome into one of the four bucket facts,

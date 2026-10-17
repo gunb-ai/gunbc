@@ -21,6 +21,7 @@ import gunbc.managed_directory {
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_user }
 import gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with }
 import extdeps.access.posix { FileMode, PermissionBits, PosixUser, file_mode_bits, file_mode_octal, file_mode_of_octal_text }
+import std.optional { Present }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
 // POLICY fact of the three (DESIGN 3) -- std.fabric_storage is the interface, the file store and the

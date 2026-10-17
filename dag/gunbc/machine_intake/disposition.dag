@@ -33,6 +33,7 @@ import gunbc.machine_intake.receipt {
   ValidatedIntakeReceiptLedger,
   intake_receipt_structural_fingerprint,
 }
+import std.optional { Present }
 
 // ADMITTED IS DERIVED, NEVER AUTHORED (machine-intake ruling 2026-08-29 §11). The three top-
 // level arms are kept and each preserves WHY it was reached. FleetAdmissionStanding is derived

@@ -46,6 +46,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member,
   parse_json_document,
 }
+import std.optional { Present }
 
 // WHY THIS MODULE EXISTS, and why one lease is not the whole answer.
 //

@@ -11,6 +11,7 @@ import gunbc.workspace_commissioning_directive {
 }
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningPrepared }
 import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
+import std.optional { Present }
 
 // This checks byte consistency only. It is not plan approval, a mutation lease or a start
 // permit. Production preparation must obtain these bytes through the administrator-owned

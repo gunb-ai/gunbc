@@ -56,6 +56,7 @@ import extdeps.vllm.recipe_deepseek_v4_1_flash {
   vllm_recipe_deepseek_v4_1_flash_tool_call_parser, vllm_recipe_deepseek_v4_1_flash_reasoning_parser,
   vllm_recipe_deepseek_v4_1_flash_tokenizer_mode,
 }
+import std.optional { Present }
 // A SERVING ARM IS A CHECKPOINT, A RUNTIME AND A TOPOLOGY -- NOT A MODEL.
 //
 // WHY THIS AXIS IS BEING ADDED, AND WHAT IT COST TO DISCOVER. gunbc.harness.harness_reasoning_wire

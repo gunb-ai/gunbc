@@ -13,6 +13,7 @@ import extdeps.github.actions {
   CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -24,6 +24,7 @@ import gunbc.spark.serving_arm {
   serving_runtime_wire,
   serving_topology_wire,
 }
+import std.optional { Present }
 
 // ── COMPATIBILITY IS A RELATION, AND ATTACHING IT TO A RUNTIME ROW WAS THE DEFECT ───────────────
 //

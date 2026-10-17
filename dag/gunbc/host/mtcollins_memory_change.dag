@@ -29,6 +29,7 @@ import gunbc.host.memory_configuration {
 import gunbc.host.memory_observation { MemoryCollectorReceipt, MemoryCaptureInterval, MemoryPrintedPartBinding, MemoryEvaluationEvidence, MemoryMixtureFinding, MemoryPrintedPositionBinding, memory_collector_refusal, memory_capture_covers_population, read_verified_memory_capture }
 import gunbc.host.memory_change_report { MemoryChangeExplanation, explain_memory_change }
 import gunbc.host.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
+import std.optional { Present }
 
 // The capture is owned by the observing layer. The replay reads its bytes,
 // verifies the committed artifact identity, and joins catalog and layout facts.

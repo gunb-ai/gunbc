@@ -28,6 +28,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, 
 import gunbc.roadmap.workspace_allocation_routes { workspace_route_create_over, workspace_route_release_over, workspace_create_terms }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced }
 import extdeps.http.server { RouteSelection, ServedRouteTableBuilt, ServedRouteTableBuildRefused, serve_select_route, SelectedDynamic, SelectedStatic, MethodNotAllowed, NoRouteMatched }
+import std.optional { Present }
 
 test fn witness_allocation_enrollment_and_csrf_both_required() -> Bool {
   match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {

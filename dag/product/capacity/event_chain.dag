@@ -2,6 +2,7 @@ module product.capacity.event_chain
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, brand }
 import std.nat { Nat, nat_range_inclusive }
+import std.optional { Present }
 
 // A PARTITIONED, IMMUTABLE, CONTENT-ADDRESSED EVENT CHAIN, AND THE ONE DECISION THAT LINEARIZES IT.
 // Every event names its parent; a partition has exactly one mutable thing, its head; an append is

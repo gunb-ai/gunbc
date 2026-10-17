@@ -47,6 +47,7 @@ import std.state_durability {
   SynchronizedCommit,
 }
 import std.types { Bool, List, NonEmptyStr }
+import std.optional { Present }
 
 type BmcFanProjectionApplyRefusalCause
   = BmcFanProjectionAlignmentStandingAbsent

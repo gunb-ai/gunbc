@@ -35,6 +35,7 @@ import gunbc.runner.runner_label_resolution {
   ProviderFromCatalog,
   ProviderUnresolved,
 }
+import std.optional { Absent, Present }
 
 // PUBLIC WORKFLOW-JOB CENSUS (year_end_plan item public-workload-census).
 //

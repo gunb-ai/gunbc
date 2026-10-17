@@ -16,6 +16,7 @@ import gunbc.worker_lifecycle {
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criterion_brief_text }
 import gunbc.design_argument { ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued }
+import std.optional { Present }
 
 // THE REVIEW VERDICT, AS THE REVIEWER WRITES IT AND THE BELT READS IT. Three words because three
 // remedies: approved admits publication; changes requested carries located reasons and feeds the next

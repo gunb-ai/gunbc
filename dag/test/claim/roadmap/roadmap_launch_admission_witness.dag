@@ -68,6 +68,7 @@ import test.claim.roadmap.roadmap_launch_admission_fixture {
 }
 import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapDependencies, readiness_gap_label }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

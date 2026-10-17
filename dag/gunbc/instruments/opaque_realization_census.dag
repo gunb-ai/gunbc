@@ -28,6 +28,7 @@ import gunbc.instruments.host_prelude {
   WitnessBinRefused,
   WitnessBinRefusalReason
 }
+import std.optional { Present }
 
 // THE OPAQUE-REALIZATION CENSUS.
 //

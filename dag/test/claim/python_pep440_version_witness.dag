@@ -1,5 +1,7 @@
 module test.claim.python_pep440_version_witness
 
+import std.optional { Present }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn release_1() -> Pep440ReleaseSegments {

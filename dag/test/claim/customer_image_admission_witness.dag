@@ -56,6 +56,7 @@ import product.fabric.customer_image {
 import std.error_primitives { Ok, Err }
 import std.types { Bool, Int, List, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

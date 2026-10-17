@@ -45,6 +45,7 @@ import gunbc.model.ollama_choice {
   ServingCandidateUnanswerable, MissingFact, MemoryFitUnobservedAtConfiguration,
   qualify_ollama_candidate, choose_ollama_serving_candidate, verdict_is_admissible, verdict_is_unanswerable,
 }
+import std.optional { Present }
 
 // THE FIXTURE IS MEASURED, not invented. Every number here was read off the running nodes or
 // computed from the served model's own GGUF metadata, because a selector validated against

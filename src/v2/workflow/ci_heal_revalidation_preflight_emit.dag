@@ -17,6 +17,7 @@ import v2.std.orchestration {
   StrNonempty
 }
 import extdeps.git { shape_git_rev_parse_head_args }
+import std.optional { Absent }
 
 data ci_heal_expected_head_input_expr: String = "\"${{ inputs.expected_healed_sha }}\""
 data ci_heal_run_subject_head_expr: String = "\"${{ github.sha }}\""

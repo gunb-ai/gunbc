@@ -8,6 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor.asrock_rack { asrock_rack }
 import extdeps.storage.types { PcieLink, Gen5 }
 import extdeps.systems.types { SuperchipCarrierBoardRow, BoardPowerInput, BoardConnector }
+import std.optional { Absent, Present }
 
 // The MECAI-GH200 User Manual, Version 1.00, published Sep. 2024, fetched 2026-10-04 from ASRock's own
 // download server. Appendix A-1 (ARLINGTON-MB layout and connector list), A-2 (block diagram) and A-3

@@ -25,6 +25,7 @@ import gunbc.package_delivery {
   acquire_and_admit_selected_pair,
   TargetClosureAcquisitionOk,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

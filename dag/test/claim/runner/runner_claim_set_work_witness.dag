@@ -18,6 +18,7 @@ import gunbc.fabric.fabric_witness_run {
   FabricCiMovingRefRefused, FabricCiCoordinateMissing, required_witnesses_build_work,
 }
 import gunbc.runner.runner_claim_set_work { claim_set_run_work, claim_set_run_work_with_guest }
+import std.optional { Present }
 
 // FCI-0 FOR THE CLAIM-SET RUN. Every input is supplied at the binder's interface: the source is a
 // fixture commit and tree, the requirements are the floor's (an identity fixture, not a sizing

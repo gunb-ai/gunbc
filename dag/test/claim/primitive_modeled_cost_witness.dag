@@ -42,6 +42,7 @@ import std.primitive_identity {
   primitive_identity_eq,
 }
 import std.types { Bool, Int, List, String }
+import std.optional { Present }
 
 fn modeled_cost_bound(cost: PrimitiveModeledCost) -> CostBound? {
   match cost {

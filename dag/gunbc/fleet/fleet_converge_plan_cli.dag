@@ -231,6 +231,7 @@ import gunbc.fleet.fleet_converge_receipt {
   admit_apply_plan_binding, PlanBindingAdmitted, plan_binding_admission_text,
   PlanBindingRunIdMismatch, PlanBindingHashMismatch, PlanBindingRevisionMismatch, PlanBindingRepositoryMismatch,
 }
+import std.optional { Present }
 // The apply script is written by this CLI and then executed, so its mode is a decision this module
 // makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
 data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"

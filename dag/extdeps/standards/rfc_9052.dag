@@ -7,6 +7,7 @@ import extdeps.crypto.signature { EcdsaP256Sha256, signature_suite_public_key_si
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.rfc_8949 { CborValue, CborUnsigned, CborNegative, CborByteString, CborMap, CborEntry }
+import std.optional { Present }
 
 // RFC 9052, CBOR Object Signing and Encryption (COSE): Structures and Process, §7 (Key Objects):
 // a COSE_Key is a CBOR map keyed by integer labels. The labels and the EC2 parameters are registered

@@ -6,6 +6,7 @@ import std.measure { ByteSize, HardwareThreadCount }
 import extdeps.toolchain.types { Architecture }
 import product.fabric.provider_route { ProviderRoute }
 import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
+import std.optional { Present }
 
 // WHAT SUPPLIES A FLEET HOST, as a fact separate from what the host is FOR. Backing, provisioning and
 // service intent were one fact in practice -- a CI host was assumed to be an owned machine with a BMC

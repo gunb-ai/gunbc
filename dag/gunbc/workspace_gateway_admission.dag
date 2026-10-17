@@ -15,6 +15,7 @@ import extdeps.access.posix { PosixLoginName }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.ssh.openssh_port_forwarding { ForwardingAdmissionSubject, ForwardingAdmission, ForwardingAdmitted, ForwardingAdministrativelyProhibited, ForwardingAdmissionUnobserved, SshLoginPrincipal, SshCertificatePrincipal, LocalForward, ssh_stdio_forward_admission }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import std.optional { Present }
 
 // This is the observation of one real forwarding request, not a host-level declaration that
 // forwarding is enabled. Its receipt must come from the commissioning/live access observer.

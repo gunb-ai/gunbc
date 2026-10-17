@@ -40,6 +40,7 @@ import gunbc.live_deploy.tailnet_door_cutover {
   RestoredAndProven, PriorStillInPlace, RestoreSkippedNewerMapping, RestoreUnproven, RouteLeftAtDoor,
   tailnet_door_cutover_run, serve_cutover_outcome_committed, serve_cutover_outcome_reason,
 }
+import std.optional { Present }
 
 // EVERY CLAIM HERE RUNS THE TRANSACTION ITSELF (gunbc.live_deploy.tailnet_door_cutover
 // tailnet_door_cutover_run) over supplied effects: the journal as a run finds it, the route

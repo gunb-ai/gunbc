@@ -69,6 +69,7 @@ import v2.std.effects {
   sample_upsert_subject
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import std.optional { Present }
 fn idempotent_operation_missing_semantics_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^idempotent_operation_eval_missing_semantics,

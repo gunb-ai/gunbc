@@ -28,6 +28,7 @@ import gunbc.runner.runner_registration_labels {
 }
 import gunbc.runner.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
+import std.optional { Present }
 
 data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."

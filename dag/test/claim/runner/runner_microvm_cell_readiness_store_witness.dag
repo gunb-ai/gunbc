@@ -27,6 +27,7 @@ import gunbc.runner.runner_microvm_cell_readiness_store {
 import gunbc.runner.runner_microvm_cell_readiness {
   CellReadinessStoreOwnership, StoreRootOwned, StoreNotRootOwned,
 }
+import std.optional { Present }
 
 // THE STORE'S CODEC, AND THE ONE THING A CODEC WITNESS MUST NOT DO.
 //

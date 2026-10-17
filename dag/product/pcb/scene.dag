@@ -27,6 +27,7 @@ import product.pcb.world {
   pcb_envelope_reads,
   EstablishedEnvelopeRead,
 }
+import std.optional { Present }
 
 // A TARGET-NEUTRAL ENGINEERING SCENE. The world is projected into elements that name geometry and
 // typed causes, not a drawing medium. SVG is one realization of this scene; a second target must

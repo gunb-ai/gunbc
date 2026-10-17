@@ -33,6 +33,7 @@ import extdeps.pin {
 import extdeps.tools.pin { admit_legacy_cli_tool, cli_tool_pin_key_of }
 import extdeps.package_managers.apt { apt_bin_dir, package_cargo, package_jq }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

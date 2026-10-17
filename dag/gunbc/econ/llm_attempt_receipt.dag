@@ -4,6 +4,7 @@ import std.algebra { FieldOfFractions, fold_list }
 import std.measure { TokenCount, Nanosecond, Joule, nanosecond_count, token_count, token_count_value }
 import std.nat { Nat }
 import std.types { Bool, List, NonEmptyStr, brand }
+import std.optional { Present }
 
 // Typed receipt for one LLM attempt against gunbc work, sibling to gunbc.econ.knowable_wedge and
 // gunbc.econ.scm_serving_model. A RECEIPT in the observing product layer, never a fact owned by an

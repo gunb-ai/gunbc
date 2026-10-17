@@ -60,6 +60,7 @@ import extdeps.google.sheets {
   a1_range_encode,
   a1_range_encoding_text,
 }
+import std.optional { Present }
 
 // THE PALETTE IS CITED AND THE CHANNELS ARE DERIVED. gunbc.design.catalog carries okabe_ito as a
 // CitedUpstream set anchored at jfly.uni-koeln.de, and it is the right set for this sheet for a

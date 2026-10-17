@@ -50,6 +50,7 @@ import extdeps.languages.json.emit {
   json_kv,
   serialize_json,
 }
+import std.optional { Absent }
 
 data witness_scope_note: String = "What is claimed is the ADJUDICATION, not the fetch. adjudicate_publication is pure and total over observations the caller already holds, so every arm is reachable with no network and no token.\\n\\nWhat is NOT claimed, stated so the bound is visible: nothing here executes github.Pulls or git. A change that broke the reads while leaving the adjudication intact would keep these green. What the coproduct inputs buy is that a broken read is now REPRESENTABLE — the caller reports it and the refusal arm is exercised here — where an earlier cut could only raise."
 

@@ -33,6 +33,7 @@ import gunbc.runner.runner_unit_live_read {
   RunnerUnitLiveReadRow,
   runner_unit_live_read_typed,
 }
+import std.optional { Present }
 
 data runner_memory_cap_verify_scope_disposition: Disposition = Terminal {
   reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back over EVERY active runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts summed across slots, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Every live read on this path is a typed service operation: list-units through gunbc.systemctl_list_units, memory properties through gunbc.systemctl_show_read typed systemd.Systemctl.ShowProperty local reads, probed_at through gunbc.clock_read clock_now_probed_at. Any absent enumeration or unit read is a typed RunnerMemoryCapVerifyRefused (fail-closed, DESIGN section 5 — a failure arm refuses, never widens to a converged claim). Host Converged only if every enumerated slot is."

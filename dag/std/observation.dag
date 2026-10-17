@@ -54,6 +54,7 @@ import std.temporal_effect {
   StallBudgetExceeded,
   stall_budget_verdict,
 }
+import std.optional { Absent, Present }
 
 // P0 of the progress-and-observation lane (docs/plans/progress-observation-design.md,
 // operator-signed 2026-07-23; CI-rework delta in that doc section 6b). One event vocabulary emitted

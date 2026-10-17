@@ -51,6 +51,7 @@ import gunbc.auth.gcp_iam_bootstrap_authority {
 import gunbc.auth.approval_gate { approval_instant_now }
 import std.measure { second }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import std.optional { Present }
 
 // Operator-authorized initial setup. This entry does not forge an app approval or workflow
 // identity. Its credential is never a fallback in the ongoing approval-gated job.

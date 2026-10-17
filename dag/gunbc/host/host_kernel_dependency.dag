@@ -10,6 +10,7 @@ import extdeps.package_managers.dpkg { dpkg_record_field, dpkg_query_status_verd
 import extdeps.shell.exec { ProcessObservation }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import std.optional { Present }
 
 // A provider selection is host policy, never a requirement authored by VM code. The selected
 // TUN census asks for TunAttachedQueueRequirement. This Ubuntu realization can establish it

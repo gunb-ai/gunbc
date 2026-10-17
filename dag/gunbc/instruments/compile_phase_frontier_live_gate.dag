@@ -27,6 +27,7 @@ import gunbc.instruments.emission_entry_instrument {
   measure_entry_emission,
   emission_report_text
 }
+import std.optional { Present }
 
 // THE GATE VERB FOR THE LIVE TREE. `gunbc.self_host_compile_phase_frontier` ratchets the persisted
 // receipt series against itself; this actuator supplies the tree as the current row so a regression

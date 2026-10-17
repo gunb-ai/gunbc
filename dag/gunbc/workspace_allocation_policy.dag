@@ -6,6 +6,7 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory, fleet_posi
 import gunbc.workspace_ssh_access { WorkspaceSshAccess, WorkspaceSshFromHost }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_allocation_admission { WorkspaceEnrollmentRoster, WorkspaceOwnerEnrollment, WorkspacePublicKeyCatalogRow, WorkspacePolicyAdmission, workspace_policy_admit, workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
+import std.optional { Present }
 
 // Enrollment is administrator-authored and lands as a reviewed row; the installed release is the
 // root-owned authority the controller reads, so no request, browser or guest can add a row.

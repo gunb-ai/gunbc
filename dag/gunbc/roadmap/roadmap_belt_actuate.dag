@@ -748,6 +748,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.optional { Absent, Present }
 
 // Slice 2b actuation: the belt DECISION (gunbc.roadmap.roadmap_belt.belt_reconcile) is CLOSED against the
 // host by three single-authorities — the actuator's HostExecArgv argv model

@@ -23,6 +23,7 @@ import product.p4261_carrier_layout {
   management_io_text,
   edge_connector_text,
 }
+import std.optional { Absent, Present }
 
 // GH200-1 (2026-10-03). WHAT IT TAKES TO QUALIFY ONE MODULE-ON-CARRIER ASSEMBLY. The operator bought
 // two PG530 modules and one P4261 carrier and will qualify that pair before duplicating it -- and

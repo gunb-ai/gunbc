@@ -13,6 +13,7 @@ import gunbc.artifact_acquisition {
   AcquisitionOutcome, AcquisitionRefused, AcquisitionRefusal, NoSourceDeclared,
   acquisition_refusal_text, acquisition_succeeded,
 }
+import std.optional { Absent, Present }
 
 // MODEL WEIGHT ACQUISITION FOR THE SPARK SERVING GROUPS: which snapshot a group must hold, and the
 // modelled way to bring it there.

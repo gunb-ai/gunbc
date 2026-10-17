@@ -31,6 +31,7 @@ import gunbc.spark.training_ready {
   SparkUnifiedPoolRead,
   SparkUnifiedPoolUnread,
 }
+import std.optional { Present }
 
 // SPARK-PAIR-0 P0. The readiness gate's discriminating evidence. Every red here is a state the
 // corpus can still author — an unreached probe read as absence, a reading paired with an

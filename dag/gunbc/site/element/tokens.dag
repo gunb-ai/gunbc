@@ -24,6 +24,7 @@ import gunbc.design.scale {
 import extdeps.languages.css.values { GenericFamily, GenericMonospace, NamedFamily }
 import extdeps.fonts.google_fonts { google_sans_source }
 import extdeps.languages.css.properties { CustomProperty }
+import std.optional { Absent, Present }
 
 // The length and font tokens of the internal tools frontend, each built from the upstream
 // measurement it adopts (extdeps.google.issue_tracker) with the constructors of

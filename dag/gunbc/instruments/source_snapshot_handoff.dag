@@ -148,6 +148,7 @@ import gunbc.instruments.scm_acceptance_binary {
   cargo_selection_detail,
 }
 import std.algebra { trim }
+import std.optional { Present }
 
 // ── THE SNAPSHOT'S CONTENTS ──────────────────────────────────────────────────────────────────
 //

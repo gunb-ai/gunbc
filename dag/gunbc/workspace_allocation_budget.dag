@@ -6,6 +6,7 @@ import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceReservation }
 import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceReleased, WorkspaceRecorded }
 import gunbc.workspace_allocation_release { workspace_release_read, WorkspaceReleasePrepared, WorkspaceReleaseRefused }
 import product.fabric.budget { MoneyAccount }
+import std.optional { Present }
 
 type WorkspaceBudgetRead
   = WorkspaceBudgetObserved { account: MoneyAccount }

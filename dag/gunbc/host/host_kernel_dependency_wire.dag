@@ -7,6 +7,7 @@ import extdeps.linux.kernel { LinuxKernelRelease }
 import extdeps.linux.tun_fdinfo { TunAttachedQueueRequirement }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_kernel_dependency { HostKernelDependencyPlan, InstallKernelAndActivate, ActivateInstalledKernel, tun_kernel_provider_for_host, kernel_provider_selection }
+import std.optional { Present }
 
 data host_kernel_dependency_row_prefix: String = "commissioning-kernel-dependency:"
 

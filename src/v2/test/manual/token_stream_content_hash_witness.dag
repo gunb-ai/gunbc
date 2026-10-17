@@ -1,6 +1,7 @@
 module v2.test.manual.token_stream_content_hash_witness
 
 import v2.std.node { Hash }
+import std.optional { Absent, Present }
 
 fn token_hash_step(acc: Hash, t: Token) -> Hash {
   combine_hash(

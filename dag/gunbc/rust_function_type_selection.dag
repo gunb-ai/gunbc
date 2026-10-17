@@ -44,6 +44,7 @@ import extdeps.languages.rust.function_type_forms {
   rust_reference_trait_object,
   rustc_error_e0562,
 }
+import std.optional { Absent }
 
 // WHICH RUST FORM REALIZES A RETURNED CLOSURE AT EACH POSITION, AS A SELECTION (DESIGN section 3d).
 // The candidate field is Rust's two forms (extdeps.languages.rust.function_type_forms); this module

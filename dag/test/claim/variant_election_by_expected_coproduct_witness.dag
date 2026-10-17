@@ -9,6 +9,7 @@ import gunbc.compile_diagnostic_census {
   census_rows_of_class,
   census_total_count,
 }
+import std.optional { Absent }
 
 // A BARE VARIANT IN VALUE POSITION IS ELECTED BY THE EXPECTED COPRODUCT'S DECLARATION, NEVER BY ITS
 // SPELLING (neat-boar-16 ruling, 2026-10-01). The authority is v1.compiler.infer

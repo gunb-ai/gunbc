@@ -154,6 +154,7 @@ import gunbc.roadmap.roadmap_workflow_stage {
   workflow_segment_detail_bounded,
 }
 import gunbc.v1.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted, v1_finish_lines_accepted_count }
+import std.optional { Present }
 
 fn roadmap_page_max_depth() -> Int { 12 }
 

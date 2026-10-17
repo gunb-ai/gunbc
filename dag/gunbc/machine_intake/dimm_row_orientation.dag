@@ -20,6 +20,7 @@ import gunbc.mt_collins_dimm_physical_identity {
 import gunbc.host.baseboard_dimm_figure {
   BaseboardDimmFigure, MtCollinsGettingStartedGuideFigures, figure_chassis_orientation,
 }
+import std.optional { Absent, Present }
 
 // THE PHYSICAL ORIENTATION OF A DIMM ROW, AS LOGIC OVER A BOARD FIGURE: the vocabulary a unit's
 // placement readings are written in, and the folds that resolve which way the row is read. Every fold

@@ -29,6 +29,7 @@ import std.decision {
   CausalModelPopulation,
   CausalModelUnestablished,
 }
+import std.optional { Absent }
 
 // FIRST CONSUMER OF std.decision: fleet operating-point selection.
 //

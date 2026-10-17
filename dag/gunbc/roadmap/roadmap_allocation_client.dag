@@ -9,6 +9,7 @@ import extdeps.languages.typescript.program {
 
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_prefix, allocation_release_suffix }
 import gunbc.roadmap.workspace_allocation_wire { workspace_write_unavailable_wire }
+import std.optional { Present }
 
 fn js_id(name: String) -> TsExpr { ts_ident(name: name) }
 fn js_get(object: TsExpr, property: String) -> TsExpr { ts_member(object: object, property: property) }

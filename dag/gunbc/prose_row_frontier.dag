@@ -2,6 +2,7 @@ module gunbc.prose_row_frontier
 
 import std.types { Bool, Int, String, List }
 import std.optional { Optional }
+import std.optional { Present }
 
 // DESIGN 4c rules that unclassified prose is forbidden and that `//` is the quarantine boundary, so a
 // prose-only `data NAME_note: String` row is debt in a representation no lens can classify. The wall

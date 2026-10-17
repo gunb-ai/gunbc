@@ -78,6 +78,7 @@ import gunbc.compile_diagnostic_census {
   CensusNotRunnable,
   census_count_at_key,
 }
+import std.optional { Present }
 
 // THE SUBJECT IS FOUR PURE INTERFACES: the lowering (plan -> ranges), the request build
 // (plan -> one batch request), the dispatch (mutation standing -> readback owed or settled), and

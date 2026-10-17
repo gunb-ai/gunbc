@@ -11,6 +11,7 @@ import std.markup {
   Fragment, Element, FragmentText, RawNode, Attribute, attr,
   attr_is_url_attr,
 }
+import std.optional { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

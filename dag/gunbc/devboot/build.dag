@@ -100,6 +100,7 @@ import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import extdeps.toolchain.types { ToolchainRequirement, TargetTriple }
 import gunbc.build_identity { materialized_tree_build_identity_text }
 import std.algebra { trim }
+import std.optional { Present }
 
 // GUNBC BUILD RETURNS ONE EXACT EXECUTABLE TO A REMOTE AGENT.
 //

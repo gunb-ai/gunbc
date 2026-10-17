@@ -63,6 +63,7 @@ import extdeps.git.worktree_enumeration {
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.optional { Absent, Present }
 
 // WHY THIS MODULE EXISTS, AS A MEASUREMENT RATHER THAN A PREFERENCE.
 //

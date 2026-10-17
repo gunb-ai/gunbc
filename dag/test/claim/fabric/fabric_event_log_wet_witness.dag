@@ -11,6 +11,7 @@ import gunbc.fabric.fabric_event_log {
   event_log_append, EventAppended, EventAppendStale, EventAppendRefused,
   event_log_read_partition, PartitionReadOk, PartitionReadRefused,
 }
+import std.optional { Present }
 
 // THE EVENT LOG OVER THE FABRIC DB, by real execution against a store in a temporary directory: the
 // production append and read, through the file binding the placed host uses. This is the route the

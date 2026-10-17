@@ -18,6 +18,7 @@ import gunbc.fabric.fabric_event_log {
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire,
   PoolTransition, PoolTransitionAppended, fabric_pool_transition, pool_transition_wire,
 }
+import std.optional { Present }
 
 // A CALLER LEASES UPSTREAM QUOTA BEFORE IT SPENDS IT. The lease holds the calls it is about to
 // make against the upstream's pool on the fleet-wide partition for that scope; the settlement

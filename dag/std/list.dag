@@ -1,6 +1,7 @@
 module std.list
 
 import std.types { List, Bool, String, Map, Int }
+import std.optional { Present }
 // Temporary realization: the seed intercepts algebra.contains and discards eq.
 // Tracking: gunbc.list_membership_operation_gap. Retire list_member and rewire
 // list_cover when the declared contains route executes caller equality, with the

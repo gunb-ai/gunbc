@@ -30,6 +30,7 @@ import std.measure { ByteSize }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String, NonEmptyStr, Sha256, Milliseconds, List }
 import std.disposition { Disposition, Terminal }
+import std.optional { Present }
 
 data gunbc_srv3_install_media_fetch_scope_disposition: Disposition = Terminal {
   reason: "srv3 Ubuntu 24.04.3 live-server arm64 ISO acquisition — CreateIfAbsent keyed on content_sha256; N mirror transport handlers on one cited artifact row; runnable on srv1 actuator host before nbd-proxy serve."

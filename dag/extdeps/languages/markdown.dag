@@ -68,6 +68,7 @@ import std.markdown {
   markdown_document_to_fragment,
 
 }
+import std.optional { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

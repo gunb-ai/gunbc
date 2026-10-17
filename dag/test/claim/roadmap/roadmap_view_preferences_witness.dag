@@ -3,6 +3,7 @@ module test.claim.roadmap.roadmap_view_preferences_witness
 import gunbc.roadmap.roadmap_view_preferences { IssueViewPreferences, ViewSortTerm, ViewAscending, ViewDescending, issue_view_preferences_json, issue_view_preferences_of, view_sort_of }
 import extdeps.google.issue_tracker { IssueSortStatus, IssueSortPriority }
 import extdeps.languages.json.emit { serialize_json }
+import std.optional { Present }
 
 
 fn view_fixture() -> IssueViewPreferences {

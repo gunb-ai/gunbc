@@ -18,6 +18,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
   carrier_snapshot_close_failures, carrier_report_with_snapshot_close,
 }
+import std.optional { Present }
 
 // THE ONE WRITER. A session, an operator or a harness worker records a fact about a node with
 //   gunbc run --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_record_cli \

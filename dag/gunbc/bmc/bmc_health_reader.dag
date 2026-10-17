@@ -17,6 +17,7 @@ import extdeps.languages.json.parse {
   JsonDocumentUnreadable,
   parse_json_document,
 }
+import std.optional { Present }
 
 // THE LEAST-PRIVILEGED PRINCIPAL THE FLEET HEALTH CHECK READS A BMC AS.
 //

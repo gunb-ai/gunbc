@@ -39,6 +39,7 @@ import v2.std.operation_argv {
   operation_argv_cause_label,
   operation_ref_label,
 }
+import std.optional { Present }
 
 // THE DEFECT THIS MODULE EXISTS TO REMOVE, stated once here rather than repeated at each caller.
 //

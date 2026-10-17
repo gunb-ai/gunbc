@@ -48,6 +48,7 @@ import gunbc.fabric.fabric_control_plane {
   fabric_control_plane_store_root,
   bind_fabric_cell_candidate, broker_reserve_for_demand, FabricCellCandidate,
 }
+import std.optional { Present }
 
 // Evidence for the PURE half of the broker. The reserve path performs a host
 // effect, so it is refused under the floor's hermetic envelope and its evidence

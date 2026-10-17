@@ -61,6 +61,7 @@ import std.state_durability {
 }
 import std.types { Bool, List, NonEmptyStr, list_length, brand }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

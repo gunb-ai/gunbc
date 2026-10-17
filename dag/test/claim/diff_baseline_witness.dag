@@ -45,6 +45,7 @@ import extdeps.git.object_store {
 import gunbc.repo.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
 import extdeps.git.hooks { zero_sha }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

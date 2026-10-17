@@ -18,6 +18,7 @@ import gunbc.auth.approval_enrolment_handshake {
   ConfirmLapsed, ConfirmSignatureRefused, ConfirmNothingPending, confirm_admission,
   deciding_enrollment,
 }
+import std.optional { Present }
 
 // ── THE RED PER LEG: one claim per lost answer in docs/plans/approval-enrolment-handshake.md ──
 // Each claim supplies the slot a lost leg leaves behind and asserts the typed exit the phone takes.

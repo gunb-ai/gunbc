@@ -5,6 +5,7 @@ import gunbc.process_algebra { ProcessNodeId }
 import gunbc.review_verdict { MergeReadinessTally }
 import gunbc.pr_digests { MergeReadinessVerdict, Ready, NotReady }
 import extdeps.github.pulls { PullRequest, PullRequestState, Open, Closed }
+import std.optional { Absent }
 
 type CodeChangeActiveStage
   = ChangeOpen

@@ -20,6 +20,7 @@ import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, 
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text, json_field, FieldRead, FieldAbsent, FieldMalformed,
 }
+import std.optional { Present }
 
 // ── What this module is ──────────────────────────────────────────────────────────────────────
 // THE BYTE CONTRACT BETWEEN THE SERVER AND THE APP, and nothing else: the platform names, the

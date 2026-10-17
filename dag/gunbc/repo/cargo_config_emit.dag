@@ -8,6 +8,7 @@ import extdeps.rust.cargo_config {
   CargoConfigEnvVar, CargoAnnotatedEnvVar, CargoBuildConfig, CargoBuildAnnotations,
   cargo_config_document
 }
+import std.optional { Present }
 
 // THE COMMITTED PROJECTION OF THIS REPOSITORY'S OWN CARGO CONFIGURATION, and the only channel
 // through which the warning denial reaches an ORDINARY `cargo build` or `cargo test` run from a

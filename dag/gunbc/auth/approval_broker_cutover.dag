@@ -36,6 +36,7 @@ import gunbc.auth.approval_cutover_posture {
   ApprovalCutoverPosture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone,
   approval_cutover_posture, approval_cutover_posture_label,
 }
+import std.optional { Absent, Present }
 
 // ── MOVING THE APPROVAL LOOP WITHOUT EVER HAVING TWO WRITERS ─────────────────────────────────
 // THE HAZARD IS NOT THE MOVE, IT IS THE OVERLAP. The approval store keeps 0600 generations under a

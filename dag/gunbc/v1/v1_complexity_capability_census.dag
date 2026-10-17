@@ -6,6 +6,7 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.algebra { length }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, decl_ref }
+import std.optional { Absent, Present }
 
 // C0(b1) of the v2 complexity capability parity program: a REVIEWED capability roster over
 // src/v1/complexity.dag, with every citation carried as a typed DeclarationRef that resolves

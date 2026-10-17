@@ -7,6 +7,7 @@ import std.encoding { base64_decode, Standard }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_event_log { EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, CarrierClosed, roadmap_event_append }
+import std.optional { Present }
 
 // Authorization precedes this boundary. The operation is a submission identity, independent of
 // comment text or the observation clock. Native forms receive it before submission, just as JS does.

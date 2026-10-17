@@ -59,6 +59,7 @@ import v2.extdeps.formats.icestorm_pcf {
   SetIo,
   pcf_emit,
 }
+import std.optional { Present }
 
 // THE PIN CHAIN, AND THE COPIED STRING IT EXISTS TO MAKE IMPOSSIBLE. A signal reaches a package pin
 // through four separate facts, each owned somewhere else: the article declares a logical signal,

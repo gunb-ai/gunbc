@@ -69,6 +69,7 @@ import gunbc.ci.ci_layer_roots {
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
+import std.optional { Present }
 
 data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness.dag"
 

@@ -8,6 +8,7 @@ import extdeps.tools { CliTool, SourceGitHubRelease }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

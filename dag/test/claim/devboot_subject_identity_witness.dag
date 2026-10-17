@@ -100,6 +100,7 @@ import gunbc.devboot.outcome {
   ReuseSubjectMismatch,
   ReuseUnavailable,
 }
+import std.optional { Present }
 
 // The tree object ids below are REAL, read out of this repository during the DEVBOOT re-observation
 // rather than invented to look plausible. clean_tree_hex is `git write-tree` over a temp index

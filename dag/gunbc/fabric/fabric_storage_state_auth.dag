@@ -7,6 +7,7 @@ import extdeps.crypto.mac { MacKey, MacKeyId, MacSigned, MacKeyMaterialNotHex, M
 import extdeps.languages.json.emit { JsonValue, JsonString, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import std.optional { Present }
 
 // This key is a distinct service authority: it cannot mint approval capabilities. Custody must
 // provision it to the admitted website/controller processes before state migration is activated.

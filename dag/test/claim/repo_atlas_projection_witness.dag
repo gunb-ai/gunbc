@@ -65,6 +65,7 @@ import extdeps.git {
   AwaitingSinglePath,
   TwoDot
 }
+import std.optional { Absent, Present }
 
 // THE FIXTURES ARE AUTHORED, THE POPULATIONS ARE CONTROLLED, AND THE ORACLES ARE INDEPENDENT OF THE
 // MEASUREMENT. Every count asserted below comes from a planted input — one planted collision, one

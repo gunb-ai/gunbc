@@ -107,6 +107,7 @@ import gunbc.machine_intake.receipt {
   ReceiptSatisfied,
   same_intake_subject,
 }
+import std.optional { Present }
 
 // ROTATION IS A REFUSING STEP, NOT A RECORDED INTENTION (machine-intake design
 // doc §6 and its discriminating control in §16: "Leave factory credential

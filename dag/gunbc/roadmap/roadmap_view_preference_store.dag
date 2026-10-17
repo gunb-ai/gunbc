@@ -9,6 +9,7 @@ import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDig
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.durable_cas_file_store { observe_cas_slot_state, admit_cas_attempt_for_derived_payload, file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import std.durable_compare_and_set { CasExpectation, CasObservedUnreadable, CasObservedReadable, CasReadableAbsent, CasReadablePresent, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_count, CasCommitted, CasPreconditionFailed, CasStoreRefused }
+import std.optional { Present }
 
 type IssueViewStored = IssueViewAbsent | IssueViewFound { prefs: IssueViewPreferences, revision: Int, expected: CasExpectation } | IssueViewUnread
 type IssueViewSaved = IssueViewSaveOk { revision: Int } | IssueViewSaveConflict | IssueViewSaveRefused

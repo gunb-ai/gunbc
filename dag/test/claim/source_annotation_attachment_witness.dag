@@ -20,6 +20,7 @@ import std.source_annotation {
   keyed_annotation_rows_agree,
   source_annotation_graph_rows
 }
+import std.optional { Present }
 
 // THE GAP RULE ON A SUPPLIED ROSTER, independent of any parser. One synthetic module, laid out so
 // every position a comment can occupy appears once:

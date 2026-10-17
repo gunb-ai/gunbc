@@ -32,6 +32,7 @@ import std.measure { byte_size, hertz, MoneyAmountMicro, money_amount_micro_coun
 import std.nat { Nat }
 import std.types { NonEmptyStr, List, LogicalTime, Bool, String }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
+import std.optional { Present }
 
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
 

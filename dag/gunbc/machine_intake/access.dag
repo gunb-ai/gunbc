@@ -27,6 +27,7 @@ import extdeps.board_authority { BoardAuthorityLookup }
 import gunbc.board_authority_binding { board_authority_bindings }
 import gunbc.machine_intake.subject { MachineIntakeSubject }
 import gunbc.machine_intake.receipt { EvidenceRef, same_intake_subject }
+import std.optional { Present }
 
 // THE ACCESS CONTEXT IS BOUND ONCE, BEFORE THE DELIVERY SOLVER RUNS (machine-intake ruling 3
 // §1 and its layer-placement ruling; ruling 4 §1, §4, §5). extdeps.bmc.access_profile owns the

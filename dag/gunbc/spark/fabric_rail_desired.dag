@@ -6,6 +6,7 @@ import product.host_identity { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import extdeps.netplan.netplan { netplan_config_dir }
 import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_observations, fabric_lane_for_host, fabric_leg_cable_observed }
+import std.optional { Present }
 
 // THE SWITCHED RAIL'S ADDRESSING, DERIVED FROM THE OBSERVED LANE. One /24 for the whole fabric, since
 // every leg lands in one bridge; a host's address is a function of the cage and lane it was seen

@@ -22,6 +22,7 @@ import std.goal_assessment {
   assess_by_deviations_and_unknowns,
   inspect_goal,
 }
+import std.optional { Present }
 
 // THE JOIN, AND IT IS DRIVEN BY THE EXPECTATION RATHER THAN BY THE OBSERVATIONS.
 //

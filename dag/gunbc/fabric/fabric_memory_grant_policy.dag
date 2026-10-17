@@ -14,6 +14,7 @@ import product.fabric.memory_grant {
   MemoryGrantProvenance, GrantedAgainstStatedRequirement, GrantedUnderCompatibilityPermit,
   MemoryCompatibilityPermit, issue_memory_grant,
 }
+import std.optional { Present }
 
 // THE REQUIREMENT-TO-GRANT POLICY FOR THIS FLEET'S microVM ATTEMPTS, AND THE SOLE PRODUCER OF A
 // product.fabric.memory_grant MemoryGrant<P, MicroVmMemoryGrantAuthority>.

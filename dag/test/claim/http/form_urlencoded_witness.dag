@@ -2,6 +2,7 @@ module test.claim.http.form_urlencoded_witness
 
 import std.types { Bool }
 import extdeps.http.form_urlencoded { form_decode, form_field, FormRefused }
+import std.optional { Present }
 
 test fn browser_encoded_multiline_is_one_field() -> Bool {
   let decoded = form_decode(wire: "csrf=token&expected_revision=&body=first%0D%0Acsrf%3Dforged%0D%0A%2B+%26%3D+%E2%98%83")

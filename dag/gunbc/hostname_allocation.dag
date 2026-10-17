@@ -26,6 +26,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_3dde7f,
 }
 import gunbc.host_names.gen_z { host_name_first_parts, gen_z_last_parts }
+import std.optional { Absent }
 
 // A HUMAN NAME HAS THREE SHAPES AND NO OTHER: a middle part exists only beside a last part, so
 // that invalid state has no constructor rather than a validator. Each part is one DNS label, and the

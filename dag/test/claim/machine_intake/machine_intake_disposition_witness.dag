@@ -111,6 +111,7 @@ import gunbc.machine_intake.disposition {
   derive_fleet_admission,
   phase_standing,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

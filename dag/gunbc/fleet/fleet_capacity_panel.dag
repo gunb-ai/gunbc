@@ -15,6 +15,7 @@ import gunbc.fleet.fleet_capacity_control {
   withdrawal_cause_label, withdrawal_cause_detail,
   active_host_count, active_provider_count,
 }
+import std.optional { Present }
 
 // THE FLEET CAPACITY PANEL ON THE DAILY WORKSPACE.
 //

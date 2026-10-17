@@ -31,6 +31,7 @@ import extdeps.zhipu.glm_5_3_flash {
   GlmEffortHigh, GlmEffortMax, glm_5_3_flash_reasoning_effort_wire,
   glm_5_3_flash_vllm_tool_call_parser,
 }
+import std.optional { Present }
 
 // THE REASONING WIRE SEAM. The harness used to import extdeps.deepseek.deepseek_v4 directly and name
 // its kwargs, its end token and its reasoning field in twelve places, so "which model is served" and

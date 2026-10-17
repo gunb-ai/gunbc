@@ -14,6 +14,7 @@ import extdeps.archive.format {
 import std.types { NonEmptyStr, String, List }
 import std.measure { ByteSize, byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.optional { Present }
 
 // CITED UPSTREAM FACTS ONLY. Install and extract live in gunbc.package_delivery once #8225 lands
 // (Ollama as the second runtime-bundle consumer beside Codex). This module owns the pinned release

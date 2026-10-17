@@ -36,6 +36,7 @@ import std.primitive_projection {
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
   primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_octets_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
 }
+import std.optional { Present }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
 // mechanism across five carriers, five refusal variants typed, three refusal detectors executing

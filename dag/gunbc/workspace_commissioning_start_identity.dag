@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr }
 import std.content_hash { content_hash_validate_lower_hex_length }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
+import std.optional { Present }
 
 // systemd snapshots this independently of the immutable reviewed provenance. Rearming after
 // a fence changes this identity; a process carrying the predecessor snapshot cannot win CAS.

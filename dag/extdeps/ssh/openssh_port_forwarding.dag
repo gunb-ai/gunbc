@@ -11,6 +11,7 @@ import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.ssh.openssh_client_commands { openssh_client_program }
 import extdeps.network.endpoint { SocketAddress, NetworkHost, render_network_host, render_uri_host }
 import extdeps.access.posix { PosixLoginName }
+import std.optional { Present }
 
 data openssh_forwarding_client_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -5,6 +5,7 @@ import std.measure { ByteSize, FiniteByteSize, byte_size_count, finite_byte_size
 import std.decl_ref { DeclarationRef }
 import product.fabric.envelope { MemoryRequirement }
 import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey }
+import std.optional { Present }
 
 // A REQUIREMENT IS NOT A GRANT, AND THIS MODULE EXISTS BECAUSE THE FABRIC HAD ONLY THE FIRST WORD.
 //

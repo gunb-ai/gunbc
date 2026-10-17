@@ -44,6 +44,7 @@ import extdeps.cloud.vast_ai { VastAiCreateAskRequest, VastAiChangeBidRequest }
 import std.decimal { ExactDecimal }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, File }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

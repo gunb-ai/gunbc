@@ -20,6 +20,7 @@ import product.fabric.work {
   ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity, TrustDomainRef,
  WarmResidencyRequired,
 }
+import std.optional { Present }
 
 data floor_demand_disposition: ConstructionMechanism = SingleAuthority
 

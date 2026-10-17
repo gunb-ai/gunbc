@@ -71,6 +71,7 @@ import gunbc.membership_reconcile {
 import std.temporal_effect { StallWithinBudget }
 import std.upsert_decision { Conflict, Inaccessible, ObservationVerdict, UnknownRefused }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -12,6 +12,7 @@ import extdeps.crypto.mac {
   MacSigning, MacSigned, MacKeyMaterialNotHex,
   mac_verification_reason, mac_suite_name, mac_sign,
 }
+import std.optional { Present }
 
 // ── What a capability link is, and what it is not ────────────────────────────────────────────
 // The operator receives a URL on their phone and taps Approve or Deny. This module models what

@@ -4,6 +4,7 @@ import std.measure { Millisecond, millisecond_count }
 import std.types { Bool, CommitSha, Int, List, Port, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.optional { Present }
 
 // One-consumer realization helper: only the generated dispatch emitter consumes this spelling,
 // and the spelling never enters CLI identity, build identity, receipts, cache keys, or product

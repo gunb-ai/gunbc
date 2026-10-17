@@ -29,6 +29,7 @@ import std.measure {
 import extdeps.ollama.server_env {
   ollama_context_length_env_assignment, ollama_num_parallel_env_assignment,
 }
+import std.optional { Present }
 
 // CHOOSING WHAT TO SERVE, as a function rather than as an argument.
 //

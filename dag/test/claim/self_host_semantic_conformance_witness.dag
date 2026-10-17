@@ -35,6 +35,7 @@ import gunbc.semantic_conformance {
   conformance_exit_gate,
   subjects_conflict,
 }
+import std.optional { Absent, Present }
 
 fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
 

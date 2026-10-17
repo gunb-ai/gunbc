@@ -65,6 +65,7 @@ import gunbc.codex_supervised_turn {
 import gunbc.codex_supervised_turn_run { run_codex_supervised_turn }
 import gunbc.provider_turn_adjudication { press_display_finished }
 import extdeps.shell
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -46,6 +46,7 @@ import std.occurrence_binding_resolve {
   OccurrenceReferenceBindingDecided,
   OccurrenceReferenceBindingTransportRefused,
 }
+import std.optional { Present }
 
 // P2a: THE structural candidate producer that hands supplied candidates to
 // std.occurrence_binding_resolve.resolve_reference_occurrence_binding (P1). P1 owns exact-identity

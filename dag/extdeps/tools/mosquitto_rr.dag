@@ -9,6 +9,7 @@ import extdeps.tools.mosquitto_pub { mosquitto_pub_pinned_version }
 import extdeps.oasis.mqtt { MqttEndpoint, MqttTopic }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "mosquitto.org/man/mosquitto_rr-1.html" }

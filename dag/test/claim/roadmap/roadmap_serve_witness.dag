@@ -94,6 +94,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.auth.approval_status_wire { filed_approval_status_text, StatusNotFiled }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT }
+import std.optional { Present }
 
 // Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below
 // goes RED (nothing selects) — the discriminating direction; the production path never does this

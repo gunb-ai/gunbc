@@ -51,6 +51,7 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, js
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
 import extdeps.crypto.signature { EcdsaP256Sha256, Sec1Uncompressed }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+import std.optional { Present }
 
 // ── What this module is ──────────────────────────────────────────────────────────────────────
 // The protocol between the roadmap server and the operator's phone for redeeming an approval with

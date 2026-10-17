@@ -24,6 +24,7 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_team_identifier, sample_bundle_identifier,
   sample_assertion_counter, sample_client_data,
 }
+import std.optional { Present }
 
 // THE VERIFIER FOLDS OVER APPLE'S REAL OBJECT. The sample predates the two extension steps (9 and
 // 10: apple_validation_category_01 and apple_bundle_version_01 in authData's extensions map), so

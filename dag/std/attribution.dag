@@ -28,6 +28,7 @@ import std.measure {
   compare_instants,
 }
 import std.observation { OccurrenceId }
+import std.optional { Absent, Present }
 
 // TIME NOT ACCOUNTED FOR IS A SET COMPLEMENT, NEVER A SUBTRACTION. The tempting reduction is
 // parent_total minus the sum of the children, which produces a number under every input and is

@@ -4,6 +4,7 @@ import v2.std.node { Authored }
 
 import v2.std.witness { Holds, Violates, Witness }
 import v2.extdeps.languages.rust { rust_target_model_staging }
+import std.optional { Present }
 
 data rung34_emit_host_rust_target_model: TargetModel = rust_target_model_staging()
 

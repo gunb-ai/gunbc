@@ -44,6 +44,7 @@ import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
 }
+import std.optional { Present }
 
 // ── READING A LIVE RANK, WHICH IS THE THING THIS CORPUS COULD NOT DO ──────────────────────────
 //

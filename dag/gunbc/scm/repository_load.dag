@@ -90,6 +90,7 @@ import gunbc.scm.repository_envelope {
   RepositoryProtocolNotAProtocolRefusal,
   repository_generation_of_content,
 }
+import std.optional { Present }
 
 // THE REFUSALS ARE THEIR OWN TYPE SO A CONSUMER CAN CARRY ONE WITHOUT BEING ABLE TO HOLD A SUCCESS.
 // A layer above this -- a command surface, a serving handler -- needs to say "the repository was not

@@ -1,5 +1,7 @@
 module std.stack
 
+import std.optional { Present }
+
 type Stack<T>
   = Empty
   | Push { top: T, rest: Stack<T> }

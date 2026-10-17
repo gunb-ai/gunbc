@@ -8,6 +8,7 @@ import gunbc.auth.approval_device_wire { MobilePlatform, MobileIos, MobileAndroi
 import gunbc.auth.approval_device_redemption {
   EnrolmentChallenge, VerifiedPlatformEvidence, IosAttestedAppInstance, AndroidAttestedDecisionKey,
 }
+import std.optional { Present }
 
 // ── ENROLMENT IS A HANDSHAKE, NOT ONE POST ───────────────────────────────────────────────────
 // The design is docs/plans/approval-enrolment-handshake.md; this module is its authority. One POST

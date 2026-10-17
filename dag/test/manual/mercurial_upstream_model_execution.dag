@@ -49,6 +49,7 @@ import test.claim.mercurial_upstream_model_witness {
 import std.bytes { octets_bytes }
 import std.types { NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

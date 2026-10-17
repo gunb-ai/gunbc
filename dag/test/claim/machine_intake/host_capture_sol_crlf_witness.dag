@@ -12,6 +12,7 @@ import gunbc.host.boot_medium { BootMedium }
 import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

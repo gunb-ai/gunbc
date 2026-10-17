@@ -13,6 +13,7 @@ import extdeps.fans.arctic { arctic_p8_published_airflow }
 import extdeps.printing.fdm { FilamentTechnicalDataSheetRow }
 import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_operating_ambient_max }
+import std.optional { Present }
 
 // Bulk-air sensitivity only: dT = Q / (rho V cp), with the explicit 20 C air
 // properties. Catalog free-air flow is not installed flow; a percentage of that flow

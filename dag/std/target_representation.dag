@@ -3,6 +3,7 @@ module std.target_representation
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import std.kernel_type_name { KernelTypeName }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.optional { Present }
 
 // THREE IDENTITIES THAT ONE CHECKPOINT ROW USED TO FUSE, separated because each has a different
 // owner and a different reason to change. A std.coercion TypeCheckpoint row says "the dag name X

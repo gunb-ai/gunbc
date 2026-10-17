@@ -2,6 +2,7 @@ module gunbc.auth.approval_app_attest_config
 
 import std.types { NonEmptyStr, Int, List }
 import extdeps.apple.app_attest { AppIdPrefix, AppAttestEnvironment, AppAttestDevelopment, app_attest_app_id }
+import std.optional { Present }
 
 // THE FACTS THE APP ATTEST VERIFIER IS CONFIGURED WITH, and who owns each. The bundle identifier
 // is the app's (apps/approve-ios/project.yml PRODUCT_BUNDLE_IDENTIFIER). The App ID prefix is

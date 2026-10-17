@@ -71,6 +71,7 @@ import extdeps.languages.css.properties {
   AlignItems, Background, BorderCollapse, BorderRadius, BoxShadow, Display, FlexDirection, FlexWrap, Gap, GridTemplateColumns,
   Height, Margin, MaxWidth, MinHeight, MinWidth, Padding, Width, RawProperty,
 }
+import std.optional { Present }
 
 // The specimen: every element of the internal tools frontend in every variant, built only from
 // the production element functions, on one page. It is where an element is looked at before a

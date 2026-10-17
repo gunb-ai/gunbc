@@ -24,6 +24,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   filesystem_listing_observation, filesystem_listing_entry_names,
 }
+import std.optional { Present }
 
 // THE RECORD A WORKER UNIT LEAVES WHEN ITS PROCESS ENDS (dogfood interventions #4 and #6, gunbc#13124).
 // The unit's stop hook creates ONE directory in the

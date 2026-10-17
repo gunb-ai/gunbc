@@ -51,6 +51,7 @@ import gunbc.scm.log {
   LoggedCommitRootIsSemanticNode,
   LoggedCommitRootMissingFromStore,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

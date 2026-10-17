@@ -14,6 +14,7 @@ import extdeps.land_pattern.types {
   QuadRowLandGeometry,
   VendorRecommendedLandPattern,
 }
+import std.optional { Present }
 
 // The DP83867IR datasheet, read 2026-08-14 for its mechanical pages only. It reprints TWO package
 // drawings — PAP0064M, a 64-pin quad flatpack, and RGZ0048B, a 48-pin quad flatpack no-lead. The

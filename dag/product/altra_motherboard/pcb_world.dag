@@ -124,6 +124,7 @@ import product.altra_motherboard.minimal_design {
   topology_slot_identities,
   altra_1p_minimum,
 }
+import std.optional { Present }
 
 // THE ALTRA BOARD AS A PROJECTION OF 8233'S PLACEMENT PLAN INTO THE SHARED PCB WORLD. This module
 // owns the scene join, not the design: envelopes, blockers and admission stay in

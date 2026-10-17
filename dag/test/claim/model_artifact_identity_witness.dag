@@ -21,6 +21,7 @@ import gunbc.model_artifact {
   model_label_collision,
   model_artifact_base_identity,
 }
+import std.optional { Present }
 
 fn gpt_oss_20b() -> OllamaModelRef {
   ollama_gpt_oss_20b_model_ref

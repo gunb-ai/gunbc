@@ -52,6 +52,7 @@ import std.realization_reconcile {
   NotConverged,
   reconciliation_converged,
 }
+import std.optional { Present }
 
 fn host_identity_precondition_verdict(
   base: DeployedIntentV0,

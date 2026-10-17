@@ -39,6 +39,7 @@ import extdeps.languages.json.parse {
 import extdeps.tools.sha256sum
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
+import std.optional { Present }
 
 type RegistryBytesSha256
   = RegistryBytesSha256 { hex: NonEmptyStr }

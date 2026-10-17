@@ -18,6 +18,7 @@ import std.fabric_storage {
   FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
 }
+import std.optional { Present }
 
 // THE FABRIC DB WIRE: one text form for every std.fabric_storage outcome, written by the store's side of
 // a remote handler and read by the caller's side. Transport-agnostic -- whatever carries the bytes

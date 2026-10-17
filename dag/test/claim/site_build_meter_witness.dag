@@ -47,6 +47,7 @@ import gunbc.design.material { BuildRule, StaticRule, reduced_motion_block, seri
 import gunbc.design.theme_transition { rule_selector }
 import extdeps.languages.css.selectors { RawSelector }
 import extdeps.languages.css.properties { Color }
+import std.optional { Present }
 
 // GUARDS FOR THE COMPACT WORK SUMMARY. Each claim reads one interface with supplied values: the
 // derivation takes a planted ledger, stage list, provider state, handoff and staleness; the

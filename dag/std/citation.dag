@@ -21,6 +21,7 @@ import extdeps.uri { Uri }
 import extdeps.pin { Pin, ExactPin }
 import extdeps.version { VersionIdentity }
 import extdeps.http.server { MediaType }
+import std.optional { Present }
 
 // CIT-0 neutral citation target (operator mandate 2026-08-04). Three carriers: CitationTarget
 // (expected_pin + selector — no embedded observation), CitationRetrievalObservation (dated request

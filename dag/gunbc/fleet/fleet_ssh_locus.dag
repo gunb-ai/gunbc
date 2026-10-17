@@ -52,6 +52,7 @@ import gunbc.fleet.fleet_ssh_credential_verify {
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import extdeps.shell
 import std.algebra { trim }
+import std.optional { Present }
 
 // ONE CREDENTIAL LOCUS, because there is only one kind of thing an SSH leg may run under: a sealed
 // `FleetSshExecutionContext`.

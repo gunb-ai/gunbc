@@ -95,6 +95,7 @@ import std.upsert_decision {
   UnknownRefused,
   UpsertClassification,
 }
+import std.optional { Present }
 
 type ApprovedBmcFirmwareArtifact {
   firmware: BmcFirmwareVersion

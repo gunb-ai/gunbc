@@ -16,6 +16,7 @@ import gunbc.runner.runner_throughput_qualification {
   SelectedRunnerQualification, SelectedSlot, SelectedHostAllocation, HostAllocationAdmitted, HostAllocationRefused,
   SlotQuotaThreads, FloorWorkloadPin, SelectedRunnerRuntime, WorkspaceBacking, SamplingPolicy, PhaseCeilings,
 }
+import std.optional { Present }
 
 // THE SELECTION IS THE FLEET'S ACT, AND THIS IS WHERE THE FLEET'S AUTHORITIES ARE CONSUMED.
 //

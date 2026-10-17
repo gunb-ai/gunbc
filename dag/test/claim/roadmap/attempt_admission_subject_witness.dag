@@ -19,6 +19,7 @@ import gunbc.roadmap.roadmap_dispatch_destination {
   DestinationDefaultBranchObserved, DestinationDefaultBranchUnobserved,
   admit_attempt_subject, join_attempt_subject, attempt_admission_subject_identity,
 }
+import std.optional { Present }
 
 data fixture_node: RoadmapNodeIdentity = "rnfx_ADMISSIONSUBJECT000000001" as RoadmapNodeIdentity
 

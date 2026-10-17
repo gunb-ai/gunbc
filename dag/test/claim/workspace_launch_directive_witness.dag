@@ -21,6 +21,7 @@ import product.fabric.budget { reserve_money, MoneyReservationRequest, AccountAd
 import gunbc.fabric.fabric_control_plane { fabric_money_reservation_ref }
 import gunbc.workspace_allocation_release { workspace_release_derive, workspace_release_wire, workspace_release_decode, WorkspaceReleasePrepared, WorkspaceReleaseRefused }
 import gunbc.workspace_money_codec { workspace_money_json }
+import std.optional { Present }
 
 fn launch_fixture_allocation() -> WorkspaceAllocation? { launch_fixture_allocation_in_slot(index: 7) }
 

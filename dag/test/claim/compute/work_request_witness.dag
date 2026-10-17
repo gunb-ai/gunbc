@@ -56,6 +56,7 @@ import gunbc.compute.work_request {
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostComputeCapacityFull,
   work_outcome_wire, stored_outcome_decode, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_is_success,
 }
+import std.optional { Present }
 
 fn tree(hex: String) -> WorkSubject {
   match git_object_id_from_untagged_hex(hex: hex) {

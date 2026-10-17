@@ -7,6 +7,7 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_
 import gunbc.workspace_gateway { WorkspaceGateway }
 import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_refusal }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import std.optional { Present }
 
 // Administrator-owned enrollment chooses where the SSH client runs. A host-local client needs
 // no forwarding permission or agent on a relay. Its identity file is local to that selected host;

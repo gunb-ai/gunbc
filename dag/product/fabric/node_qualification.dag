@@ -18,6 +18,7 @@ import gunbc.spark.serving_rank_observe {
   RankGpuDirectCapabilityReceipt, rank_gpu_direct_capability,
 }
 import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment, ThroughputRefusal, assessment_holds }
+import std.optional { Present }
 
 // A NODE QUALIFICATION RECEIPT BINDS WHAT THE FABRIC WAS TOLD TO WHAT WAS READ ON THE NODE.
 //

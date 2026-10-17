@@ -20,6 +20,7 @@ import extdeps.firmware.uefi_shell {
   Reset,
   ResetWarm,
 }
+import std.optional { Absent }
 
 type DesiredOutcome
   = | InstalledFleetNode

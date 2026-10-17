@@ -26,6 +26,7 @@ import gunbc.primitive_egress.disposition {
   derive_primitive_disposition, disposition_class, disposition_class_label, row_owner_lane,
 }
 import gunbc.primitive_egress.category { category_label }
+import std.optional { Present }
 
 // ---------------------------------------------------------------------------------------------
 // INPUT CARRIERS. Every fold below takes its population as a PARAMETER, so a witness can supply a

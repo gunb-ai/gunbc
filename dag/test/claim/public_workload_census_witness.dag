@@ -51,6 +51,7 @@ import gunbc.public_workload_census {
   candidate_openobserve_amd64, candidate_openobserve_manifest,
   candidate_biome_test_windows, candidate_biome_test_macos, candidate_openobserve_summary,
 }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

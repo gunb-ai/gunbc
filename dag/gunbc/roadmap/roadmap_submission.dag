@@ -32,6 +32,7 @@ import gunbc.roadmap.roadmap_publish { publication_receipt_member, publication_r
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope { RepositoryCommit, commit_at_reference }
 import std.minted_identity { MintedId }
+import std.optional { Present }
 
 // THE SUBMISSION ARTIFACT IS THE WORKER'S ONE DECLARED ACT, AND THIS MODULE IS ITS ONLY AUTHORITY.
 //

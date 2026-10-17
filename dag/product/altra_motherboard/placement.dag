@@ -73,6 +73,7 @@ import extdeps.cpu.ampere_altra_package {
   altra_package_body_height,
   altra_package_body_width,
 }
+import std.optional { Present }
 
 // WHERE THE PARTS GO, AND WHICH PARTS THIS REPOSITORY IS ENTITLED TO SAY THAT ABOUT. Placing a
 // component requires its body envelope, and a body envelope is a VENDOR fact: the part is whatever

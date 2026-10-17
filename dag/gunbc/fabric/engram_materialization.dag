@@ -50,6 +50,7 @@ import extdeps.safetensors.format {
   safetensors_population_declared_bytes, safetensors_population_entries,
   safetensors_population_closure_obligations,
 }
+import std.optional { Absent, Present }
 
 // ── PLACING ONE COMPONENT OF A CHECKPOINT, AS A MATERIALIZATION QUESTION ───────────────────────
 //

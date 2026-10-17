@@ -13,6 +13,7 @@ import std.types { NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.backblaze.b2 { b2_storage_pricing_citation_locator, b2_egress_pricing_citation_locator }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

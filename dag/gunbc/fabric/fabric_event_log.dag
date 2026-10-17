@@ -33,6 +33,7 @@ import product.capacity.redemption {
   redemption_partition_of, redemption_event_wire_text, redemption_event_decode, redemption_state_of,
   propose_redemption, propose_use_end, redemption_refusal_wire,
 }
+import std.optional { Present }
 
 // THE FABRIC EVENT LOG: THE CARRIER FOR EVERY CAPACITY TRANSACTION, REALIZED ON THE FABRIC DB.
 // One immutable object per event, addressed by its content; one named head per partition, advanced

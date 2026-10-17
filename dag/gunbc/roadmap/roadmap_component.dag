@@ -70,6 +70,7 @@ import extdeps.web_audio {
   web_audio_start_method, web_audio_stop_method,
   web_audio_gain_epsilon_micros, micros_decimal_wire,
 }
+import std.optional { Present }
 
 // The DispatchButton — the first instantiation of the component concept (gunbc.design.component),
 // and the second consumer that unlocks the archetype library's component axis. It lives HERE, one

@@ -4,6 +4,7 @@ import std.integer { Int }
 import std.logic { Bool }
 import std.types { NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
+import std.optional { Absent, Present }
 
 // PURE PUBLICATION VOCABULARY — no upstream document subject of its own (same class as
 // extdeps.external_authority and extdeps.uri). SpecificationDocumentDate and

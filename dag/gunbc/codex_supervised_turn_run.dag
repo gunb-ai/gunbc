@@ -52,6 +52,7 @@ import gunbc.codex_supervised_turn {
   codex_supervised_turn_outcome_from_capture,
   persist_codex_supervised_turn_client_command_id,
 }
+import std.optional { Present }
 
 type CodexSupervisedWorkerTurnApplyOutcome
   = CodexSupervisedWorkerTurnApplyRefused { reason: NonEmptyStr }

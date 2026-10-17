@@ -20,6 +20,7 @@ import extdeps.cpu.ampere_altra_memory_controller {
   active_channel_count,
   channel_count_is_production_qualified,
 }
+import std.optional { Present }
 
 // THE SMALLEST ALTRA MOTHERBOARD THAT IS A SERVER RATHER THAN A BRING-UP FIXTURE, and the
 // distinction is the vendor's own rather than ours. The datasheet admits 1, 2, 4, 6 or 8 active

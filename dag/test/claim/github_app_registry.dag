@@ -74,6 +74,7 @@ import gunbc.host.host_control_route { bmc_controlled_host, BmcRouteNotBound }
 import gunbc.runner.runner_host_unit_slot {
   HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotHostNotControlled, host_unit_slot_for, host_unit_slot_listener_argv,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

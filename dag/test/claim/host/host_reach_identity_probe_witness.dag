@@ -38,6 +38,7 @@ import gunbc.host.host_phase_status {
 import gunbc.fleet.fleet_enrollment { fleet_enrollments }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

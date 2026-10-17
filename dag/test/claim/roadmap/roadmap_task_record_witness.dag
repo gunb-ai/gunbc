@@ -5,6 +5,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIden
 import gunbc.roadmap.roadmap_status { TicketLine, TicketFields, TicketUpdate, Unsigned }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, gunbc_claims_execution_contract }
 import gunbc.roadmap.roadmap_task_record { roadmap_task_encode, roadmap_task_decode }
+import std.optional { Present }
 
 fn sample_ticket() -> TicketFields {
   TicketFields { headline: "Create tasks at runtime", brief: "b", displaced_cost: "d", current_state: "c", first_slice: "f", red_control: "r", out_of_scope: "o", handback: "h",

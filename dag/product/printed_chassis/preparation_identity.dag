@@ -6,6 +6,7 @@ import extdeps.languages.json.emit {JsonValue,JsonArray,JsonString,json_object,j
 import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json_field,json_field_string,json_field_string_list,FieldRead,FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
 import extdeps.filesystem.filesystem_io {Filesystem}
 import extdeps.tools.sha256sum {sha256sum_file_digest_via_shell,Sha256FileDigest,Sha256FileDigestUnavailable}
+import std.optional { Present }
 
 // Exact realization identity: CAD and the sliced project (including process and placement).
 // Comparing different projects is intentionally conservative, not a compatibility proof.

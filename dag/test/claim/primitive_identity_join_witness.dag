@@ -54,6 +54,7 @@ import gunbc.v1.v1_interpreter_primitive_surface {
 }
 import std.primitives { builtin_registry_surface_names }
 import std.types { Bool, List, String }
+import std.optional { Absent, Present }
 
 // D0/D1 slice (NOT closing contract): join mechanism + five refusal variants typed, three detectors
 // executing on census plus two scaffold detectors on planted RED inputs

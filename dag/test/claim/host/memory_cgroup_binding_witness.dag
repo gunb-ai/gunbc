@@ -32,6 +32,7 @@ import gunbc.host.memory_cgroup_binding {
   cgroup_bind_decision_refusal_text,
   cgroup_bind_decision_note,
 }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

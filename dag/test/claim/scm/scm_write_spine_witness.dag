@@ -39,6 +39,7 @@ import test.fixture.scm_repository_builder {
   MbBuild, MbBuilt, MbSetupFailed,
   mb_start, mb_stage, mb_commit, mb_head,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

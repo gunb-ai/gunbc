@@ -58,6 +58,7 @@ import std.language_target_identity {
   missing_identity_violation_count,
   integrity_violation_count,
 }
+import std.optional { Present }
 
 // GREEN and discriminating RED controls for the language-target join kernel (operator verdict
 // 2026-08-04). Every RED here is a state the census would otherwise report as a resolved target,

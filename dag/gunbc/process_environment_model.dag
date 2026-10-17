@@ -8,6 +8,7 @@ import v2.std.operation_realization {
   ShellObserved, operation_input_text,
 }
 import extdeps.transports.shell { ShellProcessExited }
+import std.optional { Present }
 
 // A MODELED PROCESS ENVIRONMENT: the variables a scenario's worker was started with, answered through
 // the realization's own contract for extdeps.shell shell.Env.Get (printenv): a set variable prints its

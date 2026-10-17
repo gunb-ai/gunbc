@@ -125,6 +125,7 @@ import product.p4261_carrier_layout {
   carrier_input_reading,
   management_io_text,
 }
+import std.optional { Absent, Present }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 

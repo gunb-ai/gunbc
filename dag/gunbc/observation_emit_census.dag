@@ -5,6 +5,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_
 import std.nat { Nat }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.optional { Absent, Present }
 
 // P3 of the progress-and-observation lane: the census wall. Every place the floor emits a progress
 // line today is either a PROJECTION of the observation event stream (migrated, P1/P2) or a COUNTED

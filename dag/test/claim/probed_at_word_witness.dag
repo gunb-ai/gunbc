@@ -2,6 +2,7 @@ module test.claim.probed_at_word_witness
 
 import std.types { String, NonEmptyStr }
 import gunbc.clock_read { probed_at_word }
+import std.optional { Present }
 
 // A PERMANENT regression control for the leaked-Optional rendering, not a check that a match
 // statement has two arms. The defect was live in production receipts on 2026-08-20: fourteen

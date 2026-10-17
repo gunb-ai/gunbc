@@ -62,6 +62,7 @@ import extdeps.http.server { MediaType, TopLevelApplication }
 import extdeps.standards.web_annotation { web_annotation_authority, extdeps_external_authority_anchor }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, NonEmptyStr, EpochMs, HttpStatus }
+import std.optional { Present }
 
 data witness_fragment_spec_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

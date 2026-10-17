@@ -113,6 +113,7 @@ import gunbc.scm.repository_envelope {
 }
 import gunbc.scm.load_standing { LoadStanding, LoadRequirementAtWrongKind }
 import gunbc.scm.supersession { standing_permission_refusal }
+import std.optional { Present }
 
 // THIS DECLARATION DOES NOT CHANGE WHETHER THESE CLAIMS EXECUTE, AND TWO EARLIER REVISIONS OF THIS
 // ANNOTATION SAID IT DID. Both are retracted here against the source rather than against a rerun.

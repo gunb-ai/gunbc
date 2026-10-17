@@ -94,6 +94,7 @@ import std.integer { PositiveInt }
 import std.nat { Nat }
 import std.types { NonEmptyStr, Bool, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

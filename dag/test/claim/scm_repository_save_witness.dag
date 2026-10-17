@@ -79,6 +79,7 @@ import gunbc.scm.repository_load {
   RepositoryFileUnreadable,
   load_repository,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

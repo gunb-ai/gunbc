@@ -7,6 +7,7 @@ import gunbc.host.host_layout {
   provider_runtime_placement_for_host,
 }
 import gunbc.package_delivery { codex_runtime_version_identity_marker }
+import std.optional { Present }
 
 // ONE authority for the Codex provider-runtime receipt #8224 consumes. Placement (all three
 // ProviderRuntimePlacement roots), bundled executable path, exact bundle identity (receipt_identity

@@ -10,6 +10,7 @@ import gunbc.compile_diagnostic_census {
   census_key_delta,
 }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.optional { Absent }
 
 // Durable witness for the retired failure mode
 // gunbc.recurring_failure_mode.annotation_inside_a_declaration_body_is_invisible_to_the_authoring_gate.

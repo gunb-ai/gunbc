@@ -26,6 +26,7 @@ import gunbc.compute.test_selection {
   SelectedFile, select_witness_files, classify_witness_module, planned_functions_joined,
   WitnessModuleSelection, WitnessModuleSelected, WitnessModuleNotAWitness, WitnessStanding, WitnessPlanned, WitnessDeclined,
 }
+import std.optional { Present }
 
 // THE CANONICAL TEST PROCESS, EFFECTFUL HALF: `gunbc test <pattern>` for a worker, until the CLI verb
 // admits patterns. The subject is a SNAPSHOT of the worker's worktree -- the tree it has on disk,

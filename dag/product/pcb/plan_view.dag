@@ -42,6 +42,7 @@ import product.pcb.scene {
   first_unrepresented_scene_identity,
   obligation_cause_label,
 }
+import std.optional { Present }
 
 // THE SVG TARGET REALIZES THE ENGINEERING SCENE. It does not fold the world: a new drawing medium
 // is a new realization of the same scene elements. The complete body-layout arm is the only

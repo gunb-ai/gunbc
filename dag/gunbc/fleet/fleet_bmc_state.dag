@@ -81,6 +81,7 @@ import std.state_durability {
   StatePreserved,
 }
 import std.types { Bool, List, String }
+import std.optional { Present }
 
 data srv4_bmc_fan_publication_protocol: LinuxFilePublicationProtocol = linux_synchronized_rename_replace_publication
 

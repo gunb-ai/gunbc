@@ -41,6 +41,7 @@ import gunbc.econ.regional_compute_premium {
 import std.measure { basis_point_count }
 import std.nat { Nat }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

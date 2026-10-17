@@ -1,6 +1,7 @@
 module test.fixture.variant_election_v
 
 import std.types { String }
+import std.optional { Absent }
 
 // Provider fixture for test.claim.variant_election_by_expected_coproduct_witness: a coproduct
 // that declares an Absent arm, so two such providers make the spelling ambiguous closure-wide, and a

@@ -58,6 +58,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialFetchRefused,
   SecretCredentialResolvedVersionMismatch,
 }
+import std.optional { Present }
 
 // THE ACCOUNT'S R2 PREREQUISITES ARE CONVERGED, NOT ASSUMED. gunbc.cloudflare.r2_origin allocated
 // gunbai-fabric-origin and every signed request against it failed for nine days, because the

@@ -79,6 +79,7 @@ import product.electrical.continuity {
   terminal_text,
   continuity_text,
 }
+import std.optional { Absent, Present }
 
 // GH200-3 (2026-10-04). THE P4261 CARRIER AS OBSERVED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
 // document names this board, so everything here is the operator's observation of a physical unit,

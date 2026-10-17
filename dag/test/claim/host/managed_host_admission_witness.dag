@@ -41,6 +41,7 @@ import gunbc.host.host_reset_subject_roster {
 import gunbc.auth.managed_host_boot_federation {
   boot_federation_for, BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

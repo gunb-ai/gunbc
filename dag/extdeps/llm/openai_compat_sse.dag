@@ -9,6 +9,7 @@ import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document,
   JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field,
 }
+import std.optional { Present }
 
 // OPENAI-COMPATIBLE CHAT COMPLETIONS STREAMING (server-sent events): each event is a `data: ` line
 // whose payload is a JSON chunk or the sentinel `[DONE]`. An error may arrive as a data line whose

@@ -18,6 +18,7 @@ import gunbc.fabric.fabric_memory_grant_policy { MicroVmMemoryGrantIssue, Memory
 import gunbc.workspace_allocation {
   WorkspaceRequest, WorkspaceReservation, workspace_execution_requirements, workspace_memory_grant, workspace_work,
 }
+import std.optional { Present }
 
 // Supply must be a dedicated, already-budgeted roster withdrawn from competing use.
 // Holding the entire slot does not make the unused RAM available for packing.

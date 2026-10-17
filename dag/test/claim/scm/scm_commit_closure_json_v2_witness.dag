@@ -168,6 +168,7 @@ import gunbc.scm.commit_closure_json_v2 {
   ClosureDocEncodeRefused,
   encode_complete_closure_document,
 }
+import std.optional { Present }
 
 // ------------------------------------------------------------------------------------------------
 // Fixtures. Every name here is prefixed so it cannot collide corpus-wide: a top-level definition is

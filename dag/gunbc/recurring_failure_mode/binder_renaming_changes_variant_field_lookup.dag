@@ -2,6 +2,7 @@ module gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup
 
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.optional { Present }
 
 data binder_renaming_changes_variant_field_lookup: RecurringFailureMode = RecurringFailureMode {
   identity: "binder_renaming_changes_variant_field_lookup" as NonEmptyStr,

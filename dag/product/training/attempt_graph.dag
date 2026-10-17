@@ -9,6 +9,7 @@ import product.fabric.identity {
   FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
 }
 import std.types { NonEmptyStr, List, Bool }
+import std.optional { Present }
 
 // AN AXIS WRAPPER'S SUBJECT DOES NOT VOUCH FOR THE MEMBERS INSIDE IT. The readback binds each of
 // its five populations to the run's Demand/Work subject, which stops a whole population being filed

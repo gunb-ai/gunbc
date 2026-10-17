@@ -97,6 +97,7 @@ import gunbc.scm.load_standing {
   LoadStanding, LoadRequirementAtWrongKind,
 }
 import gunbc.scm.supersession { standing_permission_refusal }
+import std.optional { Absent, Present }
 
 // THE CAUSE IS NAMED, NEVER MERELY COUNTED. A claim that asserted "something refused" would be
 // satisfied by a decoder that refused for an unrelated reason, which is how a wrong-owner diagnostic

@@ -11,6 +11,7 @@ import product.inventory { InventoryLotIdentity, InventoryLotRepetition, invento
   empty_lot_repetition_scan,
   scan_lot_for_repetition,
 }
+import std.optional { Present }
 
 // SALES TAX STANDING FOR ONE PROCUREMENT LOT. This is the field the fleet acquisition
 // census exists to carry: whether tax was collected, at which jurisdiction and rate, and

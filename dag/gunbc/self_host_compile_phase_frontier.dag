@@ -35,6 +35,7 @@ import gunbc.instruments.emission_entry_instrument {
   RustfmtParseObservation,
   measure_entry_emission
 }
+import std.optional { Present }
 
 // This is the derived successor to the deleted prose/script board, not a second census. The sole
 // population input is EmissionMeasured.cargo_diagnostics from measure_entry_emission: that entry

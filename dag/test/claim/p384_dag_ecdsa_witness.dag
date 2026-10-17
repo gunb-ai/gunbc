@@ -14,6 +14,7 @@ import extdeps.standards.rfc_5280 { X509Certificate, X509Decoded, X509Refused, d
 import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, pem_certificate_label }
 import extdeps.apple.app_attest { apple_app_attestation_root_ca_pem }
 import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets }
+import std.optional { Present }
 
 // P-384 as the parameter row it is: the arithmetic is extdeps.crypto.nist_prime_curve's, already
 // claimed on P-256 by test.claim.p256_dag_ecdsa_witness over RFC 6979 and Wycheproof; what

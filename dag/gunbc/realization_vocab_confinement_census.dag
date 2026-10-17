@@ -51,6 +51,7 @@ import v2.lens.realization_vocabulary_containment {
   realization_edge_path_prefixes,
   realization_vocab_grandfathered_edge_keys,
 }
+import std.optional { Absent, Present }
 
 // THE FIRST DOMAIN CLAIM CARRIED END TO END ON THE CENSUS CARRIER, and the reason this module
 // exists at all rather than another synthetic fixture. Blocker 8 asked for a real consumer, and a

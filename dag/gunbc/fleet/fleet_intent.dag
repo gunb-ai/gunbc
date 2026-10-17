@@ -49,6 +49,7 @@ import std.realization_measurement {
   cost_axis_add_time, cost_axis_peak_space,
 }
 import std.nat { Nat }
+import std.optional { Present }
 
 type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
 

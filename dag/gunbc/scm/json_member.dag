@@ -57,6 +57,7 @@ import extdeps.languages.json.emit {
   JsonObject,
   JsonKeyValue,
 }
+import std.optional { Present }
 
 // FOUR DISTINCT FACTS, NEVER AN ABSENT VALUE. json_object_unique_member already separates a missing
 // member from a duplicated one from a non-object subject, and collapsing them into an Optional here

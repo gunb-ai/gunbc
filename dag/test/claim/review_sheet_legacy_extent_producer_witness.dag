@@ -38,6 +38,7 @@ import gunbc.review_sheet_legacy_extent_producer {
   legacy_search_visibility_basis,
   legacy_search_evidence,
 }
+import std.optional { Present }
 
 // WHAT THIS FILE EXECUTES FOR REAL AND WHAT IT SUPPLIES, stated first because the distinction is
 // the whole evidentiary claim. The OPERATOR-DECLARATION PRODUCER runs end to end here: a real file

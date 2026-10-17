@@ -20,6 +20,7 @@ import gunbc.host.host_kernel_dependency {
   kernel_package_reading, kernel_package_readings_join, tun_kernel_capability_decision, host_kernel_dependency_plan,
   HostKernelDependencyResolution, HostKernelCapabilitySatisfied, HostKernelDependencyPlanned, HostKernelDependencyRefused,
 }
+import std.optional { Present }
 
 fn kernel_read_command(command: ArgvCommand) -> String? {
   match run_shell_command_observe_outcome(command: command, transport: LocalExec) {

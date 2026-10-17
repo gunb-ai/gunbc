@@ -60,6 +60,7 @@ import v2.workflow.legacy_baseline_persisted_observation {
   PreCutBasePinned,
   current_pre_cut_base_pin
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

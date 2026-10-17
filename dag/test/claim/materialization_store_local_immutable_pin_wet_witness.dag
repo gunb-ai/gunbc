@@ -33,6 +33,7 @@ import extdeps.realization.materialization_store_local {
 import gunbc.durable_cas_file_store { cas_file_slot_path }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind, typed_module_artifact_kind }
 import std.measure { byte_size }
+import std.optional { Present }
 
 // PARTIAL RECLAIM MUST NOT RE-AUTHORIZE A LEAKED HOLD. Independent deletes could remove G+1 while
 // G survived, so named verify would treat leaked G as head. Pin G against unlink, run another

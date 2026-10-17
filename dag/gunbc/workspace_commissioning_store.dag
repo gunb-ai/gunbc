@@ -28,6 +28,7 @@ import gunbc.durable_cas_file_store {
   observe_cas_slot_state, cas_file_slot_path, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted,
   file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadKeyNotSlotAddressable,
 }
+import std.optional { Present }
 
 data workspace_commissioning_store_root: NonEmptyStr = workspace_commissioning_store_location as NonEmptyStr
 

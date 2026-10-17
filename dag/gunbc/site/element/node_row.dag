@@ -25,6 +25,7 @@ import extdeps.languages.css.properties {
   MinWidth, Outline, Padding, TextAlign, TextDecoration, VerticalAlign,
   WhiteSpace, Width, RawProperty,
 }
+import std.optional { Present }
 
 // NodeRow: the one row a node is shown as, wherever a list of nodes is shown. It takes the node's
 // canonical presentation (gunbc.roadmap.roadmap_hierarchy_view NodePresentation) and renders it;

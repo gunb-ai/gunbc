@@ -27,6 +27,7 @@ import product.printed_chassis.assembly_inventory { inventory_report, captured_i
 import product.printed_chassis.assembly_inventory_store { initialize_inventory, mutate_inventory, observe_stored_inventory }
 import product.printed_chassis.residential_review { residential_assembly, ResidentialAssemblyReady, ResidentialAssemblyRefused }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.optional { Present }
 
 
 // A single invocation prepares every requested plate, then hands the whole fleet

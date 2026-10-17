@@ -16,6 +16,7 @@ import gunbc.live_deploy.operations {
   systemctl_start_command,
   systemctl_stop_command,
 }
+import std.optional { Present }
 
 // THE FIRST TRANSITION IS NOT PROTECTED BY ANY MARKER, AND THAT IS NOT A GAP IN THE MARKER.
 //

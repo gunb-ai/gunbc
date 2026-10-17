@@ -232,6 +232,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr, List, String, Int, Bool, list_length, Duration }
+import std.optional { Present }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
 // workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and

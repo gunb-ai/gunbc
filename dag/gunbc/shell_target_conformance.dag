@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { declaration_ref_eq }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.optional { Present }
 
 // THE CONFORMANCE JOIN, homed in the product layer because it is a claim THIS repository makes
 // about two upstream subjects, not a fact either of them owns (DESIGN section 3, external upstream

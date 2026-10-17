@@ -39,6 +39,7 @@ import v2.workflow.bash_emit { bash_emit_negation }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { length }
+import std.optional { Present }
 
 // Denial subjects are real deployment mutations. The permit pole uses receipt
 // data so exercising authorization never tears down a live deployment.

@@ -5,6 +5,7 @@ import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.optional { Present }
 
 // THE OPENBMC MESSAGE REGISTRY ENTRIES THIS CORPUS READS, by their registry MessageId. bmcweb renders
 // a System Event Log entry's Message as the MessageId (with the entry's severity appended) on its

@@ -42,6 +42,7 @@ import test.fixture.cross_file_clause_e_fixture {
   cross_file_clause_e_fixture_unrelated_loaded_provider_row,
   cross_file_clause_e_fixture_provider_file,
 }
+import std.optional { Absent, Present }
 
 // N3-C witnesses for gunbc.namespace_cut.namespace_pool_independence. Pool independence proper:
 // unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds assembles baseline vs perturbed

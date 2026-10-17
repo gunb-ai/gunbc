@@ -91,6 +91,7 @@ import extdeps.tools.sha256sum {
   Sha256Mismatch,
   Sha256VerifyInfraFailure,
 }
+import std.optional { Absent }
 
 data package_delivery_placement_note: String = "FIRST CONSUMED package materializer for gunbc. Lives here — not in std — until a second real consumer proves a shared abstraction. Owns Codex (and later other) product policy over upstream package facts from extdeps.npm / extdeps.package. Every production effect boundary RE-ADJUDICATES raw graphs via package_lock_admit_graph — never trusts a freely constructed PackageLockGraphAdmitted. Decoding lock SRI text is NOT artifact verification."
 

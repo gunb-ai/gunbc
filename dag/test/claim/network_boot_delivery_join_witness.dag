@@ -126,6 +126,7 @@ import gunbc.network_boot_delivery {
   join_network_boot_delivery,
   site_pxe_edge_standing,
 }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

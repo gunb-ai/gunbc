@@ -1,5 +1,7 @@
 module test.claim.bmc.bmc_redfish_grounding_witness
 
+import std.optional { Present }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

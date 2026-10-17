@@ -3,6 +3,7 @@ module gunbc.fleet.fleet_host_power
 import std.types { NonEmptyStr, Bool, Int, List }
 import std.measure { Watt, watt, watt_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.optional { Present }
 
 // WHAT A FLEET HOST DRAWS, AND HOW WE KNOW IT.
 //

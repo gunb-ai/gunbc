@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import std.optional { Present }
 
 // WHETHER THE INTENT CAN DESCRIBE WHAT IS ACTUALLY RUNNING ON A HOST'S FAN CONTROLLER.
 //

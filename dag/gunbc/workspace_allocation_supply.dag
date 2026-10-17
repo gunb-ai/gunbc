@@ -37,6 +37,7 @@ import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import gunbc.workspace_allocation { WorkspaceRequest, workspace_work, workspace_execution_requirements }
 import gunbc.workspace_allocation_reservation { WorkspaceDedicatedSupply }
+import std.optional { Present }
 
 // Host observation is a read-only convergence input. No missing or quarantined substrate becomes
 // an empty/free offer; the shared cell observer and readiness admission decide those questions.

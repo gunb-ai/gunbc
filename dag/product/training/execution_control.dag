@@ -9,6 +9,7 @@ import product.fabric.identity {
   FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
 }
 import std.types { NonEmptyStr, List, Bool, Int }
+import std.optional { Present }
 
 // AN ATTEMPT MUST BE DURABLY CLAIMED BEFORE A TRAINER PROCESS EXISTS, and the claim is committed by
 // a control-plane transaction rather than by the actuator. The actuator only REALIZES an

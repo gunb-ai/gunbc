@@ -4,6 +4,7 @@ import std.algebra { trim }
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
+import std.optional { Present }
 
 // IPMI v2.0 rev1.1 §28.3 CHASSIS CONTROL AND §28.2 GET CHASSIS STATUS, modeled as the spec names
 // them. The anchor is the specification; the verbs below are ipmitool's `chassis power` spellings of

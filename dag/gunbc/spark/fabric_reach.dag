@@ -14,6 +14,7 @@ import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments }
 import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_observations, fabric_lane_for_host }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
+import std.optional { Present }
 
 // A SPARK IS REACHABLE ON TWO NETWORKS AND THE CHOICE IS THE EXECUTOR'S POSITION, NOT A FALLBACK.
 // The management LAN (the CR1000A lease the procurement rows carry) is what a runner or the

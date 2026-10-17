@@ -1,5 +1,7 @@
 module gunbc.ci.ci_input_envelope
 
+import std.optional { Present }
+
 
 type InputSizeAxis
   = WitnessCount

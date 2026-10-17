@@ -38,6 +38,7 @@ import extdeps.programmable_logic.ice40.supply {
   supply_rail_symbol,
   supply_rails_equal,
 }
+import std.optional { Present }
 
 // WHAT THE BOARD SUPPLIES, CHECKED AGAINST WHAT THE DEVICE REQUIRES. The device's requirements are
 // cited facts and live in extdeps; what a particular board chooses to build is a product decision

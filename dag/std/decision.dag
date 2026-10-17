@@ -60,6 +60,7 @@ import std.pareto {
   entry_standing,
   reading_for,
 }
+import std.optional { Absent, Present }
 
 // Named for the FRAMEWORK (choose-under-objectives), not for std.realization. Nothing in this
 // module's types or functions references Materialization, Recompute/Memoize/Share, or

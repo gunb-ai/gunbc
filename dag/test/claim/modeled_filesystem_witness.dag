@@ -29,6 +29,7 @@ import gunbc.host.managed_host_unit_hold { boot_run_owner }
 import gunbc.filesystem_model {
   ModeledFilesystem, ModeledFile, filesystem_bindings, filesystem_operation,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

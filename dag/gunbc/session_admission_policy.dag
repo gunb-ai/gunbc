@@ -2,6 +2,7 @@ module gunbc.session_admission_policy
 
 import std.types { NonEmptyStr, String, Int }
 import std.measure { ByteSize, byte_size }
+import std.optional { Present }
 
 // THE ADMISSION POLICY AND THE HOST AGGREGATE ARE DIFFERENT FACTS ON DIFFERENT CLOCKS, and the
 // carrier this splits out of fused them. gunbc_ci_session_reservation_mode carried the per-session

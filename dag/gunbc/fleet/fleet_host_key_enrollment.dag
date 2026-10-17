@@ -25,6 +25,7 @@ import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name, r
 import extdeps.ssh.known_hosts { known_hosts_host_field, openssh_standard_port }
 import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_privkey_version_segment, fleet_automation_ssh_privkey_secret }
+import std.optional { Present }
 
 // CONVERGE acceptance item 4 (operator directive C, 2026-08-09): the host-key
 // fingerprint ENROLLMENT registry. The executed reach probe landed every fleet host at

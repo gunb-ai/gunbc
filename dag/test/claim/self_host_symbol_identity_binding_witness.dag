@@ -33,6 +33,7 @@ import std.reference_realization {
 }
 import gunbc.reference_realization_policy { reference_realization_rendering }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

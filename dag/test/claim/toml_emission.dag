@@ -16,6 +16,7 @@ import extdeps.rust.cargo_config {
 }
 import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial }
 import gunbc.repo.cargo_config_emit { expected_cargo_config_toml }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

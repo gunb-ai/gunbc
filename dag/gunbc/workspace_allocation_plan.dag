@@ -29,6 +29,7 @@ import gunbc.durable_exclusive_hold_file_store {
 import gunbc.workspace_allocation_reservation { WorkspaceDedicatedSupply }
 import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceReservation, workspace_work, workspace_execution_requirements, workspace_memory_grant, workspace_reservation_json, workspace_reservation_from_json, workspace_json_string }
 import gunbc.fabric.fabric_memory_grant_policy { MemoryGrantIssued, GrantRefusedUnrepresentable, GrantRefusedUnstatedAxisWithoutPermit, GrantRefusedByLaw }
+import std.optional { Present }
 
 // A prepared target is immutable across retries. Its predicted incarnation is derived from a
 // live absent/free hold observation; persistence of this plan precedes every acquisition effect.

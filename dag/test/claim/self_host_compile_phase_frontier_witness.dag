@@ -77,6 +77,7 @@ import extdeps.rust.cargo_diagnostic {
   rustc_diagnostic_row
 }
 import gunbc.instruments.emission_entry_instrument { RustfmtParseObservation }
+import std.optional { Present }
 
 test fn an_epoch_change_without_reclassification_cannot_fabricate_identity_regressions() -> Bool {
   match regression_comparison_predecessor(

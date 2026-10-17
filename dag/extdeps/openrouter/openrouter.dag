@@ -15,6 +15,7 @@ import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
   JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_int, json_field_bool,
 }
+import std.optional { Present }
 
 // OPENROUTER, as its own extdeps authority: an independently governed router that relays an
 // OpenAI-compatible chat-completions request to one of several providers. It is not OpenAI (its

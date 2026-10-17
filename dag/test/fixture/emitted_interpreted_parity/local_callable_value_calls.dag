@@ -1,6 +1,7 @@
 module test.fixture.emitted_interpreted_parity.local_callable_value_calls
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.optional { Present }
 
 // ONE PROGRAM, RUN TWICE: interpreted (`gunbc run`) and emitted (`gunbc compile --target rust`, then
 // the crate built and executed). The two outputs must be byte-identical, and the expected line is

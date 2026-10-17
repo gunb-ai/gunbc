@@ -28,6 +28,7 @@ import gunbc.auth.approval_decision_store {
   EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided, EscalationUnreadable, observe_escalation,
   read_mac_keyring,
 }
+import std.optional { Absent, Present }
 
 // THE FILING HALF OF THE APPROVAL LOOP: how a request reaches the store and the operator's phone.
 // gunbc.auth.approval_decision_store owns what happens once a link is tapped; this module owns the

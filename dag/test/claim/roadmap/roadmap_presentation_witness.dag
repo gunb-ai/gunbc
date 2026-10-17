@@ -99,6 +99,7 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, NodeOpen, NodeInProgress, EventPrincipalAuthenticated,
 }
 import gunbc.principal_projection { fabric_workflow_principal }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

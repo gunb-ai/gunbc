@@ -25,6 +25,7 @@ import gunbc.fabric.fabric_cell_converge { fabric_cell_desired_state_digest, Fab
 import gunbc.ci.ci_runner_placement { runner_deployment_plan, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused }
 import gunbc.runner.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 import gunbc.workspace_tool_observer { workspace_observe_tools, WorkspaceToolsReady, WorkspaceToolsUnobserved }
+import std.optional { Present }
 
 // This is observation, not installation. All expected identities come from the reviewed
 // commissioning subject; the root locus, cell boundary, image and tools are read independently.

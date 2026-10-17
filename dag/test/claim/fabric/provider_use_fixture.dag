@@ -15,6 +15,7 @@ import product.fabric.provider_admission {
   ProviderUsePermit, ProviderUseAdmitted, ProviderUseDenied,
   DispositionStanding, DispositionCleared, admit_provider_use,
 }
+import std.optional { Present }
 
 // ONE ADMITTED USE, SHARED BY THE WITNESSES THAT NEED A CANDIDATE BUT ARE NOT ABOUT ADMISSION.
 //

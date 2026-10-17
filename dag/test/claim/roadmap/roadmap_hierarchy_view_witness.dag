@@ -26,6 +26,7 @@ import gunbc.roadmap.roadmap_hierarchy_view {
   relation_summary, relation_count_text,
 }
 import gunbc.roadmap.roadmap_page { issue_detail_page, issue_detail_hierarchy_for, issue_chain_breadcrumb_node, RowObservations, page_launch_context }
+import std.optional { Present }
 
 // THE PLANTED TRACKER: seven nodes, one membership tree four levels deep, and a dependency relation
 // that deliberately disagrees with it.

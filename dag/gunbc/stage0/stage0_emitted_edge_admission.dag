@@ -18,6 +18,7 @@ import gunbc.stage0.stage0_partition_package_graph {
   partition_package_dependency_names_over,
   stage0_partition_row_is_module_bearing_package
 }
+import std.optional { Present }
 
 // DOES EVERY EDGE THE EMITTER WROTE RESOLVE IN THE CRATE ITS SOURCE MODULE LANDS IN. A `use
 // crate::m::X;` line compiles in a partition crate only when m lives in that crate or in a package

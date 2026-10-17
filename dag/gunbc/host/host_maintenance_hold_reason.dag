@@ -4,6 +4,7 @@ import std.types { NonEmptyStr }
 import product.host_identity { host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host { ManagedHost }
+import std.optional { Present }
 
 // THE VARIABLE AN OPERATOR NAMES THEIR MAINTENANCE REASON THROUGH IS MAINTENANCE POLICY, not a fact
 // about the host, so it lives beside the maintenance operation rather than on gunbc.host.managed_host

@@ -31,6 +31,7 @@ import gunbc.os_install_actuator_selection {
 }
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import std.realization_reconcile { Converged, NotConverged }
+import std.optional { Present }
 
 type HostToolchainKind = BuildCache | CodexRuntime | OsInstallActuator | CompilePool
 

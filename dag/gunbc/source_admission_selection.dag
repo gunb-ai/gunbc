@@ -27,6 +27,7 @@ import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureTrigger,
   P2aStructuralCandidateProducer7515,
 }
+import std.optional { Present }
 
 type AdmissionMechanismRoot {
   realization_file: NonEmptyStr

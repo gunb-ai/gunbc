@@ -66,6 +66,7 @@ import gunbc.instruments.scm_acceptance_binary {
 }
 import std.types { Bool, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Present }
 
 data scm_acceptance_entry: String = "dag/gunbc/instruments/scm_write_spine_canary.dag"
 

@@ -26,6 +26,7 @@ import extdeps.github.workflow_runs { WorkflowRunList, Completed, Success }
 import test.fixture.rest_exchange_replay_probe
 import extdeps.ietf.http_semantics { GET }
 import extdeps.auth.oidc { OidcStandardClaims }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

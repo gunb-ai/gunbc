@@ -19,6 +19,7 @@ import gunbc.scm.object_store {
   CorpusManifestEntry,
   empty_path_unique_entries, path_unique_with_path_bound, path_unique_with_path_removed, path_unique_entry_list,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

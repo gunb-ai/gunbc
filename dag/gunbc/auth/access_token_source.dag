@@ -24,6 +24,7 @@ import extdeps.filesystem.filesystem_io {
 import extdeps.cloud.gcp.auth_print_access_token {
   gcloud_stderr_auth_deficit,
 }
+import std.optional { Present }
 
 type AccessTokenSource
   = GcloudPrintToken

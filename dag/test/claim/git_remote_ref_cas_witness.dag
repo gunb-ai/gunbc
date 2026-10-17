@@ -11,6 +11,7 @@ import extdeps.git.publication_transport {
   git_remote_ref_cas_refspec,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

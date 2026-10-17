@@ -13,6 +13,7 @@ import std.observation {
   AnomalyExpanded,
   observation_class_density,
 }
+import std.optional { Absent, Present }
 
 type Verbosity = Quiet | Normal | Verbose
 

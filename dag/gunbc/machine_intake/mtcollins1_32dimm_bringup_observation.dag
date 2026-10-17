@@ -79,6 +79,7 @@ import gunbc.machine_intake.pre_os_bringup_verdict {
   sel_window_after_cursor,
   sol_capture_reading,
 }
+import std.optional { Present }
 
 // MT. COLLINS UNIT 1 AFTER THE 16-TO-32 DIMM CHANGE, 2026-09-11: THE REGRESSION CORPUS FOR THE
 // PRE-OS BRING-UP MODEL. The unit went from 16 to 32 DIMMs and entered a ~5-minute restart loop

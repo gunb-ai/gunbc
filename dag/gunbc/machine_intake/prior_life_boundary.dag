@@ -88,6 +88,7 @@ import gunbc.fleet.convergence_fold {
   complete_effect_leg,
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject }
+import std.optional { Present }
 
 // THE PRIOR-LIFE BOUNDARY, ITS ARCHIVE ARM (docs/plans/managed-host-untangle.md, cut O1c-2;
 // docs/plans/machine-intake-design.md §5). Before anything is cleared, the controller's prior-life

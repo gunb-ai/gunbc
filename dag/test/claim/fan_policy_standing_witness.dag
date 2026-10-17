@@ -127,6 +127,7 @@ import gunbc.fleet.fleet_acoustic_intent {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
+import std.optional { Absent, Present }
 
 // WHAT IS SUPPLIED HERE AND WHAT IS EXECUTED, STATED FIRST BECAUSE THE PAIRING OBLIGATION TURNS ON
 // IT (DESIGN §3, a witness discriminates at one interface).

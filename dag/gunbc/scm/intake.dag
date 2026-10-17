@@ -37,6 +37,7 @@ import gunbc.scm.json_member {
   MemberRead, MemberString, MemberArray, MemberObject, MemberFailed,
   read_string_member, unexpected_member_key,
 }
+import std.optional { Present }
 
 // AN EXTERNAL REVISION, ONE ARM PER UPSTREAM SYSTEM. Git is the only one a producer intakes from
 // today; its object id is extdeps.git's authority, carried whole (family and digest) rather than as

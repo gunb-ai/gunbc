@@ -19,6 +19,7 @@ import extdeps.standards.x690_der {
   DerElementAbsent, DerChildCountUnexpected, DerTagUnexpected,
   DerBooleanMalformed, DerBitStringUnusedBitsRefused, DerTruncated,
 }
+import std.optional { Absent, Present }
 
 // RFC 5280, Internet X.509 PKI Certificate and CRL Profile, §4.1 (the Certificate, TBSCertificate,
 // AlgorithmIdentifier, Validity, SubjectPublicKeyInfo and Extension structures) and §4.1.2.5 (Time

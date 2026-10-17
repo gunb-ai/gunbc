@@ -6,6 +6,7 @@ import std.measure { TokenCount, token_count, byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, HubCheckpointManifest, hub_checkpoint_manifest }
+import std.optional { Present }
 
 // GLM-5.3 -- THE BASE MODEL, NOT GLM-5.3-FLASH. The two are independently published Z.ai
 // checkpoints with different architecture classes (this one declares GlmMoeDsaForCausalLM, Flash

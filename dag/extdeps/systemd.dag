@@ -14,6 +14,7 @@ import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatRea
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd.systemd_contracts { systemd_unit_active_state_wire_contract }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

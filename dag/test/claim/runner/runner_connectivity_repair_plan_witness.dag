@@ -33,6 +33,7 @@ import gunbc.runner.runner_connectivity_repair_plan {
   repair_plan_is_execute,
   repair_execute_step_count,
 }
+import std.optional { Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
