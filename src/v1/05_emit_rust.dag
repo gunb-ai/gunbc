@@ -12115,10 +12115,15 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 // rustc E0107 (v2.compiler.resolve type_param_value_binders, #14084). The fact asked is the declaration's own
 // parameter count from the env binding, not a name: a node whose binding declares parameters but renders as its bare
 // head has lost its application, so the position defers to the target's inference exactly as an erased argument does.
+// The children of a Disj node are its ARMS, not type arguments: lookup_type_for resolves an arm's name to the
+// owning parametric declaration, so an arm such as std.list FirstDuplicateNotFound read as the declaration named
+// without its arguments, the fold lambda's accumulator widened to `_` beside the `_` seed, and rustc E0282 had
+// nothing to infer from. A bare head is a type REFERENCE (a Map argument, a field), never an arm; the arms'
+// own children are still searched. Dissolution: adhoc-65526d74-43f, with the rest of this compensation.
 fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
   n.children |> any(c =>
     let t = child_type_node(ch: c)
-    rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    (n.connective != Disj && rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
       || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
 }
 
