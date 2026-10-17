@@ -20,7 +20,7 @@ import gunbc.runner.jit_registration_subject {
 import gunbc.host.host_control_route { HostControlStanding, HostControlled, HostControlRefused }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlotRefusal, HostUnitSlotHostNotControlled, ServiceSlot, service_slot_name_parse, service_slot_selected_workflow, host_unit_slot_over,
+  HostUnitSlotRefusal, HostUnitSlotHostNotControlled, RecoveredServiceSlot, ServiceBootId, service_slot_name_parse, service_slot_selected_workflow, host_unit_slot_over,
 }
 import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused, authority_installation,
@@ -86,20 +86,31 @@ type ListedRegistrationRefusal
   | ListedSubjectRefused { refusal: JitRegistrationSubjectRefusal }
   | ListedAuthorityNamesNoInstallation
 
+// WHY A LISTED NAME IS ADMITTED. The round trip proves the name is canonical spelling, not that any boot
+// ever minted it, so the origin is typed rather than implied. A name under the currently admitted boot
+// is that boot's own registration. Any other canonical name is admitted ONLY as a recovered reserved-namespace
+// registration: gunbc-service-<host>-* is the fleet's reserved runner-name namespace (nothing else is
+// given such a name), so a canonical name in it is fleet-owned and deletable even when no admitted boot
+// is on record for it -- a boot lost before its receipt, or a name never observed. JitRegistration is
+// unchanged and carries no origin; the origin travels beside it.
+type ListedRegistrationOrigin
+  = AdmittedBootRegistration { boot: ServiceBootId }
+  | RecoveredReservedServiceRegistration { reason: NonEmptyStr }
+
 type ListedRegistrationStanding
-  = ListedRegistrationAdmitted { registration: JitRegistration, boot_id: NonEmptyStr }
+  = ListedRegistrationAdmitted { registration: JitRegistration, origin: ListedRegistrationOrigin }
   | ListedRegistrationRefused { refusal: ListedRegistrationRefusal }
 
 fn jit_registration_of_listed(
   organization: GitHubOrganizationRef,
   host: HostControlStanding,
+  admitted: ServiceBootId,
   listed: String,
   authority: GitHubCredentialAuthority,
   registration_labels: RunnerRegistrationLabelsResolution,
 ) -> ListedRegistrationStanding admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "sweep_over"),
-  decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "reg"),
-  decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "a_listed_name_is_admitted_only_by_exact_round_trip"),
+  decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "reg_with"),
 ] {
   match host {
     HostControlRefused { refusal: r } => ListedRegistrationRefused { refusal: ListedSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: r } } }
@@ -109,7 +120,7 @@ fn jit_registration_of_listed(
       Present { value: parsed } =>
         match host_unit_registration_subject(standing: host_unit_slot_over(
           host: host,
-          purpose: ServiceSlot { boot_id: parsed.boot_id, index: parsed.index },
+          purpose: RecoveredServiceSlot { name: parsed },
           workflow: service_slot_selected_workflow(),
           registration_labels: registration_labels,
         )) {
@@ -124,7 +135,11 @@ fn jit_registration_of_listed(
                 Present { value: held } =>
                   ListedRegistrationAdmitted {
                     registration: JitRegistration { organization: organization, name: subject.name, subject: subject, app: held.app, installation: held.installation },
-                    boot_id: parsed.boot_id,
+                    origin: if (parsed.boot_id as String) == (admitted.boot_id as String) {
+                      AdmittedBootRegistration { boot: admitted }
+                    } else {
+                      RecoveredReservedServiceRegistration { reason: "canonical name in the fleet-reserved gunbc-service namespace with no admitted boot on record: fleet-owned, so deletable" as NonEmptyStr }
+                    },
                   }
               }
             }
@@ -198,7 +213,7 @@ type LostBootSweepRefusal
 fn lost_boot_sweep(
   organization: GitHubOrganizationRef,
   host: HostControlStanding,
-  current: NonEmptyStr,
+  current: ServiceBootId,
   authority: GitHubCredentialAuthority,
   registration_labels: RunnerRegistrationLabelsResolution,
   listing: RestResult<OrganizationRunnerListWire>,
@@ -224,7 +239,7 @@ fn lost_boot_sweep(
 fn sweep_over(
   organization: GitHubOrganizationRef,
   host: HostControlStanding,
-  current: NonEmptyStr,
+  current: ServiceBootId,
   authority: GitHubCredentialAuthority,
   registration_labels: RunnerRegistrationLabelsResolution,
   runners: List<OrganizationRunnerWire>,
@@ -233,13 +248,11 @@ fn sweep_over(
     match acc {
       LostBootSweepRefused { refusal: _ } => acc
       LostBootSweepSelected { registrations: selected, untouched: untouched } =>
-        match jit_registration_of_listed(organization: organization, host: host, listed: r.name, authority: authority, registration_labels: registration_labels) {
-          ListedRegistrationAdmitted { registration: reg, boot_id: inc } =>
-            if (inc as String) == (current as String) {
-              LostBootSweepSelected { registrations: selected, untouched: concat(untouched, [r.name]) }
-            } else {
-              LostBootSweepSelected { registrations: concat(selected, [reg]), untouched: untouched }
-            }
+        match jit_registration_of_listed(organization: organization, host: host, admitted: current, listed: r.name, authority: authority, registration_labels: registration_labels) {
+          ListedRegistrationAdmitted { registration: reg, origin: AdmittedBootRegistration { boot: _ } } =>
+            LostBootSweepSelected { registrations: selected, untouched: concat(untouched, [r.name]) }
+          ListedRegistrationAdmitted { registration: reg, origin: RecoveredReservedServiceRegistration { reason: _ } } =>
+            LostBootSweepSelected { registrations: concat(selected, [reg]), untouched: untouched }
           ListedRegistrationRefused { refusal: ListedNameOutsideServiceGrammar { listed: _ } } =>
             LostBootSweepSelected { registrations: selected, untouched: concat(untouched, [r.name]) }
           ListedRegistrationRefused { refusal: ListedNameDoesNotRoundTrip { listed: _, rebuilt: _ } } =>
