@@ -145,6 +145,8 @@ import gunbc.parse_verdict_restore {
   parse_verdict_locate_step_name,
   parse_verdict_receipts_restore_step,
   parse_verdict_receipts_restore_step_name,
+  parse_verdict_record_step,
+  parse_verdict_record_step_name,
   parse_verdict_reuse_walk_step,
   parse_verdict_reuse_walk_step_name,
 }
@@ -471,8 +473,9 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   )
 }
 
-// Every declared ordinal restores its identity and receipts pair; the verb, not the workflow, takes
-// the first ordinal that published.
+// Every declared ordinal carries a gated identity and receipts restore pair: the first ordinal whose
+// identity hit disables the later ones, and its receipts restore alone runs. The record step then
+// leaves the winning sha for the verb.
 fn compiler_gate_parse_verdict_restore_bound_steps() -> List<CompilerGateBoundStep> {
   fold_list(
     xs: parse_verdict_restore_ancestor_ordinals,
@@ -501,6 +504,11 @@ fn compiler_gate_emit_build_tail_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
     compiler_gate_parse_verdict_restore_bound_steps(),
     [
+      CompilerGateBoundStep {
+        step: parse_verdict_record_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_record_step_name,
+      },
       CompilerGateBoundStep {
         step: parse_verdict_reuse_walk_step(),
         role: capability_neutral,

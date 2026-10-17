@@ -1,7 +1,7 @@
 module v2.cli.parse_verdict_reuse
 
 import std.types { Bool, Char, Int, List, Map, String }
-import std.algebra { FreeMonoid, Cons, Empty, FreeSemigroup, empty_map, fold_list, list_head, map_insert, skip }
+import std.algebra { FreeMonoid, Empty, FreeSemigroup, empty_map, fold_list, list_head, map_insert }
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
@@ -24,8 +24,6 @@ import gunbc.parse_verdict_schema {
   parse_verdict_restore_identity_basename,
   parse_verdict_restore_receipts_basename,
   parse_verdict_restore_ancestors_basename,
-  parse_verdict_restore_ancestor_ordinals,
-  parse_verdict_restore_slot_basename,
 }
 
 // THE PULL-REQUEST SIDE OF THE PARSE-VERDICT CACHE (gunbc.parse_verdict_schema owns the standing;
@@ -64,8 +62,8 @@ fn parse_verdict_receipt_lines(text: String) -> Map<String, Bool> {
   )
 }
 
-// The locator's record is at most the declared ordinals long, so a list is the right carrier here;
-// the receipts, which are the whole population, stay a set built in one pass above.
+// The ancestor record is one line; the receipts, which are the whole population, stay a set built in
+// one pass above.
 fn parse_verdict_text_lines(text: String) -> List<String> {
   fold_list(
     xs: parse_verdict_line_scalars(text: text),
@@ -94,75 +92,30 @@ fn parse_verdict_base_from(
 
 fn parse_verdict_restored_path(dir: String, basename: String) -> String { join([dir, "/", basename], "") }
 
-fn parse_verdict_slot_path(dir: String, basename: String, ordinal: Int) -> String {
-  parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_slot_basename(basename: basename, ordinal: ordinal))
-}
-
-// The sha the locator recorded at this ordinal. A missing or short record leaves it Absent, and an
-// entry restored without a named ancestor is still reused only on exact identity.
-fn parse_verdict_ancestor_at(ancestors: List<String>, ordinal: Int) -> Optional<String> {
-  list_head(xs: skip(xs: ancestors, n: ordinal))
-}
-
-// What the restore left at one ordinal: the identity blob and the receipts, each as the read found it.
-type ParseVerdictRestoredSlot {
-  identity: FilesystemReadOutcome
-  receipts: FilesystemReadOutcome
-}
-
-// THE LOCATOR'S SELECTION, pure over the slots the reads produced, newest first: the first ordinal
-// whose identity blob was restored wins, and its receipts are the ones at the same ordinal. If no
-// ordinal has a published identity the base has no identity at all, which the standing counts as
-// MissIdentityAbsent. A later ancestor is never consulted once one has published, because a
-// mismatched identity must refuse reuse, not fall through to a nearer match.
-fn parse_verdict_base_select(ancestors: List<String>, slots: List<ParseVerdictRestoredSlot>, ordinal: Int) -> ParseVerdictBase {
-  match slots {
-    Empty {} => ParseVerdictBase { ancestor: Absent, i_base: Absent, receipt_lines: Absent }
-    Cons { head: slot, tail: rest } =>
-      match slot.identity {
-        FilesystemReadSucceeded { content: _ } =>
-          parse_verdict_base_from(
-            ancestor: parse_verdict_ancestor_at(ancestors: ancestors, ordinal: ordinal),
-            identity: slot.identity,
-            receipts: slot.receipts
-          )
-        FilesystemReadRefused { error: _ } => parse_verdict_base_select(ancestors: ancestors, slots: rest, ordinal: ordinal + 1)
+// The sha the restore chain recorded: the first line of the record, Absent when the record is missing
+// or empty. An entry restored without a named ancestor is still reused only on exact identity.
+fn parse_verdict_ancestor_from(record: FilesystemReadOutcome) -> Optional<String> {
+  match record {
+    FilesystemReadSucceeded { content: c } =>
+      match list_head(xs: parse_verdict_text_lines(text: c)) {
+        Present { value: line } => if line == "" { Absent } else { Present { value: line } }
+        Absent => Absent
       }
+    FilesystemReadRefused { error: _ } => Absent
   }
 }
 
-// Tail-recursive over the declared ordinals: the reads are effects, and the Rust realization lowers
-// only tail calls to a loop, so the slots accumulate and the call is the last expression.
-fn parse_verdict_slots_read(dir: String, ordinals: List<Int>, read: List<ParseVerdictRestoredSlot>) -> List<ParseVerdictRestoredSlot> {
-  match ordinals {
-    Empty {} => read
-    Cons { head: ordinal, tail: rest } => {
-      let identity = Filesystem.Read(path: parse_verdict_slot_path(dir: dir, basename: parse_verdict_restore_identity_basename, ordinal: ordinal))
-      let receipts = Filesystem.Read(path: parse_verdict_slot_path(dir: dir, basename: parse_verdict_restore_receipts_basename, ordinal: ordinal))
-      parse_verdict_slots_read(
-        dir: dir,
-        ordinals: rest,
-        read: concat(
-          read,
-          [ParseVerdictRestoredSlot {
-            identity: filesystem_read_outcome(content: identity.content, success: identity.success, error: identity.error),
-            receipts: filesystem_read_outcome(content: receipts.content, success: receipts.success, error: receipts.error)
-          }]
-        )
-      )
-    }
-  }
-}
-
+// THE RESTORE CHAIN ALREADY CHOSE THE ANCESTOR (first published identity wins, gated in the
+// workflow), so there is exactly one pair of blobs here and nothing to select between: a mismatch
+// refuses reuse in the standing, and no other ancestor is ever consulted.
 fn parse_verdict_base_read(dir: String) -> ParseVerdictBase {
   let record = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_ancestors_basename))
-  parse_verdict_base_select(
-    ancestors: match filesystem_read_outcome(content: record.content, success: record.success, error: record.error) {
-      FilesystemReadSucceeded { content: c } => parse_verdict_text_lines(text: c)
-      FilesystemReadRefused { error: _ } => []
-    },
-    slots: parse_verdict_slots_read(dir: dir, ordinals: parse_verdict_restore_ancestor_ordinals, read: []),
-    ordinal: 0
+  let identity = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_identity_basename))
+  let receipts = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_receipts_basename))
+  parse_verdict_base_from(
+    ancestor: parse_verdict_ancestor_from(record: filesystem_read_outcome(content: record.content, success: record.success, error: record.error)),
+    identity: filesystem_read_outcome(content: identity.content, success: identity.success, error: identity.error),
+    receipts: filesystem_read_outcome(content: receipts.content, success: receipts.success, error: receipts.error)
   )
 }
 

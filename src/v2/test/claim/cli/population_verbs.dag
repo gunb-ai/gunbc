@@ -1,12 +1,12 @@
 module v2.test.claim.cli.population_verbs
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { Bool, List, Map, String }
-import extdeps.filesystem.filesystem_io { FilesystemReadRefused, FilesystemReadSucceeded }
+import extdeps.filesystem.filesystem_io { FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded }
 import gunbc.parse_population_refusals { RefusalClass }
 import v2.cli.parse_verdict_reuse {
   ParseVerdictBase,
-  ParseVerdictRestoredSlot,
-  parse_verdict_base_select,
+  parse_verdict_ancestor_from,
+  parse_verdict_base_from,
   parse_verdict_receipt_lines,
   parse_verdict_reuse_counts_text,
 }
@@ -353,19 +353,14 @@ test fn parse_verdict_absent_entry_is_a_typed_miss_holds() -> Bool {
     && reuse_standing_is(reuse: reuse_base(i_base: optional_present(value: fixture_compiler), text: Absent), digest: fixture_source_digest, expected: MissEntryAbsent)
 }
 
-fn locator_slot_absent() -> ParseVerdictRestoredSlot {
-  ParseVerdictRestoredSlot { identity: FilesystemReadRefused { error: "no entry" }, receipts: FilesystemReadRefused { error: "no entry" } }
-}
-
-fn locator_slot_published(identity: String) -> ParseVerdictRestoredSlot {
-  ParseVerdictRestoredSlot {
-    identity: FilesystemReadSucceeded { content: identity },
+// The restore chain chose the ancestor and left one record plus one pair of blobs; the verb reads
+// them through the same functions `parse_verdict_base_read` uses, over supplied outcomes.
+fn locator_reuse(record: FilesystemReadOutcome, identity: FilesystemReadOutcome) -> ParseVerdictReuse {
+  parse_verdict_reuse_requested(base: parse_verdict_base_from(
+    ancestor: parse_verdict_ancestor_from(record: record),
+    identity: identity,
     receipts: FilesystemReadSucceeded { content: reuse_receipts_text() }
-  }
-}
-
-fn locator_reuse(slots: List<ParseVerdictRestoredSlot>) -> ParseVerdictReuse {
-  parse_verdict_reuse_requested(base: parse_verdict_base_select(ancestors: ["sha-0", "sha-1", "sha-2"], slots: slots, ordinal: 0))
+  ))
 }
 
 fn locator_counts_text(reuse: ParseVerdictReuse) -> String {
@@ -377,27 +372,29 @@ fn locator_counts_text(reuse: ParseVerdictReuse) -> String {
   )
 }
 
-// POSITIVE CONTROL, ROUTE ASSERTED: the base tip and its first parent published nothing, the second
-// ancestor did with the exact identity. That entry is the one reused, and the counts line names it.
+// POSITIVE CONTROL, ROUTE ASSERTED: the restore chain recorded the second ancestor with the exact
+// identity. That entry is the one reused, and the counts line names it.
 test fn parse_verdict_locator_reuses_the_first_published_ancestor_holds() -> Bool {
-  let reuse = locator_reuse(slots: [locator_slot_absent(), locator_slot_absent(), locator_slot_published(identity: fixture_compiler)])
+  let reuse = locator_reuse(record: FilesystemReadSucceeded { content: "sha-2\n" }, identity: FilesystemReadSucceeded { content: fixture_compiler })
   reuse_standing_is(reuse: reuse, digest: fixture_source_digest, expected: Reused)
     && locator_counts_text(reuse: reuse) == "parse-verdict reuse: ancestor=sha-2 reused=1 miss_identity_absent=0 miss_identity_mismatch=0 miss_entry_absent=0 miss_digest_unseen=0 miss_declared_refused=0"
 }
 
-// RED: the NEWEST published entry has another identity and an older one matches. The first published
-// entry wins and refuses reuse; the locator never falls through to a nearer match.
+// RED: the chosen entry has another identity. It refuses reuse and counts the mismatch against the
+// ancestor it came from; the workflow never offers a nearer match (see the restore witnesses).
 test fn parse_verdict_locator_does_not_fall_through_a_mismatched_ancestor_holds() -> Bool {
-  let reuse = locator_reuse(slots: [locator_slot_absent(), locator_slot_published(identity: "other-compiler"), locator_slot_published(identity: fixture_compiler)])
+  let reuse = locator_reuse(record: FilesystemReadSucceeded { content: "sha-1\n" }, identity: FilesystemReadSucceeded { content: "other-compiler" })
   reuse_standing_is(reuse: reuse, digest: fixture_source_digest, expected: MissIdentityMismatch)
     && locator_counts_text(reuse: reuse) == "parse-verdict reuse: ancestor=sha-1 reused=0 miss_identity_absent=0 miss_identity_mismatch=1 miss_entry_absent=0 miss_digest_unseen=0 miss_declared_refused=0"
 }
 
-// Nothing published within the declared bound is a typed miss naming no ancestor.
+// Nothing restored (no record, no identity) is a typed miss naming no ancestor; an empty record does too.
 test fn parse_verdict_locator_with_no_published_ancestor_is_a_typed_miss_holds() -> Bool {
-  let reuse = locator_reuse(slots: [locator_slot_absent(), locator_slot_absent(), locator_slot_absent()])
-  reuse_standing_is(reuse: reuse, digest: fixture_source_digest, expected: MissIdentityAbsent)
-    && locator_counts_text(reuse: reuse) == "parse-verdict reuse: ancestor=none reused=0 miss_identity_absent=1 miss_identity_mismatch=0 miss_entry_absent=0 miss_digest_unseen=0 miss_declared_refused=0"
+  let missing = locator_reuse(record: FilesystemReadRefused { error: "no record" }, identity: FilesystemReadRefused { error: "no entry" })
+  let empty = locator_reuse(record: FilesystemReadSucceeded { content: "\n" }, identity: FilesystemReadRefused { error: "no entry" })
+  reuse_standing_is(reuse: missing, digest: fixture_source_digest, expected: MissIdentityAbsent)
+    && locator_counts_text(reuse: missing) == "parse-verdict reuse: ancestor=none reused=0 miss_identity_absent=1 miss_identity_mismatch=0 miss_entry_absent=0 miss_digest_unseen=0 miss_declared_refused=0"
+    && locator_counts_text(reuse: empty) == "parse-verdict reuse: ancestor=none reused=0 miss_identity_absent=1 miss_identity_mismatch=0 miss_entry_absent=0 miss_digest_unseen=0 miss_declared_refused=0"
 }
 
 // A changed module (digest not in the restored set) re-parses.
