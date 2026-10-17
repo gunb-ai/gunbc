@@ -64,6 +64,7 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.type_binder { node_inferred_subtree_nodes }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.node {
   Atom,
   ComputationNode,
@@ -642,7 +643,8 @@ fn emit_partition_with_target(
   partition: ProgramPartition,
   target: TargetModel,
   realization_host: TargetModel,
-  kinds: FreeMonoid<DeclaredTypeKind>
+  kinds: FreeMonoid<DeclaredTypeKind>,
+  declarations: SymbolIndex
 ) -> Outcome<Medium<String>> {
   if partition_segment_is_ambient_arrow_body_behavior(partition: partition) {
     bind_outcome(
@@ -659,7 +661,13 @@ fn emit_partition_with_target(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
         if produced_module_bodies_declare_members(root: tree.root) {
-          emit_module_body_members(root: tree.root, target: target, realization_host: realization_host, kinds: kinds)
+          emit_module_body_members(
+            tree: tree,
+            target: target,
+            realization_host: realization_host,
+            kinds: kinds,
+            declarations: declarations
+          )
         } else {
           emit(tree: tree, target: target)
         }
@@ -677,12 +685,13 @@ fn emit_partition_with_target(
 fn emit_partition(
   partition: ProgramPartition,
   target: TargetModel,
-  kinds: FreeMonoid<DeclaredTypeKind>
+  kinds: FreeMonoid<DeclaredTypeKind>,
+  declarations: SymbolIndex
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: partition_derive_target_for_emit(partition: partition, target: target),
     f: fn(derived_target) {
-      emit_partition_with_target(partition: partition, target: derived_target, realization_host: target, kinds: kinds)
+      emit_partition_with_target(partition: partition, target: derived_target, realization_host: target, kinds: kinds, declarations: declarations)
     }
   )
 }
@@ -698,7 +707,8 @@ fn emit_for_target(
     segment: segment,
     target: target,
     boundary: boundary,
-    kinds: no_type_declaration_kinds()
+    kinds: no_type_declaration_kinds(),
+    declarations: empty_symbol_index()
   )
 }
 
@@ -707,12 +717,16 @@ fn emit_for_target(
 // in it: the caller that still holds the module's NormalizedTree passes its type_declaration_kinds (the
 // closure door does), and emit_for_target, whose callers hold only the inferred tree, passes none -- so a
 // plain Conj member there refuses as undecided rather than being guessed a record.
+// DECLARED GAP: emit_for_target also passes empty_symbol_index. Callers with a ResolvedTree use
+// emit_for_target_with_declarations (closure_emission). Frozen compiler_closure_emit stays on
+// emit_for_target until that route is deleted.
 fn emit_for_target_with_declarations(
   program: InferredTree,
   segment: ProgramSegment,
   target: TargetModel,
   boundary: PartitionBoundaryPolicy,
-  kinds: FreeMonoid<DeclaredTypeKind>
+  kinds: FreeMonoid<DeclaredTypeKind>,
+  declarations: SymbolIndex
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: resolve_program_partition(
@@ -721,7 +735,7 @@ fn emit_for_target_with_declarations(
       boundary: boundary
     ),
     f: fn(partition) {
-      emit_partition(partition: partition, target: target, kinds: kinds)
+      emit_partition(partition: partition, target: target, kinds: kinds, declarations: declarations)
     }
   )
 }

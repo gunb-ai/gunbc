@@ -26,7 +26,7 @@ import product.fabric.flex_market {
   FlexReleaseHoldRateUnconverted, FlexReleaseHoldCurrencyMismatch,
   FlexReleasePlan, flex_release_pass,
   FlexCapAssessment, FlexCapOver, FlexCapUnder, FlexCapAtLimit, FlexCapUnreadable,
-  flex_quoted_bid, flex_class_market_median, flex_choose_bid_level,
+  flex_quoted_bid, flex_class_market_median, flex_choose_bid_level, flex_choose_bid_level_under,
   flex_vram_class, flex_ownership, flex_ours_only,
   flex_owner_label_gunbc_flex, flex_card_dead, flex_cleanup_dead,
   flex_held_effective_rate, flex_dollars_per_vram, FlexVramHourlyQuoted, FlexVramHourlyZeroCapacity,
@@ -42,8 +42,17 @@ import gunbc.harness.harness_reasoning_wire {
 }
 import extdeps.cloud.vast_ai { VastAiCreateAskRequest, VastAiChangeBidRequest }
 import std.decimal { ExactDecimal }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, File }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The empirical coupling (sample count makes a productive-hour reading reliable) is a typed bet in
+// production, so production answers FlexLevelNeedsEvidence. These claims SUPPLY a cited ground at the
+// boundary to establish the choice, and pair it with the uncited-bet claim.
+data supplied_coupling: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority { uri: Uri { scheme: File, locator: "dag/test/claim/fabric/flex_market_witness.dag#supplied_coupling" } }
+}
 
 fn usd_hour(n: Nat) -> MoneyPerHour {
   MoneyPerHour { amount: money_amount_micro(count: n), currency: Usd }
@@ -138,6 +147,29 @@ test fn a_class_with_no_samples_tries_three_fifths_first() -> Bool {
   }
 }
 
+fn three_each() -> List<FlexRentalSample> {
+  [
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+  ]
+}
+
+test fn an_uncited_sample_reliability_bet_is_needs_evidence_not_a_choice() -> Bool {
+  match flex_choose_bid_level(rows: three_each(), class: FlexVramClass48, rentals_so_far: 1, quote_currency: Usd) {
+    FlexLevelNeedsEvidence => true
+    FlexLevelChosen { level: _, samples: _ } => false
+    FlexLevelExplore { level: _, best: _ } => false
+    FlexLevelSelectionRefused => false
+  }
+}
+
 test fn after_min_samples_the_cheaper_productive_hour_wins() -> Bool {
   let cheap = [
     ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
@@ -150,7 +182,7 @@ test fn after_min_samples_the_cheaper_productive_hour_wins() -> Bool {
     ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
     ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
   ]
-  match flex_choose_bid_level(rows: cheap, class: FlexVramClass48, rentals_so_far: 1, quote_currency: Usd) {
+  match flex_choose_bid_level_under(rows: cheap, class: FlexVramClass48, rentals_so_far: 1, quote_currency: Usd, coupling: supplied_coupling) {
     FlexLevelExplore { level: _, best: _ } => false
     FlexLevelNeedsEvidence => false
     FlexLevelSelectionRefused => false
@@ -175,7 +207,7 @@ test fn every_fifth_rental_explores_another_level() -> Bool {
     ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
     ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
   ]
-  match flex_choose_bid_level(rows: cheap, class: FlexVramClass48, rentals_so_far: 5, quote_currency: Usd) {
+  match flex_choose_bid_level_under(rows: cheap, class: FlexVramClass48, rentals_so_far: 5, quote_currency: Usd, coupling: supplied_coupling) {
     FlexLevelChosen { level: _, samples: _ } => false
     FlexLevelNeedsEvidence => false
     FlexLevelSelectionRefused => false

@@ -1,6 +1,7 @@
 module gunbc.namespace_cut.namespace_reference_derived_closure_contract
 
 import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
+  NoDagReachableNativeOccurrenceTransportProducer,
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureCapability,
   ReferenceDerivedClosureEstablished,
@@ -12,9 +13,6 @@ import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   SiblingDecisionBranchExcluded,
   LaterDeclarationExcluded,
   DistinctSameSpelledDeclarationsPreserved,
-  P2aStructuralCandidateProducer7515,
-  P2aReferenceDependencyProjection7515,
-  P2aPoolIndependentDependencyProjection7515,
 }
 import std.types { Bool, Int, List, String }
 
@@ -30,12 +28,14 @@ import std.types { Bool, Int, List, String }
 // missing capability, and zero progress is red.
 //
 // This module deliberately does NOT derive visibility or dependencies.
-// namespace_reference_derived_closure_acceptance_admissions carries six typed unavailable rows
-// today: structural visibility/order/ambiguity wait on the P2a candidate producer in #7515,
-// dependency dedupe on its binding projection, and pool-independent closure on that projection's
-// Class-B wall. The fixture witnesses construct observations to prove this fold discriminates, but
-// the quarantined closing witness consumes only the production-admission function; copying fixture
-// observations into it would be specification-without-execution and would not satisfy the contract.
+// namespace_reference_derived_closure_acceptance_admissions carries six typed unavailable rows, all
+// naming NoDagReachableNativeOccurrenceTransportProducer: every clause needs an OccurrenceTransport
+// produced from parsed source (clauses a-d directly; e and f through the parser-produced closure that
+// v1.gunbc.namespace_reference_derived_closure_clause_e_production assembles), and no dag-reachable
+// native parse -> occurrence-transport producer exists. The hand-built cross-file fixture is NOT
+// production authority (its own note), so assessing it would be specification-without-execution.
+// The fixture witnesses construct observations to prove this fold discriminates; the quarantined
+// closing witness consumes only the production-admission function.
 
 data namespace_reference_derived_closure_contract_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. The implementation adds production-derived observations to namespace_reference_derived_closure_acceptance_admissions as each clause becomes executable. When all six establish, the unchanged closing witness greens; its QuarantineProbeExpectRed exclusion and known-red roster entry delete in the same change, promoting it to the ordinary discovery corpus as the permanent regression wall."
 
@@ -100,27 +100,27 @@ fn namespace_reference_derived_closure_acceptance_admissions() -> List<Reference
   [
     ReferenceDerivedClosureUnavailable {
       capability: SameFileEarlierNeighbourVisible,
-      trigger: P2aStructuralCandidateProducer7515,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
     },
     ReferenceDerivedClosureUnavailable {
       capability: SiblingDecisionBranchExcluded,
-      trigger: P2aStructuralCandidateProducer7515,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
     },
     ReferenceDerivedClosureUnavailable {
       capability: LaterDeclarationExcluded,
-      trigger: P2aStructuralCandidateProducer7515,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
     },
     ReferenceDerivedClosureUnavailable {
       capability: DistinctSameSpelledDeclarationsPreserved,
-      trigger: P2aStructuralCandidateProducer7515,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
     },
     ReferenceDerivedClosureUnavailable {
       capability: RepeatedMentionsCollapseDependency,
-      trigger: P2aReferenceDependencyProjection7515,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
     },
     ReferenceDerivedClosureUnavailable {
       capability: UnrelatedLoadedFileExcluded,
-      trigger: P2aPoolIndependentDependencyProjection7515,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
     },
   ]
 }

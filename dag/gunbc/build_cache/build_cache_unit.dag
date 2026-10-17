@@ -19,7 +19,7 @@ import extdeps.cache.sccache {
   SccacheServerTcpPort, SccacheServerUnixSocket, sccache_installed_binary_path,
   sccache_start_server_env_assignment, sccache_no_daemon_env_assignment,
   sccache_idle_timeout_never_env_assignment,
-  sccache_cache_dir_env_var, sccache_cache_size_env_var,
+  sccache_cache_dir_env_var, sccache_cache_size_env_var, sccache_server_uds_env_var,
 }
 
 data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
@@ -113,7 +113,7 @@ data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 fn sccache_endpoint_env_assignment(instance: BuildCacheInstance) -> NonEmptyStr {
   match instance.endpoint {
     SccacheServerUnixSocket { path: p } =>
-      concat("SCCACHE_SERVER_UDS=", p as String) as NonEmptyStr
+      concat(concat(sccache_server_uds_env_var as String, "="), p as String) as NonEmptyStr
     SccacheServerTcpPort { port: n } =>
       concat("SCCACHE_SERVER_PORT=", to_string(n)) as NonEmptyStr
   }

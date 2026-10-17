@@ -97,6 +97,12 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_key_argv"),
     decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_password_argv"),
     decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_renders_now"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "fleet_ssh_transport"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "over_fleet_ssh_an_npm_pin_is_unverifiable_and_installs_nothing"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "over_fleet_ssh_a_sha256_transport_mock_is_unverifiable_not_a_mismatch"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "a_non_portable_fetch_word_refuses_over_fleet_ssh_before_any_local_leg"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "fleet_ssh_argv_goes_through_the_host_effect_dispatcher"),
+    decl_ref(module_path: "test.claim.live_deploy.ensure_dependency_witness", decl_name: "both_subject_arms_reach_the_transport_as_argv_not_as_a_script_body"),
   ]
 {
   match fixture_attempt() {

@@ -7,7 +7,7 @@ import gunbc.live_deploy.member_identity {
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_emitted_steps_text, apply_emitted_steps_text_at, apply_empty_host_effects, claim_oidc_now }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_emitted_steps_text, apply_emitted_steps_text_at, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt, Winget, HomebrewDeFacto }
@@ -121,7 +121,6 @@ import gunbc.live_deploy.effect_leaf {
   deploy_effect_command,
   systemctl_restart_effect,
   apt_install_effect,
-  apt_install_unelevated_effect,
   dpkg_status_effect,
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
@@ -143,7 +142,6 @@ import gunbc.live_deploy.emit {
   approval_broker_tree_copy_steps,
   owned_directory_install_steps,
   owned_directory_apply_steps,
-  approval_broker_dark_install_script,
   apply_approval_broker_unit_write_steps,
   approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
@@ -156,7 +154,6 @@ import gunbc.live_deploy.emit {
   install_d_shared_mode,
   path_parent_dir,
   live_deploy_systemd_unit_for,
-  deployment_ensure_dependency_script,
   emit_deploy_teardown_dependency_refusal,
   live_deploy_wholesale_refused_poison,
   live_deploy_apply_script_for,
@@ -164,6 +161,7 @@ import gunbc.live_deploy.emit {
   deploy_apply_preamble_steps,
   apply_intent_from_effects,
   apply_intent_fragments,
+  apply_object_source_serve_fragments,
   compose_host_script,
   compose_host_script_decide_steps,
   compose_host_script_mutate_steps,
@@ -258,15 +256,9 @@ data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
   observation: SurplusSlotsObserved { retired: [], still_present: [] },
 )
 
-data witness_apply_script_text: String = live_deploy_apply_script_for(access: ci_deploy_srv1_access, spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization, oidc_now: claim_oidc_now())
+data witness_apply_script_text: String = live_deploy_apply_script_for(access: ci_deploy_srv1_access, spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization, oidc_now: claim_oidc_now(), object_source_serve: apply_complete_object_source_serve())
 
 data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
-
-// ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER: THE ADDITIVE INSTALL ────────────────────────────
-data witness_approval_broker_dark_script_text: String = approval_broker_dark_install_script(access: ci_deploy_srv1_access,
-  spec: deployment_spec_srv1(),
-  revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-)
 
 fn witness_apply_script() -> String {
   witness_apply_script_text
@@ -390,18 +382,6 @@ test fn witness_tailnet_url_absent_not_fabricated() -> Bool {
   }
 }
 
-test fn witness_dependency_ensure_is_idempotent() -> Bool {
-  let tailscale = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } }
-  )
-  let tmux = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
-  )
-  string_contains(s: tailscale, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)))
-    && string_contains(s: tailscale, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tailscale)))
-    && string_contains(s: tmux, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)))
-    && string_contains(s: tmux, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tmux)))
-}
 
 // THE STAGED-FILE VALIDATION, AS THE INSTALL ITSELF BUILDS IT. The install step is a bash command
 // node built by gunbc.ci.ci_deploy_sudoers deploy_sudoers_elevated over the sudo elevation argv and the
@@ -473,6 +453,7 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
     plan: plan,
     cap_authorization: srv1_authorization(),
     oidc_now: claim_oidc_now(),
+    object_source_serve: apply_complete_object_source_serve(),
   )
   let frags = apply_intent_fragments(
     spec: spec,
@@ -481,6 +462,7 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
     plan: plan,
     cap_authorization: srv1_authorization(),
     oidc_now: claim_oidc_now(),
+    object_source_serve: apply_complete_object_source_serve(),
   )
   let offset = compose_host_script_decide_steps(fragments: frags).length()
     + host_script_trace_steps(kind: "Mutate", member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps()).length()
@@ -516,9 +498,11 @@ test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
 // it. The projection carries step CONTENT, so it holds both commands and none of the glue.
 //
 // WHAT IS ASSERTED NOW IS STRICTLY MORE THAN ITS NEIGHBOUR COVERS: both the guard command and the
-// PRIVILEGED install, on the real apply path. `witness_dependency_ensure_is_idempotent` above reads
-// `deployment_ensure_dependency_script`, which renders the UNELEVATED form, so the privileged
-// commands the deploy actually emits had no other witness.
+// PRIVILEGED install, on the real apply path. The UNELEVATED (standalone-route) form had its own
+// witness while `deployment_ensure_dependency_script` existed; that builder is gone -- the route
+// runs typed argv now -- and its idempotence claim moved with it to
+// test.claim.live_deploy.ensure_dependency_witness, which pins the probe-then-install fold (and the
+// install's non-run on the probe-zero path) where the decision actually lives.
 //
 // WHAT IS GIVEN UP: that the install is GUARDED by the check rather than merely beside it. No
 // witness asserts that rendering now. It is structural in the producer -- the install is the `then_`
@@ -1831,6 +1815,7 @@ test fn withheld_cap_report_precedes_and_keeps_binary_tree_and_unit_steps() -> B
     plan: deploy_witness_full_install_plan(spec: spec),
     cap_authorization: cap,
     oidc_now: claim_oidc_now(),
+    object_source_serve: apply_complete_object_source_serve(),
   ).steps)
   string_contains(
     s: text,
@@ -1939,6 +1924,7 @@ test fn helper_grant_precedes_the_roadmap_unit_install() -> Bool {
     plan: plan,
     cap_authorization: CapConvergeWithheld { cause: "claim order scan" },
     oidc_now: claim_oidc_now(),
+    object_source_serve: apply_complete_object_source_serve(),
   ))
   let roadmap = spec.service.unit_name as String
   match fold(steps, init: LookingForHelperGrant, f: (acc, st) =>
@@ -1988,6 +1974,7 @@ test fn no_member_mutate_steps_carry_a_refused_marker() -> Bool {
     plan: deploy_witness_full_install_plan(spec: spec),
     cap_authorization: CapConvergeWithheld { cause: "mutate-marker census" },
     oidc_now: claim_oidc_now(),
+    object_source_serve: apply_complete_object_source_serve(),
   )
   !any(fragments, f => host_script_mutate_carries_refused_marker(f: f))
 }
@@ -2017,6 +2004,7 @@ test fn a_refused_serve_unit_is_not_reloaded_enabled_or_restarted() -> Bool {
     plan: deploy_witness_full_install_plan(spec: spec),
     cap_authorization: CapConvergeWithheld { cause: "refuse-then-restart" },
     oidc_now: Absent,
+    object_source_serve: apply_complete_object_source_serve(),
   )
   let apply_mutate = pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: apply_frags))
   let retract_frags = retract_intent_fragments_for(spec: spec, access: a)
@@ -2047,33 +2035,6 @@ test fn a_refused_oidc_clock_projects_no_other_member_mutates() -> Bool {
   string_contains(s: proceeding, pattern: other_member)
     && refused == ""
     && !string_contains(s: refused, pattern: other_member)
-}
-
-// ── THE ADDITIVE INSTALL TOUCHES THE ROADMAP UNIT IN NO WAY ─────────────────────────────────
-// THIS IS THE CLAIM THE STAGE EXISTS TO SATISFY, not a hygiene check on a script. Roadmap
-// redeploys are FROZEN at the current release until the cutover completes (operator directive
-// 2026-09-19), and the first stage has to add a second served process without disturbing the one
-// already serving. A daemon-reload does not restart running units, so the roadmap keeps its PID and
-// its incarnation -- but only while nothing in this script names its unit.
-//
-// THE RED IS THE EDIT THAT WOULD BREAK THE FREEZE: route the dark install through the ordinary
-// apply member effects, which enable and restart gunbc-roadmap.service, and the first conjunct
-// fails. The positive conjuncts keep the claim from being satisfiable by an empty script.
-test fn the_dark_install_never_names_the_roadmap_unit() -> Bool {
-  let script = witness_approval_broker_dark_script_text
-  !string_contains(s: script, pattern: deployment_spec_srv1().service.unit_name as String)
-    && string_contains(s: script, pattern: gunbc_approval_broker_unit_name as String)
-    && string_contains(s: script, pattern: gunbc_approval_broker_slice_unit_name as String)
-}
-
-// IT CARRIES THE ADMITTED REVISION. The next cutover stage reads the release identity back off the
-// dark process; a unit whose ExecStart named no revision, or a different one, would make every
-// later reading a measurement of a build nobody deployed.
-test fn the_dark_install_execstart_carries_the_admitted_revision() -> Bool {
-  string_contains(
-    s: witness_approval_broker_dark_script_text,
-    pattern: join(["--release-revision ", deploy_witness_release_revision as String], ""),
-  )
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -2144,19 +2105,6 @@ fn service_has_execstart_containing(file: SystemdUnitFile, fragment: String) -> 
       })
     _ => false
   }
-}
-
-// A NON-OWNER REACHING THE STAGED DARK INSTALL REFUSES LOUDLY rather than rendering a script that
-// installs nothing and reports success -- the absorbing fallback at the seam where an operator is
-// being told a stage completed. This one DOES render, because the refusal marker is a property of
-// the emitted text and there is nothing cheaper that observes it.
-test fn a_twin_dark_install_refuses_rather_than_emitting_an_empty_stage() -> Bool {
-  let script = approval_broker_dark_install_script(access: ci_deploy_srv1_access, 
-    spec: srv1_twin_spec(),
-    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-  )
-  string_contains(s: script, pattern: "__GUNBC_DEPLOY_REFUSED__")
-    && !string_contains(s: script, pattern: gunbc_approval_broker_unit_path() as String)
 }
 
 // ── THE BROKER UNIT'S BYTE ORACLE: LOOPBACK, AND ITS OWN TREE ───────────────────────────────
@@ -2268,28 +2216,6 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
     && string_contains(s: unit, pattern: join(["ExecStart=", binary, " serve"], ""))
     && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
     && !string_contains(s: unit, pattern: approval_broker_serve_binary_is_per_release_poison)
-}
-
-// ── THE DIGEST IS SUBSTITUTED, NOT SPLICED BARE ─────────────────────────────────────────────
-// THE DEFECT THIS EXISTS FOR ACTUALLY SHIPPED (review 69066). The receipt command rendered
-// `printf '...%s\n' (cd /opt/... | cut -d' ' -f1) | install ...` -- a BARE parenthesised group in
-// printf's argument position, which is a bash SYNTAX ERROR, and with strict options at the head of
-// the same script it aborts the whole dark install before any step runs.
-//
-// IT SHIPPED BECAUSE THE ONLY CHECKS WERE SHAPE CHECKS over bytes nobody executed: string_contains
-// for "rsync -a --delete" and for the receipt path. Both stayed green over a script that could not
-// parse. That is DESIGN section 5's "a .contains() grep is not a consumer" landing as a defect
-// rather than as a caution.
-//
-// WHAT THIS CLAIM IS AND IS NOT. It is still a shape check -- a .dag claim cannot run bash -- but it
-// DISCRIMINATES THIS CLASS rather than merely witnessing presence: the first conjunct fails on the
-// exact bytes that shipped, and the second fails if the substitution is reintroduced unquoted, which
-// would word-split a digest containing whitespace. What it does NOT establish is that the script
-// parses; only executing it does, and the honest place for that is the stage-A run itself.
-test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> Bool {
-  let script = witness_approval_broker_dark_script_text
-  string_contains(s: script, pattern: "\"$(cd ")
-    && !string_contains(s: script, pattern: "%s\\n' (cd ")
 }
 
 // THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB

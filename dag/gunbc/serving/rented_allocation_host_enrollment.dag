@@ -1,0 +1,85 @@
+module gunbc.serving.rented_allocation_host_enrollment
+
+import std.types { String, NonEmptyStr, List }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, inference_serving_enrollment_participation }
+import gunbc.fleet.fleet_host_backing { GuestEntitlement, ProviderGuest, ProviderResourceAwaited }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationIdentity, RentedContractRead, RentedContractUnread }
+
+// A RENTED CARD IS ENROLLED THROUGH HOST CONVERGENCE, AS EVERY HOST IS, AND THIS IS THE ONE DERIVATION OF
+// THE ENROLLMENT INTENT ITS ALLOCATION IMPLIES. The intent is never authored: the host is the allocation's
+// access node, the participation is inference serving (so gunbc.host.host_assimilation_program
+// assimilation_program_for selects the inference program, InferenceServingProvision included, and no runner
+// phase), and the backing is ProviderGuest with the route read from the accepted offer.
+//
+// STATED DIVERGENCE FROM gunbc.serving.rented_allocation rented_allocation_enrollment: that function derives
+// a SERVING-ROUTE row (endpoint, ceiling, host access), a different question from the host's fleet enrollment
+// (what supplies the host and what it is for). They share the allocation and nothing else, so they are two
+// derivations of two facts and not a fork of one; there is NO rented-only enroll path, because this intent
+// is walked by the same standup spine as every host.
+//
+// WHAT THE ALLOCATION CANNOT SUPPLY REFUSES TYPED:
+//  - the route exists only when the contract was read (RentedContractRead); an unread contract names no
+//    provider route, and none is invented;
+//  - the guest entitlement (disk, nested virtualization, the identity URL adoption reads) is a provider
+//    fact the allocation does not carry, so it is a SUPPLIED reading: RentedGuestEntitlementUnread refuses
+//    with its own obligation until a Vast adapter produces RentedGuestEntitlementRead;
+//  - the provider resource is bound to the allocation's contract id, and the API account credential is not
+//    a field of the allocation, so the resource is ProviderResourceAwaited and adoption refuses on it.
+type RentedGuestEntitlementReading
+  = RentedGuestEntitlementRead { entitlement: GuestEntitlement }
+  | RentedGuestEntitlementUnread { obligation: NonEmptyStr }
+
+type RentedHostEnrollmentDerivation
+  = RentedHostEnrollmentDerived { allocation: RentedAllocationIdentity, intent: HostEnrollmentIntent }
+  | RentedHostEnrollmentRefused { allocation: RentedAllocationIdentity, obligation: NonEmptyStr }
+
+data rented_contract_unread_no_route_obligation: NonEmptyStr = "the allocation's provider contract is unread, so it names no provider route and the ProviderGuest backing cannot be derived" as NonEmptyStr
+
+fn rented_resource_awaited_obligation(id: RentedAllocationIdentity) -> NonEmptyStr {
+  join(["the provider API account credential for rented contract ", id.contract as String, " is not carried by the allocation, so the resource is awaited and adoption refuses on it"], "") as NonEmptyStr
+}
+
+fn rented_allocation_host_enrollment(a: RentedServingAllocation, entitlement: RentedGuestEntitlementReading) -> RentedHostEnrollmentDerivation {
+  match a.contract {
+    RentedContractUnread { obligation: _ } => RentedHostEnrollmentRefused { allocation: a.identity, obligation: rented_contract_unread_no_route_obligation }
+    RentedContractRead { offer: offer } =>
+      match entitlement {
+        RentedGuestEntitlementUnread { obligation: o } => RentedHostEnrollmentRefused { allocation: a.identity, obligation: o }
+        RentedGuestEntitlementRead { entitlement: e } =>
+          RentedHostEnrollmentDerived {
+            allocation: a.identity,
+            intent: HostEnrollmentIntent {
+              host: a.host.node as HostIdentity,
+              participation: inference_serving_enrollment_participation,
+              backing: ProviderGuest {
+                route: offer.route,
+                entitlement: e,
+                resource: ProviderResourceAwaited { read_obligation: rented_resource_awaited_obligation(id: a.identity) },
+              },
+            },
+          }
+      }
+  }
+}
+
+data rented_allocation_host_enrollment_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_allocation_host_enrollment", decl_name: "rented_allocation_host_enrollment"),
+    reason: "no Vast adapter yields a GuestEntitlement (disk, nested virtualization, identity URL) or the API account resource, so the entitlement is a supplied reading that is unread for every real allocation and no real rented card is enrolled",
+    dissolution: unbound_dissolution(description: "trigger: a vast_ai offer or instance read yields GuestEntitlement (disk, nested-virt, identity url) and the resource, and #13989 lands with the current card — sufficient for a real fleet_enrollments row derived through this function"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.harness.rented_allocation_seat", decl_name: "rented_allocation_seat"),
+    reason: "the seat is derived from an allocation but no harness fold reads it yet, because no real allocation is enrolled",
+    dissolution: unbound_dissolution(description: "trigger: #13989 lands with the current card — sufficient for harness_bind_seat to be called with this seat for the real allocation"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.serving_key_grant", decl_name: "serving_key_grant_bind"),
+    reason: "no caller supplies a granted key authorization, because no operator escalation and no secret source for the serving key exist yet",
+    dissolution: unbound_dissolution(description: "trigger: a secret source delivers the granted key and the launch leg calls serving_key_grant_bind with the operator-granted authorization — sufficient for a bound ServingServeKeyBinding in a real launch"),
+  ),
+]

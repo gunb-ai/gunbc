@@ -3826,6 +3826,19 @@ fn fixture_imported_corpus_sources(
                     );
                     queue.push(file_content);
                 }
+            } else if let Some(rest) = module_path.strip_prefix("fixture.closure.rustc_") {
+                let rel_path = format!("fixtures/fixture_closure_rustc/{rest}.dag");
+                let abs_path = ws.join(&rel_path);
+                if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    seen.insert(
+                        module_path,
+                        Rc::new(v1_compiler_compile::SourceFile {
+                            path: rel_path,
+                            content: file_content.clone(),
+                        }),
+                    );
+                    queue.push(file_content);
+                }
             }
         }
     }
@@ -7713,7 +7726,7 @@ fn parsed_bare_candidates(
 fn parsed_file_references_of(
     index: &MultiEntryIndex,
     sf: &Rc<v1_compiler_compile::SourceFile>,
-) -> Result<Rc<entry_resolve::ParsedFileReferences>, &'static str> {
+) -> Result<Rc<entry_resolve::ParsedFileReferences>, String> {
     let file = workspace_relative_repo_path(&sf.path);
     if let Some(hit) = index.parsed_references.borrow().get(&file) {
         return hit.clone();
@@ -7778,7 +7791,7 @@ fn bare_candidates_from_source(
     content: &str,
     referencing_module: &str,
     module_names: &HashSet<String>,
-) -> Result<BareCandidates, &'static str> {
+) -> Result<BareCandidates, String> {
     entry_resolve::parsed_file_references(path, content, referencing_module, module_names)
         .map(|refs| bare_candidates_from_references(&refs))
 }
@@ -11529,7 +11542,7 @@ pub struct MultiEntryIndex {
     /// module-path references and its bare references -- and its bare-reference admission read
     /// this one value; the file's bytes and the pool's module names are fixed for the index's life.
     parsed_references:
-        RefCell<HashMap<String, Result<Rc<entry_resolve::ParsedFileReferences>, &'static str>>>,
+        RefCell<HashMap<String, Result<Rc<entry_resolve::ParsedFileReferences>, String>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier and the only
     // tier of the resolved graph: it serves same-subject repeats within the process and is
     // populated on first assembly. Without it, N same-subject resolves each retained an
@@ -26300,7 +26313,7 @@ thread_local! {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReferenceAccountingRefusal {
     pub path: String,
-    pub cause: &'static str,
+    pub cause: String,
 }
 
 /// Import-less files `reference_resolution_facts` could not account for, with located causes.
@@ -32158,6 +32171,39 @@ mod annotation_erased_scan_projection {
         )
         .is_err());
     }
+
+    /// RED for the dropped span: the closure-load parse refusal must name `file:line:col`.
+    /// Reproducer from W7 PR #14155 -- a `data` with a String base and variant arms.
+    #[test]
+    fn a_closure_load_parse_refusal_names_file_line_col() {
+        let module_names: HashSet<String> = HashSet::new();
+        let src = "module m\n\ndata VerifiedBinaryInstallPlan: String = Planned { steps: List<ArgvCommand> } | RefusedToInstall { reason: String }\n";
+        let cause = referenced_module_paths_of_source("fixture/m.dag", src, &module_names)
+            .expect_err("the fixture line is a parse refusal");
+        let located = regex_free_located(&cause, "fixture/m.dag");
+        assert!(located, "refusal must carry file:line:col, got: {cause}");
+    }
+
+    /// Positive control: a well-formed module still reads.
+    #[test]
+    fn a_well_formed_module_still_reads_its_references() {
+        let module_names: HashSet<String> = HashSet::new();
+        let src = "module m\n\nfn g() -> Int { 1 }\n";
+        referenced_module_paths_of_source("fixture/m.dag", src, &module_names)
+            .unwrap_or_else(|e| panic!("control must parse: {e}"));
+    }
+
+    fn regex_free_located(cause: &str, file: &str) -> bool {
+        let Some(at) = cause.find(&format!("{file}:")) else {
+            return false;
+        };
+        let rest = &cause[at + file.len() + 1..];
+        let mut parts = rest.splitn(3, ':');
+        let digits = |p: Option<&str>| {
+            p.is_some_and(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+        };
+        digits(parts.next()) && digits(parts.next())
+    }
 }
 
 #[cfg(test)]
@@ -34538,15 +34584,16 @@ pub use emitted_closure_compile_host::{
 /// public surface merely because Rust needs a path to it.
 #[cfg(test)]
 pub(crate) use emitted_closure_compile_host::{
-    fixture_arm_diagnostic_lines, fixture_closure_attributed_diagnostic,
-    fixture_closure_attributed_line, fixture_closure_compiled, fixture_closure_reached_rustc,
-    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
-    fixture_discrimination_report, run_append_concat_form_discrimination,
-    run_argv_word_list_splice_discrimination, run_empty_map_turbofish_discrimination,
-    run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
-    run_local_true_false_coproduct_discrimination, run_native_bool_variant_discrimination,
-    run_nested_refinement_cast_discrimination, run_phantom_marker_identity_discrimination,
-    run_shell_projection_arity_discrimination, FixtureClosureOutcome,
+    fixture_argv_non_string_discrimination_passed, fixture_arm_diagnostic_lines,
+    fixture_closure_attributed_diagnostic, fixture_closure_attributed_line,
+    fixture_closure_compiled, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
+    fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
+    run_append_concat_form_discrimination, run_argv_word_list_splice_discrimination,
+    run_empty_map_turbofish_discrimination, run_fixture_closure_discrimination,
+    run_function_value_adapter_discrimination, run_local_true_false_coproduct_discrimination,
+    run_native_bool_variant_discrimination, run_nested_refinement_cast_discrimination,
+    run_phantom_marker_identity_discrimination, run_shell_projection_arity_discrimination,
+    FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.

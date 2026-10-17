@@ -1,5 +1,6 @@
 module test.claim.fabric.flex_bid_admission_witness
 
+import std.apply_mode { Plan }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool }
 import std.nat { Nat }
@@ -48,10 +49,10 @@ import product.fabric.flex_policy {
   FlexNewAcquisition, FlexExistingAcquisition, AcquisitionActive, AcquisitionPending,
   occupancy_sum, FlexOccupancySummed,
   FlexOnDemandReference, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
-  FlexOnDemandReferenceMissing, FlexActuationDry,
+  FlexOnDemandReferenceMissing,
   FlexHorizonPriced, FlexHorizonUnobserved, FlexHorizonRefused,
   FlexMarketPriceUnobserved, FlexMarketQuoteCurrencyMismatch, FlexCandidateConsequencesUnestablished,
-  flex_bid_admission, flex_price_offer,
+  flex_bid_admission, flex_price_offer, flex_on_demand_reference_cost,
 }
 import product.fabric.flex_market {
   FlexMarketQuote, FlexMarketQuoted, FlexMarketUnobserved, FlexBidLevelMarket,
@@ -168,7 +169,7 @@ fn t_policy(cap: MoneyPerHour) -> FlexPolicy {
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
-    actuation: FlexActuationDry,
+    actuation: Plan,
   }
 }
 
@@ -182,7 +183,7 @@ fn t_policy_eur(cap: MoneyPerHour) -> FlexPolicy {
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
-    actuation: FlexActuationDry,
+    actuation: Plan,
   }
 }
 
@@ -503,7 +504,7 @@ test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent()
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_twenty_wire(),
-      quote: usd_hour(amount: money_amount_micro(count: 1320000)),
+      quote: usd_hour(amount: money_amount_micro(count: 1200000)),
       key: "offer-a-again",
       reservation: "res-a-again",
       revocation: RevocationAccepted,
@@ -518,7 +519,7 @@ test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent()
     attempt: t_attempt(
       machine: t_machine(id: "machine-b"),
       min_bid: one_twenty_wire(),
-      quote: usd_hour(amount: money_amount_micro(count: 1320000)),
+      quote: usd_hour(amount: money_amount_micro(count: 1200000)),
       key: "offer-b",
       reservation: "res-b",
       revocation: RevocationAccepted,
@@ -533,7 +534,7 @@ test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent()
         && (refusal_label(o: rediscovered) == "admitted")
         && (refusal_label(o: fresh) == "admitted")
         && (admitted_bid(o: rediscovered) == admitted_bid(o: fresh))
-        && (admitted_bid(o: rediscovered) == 1320000)
+        && (admitted_bid(o: rediscovered) == 1200000)
         && (admitted_bid(o: rediscovered) <= 5000000)
   }
 }
@@ -977,8 +978,8 @@ test fn rediscovery_never_lifts_the_on_demand_relative_ceiling() -> Bool {
     account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
-      min_bid: ExactDecimal { units: 19, fraction_digits: 1 },
-      quote: usd_hour(amount: money_amount_micro(count: 2090000)),
+      min_bid: ExactDecimal { units: 21, fraction_digits: 1 },
+      quote: usd_hour(amount: money_amount_micro(count: 2100000)),
       key: "offer-rediscover-od",
       reservation: "res-rediscover-od",
       revocation: RevocationAccepted,
@@ -1374,5 +1375,39 @@ test fn admission_converts_the_vast_wire_min_bid() -> Bool {
           }
       }
     }
+  }
+}
+
+// The benchmark is a reading, not a purchase: a 1.50M fleet cap, a 2.00M on-demand charge and a 0.05M
+// start must read the complete 2.05M, not the charge alone.
+test fn the_on_demand_reference_reads_charge_plus_start_above_the_fleet_cap() -> Bool {
+  let reference = fold(
+    t_bound_avail_start(
+      offer: t_offer(key: "od-start", rate: usd_hour(amount: money_amount_micro(count: 2000000))),
+      availability: AvailableIndefinitely { delay: second(count: 0), receipt: "avail-1" },
+      start: money_amount_micro(count: 50000),
+    ),
+    init: FlexOnDemandReferenceMissing,
+    f: (acc, c) => FlexOnDemandReferenceFresh { candidate: c },
+  )
+  let attempt = t_attempt_ref(
+    machine: t_machine(id: "machine-a"),
+    min_bid: one_dollar_wire(),
+    quote: one_ten(),
+    key: "od-start-probe",
+    reservation: "res-od-start",
+    revocation: RevocationAccepted,
+    revocable: true,
+    reference: reference,
+  )
+  match flex_on_demand_reference_cost(
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 1500000))),
+    attempt: attempt,
+    budget_currency: Usd,
+    maximum_buy_order: money_amount_micro(count: 1500000),
+  ) {
+    FlexHorizonPriced { cost: c } => money_amount_micro_count(m: c) == 2050000
+    FlexHorizonUnobserved => false
+    FlexHorizonRefused { candidacy: _ } => false
   }
 }

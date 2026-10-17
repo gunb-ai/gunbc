@@ -21,6 +21,7 @@ import gunbc.auth.approval_gate {
   approval_standing_read, StandingReadAt, StandingClockUnreadable,
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization, ApprovalPollStanding }
+import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge {
   GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstatePartialNoop, GcpIamEstateRefused, estate_refused_texts,
   GcpIamRequest, GcpIamRequested, GcpIamUnrequestable,
@@ -58,8 +59,11 @@ data gcp_iam_converge_submit_timeout: Second = second(count: 30)
 // THE STEP BUDGET IS DERIVED FROM THE CONSENT WINDOW, not chosen beside it: the request step waits at
 // most the filing window for the tap, and plan, apply and readback are bounded API calls. Ten
 // minutes over the window is the actuation allowance, the same as the impersonated token's lifetime.
+// THE WAITS CANNOT OUTLAST THE TOKEN (review 81321): every create's operation reads share the one
+// impersonated token, so past its lifetime a read is refused as unreadable (typed, the create is never
+// reissued) whatever the step timeout allows; the lifetime is therefore the whole actuation bound.
 fn gcp_iam_converge_step_timeout_minutes() -> Int {
-  second_count(s: gcp_iam_converge_file_window) / 60 + 10
+  (second_count(s: gcp_iam_converge_file_window) + second_count(s: iam_converge_token_lifetime) + 59) / 60
 }
 
 // THE ACTUATION TOKEN'S VARIABLE. The workflow's impersonating auth step publishes it to the apply

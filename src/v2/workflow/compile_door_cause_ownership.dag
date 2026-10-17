@@ -231,6 +231,11 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (29 v2.test.* members across 6 modules)"
   },
   CauseOwnership {
+    cause: ^infer_reason_float_literal_home_unruled,
+    lane: MigrationOwned,
+    flip_trigger: "KEEP until the operator rules Float's home (kernel binary64, std.decimal or other; wise-moth-707 home-table row float_literal_home_unruled). The ruling lets infer type DagCanonicalFloatLiteral through that home, and this refusal and row are then deleted. Infer has no closed refusal vocabulary type, so the join (gunbc.refusal_reason_ownership_join) cannot derive it as producible; ownership is declared here and the vocabulary gap stays the rung drop fatal_reasons_outside_a_closed_stage_vocabulary"
+  },
+  CauseOwnership {
     cause: ^infer_grounding_not_derived,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "the node grounding frontier (v2.compiler.inferred_tree NodeGrounding) observed at prepare, where the carried diagnostic is fatal rather than eval-gated; retires under node_grounding_frontier_retirement. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (2 v2.test.* members, both in v2.test.claim.manual.recompute_trace_probe)"

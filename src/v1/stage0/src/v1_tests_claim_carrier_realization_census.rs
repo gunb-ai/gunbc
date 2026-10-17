@@ -17,20 +17,17 @@ pub use crate::std_coercion::{
     ReferenceIdentityUnavailableCause, TypeDeclarationProvenance, TypeRealizationDecision,
     TypeReferenceIdentity,
 };
-pub use crate::std_decl_ref::declaration_ref_display_key;
-pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{declaration_ref_display_key, DeclarationRef};
 pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::type_realization_decision;
-pub use crate::v1_compiler_compile::compile_to_resolved;
-pub use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
+pub use crate::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_emit_core_support::is_type_def_item;
 pub use crate::v1_compiler_emit_rust::{function_value_params, is_host_text_carrier_type};
 pub use crate::v1_compiler_infer::{build_emit_graph_info, declared_return_type_node};
-pub use crate::v1_compiler_infer_emit_info::TypeDeclIndex;
 pub use crate::v1_compiler_infer_emit_info::{
-    resolve_type_decl_routed, type_decl_routed_resolution_label,
+    resolve_type_decl_routed, type_decl_routed_resolution_label, TypeDeclIndex,
 };
 use crate::v1_compiler_infer_env::TypeNodeUnidentifiedCause::{
     TypeNodeAuthoredNameEmpty, TypeNodeCarriesNoSpan, TypeNodeNameDeclaredNowhere,
@@ -40,9 +37,9 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{
     TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceNamesDeclaration,
     TypeReferenceUnidentified,
 };
-pub use crate::v1_compiler_infer_env::{lookup_type_for, type_reference_declaration_reading};
 pub use crate::v1_compiler_infer_env::{
-    TypeEnv, TypeNodeUnidentifiedCause, TypeReferenceDeclarationReading,
+    lookup_type_for, type_reference_declaration_reading, TypeEnv, TypeNodeUnidentifiedCause,
+    TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
@@ -53,9 +50,9 @@ use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, param_node_type_expr, provenance_reported_file,
-    type_reference_identity, type_reference_provenance,
+    type_reference_identity, type_reference_provenance, Connective, InferredNode, NewlineIndex,
+    Node, ParsedModuleItemKind,
 };
-pub use crate::v1_std_core::{Connective, InferredNode, NewlineIndex, Node, ParsedModuleItemKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
