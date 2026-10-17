@@ -6,19 +6,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
-import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import gunbc.machine_intake.access { BootDeliveryTarget }
-import gunbc.machine_intake.subject {
-  AssemblyManifest,
-  ComponentIdentity,
-  DimmComponent,
-  FirmwareEntry,
-  FirmwareManifest,
-  IntakeAttemptId,
-  MachineIntakeSubject,
-  UnitKey,
-  qualification_subject_of,
-}
+import gunbc.machine_intake.subject { UnitKey }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
   SitePxeEdgeChainloaderPinned,
@@ -66,37 +54,16 @@ import gunbc.firmware_network_boot_standing {
   NeedsPreparation,
   Unobserved,
   Refused,
+  OverrideMechanismUnsupported,
   IpmiOneShotOverride,
-  OneShotNetworkBoot,
-  OneShotUefiNetworkBoot,
+  RedfishOneShotOverride,
+  TransportRefusedVendorCommand,
   VendorCommandRejected,
 }
 import extdeps.provisioning.ubuntu_arm64_network_origin { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
 import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-data fixture_unit: UnitKey = "BRD-ARM-FIXTURE-0A" as UnitKey
-
-data fixture_assembly: AssemblyManifest = AssemblyManifest {
-  chassis_part_number: "CH-ARM-0A",
-  components: [ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-ARM-0A" }],
-}
-
-data fixture_firmware_manifest: FirmwareManifest = FirmwareManifest {
-  entries: [FirmwareEntry { component: "bmc", version: "0.0.1" }],
-  configuration_digests: [],
-}
-
-data fixture_intake_subject: MachineIntakeSubject = MachineIntakeSubject {
-  subject: qualification_subject_of(unit_key: fixture_unit, assembly: fixture_assembly, firmware: fixture_firmware_manifest),
-  attempt_id: "intake-arm-fixture" as IntakeAttemptId,
-}
-
-data fixture_target: BootDeliveryTarget = BootDeliveryTarget {
-  subject: fixture_intake_subject,
-  endpoint: BmcControllerEndpoint { host: "192.168.9.10" },
-}
 
 fn fixture_origin() -> UbuntuNetworkOrigin? {
   ubuntu_noble_arm64_network_origin()
@@ -107,11 +74,11 @@ fn fixture_seed() -> AltraAutoinstallSeedBinding {
 }
 
 fn fixture_firmware_needs_ipmi() -> FirmwareNetworkBootStanding {
-  NeedsPreparation { route: IpmiOneShotOverride { target: fixture_target, flag: OneShotNetworkBoot }, missing: [], obligation: "fixture" }
+  NeedsPreparation { route: IpmiOneShotOverride { channel: "fixture-lan" as NonEmptyStr }, blocking: OverrideMechanismUnsupported }
 }
 
 fn fixture_firmware_needs_other_flag() -> FirmwareNetworkBootStanding {
-  NeedsPreparation { route: IpmiOneShotOverride { target: fixture_target, flag: OneShotUefiNetworkBoot }, missing: [], obligation: "fixture" }
+  NeedsPreparation { route: RedfishOneShotOverride { service_root: "fixture-root" as NonEmptyStr }, blocking: OverrideMechanismUnsupported }
 }
 
 data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })
@@ -209,7 +176,7 @@ test fn the_carried_identity_is_the_identity_given() -> Bool {
 }
 
 test fn two_units_with_the_same_unobserving_evidence_derive_the_same_unobserved_arm() -> Bool {
-  let e = evidence_with(firmware: Unobserved { gaps: [] }, chainloader: pinned(), virtual_media: media_available())
+  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chainloader: pinned(), virtual_media: media_available())
   let a = derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha")
   let b = derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-bravo")
   rebound(arm: b, to: provisioning_arm_attempt(arm: a)) == a
@@ -223,7 +190,7 @@ test fn two_strategies_with_the_same_identity_derive_different_arms() -> Bool {
 
 test fn the_pxe_arm_carries_the_pinned_chainloader_and_the_preparation_route() -> Bool {
   match derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha") {
-    ArmedPxeOrUefiHttp { attempt: _, chainloader: c, firmware: f, origin: _, seed: _ } => c.installed_filename == "snponly.efi" && f == FirmwarePreparedVia { route: IpmiOneShotOverride { target: fixture_target, flag: OneShotNetworkBoot } }
+    ArmedPxeOrUefiHttp { attempt: _, chainloader: c, firmware: f, origin: _, seed: _ } => c.installed_filename == "snponly.efi" && f == FirmwarePreparedVia { route: IpmiOneShotOverride { channel: "fixture-lan" as NonEmptyStr } }
     ArmedVirtualMedia { attempt: _, media_observation: _, origin: _, seed: _ } => false
     ArmUnobserved { attempt: _, missing: _ } => false
     ArmRefused { attempt: _, cause: _ } => false
@@ -237,7 +204,7 @@ test fn the_firmware_route_comes_from_the_standing_not_from_a_default() -> Bool 
 }
 
 test fn virtual_media_arm_does_not_need_a_pinned_chainloader() -> Bool {
-  let e = evidence_with(firmware: Unobserved { gaps: [] }, chainloader: SitePxeEdgeChainloaderUnpinned { obligation: "fixture" }, virtual_media: media_available())
+  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chainloader: SitePxeEdgeChainloaderUnpinned { obligation: "fixture" }, virtual_media: media_available())
   match derive(strategy: VirtualMedia, evidence: e, unit: "unit-alpha") {
     ArmedVirtualMedia { attempt: _, media_observation: _, origin: _, seed: _ } => true
     ArmedPxeOrUefiHttp { attempt: _, chainloader: _, firmware: _, origin: _, seed: _ } => false
@@ -247,7 +214,7 @@ test fn virtual_media_arm_does_not_need_a_pinned_chainloader() -> Bool {
 }
 
 test fn unobserved_firmware_is_an_unobserved_arm_not_a_fallback_to_virtual_media() -> Bool {
-  let e = evidence_with(firmware: Unobserved { gaps: [] }, chainloader: pinned(), virtual_media: media_available())
+  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chainloader: pinned(), virtual_media: media_available())
   is_unobserved_as(arm: derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha"), expected: FirmwareStandingNotObserved)
 }
 
@@ -299,7 +266,7 @@ test fn unavailable_virtual_media_is_refused_not_rerouted_to_pxe() -> Bool {
 }
 
 test fn the_refused_firmware_standing_is_terminal() -> Bool {
-  let e = evidence_with(firmware: Refused { cause: VendorCommandRejected { detail: "fixture" } }, chainloader: pinned(), virtual_media: media_available())
+  let e = evidence_with(firmware: Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: "fixture" as NonEmptyStr } } }, chainloader: pinned(), virtual_media: media_available())
   match derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
     ArmRefused { attempt: _, cause: _ } => true
     ArmedPxeOrUefiHttp { attempt: _, chainloader: _, firmware: _, origin: _, seed: _ } => false

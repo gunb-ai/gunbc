@@ -121,10 +121,10 @@ fn provisioning_arm_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidenc
 
 fn derive_pxe(evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
   match evidence.firmware {
-    Unobserved { gaps: _ } => ArmUnobserved { attempt: attempt, missing: FirmwareStandingNotObserved }
+    Unobserved { unanswered: _ } => ArmUnobserved { attempt: attempt, missing: FirmwareStandingNotObserved }
     Refused { cause: _ } => ArmRefused { attempt: attempt, cause: FirmwareProbeRefused { standing: evidence.firmware } }
     Ready { firmware_mode: _, network_interface: _, protocol: _, evidence: _ } => derive_pxe_with(evidence: evidence, attempt: attempt, firmware: FirmwareAlreadyReady)
-    NeedsPreparation { route: r, missing: _, obligation: _ } => derive_pxe_with(evidence: evidence, attempt: attempt, firmware: FirmwarePreparedVia { route: r })
+    NeedsPreparation { route: r, blocking: _ } => derive_pxe_with(evidence: evidence, attempt: attempt, firmware: FirmwarePreparedVia { route: r })
   }
 }
 
