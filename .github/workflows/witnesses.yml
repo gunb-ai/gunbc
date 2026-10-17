@@ -151,6 +151,42 @@ jobs:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
           GUNBC_NATIVE_PRODUCT_REUSE: fresh
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+      - name: Restore parse-compiler identity for base.sha
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: ${{ runner.temp }}/gunbc-parse-compiler-identity
+          key: gunbc-parse-identity-${{ github.event.pull_request.base.sha }}
+        if: github.event_name == 'pull_request'
+      - name: Restore parse-verdict receipts for base.sha
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: ${{ runner.temp }}/gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ github.event.pull_request.base.sha }}
+        if: github.event_name == 'pull_request'
+      - name: Walk parse-population reusing base.sha receipts
+        run: |
+          ${{ runner.temp }}/v2-native-cli-gen-one parse-population --compiler ${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }} --reuse-from ${{ runner.temp }} --source-root dag --source-root src/v2
+        env:
+          GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+        if: github.event_name == 'pull_request'
+      - name: Walk parse-population on default-branch push
+        run: |
+          ${{ runner.temp }}/v2-native-cli-gen-one parse-population --compiler ${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }} --write-identity ${{ runner.temp }}/gunbc-parse-compiler-identity --receipts ${{ runner.temp }}/gunbc-parse-verdict-receipts.tsv --source-root dag --source-root src/v2
+        env:
+          GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Save parse-verdict receipts to Actions cache
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: ${{ runner.temp }}/gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ github.sha }}
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Save parse-compiler identity blob for this sha
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: ${{ runner.temp }}/gunbc-parse-compiler-identity
+          key: gunbc-parse-identity-${{ github.sha }}
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Why this lane is red, and what would be a real finding
         run: |-
           printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `v2-bootstrap`.'

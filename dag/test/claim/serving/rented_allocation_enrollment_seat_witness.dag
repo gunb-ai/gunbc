@@ -1,23 +1,40 @@
 module test.claim.serving.rented_allocation_enrollment_seat_witness
 
 import std.types { String, Bool, NonEmptyStr, List }
+import gunbc.serving.serving_artifact_placement { ServingStoreRoots }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host.host_standup { HostStandupStep, HostStandupAssimilationPhase, Assimilation, InferenceServingProvision, ComputeFabricEnroll, RunnerDeploySlot, BuildCacheProvision, CodexRuntimeProvision, GreenPlaceReadiness }
+import gunbc.host.host_standup { HostStandupStep, HostStandupAssimilationPhase, Assimilation, Prefix, InferenceServingProvision, ComputeFabricEnroll, RunnerDeploySlot, BuildCacheProvision, CodexRuntimeProvision, GreenPlaceReadiness }
 import gunbc.host.host_assimilation_program { assimilation_program_for }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, inference_serving_enrollment_participation }
-import gunbc.fleet.fleet_host_backing { ProviderGuest, ProviderResourceAwaited }
+import std.optional { Present, Absent }
+import product.fabric.flex_vast_shadow { flex_vast_offer_key_of_id }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.supply { SupplierOffer }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { byte_size_count, hardware_thread_count_value }
+import std.decimal { ExactDecimal }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.pricing.object_storage { DecimalGigabyte }
+import extdeps.cloud.vast_ai { VastAiOfferHostResources, vast_ai_show_instances_page }
+import gunbc.secret_provision { fleet_secret_ref }
+import gunbc.fleet.provider_acquisition { ProviderApiAccount, ProviderResourceAcquisition, OperatorPerformed }
+import gunbc.fleet.fleet_host_backing { ProviderGuest, OwnedMachine, ProviderResourceAwaited, ProviderResourceAcquired }
+import gunbc.fleet.vast_ai_guest {
+  VastGuestStandings, VastNestedVirtualizationDocumented, VastIdentityUrlDocumented,
+  vast_ai_guest_standings, vast_ai_guest_byte_basis_obligation, vast_ai_guest_nested_virtualization_obligation,
+  vast_ai_guest_identity_url_obligation, vast_ai_guest_architecture_obligation,
+}
 import gunbc.serving.rented_allocation { RentedServingAllocation, RentedContractRead, rented_allocation_replica }
 import gunbc.serving.rented_allocation_host_enrollment {
-  RentedGuestEntitlementRead, RentedGuestEntitlementUnread,
   RentedHostEnrollmentDerived, RentedHostEnrollmentRefused, RentedHostEnrollmentDerivation,
-  rented_allocation_host_enrollment, rented_contract_unread_no_route_obligation,
+  rented_allocation_host_enrollment, rented_contract_unread_no_route_obligation, rented_host_resources_mismatch_obligation,
 }
 import gunbc.harness.rented_allocation_seat { RentedSeatDerived, RentedSeatRefused, rented_allocation_seat }
 import gunbc.harness.harness_seat { harness_seat_partition }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive }
 import gunbc.serving.serving_launch {
   ServingServeNotListening, ServingServeKeyBinding, ServingServeKeyUnbound, ServingServeKeyBound,
-  ServingLaunchRefusedUnmetCauses, ServingLaunchRefusedKeyNotDelivered,
+  ServingLaunchNoop, ServingLaunchRefusedReadback, ServingLaunchRefusedUnmetCauses, ServingLaunchRefusedKeyNotDelivered,
   serving_launch_leg, serving_launch_leg_text,
 }
 import gunbc.serving.serving_key_grant {
@@ -30,15 +47,68 @@ import extdeps.ninfer.ninfer_serve { ninfer_serve_launch_argv }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
 import test.claim.serving.rented_allocation_witness { a_allocation, a_tunnel }
 import test.claim.serving.rented_instance_offer_witness { i_instance }
-import test.claim.host.provider_guest_adoption_witness { cax41_entitlement }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn s_offer() -> SupplierOffer<NonEmptyStr> {
+  let o = i_instance(gpus: 1)
+  SupplierOffer {
+    id: FabricIdentity { principal: o.id.principal, key: flex_vast_offer_key_of_id(id: 4242) },
+    executor: o.executor, route: o.route, shape: o.shape, capabilities: o.capabilities, trust_domain: o.trust_domain,
+    isolation: o.isolation, quantity_bound: o.quantity_bound, ready_at: o.ready_at, quote: o.quote,
+    billing_quantum: o.billing_quantum, evidence: o.evidence,
+  }
+}
 
 fn s_read_allocation() -> RentedServingAllocation {
   let base = a_allocation(route: a_tunnel(target_port: 8000))
   RentedServingAllocation {
-    identity: base.identity, origin: base.origin, contract: RentedContractRead { offer: i_instance(gpus: 1) },
+    identity: base.identity, origin: base.origin, contract: RentedContractRead { offer: s_offer() },
     card: base.card, end: base.end, engine: base.engine, artifact: base.artifact, host: base.host, route: base.route,
+  }
+}
+
+// FIXTURES SHAPED FROM docs.vast.ai search-offers example values (cpu_arch amd64, cpu_cores 64, cpu_ram
+// 65536, disk_space 2048.5). No account data. THE DOCUMENTED STANDINGS BELOW ARE FIXTURE-ONLY: they witness
+// the derivation arm and are not Vast's statement of anything; the real path is s_real_standings.
+fn s_host(arch: String) -> VastAiOfferHostResources {
+  VastAiOfferHostResources { id: 4242, cpu_arch: arch, cpu_cores: 64, cpu_ram: 65536, disk_space: ExactDecimal { units: 20485, fraction_digits: 1 } }
+}
+
+fn s_host_decl() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.serving.rented_allocation_enrollment_seat_witness", decl_name: "s_host")
+}
+
+fn s_cite() -> ExternalAuthority {
+  vast_ai_show_instances_page
+}
+
+fn s_documented_standings() -> VastGuestStandings {
+  VastGuestStandings {
+    byte_basis: DecimalGigabyte,
+    nested_virtualization: VastNestedVirtualizationDocumented { available: true, citation: s_cite() },
+    identity_url: VastIdentityUrlDocumented { url: "http://fixture.invalid/instance-id", citation: s_cite() },
+  }
+}
+
+fn s_acquisition(resource_id: String) -> ProviderResourceAcquisition {
+  ProviderResourceAcquisition {
+    resource_id: resource_id as NonEmptyStr,
+    account: ProviderApiAccount { account: "fixture-account" as NonEmptyStr, api_credential: fleet_secret_ref(secret_id: "fixture-provider-api-key") },
+    account_established: OperatorPerformed { performed_on: "2026-10-17" as NonEmptyStr, relayed: "fixture" as NonEmptyStr },
+    login_key_registered: OperatorPerformed { performed_on: "2026-10-17" as NonEmptyStr, relayed: "fixture" as NonEmptyStr },
+    resource_acquired: OperatorPerformed { performed_on: "2026-10-17" as NonEmptyStr, relayed: "fixture" as NonEmptyStr },
+  }
+}
+
+fn s_derive(standings: VastGuestStandings, acquisition: ProviderResourceAcquisition?) -> RentedHostEnrollmentDerivation {
+  rented_allocation_host_enrollment(a: s_read_allocation(), host: s_host(arch: "amd64"), host_decl: s_host_decl(), standings: standings, acquisition: acquisition)
+}
+
+fn s_refusal_text(r: RentedHostEnrollmentDerivation) -> String {
+  match r {
+    RentedHostEnrollmentRefused { allocation: _, obligation: o } => o as String
+    RentedHostEnrollmentDerived { allocation: _, intent: _ } => ""
   }
 }
 
@@ -50,37 +120,101 @@ fn s_derived_phases(r: RentedHostEnrollmentDerivation) -> List<HostStandupStep> 
 }
 
 fn s_has_phase(steps: List<HostStandupStep>, p: HostStandupAssimilationPhase) -> Bool {
-  any(xs: steps, predicate: fn(s) { match s.phase { Assimilation { phase: q } => q == p  _ => false } })
+  any(xs: steps, predicate: fn(s) { match s.phase { Assimilation { phase: q } => q == p  Prefix { phase: _ } => false } })
 }
 
 // THE DERIVED INTENT SELECTS EXACTLY THE INFERENCE PROGRAM: provision present, every runner phase absent.
 test fn the_derived_intent_selects_inference_provision_and_no_runner_phase() -> Bool {
-  let steps = s_derived_phases(r: rented_allocation_host_enrollment(a: s_read_allocation(), entitlement: RentedGuestEntitlementRead { entitlement: cax41_entitlement() }))
+  let steps = s_derived_phases(r: s_derive(standings: s_documented_standings(), acquisition: Absent))
   s_has_phase(steps: steps, p: InferenceServingProvision) && s_has_phase(steps: steps, p: ComputeFabricEnroll)
     && !s_has_phase(steps: steps, p: RunnerDeploySlot) && !s_has_phase(steps: steps, p: BuildCacheProvision)
     && !s_has_phase(steps: steps, p: CodexRuntimeProvision) && !s_has_phase(steps: steps, p: GreenPlaceReadiness)
 }
 
 test fn the_derived_intent_is_inference_participation_over_a_provider_guest_with_an_awaited_resource() -> Bool {
-  match rented_allocation_host_enrollment(a: s_read_allocation(), entitlement: RentedGuestEntitlementRead { entitlement: cax41_entitlement() }) {
+  match s_derive(standings: s_documented_standings(), acquisition: Absent) {
     RentedHostEnrollmentDerived { allocation: _, intent: i } =>
       i.participation == inference_serving_enrollment_participation
-        && (match i.backing { ProviderGuest { route: _, entitlement: _, resource: ProviderResourceAwaited { read_obligation: _ } } => true  _ => false })
+        && (match i.backing { ProviderGuest { route: _, entitlement: _, resource: r } => (match r { ProviderResourceAwaited { read_obligation: _ } => true  ProviderResourceAcquired { acquisition: _ } => false })  OwnedMachine { provisioning: _ } => false })
     RentedHostEnrollmentRefused { allocation: _, obligation: _ } => false
   }
 }
 
 // THE REFUSALS ARE TYPED: an unread contract names no route; an unread entitlement is its own obligation.
 test fn an_unread_contract_refuses_with_its_obligation() -> Bool {
-  match rented_allocation_host_enrollment(a: a_allocation(route: a_tunnel(target_port: 8000)), entitlement: RentedGuestEntitlementRead { entitlement: cax41_entitlement() }) {
+  match rented_allocation_host_enrollment(a: a_allocation(route: a_tunnel(target_port: 8000)), host: s_host(arch: "amd64"), host_decl: s_host_decl(), standings: s_documented_standings(), acquisition: Absent) {
     RentedHostEnrollmentRefused { allocation: _, obligation: o } => o == rented_contract_unread_no_route_obligation
     RentedHostEnrollmentDerived { allocation: _, intent: _ } => false
   }
 }
 
-test fn an_unread_entitlement_refuses_with_the_supplied_obligation() -> Bool {
-  match rented_allocation_host_enrollment(a: s_read_allocation(), entitlement: RentedGuestEntitlementUnread { obligation: "witness: entitlement unread" as NonEmptyStr }) {
-    RentedHostEnrollmentRefused { allocation: _, obligation: o } => o == ("witness: entitlement unread" as NonEmptyStr)
+// THE REAL PATH (INHABITANCE): with Vast's actual Undocumented standings the same fixture allocation refuses,
+// and the refusal names the page that fails to document each fact. THIS CLAIM, not the derivation claims
+// above, is what says whether a real rented card enrolls: today it does not.
+test fn the_real_standings_refuse_a_fixture_allocation_on_the_byte_basis() -> Bool {
+  s_refusal_text(r: s_derive(standings: vast_ai_guest_standings, acquisition: Absent)) == (vast_ai_guest_byte_basis_obligation as String)
+}
+
+test fn the_real_nested_virtualization_standing_refuses_naming_the_pages() -> Bool {
+  let r = s_derive(standings: VastGuestStandings { byte_basis: DecimalGigabyte, nested_virtualization: vast_ai_guest_standings.nested_virtualization, identity_url: vast_ai_guest_standings.identity_url }, acquisition: Absent)
+  s_refusal_text(r: r) == (vast_ai_guest_nested_virtualization_obligation as String)
+    && string_contains(s: s_refusal_text(r: r), pattern: "search-offers") && string_contains(s: s_refusal_text(r: r), pattern: "show-instances")
+}
+
+test fn the_real_identity_url_standing_refuses_naming_the_pages() -> Bool {
+  let r = s_derive(standings: VastGuestStandings { byte_basis: DecimalGigabyte, nested_virtualization: s_documented_standings().nested_virtualization, identity_url: vast_ai_guest_standings.identity_url }, acquisition: Absent)
+  s_refusal_text(r: r) == (vast_ai_guest_identity_url_obligation as String)
+    && string_contains(s: s_refusal_text(r: r), pattern: "show-instances")
+}
+
+test fn a_non_amd64_offer_refuses_on_architecture() -> Bool {
+  s_refusal_text(r: rented_allocation_host_enrollment(a: s_read_allocation(), host: s_host(arch: "arm64"), host_decl: s_host_decl(), standings: s_documented_standings(), acquisition: Absent))
+    == (vast_ai_guest_architecture_obligation as String)
+}
+
+// THE HOST RESOURCES ARE BOUND BY OFFER IDENTITY: the contract offer's key is the decimal offer id the host row
+// carries (4242), and a host read from offer 4243 with identical figures refuses. s_offer is the pairing for the
+// route: its key is built by flex_vast_offer_key_of_id, the rule flex_vast_offer_key calls.
+test fn host_resources_of_another_machine_refuse() -> Bool {
+  let other = VastAiOfferHostResources { id: 4243, cpu_arch: "amd64", cpu_cores: 64, cpu_ram: 65536, disk_space: ExactDecimal { units: 20485, fraction_digits: 1 } }
+  s_refusal_text(r: rented_allocation_host_enrollment(a: s_read_allocation(), host: other, host_decl: s_host_decl(), standings: s_documented_standings(), acquisition: Absent))
+    == (rented_host_resources_mismatch_obligation as String)
+}
+
+test fn the_entitlement_cites_the_supplied_host_declaration_not_a_type() -> Bool {
+  match s_derive(standings: s_documented_standings(), acquisition: Absent) {
+    RentedHostEnrollmentDerived { allocation: _, intent: i } =>
+      match i.backing { ProviderGuest { route: _, entitlement: e, resource: _ } => e.offer == s_host_decl()  OwnedMachine { provisioning: _ } => false }
+    RentedHostEnrollmentRefused { allocation: _, obligation: _ } => false
+  }
+}
+
+// THE DERIVED ENTITLEMENT READS THE DOCUMENTED FIELDS: 64 vCPUs, 65536 MB, 2048.5 GB, decimal basis.
+test fn the_derived_entitlement_carries_the_documented_offer_figures() -> Bool {
+  match s_derive(standings: s_documented_standings(), acquisition: Absent) {
+    RentedHostEnrollmentDerived { allocation: _, intent: i } =>
+      match i.backing {
+        ProviderGuest { route: _, entitlement: e, resource: _ } =>
+          byte_size_count(b: e.memory) == 65536000000 && byte_size_count(b: e.disk) == 2048500000000
+            && hardware_thread_count_value(t: e.vcpus) == 64 && e.nested_virtualization
+        OwnedMachine { provisioning: _ } => false
+      }
+    RentedHostEnrollmentRefused { allocation: _, obligation: _ } => false
+  }
+}
+
+// THE RESOURCE IS THE ALLOCATION'S CONTRACT ID: an acquisition naming it binds; one naming another rental refuses.
+test fn an_acquisition_for_the_contract_id_binds_the_resource() -> Bool {
+  match s_derive(standings: s_documented_standings(), acquisition: Present { value: s_acquisition(resource_id: s_read_allocation().identity.contract as String) }) {
+    RentedHostEnrollmentDerived { allocation: _, intent: i } =>
+      match i.backing { ProviderGuest { route: _, entitlement: _, resource: r } => (match r { ProviderResourceAcquired { acquisition: _ } => true  ProviderResourceAwaited { read_obligation: _ } => false })  OwnedMachine { provisioning: _ } => false }
+    RentedHostEnrollmentRefused { allocation: _, obligation: _ } => false
+  }
+}
+
+test fn an_acquisition_for_another_resource_refuses() -> Bool {
+  match s_derive(standings: s_documented_standings(), acquisition: Present { value: s_acquisition(resource_id: "not-this-contract") }) {
+    RentedHostEnrollmentRefused { allocation: _, obligation: _ } => true
     RentedHostEnrollmentDerived { allocation: _, intent: _ } => false
   }
 }
@@ -137,7 +271,7 @@ fn s_argv() -> List<String> {
 
 // PAIRING: the real producer (the pattern selection) is what lets the grant bind.
 test fn the_real_pattern_selection_binds_the_grant() -> Bool {
-  match s_key_binding() { ServingServeKeyBound { grant: _ } => true  _ => false }
+  match s_key_binding() { ServingServeKeyBound { grant: _ } => true  ServingServeKeyUnbound { grant_name: _ } => false }
 }
 
 fn s_secret() -> String {
@@ -151,8 +285,8 @@ fn s_word_leaks(words: List<String>) -> Bool {
 // THE KEY CANNOT REACH ARGV BY CONSTRUCTION (no key field on the launch or the bound arm); the fixture value is
 // asserted absent from every argv word and the leg text, and the detector is shown to see it when present.
 test fn a_bound_key_refuses_on_missing_delivery_and_the_key_text_is_nowhere() -> Bool {
-  let leg = serving_launch_leg(launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: s_key_binding())
-  (match leg { ServingLaunchRefusedKeyNotDelivered { key_grant: _, detach: _ } => true  _ => false })
+  let leg = serving_launch_leg(roots: s_roots(), launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: s_key_binding())
+  (match leg { ServingLaunchRefusedKeyNotDelivered { key_grant: _, detach: _ } => true  ServingLaunchNoop => false  ServingLaunchRefusedReadback { cause: _ } => false  ServingLaunchRefusedUnmetCauses { key_grant: _, detach: _ } => false })
     && !string_contains(s: serving_launch_leg_text(leg: leg), pattern: s_secret())
     && !s_word_leaks(words: s_argv())
 }
@@ -162,8 +296,18 @@ test fn the_leak_detector_sees_the_value_as_a_positional_key_or_env_word() -> Bo
 }
 
 test fn an_unbound_key_still_refuses() -> Bool {
-  match serving_launch_leg(launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr }) {
+  match serving_launch_leg(roots: s_roots(), launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr }) {
     ServingLaunchRefusedUnmetCauses { key_grant: _, detach: _ } => true
-    _ => false
+    ServingLaunchNoop => false
+    ServingLaunchRefusedReadback { cause: _ } => false
+    ServingLaunchRefusedKeyNotDelivered { key_grant: _, detach: _ } => false
+  }
+}
+
+fn s_roots() -> ServingStoreRoots {
+  ServingStoreRoots {
+    root: "/root/serve/store" as NonEmptyStr,
+    model_link: "/root/serve/model/model.ninfer" as NonEmptyStr,
+    serve_log: "/root/serve/serve.log" as NonEmptyStr,
   }
 }

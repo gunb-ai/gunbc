@@ -23,8 +23,10 @@ pub use crate::gunbc_structural_realization_bindings::{
     literal_homomorphism_rows,
 };
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
-pub use crate::std_algebra::{carrier_container_equality_rows, kernel_carrier_admits_numeral};
-pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
+pub use crate::std_algebra::{
+    carrier_container_equality_rows, kernel_carrier_admits_numeral, CollectionSizeEffect,
+    FreeMonoid,
+};
 use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
 use crate::std_coercion::TextRepresentation::{
     CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
@@ -32,24 +34,23 @@ use crate::std_coercion::TextRepresentation::{
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
-pub use crate::std_coercion::{dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type};
 pub use crate::std_coercion::{
-    SubtractionRefinement, TextRepresentation, TypeDeclarationProvenance,
+    dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, SubtractionRefinement,
+    TextRepresentation, TypeDeclarationProvenance,
 };
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_content_hash::ContentHash::*;
 pub use crate::std_content_hash::{
     content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
-    content_hash_validate_lower_hex_length,
+    content_hash_validate_lower_hex_length, ContentHash, Fnv1a64Structural,
 };
-pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
-pub use crate::std_decl_ref::{DeclField, DeclarationRef};
-pub use crate::std_dissolution::DissolutionCondition;
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
+pub use crate::std_dissolution::{
+    dissolution_description, unbound_dissolution, DissolutionCondition,
+};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -59,17 +60,16 @@ use crate::std_induction::SubValueRelation::{
 };
 pub use crate::std_induction::{
     compose_sub_value, compose_sub_value_relations, join_sub_value, meet_sub_value,
-    sub_value_to_evidence,
+    sub_value_to_evidence, InductiveField, RecursionShape, SubValueRelation,
 };
-pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
-pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
-pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
-pub use crate::std_kernel_type_name::kernel_type_name;
-pub use crate::std_kernel_type_name::KernelTypeNameAdmission;
+pub use crate::std_interface_summary::{
+    interface_summary_rollup, signature_contract, ExportEntry, ExportKind, InterfaceSummary,
+};
 use crate::std_kernel_type_name::KernelTypeNameAdmission::{
     KernelTypeNameAdmitted, NotAKernelTypeName,
 };
+pub use crate::std_kernel_type_name::{kernel_type_name, KernelTypeNameAdmission};
 use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
@@ -83,10 +83,8 @@ use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
 use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
 pub use crate::std_literal_elaboration::{
     elaborate_literal_at, kernel_grounding_for, kernel_mint_declaration_for,
-    literal_elaboration_refusal_message, literal_source_kind_of,
-};
-pub use crate::std_literal_elaboration::{
-    KernelGrounding, KernelGroundingLookup, KernelMintDeclarationLookup, LiteralElaboration,
+    literal_elaboration_refusal_message, literal_source_kind_of, KernelGrounding,
+    KernelGroundingLookup, KernelMintDeclarationLookup, LiteralElaboration,
     LiteralElaborationOutcome, LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
@@ -106,19 +104,20 @@ use crate::std_target_representation::VariantParentKey::{
     VariantParentDeclaration, VariantParentKernelType,
 };
 pub use crate::std_target_representation::{VariantParentIdentity, VariantParentKey};
-pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;
 pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
+    PositiveDescentAmount,
 };
+pub use crate::std_types::container_expected_arity;
 pub use crate::std_types::{
     container_param_name, container_template_algebra, container_template_alias_algebra,
-    is_container_type, is_kernel_type, kernel_type_set,
+    is_container_type, is_kernel_type, kernel_type_set, NonEmptyStr, SourceSpan,
 };
-pub use crate::std_types::{NonEmptyStr, SourceSpan};
 pub use crate::v1_compiler_coercion::provenance_realizes_natively;
-pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
-pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
+pub use crate::v1_compiler_infer_access::{
+    check_index_access_node, check_slice_access_node, AccessCheckResultNode,
+};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
 pub use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling;
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
@@ -132,13 +131,11 @@ use crate::v1_compiler_infer_emit_info::TypeSummaryQuestion::{
 pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
     close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_decl_index,
-    empty_type_env, empty_type_summary_index, is_enum_in_summaries, lookup_emit_type_summary,
-    type_decl_index_with_qualified_names, type_summary_lookup,
+    empty_type_summary_index, is_enum_in_summaries, lookup_emit_type_summary,
+    type_decl_index_with_qualified_names, type_summary_lookup, EmitGraphInfo, EmitInfoBuildState,
+    TypeRepr, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion,
 };
-pub use crate::v1_compiler_infer_emit_info::{
-    EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary, TypeSummaryIndex, TypeSummaryLookup,
-    TypeSummaryQuestion,
-};
+pub use crate::v1_compiler_infer_env::empty_type_env;
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
@@ -164,12 +161,9 @@ pub use crate::v1_compiler_infer_env::{
     text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, type_reference_declaration,
     type_reference_declaration_reading, type_reference_declaration_ref,
-    unit_variant_index_shadow_insert,
-};
-pub use crate::v1_compiler_infer_env::{
-    GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
-    SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
-    TypeReferenceDeclarationReading, UnitVariantContribution,
+    unit_variant_index_shadow_insert, GlobalBareCandidate, GlobalBareLookupState,
+    GuardedTypeEnvCacheMerge, ServiceCensusEntry, SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache,
+    TypeEnvCacheMergeConflict, TypeReferenceDeclarationReading, UnitVariantContribution,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, OtherItem, ServiceItem, TypeItem,
@@ -177,11 +171,8 @@ use crate::v1_compiler_infer_items::ItemKind::{
 use crate::v1_compiler_infer_items::ModuleTypecheckProgress::{AbandonedBeforeItems, ItemsChecked};
 pub use crate::v1_compiler_infer_items::{
     inferred_to_outputs, item_is_effectful_callee, item_kind, leaf_owner_modules_from_registry,
-    resource_requirements_of_uses,
-};
-pub use crate::v1_compiler_infer_items::{
-    ItemInfo, ItemKind, ModuleInterface, ModuleTypecheckProgress, ResolvedGraph,
-    ResourceRequirement, TypedGraph, TypedModule,
+    resource_requirements_of_uses, ItemInfo, ItemKind, ModuleInterface, ModuleTypecheckProgress,
+    ResolvedGraph, ResourceRequirement, TypedGraph, TypedModule,
 };
 use crate::v1_compiler_infer_lookup::ConstructorDeclarationLookup::{
     AdmissionBearingDeclarationUnavailable, ExactConstructorDeclaration,
@@ -199,13 +190,9 @@ pub use crate::v1_compiler_infer_lookup::{
     map_key_type_in_env, map_value_type_in_env, product_field_result_type,
     resolve_known_method_node, resolve_method_receiver_type, resolve_scrutinee_type_node,
     resolved_declaration_call_target, resolved_plain_call_target_for_outcome,
-    set_element_type_in_env,
+    set_element_type_in_env, ConstructorDeclarationLookup, DeclarationLookupFailure,
+    DeclaredArgContract, ExactDeclarationIdentity, KnownMethodResolution,
 };
-pub use crate::v1_compiler_infer_lookup::{
-    ConstructorDeclarationLookup, DeclarationLookupFailure, DeclaredArgContract,
-    ExactDeclarationIdentity, KnownMethodResolution,
-};
-pub use crate::v1_compiler_infer_method::NonDeclarationBinding;
 use crate::v1_compiler_infer_method::NonDeclarationBinding::{
     BuiltinFunction, DeclarationOnly, EmptyCollectionConstructor, KernelMethodOnly,
 };
@@ -213,6 +200,7 @@ pub use crate::v1_compiler_infer_method::{
     bare_call_non_declaration_binding, builtin_host_text_param_names,
     builtin_kernel_seed_diagnostics, builtin_param_names, infer_builtin_call_type,
     is_empty_map_constructor, is_empty_set_constructor, resolve_builtin_call_type,
+    NonDeclarationBinding,
 };
 use crate::v1_compiler_infer_patterns::ConstructorRoster::{ConstructorsClosed, ConstructorsOpen};
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
@@ -221,14 +209,14 @@ pub use crate::v1_compiler_infer_patterns::{
     expand_scrut_type_for_variant_lookup, lookup_field_in_variant, lookup_result_subject,
     lookup_variant_in_type, node_is_never_declaration, pattern_binding_type,
     pattern_matches_constructor, pattern_subject_from_inferred, pattern_subject_from_node,
+    ConstructorRoster, NodeLookupResult, PatternSubject,
 };
-pub use crate::v1_compiler_infer_patterns::{ConstructorRoster, NodeLookupResult, PatternSubject};
 pub use crate::v1_compiler_infer_resolve::{
     fn_type_param_names, generic_declaration_application, is_user_generic_use_site,
     peel_nominal_alias_identity, preserve_nominal_brand_on_resolve, reference_with_declaration,
     resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
+    ItemResolveResult, NodeResolveResult,
 };
-pub use crate::v1_compiler_infer_resolve::{ItemResolveResult, NodeResolveResult};
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
     ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
     ResolvedCalleeRegistryRowAbsent, UnresolvedCalleeEdge,
@@ -237,10 +225,8 @@ use crate::v1_compiler_infer_service::ServiceEffectAnalysis::{EffectsComplete, E
 pub use crate::v1_compiler_infer_service::{
     check_service_field_access_node, check_service_method_call_node, collect_typed_service_calls,
     expand_transitive_services, extract_typed_service_name, is_typed_service_call_receiver,
-    service_op_entry, service_operation_is_rest,
-};
-pub use crate::v1_compiler_infer_service::{
-    EffectIncompleteness, OpEntry, ServiceEffectAnalysis, ServiceMethodResult, UniqueAccum,
+    service_op_entry, service_operation_is_rest, EffectIncompleteness, OpEntry,
+    ServiceEffectAnalysis, ServiceMethodResult, UniqueAccum,
 };
 use crate::v1_compiler_infer_sigs::CallTargetOutcome::{
     BuiltinCallableResolved, CallableAmbiguous, CallableUnresolved,
@@ -260,11 +246,9 @@ use crate::v1_compiler_infer_sigs::ResolvedFormals::{
 };
 pub use crate::v1_compiler_infer_sigs::{
     callable_candidate_labels, callable_identity_label, flatten_parent_envs,
-    func_sig_for_derivation, resolve_func_sigs,
-};
-pub use crate::v1_compiler_infer_sigs::{
-    CallTargetOutcome, CallableCandidate, CallableIdentity, DerivedCalleeSig, FuncSigLookup,
-    NoDerivableSigReason, ResolveFuncSigsResult, ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig,
+    func_sig_for_derivation, resolve_func_sigs, CallTargetOutcome, CallableCandidate,
+    CallableIdentity, DerivedCalleeSig, FuncSigLookup, NoDerivableSigReason, ResolveFuncSigsResult,
+    ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig,
 };
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
 use crate::v1_compiler_infer_types::TextNotAskedReason::{
@@ -280,9 +264,9 @@ pub use crate::v1_compiler_infer_types::{
     node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
     normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
     resolved_type, structural_carrier_template_name, subtraction_refinement_of,
-    template_return_has_variables, template_return_is_receiver_self,
+    template_return_has_variables, template_return_is_receiver_self, KernelTypeBuild, TextJudgment,
+    TextNotAskedReason,
 };
-pub use crate::v1_compiler_infer_types::{KernelTypeBuild, TextJudgment, TextNotAskedReason};
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
     ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
@@ -292,9 +276,9 @@ use crate::v1_compiler_type_head_exposure::TypeHeadView::{
 };
 pub use crate::v1_compiler_type_head_exposure::{
     type_declaration_identity_key, type_head_exposure_is_coproduct,
-    type_head_exposure_is_kernel_scalar, type_head_exposure_is_product,
+    type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, TypeHeadExposure,
+    TypeHeadView,
 };
-pub use crate::v1_compiler_type_head_exposure::{TypeHeadExposure, TypeHeadView};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::AdmitCallersEntry::*;
@@ -352,7 +336,7 @@ pub use crate::v1_std_core::{
     admit_callers_entry_coords, admit_callers_entry_uninterpretable_spans, arg_name_at, arg_value,
     arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
     build_newline_index, call_semantics_target, callable_identity, cast_expr, cast_target,
-    container_expected_arity, decl_ref_coords_label, declaration_provenance_of, default_ident_span,
+    decl_ref_coords_label, declaration_provenance_of, default_ident_span,
     diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table, error_type,
     expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_is_any_literal,
     expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
@@ -377,15 +361,13 @@ pub use crate::v1_std_core::{
     return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
     string_type, type_name_compatible, type_reference_provenance, type_variable_binder_name,
     unaryop_operand, unit_type, variant_node_fields, with_optional_cardinality,
-    with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
-    Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity, DeclaredFuncEnv,
-    DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle,
-    FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind, ResolvedCallFormal, ResolvedFormal,
-    ServiceConfigField, StringPart, UnaryOpKind, VarBindingKind,
+    with_required_cardinality, AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality,
+    CompilerDiagnostic, Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity,
+    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
+    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
+    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
+    ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -14752,7 +14734,9 @@ Rc::new(InferResult {
                                 v1_rt::concat(recv_spine.dotted.clone(), ".".to_string()),
                                 method_name.clone(),
                             );
-                            match crate::v1_compiler_infer_env::symbol_index_lookup(scope.type_env.clone().symbol_index.clone(), dotted.clone()) {
+                            match service_spine_projection(recv.clone(), scope.clone()) {
+    Some(_) => std::option::Option::None,
+    std::option::Option::None => match crate::v1_compiler_infer_env::declared_module_owner(scope.type_env.clone().symbol_index.clone(), dotted.clone()) {
     std::option::Option::None => std::option::Option::None,
     Some(_) => Some(infer_expr(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), dotted.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
@@ -14760,6 +14744,7 @@ Rc::new(InferResult {
 })),
     descent_evidence: std::option::Option::None,
 }), mc_args.clone(), std::option::Option::None, span.clone(), kernel_span(dotted.clone())), scope.clone(), expected.clone())),
+},
 }
                         }
                     }
@@ -24727,7 +24712,11 @@ pub fn call_target_for_direct_call(
     scope: Rc<InferScope>,
     func_name: String,
 ) -> Rc<CallTargetOutcome> {
-    if v1_rt::contains(func_name.clone(), ".".to_string()) {
+    if (crate::v1_compiler_infer_env::declared_module_owner(
+        scope.type_env.clone().symbol_index.clone(),
+        func_name.clone(),
+    ) != std::option::Option::None)
+    {
         match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(
             scope.func_env.clone(),
             scope.type_env.clone(),
