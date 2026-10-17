@@ -193,27 +193,42 @@ fn operator_certificate_pin_decision(fingerprint_stdout: String) -> Bool {
   }
 }
 
-fn operator_pin_certificate(route: HarnessOperatorRoute) -> OperatorCertificatePin {
+// THE CERTIFICATE IS READ ONCE; THE BYTES CHECKED ARE THE BYTES CURL TRUSTS. The file is read a single time here,
+// copied into the private temp directory, and the fingerprint and the public key are taken from THAT copy
+// (operator_pin_staged_certificate), so nothing can change the file between the check and the pin.
+type OperatorCertificateText
+  = OperatorCertificateTextRead { certificate_pem: String }
+  | OperatorCertificateTextRefused { detail: String }
+
+fn operator_read_certificate(route: HarnessOperatorRoute) -> OperatorCertificateText {
   match operator_certificate_path(route: route) {
-    Absent => OperatorCertificateRefused { detail: "HOME is not set, so the pool front's pinned certificate file cannot be located" }
+    Absent => OperatorCertificateTextRefused { detail: "HOME is not set, so the pool front's pinned certificate file cannot be located" }
     Present { value: path } => {
       let read = Filesystem.Read(path: path as String)
       match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-        FilesystemReadRefused { error: e } => OperatorCertificateRefused { detail: join(["the pool front's certificate file ", path as String, " could not be read: ", e], "") }
-        FilesystemReadSucceeded { content: pem } => {
-          let fp = openssl.X509.Sha256Fingerprint(cert_file: path)
-          if fp.exit_code != 0 || !operator_certificate_pin_decision(fingerprint_stdout: fp.stdout) {
-            OperatorCertificateRefused { detail: join(["the certificate file ", path as String, " is not the pinned pool front certificate (expected SHA-256 ", pool_front_certificate.sha256_fingerprint as String, "); nothing was sent"], "") }
-          } else {
-            let pub = openssl.X509.PublicKeyPem(cert_file: path)
-            if pub.exit_code != 0 || trim(s: pub.stdout) == "" {
-              OperatorCertificateRefused { detail: join(["the public key of ", path as String, " could not be extracted, so it cannot be pinned"], "") }
-            } else {
-              OperatorCertificatePinned { certificate_pem: pem, public_key_pem: pub.stdout }
-            }
-          }
-        }
+        FilesystemReadRefused { error: e } => OperatorCertificateTextRefused { detail: join(["the pool front's certificate file ", path as String, " could not be read: ", e], "") }
+        FilesystemReadSucceeded { content: pem } => OperatorCertificateTextRead { certificate_pem: pem }
       }
+    }
+  }
+}
+
+// THE FILE THE FINGERPRINT AND THE PUBLIC KEY ARE TAKEN FROM IS THE FILE CURL IS GIVEN (--cacert): the staged
+// copy in the private temp directory, never the source under HOME, so the checked bytes are the trusted bytes.
+fn operator_pin_checked_path(header_file: NonEmptyStr) -> NonEmptyStr {
+  operator_pinned_ca_file(header_file: header_file)
+}
+
+fn operator_pin_staged_certificate(staged: NonEmptyStr, pem: String) -> OperatorCertificatePin {
+  let fp = openssl.X509.Sha256Fingerprint(cert_file: staged as String)
+  if fp.exit_code != 0 || !operator_certificate_pin_decision(fingerprint_stdout: fp.stdout) {
+    OperatorCertificateRefused { detail: join(["the pool front's certificate file is not the pinned certificate (expected SHA-256 ", pool_front_certificate.sha256_fingerprint as String, "); nothing was sent"], "") }
+  } else {
+    let pub = openssl.X509.PublicKeyPem(cert_file: staged as String)
+    if pub.exit_code != 0 || trim(s: pub.stdout) == "" {
+      OperatorCertificateRefused { detail: "the public key of the pool front's certificate could not be extracted, so it cannot be pinned" }
+    } else {
+      OperatorCertificatePinned { certificate_pem: pem, public_key_pem: pub.stdout }
     }
   }
 }
@@ -233,22 +248,36 @@ fn operator_open_header(route: HarnessOperatorRoute, session: NonEmptyStr) -> Op
           match operator_header_text(key_text: text, session: session) {
             Absent => OperatorHeaderRefused { detail: join(["the operator endpoint's credential file ", path as String, " is empty, or the session identity cannot be carried in a header"], "") }
             Present { value: line } =>
-              match operator_pin_certificate(route: route) {
-                OperatorCertificateRefused { detail: d } => OperatorHeaderRefused { detail: d }
-                OperatorCertificatePinned { certificate_pem: pem, public_key_pem: pub } => {
+              match operator_read_certificate(route: route) {
+                OperatorCertificateTextRefused { detail: d } => OperatorHeaderRefused { detail: d }
+                OperatorCertificateTextRead { certificate_pem: pem } => {
                   let dir = shell.Mktemp.Dir()
                   if !dir.success {
                     OperatorHeaderRefused { detail: "mktemp -d failed for the operator bearer header file" }
                   } else {
                     let header_file = join([dir.path as String, "/authorization"], "") as NonEmptyStr
+                    let ca_file = operator_pin_checked_path(header_file: header_file)
                     let wrote = Filesystem.WriteOwnerOnly(path: header_file as String, content: line as String)
-                    let wrote_ca = Filesystem.Write(path: operator_pinned_ca_file(header_file: header_file) as String, content: pem)
-                    let wrote_pub = Filesystem.Write(path: operator_pinned_pubkey_file(header_file: header_file) as String, content: pub)
-                    if !wrote.success || !wrote_ca.success || !wrote_pub.success {
+                    let wrote_ca = Filesystem.Write(path: ca_file as String, content: pem)
+                    if !wrote.success || !wrote_ca.success {
                       let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-                      OperatorHeaderRefused { detail: "could not write the operator bearer header file or the pinned certificate files" }
+                      OperatorHeaderRefused { detail: "could not write the operator bearer header file or the pinned certificate file" }
                     } else {
-                      OperatorHeaderOpened { header_dir: dir.path as String as NonEmptyStr, header_file: header_file }
+                      match operator_pin_staged_certificate(staged: ca_file, pem: pem) {
+                        OperatorCertificateRefused { detail: d } => {
+                          let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                          OperatorHeaderRefused { detail: d }
+                        }
+                        OperatorCertificatePinned { certificate_pem: _, public_key_pem: pub } => {
+                          let wrote_pub = Filesystem.Write(path: operator_pinned_pubkey_file(header_file: header_file) as String, content: pub)
+                          if !wrote_pub.success {
+                            let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                            OperatorHeaderRefused { detail: "could not write the pinned public key file" }
+                          } else {
+                            OperatorHeaderOpened { header_dir: dir.path as String as NonEmptyStr, header_file: header_file }
+                          }
+                        }
+                      }
                     }
                   }
                 }

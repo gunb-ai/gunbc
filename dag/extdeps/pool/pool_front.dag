@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.nat { Nat }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedFigure, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import extdeps.http.header_dump { http_ascii_fold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -40,7 +40,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // absence makes 503 the live answer), passed on by that operator's session. Nothing at the service has been read
 // yet, so this is a bet typed as a bet (DESIGN 4d), TranscribedUncited, naming what would ground it; the lab
 // qualification's first live replies promote each figure to ObservedByReceipt. The two reasoning figures below
-// carry their own standing and are read only through pool_front_figure_read.
+// carry their own standing and are read only through cited_figure_read.
 data pool_front_contract_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "read the path, model ids, limits and 503 semantics from live replies of the front (GET /pool/v1/models, a chat completion, a 503)" as NonEmptyStr
 }
@@ -64,59 +64,33 @@ data pool_front_session_header_name: NonEmptyStr = "x-pool-session" as NonEmptyS
 // cards_concurrency_low..cards_concurrency_high requests at once.
 // A STATED LIMIT CARRIES ITS OWN STANDING (DESIGN 4d). The operator's figures are its word, not a reading, so
 // each is a bet typed as a bet with the read that would ground it. A consumer takes the number only through
-// pool_front_limit_read, which answers for a limit that was cited or observed; what a client enforces before
+// cited_figure_read, which answers for a limit that was cited or observed; what a client enforces before
 // then is its own policy (see gunbc.harness.harness_reasoning_wire PoolBudgetPolicy), never this figure.
-type PoolFrontLimit {
-  value: Nat
-  standing: CitedFigureStanding
-}
-
-fn pool_front_limit_read(limit: PoolFrontLimit) -> Nat? {
-  match limit.standing {
-    CitedToAuthority { authority: _ } => Present { value: limit.value }
-    ObservedByReceipt { observed: _ } => Present { value: limit.value }
-    TranscribedUncited { read_obligation: _ } => none
-  }
-}
-
-data pool_front_max_context_tokens: PoolFrontLimit = PoolFrontLimit {
+data pool_front_max_context_tokens: CitedFigure<Nat> = CitedFigure {
   value: 262144,
   standing: TranscribedUncited { read_obligation: "read the maximum context from a live reply (GET /pool/v1/models, or the refusal of an oversized request)" as NonEmptyStr },
 }
-data pool_front_max_output_tokens: PoolFrontLimit = PoolFrontLimit {
+data pool_front_max_output_tokens: CitedFigure<Nat> = CitedFigure {
   value: 32768,
   standing: TranscribedUncited { read_obligation: "read the per-request output maximum from a live reply (GET /pool/v1/models, or the refusal of an over-budget request)" as NonEmptyStr },
 }
 // A FIGURE CARRIES ITS OWN STANDING (DESIGN 4d). The front's statement names neither where a reply carries
 // reasoning nor how it closes it; these are the OpenAI-compatible spellings, a bet typed as a bet. A consumer
-// takes the value through pool_front_figure_read, which answers only for a figure that was cited or observed.
-type PoolFrontFigure {
-  value: NonEmptyStr
-  standing: CitedFigureStanding
-}
-
-fn pool_front_figure_read(figure: PoolFrontFigure) -> NonEmptyStr? {
-  match figure.standing {
-    CitedToAuthority { authority: _ } => Present { value: figure.value }
-    ObservedByReceipt { observed: _ } => Present { value: figure.value }
-    TranscribedUncited { read_obligation: _ } => none
-  }
-}
-
-data pool_front_message_reasoning_field: PoolFrontFigure = PoolFrontFigure {
+// takes the value through cited_figure_read, which answers only for a figure that was cited or observed.
+data pool_front_message_reasoning_field: CitedFigure<NonEmptyStr> = CitedFigure {
   value: "reasoning_content" as NonEmptyStr,
   standing: TranscribedUncited { read_obligation: "read the member a pool card's reply carries reasoning in, from a live reply" as NonEmptyStr },
 }
-data pool_front_thinking_end_token: PoolFrontFigure = PoolFrontFigure {
+data pool_front_thinking_end_token: CitedFigure<NonEmptyStr> = CitedFigure {
   value: "</think>" as NonEmptyStr,
   standing: TranscribedUncited { read_obligation: "read the token a pool card closes inline thinking with, from a live reply" as NonEmptyStr },
 }
 
-data pool_front_card_concurrency_low: PoolFrontLimit = PoolFrontLimit {
+data pool_front_card_concurrency_low: CitedFigure<Nat> = CitedFigure {
   value: 5,
   standing: TranscribedUncited { read_obligation: "read how many concurrent requests a card runs from the pool dashboard or a measured burst" as NonEmptyStr },
 }
-data pool_front_card_concurrency_high: PoolFrontLimit = PoolFrontLimit {
+data pool_front_card_concurrency_high: CitedFigure<Nat> = CitedFigure {
   value: 7,
   standing: TranscribedUncited { read_obligation: "read how many concurrent requests a card runs from the pool dashboard or a measured burst" as NonEmptyStr },
 }

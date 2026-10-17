@@ -2,7 +2,7 @@ module test.claim.operator_endpoint_witness
 
 import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.optional { Present, Absent }
-import gunbc.harness.harness_operator_route {
+import gunbc.harness.harness_operator_route { operator_pin_checked_path, operator_pinned_ca_file,
   harness_operator_route, operator_models_url, operator_chat_completions_url,
   operator_header_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
@@ -28,7 +28,8 @@ import gunbc.harness.harness_reasoning_wire {
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
 import std.measure { token_count_value }
-import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_figure_read, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_certificate, pool_front_model_id, PoolFrontLimit, pool_front_limit_read, pool_front_session_header_name }
+import extdeps.external_authority { CitedFigure, cited_figure_read }
+import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_certificate, pool_front_model_id, pool_front_session_header_name }
 import gunbc.harness.harness_turn { harness_post_is_retryable, HarnessPostOutcome, harness_outcome_label, TurnPoolNoCapacity, TurnBackendRefusedUnexplained }
 import gunbc.harness.harness_cli { harness_turn_exit }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -325,8 +326,8 @@ test fn the_pool_units_context_ceiling_is_the_fronts_max_context() -> Bool {
 // An uncited guess is not consumed as a read fact: while the figures are TranscribedUncited the pool unit
 // parses no reasoning member (the projection is absent) and the figure reads refuse.
 test fn an_uncited_pool_figure_is_not_read_and_the_projection_parses_nothing() -> Bool {
-  (match pool_front_figure_read(figure: pool_front_message_reasoning_field) { Present { value: _ } => false  Absent => true })
-    && (match pool_front_figure_read(figure: pool_front_thinking_end_token) { Present { value: _ } => false  Absent => true })
+  (match cited_figure_read(figure: pool_front_message_reasoning_field) { Present { value: _ } => false  Absent => true })
+    && (match cited_figure_read(figure: pool_front_thinking_end_token) { Present { value: _ } => false  Absent => true })
     && (match harness_unit_reasoning_projection(unit: Qwen38FlashNextOnPoolFront) { Present { value: _ } => false  Absent => true })
 }
 
@@ -348,6 +349,14 @@ test fn no_consumer_reads_the_uncited_pool_figures() -> Bool {
 // The upstream's limit is the operator's word until read: a transcribed limit is no reading, so the lab's own
 // policy is what is enforced; a limit that is read and smaller tightens the policy, never loosens it.
 test fn an_unread_pool_limit_is_no_reading_and_the_lab_policy_is_enforced() -> Bool {
-  (match pool_front_limit_read(limit: pool_front_max_output_tokens) { Present { value: _ } => false  Absent => true })
+  (match cited_figure_read(figure: pool_front_max_output_tokens) { Present { value: _ } => false  Absent => true })
     && pool_budget_enforced(policy: pool_output_budget_policy, upstream: pool_front_max_output_tokens) == pool_output_budget_policy.value
+}
+
+// The certificate the fingerprint is checked on is the staged copy curl is given, not the source file: a source
+// that changes after it was read cannot be what was checked (RED when the check ran on the source path).
+test fn the_pin_check_runs_on_the_file_curl_trusts_not_on_the_source() -> Bool {
+  let header_file = "/s/d/authorization" as NonEmptyStr
+  (operator_pin_checked_path(header_file: header_file) as String) == (operator_pinned_ca_file(header_file: header_file) as String)
+    && (operator_pin_checked_path(header_file: header_file) as String) == "/s/d/pinned-ca.pem"
 }

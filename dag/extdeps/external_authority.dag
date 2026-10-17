@@ -62,6 +62,22 @@ fn cited_figure_read_obligation(standing: CitedFigureStanding) -> NonEmptyStr? {
   }
 }
 
+// A FIGURE THAT CARRIES ITS OWN STANDING (DESIGN 4d), once: the value and the standing that says whether it
+// may be acted on as a fact. A consumer takes the value only through cited_figure_read, which answers for a
+// figure that was cited or observed and refuses a transcribed-uncited one, naming nothing it could use.
+type CitedFigure<T> {
+  value: T
+  standing: CitedFigureStanding
+}
+
+fn cited_figure_read<T>(figure: CitedFigure<T>) -> T? {
+  match figure.standing {
+    CitedToAuthority { authority: _ } => Present { value: figure.value }
+    ObservedByReceipt { observed: _ } => Present { value: figure.value }
+    TranscribedUncited { read_obligation: _ } => none
+  }
+}
+
 data external_model_scope_law: String = "DESIGN §3 'External upstream decomposition' (operator verdicts on gunbc#7556 and gunbc#7571): 'one concept, one authority' unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape. Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority, declared as one ExternalModelScope per module: ONE subject, one-or-more citations. A subject can have several citations; a module cannot silently have several independently governed subjects. A generic hub may define or re-export agnostic shapes but may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state. Observations produced by this repository are receipts in the observing product/workflow layer (downstream), never 'Unobserved' properties authored inside an upstream module."
 
 data external_subject_symbolic_identity_note: String = "Subject identity is SYMBOLIC, never a name string (operator verdict on gunbc#7571, 2026-08-01, closing the string-spelling fork an earlier revision opened: 'Chromium' / 'chromium' / 'The Chromium Projects' were distinct subjects, and a scope restated a legal name its own module already declared). ExternalSubjectRef carries a DeclarationRef to the subject's one declaration — e.g. extdeps.vendor.microsoft's scope points at its existing 'microsoft' Vendor declaration rather than repeating 'Microsoft Corporation'. The same §3 cite-the-symbol rule that moved FactCitation.fact off prose applies to every identity this carrier holds."

@@ -20,7 +20,8 @@ import extdeps.ninfer.ninfer_serve { ninfer_message_reasoning_field, ninfer_inli
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
 import std.nat { Nat }
-import extdeps.pool.pool_front { pool_front_model_id, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_figure_read, PoolFrontLimit, pool_front_limit_read }
+import extdeps.external_authority { CitedFigure, cited_figure_read }
+import extdeps.pool.pool_front { pool_front_model_id, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_message_reasoning_field, pool_front_thinking_end_token }
 import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
   deepseek_v4_thinking_end_token, deepseek_v4_chat_reasoning_field,
@@ -321,7 +322,7 @@ fn harness_pool_front_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessR
 }
 
 // A BUDGET THE LAB CHOOSES, NOT A FACT THE UPSTREAM PROVED (DESIGN 4d). The pool operator's limits are its
-// word (extdeps.pool.pool_front PoolFrontLimit, TranscribedUncited), so what the harness enforces is this
+// word (extdeps.pool.pool_front CitedFigure<Nat>, TranscribedUncited), so what the harness enforces is this
 // policy: a declared value with the reason it was chosen. Once the upstream's own limit is read (cited or
 // observed) the enforced budget is the smaller of the two; until then the policy alone is enforced.
 type PoolBudgetPolicy {
@@ -329,8 +330,8 @@ type PoolBudgetPolicy {
   reason: NonEmptyStr
 }
 
-fn pool_budget_enforced(policy: PoolBudgetPolicy, upstream: PoolFrontLimit) -> Nat {
-  match pool_front_limit_read(limit: upstream) {
+fn pool_budget_enforced(policy: PoolBudgetPolicy, upstream: CitedFigure<Nat>) -> Nat {
+  match cited_figure_read(figure: upstream) {
     Absent => policy.value
     Present { value: read } => if read < policy.value { read } else { policy.value }
   }
@@ -471,7 +472,7 @@ fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningRespo
     NemotronUltraFreeOnOpenRouter => Present { value: ParsedReasoningField { field: openrouter_message_reasoning_field } }
     Qwen3_8_27bOnNinfer => Present { value: ParsedReasoningField { field: ninfer_message_reasoning_field } }
     Qwen38FlashNextOnPoolFront =>
-      match pool_front_figure_read(figure: pool_front_message_reasoning_field) {
+      match cited_figure_read(figure: pool_front_message_reasoning_field) {
         Present { value: f } => Present { value: ParsedReasoningField { field: f } }
         Absent => none
       }
@@ -505,7 +506,7 @@ fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr? 
     Glm53FlashOnVllm => Present { value: glm_5_3_flash_chat_reasoning_field }
     NemotronUltraFreeOnOpenRouter => Present { value: openrouter_message_reasoning_field }
     Qwen3_8_27bOnNinfer => Present { value: ninfer_message_reasoning_field }
-    Qwen38FlashNextOnPoolFront => pool_front_figure_read(figure: pool_front_message_reasoning_field)
+    Qwen38FlashNextOnPoolFront => cited_figure_read(figure: pool_front_message_reasoning_field)
   }
 }
 
@@ -600,7 +601,7 @@ fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr? {
     Glm53FlashOnVllm => Present { value: glm_5_3_flash_thinking_end_token }
     NemotronUltraFreeOnOpenRouter => Present { value: nemotron_ultra_thinking_end_token }
     Qwen3_8_27bOnNinfer => Present { value: ninfer_inline_think_end_token.token }
-    Qwen38FlashNextOnPoolFront => pool_front_figure_read(figure: pool_front_thinking_end_token)
+    Qwen38FlashNextOnPoolFront => cited_figure_read(figure: pool_front_thinking_end_token)
   }
 }
 
