@@ -9,7 +9,7 @@ import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.scoped_authorization { ScopedAuthorization, AuthorizationPending, AuthorizationGranted, AuthorizationDenied }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.tools.gnu_coreutils { rm_force_command }
 import extdeps.procps.kill { procps_ng_kill_term_pgid_argv }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable }
