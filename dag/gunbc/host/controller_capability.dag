@@ -7,21 +7,16 @@
 // does not edit extdeps.bmc.capability. The extdeps row stays the source of truth; this is the
 // consumer-facing shape.
 //
-// A capability that the existing BmcCapability values cannot distinguish is typed UNESTABLISHED,
-// never defaulted to Present: the IPMI row has no value that separates a persistent boot selection
-// from a one-shot one, and none that names a graphical (KVM) console. Those are unestablished on the
-// projection, and the consumer that needs one must refuse or fall back — it must not assume present.
-//
-// pxe_selection is named for what it proves: that the PXE device is SELECTABLE THROUGH the boot-source
-// override. It is not a claim that PXE boot works — PXE boot also needs a network delivery path, a
-// delivery-strategy fact for a later cut. It rides on CapabilityBootSourceOverride, since selecting
-// the PXE boot device IS a boot-source override.
+// A capability the existing BmcCapability values cannot distinguish is typed UNESTABLISHED, never
+// defaulted to Present, and the consumer that needs one must refuse — it must not assume present.
+// A capability nobody consumes today is not projected at all (see the field comment on
+// ControllerCapability for why, and what a later consumer adds); this module is the shape of what is
+// READ, not a catalogue of everything the row could be asked.
 module gunbc.host.controller_capability
 
 import extdeps.bmc.capability {
   BmcCapability, BmcFirmwareReleaseCapabilityRow, release_row_has_capability,
-  CapabilityBootSourceOverride, CapabilityNbdProxyVirtualMedia, CapabilityOemRemoteMedia,
-  CapabilityPowerControl, CapabilitySerialConsole, CapabilityVirtualMedia,
+  CapabilityNbdProxyVirtualMedia, CapabilityOemRemoteMedia, CapabilityVirtualMedia,
 }
 
 // A PROJECTED CONTROLLER CAPABILITY: Present when the row carries the value(s) that establish it,
@@ -34,27 +29,29 @@ type CapabilityFactStanding
 // THE CONTROLLER'S CAPABILITIES, as the controller machinery consumes them. Each field is the
 // standing of one projected capability, derived from the raw row by controller_capability.
 type ControllerCapability sole_constructor {
-  // POWER READ/WRITE: the controller can read and drive the machine's power state.
-  power_read_write: CapabilityFactStanding
-  // ONE-SHOT BOOT SELECTION: the controller can override the boot source for the NEXT boot only.
-  one_shot_boot_selection: CapabilityFactStanding
-  // PERSISTENT BOOT SELECTION: the controller can set a boot source that STICKS across reboots.
-  // Unestablished: the IPMI row has no BmcCapability value that separates the persistent bit from
-  // the one-shot override, so the projection cannot establish it and does not default it to present.
-  persistent_boot_selection: CapabilityFactStanding
   // VIRTUAL MEDIA: the controller can attach a medium through its media surface. Present when the
   // row carries any virtual-media capability (Redfish VM, NBD-proxy VM, or OEM remote media — all
-  // media-attach surfaces). This is the surface a virtual-media boot attaches its image through.
+  // media-attach surfaces). This is the surface a virtual-media boot attaches its image through,
+  // and it is the ONLY field: it is the one capability the controller machinery consumes today,
+  // read by decide_virtual_media_boot_selection in gunbc.host.virtual_media_boot_selection.
+  //
+  // THE OTHER CONTROLS ARE NOT MISSING HERE — THEY ARE NOT INVENTED HERE EITHER. POWER READ/WRITE,
+  // ONE-SHOT AND PERSISTENT BOOT SELECTION, PXE SELECTION, and the SERIAL and GRAPHICAL consoles all
+  // live as raw values in extdeps.bmc.capability's row (and the raw row is the source of truth, read
+  // by the one shared predicate release_row_has_capability). A projection field earns its place from
+  // a consumer; carrying six unread fields — two of them HARD-CODED Unestablished, so they could
+  // never go red and asserted nothing — is the dangling edge DESIGN.md Sec 3c names, and the
+  // enumerated vocabulary in a brief is not a consumer. When a consumer arrives it adds ITS field
+  // from extdeps.bmc.capability in one standing_of line: a power gate adds
+  // `power_read_write: standing_of(present: release_row_has_capability(row: row, cap:
+  // CapabilityPowerControl))` (still-owl-732's boot run is the named work that will read power); a
+  // PXE cut adds `pxe_selection`, riding CapabilityBootSourceOverride — the PXE device is SELECTABLE
+  // THROUGH the override, which is what that value proves, NOT that PXE boot works (a network
+  // delivery path is a separate delivery-strategy fact). persistent_boot_selection needs more than a
+  // line: no BmcCapability value separates the persistent bit from the one-shot override, so it is
+  // unestablished-by-vocabulary and whoever needs it must first supply the distinguishing value —
+  // which is exactly why it must not sit here pre-declaring an answer.
   virtual_media: CapabilityFactStanding
-  // PXE SELECTION: the PXE boot device is SELECTABLE THROUGH the boot-source override. Named for
-  // what it proves (the PXE device is selectable), not that PXE boot works — a network delivery
-  // path is a later delivery-strategy fact. Rides on CapabilityBootSourceOverride.
-  pxe_selection: CapabilityFactStanding
-  // SERIAL CONSOLE: the controller serves a serial console.
-  serial_console: CapabilityFactStanding
-  // GRAPHICAL CONSOLE: the controller serves a graphical (KVM) console. Unestablished: no
-  // BmcCapability value names a graphical console, so the projection cannot establish it.
-  graphical_console: CapabilityFactStanding
 }
 
 // THE PROJECTION: derive the controller's capabilities from its raw capability row. The
@@ -63,13 +60,7 @@ type ControllerCapability sole_constructor {
 // argument.
 fn controller_capability(row: BmcFirmwareReleaseCapabilityRow) -> ControllerCapability {
   ControllerCapability {
-    power_read_write: standing_of(present: release_row_has_capability(row: row, cap: CapabilityPowerControl)),
-    one_shot_boot_selection: standing_of(present: release_row_has_capability(row: row, cap: CapabilityBootSourceOverride)),
-    persistent_boot_selection: CapabilityUnestablished,
     virtual_media: standing_of(present: virtual_media_established(row: row)),
-    pxe_selection: standing_of(present: release_row_has_capability(row: row, cap: CapabilityBootSourceOverride)),
-    serial_console: standing_of(present: release_row_has_capability(row: row, cap: CapabilitySerialConsole)),
-    graphical_console: CapabilityUnestablished,
   }
 }
 

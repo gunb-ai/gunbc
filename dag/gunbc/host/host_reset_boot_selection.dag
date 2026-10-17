@@ -1,26 +1,17 @@
 module gunbc.host.host_reset_boot_selection
 
-import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.host.managed_host { ManagedHost }
-import gunbc.host.board_platform_facts { host_board_architecture }
-import gunbc.host.controller_capability { controller_capability, CapabilityUnestablished }
 import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
-import gunbc.host.host_capability_row { host_capability_row, HostCapabilityRowResolved }
 import gunbc.host.virtual_media_boot_selection {
-  VirtualMediaBootSelectionOutcome,
-  VirtualMediaBootSelectionRefusal,
-  VirtualMediaBootSelectionAdmitted,
-  VirtualMediaBootSelectionRefused,
-  virtual_media_boot_selection,
+  VirtualMediaBootSelectionOutcome, decide_virtual_media_boot_selection,
 }
-import gunbc.host.bmc_release_capability_catalog { MegaRacReleaseCapabilityKnown }
 
 // THE BOOT A RESET RETURNS THROUGH IS RESET POLICY, not a fact about the host, so it lives in the
 // reset arm rather than on gunbc.host.managed_host ManagedHost, and this is its one authority:
 // gunbc.host.host_reset_subject_roster reads it to decide membership and hands the same value to the
 // run. gunbc.host.managed_host_boot boot_selection decides the boot arm's own; the two call the same
-// generic derivation (virtual_media_boot_selection) but each arm keeps its own fn, so the two cannot
-// be cross-wired. The selection is DERIVED from the host's facts — the platform architecture its
+// generic derivation (decide_virtual_media_boot_selection) but each arm keeps its own fn, so the two
+// cannot be cross-wired. The selection is DERIVED from the host's facts — the platform architecture its
 // board establishes and the controller's virtual-media capability — with no host-name branch. A
 // host that cannot have a selection decided for it is not a reset subject, however capable its
 // controller.
@@ -28,12 +19,5 @@ fn reset_boot_selection(
   evidence: MegaRacOperationEvidence,
   host: ManagedHost,
 ) -> VirtualMediaBootSelectionOutcome {
-  let arch = host_board_architecture(access: host.access)
-  let media =
-    match host_capability_row(evidence: evidence, access: host.access) {
-      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: row } } =>
-        controller_capability(row: row).virtual_media
-      _ => CapabilityUnestablished
-    }
-  virtual_media_boot_selection(arch: arch, media: media)
+  decide_virtual_media_boot_selection(evidence: evidence, access: host.access)
 }
