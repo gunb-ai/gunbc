@@ -1,6 +1,7 @@
 module gunbc.machine_intake.fan_observe
 
-import std.types { Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.bmc.ipmi_chassis_control { chassis_observation_is_off }
 import std.decl_ref { decl_ref }
 import std.measure { ObservationRoundCount, Second, percent, second_count }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
@@ -254,6 +255,19 @@ fn fan_write_observation(host: FanObserveHost, policy: FanObservePolicy, series:
 data fan_boot_phase_refused_prefix: String = "FanObserveBootPhaseRefused"
 data fan_boot_phase_taken_prefix: String = "FanObserveBootPhaseTaken"
 
+// THE THIRD OUTCOME: THE POLICY PHASE COULD NOT JUDGE THE FANS BECAUSE THE HOST WAS OFF IN EVERY ROUND.
+// A powered-off chassis publishes no tach, so a series of off rounds is not evidence that fans work and
+// is no longer written as Taken. It is not a refusal either: the boot has not powered the host yet, so
+// the judgement belongs to the post-power-on read inside the boot step, which gates the boot there. The
+// reason is a closed word and the tag is spelled here once, beside its siblings.
+data fan_boot_phase_unestablished_host_off_line: String = "FanObserveBootPhaseFanFunctionNotEstablished reason=HostOff"
+
+// EVERY ROUND READ THE CHASSIS AS OFF. An unreadable or undecodable chassis read is NOT off: it is no
+// reading, and a series containing one is judged as it always was (it carries no host-off claim).
+fn series_host_off_in_every_round(rounds: List<FanObservationRound>) -> Bool {
+  rounds.length() > 0 && fold(rounds, init: true, f: (acc, r) => acc && chassis_observation_is_off(observation: r.chassis))
+}
+
 // BOOT-JOB WRAPPER: write the typed receipt and return success on observation refusal (non-gating,
 // and non-gating because the entry decides it in a receipt - no job-level continue-on-error absorbs
 // anything: an unwritable receipt fails the step, review 81077).
@@ -290,7 +304,11 @@ fn fan_write_boot_phase_observation(host: FanObserveHost, policy: FanObservePoli
       fan_write_boot_phase_receipt(
         path: policy.receipt_path,
         content: concat(
-          concat(fan_boot_phase_taken_prefix, "\n"),
+          concat(if series_host_off_in_every_round(rounds: rounds) {
+            fan_boot_phase_unestablished_host_off_line
+          } else {
+            fan_boot_phase_taken_prefix
+          }, "\n"),
           render_observation(host: host, window: policy.transition_window, rounds: rounds, interval: interval),
         ),
       )

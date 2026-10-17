@@ -131,6 +131,23 @@ fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation
   }
 }
 
+// OFF IS ONLY A DECODED OFF READING: an undecodable or unreadable chassis read is no reading, so it is never off.
+// THE ONE STOP RULE OF A BOUNDED POWER-OFF READBACK: stop on an observed off, or when this was the last permitted sample.
+// The two polls (megarac_stale_power_off_poll returns the last sample; boot_fan_gate_power_off_poll keeps every sample) differ
+// only in the sampler they call and what they return; the sampler is an effect and cannot be passed as a parameter, so the
+// rule is shared here and the loops are not (trigger: an effect-carrying higher-order poll, then both collapse to it).
+fn chassis_power_off_poll_settled(sample: ChassisPowerObservation, remaining: Int) -> Bool {
+  chassis_observation_is_off(observation: sample) || remaining <= 1
+}
+
+fn chassis_observation_is_off(observation: ChassisPowerObservation) -> Bool {
+  match observation {
+    ChassisPowerRead { power_on: on } => on == false
+    ChassisStatusUndecodable { cause: _ } => false
+    ChassisUnreadable => false
+  }
+}
+
 fn chassis_observation_text(observation: ChassisPowerObservation) -> NonEmptyStr {
   match observation {
     ChassisPowerRead { power_on: on } => if on { "on" } else { "off" }

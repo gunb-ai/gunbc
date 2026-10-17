@@ -2226,7 +2226,7 @@ jobs:
 
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_fan_observe.dag --function mtcollins1_fan_observe_boot_phase_wet
           first_line=$('head' '-n' '1' 'target/mtcollins1-fan-observation.txt' 2>/dev/null || 'true')
-          if '[' '-f' 'target/mtcollins1-fan-observation.txt' ']' && '[' "$first_line" '=' 'FanObserveBootPhaseTaken' ']'; then 'printf' '%s
+          if '[' '-f' 'target/mtcollins1-fan-observation.txt' ']' && '[' "$first_line" '=' 'FanObserveBootPhaseTaken' '-o' "$first_line" '=' 'FanObserveBootPhaseFanFunctionNotEstablished reason=HostOff' ']'; then 'printf' '%s
           ' 'fan_outcome=observed' > "$GITHUB_OUTPUT"; else 'printf' '%s
           ' 'fan_outcome=refused' > "$GITHUB_OUTPUT"; 'cat' 'target/mtcollins1-fan-observation.txt' > "$GITHUB_STEP_SUMMARY"; 'echo' '::error::mtcollins1 boot stopped - the fan observation was refused; the typed cause and the controller'\''s verbatim answers are in the job summary and the fan-policy-phase-observation artifact'; exit 1; fi
 
