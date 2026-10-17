@@ -6935,7 +6935,7 @@ type HostRemoveEvidence
 fn host_remove_target_inner_argv(target: HostRemoveTarget) -> List<String> {
   match target {
     RemoveForce { paths: ps } =>
-      coreutils_rm_force_argv(paths: list_map(xs: ps, f: fn(p) { p as String }))
+      coreutils_rm_force_argv(paths: list_map(xs: non_empty_to_list(xs: ps), f: fn(p) { p as String }))
     RemoveEmptyDirectory { path: p } =>
       coreutils_rm_empty_directory_argv(path: p as String)
     RemoveForceRecursive { path: p } =>
@@ -6970,7 +6970,7 @@ fn host_remove_step_name(target: HostRemoveTarget) -> String {
 // none (the empty-list refusal).
 fn host_remove_path_field(target: HostRemoveTarget) -> String {
   match target {
-    RemoveForce { paths: ps } => join(list_map(xs: ps, f: fn(p) { p as String }), ",")
+    RemoveForce { paths: ps } => join(list_map(xs: non_empty_to_list(xs: ps), f: fn(p) { p as String }), ",")
     RemoveEmptyDirectory { path: p } => p as String
     RemoveForceRecursive { path: p } => p as String
   }
