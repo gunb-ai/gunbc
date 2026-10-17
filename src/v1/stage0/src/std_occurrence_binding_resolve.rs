@@ -3,6 +3,7 @@
 
 use self::OccurrenceCategoryBindingVerdict::*;
 use self::OccurrenceReferenceBindingOutcome::*;
+pub use crate::std_algebra::collection_concat_shape;
 pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_occurrence_binding::occurrence_binding_from_candidates;
 use crate::std_occurrence_binding::OccurrenceBindingResult::*;

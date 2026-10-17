@@ -9,6 +9,7 @@ pub use crate::extdeps_external_authority::{
 };
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_algebra::collection_join_shape;
 pub use crate::std_checked_arithmetic::checked_int_to_nat;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};

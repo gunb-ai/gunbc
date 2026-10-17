@@ -10,6 +10,7 @@ use self::LiteralElaborationRefusal::*;
 use self::LiteralHomomorphismLookup::*;
 use self::LiteralSourceKind::*;
 use self::LiteralUnfolding::*;
+pub use crate::std_algebra::{collection_concat_shape, collection_count_shape};
 pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_optional::Optional;

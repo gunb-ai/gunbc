@@ -7,6 +7,7 @@ pub use crate::extdeps_external_authority::{
 };
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_algebra::collection_concat_shape;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
