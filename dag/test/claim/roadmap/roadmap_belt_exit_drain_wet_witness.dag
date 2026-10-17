@@ -5,8 +5,10 @@ import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.host.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
-  attempt_exit_stage_list, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused, AttemptExitSpoolStage,
-  AttemptExitStageNames, AttemptExitStageUnreadable,
+  attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
+}
+import gunbc.durable_handoff_host {
+  HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
 }
 import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
 import gunbc.roadmap.roadmap_belt_actuate {
@@ -47,7 +49,7 @@ fn names_in(root: String, stage_is_queued: Bool) -> List<String> {
   }
 }
 
-fn names_at(root: String, stage: AttemptExitSpoolStage) -> List<String> {
+fn names_at(root: String, stage: HostSpoolStage) -> List<String> {
   match attempt_exit_stage_list(instance_root: root, stage: stage) {
     AttemptExitStageNames { names } => names
     AttemptExitStageUnreadable { reason: _ } => ["<unreadable>"]

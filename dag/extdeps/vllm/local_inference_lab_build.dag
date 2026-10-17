@@ -1,0 +1,20 @@
+module extdeps.vllm.local_inference_lab_build
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+// THE LOCAL-INFERENCE-LAB vLLM BUILD AS A DECLARED RELEASE ROW, beside the other vLLM facts in this folder
+// and the way gunbc.serving.rented_ninfer_source NinferEngineRelease is for ninfer. A serving recipe
+// references this declaration; no hub enumerates engines. Its source revision, image and flags are
+// UNREAD: this row exists so the recipe has an identity to reference, and says what would ground it.
+type VllmEngineRelease {
+  release_name: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data local_inference_lab_vllm_release: VllmEngineRelease = VllmEngineRelease {
+  release_name: "local-inference-lab-vllm" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "Read the local-inference-lab vLLM build's source revision, the flags it was launched with for Qwen3.8-Flash-Next and its minimum NVIDIA driver from the build's own repository; the operator named the build, this repository has read none of it." as NonEmptyStr,
+  },
+}
