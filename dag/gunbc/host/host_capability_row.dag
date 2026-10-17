@@ -1,6 +1,15 @@
-// THE HOST-GRAIN CAPABILITY ROW: the per-release capability row a host's controller runs, resolved
-// by LOOKUP from the firmware release identity the access observation recorded -- never a per-unit
-// datum.
+// THE HOST-GRAIN CAPABILITY ROW: the per-release capability row a host's controller runs, resolved by
+// LOOKUP from the release the controller CURRENTLY RUNS -- never a per-unit datum, and never the build
+// named by a historical probe receipt.
+//
+// THE CURRENT RELEASE COMES FROM THE OPERATION EVIDENCE, folded by gunbc.host.megarac_operation_standing's
+// megarac_current_build(evidence:, endpoint:), not from the access observation. The access observation is a
+// PROBE RECEIPT: it records what the controller reported at one instant, and it is immutable audit
+// evidence (endpoint, board, surfaces, raw response). Before this change the boot path read
+// observation.identity.firmware off it, so a unit reflashed from 0.32 to 0.45.3 kept being asked about
+// 0.32 -- the standing was the original observation and nothing in the boot path consulted the reflash. The
+// operation evidence is the authority that records a reflash, because that is where a reading and a
+// transition get recorded; the fold returns whichever build is known to be running now.
 //
 // A capability row is a fact about a vendor FIRMWARE RELEASE (extdeps.bmc.megarac's release catalog),
 // keyed by the exact release identity (family + raw version) and true of every unit running that
@@ -10,9 +19,10 @@
 // release, and the next lookup resolves the new build's row -- or refuses, if that build is not yet
 // catalogued. Nothing per-unit edits.
 //
-// The answer is TYPED at the host grain: the row is known (resolved), the observed build is
-// uncatalogued, the observed build is ambiguous in the catalog, or the controller's access is not
-// observed at all. No arm collapses to a default row.
+// The answer is TYPED at the host grain: the row is known (resolved), the current build is uncatalogued,
+// the current build is ambiguous in the catalog, the controller's access is not observed at all, or no
+// current release is established for the endpoint. No arm collapses to a default row, and no arm reads the
+// stale historical firmware back into the answer.
 module gunbc.host.host_capability_row
 
 import extdeps.bmc.access_profile {
@@ -25,6 +35,14 @@ import extdeps.bmc.access_profile {
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, BmcFirmwareReleaseCapabilityRow }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import std.types { Int, List }
+import gunbc.host.megarac_operation_standing {
+  MegaRacOperationEvidence,
+  MegaRacCurrentBuildStanding,
+  CurrentBuildRead,
+  CurrentBuildKnownUnread,
+  CurrentBuildUnobserved,
+  megarac_current_build,
+}
 import gunbc.host.bmc_release_capability_catalog {
   MegaRacReleaseCapabilityKnown,
   MegaRacReleaseCapabilityUncatalogued,
@@ -49,49 +67,45 @@ type HostCapabilityRowStanding
   | HostCapabilityRowUncatalogued { firmware: BmcFirmwareReleaseIdentity }
   | HostCapabilityRowAmbiguous { firmware: BmcFirmwareReleaseIdentity, count: Int }
   | HostCapabilityRowUnobserved { endpoint: BmcControllerEndpoint }
+  // NO CURRENT RELEASE IS ESTABLISHED FOR THIS CONTROLLER: the operation evidence records no reading and
+  // no transition at this endpoint. This is NOT the same repair as Uncatalogued -- there the build is known
+  // and somebody must read it; here nobody has said what is running, and the repair is to record a reading
+  // or a reflash transition. It is not Unobserved either -- the controller was probed, its surfaces are
+  // known, the release simply was never established. A failure arm, so it refuses: the historical firmware
+  // on the probe receipt is NOT read back as a fallback, because that is the exact stale-build behaviour
+  // this arm exists to make unreachable (DESIGN.md Sec 5: a failure arm refuses, never widens).
+  | HostCapabilityRowNoCurrentRelease { endpoint: BmcControllerEndpoint }
 
-// THE LOOKUP. Read the firmware release identity the controller reported (the per-unit reading on the
-// access observation) and resolve the per-release catalog row for that build. An unobserved controller
-// has no reported build, so it is Unobserved, not a default row.
-fn host_capability_row(access: BmcAccessObservationStanding) -> HostCapabilityRowStanding {
+// THE LOOKUP. Two facts, from two authorities: the ACCESS says which controller this is, and the OPERATION
+// EVIDENCE says which build that controller runs now. Only the second is allowed to answer the release
+// question -- the access is consulted for the endpoint and for nothing else, which is what stops a stale
+// probe receipt from pinning a reflashed unit to its old build.
+//
+// The endpoint comes from the observation, so an unobserved controller cannot be answered from the evidence
+// either: there is no endpoint to key the fold on. That is why the access stays a parameter rather than
+// being dropped: it is the identity source, it is simply not the release source.
+fn host_capability_row(
+  evidence: MegaRacOperationEvidence,
+  access: BmcAccessObservationStanding,
+) -> HostCapabilityRowStanding {
   match access {
     BmcAccessUnobserved { endpoint: endpoint } => HostCapabilityRowUnobserved { endpoint: endpoint }
     BmcAccessObserved { observation: observation } =>
-      match megarac_release_capability_row_for(firmware: observation.identity.firmware) {
-        MegaRacReleaseCapabilityKnown { row: row } => HostCapabilityRowKnown { row: row }
-        MegaRacReleaseCapabilityUncatalogued { firmware: firmware } => HostCapabilityRowUncatalogued { firmware: firmware }
-        MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: count } => HostCapabilityRowAmbiguous { firmware: firmware, count: count }
+      match megarac_current_build(evidence: evidence, endpoint: observation.endpoint) {
+        // WHICH BUILD RUNS NOW, read from the evidence that records the controller's readings and reflashes.
+        CurrentBuildKnownUnread { transition: t } => resolve(firmware: t.to)
+        CurrentBuildRead { reading: r } => resolve(firmware: r.identity.firmware)
+        CurrentBuildUnobserved => HostCapabilityRowNoCurrentRelease { endpoint: observation.endpoint }
       }
   }
 }
 
-// A re-pointed access observation for WITNESSES: the same reading with a different observed firmware
-// release. A host whose controller reports a build the catalog has not yet read is uncatalogued --
-// its capability row does not resolve and its boot selection refuses, with no per-unit edit. This is
-// the reflash grain: the unit's reported build changes, and the lookup follows it.
-fn host_access_repoint_firmware(
-  access: BmcAccessObservationStanding,
-  firmware: BmcFirmwareReleaseIdentity
-) -> BmcAccessObservationStanding {
-  match access {
-    BmcAccessUnobserved { endpoint: endpoint } => BmcAccessUnobserved { endpoint: endpoint }
-    BmcAccessObserved { observation: o } =>
-      BmcAccessObserved {
-        observation: BmcAccessObservation {
-          endpoint: o.endpoint,
-          identity: BmcObservedIdentity {
-            board: o.identity.board,
-            chassis_part_number: o.identity.chassis_part_number,
-            firmware: firmware,
-          },
-          discovered_surfaces: o.discovered_surfaces,
-          boot_control_routes: o.boot_control_routes,
-          redfish_virtual_media_probe: o.redfish_virtual_media_probe,
-          successful_read_surfaces: o.successful_read_surfaces,
-          successful_write_surfaces: o.successful_write_surfaces,
-          raw_response: o.raw_response,
-          observed_at: o.observed_at,
-        },
-      }
+// ONE CATALOG RESOLUTION, shared by both current-release arms, so a reading and a transition answer the
+// catalog question identically -- the difference between them is only HOW the build became known.
+fn resolve(firmware: BmcFirmwareReleaseIdentity) -> HostCapabilityRowStanding {
+  match megarac_release_capability_row_for(firmware: firmware) {
+    MegaRacReleaseCapabilityKnown { row: row } => HostCapabilityRowKnown { row: row }
+    MegaRacReleaseCapabilityUncatalogued { firmware: firmware } => HostCapabilityRowUncatalogued { firmware: firmware }
+    MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: count } => HostCapabilityRowAmbiguous { firmware: firmware, count: count }
   }
 }

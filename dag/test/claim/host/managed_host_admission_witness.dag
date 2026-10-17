@@ -38,6 +38,7 @@ import gunbc.host.host_reset_subject_roster {
   ResetRosterHostUnderDeclaredDrop, OrdinaryResetRosterHost, reset_subject_roster, reset_subject_roster_of,
 }
 import gunbc.auth.managed_host_boot_federation {
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
   boot_federation_for, BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
 }
 
@@ -66,8 +67,8 @@ test fn w_reset_roster_and_boot_federation_match_the_declared_drop_arm() -> Bool
         MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: h } =>
           (d.decl_name as String) == (mtcollins1_bmc_secure_standing_drop_ref.decl_name as String)
             && (h.host as String) == (operator_host_mtcollins1 as String)
-            && count(reset_subject_roster()) == 1
-            && reset_subject_roster() |> all(e => match e {
+            && count(reset_subject_roster(evidence: megarac_operation_evidence())) == 1
+            && reset_subject_roster(evidence: megarac_operation_evidence()) |> all(e => match e {
               OrdinaryResetRosterHost { host: _ } => false
               ResetRosterHostUnderDeclaredDrop { host: rh, drop: rd } =>
                 (rh as String) == (operator_host_mtcollins1 as String)
@@ -127,7 +128,7 @@ test fn w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties() -> Bo
         drops: [],
         allocations: gunbc_fleet_hostname_allocations,
       )
-      count(hosts) == 0 && count(reset_subject_roster_of(hosts: hosts)) == 0
+      count(hosts) == 0 && count(reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: hosts)) == 0
     }
   }
 }

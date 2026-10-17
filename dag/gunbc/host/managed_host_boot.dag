@@ -10,7 +10,9 @@ import gunbc.host.controller_capability { controller_capability, CapabilityUnest
 import gunbc.host.host_capability_row {
   host_capability_row, HostCapabilityRowKnown,
   HostCapabilityRowUncatalogued, HostCapabilityRowAmbiguous, HostCapabilityRowUnobserved,
+  HostCapabilityRowNoCurrentRelease,
 }
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionOutcome,
   VirtualMediaBootSelectionRefusal,
@@ -49,18 +51,27 @@ import gunbc.host.bmc_control_binding {
 // (the catalog derives each row's release from the artifact the entry carries), so there is no such row
 // to supply and a second entry point would only be a path a consumer could be routed around, with no
 // claim left that can go red on it.
-fn boot_selection(host: ManagedHost) -> VirtualMediaBootSelectionOutcome {
+// THE EVIDENCE PARAMETER IS THE CURRENT RELEASE'S AUTHORITY. The host's access observation is consulted
+// for the controller's IDENTITY (endpoint, board) and never for which build it runs: the build comes from
+// the operation evidence, folded by megarac_current_build inside host_capability_row. Threading it here
+// rather than reading it off the host is deliberate -- the access standing is immutable probe evidence, so a
+// reflashed unit's row would otherwise keep naming the build it was probed on. Production passes
+// mtcollins1_megarac_operation_evidence(); there is no default and no fallback to the historical field.
+fn boot_selection(evidence: MegaRacOperationEvidence, host: ManagedHost) -> VirtualMediaBootSelectionOutcome {
   let arch = host_board_architecture(access: host.access)
   let media =
-    match host_capability_row(access: host.access) {
+    match host_capability_row(evidence: evidence, access: host.access) {
       HostCapabilityRowKnown { row: row } => controller_capability(row: row).virtual_media
       // Named arm by arm, deliberately: each refusal reason stays VISIBLE as a reason a selection
       // refuses, not absorbed into a catch-all that cannot distinguish "nobody read the controller" from
-      // "nobody has read this build". All three answer the same way -- an unestablished capability cannot
-      // admit a selection -- but each is its own arm so a future divergence has somewhere to live.
+      // "nobody has read this build". All four answer the same way -- an unestablished capability cannot
+      // admit a selection -- but each is its own arm so a future divergence has somewhere to live. The
+      // fourth, NoCurrentRelease, is the arm this PR adds: nobody has said what the controller runs at all.
+      // The historical probe receipt is NOT read back as a fallback for it.
       HostCapabilityRowUncatalogued { firmware: _ } => CapabilityUnestablished
       HostCapabilityRowAmbiguous { firmware: _, count: _ } => CapabilityUnestablished
       HostCapabilityRowUnobserved { endpoint: _ } => CapabilityUnestablished
+      HostCapabilityRowNoCurrentRelease { endpoint: _ } => CapabilityUnestablished
     }
   virtual_media_boot_selection(arch: arch, media: media)
 }
@@ -88,10 +99,15 @@ type BootSubjectAdmission
   = BootSubjectAdmitted { subject: AdmittedBootSubject }
   | BootSubjectRefused { host: HostIdentity, cause: BootSubjectRefusalCause }
 
-fn admit_boot_subject(host: ManagedHost, medium: BootMedium, execution_revision: NonEmptyStr) -> BootSubjectAdmission {
+fn admit_boot_subject(
+  evidence: MegaRacOperationEvidence,
+  host: ManagedHost,
+  medium: BootMedium,
+  execution_revision: NonEmptyStr,
+) -> BootSubjectAdmission {
   match bmc_control_binding(observed: host.access, secured: host.secure) {
     BmcControlBound { route: route } =>
-      match boot_selection(host: host) {
+      match boot_selection(evidence: evidence, host: host) {
         VirtualMediaBootSelectionRefused { cause: c } =>
           BootSubjectRefused { host: host.host, cause: BootSubjectNoSelection { cause: c } }
         VirtualMediaBootSelectionAdmitted { selection: s } =>
@@ -108,22 +124,32 @@ fn admit_boot_subject(host: ManagedHost, medium: BootMedium, execution_revision:
 
 // THE SAME ADMISSION FOR A HOST NAME, over the rows it is given: a host that is not a managed host is
 // refused by that cause, never booted with defaults.
-fn boot_subject_admission_in(hosts: List<ManagedHost>, host: HostIdentity, medium: BootMedium, execution_revision: NonEmptyStr) -> BootSubjectAdmission {
+fn boot_subject_admission_in(
+  evidence: MegaRacOperationEvidence,
+  hosts: List<ManagedHost>,
+  host: HostIdentity,
+  medium: BootMedium,, execution_revision: NonEmptyStr) -> BootSubjectAdmission {
   fold(
     hosts,
     init: BootSubjectRefused { host: host, cause: BootSubjectHostNotManaged },
-    f: (acc, h) => if host_identity_eq(a: h.host, b: host) { admit_boot_subject(host: h, medium: medium, execution_revision: execution_revision) } else { acc },
+    f: (acc, h) => if host_identity_eq(a: h.host, b: host) { admit_boot_subject(evidence: evidence, host: h, medium: medium, execution_revision: execution_revision) } else { acc },
   )
 }
 
-fn boot_subject_admission_for(host: HostIdentity, medium: BootMedium, execution_revision: NonEmptyStr) -> BootSubjectAdmission {
+fn boot_subject_admission_for(
+  evidence: MegaRacOperationEvidence,
+  host: HostIdentity,
+  medium: BootMedium,
+  execution_revision: NonEmptyStr,
+) -> BootSubjectAdmission {
   match managed_membership_for(host: host) {
     Absent => BootSubjectRefused { host: host, cause: BootSubjectHostNotManaged }
     Present { value: m } =>
       match m {
-        OrdinaryMember { host: h } => admit_boot_subject(host: h, medium: medium, execution_revision: execution_revision)
+        OrdinaryMember { host: h } =>
+          admit_boot_subject(evidence: evidence, host: h, medium: medium, execution_revision: execution_revision)
         MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
-          admit_boot_subject(host: h, medium: medium, execution_revision: execution_revision)
+          admit_boot_subject(evidence: evidence, host: h, medium: medium, execution_revision: execution_revision)
       }
   }
 }

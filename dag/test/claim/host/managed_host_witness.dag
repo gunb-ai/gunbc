@@ -6,7 +6,6 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import std.algebra { FreeSemigroup, string_contains }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
-import gunbc.host.host_capability_row { host_access_repoint_firmware }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host {
   managed_host_fixture,
@@ -62,6 +61,40 @@ import gunbc.host.host_reset_subject_roster {
   reset_subject_roster_of,
 }
 
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.machine_intake.megarac_operation_evidence {
+  megarac_operation_evidence_fixture_for,
+  megarac_operation_evidence_fixture_none,
+}
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
+import std.content_hash { content_hash_of_value }
+
+// EVIDENCE THAT REPORTS A BUILD AT THIS CONTROLLER, for a fixture machine. A witness that means "this
+// controller now runs build X" produces a build reading naming X -- the same move production makes --
+// and never rewrites the immutable probe receipt, because the release is no longer read off that
+// receipt. The board and chassis stay the machine's own and only the reported build changes, so a
+// refusal is about the build and not about some other board. The reading's own label says plainly that
+// no artifact stands behind it: it is a statement about a build, not a report that a capture happened.
+fn witness_evidence_reporting(h: ManagedHost, build: BmcFirmwareReleaseIdentity) -> MegaRacOperationEvidence {
+  match h.access {
+    BmcAccessObserved { observation: o } => megarac_operation_evidence_fixture_for(
+      endpoint: o.endpoint,
+      identity: BmcObservedIdentity {
+        board: o.identity.board,
+        chassis_part_number: o.identity.chassis_part_number,
+        firmware: build,
+      },
+      evidence: EvidenceRef {
+        label: "hypothetical roster-witness build reading (no artifact behind it)",
+        digest: content_hash_of_value(value: "roster witness hypothetical build reading"),
+      },
+      observed_at: o.observed_at,
+    )
+    BmcAccessUnobserved { endpoint: _ } => megarac_operation_evidence_fixture_none()
+  }
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE INHABITANCE CLAIM, AND IT ASSERTS THE ROUTE. The managed set is exactly the mtcollins1 row; its
@@ -70,7 +103,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // row, or its secure standing going Absent, turns this red.
 test fn w_reset_roster_is_exactly_mtcollins1_through_the_binding_and_admission() -> Bool {
   let hosts = managed_hosts()
-  let roster = reset_subject_roster()
+  let roster = reset_subject_roster(evidence: megarac_operation_evidence())
   count(hosts) == 1
     && hosts |> all(h =>
       (h.host as String) == (operator_host_mtcollins1 as String)
@@ -80,7 +113,7 @@ test fn w_reset_roster_is_exactly_mtcollins1_through_the_binding_and_admission()
           BmcControlNotSecured { cause: _ } => false
           BmcControlEndpointMismatch { observed: _, secured: _ } => false
         }
-        && match admit_reset_subject(host: h) {
+        && match admit_reset_subject(evidence: megarac_operation_evidence(), host: h) {
           ResetSubjectAdmitted { subject: _ } => true
           ResetSubjectUnbound { standing: _ } => false
           ResetSubjectNoSelection { host: _, cause: _ } => false
@@ -171,7 +204,7 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
       BmcControlAccessUnobserved { endpoint: _ } => false
       BmcControlNotSecured { cause: _ } => false
     }
-    mismatched && count(reset_subject_roster_of(hosts: [crossed])) == 0
+    mismatched && count(reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: [crossed])) == 0
   }) && count(managed_hosts()) == 1
 }
 
@@ -184,21 +217,32 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
 test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> Bool {
   managed_hosts() |> all(h => {
     let uncatalogued = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.9.9")
-    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: host_access_repoint_firmware(access: h.access, firmware: uncatalogued), secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    // THE SAME MACHINE IN EVERY RESPECT, its immutable probe receipt included. What differs is only the
+    // operator's evidence, which now reports a build no release row has been established for -- so its
+    // boot selection derives to nothing. Rewriting a probe receipt to say "now it runs 9.9.9" is exactly
+    // what the release stopped being read off, so it is no longer a lever any witness may pull.
+    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     let bound = match bmc_control_binding(observed: unselected.access, secured: unselected.secure) {
       BmcControlBound { route: _ } => true
       BmcControlAccessUnobserved { endpoint: _ } => false
       BmcControlNotSecured { cause: _ } => false
       BmcControlEndpointMismatch { observed: _, secured: _ } => false
     }
-    let refused = match admit_reset_subject(host: unselected) {
+    let refused = match admit_reset_subject(evidence: witness_evidence_reporting(h, uncatalogued), host: unselected) {
       ResetSubjectNoSelection { host: x, cause: _ } => (x as String) == "fixture-unselected-host"
       ResetSubjectAdmitted { subject: _ } => false
       ResetSubjectUnbound { standing: _ } => false
       ResetSubjectControllerNotAdmitted { admission: _ } => false
     }
-    let roster = reset_subject_roster_of(hosts: [unselected, h])
-    bound && refused && count(roster) == 1 && roster |> all(r => (r as String) == (operator_host_mtcollins1 as String))
+    // TWO LEGS, because the operator's evidence is ONE ARGUMENT and is keyed by controller: the roster
+    // carried under the unread-build reading drops the machine with no selection entirely, and the roster
+    // carried under the committed evidence keeps exactly the one capable machine. Together these say what
+    // the single joint leg used to -- the machine with no selection is absent, the one with a selection is
+    // present -- and they differ in nothing but the evidence they bring.
+    let roster_unselected = reset_subject_roster_of(evidence: witness_evidence_reporting(h, uncatalogued), hosts: [unselected])
+    let roster_capable = reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: [h])
+    bound && refused && count(roster_unselected) == 0 && count(roster_capable) == 1
+      && roster_capable |> all(r => (r as String) == (operator_host_mtcollins1 as String))
   }) && count(managed_hosts()) == 1
 }
 
