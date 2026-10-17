@@ -3012,6 +3012,7 @@ fn belt_spawn_admitted(
                     }
                   }
               }
+              }
   }
 }
 
