@@ -197,7 +197,7 @@ type LostBootSweepRefusal
   = SweepListingUnreadable { reason: JitListingUnreadableReason, cause: NonEmptyStr }
   | SweepRegistrationRefused { listed: String, refusal: ListedRegistrationRefusal }
 
-// CONSUMED BY fleet-converge mode mtcollins1_lost_boot_sweep (gunbc.runner.runner_lost_boot_sweep_run
+// CONSUMED BY fleet-converge mode service_runner_lost_boot_sweep (gunbc.runner.runner_lost_boot_sweep_run
 // lost_boot_sweep_wet), which feeds each selected registration to ensure_jit_runner_deregistered with
 // SlotLostBoot (success = absent from the listing).
 fn lost_boot_sweep(

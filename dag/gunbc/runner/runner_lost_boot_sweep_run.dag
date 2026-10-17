@@ -30,7 +30,7 @@ import gunbc.runner.runner_jit_deregistration {
   SweepListingUnreadable, SweepRegistrationRefused, StaleJitRegistration, lost_boot_sweep, jit_runner_deregistered,
 }
 
-// THE LOST-BOOT SWEEP RUN (fleet-converge mode mtcollins1_lost_boot_sweep): the production consumer of
+// THE LOST-BOOT SWEEP RUN (fleet-converge mode service_runner_lost_boot_sweep): the production consumer of
 // gunbc.runner.runner_jit_deregistration lost_boot_sweep. Authority: ruling
 // gunbc.design_ruling mtcollins1_ci_runner_enrolment_approved, and
 // fleet_converge_modes_are_outside_the_job_roster for the mode's place in the workflow; the
@@ -55,8 +55,8 @@ data lost_boot_sweep_current_boot_id_env_name: String = "FLEET_CONVERGE_CURRENT_
 data lost_boot_sweep_wif_access_token_env_name: String = "WIF_ACCESS_TOKEN"
 data lost_boot_sweep_runner_temp_env_name: String = "RUNNER_TEMP"
 data lost_boot_sweep_key_file_name: String = "lost-boot-sweep-app-key"
-data lost_boot_sweep_receipt_path: String = "artifacts/mtcollins1-lost-boot-sweep-receipt.txt"
-data lost_boot_sweep_artifact_glob: String = "artifacts/mtcollins1-lost-boot-sweep-*"
+data lost_boot_sweep_receipt_path: String = "artifacts/service-runner-lost-boot-sweep-receipt.txt"
+data lost_boot_sweep_artifact_glob: String = "artifacts/service-runner-lost-boot-sweep-*"
 
 data lost_boot_sweep_prelude_allowance: Second = second(count: 120)
 data lost_boot_sweep_per_registration_allowance: Second = second(count: 60)
