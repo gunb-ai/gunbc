@@ -1,6 +1,6 @@
 module test.claim.gpu_bench_v2_receipt_inhabitance_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { Bool, String }
 import std.optional { Present, Absent }
 import std.measure { token_count_value }
