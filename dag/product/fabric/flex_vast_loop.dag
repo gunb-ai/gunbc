@@ -4,6 +4,8 @@ import std.types { String, NonEmptyStr, Bool, Int, List, Secret, EpochMs }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import std.apply_mode { ApplyMode, Plan, Apply }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.fleet.host_credential_custody_converge { CustodyStanding, CustodyHeld, CustodyNotHeld }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.decimal { ExactDecimal }
 import std.integer { int_to_decimal_string }
@@ -68,26 +70,17 @@ import gunbc.serving.rented_release {
 // HAND-OFF. An answered (or reconciled-held) create yields a RentedServingAllocation and stops there:
 // startup, key binding, enrollment and settlement belong to the serving slices.
 
-// ---- WET GATES. Facts of the world a wet write needs that this repository cannot read from the
-// pass's inputs: the operator-converged key custody and the release-gate (an unreachable-host card
-// must be releasable) both start closed and are opened only by the operator's converge, never here.
-type FlexKeyCustody
-  = FlexKeyCustodyLive
-  | FlexKeyCustodyNotLive
-
-type FlexReleaseGate
-  = FlexReleaseGateOpen
-  | FlexReleaseGateClosed
-
+// ---- WET GATE. The key custody is OBSERVED: the pass takes the custody read's own standing
+// (gunbc.fleet.host_credential_custody_converge host_credential_custody) and a wet write needs
+// CustodyHeld. The release leg (a card that never came up must be returnable) is not a row here: it is
+// flex_release_return_wall, an unconditional wall until S5b's unreachable outcome type lands.
 type FlexWetGates {
-  key_custody: FlexKeyCustody
-  release_gate: FlexReleaseGate
+  custody: CustodyStanding
 }
 
-data flex_wet_gates_today: FlexWetGates = FlexWetGates {
-  key_custody: FlexKeyCustodyNotLive,
-  release_gate: FlexReleaseGateClosed,
-}
+data flex_release_return_frontier: DissolutionCondition = unbound_dissolution(description: "A card that never came up cannot be returned today (S5 holds release at drain on an unreachable host), so flex_release_return_wall refuses every wet write. TRIGGER: S5b (adhoc-abe32924-7ad) is on main and the release path carries its unreachable-host outcome type. SUFFICIENT FOR deleting this row and replacing flex_release_return_wall with a match on that type.")
+
+data flex_run_pass_caller_frontier: DissolutionCondition = unbound_dissolution(description: "flex_run_pass has no production caller: the executing route is a srv1 fleet-converge entry that reads the custody standing, the Vast instance and charge pages and the sealed readings, feeds the previous pass's create standing through flex_reconcile_ours into flex_reconciled_allocation (no planner reads a reconcile verdict yet), loads the key through flex_vast_api_read_grant, and calls it with FlexPolicy.actuation. TRIGGER: that entry exists and executes a DRY pass on srv1. SUFFICIENT FOR deleting this row. NOT satisfied by test.claim.fabric.flex_vast_loop_witness, which exercises the pure planner and flex_created_outcome only.")
 
 // The Secret read from the host copy by the entry. It is named only by reference here.
 type FlexKeyCustodyDeclaration {
@@ -142,12 +135,19 @@ type FlexAllocationPlacement {
 
 // The ask the pass would make: the offer, its screened standing, its quote, the bid admission the
 // market produced and where the allocation will be placed.
+// The card, host and route a Vast create answer cannot say are READ by the startup placement slice
+// (S3, #14109), never by this loop: a placement is supplied only with the declaration that produced it,
+// and an unread placement stays typed unread, so no create is asked for a card that cannot be carried.
+type FlexPlacementStanding
+  = FlexPlacementSupplied { placement: FlexAllocationPlacement, producer: DeclarationRef }
+  | FlexPlacementUnread { obligation: NonEmptyStr }
+
 type FlexCreateIntent {
   offer: VastAiOffer
   entry: FlexShadowFieldEntry
   quote: ServingSelectionQuote
   admission: FlexBidAdmission
-  placement: FlexAllocationPlacement
+  placement: FlexPlacementStanding
 }
 
 type FlexRentCooldown {
@@ -190,8 +190,9 @@ type FlexCreateRefusal
   | FlexRefusedTemplateHashUnread
   | FlexRefusedChargesUnreadable
   | FlexRefusedBudgetCeiling { spent: MoneyAmountMicro, reservation: MoneyAmountMicro, ceiling: MoneyAmountMicro }
-  | FlexRefusedKeyNotLive { custody: FlexKeyCustodyDeclaration }
-  | FlexRefusedReleaseGateClosed
+  | FlexRefusedKeyNotLive { custody: FlexKeyCustodyDeclaration, causes: List<String> }
+  | FlexRefusedReleaseReturnUnmodeled
+  | FlexRefusedPlacementUnread { obligation: NonEmptyStr }
 
 fn flex_entry_wall(entry: FlexShadowFieldEntry) -> List<FlexCreateRefusal> {
   match entry {
@@ -249,16 +250,21 @@ fn flex_budget_wall(policy: FlexPolicy, charges: FlexChargesStanding, bid: Money
 }
 
 fn flex_wet_gate_wall(gates: FlexWetGates) -> List<FlexCreateRefusal> {
-  concat(
-    match gates.key_custody {
-      FlexKeyCustodyLive => []
-      FlexKeyCustodyNotLive => [FlexRefusedKeyNotLive { custody: flex_key_custody_declaration }]
-    },
-    match gates.release_gate {
-      FlexReleaseGateOpen => []
-      FlexReleaseGateClosed => [FlexRefusedReleaseGateClosed]
-    },
-  )
+  match gates.custody {
+    CustodyHeld => []
+    CustodyNotHeld { causes: cs } => [FlexRefusedKeyNotLive { custody: flex_key_custody_declaration, causes: cs }]
+  }
+}
+
+fn flex_release_return_wall() -> List<FlexCreateRefusal> {
+  [FlexRefusedReleaseReturnUnmodeled]
+}
+
+fn flex_placement_wall(placement: FlexPlacementStanding) -> List<FlexCreateRefusal> {
+  match placement {
+    FlexPlacementSupplied { placement: _, producer: _ } => []
+    FlexPlacementUnread { obligation: o } => [FlexRefusedPlacementUnread { obligation: o }]
+  }
 }
 
 fn flex_admitted_bid(admission: FlexBidAdmission) -> MoneyPerHour? {
@@ -281,6 +287,8 @@ fn flex_disk_gibibytes(disk: ByteSize) -> Int {
 // the write it would make.
 fn flex_create_walls(policy: FlexPolicy, observation: FlexPassObservation, intent: FlexCreateIntent, hashes: List<FlexTemplateHashRow>) -> List<FlexCreateRefusal> {
   concat(
+    flex_placement_wall(placement: intent.placement),
+    concat(
     flex_entry_wall(entry: intent.entry),
     concat(
       flex_quote_wall(quote: intent.quote),
@@ -298,6 +306,7 @@ fn flex_create_walls(policy: FlexPolicy, observation: FlexPassObservation, inten
           _ => [FlexRefusedTemplateUnresolved]
         },
       ),
+    ),
     ),
   )
 }
@@ -558,7 +567,11 @@ fn flex_created_outcome(input: FlexPassInput, request: FlexCreateRequest, intent
     cooldown: flex_cooldown_from_ask(policy: input.policy, asked_at: input.now),
     allocation: match standing {
       FlexCreateAnswered { instance_id: id, machine_id: _, ask_id: _ } =>
-        Present { value: flex_acquired_allocation(policy: input.policy, request: request, placement: intent.placement, instance_id: id, asked_at: input.now) }
+        match intent.placement {
+          FlexPlacementSupplied { placement: p, producer: _ } =>
+            Present { value: flex_acquired_allocation(policy: input.policy, request: request, placement: p, instance_id: id, asked_at: input.now) }
+          FlexPlacementUnread { obligation: _ } => none
+        }
       _ => none
     },
   }
@@ -626,7 +639,22 @@ fn flex_run_pass(
   match flex_outcome_without_write(plan: plan) {
     Present { value: outcome } => outcome
     Absent =>
-      match plan {
+      match flex_first_refusal(walls: flex_release_return_wall()) {
+        Present { value: refusal } => FlexPassStopped { refusal: FlexPassCreateRefused { refusal: refusal } }
+        Absent => flex_perform_plan(input: input, plan: plan, api_key: api_key, roots: roots, protected: protected, readings: readings)
+      }
+  }
+}
+
+fn flex_perform_plan(
+  input: FlexPassInput,
+  plan: FlexPassPlan,
+  api_key: Secret,
+  roots: ServingStoreRoots,
+  protected: ServingProtectedPaths,
+  readings: RentedReleaseReadings,
+) -> FlexPassOutcome uses net: Network {
+  match plan {
         FlexPlanCreate { request: request, intent: intent } =>
           flex_run_create(input: input, api_key: api_key, request: request, intent: intent)
         FlexPlanDestroy { action: _, allocation: allocation } =>
@@ -640,6 +668,5 @@ fn flex_run_pass(
             other => other
           }
         _ => FlexPassIdle
-      }
   }
 }

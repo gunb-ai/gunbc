@@ -29,19 +29,19 @@ import product.fabric.flex_vast_shadow {
   flex_serving_recipe,
 }
 import product.fabric.flex_vast_loop {
-  FlexWetGates, FlexKeyCustodyLive, FlexKeyCustodyNotLive, FlexReleaseGateOpen, FlexReleaseGateClosed,
-  flex_wet_gates_today, FlexPassObservation, FlexAllocationPlacement, FlexCreateIntent, FlexRentCooldown,
+  FlexWetGates, FlexPlacementSupplied, FlexPlacementUnread, FlexRefusedPlacementUnread, FlexRefusedReleaseReturnUnmodeled, flex_release_return_wall, FlexPassObservation, FlexAllocationPlacement, FlexCreateIntent, FlexRentCooldown,
   FlexPassInput, FlexCreateRequest, FlexTemplateHashRow, FlexPassPlan,
   FlexPlanRefused, FlexPlanIdle, FlexPlanDryCreate, FlexPlanDryDestroy, FlexPlanCreate, FlexPlanDestroy,
   FlexPassRefusal, FlexPassRosterNotComplete, FlexPassCreateRefused, FlexPassNoAllocationForCard, FlexPassCooldownActive,
   FlexRefusedEntryEstimated, FlexRefusedEntryExcluded, FlexRefusedQuoteNotEstablished,
   FlexRefusedAdmissionNotAdmitted, FlexRefusedTemplateHashUnread, FlexRefusedChargesUnreadable,
-  FlexRefusedBudgetCeiling, FlexRefusedKeyNotLive, FlexRefusedReleaseGateClosed,
+  FlexRefusedBudgetCeiling, FlexRefusedKeyNotLive,
   FlexPassOutcome, FlexPassCreated, FlexPassReleased,
   flex_plan_pass, flex_created_outcome, flex_reconcile_ours, flex_reconciled_allocation,
   flex_acquired_allocation, flex_release_card, flex_ours_roster, flex_provider_declaration,
   flex_wet_gate_wall, flex_create_walls, flex_create_request,
 }
+import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation {
   RentedServingAllocation, RentedAllocationAcquired, RentedContractUnread, rented_allocation_identity,
 }
@@ -54,6 +54,7 @@ import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import extdeps.cloud.vast_ai { VastAiCharges }
 import test.claim.serving.rented_release_witness { w_acquired, w_readings, w_roots, w_protected, w_instance }
 import gunbc.serving.rented_release { RentedInstanceObserved }
+import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation { rented_allocation_wire }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -96,7 +97,7 @@ fn w_intent(entry: FlexShadowFieldEntry, admitted: Bool) -> FlexCreateIntent {
     entry: entry,
     quote: SelectionQuoteEstablished { amount: money_amount_micro(count: 1), currency: Usd },
     admission: if admitted { w_admitted() } else { FlexBidRefused { cause: FlexCurrencyMismatch { left: Usd, right: Usd } } },
-    placement: w_placement(),
+    placement: FlexPlacementSupplied { placement: w_placement(), producer: decl_ref(module_path: "gunbc.serving.serving_startup", decl_name: "serving_startup_placement") },
   }
 }
 
@@ -141,7 +142,8 @@ fn w_input(mode: ApplyMode, gates: FlexWetGates, roster: FlexInstancesStanding, 
   }
 }
 
-data w_open: FlexWetGates = FlexWetGates { key_custody: FlexKeyCustodyLive, release_gate: FlexReleaseGateOpen }
+data w_open: FlexWetGates = FlexWetGates { custody: CustodyHeld }
+data w_closed: FlexWetGates = FlexWetGates { custody: CustodyNotHeld { causes: ["file ABSENT"] } }
 
 fn w_under_roster() -> FlexInstancesStanding { exhausted(rows: [w_ours(id: 1001, dollars: 1)]) }
 
@@ -189,7 +191,7 @@ test fn a_pass_with_every_wall_cleared_plans_one_create_at_the_admitted_bid_unde
 
 // ---- DRY: the same pass in Plan mode records the write it WOULD make and performs none.
 test fn dry_records_the_would_be_create_and_plans_no_write() -> Bool {
-  let p = flex_plan_pass(input: w_input(mode: Plan, gates: flex_wet_gates_today, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) }))
+  let p = flex_plan_pass(input: w_input(mode: Plan, gates: w_closed, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) }))
   match p {
     FlexPlanDryCreate { would: Present { value: r }, walls: ws } => (r.offer_id == 7) && (r.price.units == w_bid_micros()) && ((ws |> length) == 2)
     _ => false
@@ -243,13 +245,13 @@ test fn a_wet_destroy_binds_the_card_to_its_allocation_and_a_card_without_one_st
 // ---- WET DESTROY is closed by the gates (key custody, release gate) as the create is.
 test fn a_wet_destroy_is_held_by_the_closed_gates() -> Bool {
   let observation = FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2), w_ours(id: 1002, dollars: 2)]), charges: w_charges(units: 1) }
-  let base = w_input(mode: Apply, gates: flex_wet_gates_today, roster: observation.roster, charges: observation.charges, intent: none)
+  let base = w_input(mode: Apply, gates: w_closed, roster: observation.roster, charges: observation.charges, intent: none)
   let p = flex_plan_pass(input: FlexPassInput {
-    policy: base.policy, gates: flex_wet_gates_today, now: base.now, cooldown: none, observation: observation,
+    policy: base.policy, gates: w_closed, now: base.now, cooldown: none, observation: observation,
     cards: w_two_cards(), allocations: [w_acquired()], intent: none, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   })
   match w_refusal_of(p: p) {
-    Present { value: FlexPassCreateRefused { refusal: FlexRefusedKeyNotLive { custody: _ } } } => true
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedKeyNotLive { custody: _, causes: _ } } } => true
     _ => false
   }
 }
@@ -305,16 +307,20 @@ fn w_quote_refusal() -> FlexPassRefusal? {
 
 // The wet gates start closed: the key custody and the release gate stop a create that cleared every wall.
 test fn the_wet_gates_start_closed_and_stop_a_create_that_cleared_every_wall() -> Bool {
-  match w_wet_refusal(entry: w_established(), admitted: true, gates: flex_wet_gates_today, hashes: w_hashes) {
-    Present { value: FlexPassCreateRefused { refusal: FlexRefusedKeyNotLive { custody: c } } } => (c.host_path as String) == "/etc/gunbc-flex/vast-api-key"
+  match w_wet_refusal(entry: w_established(), admitted: true, gates: w_closed, hashes: w_hashes) {
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedKeyNotLive { custody: c, causes: cs } } } => ((c.host_path as String) == "/etc/gunbc-flex/vast-api-key") && ((cs |> length) == 1)
     _ => false
-  } && ((flex_wet_gate_wall(gates: FlexWetGates { key_custody: FlexKeyCustodyLive, release_gate: FlexReleaseGateClosed }) |> length) == 1)
-    && ((flex_wet_gate_wall(gates: w_open) |> length) == 0)
+  } && ((flex_wet_gate_wall(gates: w_open) |> length) == 0)
+    && ((flex_release_return_wall() |> length) == 1)
+    && match w_placement_refusal() {
+      Present { value: FlexPassCreateRefused { refusal: FlexRefusedPlacementUnread { obligation: _ } } } => true
+      _ => false
+    }
 }
 
 // ---- STOP AT THE FIRST FAILURE: with every wall standing the pass names the FIRST and plans no write.
 test fn the_pass_stops_at_the_first_typed_failure_and_plans_no_write() -> Bool {
-  let p = flex_plan_pass(input: w_input(mode: Apply, gates: flex_wet_gates_today, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_estimated(member: true), admitted: false) }))
+  let p = flex_plan_pass(input: w_input(mode: Apply, gates: w_closed, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_estimated(member: true), admitted: false) }))
   match p {
     FlexPlanRefused { refusal: FlexPassCreateRefused { refusal: FlexRefusedEntryEstimated { standings: _ } } } => true
     _ => false
@@ -484,4 +490,10 @@ test fn the_release_binding_passes_the_policy_actuation_to_the_s5_receipt() -> B
       }
     _ => false
   }
+}
+
+fn w_placement_refusal() -> FlexPassRefusal? {
+  let i = w_intent(entry: w_established(), admitted: true)
+  let intent = FlexCreateIntent { offer: i.offer, entry: i.entry, quote: i.quote, admission: i.admission, placement: FlexPlacementUnread { obligation: "host and route unread" as NonEmptyStr } }
+  w_refusal_of(p: flex_plan_pass(input: w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: intent })))
 }
