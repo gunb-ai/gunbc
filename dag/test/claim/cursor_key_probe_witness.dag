@@ -43,3 +43,10 @@ test fn only_the_invalid_key_marker_on_a_failure_rejects() -> Bool {
     && !rejected(r: cursor_key_probe_reading(exit_code: 1, stdout: "", stderr: "network unreachable"))
     && !accepted(r: cursor_key_probe_reading(exit_code: 1, stdout: "Available models\nauto - Auto\n", stderr: ""))
 }
+
+// Pre-header output never counts as a model row: a preamble followed by the bare header is not acceptance.
+test fn a_preamble_before_the_header_is_not_a_model_row() -> Bool {
+  !accepted(r: cursor_key_probe_reading(exit_code: 0, stdout: "warning or preamble\nAvailable models\n", stderr: ""))
+    && !accepted(r: cursor_key_probe_reading(exit_code: 0, stdout: "warning or preamble\nAvailable models\n\n", stderr: ""))
+    && accepted(r: cursor_key_probe_reading(exit_code: 0, stdout: "warning or preamble\nAvailable models\nauto - Auto\n", stderr: ""))
+}
