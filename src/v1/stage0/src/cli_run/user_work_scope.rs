@@ -906,9 +906,9 @@ mod standing_fixture_tests {
     // for the test would exercise the classifier against a path no host produces -- and quietly pass
     // through the unmodeled-system-unit premise instead.
     const SLOT: &str =
-        "0::/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-03.service";
+        r"0::/system.slice/system-actions\x2drunner.slice/actions-runner@srv1-03.service";
     const SLOT_LEAF: &str =
-        "/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-03.service";
+        r"/system.slice/system-actions\x2drunner.slice/actions-runner@srv1-03.service";
 
     // THE ONE CHECK, as the fold sees it: the observation is supplied to `standing_from_supplied`, so
     // each row says what the chain reading answered and what the fold made of it. The chain reader's
@@ -937,6 +937,17 @@ mod standing_fixture_tests {
             cgroup: cgroup.to_string(),
             memory_max: bytes,
         }
+    }
+
+    // A chain that yielded no reading: the check names the CGROUP IT READ (the /proc/self/cgroup path,
+    // flattened), not a directory, so rows that pin an unread refusal pass that path in.
+    fn unread_at(cgroup: &str, detail: &str) -> EnclosingBoundObservation {
+        missing(
+            cgroup,
+            EnclosingBoundCause::ChainUnreadable {
+                detail: detail.to_string(),
+            },
+        )
     }
 
     fn missing(cgroup: &str, cause: EnclosingBoundCause) -> EnclosingBoundObservation {
@@ -971,11 +982,11 @@ mod standing_fixture_tests {
         let cg = SLOT;
         assert_eq!(
             wire_with_bound(false, Some(cg), no_finite_max(cg)),
-            "UncappedEnclosingCgroup:runner-slot-cgroup @ 0::/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-03.service: no finite memory.max: every memory.max on the chain reads max"
+            r"UncappedEnclosingCgroup:runner-slot-cgroup @ 0::/system.slice/system-actions\x2drunner.slice/actions-runner@srv1-03.service: no finite memory.max: every memory.max on the chain reads max"
         );
         assert_eq!(
             wire_with_bound(false, Some(cg), live(cg, 21474836480)),
-            "ExemptUnderObservedBound:runner-slot-cgroup:0::/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-03.service:21474836480"
+            r"ExemptUnderObservedBound:runner-slot-cgroup:0::/system.slice/system-actions\x2drunner.slice/actions-runner@srv1-03.service:21474836480"
         );
     }
 
@@ -1189,6 +1200,64 @@ mod standing_fixture_tests {
             user_work_scope_standing(),
             UserWorkScopeStanding::UnitTestExempt
         ));
+    }
+
+    // THE DECLARED FIXTURE CGROUPS, spelled as `.dag` spells them, so the mirror join can compare the
+    // declared fold's wire with the seed's printed line for the SAME cgroup. These three paths are the
+    // ones `test.claim.live_deploy.user_work_slice_witness` composes from the declared needles.
+    const SESSIONS_SCOPE: &str =
+        "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
+    const SYSTEM_TREE_SYNC: &str = "0::/system.slice/gunbc-tree-sync.service";
+    const MODELED_TREE_SYNC: &str =
+        "0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service";
+
+    // sessions.slice is a recognized slice (gunbc.oomd_install), so its premise names it, but a wrap
+    // into gunbc-user-work.slice is not a fallback for a slice that already carries a named memory
+    // policy: an unreadable or unbounded local memory.max refuses (review 80751).
+    #[test]
+    fn sessions_slice_scope_refuses_as_uncapped_system_slice() {
+        assert_eq!(
+            wire_with_bound(false, Some(SESSIONS_SCOPE), unread_at(SESSIONS_SCOPE, "/fixture-detail")),
+            "UncappedEnclosingCgroup:modeled-slice:sessions.slice:docker-deadbeef.scope @ 0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope: memory.max unreadable: /fixture-detail; no level of the chain yielded a reading"
+        );
+    }
+
+    #[test]
+    fn sessions_slice_with_finite_local_memory_max_skips() {
+        assert_eq!(
+            wire_with_bound(false, Some(SESSIONS_SCOPE), live(SESSIONS_SCOPE, 137438953472)),
+            "ExemptUnderObservedBound:modeled-slice:sessions.slice:docker-deadbeef.scope:0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope:137438953472"
+        );
+    }
+
+    #[test]
+    fn a_system_slice_named_service_cgroup_refuses_uncapped() {
+        assert_eq!(
+            wire_with_bound(false, Some(SYSTEM_TREE_SYNC), unread_at(SYSTEM_TREE_SYNC, "fixture")),
+            "UncappedEnclosingCgroup:unmodeled-system-unit:system.slice:gunbc-tree-sync.service @ 0::/system.slice/gunbc-tree-sync.service: memory.max unreadable: fixture; no level of the chain yielded a reading"
+        );
+    }
+
+    #[test]
+    fn modeled_slice_with_zero_memory_max_refuses() {
+        assert_eq!(
+            wire_with_bound(
+                false,
+                Some(MODELED_TREE_SYNC),
+                missing(
+                    "/sys/fs/cgroup/gunbc-repository-convergence.slice",
+                    EnclosingBoundCause::MemoryMaxZero {
+                        dir: "/sys/fs/cgroup/gunbc-repository-convergence.slice".to_string(),
+                    },
+                ),
+            ),
+            "UncappedEnclosingCgroup:modeled-slice:gunbc-repository-convergence.slice:gunbc-tree-sync.service @ /sys/fs/cgroup/gunbc-repository-convergence.slice: memory.max is 0 at /sys/fs/cgroup/gunbc-repository-convergence.slice, which systemd reads as no limit"
+        );
+        // The same path with no reading at all is the same refusal, with the unread cause.
+        assert_eq!(
+            wire_with_bound(false, Some(MODELED_TREE_SYNC), unread_at(MODELED_TREE_SYNC, "fixture")),
+            "UncappedEnclosingCgroup:modeled-slice:gunbc-repository-convergence.slice:gunbc-tree-sync.service @ 0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service: memory.max unreadable: fixture; no level of the chain yielded a reading"
+        );
     }
 
     // ---- RED pairs, end to end: a fixture cgroup tree -> the ONE check -> the fold -> the line. ----
