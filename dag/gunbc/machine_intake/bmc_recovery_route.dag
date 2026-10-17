@@ -1309,7 +1309,7 @@ type ProvenResetReadback sole_constructor {
 // The arms as the message decides them, so they cannot be chosen by taste: a body that does not name
 // the message is inconclusive, and a readback is never built from an operator's account of the
 // status line alone.
-fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: EpochMs) -> RecoveryFactoryCredentialReadback {
+fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: CapturedInstant) -> RecoveryFactoryCredentialReadback {
   match redfish_password_change_verdict(body: body) {
     RedfishPasswordChangeRequired =>
       FactoryCredentialActiveAwaitingChange {
@@ -2344,8 +2344,8 @@ fn captured_minute_band(hour: Int, minute: Int) -> CapturedInstant {
 // reading. No accessor hands out one instant.
 fn captured_instant_band(instant: CapturedInstant) -> Optional<OrderedClosedInterval<EpochMs>> {
   match instant {
-    CaptureTimeBand { band: b } => Some(b)
-    CaptureTimeBandInverted { reason: _ } => none
+    CaptureTimeBand { band: b } => optional_present(value: b)
+    CaptureTimeBandInverted { reason: _ } => optional_absent()
   }
 }
 
@@ -2765,20 +2765,18 @@ test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool 
   let post_reset = captured_instant_band(instant: recovery_post_reset_instant())
   // both mints produced bands; neither folded to the inverted arm
   match channel {
-    Some(b) =>
+    Present { value: b } =>
       // 02's own `06:27`, to the minute it shows -- and neither bound claims a second it has
       iso8601_utc_text(unix: b.low as Int / 1000) == "2026-10-16T06:27:00Z"
         && iso8601_utc_text(unix: b.high as Int / 1000) == "2026-10-16T06:27:59Z"
-        // the day is the artifact's, not a guessable one: the value this replaced decoded to 2025-10-09
-        && starts_with(s: iso8601_utc_text(unix: b.low as Int / 1000), prefix: "2026-10-16") == true
-    None => false
+    Absent => false
   }
     && (match post_reset {
-      Some(b) =>
+      Present { value: b } =>
         // the README's ~06:5x band, whole: 06:50:00Z through 06:59:59Z
         iso8601_utc_text(unix: b.low as Int / 1000) == "2026-10-16T06:50:00Z"
           && iso8601_utc_text(unix: b.high as Int / 1000) == "2026-10-16T06:59:59Z"
-      None => false
+      Absent => false
     })
     // A REVERSED PAIR REFUSES, IT IS NOT SWAPPED. The fold is the only route to a band, so this is
     // what the fold does when the pair is out of order: std.interval's own words, no band, and -- by
@@ -2794,7 +2792,7 @@ test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool 
         refused: r => CaptureTimeBandInverted { reason: r },
       },
     ) {
-      CaptureTimeBandInverted { reason: r } => string_non_empty(s: r)
+      CaptureTimeBandInverted { reason: r } => string_non_empty(value: r)
       CaptureTimeBand { band: _ } => false
     })
 }
