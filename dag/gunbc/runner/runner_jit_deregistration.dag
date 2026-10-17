@@ -17,12 +17,11 @@ import gunbc.auth.github_credential {
 import gunbc.runner.jit_registration_subject {
   JitRegistrationSubject, JitRegistrationSubjectRefusal, JitRegistrationSubjectProven, JitRegistrationSubjectRefused, SubjectHostUnitSlotRefused, host_unit_registration_subject,
 }
-import gunbc.host.host_control_route { HostControlStanding }
+import gunbc.host.host_control_route { HostControlStanding, HostControlled, HostControlRefused }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlotRefusal, ServiceSlot, service_slot_name_parse, service_slot_selected_workflow, host_unit_slot_over,
+  HostUnitSlotRefusal, HostUnitSlotHostNotControlled, ServiceSlot, service_slot_name_parse, service_slot_selected_workflow, host_unit_slot_over,
 }
-import product.host_identity { HostIdentity }
 import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused, authority_installation,
 }
@@ -94,7 +93,6 @@ type ListedRegistrationStanding
 fn jit_registration_of_listed(
   organization: GitHubOrganizationRef,
   host: HostControlStanding,
-  host_identity: HostIdentity,
   listed: String,
   authority: GitHubCredentialAuthority,
   registration_labels: RunnerRegistrationLabelsResolution,
@@ -103,31 +101,35 @@ fn jit_registration_of_listed(
   decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "reg"),
   decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "a_listed_name_is_admitted_only_by_exact_round_trip"),
 ] {
-  match service_slot_name_parse(host: host_identity, name: listed) {
-    Absent => ListedRegistrationRefused { refusal: ListedNameOutsideServiceGrammar { listed: listed } }
-    Present { value: parsed } =>
-      match host_unit_registration_subject(standing: host_unit_slot_over(
-        host: host,
-        purpose: ServiceSlot { boot_id: parsed.boot_id, index: parsed.index },
-        workflow: service_slot_selected_workflow(),
-        registration_labels: registration_labels,
-      )) {
-        JitRegistrationSubjectRefused { refusal: SubjectHostUnitSlotRefused { refusal: r } } => ListedRegistrationRefused { refusal: ListedSlotRefused { refusal: r } }
-        JitRegistrationSubjectRefused { refusal: other } => ListedRegistrationRefused { refusal: ListedSubjectRefused { refusal: other } }
-        JitRegistrationSubjectProven { subject: subject } =>
-          if (subject.name.value as String) != listed {
-            ListedRegistrationRefused { refusal: ListedNameDoesNotRoundTrip { listed: listed, rebuilt: subject.name.value as String } }
-          } else {
-            match authority_installation(authority: authority) {
-              Absent => ListedRegistrationRefused { refusal: ListedAuthorityNamesNoInstallation }
-              Present { value: held } =>
-                ListedRegistrationAdmitted {
-                  registration: JitRegistration { organization: organization, name: subject.name, subject: subject, app: held.app, installation: held.installation },
-                  boot_id: parsed.boot_id,
-                }
+  match host {
+    HostControlRefused { refusal: r } => ListedRegistrationRefused { refusal: ListedSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: r } } }
+    HostControlled { controlled: b } =>
+    match service_slot_name_parse(host: b.host, name: listed) {
+      Absent => ListedRegistrationRefused { refusal: ListedNameOutsideServiceGrammar { listed: listed } }
+      Present { value: parsed } =>
+        match host_unit_registration_subject(standing: host_unit_slot_over(
+          host: host,
+          purpose: ServiceSlot { boot_id: parsed.boot_id, index: parsed.index },
+          workflow: service_slot_selected_workflow(),
+          registration_labels: registration_labels,
+        )) {
+          JitRegistrationSubjectRefused { refusal: SubjectHostUnitSlotRefused { refusal: r } } => ListedRegistrationRefused { refusal: ListedSlotRefused { refusal: r } }
+          JitRegistrationSubjectRefused { refusal: other } => ListedRegistrationRefused { refusal: ListedSubjectRefused { refusal: other } }
+          JitRegistrationSubjectProven { subject: subject } =>
+            if (subject.name.value as String) != listed {
+              ListedRegistrationRefused { refusal: ListedNameDoesNotRoundTrip { listed: listed, rebuilt: subject.name.value as String } }
+            } else {
+              match authority_installation(authority: authority) {
+                Absent => ListedRegistrationRefused { refusal: ListedAuthorityNamesNoInstallation }
+                Present { value: held } =>
+                  ListedRegistrationAdmitted {
+                    registration: JitRegistration { organization: organization, name: subject.name, subject: subject, app: held.app, installation: held.installation },
+                    boot_id: parsed.boot_id,
+                  }
+              }
             }
-          }
-      }
+        }
+    }
   }
 }
 
@@ -196,7 +198,6 @@ type LostBootSweepRefusal
 fn lost_boot_sweep(
   organization: GitHubOrganizationRef,
   host: HostControlStanding,
-  host_identity: HostIdentity,
   current: NonEmptyStr,
   authority: GitHubCredentialAuthority,
   registration_labels: RunnerRegistrationLabelsResolution,
@@ -215,7 +216,7 @@ fn lost_boot_sweep(
           cause: join(["runner listing returned ", to_string(count(body.runners)), " of total_count ", to_string(body.total_count)], "") as NonEmptyStr,
         } }
       } else {
-        sweep_over(organization: organization, host: host, host_identity: host_identity, current: current, authority: authority, registration_labels: registration_labels, runners: body.runners)
+        sweep_over(organization: organization, host: host, current: current, authority: authority, registration_labels: registration_labels, runners: body.runners)
       }
   }
 }
@@ -223,7 +224,6 @@ fn lost_boot_sweep(
 fn sweep_over(
   organization: GitHubOrganizationRef,
   host: HostControlStanding,
-  host_identity: HostIdentity,
   current: NonEmptyStr,
   authority: GitHubCredentialAuthority,
   registration_labels: RunnerRegistrationLabelsResolution,
@@ -233,7 +233,7 @@ fn sweep_over(
     match acc {
       LostBootSweepRefused { refusal: _ } => acc
       LostBootSweepSelected { registrations: selected, untouched: untouched } =>
-        match jit_registration_of_listed(organization: organization, host: host, host_identity: host_identity, listed: r.name, authority: authority, registration_labels: registration_labels) {
+        match jit_registration_of_listed(organization: organization, host: host, listed: r.name, authority: authority, registration_labels: registration_labels) {
           ListedRegistrationAdmitted { registration: reg, boot_id: inc } =>
             if (inc as String) == (current as String) {
               LostBootSweepSelected { registrations: selected, untouched: concat(untouched, [r.name]) }
