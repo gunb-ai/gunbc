@@ -17,6 +17,8 @@ import gunbc.fleet.app_control_plane_inspection { gunbai_ci_registration_goal }
 import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
 import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
+import gunbc.machine_intake.host_capture_envelope { KernelBootId }
+import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of }
 import gunbc.runner.runner_registration_labels { runner_registration_labels }
 import gunbc.github_effect_perform {
   ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token_with_key,
@@ -71,7 +73,7 @@ fn lost_boot_sweep_step_timeout_minutes() -> Minute {
 // ── The dispatch input ────────────────────────────────────────────────────────────────────────
 
 type LostBootCurrentInput
-  = LostBootCurrentPresent { boot_id: NonEmptyStr }
+  = LostBootCurrentPresent { boot: ServiceBootId }
   | LostBootCurrentRefused { cause: String }
 
 fn lost_boot_current_input(raw: String) -> LostBootCurrentInput {
@@ -81,7 +83,10 @@ fn lost_boot_current_input(raw: String) -> LostBootCurrentInput {
       " is absent or blank; the current admitted boot id is a dispatch input and is never defaulted",
     ], "") }
   } else {
-    LostBootCurrentPresent { boot_id: raw as NonEmptyStr }
+    match service_boot_id_of(run: KernelBootId { boot_id: raw as NonEmptyStr }) {
+      Present { value: b } => LostBootCurrentPresent { boot: b }
+      Absent => LostBootCurrentRefused { cause: "lost-boot sweep: the current boot id is not a kernel boot identity" }
+    }
   }
 }
 
@@ -164,7 +169,7 @@ fn lost_boot_sweep_wet() -> ProcessExit
 {
   match lost_boot_current_input(raw: actions_variable_trimmed(name: lost_boot_sweep_current_boot_id_env_name)) {
     LostBootCurrentRefused { cause } => exit_failure(reason: cause)
-    LostBootCurrentPresent { boot_id } => {
+    LostBootCurrentPresent { boot } => {
       let host_name = actions_variable_trimmed(name: lost_boot_sweep_host_env_name)
       let wif = actions_variable_trimmed(name: lost_boot_sweep_wif_access_token_env_name)
       let temp = actions_variable_trimmed(name: lost_boot_sweep_runner_temp_env_name)
@@ -174,7 +179,7 @@ fn lost_boot_sweep_wet() -> ProcessExit
         match sweep_host_standing(host: host_name as NonEmptyStr) {
           SweepHostNotManaged { host } => exit_failure(reason: concat("lost-boot sweep: host is not a managed_host row: ", host))
           SweepHostBound { host, standing } => sweep_under_staged_key(
-            host: host, standing: standing, current: boot_id,
+            host: host, standing: standing, current: boot,
             wif: wif as Secret, key_path: join([temp, "/", lost_boot_sweep_key_file_name], "") as NonEmptyStr,
           )
         }
@@ -185,7 +190,7 @@ fn lost_boot_sweep_wet() -> ProcessExit
 
 // THE KEY IS REMOVED ON EVERY ARM, AND A KEY THAT STAYED FAILS THE RUN beside whatever the sweep
 // answered.
-fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, current: NonEmptyStr, wif: Secret, key_path: NonEmptyStr) -> ProcessExit
+fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, wif: Secret, key_path: NonEmptyStr) -> ProcessExit
   uses net: Network
 {
   match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
@@ -212,7 +217,7 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
   }
 }
 
-fn sweep_and_deregister(host: HostIdentity, standing: HostControlStanding, current: NonEmptyStr, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
+fn sweep_and_deregister(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
   uses net: Network
 {
   let organization = github_organization_ref()

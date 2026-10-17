@@ -11,7 +11,8 @@ import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installat
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
 import gunbc.host.managed_host { ManagedHost, managed_hosts }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved }
-import gunbc.runner.runner_host_unit_slot { service_slot_unit }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId }
+import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_unit }
 import gunbc.runner.runner_jit_deregistration {
   LostBootSweep, SweepRegistrationRefused, ListedNameOutsideServiceGrammar, LostBootSweepSelected, LostBootSweepRefused, StaleJitRegistration, lost_boot_sweep,
   JitDeregistration, JitDeregistrationRefused, DeregistrationAuthorityForAnotherInstallation, SlotLostBoot,
@@ -29,9 +30,16 @@ data org: GitHubOrganizationRef = GitHubOrganizationRef { login: "gunb-ai" }
 
 fn the_host() -> ManagedHost? { first(managed_hosts()) }
 
-fn boot(id: String) -> NonEmptyStr { id as NonEmptyStr }
+// A boot identity exists only through service_boot_id_of over a KernelBootId, so every fixture takes
+// the real route; an unconstructible id reads as the empty name, which no assertion below accepts.
+fn kernel_boot(id: String) -> HostCaptureRunIdentity { KernelBootId { boot_id: id as NonEmptyStr } }
 
-fn unit(m: ManagedHost, id: String, index: Int) -> String { service_slot_unit(host: m.host, boot_id: boot(id: id), index: index) as String }
+fn unit(m: ManagedHost, id: String, index: Int) -> String {
+  match service_boot_id_of(run: kernel_boot(id: id)) {
+    Present { value: b } => service_slot_unit(host: m.host, boot: b, index: index) as String
+    Absent => ""
+  }
+}
 
 fn listing(names: List<String>) -> RestResult<OrganizationRunnerListWire> {
   RestAnswered { answer: OrganizationRunnerListWire {
@@ -47,8 +55,12 @@ fn run_sweep(m: ManagedHost, authority: GitHubCredentialAuthority, current: Stri
   match sweep_host_standing(host: m.host as String as NonEmptyStr) {
     SweepHostNotManaged { host: _ } => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: "", refusal: ListedNameOutsideServiceGrammar { listed: "" } } }
     SweepHostBound { host: _, standing: s } =>
-      lost_boot_sweep(organization: org, host: s, current: boot(id: current), authority: authority,
-        registration_labels: supplied_labels, listing: listing(names: names))
+      match service_boot_id_of(run: kernel_boot(id: current)) {
+        Present { value: b } =>
+          lost_boot_sweep(organization: org, host: s, current: b, authority: authority,
+            registration_labels: supplied_labels, listing: listing(names: names))
+        Absent => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: "", refusal: ListedNameOutsideServiceGrammar { listed: "" } } }
+      }
   }
 }
 
@@ -57,9 +69,9 @@ fn run_sweep(m: ManagedHost, authority: GitHubCredentialAuthority, current: Stri
 test fn an_absent_current_boot_id_refuses_and_a_present_one_is_carried() -> Bool {
   (match lost_boot_current_input(raw: "") {
     LostBootCurrentRefused { cause: _ } => true
-    LostBootCurrentPresent { boot_id: _ } => false
+    LostBootCurrentPresent { boot: _ } => false
   }) && (match lost_boot_current_input(raw: "9f1c-boot") {
-    LostBootCurrentPresent { boot_id: b } => (b as String) == "9f1c-boot"
+    LostBootCurrentPresent { boot: b } => (b.boot_id as String) == "9f1c-boot"
     LostBootCurrentRefused { cause: _ } => false
   })
 }
