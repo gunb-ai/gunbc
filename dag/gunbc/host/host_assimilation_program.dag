@@ -21,6 +21,7 @@ import gunbc.host.host_standup {
   ComputeFabricEnroll,
   GreenPlaceReadiness,
   SessionPlacementEnrollment,
+  InferenceServingProvision,
   StandupAssimilationComplete,
   host_standup_spine,
   AssimilationCompleteInput,
@@ -117,7 +118,9 @@ fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool
 // GreenPlaceReadiness and SessionPlacementEnrollment are CI-runner only: Actions runner slots, an
 // sccache build cache, a pinned Codex provider-runtime bundle, dashboard green-place pinning and
 // session placement are all facts about executing CI work, and an inference appliance that acquired
-// them would be competing with its own serving.
+// them would be competing with its own serving. InferenceServingProvision is the converse: installing and
+// starting the serving engine is owed by an inference-serving host, whether rented or owned, and by no CI
+// runner, so a CI-only program stays byte-identical.
 
 fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<FleetParticipation> {
   match p {
@@ -129,6 +132,7 @@ fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<Fl
     ComputeFabricEnroll => [CiRunnerParticipation, InferenceServingParticipation]
     GreenPlaceReadiness => [CiRunnerParticipation]
     SessionPlacementEnrollment => [InteractiveSessionParticipation]
+    InferenceServingProvision => [InferenceServingParticipation]
     StandupAssimilationComplete => [CiRunnerParticipation, InferenceServingParticipation]
   }
 }
