@@ -360,7 +360,39 @@ def patch(path, out=None):
     return report | {"ok": True, "bytes": len(new)}
 
 
+def selftest():
+    """Exercise patch() on a SYNTHETIC seed before any dispatch, so a bug in the patcher itself --
+    argv handling, an f-string, a bad replace -- fails in 30 milliseconds instead of 20 minutes.
+
+    This exists because the first dispatch of v2 spent 20 minutes converging the seed and THEN died in
+    __main__ on `sys.argv[2] if len(sys.argv) > 1` (the guard must be > 2). The patcher is only invoked
+    AFTER the expensive regen, so every defect in it is priced at a full dispatch. The synthetic seed
+    carries the anchor in its real context (loop / if / else) and asserts the call was injected and the
+    helper added. It CANNOT check that the anchor exists in the real seed -- only the real seed can say
+    that -- so the anchor count is still reported and still gates the run.
+    """
+    synth = ("pub fn f() {\n    loop {\n        if false { eprintln!(\"x\"); }\n        "
+             + ANCHOR + '"m".to_string())]),\n});\n    }\n}\n\npub fn other() {}\n')
+    open("/tmp/patch_selftest_seed.rs", "w").write(synth)
+    r = patch("/tmp/patch_selftest_seed.rs", "/tmp/patch_selftest_out.rs")
+    if not r.get("ok"):
+        print("SELFTEST FAIL:", r)
+        return 1
+    out = open("/tmp/patch_selftest_out.rs").read()
+    for need in ("rebind_probe_print2(", "fn rebind_probe_tree", "fn rebind_probe_infer2"):
+        if need not in out:
+            print("SELFTEST FAIL: injected output lacks", need)
+            return 1
+    print("SELFTEST OK", r)
+    return 0
+
+
 if __name__ == "__main__":
-    r = patch(sys.argv[1], sys.argv[2] if len(sys.argv) > 1 else None)
+    if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
+        sys.exit(selftest())
+    # len(sys.argv) > 2, not > 1: with argv=[prog, seed] the guard passed and sys.argv[2] raised
+    # IndexError -- which cost a full 20-minute dispatch, because the patcher only runs AFTER the
+    # regen that produces the seed. One character; the lesson is the rehearsal gate below.
+    r = patch(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
     print(r)
     sys.exit(0 if r.get("ok") else 4)
