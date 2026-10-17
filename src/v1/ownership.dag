@@ -8,7 +8,6 @@ import v1.std.core {
   ExprRecordLit,
   VarBindingKind, LocalValueBinding, FunctionValueBinding,
   InferredNode, Resolved,
-  Cardinality, Required,
   arg_value, arm_body,
   field_access_base,
   if_condition, if_then_branch, if_else_branch,

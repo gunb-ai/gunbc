@@ -18,7 +18,6 @@ import v1.std.core { type_is_optional, optional_of, optional_payload, preserve_o
   authored_name_at, NewlineIndex, find_child_named, has_child_named,
   qualified_last_segment,
   InferredNode, Resolved, TypeVariable,
-  Cardinality, Required,
   is_interpreter_blocking_diagnostic,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
