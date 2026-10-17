@@ -1,6 +1,10 @@
 module test.claim.supermicro_h11ssl_witness
 
 import std.types { Bool }
+import gunbc.machine_intake.bmc_operator_credential_inventory {
+  OperatorHeldInventoryEntries, operator_held_bmc_credential_inventory, operator_inventory_holds,
+  FactoryLoginCredential, OobLicenceKey,
+}
 import std.optional { Present, Absent }
 import std.measure { megatransfers_per_second, gigabyte }
 import extdeps.boards.types { PopulationSupported, PopulationUnsupported }
@@ -78,4 +82,13 @@ test fn w_redfish_root_answered_only_after_activation() -> Bool {
     observations: filter(r.observations, o => match o.outcome { ServiceRootRefused { message_id: _ } => true  _ => false }), licences: [], label: r.label,
   }
   supermicro_h11ssl_redfish_root_answered(r: r) && !supermicro_h11ssl_redfish_root_answered(r: before)
+}
+
+// The inventory lookup is keyed by MAC and secret kind: the receipt's row is held, another MAC is not.
+test fn w_operator_inventory_row_is_keyed_by_mac_and_kind() -> Bool {
+  let r = supermicro_h11ssl_first_contact_receipt
+  let held = OperatorHeldInventoryEntries { inventory: operator_held_bmc_credential_inventory, rows: [r.label.bmc_factory_credential] }
+  operator_inventory_holds(entries: held, bmc_mac: r.bmc_mac, secret: FactoryLoginCredential)
+    && !operator_inventory_holds(entries: held, bmc_mac: "AC:1F:6B:00:00:00", secret: FactoryLoginCredential)
+    && !operator_inventory_holds(entries: held, bmc_mac: r.bmc_mac, secret: OobLicenceKey)
 }

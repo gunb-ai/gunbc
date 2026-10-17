@@ -2,6 +2,7 @@ module gunbc.machine_intake.supermicro_h11ssl_first_contact
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import gunbc.machine_intake.bmc_operator_credential_inventory { OperatorHeldInventoryRow, OperatorHeldSecretKind, FactoryLoginCredential, OobLicenceKey }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.optional { Present, Absent }
 import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyUnobserved }
@@ -61,25 +62,24 @@ type H11sslObservation {
   unit_state_changed: Bool
 }
 
-// A credential is carried ONLY as a reference to the operator-held document that shows it; the
-// value is never stored here. The document is access-restricted to the operator.
-type H11sslCredentialSource
-  = BoardLabelPhotoHeldByOperator { document_url: NonEmptyStr }
-
-// A licence is carried ONLY as a reference to the operator-held certificate; the key value is
-// never stored here, and the key is keyed by the BMC MAC it was activated for.
-type H11sslLicenceSource = OperatorHeldCertificate { certificate_number: NonEmptyStr, store: NonEmptyStr }
+// Secrets are carried ONLY as references to the operator-held inventory row keyed by BMC MAC
+// (gunbc.machine_intake.bmc_operator_credential_inventory); no value is stored here. The label
+// photo stays as the evidence for the label observation, not as the credential's reference.
+type H11sslLicenceSource = OperatorHeldCertificate { certificate_number: NonEmptyStr, inventory_row: OperatorHeldInventoryRow }
 type H11sslLicenceActivation {
   product_code: NonEmptyStr
   bmc_mac: NonEmptyStr
   source: H11sslLicenceSource
 }
 
+type LabelPhotoHeldByOperator = LabelPhoto { document_url: NonEmptyStr }
+
 type H11sslLabelObservation {
   top_label_serial_barcode: NonEmptyStr
   lan_macs: List<NonEmptyStr>
   jps1_silkscreen: NonEmptyStr
-  bmc_factory_credential: H11sslCredentialSource
+  label_photo: LabelPhotoHeldByOperator
+  bmc_factory_credential: OperatorHeldInventoryRow
 }
 
 type H11sslFirstContactReceipt {
@@ -103,13 +103,14 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
     H11sslObservation { instrument: RedfishServiceRoot, credential: Absent, observed_on: "2026-10-17", observed_by: "merry-fox-82", outcome: ServiceRootAnswered { redfish_version: "1.0.1", root_schema: "ServiceRoot.v1_1_0", uuid: "00000000-0000-0000-0000-AC1F6BE3F57B", members: [Systems, Chassis, Managers, Tasks, SessionService, AccountService, EventService, UpdateService, Registries] }, unit_state_changed: false },
   ],
   licences: [
-    H11sslLicenceActivation { product_code: "SFT-OOB-LIC", bmc_mac: "AC:1F:6B:E3:F5:7B", source: OperatorHeldCertificate { certificate_number: "0823170253", store: "operator's Drive (keys held by the operator)" } },
+    H11sslLicenceActivation { product_code: "SFT-OOB-LIC", bmc_mac: "AC:1F:6B:E3:F5:7B", source: OperatorHeldCertificate { certificate_number: "0823170253", inventory_row: OperatorHeldInventoryRow { bmc_mac: "AC:1F:6B:E3:F5:7B", secret: OobLicenceKey } } },
   ],
   label: H11sslLabelObservation {
     top_label_serial_barcode: "55503A0100160200000EAJ0A1",
     lan_macs: ["AC:1F:6B:E3:F6:B0", "AC:1F:6B:E3:F6:B1"],
     jps1_silkscreen: "JPS1 1-2 Enable LSI SAS3008 (default) / 2-3 Disable",
-    bmc_factory_credential: BoardLabelPhotoHeldByOperator { document_url: "drive.google.com/file/d/1s89-T-RZntbpFnoXQ0kwvLKtftBssGz7/view" },
+    label_photo: LabelPhoto { document_url: "drive.google.com/file/d/1s89-T-RZntbpFnoXQ0kwvLKtftBssGz7/view" },
+    bmc_factory_credential: OperatorHeldInventoryRow { bmc_mac: "AC:1F:6B:E3:F5:7B", secret: FactoryLoginCredential },
   },
 }
 
