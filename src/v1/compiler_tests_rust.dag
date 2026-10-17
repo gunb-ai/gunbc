@@ -1826,6 +1826,38 @@ fn ct_imported_resource_name_is_recognised_by_kind_and_name_test() -> String {
   )
 }
 
+fn ct_allocator_is_installed_only_by_demand_test() -> String {
+  concat(
+    "    // THE COUNTING ALLOCATOR IS INSTALLED BY DEMAND AND BY NOTHING ELSE. Rendering the native claim\n",
+    "    // driver main for three binding sets: none (the pure main), a bound resource that is not the\n",
+    "    // AllocationCounter (the effect main), and the AllocationCounter binding. Only the last may carry a\n",
+    "    // #[global_allocator]; the first two are the negative controls, so a main that always rendered it\n",
+    "    // (or one that rendered it for any effect main) turns this row red.\n",
+    "    #[test]\n",
+    "    fn the_counting_allocator_is_installed_only_by_demand() {\n",
+    "        use crate::v1_compiler_emit_rust::emit_native_claim_driver_main_rs;\n",
+    "        let render = |bindings: Vec<std::rc::Rc<crate::v1_compiler_emit_rust::NativeEffectBindingText>>| -> String {\n",
+    "            emit_native_claim_driver_main_rs(\"c\".to_string(), \"m\".to_string(), std::rc::Rc::new(bindings)).content.clone()\n",
+    "        };\n",
+    "        let other = std::rc::Rc::new(crate::v1_compiler_emit_rust::NativeEffectBindingText {\n",
+    "            var: \"fs\".to_string(),\n",
+    "            type_path: \"c::std_filesystem::Filesystem\".to_string(),\n",
+    "            binding_line: \"    let fs = 0;\\n\".to_string(),\n",
+    "            argument: \"fs\".to_string(),\n",
+    "        });\n",
+    "        let counter = std::rc::Rc::new(crate::v1_compiler_emit_rust::NativeEffectBindingText {\n",
+    "            var: \"counter\".to_string(),\n",
+    "            type_path: \"c::std_realization_measurement::AllocationCounter\".to_string(),\n",
+    "            binding_line: \"    let counter = 0;\\n\".to_string(),\n",
+    "            argument: \"counter\".to_string(),\n",
+    "        });\n",
+    "        assert!(!render(Vec::new()).contains(\"#[global_allocator]\"), \"a pure main must carry no allocator\");\n",
+    "        assert!(!render(vec![other.clone()]).contains(\"#[global_allocator]\"), \"an effect main without the AllocationCounter must carry no allocator\");\n",
+    "        assert!(render(vec![other, counter]).contains(\"#[global_allocator]\"), \"positive control: a main binding the AllocationCounter carries it\");\n",
+    "    }\n\n",
+  )
+}
+
 fn ct_kernel_identity_single_authority_test() -> String {
   concat(
     "    // THE KERNEL-IDENTITY FACT HAS ONE AUTHORITY, AND THIS IS THE ROW THAT SEPARATES IT FROM THE\n",
@@ -2401,7 +2433,8 @@ fn ct_coercion_tests() -> String {
     ct_an_optional_over_a_collection_of_optional_refuses_test(),
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test(),
-    ct_imported_resource_name_is_recognised_by_kind_and_name_test())
+    ct_imported_resource_name_is_recognised_by_kind_and_name_test(),
+    ct_allocator_is_installed_only_by_demand_test())
 }
 
 // THE ENROLLED RED FOR `rust_call_arg_fail_closed_unwrap`, and the control that keeps the repair
