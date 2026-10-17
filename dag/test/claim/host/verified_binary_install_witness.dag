@@ -313,7 +313,19 @@ test fn the_build_cache_ensure_step_installs_through_the_generic_effect() -> Boo
     install_needed: true,
   )
   string_contains(s: ops, pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
-    && string_contains(s: ops, pattern: sccache_release_0_15_0.digest_aarch64.hex as String)
+    // WHICH RELEASE IS CURRENT IS POLICY, and policy is not allowed to be baked into an argv — it arrives as a
+    // parameter, so the digest appears in the install PARAMETERS and in no command line. The first cut of this
+    // claim asserted the digest appeared in the rendered ops, which no correctly-typed site can ever satisfy:
+    // the same defect class as the two non-vacuity guards anchored on `--show-stats`, and the reason it went
+    // unnoticeable is that a conjunct nobody can satisfy looks exactly like a conjunct nobody has broken yet.
+    // The digest's correctness is claimed where it actually lives —
+    // test fn the_sccache_adapter_supplies_the_release_row_values asserts `p.digest == sccache_release_0_15_0
+    // .digest_aarch64` on the parameters the site builds — and its ENFORCEMENT is claimed by
+    // red_a_digest_mismatch_refuses_and_nothing_is_installed plus the four digest-gate claims in
+    // host/host_build_cache_daemon_ensure_contract_witness.dag. What the SITE has to guarantee is the negative,
+    // so that is what is asserted here: an inlined digest literal at the site would go red, and so would a
+    // site that stopped checking what it downloaded.
+    && !string_contains(s: ops, pattern: sccache_release_0_15_0.digest_aarch64.hex as String)
     // the digest is CHECKED, not trusted: the read-back argv is what makes a mismatch a refusal
     && string_contains(s: ops, pattern: "sha256sum")
     // the unit is written and the manager is told about it, in that order, with the privilege the script had

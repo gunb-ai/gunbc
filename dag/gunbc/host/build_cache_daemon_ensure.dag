@@ -363,6 +363,39 @@ fn build_cache_plan_remainder(all: List<BuildCacheEnsureOp>, already_run: Int) -
   ).remaining
 }
 
+// THE TWO FRAGMENTS A CLASSIFIER CLAIM NEEDS, as ONE carrier of two Optionals rather than by positional
+// access. This lives here, in the module under test, for two reasons. The mechanical one: `get` is an
+// algebra FIELD (receiver plus a positional Int), and calling it with named parameters type-checks and then
+// fails at run time -- the claim comes back UNOBSERVED, which is the verdict a claim that never ran
+// receives, and a permanently-unobserved claim is worse than a red one because red gets read while
+// unobserved gets counted. The substantive one: the fragments a classifier claim reasons about are the
+// classifier's OWN subject matter, so the module that owns the classifier hands them over, and a claim
+// cannot quietly invent a fragment list that the production classifier never sees.
+type BuildCacheFragmentProbe { first: Optional<String>, second: Optional<String> }
+
+fn build_cache_fragment_probe() -> BuildCacheFragmentProbe {
+  fold(
+    sccache_misconfigured_log_fragments,
+    init: BuildCacheFragmentProbe { first: none, second: none },
+    f: (acc, frag) =>
+      match acc.first {
+        Present { value: _ } =>
+          match acc.second {
+            Present { value: _ } => acc
+            Absent => BuildCacheFragmentProbe { first: acc.first, second: Present { value: frag } }
+          }
+        Absent => BuildCacheFragmentProbe { first: Present { value: frag }, second: none }
+      },
+  )
+}
+
+// A CAPTURE CONTAINING BOTH FRAGMENTS, in the order the classifier is expected to prefer. Assembled here
+// for the same reason: joining is how the classifier is fed, and a claim that hand-rolled the string would
+// be testing its own concatenation as much as the classifier.
+fn build_cache_two_fragment_capture(first: String, second: String) -> String {
+  join(["something ", first, " then ", second], "")
+}
+
 // THE LEGS THE PLAN ASKS FOR, by kind. For witnesses and for the refusal text: an arm that has to say
 // "no install ran" says it by counting the legs of the kind it refused to run rather than by asserting a
 // number that would be true even if the plan had never derived them at all.

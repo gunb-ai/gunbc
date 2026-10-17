@@ -361,36 +361,36 @@ test fn design_witness_classifier_covers_every_cited_fragment() -> Bool {
 // fragments living somewhere other than the cited row, and build_cache_classifier_covers_every_cited_fragment
 // is the claim that catches that.
 test fn design_witness_classifier_is_a_fold_not_an_unrolled_chain() -> Bool {
-  // `list_length` takes a LABELLED parameter. Passing it positionally is not a type error the compiler can
-  // see at this call site — it is a runtime error, and the claim then comes back UNOBSERVED, which is the
-  // verdict a claim that was never really run receives. A permanently-unobserved claim is worse than a red
-  // one, because red gets read and unobserved gets counted.
-  list_length(items: sccache_misconfigured_log_fragments) >= 2
-    && match build_cache_first_pair() {
-      Present { value: pair } =>
-        match build_cache_matched_stats_fragment(capture: join(["something ", pair.first, " then ", pair.second], "")) {
-          Present { value: got } => got == pair.first
-          Absent => false
-        }
-      Absent => false
-    }
+  // THE SUBJECT MATTER COMES FROM THE MODULE UNDER TEST, not from a list assembled here. The fragments a
+  // classifier is claimed to scan are the classifier's own data, so the module that owns the classifier hands
+  // them over; a claim that built its own fragment list would be testing its own copy as much as the
+  // classifier.
+  //
+  // WHY THIS IS A FOLD AND NOT AN INDEX: the first cut of this claim reached the two fragments through
+  // `get(xs:, index:)`, which type-checks and then fails at run time — `get` is an algebra FIELD (a receiver
+  // plus a positional Int), not a named-parameter function. The claim came back UNOBSERVED, which is the
+  // verdict a claim that never actually ran receives, and it sat looking enrolled for the whole time. A
+  // permanently-unobserved claim is worse than a red one: red gets read, unobserved gets counted.
+  let probe = build_cache_fragment_probe()
+  match probe.first {
+    Absent => false
+    Present { value: a } =>
+      match probe.second {
+        Absent => false
+        Present { value: b } =>
+          match build_cache_matched_stats_fragment(capture: build_cache_two_fragment_capture(first: a, second: b)) {
+            // THE FIRST MATCH WINS, which is the property under test: a fold that keeps the earliest fragment
+            // rather than the latest. Were the classifier an unrolled chain that tested fragments in reverse,
+            // this would return the second and refuse here.
+            Present { value: got } => got == a
+            Absent => false
+          }
+      }
+  }
 }
 
 // THE FIRST TWO CITED FRAGMENTS, AS A PAIR, taken by INDEX so the claim cannot pass by hard-coding a
 // fragment that happens to be first today. Absent when the row is shorter than two, which the caller fails
-// closed on rather than skipping.
-fn build_cache_first_pair() -> Optional<BuildCacheFragmentPair> {
-  match get(xs: sccache_misconfigured_log_fragments, index: 0) {
-    Present { value: a } =>
-      match get(xs: sccache_misconfigured_log_fragments, index: 1) {
-        Present { value: b } => Present { value: BuildCacheFragmentPair { first: a, second: b } }
-        Absent => Absent
-      }
-    Absent => Absent
-  }
-}
-
-type BuildCacheFragmentPair { first: String, second: String }
 
 test fn design_witness_fragment_words_are_shell_safe() -> Bool {
   build_cache_fragment_words_are_shell_safe()
