@@ -23,7 +23,9 @@ module gunbc.fleet.runtime_identity_match
 //   witness fns only. A module that shipped a unit's real identity would be a second, unauditable register
 //   of who the fleet's machines are, next to the intake subject that already owns that.
 // - NO PER-HOST BRANCHING. Nothing here is keyed on a machine name, and no axis policy varies by unit. The
-//   unit is CARRIED (as data, on both sides) and never matched on: the proof is entirely in the axes.
+//   unit is CARRIED (as data, on both sides, and on the verdict as a PAIR) and never matched on: the proof
+//   is entirely in the axes. Carrying both keys on the verdict is what keeps the carry honest -- a verdict
+//   that named only one of them would be asserting a pairing it never tested.
 // - NO TRANSPORT IN THE DECISION. Nothing that decides a verdict is a transport fact: no command line, no
 //   tool, no protocol verb appears in any type or fn here. The post-boot side does carry WHICH KIND OF
 //   CHANNEL reported -- as a semantic axis, in one place -- because a channel determines which axes are
@@ -33,6 +35,7 @@ module gunbc.fleet.runtime_identity_match
 import std.types { Bool, List, NonEmptyStr }
 import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.machine_intake.subject { UnitKey }
 import extdeps.network.mac { Eui48Address, mac_is_permanent_interface_identity, render_mac_address }
 
 // ---------------------------------------------------------------------------
@@ -249,10 +252,12 @@ type RuntimeIdentityDivergence {
 // field, and each field is itself a three-way union, so there is no way to state a pre-boot standing that
 // quietly omits an axis -- and no way to claim a value while admitting nothing was read.
 //
-// The unit is CARRIED here and on the other side, and the match fn never compares the two keys: this is a
+// The unit is CARRIED here and on the other side, and the match fn never compares the two keys (both keys
+// are handed to the verdict unchanged, so nothing is lost and nothing is inferred about their relation):
+// this is a
 // proof about the machine's own reportings, not a check that two labels were spelled the same.
 type PreBootIdentityStanding {
-  unit: NonEmptyStr
+  unit: UnitKey
   board_serial: RuntimeBoardSerialStanding
   bios_version: RuntimeBiosVersionStanding
   model: RuntimeModelStanding
@@ -261,7 +266,7 @@ type PreBootIdentityStanding {
 
 // THE POST-BOOT REPORT: the same four axes, as the running OS reports them.
 type PostBootIdentityReport {
-  unit: NonEmptyStr
+  unit: UnitKey
   reported_over: PostBootReportChannel
   board_serial: RuntimeBoardSerialStanding
   bios_version: RuntimeBiosVersionStanding
@@ -288,10 +293,24 @@ type PostBootReportChannel
 // against the table afterwards. Mismatch carries both readings for every axis that diverged. Unprovable
 // carries the named gaps that prevented a verdict, which is what makes "we do not know" a reportable state
 // rather than a silent false.
+// Every verdict carries BOTH keys, because a verdict that names one unit is a claim about a binding, and
+// the fold never checked the pairing: built from `pre.unit` alone, a pre-boot standing for unit A and a
+// post-boot report for unit B whose axes happened to agree returned `Match { unit: A }` -- an identity
+// asserted from one of its two inputs, which is a fabricated binding (DESIGN section 5: no fabricated
+// default). The fix is not to compare the keys (the ruling below forbids that) and not to add a fourth
+// verdict for a mismatched pair (that would be branching on a name, and it would say "these are different
+// machines" from the one piece of evidence that can never say it). It is for the verdict to stop pretending
+// it bound a single unit: it reports the pair it related, and `Match { pre_unit: A, post_unit: B }` is an
+// operator's cue that the pairing was never established, rather than a guarantee that it was.
+//
+// Both are `UnitKey`, the branded key the intake subject owns and that the serial row cites as its binding
+// authority -- not a bare string re-minted here (DESIGN section 2: net concepts must not grow by
+// re-invention). An unmatched pair is representable precisely BECAUSE the type is the same on both sides:
+// the module cannot tell an honest pair from a mis-paired one, so it refuses to decide, and says both names.
 type RuntimeIdentityVerdict
-  = Match { axes_matched: List<RuntimeIdentityAxis>, unit: NonEmptyStr }
-  | Mismatch { diverged: List<RuntimeIdentityDivergence>, unit: NonEmptyStr }
-  | Unprovable { why: List<RuntimeIdentityGap>, unit: NonEmptyStr }
+  = Match { axes_matched: List<RuntimeIdentityAxis>, pre_unit: UnitKey, post_unit: UnitKey }
+  | Mismatch { diverged: List<RuntimeIdentityDivergence>, pre_unit: UnitKey, post_unit: UnitKey }
+  | Unprovable { why: List<RuntimeIdentityGap>, pre_unit: UnitKey, post_unit: UnitKey }
 
 // THE MATCH FN. Total: no error type in its signature, nothing that can panic in its body (no indexing, no
 // unwrapping, every match exhaustive over closed unions), and it takes ONLY the two sides -- the axis table
@@ -313,11 +332,11 @@ fn runtime_identity_match(
   let diverged = all_divergences(pre: pre, post: post)
   let gaps = fatal_gaps(pre: pre, post: post)
   if diverged.length() > 0 {
-    Mismatch { diverged: diverged, unit: pre.unit }
+    Mismatch { diverged: diverged, pre_unit: pre.unit, post_unit: post.unit }
   } else if gaps.length() > 0 {
-    Unprovable { why: gaps, unit: pre.unit }
+    Unprovable { why: gaps, pre_unit: pre.unit, post_unit: post.unit }
   } else {
-    Match { axes_matched: axes_checked_and_passed(pre: pre, post: post), unit: pre.unit }
+    Match { axes_matched: axes_checked_and_passed(pre: pre, post: post), pre_unit: pre.unit, post_unit: post.unit }
   }
 }
 

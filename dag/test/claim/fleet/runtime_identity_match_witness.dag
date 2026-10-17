@@ -17,6 +17,7 @@ import v2.std.decl_index { decl_facts_at }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address }
+import gunbc.machine_intake.subject { UnitKey }
 import gunbc.fleet.runtime_identity_match {
   BoardSerialAxis,
   BoardSerialObserved,
@@ -67,7 +68,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SYNTHETIC FIXTURES. The unit keys are carried, never matched on; the serials and addresses are invented
 // for this file and describe no machine that exists.
-data fixture_unit: NonEmptyStr = "witness-unit-synthetic-0"
+// A SYNTHETIC unit key, branded the way the corpus brands one (`as UnitKey` is how the intake subject
+// itself constructs one). The value is a witness fixture, not fleet data: no real unit is named anywhere in
+// this file, and the axes' values are invented for the same reason.
+data fixture_unit: UnitKey = "witness-unit-synthetic-0" as UnitKey
+
+// A SECOND synthetic key, so a mis-paired input can be expressed. If both fixtures were the same key the
+// pair-carrying verdict could not be told apart from one that dropped a side.
+data fixture_other_unit: UnitKey = "witness-unit-synthetic-1" as UnitKey
 data fixture_serial: NonEmptyStr = "SYNTH-SERIAL-0001"
 data fixture_other_serial: NonEmptyStr = "SYNTH-SERIAL-9999"
 data fixture_bios: NonEmptyStr = "SYNTH-BIOS-1.03"
@@ -132,7 +140,7 @@ fn post_agreeing() -> PostBootIdentityReport {
 // checked. Naming them is what makes the verdict auditable against the axis table afterwards.
 test fn test_match_names_both_decisive_axes() -> Bool {
   match runtime_identity_match(pre: pre_all_read(), post: post_agreeing()) {
-    Match { axes_matched: axes, unit: u } => axes.length() == 2 && u == fixture_unit
+    Match { axes_matched: axes, pre_unit: pu, post_unit: pu2 } => axes.length() == 2 && pu == fixture_unit && pu2 == fixture_unit
     _ => false
   }
 }
@@ -146,14 +154,14 @@ test fn test_verdict_predicates_are_exclusive() -> Bool {
   classifies_as_match(verdict: agreed)
     && classifies_as_mismatch(verdict: diverged)
     && classifies_as_unprovable(verdict: mute)
-    && verdict_unit(verdict: agreed) == fixture_unit
+    && verdict_units(verdict: agreed) == [fixture_unit, fixture_unit]
 }
 
 // A corroborating axis that agrees contributes NOTHING to axes_matched: claiming it would make a Match look
 // stronger than the axis table says it is.
 test fn test_match_claims_only_decisive_axes() -> Bool {
   match runtime_identity_match(pre: pre_all_read(), post: post_agreeing()) {
-    Match { axes_matched: axes, unit: _ } => axes.all(a => same_runtime_identity_axis(left: a, right: BoardSerialAxis) || same_runtime_identity_axis(left: a, right: NicSetAxis))
+    Match { axes_matched: axes, pre_unit: _, post_unit: _ } => axes.all(a => same_runtime_identity_axis(left: a, right: BoardSerialAxis) || same_runtime_identity_axis(left: a, right: NicSetAxis))
     _ => false
   }
 }
@@ -177,7 +185,7 @@ fn post_with_other_serial() -> PostBootIdentityReport {
 // carrying the pair is what makes it a diagnosis an operator can act on.
 test fn test_mismatch_carries_both_readings() -> Bool {
   match runtime_identity_match(pre: pre_all_read(), post: post_with_other_serial()) {
-    Mismatch { diverged: ds, unit: _ } =>
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } =>
       ds.length() == 1
         && same_runtime_identity_axis(left: first_axis(divergences: ds), right: BoardSerialAxis)
         && first_pre_side(divergences: ds) == [fixture_serial]
@@ -198,7 +206,7 @@ test fn test_corroborating_divergence_still_mismatches() -> Bool {
     nics: NicSetReported { addresses: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
-    Mismatch { diverged: ds, unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: BiosVersionAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: BiosVersionAxis)
     _ => false
   }
 }
@@ -215,7 +223,7 @@ test fn test_divergence_outranks_a_gap() -> Bool {
     nics: NicSetReported { addresses: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
-    Mismatch { diverged: ds, unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: BoardSerialAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: BoardSerialAxis)
     _ => false
   }
 }
@@ -232,7 +240,7 @@ test fn test_disjoint_mac_sets_are_a_mismatch() -> Bool {
     nics: NicSetReported { addresses: [fixture_mac_c()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
-    Mismatch { diverged: ds, unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
     _ => false
   }
 }
@@ -257,7 +265,7 @@ fn post_with_serial_unobserved() -> PostBootIdentityReport {
 test fn test_missing_reading_is_unprovable_not_mismatch() -> Bool {
   let verdict = runtime_identity_match(pre: pre_all_read(), post: post_with_serial_unobserved())
   match verdict {
-    Unprovable { why: gaps, unit: _ } => gaps.length() == 1 && same_runtime_identity_axis(left: first_gap_axis(gaps: gaps), right: BoardSerialAxis)
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } => gaps.length() == 1 && same_runtime_identity_axis(left: first_gap_axis(gaps: gaps), right: BoardSerialAxis)
     _ => false
   }
 }
@@ -275,7 +283,7 @@ test fn test_refusal_is_unprovable_and_preserves_its_detail() -> Bool {
     nics: NicSetReported { addresses: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
-    Unprovable { why: gaps, unit: _ } =>
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
       gaps.length() == 1
         && same_runtime_identity_axis(left: first_gap_axis(gaps: gaps), right: BoardSerialAxis)
         && first_gap_detail(gaps: gaps) == "the controller rejects the serial query"
@@ -294,8 +302,8 @@ test fn test_silence_and_refusal_are_distinguishable_kinds() -> Bool {
   let refused = runtime_identity_match(pre: pre_all_read(), post: post_with_serial_refused())
   let unread = runtime_identity_match(pre: pre_all_read(), post: post_with_serial_unobserved())
   match refused {
-    Unprovable { why: rg, unit: _ } => match unread {
-      Unprovable { why: ug, unit: _ } =>
+    Unprovable { why: rg, pre_unit: _, post_unit: _ } => match unread {
+      Unprovable { why: ug, pre_unit: _, post_unit: _ } =>
         first_gap_is_refusal(gaps: rg) && !first_gap_is_refusal(gaps: ug)
           && first_gap_refusal_kind(gaps: rg) == "query-unsupported"
           && first_gap_refusal_kind(gaps: ug) == "unread"
@@ -327,7 +335,7 @@ test fn test_pre_boot_gap_is_located_on_the_firmware_side() -> Bool {
     nics: NicSetReported { addresses: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre, post: post_agreeing()) {
-    Unprovable { why: gaps, unit: _ } => gaps.length() == 1 && first_gap_side(gaps: gaps) == PreBootFirmwareSide
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } => gaps.length() == 1 && first_gap_side(gaps: gaps) == PreBootFirmwareSide
     _ => false
   }
 }
@@ -345,7 +353,7 @@ test fn test_corroborating_gap_does_not_void_the_binding() -> Bool {
     nics: NicSetReported { addresses: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
-    Match { axes_matched: axes, unit: _ } => axes.length() == 2
+    Match { axes_matched: axes, pre_unit: _, post_unit: _ } => axes.length() == 2
     _ => false
   }
 }
@@ -363,7 +371,7 @@ fn verdict_is_coherent(pre: PreBootIdentityStanding, post: PostBootIdentityRepor
   let verdict = runtime_identity_match(pre: pre, post: post)
   classifies_as_match(verdict: verdict) || classifies_as_mismatch(verdict: verdict) || classifies_as_unprovable(verdict: verdict)
     && exactly_one_of_three(verdict: verdict)
-    && verdict_unit(verdict: verdict) == fixture_unit
+    && verdict_units(verdict: verdict) == [fixture_unit, fixture_unit]
 }
 
 fn exactly_one_of_three(verdict: RuntimeIdentityVerdict) -> Bool {
@@ -441,7 +449,7 @@ test fn test_empty_pre_boot_address_set_is_not_an_agreement() -> Bool {
     nics: NicSetReported { addresses: [] },
   }
   match runtime_identity_match(pre: pre, post: post_agreeing()) {
-    Mismatch { diverged: ds, unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
     _ => false
   }
 }
@@ -463,7 +471,7 @@ test fn test_a_divergence_can_report_a_side_that_reported_no_addresses() -> Bool
     nics: NicSetReported { addresses: [] },
   }
   match runtime_identity_match(pre: pre, post: post_agreeing()) {
-    Mismatch { diverged: ds, unit: _ } => ds.length() == 1
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1
       && first_pre_side(divergences: ds).length() == 0
       && first_post_side(divergences: ds).length() == 2
       && first_post_side(divergences: ds).all(side => side != "")
@@ -476,7 +484,7 @@ test fn test_a_divergence_can_report_a_side_that_reported_no_addresses() -> Bool
 // could not act on.
 test fn test_a_text_divergence_reports_both_sides_verbatim() -> Bool {
   match runtime_identity_match(pre: pre_all_read(), post: post_with_other_serial()) {
-    Mismatch { diverged: ds, unit: _ } => ds.length() == 1
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1
       && first_pre_side(divergences: ds) == [fixture_serial]
       && first_post_side(divergences: ds) == [fixture_other_serial]
     _ => false
@@ -505,7 +513,7 @@ test fn test_a_shared_locally_administered_address_is_not_a_binding() -> Bool {
     nics: NicSetReported { addresses: [fixture_mac_locally_administered()] },
   }
   match runtime_identity_match(pre: pre, post: post) {
-    Mismatch { diverged: ds, unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
     _ => false
   }
 }
@@ -527,7 +535,7 @@ test fn test_a_shared_group_address_is_not_a_binding() -> Bool {
     nics: NicSetReported { addresses: [fixture_mac_group()] },
   }
   match runtime_identity_match(pre: pre, post: post) {
-    Mismatch { diverged: ds, unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
     _ => false
   }
 }
@@ -554,6 +562,31 @@ test fn test_a_shared_permanent_address_still_binds() -> Bool {
   classifies_as_match(verdict: runtime_identity_match(pre: pre, post: post))
 }
 
+// THE MIS-PAIRED CASE the verdict must not hide. A pre-boot standing for one unit and a post-boot report
+// for ANOTHER, with axes that happen to agree, is still not a Mismatch (the module does not branch on
+// names, and an identical axis set can be shared by two units) -- but it must not report a single bound
+// unit either. It reports BOTH keys, so an operator can see the pairing was never established. Before this
+// shape the fold built every verdict from `pre.unit` alone and a reader was told unit A had been bound.
+test fn test_a_mis_paired_input_pair_reports_both_keys_and_binds_neither() -> Bool {
+  let pre = pre_with_unit(fixture_unit)
+  let post = post_with_unit(fixture_other_unit)
+  match runtime_identity_match(pre: pre, post: post) {
+    Match { axes_matched: axes, pre_unit: pu, post_unit: pu2 } =>
+      axes.length() == 2 && pu == fixture_unit && pu2 == fixture_other_unit
+    _ => false
+  }
+}
+
+// ...and the same verdict is reached whichever way the pair is oriented, because nothing here consults the
+// names: swapping the two inputs changes only which key is reported where.
+test fn test_swapping_the_pair_swaps_only_the_reported_keys() -> Bool {
+  let forward = runtime_identity_match(pre: pre_with_unit(fixture_unit), post: post_with_unit(fixture_other_unit))
+  let backward = runtime_identity_match(pre: pre_with_unit(fixture_other_unit), post: post_with_unit(fixture_unit))
+  verdict_units(verdict: forward) == [fixture_unit, fixture_other_unit]
+    && verdict_units(verdict: backward) == [fixture_other_unit, fixture_unit]
+    && same_verdict_kind(left: forward, right: backward)
+}
+
 // ---------------------------------------------------------------------------
 // UNIT IDENTITY IS CARRIED, NEVER MATCHED ON
 // ---------------------------------------------------------------------------
@@ -571,15 +604,22 @@ test fn test_verdict_does_not_branch_on_the_unit_label() -> Bool {
     nics: NicSetReported { addresses: [fixture_mac_a()] },
   }
   let post = PostBootIdentityReport {
-    unit: "witness-unit-synthetic-OTHER",
+    unit: fixture_other_unit,
     reported_over: NetworkSessionChannel,
     board_serial: BoardSerialObserved { serial: fixture_serial },
     bios_version: BiosVersionRead { version: fixture_bios },
     model: ModelRead { model: fixture_model },
     nics: NicSetReported { addresses: [fixture_mac_a()] },
   }
+  // Different keys, agreeing axes: still Match, because no branch here consults a name. The two keys are
+  // reported UNCHANGED, which is what makes the verdict honest -- this assertion used to read
+  // `pu2 == fixture_unit`, i.e. it asserted the verdict's post-side key was the PRE-boot one, because the
+  // fold built every verdict from pre.unit alone. That was the fabricated binding, and the test that pinned
+  // it was wrong with it: a witness can certify a defect as faithfully as it can certify a fix.
   match runtime_identity_match(pre: pre, post: post) {
-    Match { axes_matched: axes, unit: u } => axes.length() == 2 && u == fixture_unit
+    Match { axes_matched: axes, pre_unit: pu, post_unit: pu2 } => axes.length() == 2
+      && pu == fixture_unit
+      && pu2 == fixture_other_unit
     _ => false
   }
 }
@@ -620,11 +660,13 @@ fn first_post_side(divergences: List<RuntimeIdentityDivergence>) -> List<NonEmpt
   }
 }
 
-fn verdict_unit(verdict: RuntimeIdentityVerdict) -> NonEmptyStr {
+// BOTH keys a verdict reports. Read as a pair, not as one key: a verdict that reported only one of them
+// could not be distinguished from one that invented the pairing.
+fn verdict_units(verdict: RuntimeIdentityVerdict) -> List<UnitKey> {
   match verdict {
-    Match { axes_matched: _, unit: u } => u
-    Mismatch { diverged: _, unit: u } => u
-    Unprovable { why: _, unit: u } => u
+    Match { axes_matched: _, pre_unit: pu, post_unit: pu2 } => [pu, pu2]
+    Mismatch { diverged: _, pre_unit: pu, post_unit: pu2 } => [pu, pu2]
+    Unprovable { why: _, pre_unit: pu, post_unit: pu2 } => [pu, pu2]
   }
 }
 
@@ -682,6 +724,48 @@ fn first_gap_refusal_kind(gaps: List<RuntimeIdentityGap>) -> NonEmptyStr {
       Unread { reason: _ } => "unread"
     }
     Absent => "none"
+  }
+}
+
+// A complete, agreeing side under an EXPLICIT key. The other fixtures all carry `fixture_unit`, so a
+// mis-paired input can only be expressed by naming the key.
+fn pre_with_unit(key: UnitKey) -> PreBootIdentityStanding {
+  let base = pre_all_read()
+  PreBootIdentityStanding {
+    unit: key,
+    board_serial: base.board_serial,
+    bios_version: base.bios_version,
+    model: base.model,
+    nics: base.nics,
+  }
+}
+
+fn post_with_unit(key: UnitKey) -> PostBootIdentityReport {
+  let base = post_agreeing()
+  PostBootIdentityReport {
+    unit: key,
+    reported_over: base.reported_over,
+    board_serial: base.board_serial,
+    bios_version: base.bios_version,
+    model: base.model,
+    nics: base.nics,
+  }
+}
+
+fn same_verdict_kind(left: RuntimeIdentityVerdict, right: RuntimeIdentityVerdict) -> Bool {
+  match left {
+    Match { axes_matched: _, pre_unit: _, post_unit: _ } =>
+      match right { Match { axes_matched: _, pre_unit: _, post_unit: _ } => true
+                    Mismatch { diverged: _, pre_unit: _, post_unit: _ } => false
+                    Unprovable { why: _, pre_unit: _, post_unit: _ } => false }
+    Mismatch { diverged: _, pre_unit: _, post_unit: _ } =>
+      match right { Match { axes_matched: _, pre_unit: _, post_unit: _ } => false
+                    Mismatch { diverged: _, pre_unit: _, post_unit: _ } => true
+                    Unprovable { why: _, pre_unit: _, post_unit: _ } => false }
+    Unprovable { why: _, pre_unit: _, post_unit: _ } =>
+      match right { Match { axes_matched: _, pre_unit: _, post_unit: _ } => false
+                    Mismatch { diverged: _, pre_unit: _, post_unit: _ } => false
+                    Unprovable { why: _, pre_unit: _, post_unit: _ } => true }
   }
 }
 
@@ -823,7 +907,7 @@ test fn test_model_divergence_is_a_corroborating_mismatch() -> Bool {
     nics: NicSetReported { addresses: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
-    Mismatch { diverged: ds, unit: _ } =>
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } =>
       ds.length() == 1
         && same_runtime_identity_axis(left: first_axis(divergences: ds), right: ModelAxis)
         && first_pre_side(divergences: ds) == [fixture_model]
