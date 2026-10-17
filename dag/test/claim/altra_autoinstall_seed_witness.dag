@@ -113,6 +113,8 @@ import gunbc.provisioning.altra_autoinstall_seed {
   KeyboardConfigurationPackage,
   TzdataPackage,
   known_prompting_packages,
+  known_prompting_package_name,
+  TzdataPackage,
   unexamined_candidate,
   install_driver_list_diagnostic,
   loadable_module_list_diagnostic,
@@ -1084,6 +1086,25 @@ test fn the_closed_question_count_moves_only_with_answers() -> Bool {
               two_answers.questions_closed > one_answer.questions_closed
             _ => false
           }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// THE REFUSAL NAMES THE PACKAGE IN THE ARCHIVE'S OWN SPELLING. Nothing else in this module or any other is
+// allowed to spell a prompting package's name, so the refusal an operator reads has to be the one spelling the
+// table holds — and it has to be the ARCHIVE spelling, because that string is what they will type into a debconf
+// preseed. A witness that only matched `PackagePrompts { name: _ }` would let the table's names drift to anything
+// and stay green, which is precisely the second source of truth review 81772 removed.
+test fn the_refusal_names_the_package_in_its_archive_spelling() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+        SeedRefused { cause: PackagePrompts { name: named, question: asked } } =>
+          named == "tzdata" as NonEmptyStr
+            && asked.contains("tzdata/configure_timezone")
+            && known_prompting_package_name(package: TzdataPackage) == named
         _ => false
       }
     Absent => false
