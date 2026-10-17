@@ -437,6 +437,22 @@ If the earliest unjustified boundary is `c`, the local fix *is* the root-cause r
 
 The tells: a symptom-link fix with no statement of why that link is the earliest unjustified boundary; a guard for a state earlier links could have made unwritable; a second fix to one link in a short time; a percentage on one axis as justification; knowing *that* `c` is wrong without being able to say what `a` and `b` established — the line-stop. The class is `gunbc.recurring_failure_mode` `symptom_link_patched_without_the_earliest_unjustified_boundary`.
 
+### Root generalization (closing breadth)
+
+Chain re-derivation fixes depth: it finds the earliest unjustified link of one slice. A rule repaired correctly at that link can still live in sibling leaves, and the repair then reaches one of them (ruling `gunbc.design_ruling root_generalization_closes_breadth`). Root generalization closes breadth, and its formal core is anti-unification, Plotkin's least general generalization (G. D. Plotkin, "A note on inductive generalization", Machine Intelligence 5, 1970): the most specific rule of which every observed case is an instance. A leaf that answers one case beside leaves that answer its siblings is §3's fork, consolidated later at the price of every leaf written in between.
+
+1. **Detect.** A new case seems to need new code: is it another instance of what existing leaves already do? The trigger is the second local implementation of one rule.
+2. **Collect** every leaf of that shape, layer by layer to the root: sibling arms, sibling call sites of the same general check, sibling helpers, the same rule in v1 and v2, other stages and targets. The enumeration is the fork census, stated in the change.
+3. **Generalize** to the least general rule that covers them all, placed at the earliest unjustified boundary (above). Too general a rule forbids or admits what no leaf did (§4d).
+4. **Delete the leaves** (§3, delete-first). A generalization beside surviving leaves is a second path.
+5. **Repeat** while the generalizations themselves form a family.
+
+Done means a new ordinary case is data, not control flow: adding it edits a row, not a branch.
+
+Families that grew leaf by leaf: alias identity at type-compatibility call sites, per-trait bound pipelines, and qualified-call resolution; receipts and positive specimens are in the ruling and the reviewer brief.
+
+The vertical half is `gunbc.recurring_failure_mode` `symptom_link_patched_without_the_earliest_unjustified_boundary`; the horizontal half is `gunbc.recurring_failure_mode` `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling`, whose recognition rule is addressed to the author, who stops when the prompting instance is fixed. So the same question is asked of the reviewer, for every domain: `gunbc.design_argument` row `s6b.root-generalization`. A repeated pattern is rejected until the author answers why it should not be generalized (§3b, diverges with a stated reason) or that it should be but not now, naming the trigger and follow-up (§4b); the reviewer accepts or rejects that answer, and no answer is a reject.
+
 ## 7. Self-hosting (the principles applied to the compiler itself)
 
 The compiler is a pure transform and an ordinary substrate fact, analyzable by its own lenses. The `.dag` graph is the truth and Rust is one realization — a seed that shrinks toward zero. v2 emits its own sources, proven **by execution**: the emitted module compiles and holds its own `.dag` contract on a discriminating corpus. **The bar is that v2 is better than the seed, not that it resembles it** (ruling `gunbc.design_ruling v2_better_than_the_seed`). The seed is a regression oracle, never a specification: a divergence is either a *v2 regression* (a defect) or a *seed defect* v2 does not carry forward and records as a correction. The seed reading something one way is evidence of what v2 must not lose, never by itself why v2 reads it that way — so neither a byte-identical fixed point nor behavioral equivalence is the goal; both would cement the seed's warts.
