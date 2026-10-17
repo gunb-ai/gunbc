@@ -532,7 +532,7 @@ fn decide(
       route: RedfishOneShotOverride { service_root: "redfish:Systems/Self" },
       blocking: NoInterfaceCarriesPxe,
     }
-  } else if length(xs: nics) == 1 {
+  } else {
     // The corpus's list idiom is `|> first` returning an Optional, not indexing: a single
     // observed NIC must still arrive through the pattern, so a miscount upstream yields a
     // refusal here rather than an out-of-range surprise on a live attempt.
@@ -549,7 +549,7 @@ fn decide(
       }
       Absent => Refused { cause: NoSuchUnit { why: "one NIC counted but none enumerable" } }
     }
-  } else {
+  }
 }
 
 // Network-ness is matched on the firmware's OWN spellings for a network stack/option. A list of
