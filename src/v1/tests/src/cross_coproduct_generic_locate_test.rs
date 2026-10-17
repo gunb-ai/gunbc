@@ -357,42 +357,139 @@ fn one_callee_two_distinct_settled_arguments_still_refuses() {
 }
 
 // ---------------------------------------------------------------------------
-// UNSETTLED-BINDING PREDICATE (stern-bat-401 msg_0306d56f, part (2): "The fold treats a
-// TypeVariable leaf as unsettled; that predicate is APPROVED now, with its own accept
-// control and a refusal twin"). The old uninformative authority only followed a SINGLE
-// child, so Map(C, Int) -- where C is still a type variable -- was treated as settled and
-// compared leaf-wise against Map(String, Int), refusing C against String even though C
-// could BE String. The accept control below is that program; the refusal twin removes the
-// variable so the two types are genuinely distinct and must keep refusing.
+// DIRECT-CALL CONTROLS for the unsettled-binding predicate (stern-bat-401
+// msg_0306d56f part (2), predicate APPROVED). The first two controls for this
+// predicate were written as SOURCE-LEVEL programs and the vacuity check on the
+// SHIPPED seed caught them as unsound: the accept row passed pre-predicate (so it
+// proved nothing) and the refusal twin FAILED pre-predicate (so the fold never
+// reached the comparison at all on that program -- the source route, not the
+// predicate, decided it). Source-level rows cannot attribute behaviour to the fold
+// when the route may never reach it, so these call v1.compiler.infer
+// unify_generics directly with the two nodes, where nothing but the predicate can
+// change the answer. RED-before / GREEN-after is stated per row.
 // ---------------------------------------------------------------------------
 
-// ACCEPT: a callee whose own second parameter is still a variable when another actual for
-// the same variable arrives settled. Legal program -> must not refuse.
+use v1_compiler::v1_compiler_infer::{unify_generics, UnifyGenericsAcc};
+use v1_compiler::v1_compiler_infer_types::{TextJudgment, TextNotAskedReason};
+use v1_compiler::v1_std_core::{no_span, InferredNode};
+
+fn fold_leaf(name: &str) -> Rc<Node> {
+    let span = no_span();
+    Rc::new(Node {
+        name: name.to_string(),
+        ident: None,
+        span: span.clone(),
+        // ident_span MUST be Some: v1.std.core authored_name_at answers node.name only on
+        // that arm, and its None arm returns "" -- which would make type_node_label fall
+        // through to n.name anyway, but leaving it None would test a different path.
+        ident_span: Some(span),
+        children: Rc::new(im::Vector::new()),
+        connective: Connective::NoConnective,
+        params: Rc::new(im::Vector::new()),
+        inferred: None,
+        return_cardinality: v1_compiler::v1_std_core::Cardinality::Required,
+        uses: Rc::new(im::Vector::new()),
+        body: None,
+        transport: None,
+        properties: Rc::new(im::Vector::new()),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+        declaration: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+    })
+}
+
+/// A leaf that IS still a type variable: inferred = TypeVariable. This is what an
+/// unsettled parameter looks like, and what the fabricated-Unit measurement replaced.
+fn fold_tv_leaf(id: &str) -> Rc<Node> {
+    let mut n = (*fold_leaf(id)).clone();
+    n.inferred = Some(Rc::new(InferredNode::TypeVariable { id: id.to_string() }));
+    Rc::new(n)
+}
+
+fn fold_app(head: &str, args: &[Rc<Node>]) -> Rc<Node> {
+    let mut n = (*fold_leaf(head)).clone();
+    n.children = Rc::new(im::Vector::from(args.to_vec()));
+    Rc::new(n)
+}
+
+/// One fold step: variable T already bound to `bound`, now handed `actual`.
+fn fold_step(bound: Rc<Node>, actual: Rc<Node>) -> Rc<UnifyGenericsAcc> {
+    let si = Rc::new(im::HashMap::new());
+    let mut acc: im::HashMap<String, Rc<Node>> = im::HashMap::new();
+    acc.insert("T".to_string(), bound);
+    unify_generics(
+        fold_leaf("T"),
+        actual,
+        Rc::new(im::Vector::from(vec!["T".to_string()])),
+        si.clone(),
+        Rc::new(acc),
+        Rc::new(TextJudgment::TextNotAsked {
+            reason: TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes,
+        }),
+        "locate.fold".to_string(),
+    )
+}
+
+/// ACCEPT (RED on the shipped seed, GREEN once the predicate is in the seed): the
+/// stored binding still carries a TYPE-VARIABLE leaf, so it is not settled evidence
+/// and must be replaced by the settled actual instead of refused against it. The
+/// old authority (v1.compiler.infer unify_binding_is_uninformative) follows only a
+/// single-child chain, so Map(<var C>, Int) looked settled and was refused against
+/// Map(String, Int) -- a refusal about a variable that could BE String.
 #[test]
-fn binding_still_carrying_a_type_variable_is_not_settled_evidence_accepted() {
-    let src = format!(
-        "{}fn takes_pair<T>(a: Map<T, Int>, b: Map<String, Int>) -> Bool {{ true }}\nfn probe(k: Symbol, m1: Map<Symbol, Int>, m2: Map<String, Int>) -> Bool {{ takes_pair(a: m1, b: m2) }}\n",
-        capture_prelude()
-    );
-    let msgs = blocking_messages(&src);
+fn fold_replaces_a_binding_that_still_carries_a_type_variable_leaf() {
+    let bound = fold_app("Map", &[fold_tv_leaf("C"), fold_leaf("Int")]);
+    let actual = fold_app("Map", &[fold_leaf("String"), fold_leaf("Int")]);
+    let acc = fold_step(bound, actual);
     assert!(
-        !has_generic_rebind(&msgs),
-        "a binding whose element is still a variable must not refuse a settled Map(String, Int); got {msgs:?}"
+        acc.diagnostics.is_empty(),
+        "a binding whose element is still a variable is unsettled; refusing it against a          settled Map(String, Int) is a refusal about an unsettled variable: {:?}",
+        acc.diagnostics
     );
 }
 
-// REJECT TWIN: identical shape, no variable anywhere -- Map(Int, Int) against
-// Map(String, Int) is a genuine misbinding and must refuse, or the row above proves
-// nothing (an implementation that stopped binding variables entirely would pass it).
+/// ACCEPT (RED pre-predicate, GREEN after): the mirror arm -- the stored binding is
+/// settled and the ACTUAL still carries a variable, so the actual cannot falsify the
+/// binding and the binding is kept.
 #[test]
-fn settled_map_argument_pair_of_different_element_types_still_refuses() {
-    let src = format!(
-        "{}fn takes_pair<T>(a: Map<T, Int>, b: Map<T, Int>) -> Bool {{ true }}\nfn probe(m1: Map<Int, Int>, m2: Map<String, Int>) -> Bool {{ takes_pair(a: m1, b: m2) }}\n",
-        capture_prelude()
-    );
-    let msgs = blocking_messages(&src);
+fn fold_keeps_a_settled_binding_against_an_actual_that_still_carries_a_type_variable() {
+    let bound = fold_app("Map", &[fold_leaf("String"), fold_leaf("Int")]);
+    let actual = fold_app("Map", &[fold_tv_leaf("C"), fold_leaf("Int")]);
+    let acc = fold_step(bound, actual);
     assert!(
-        has_generic_rebind(&msgs),
-        "Map(Int, Int) and Map(String, Int) settled to one variable must refuse; got {msgs:?}"
+        acc.diagnostics.is_empty(),
+        "a variable-bearing actual cannot falsify a settled binding: {:?}",
+        acc.diagnostics
+    );
+}
+
+/// REJECT TWIN (GREEN before AND after -- sound on the shipped seed, verified):
+/// identical shape, no variable anywhere, genuinely distinct settled types. This is
+/// the row that makes the two accepts above non-vacuous: an implementation that
+/// stopped refusing altogether would fail it.
+#[test]
+fn fold_refuses_two_distinct_settled_bindings_of_the_same_shape() {
+    let bound = fold_app("Map", &[fold_leaf("Int"), fold_leaf("Int")]);
+    let actual = fold_app("Map", &[fold_leaf("String"), fold_leaf("Int")]);
+    let acc = fold_step(bound, actual);
+    assert!(
+        !acc.diagnostics.is_empty(),
+        "Map(Int, Int) then Map(String, Int) for one variable is a genuine misbinding and          must refuse; got no diagnostics"
+    );
+}
+
+/// REJECT TWIN (GREEN before AND after): the classic scalar case, at fold grain.
+#[test]
+fn fold_refuses_int_bound_then_bool() {
+    let acc = fold_step(fold_leaf("Int"), fold_leaf("Bool"));
+    assert!(
+        !acc.diagnostics.is_empty(),
+        "T bound as Int then Bool must refuse; got no diagnostics"
     );
 }
