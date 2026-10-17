@@ -78,6 +78,11 @@ def parse(path):
         if m and variant is not None:
             variants[variant].setdefault(("witness", 0), {})["rc"] = int(m.group(1))
             continue
+        m = re.match(r"^CLAIMFN (\S+) (\S+) rc=(\d+) elapsed=(\d+)s verdict=(.*)$", line)
+        if m and variant is not None:
+            variants[variant].setdefault(("claims", 0), {})[m.group(2)] = {
+                "rc": int(m.group(3)), "elapsed_s": int(m.group(4)), "verdict": m.group(5).strip()}
+            continue
         m = re.match(r"^typemismatch_mentions=(\d+)", line)
         if m and variant is not None:
             variants[variant].setdefault(("witness", 0), {})["typemismatch"] = int(m.group(1))
@@ -103,21 +108,38 @@ def series(rows, s):
 
 
 def classify(vals, label):
-    """Return (verdict, reason). Reject doubling; report growth shape."""
+    """Return (verdict, reason) for a depth series of operation counts.
+
+    Shapes are decided on finite differences, which is how "no doubling" and "not even
+    quadratic" are distinguished:
+      CONSTANT     every step identical            (d1 all 0)
+      LINEAR       every step adds the same amount (d1 constant, nonzero)
+      QUADRATIC    the step itself grows           (d1 non-decreasing, at least one rise)
+      SUPERLINEAR  the step grows super-linearly   (d1 rises with rising slope)
+      EXPONENTIAL  each value >=1.6x the previous  (ratios all >=1.5)
+    A series with fewer than 3 points cannot be classified and is a FAILURE, never a pass.
+    """
     vals = [v for v in vals if v is not None]
     if len(vals) < 3:
         return "INSUFFICIENT", "only %d points" % len(vals)
     d1 = [vals[i + 1] - vals[i] for i in range(len(vals) - 1)]
-    d2 = [d1[i + 1] - d1[i] for i in range(len(d1) - 1)]
     ratios = [vals[i + 1] / max(vals[i], 1) for i in range(len(vals) - 1) if vals[i] > 0]
-    if any(r >= 1.6 for r in ratios) and len(ratios) >= 2 and all(r >= 1.5 for r in ratios):
+    if len(ratios) >= 2 and all(r >= 1.5 for r in ratios):
         return "EXPONENTIAL", "ratios %s" % [round(r, 2) for r in ratios]
-    # quadratic: second differences grow ~linearly while staying positive
-    if all(x >= 0 for x in d2) and len(d2) >= 2 and d2[-1] > 2 * max(1, d2[0]):
-        return "QUADRATIC", "d1=%s d2=%s" % (d1, d2)
-    if all(-1 <= x <= 1 for x in d1):
+    if all(x == 0 for x in d1):
         return "CONSTANT", "d1=%s" % d1
-    return "LINEAR", "d1=%s" % d1
+    if all(x == d1[0] for x in d1):
+        return "LINEAR", "d1=%s (constant increment %d)" % (d1, d1[0])
+    if all(x >= 0 for x in d1) and any(x > 0 for x in d1):
+        # the increment itself is growing: degree >= 2. Distinguish degree 2 from worse by
+        # whether the *slope of the increment* (d2) is itself growing.
+        d2 = [d1[i + 1] - d1[i] for i in range(len(d1) - 1)]
+        if all(x >= 0 for x in d2):
+            if d2 and max(d2) > 2 * max(1, min(d2)):
+                return "SUPERLINEAR", "d1=%s d2=%s (accelerating)" % (d1, d2)
+            return "QUADRATIC", "d1=%s d2=%s" % (d1, d2)
+        return "IRREGULAR", "d1=%s (non-monotone growth)" % d1
+    return "IRREGULAR", "d1=%s" % d1
 
 
 def main():
@@ -136,6 +158,23 @@ def main():
             print("specimen: %s" % rows[("specimen", 0)])
         if ("witness", 0) in rows:
             print("witness: %s" % rows[("witness", 0)])
+        if ("claims", 0) in rows:
+            claims = rows[("claims", 0)]
+            # The two refusing specimens must FAIL (rc!=0 / FAIL verdict) and the five
+            # accepting ones must PASS. A witness that is silently not run is reported as
+            # such rather than counted as a pass.
+            expect_fail = {"a_lambda_return_that_disagrees_with_the_substituted_callable_refuses",
+                           "an_inner_generic_bound_only_by_the_outer_settlement_is_re_inferred"}
+            if not claims:
+                fails.append("%s witness ran no test functions at all" % v)
+            for fn, info in sorted(claims.items()):
+                want_fail = fn in expect_fail
+                got_fail = info["rc"] != 0 or info["verdict"].startswith("FAIL")
+                ok = (got_fail == want_fail)
+                print("  claim %-72s rc=%d %-22s %s" % (fn, info["rc"], info["verdict"], "ok" if ok else "MISMATCH"))
+                if not ok:
+                    fails.append("%s claim %s expected %s got rc=%d %s" % (
+                        v, fn, "FAIL" if want_fail else "PASS", info["rc"], info["verdict"]))
 
         def col(s, k):
             return [rows[(s, d)].get(k) for (ss, d) in sorted(rows) if ss == s]
@@ -149,7 +188,7 @@ def main():
         if lb_nest:
             verdict, why = classify(lb_nest, "left-bound nested")
             print("%s left-bound nested-work shape: %s (%s)" % (v, verdict, why))
-            if verdict in ("EXPONENTIAL", "QUADRATIC", "INSUFFICIENT"):
+            if verdict not in ("CONSTANT", "LINEAR"):
                 fails.append("%s left-bound nested work %s: %s" % (v, verdict, why))
         if rb_nest:
             verdict, why = classify(rb_nest, "right-bound nested")
