@@ -355,25 +355,33 @@ test fn every_ensure_outcome_except_a_completed_one_refuses_and_each_names_its_r
   )
   let skipped_words = build_cache_refusal_detail(ensure: Present { value: EnsureSkipped }, read_back: rb)
   let absent_words = build_cache_refusal_detail(ensure: Absent, read_back: rb)
-  // Each reason has a DIFFERENT SOURCE — the plan's own string, the exit code plus the
+  // Five refusals, five assertion sets, and no arm able to report a bare 'failed'. Each
+  // reason comes from a DIFFERENT SOURCE — the plan's own string, the exit code plus the
   // host's stderr, the broker's reason plus the blocked leg's command text, the skipped
-  // phase's name, and the missing phase's name — so five texts, five assertions, and no
-  // arm able to report a bare 'failed'.
-  match (plan_words, failed_words, blocked_words, skipped_words, absent_words) {
-    (Present { value: p }, Present { value: f }, Present { value: b }, Present { value: k }, Present { value: a }) =>
-      string_contains(s: p, pattern: "refused before running anything")
-        && string_contains(s: p, pattern: "the digest could not be read")
-        && string_contains(s: f, pattern: "exited 1")
-        && string_contains(s: f, pattern: "Job for sccache-server.service failed.")
-        && string_contains(s: b, pattern: "could not run")
-        && string_contains(s: b, pattern: "the broker declined the privileged leg")
-        && string_contains(s: b, pattern: "systemctl")
-        && string_contains(s: k, pattern: "was not run")
-        && string_contains(s: k, pattern: "skipped")
-        && string_contains(s: a, pattern: "the ensure")
-        && string_contains(s: a, pattern: "never read as a silent success")
-    _ => false
-  }
+  // phase's name, and the missing phase's name. No tuple pattern is used because this
+  // grammar has none; every refusal is checked through the same helper, so all five ride
+  // one code path and none can be quietly skipped.
+  build_cache_words_say(words: plan_words, must_say: [
+    "refused before running anything",
+    "the digest could not be read",
+  ])
+    && build_cache_words_say(words: failed_words, must_say: [
+      "exited 1",
+      "Job for sccache-server.service failed.",
+    ])
+    && build_cache_words_say(words: blocked_words, must_say: [
+      "could not run",
+      "the broker declined the privileged leg",
+      "systemctl",
+    ])
+    && build_cache_words_say(words: skipped_words, must_say: [
+      "was not run",
+      "skipped",
+    ])
+    && build_cache_words_say(words: absent_words, must_say: [
+      "the ensure",
+      "never read as a silent success",
+    ])
     // ...and the one outcome that may converge does, so the five refusals above are a
     // distinction rather than a blanket.
     && build_cache_contract_converges_on_an_answering_read_back()
@@ -483,5 +491,25 @@ fn build_cache_refusal_detail(ensure: Optional<BuildCacheEnsureExecuted>, read_b
   ) {
     DaemonUnresponsive { detail: d } => Present { value: d as String }
     _ => Absent
+  }
+}
+
+// THE WORDS A REFUSAL PRODUCED MUST CONTAIN EVERYTHING IT IS SUPPOSED TO. Words are
+// carried as Optional<String> rather than Bool so a red can distinguish 'this arm
+// refused with thin words' from 'this arm refused with no words at all' — the second is
+// the silent default, and it is the one an empty-detail edit produces.
+fn build_cache_words_say(words: Optional<String>, must_say: List<String>) -> Bool {
+  match words {
+    Absent => false
+    Present { value: text } => match fold(must_say, init: Absent, f: (acc, want) => match acc {
+      Present { value: _ } => acc
+      Absent => match string_contains(s: text, pattern: want) {
+        true => Present { value: want }
+        false => acc
+      }
+    }) {
+      Present { value: _ } => true
+      Absent => false
+    }
   }
 }
