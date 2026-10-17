@@ -51,7 +51,7 @@ import gunbc.host.build_cache_daemon_ensure {
 import gunbc.host.verified_binary_install { AlreadyInstalled, InstallNeeded, VerifiedBinaryInstallPresence }
 import gunbc.shell_command_text { shell_command_text_of_argv }
 import extdeps.exec.command { argv_words }
-import std.string { string_contains }
+import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // THE CONTRACT OF THE BUILD-CACHE DAEMON ENSURE, ON THE HOST IT EXISTS FOR.

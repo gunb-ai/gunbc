@@ -230,7 +230,7 @@ fn build_cache_ensure_leg_verdict(op: BuildCacheEnsureOp, observed: BuildCacheHo
 
 // THE SCAN CARRIER: the legs taken so far, and whether the gate has been reached. A record rather than a
 // tuple because the grammar has no tuple patterns, and the two fields say exactly what the scan is doing.
-data BuildCacheGateScan { legs: List<BuildCacheEnsureOp>, at_gate: Bool }
+type BuildCacheGateScan { legs: List<BuildCacheEnsureOp>, at_gate: Bool }
 
 // WALK THE PLAN AS FAR AS THE GATE, IN ONE PASS. The gate is the plan's first ReadDigest leg; `at_gate`
 // records whether the walk found one at all, which is what distinguishes "this plan needs no verification"
@@ -361,7 +361,7 @@ fn build_cache_ensure_run_legs(run: BuildCacheEnsureRun) -> List<BuildCacheEnsur
 // `set -e` never had to answer: not only "did something stop me" but "what did the digest read say", which
 // is what the second pass is gated on. `executed` is the terminal arm once one exists and EnsureCompleted
 // while the sequence is still progressing, so a stop can never be overwritten by a later leg.
-data BuildCacheEnsureFold { executed: BuildCacheEnsureExecuted, digest_line: Optional<String> }
+type BuildCacheEnsureFold { executed: BuildCacheEnsureExecuted, digest_line: Optional<String> }
 
 // THE DIGEST LINE THE SEQUENCE OBSERVED, Absent when no ReadDigest leg ran. The second pass is asked with
 // this, and Absent there means "not admitted" — so a fold that somehow skipped the read cannot produce a
@@ -387,7 +387,7 @@ fn build_cache_ensure_fold_is_progressing(fold_state: BuildCacheEnsureFold) -> B
 // THE LEGS THAT REMAIN after the first pass, i.e. everything in the permitted list beyond the `already_run`
 // legs already executed. Counted by position rather than filtered by argv because two legs can share argv
 // text (both cleanups begin with rm) and a by-value filter would drop the wrong one.
-data BuildCacheRemainderScan { index: Int, remaining: List<BuildCacheEnsureOp> }
+type BuildCacheRemainderScan { index: Int, remaining: List<BuildCacheEnsureOp> }
 
 fn build_cache_plan_remainder(all: List<BuildCacheEnsureOp>, already_run: Int) -> List<BuildCacheEnsureOp> {
   fold(
