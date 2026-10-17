@@ -288,8 +288,20 @@ fn rebind_probe_print2(
     s.push_str(&bind_name.clone());
     s.push_str("|module=");
     s.push_str(&module_name.clone());
+    // NEVER {:?} THE JUDGMENT. TextJudgment::TextJudgedIn{env} holds Rc<TypeEnv>, which carries
+    // bindings + str_bindings + ancestry_str_bindings + parents: Vec<Rc<TypeEnv>> (recursively) +
+    // source_indices: Map<String, NewlineIndex> for every file + intern_table + symbol_index
+    // (v1_compiler_infer_env.rs:69-84). Debug-printing it once per refusal -- 208 times -- produces a
+    // log nobody can read and would have burned a 27-minute dispatch to obtain. The ONLY env fact this
+    // measurement needs is WHICH module the ambient judgment is bound to, because the pre-registered
+    // hypothesis is that the fold judges with the CALLER's module. So: the name, and nothing else.
     s.push_str("|text=");
-    s.push_str(&format!("{:?}", (*text.clone()).clone()));
+    s.push_str(&match (*text.clone()).clone() {
+        TextJudgment::TextJudgedIn { env: e } => {
+            format!("JudgedIn(module={})", e.module_path.clone())
+        }
+        TextJudgment::TextNotAsked { reason: r } => format!("NotAsked({:?})", r),
+    });
     s.push_str("|equals=");
     s.push_str(&format!("{}", a_equals));
     s.push_str("|core=");

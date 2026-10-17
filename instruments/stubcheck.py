@@ -55,7 +55,14 @@ REAL_NODE = '''
     pub has_non_tail_self_call: bool,
     pub declaration: Option<Rc<DeclarationRef>>,
 }
-#[derive(Debug, Clone, PartialEq)] pub struct TypeEnv { pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> }
+#[derive(Debug, Clone, PartialEq)] pub struct TypeEnv {
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    // real field (v1_compiler_infer_env.rs:82): the only env fact probe v2 is allowed to print
+    pub module_path: String,
+    // real field (line 73), RECURSIVE on purpose: reproduces the unusable-log hazard that made the
+    // first draft's `{:?}` on the judgment a dispatch-killer, so it fails HERE in seconds.
+    pub parents: Rc<Vec<Rc<TypeEnv>>>,
+}
 #[derive(Debug, Clone, PartialEq)] pub enum TextNotAskedReason {
     TextNotAskedInVariantFieldSummary,
     TextNotAskedForCallableComponentResidue,
