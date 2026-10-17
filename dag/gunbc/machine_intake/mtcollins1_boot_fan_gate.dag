@@ -17,14 +17,15 @@ import gunbc.machine_intake.megarac_boot_media_attach { megarac_stale_power_off_
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_chassis_power }
 
-// THE FITTED CHASSIS FANS OF mtcollins1: ESTABLISHED ONCE, BY OBSERVATION, THEN FIXED. The basis is the committed
+// THE FITTED CHASSIS FANS OF mtcollins1: AN OPERATOR-ASSUMED SET, informed by one committed observation and an explicitly
+// uncertain operator account; it is not established by observation. The observation is the committed
 // fan observation of boot run 39005709187 (artifacts/bmc/mtcollins1-boot-run-39005709187/mtcollins1-fan-observation.txt,
 // round 0 at 2026-10-17T05:25:07Z, chassis on): FAN4_0, FAN4_1, FAN5_0 and FAN5_1 Speed at status ok, 5600-5800 RPM, with
 // FAN4_Presence and FAN5_Presence reading Device Present; every FAN0..FAN3 Speed and Presence read No Reading. The
 // operator's account (2026-10-17, uncertainty stated by them) is 8 fans, 4 installed on the socket-0 side, 4 empty on the
 // socket-1 side, silkscreen J#. OPEN, recorded not resolved: four physical fans, or two dual-rotor fan positions (the
 // observation is consistent with both, proof of neither); and the SEL Device Present reading for FAN1..FAN6 conflicts with
-// the observed FAN1..FAN3 No Reading. The set is fixed here so the gate is not circular: it checks the live read against
+// the observed FAN1..FAN3 No Reading. The set is declared here so the gate is not circular: it checks the live read against
 // this row, and the row is not re-derived from the live read. A nonzero RPM proves a tach signal, not airflow (these tach
 // readings were earlier judged unfaithful at the operator's PWM setting). The set carries an explicit OperatorAssumed
 // arm: its admission is stated, and the stop text reads the assumption back.
@@ -104,8 +105,9 @@ fn fan_gate_summary_append(block: String) -> FanGateWrite {
   }
 }
 
-// A REFUSAL: the stopping observation is WRITTEN BEFORE ANY PowerDown (a failing stop cannot lose it), then the
-// safe stop, then the full text overwrites the file and a digest block is appended to the step summary.
+// A REFUSAL: the stopping observation is WRITTEN BEFORE ANY PowerDown: the write is attempted and its result discriminated first; a failed write is kept
+// as FanGateWriteFailed and the safe stop still proceeds. If execution completes, the observation is also in the typed outcome and the
+// bundle. Then the safe stop, then the full text overwrites the file and a digest block is appended to the step summary.
 fn fan_gate_refuse(fitted: FittedFanSet, cause: PostPowerFanRefusal, observation: FanObservationRound, username: NonEmptyStr, password_file: NonEmptyStr) -> PostPowerFanGateOutcome {
   let manager = FanManagerUnread { read_obligation: "the cooling-manager standing is read only by the operator-session fan-mode GET (extdeps.bmc.megarac); this path executes no REST read and no fan-control write (ruling gunbc#14243); treat as NOT automatic until read" as NonEmptyStr }
   let pre = post_power_fan_gate_pre_stop_text(fitted: fitted, cause: cause, observation: observation, manager: manager)
