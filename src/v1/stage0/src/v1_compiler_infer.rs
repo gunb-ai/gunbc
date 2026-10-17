@@ -15360,33 +15360,45 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     let else_diags = else_result.diagnostics.clone();
                     let then_rt = crate::v1_compiler_infer_types::resolved_type(then_typed.clone());
                     let else_rt = crate::v1_compiler_infer_types::resolved_type(else_typed.clone());
+                    let optional_representations = optional_representations_join(
+                        then_rt.clone(),
+                        else_rt.clone(),
+                        scope.clone(),
+                    );
                     let inhabited_branch_types = inhabited_join_types(
                         Rc::new(vec![then_rt.clone(), else_rt.clone()]),
                         scope.clone(),
                     );
                     let branch_declaration_yields =
                         ((inhabited_branch_types.clone().len() as i64) == 1);
-                    let unified = match inhabited_branch_types.clone().first().cloned() {
-                        Some(only) => {
-                            if branch_declaration_yields.clone() {
-                                only.clone()
-                            } else {
-                                crate::v1_compiler_infer_types::prefer_specific_type(
-                                    then_rt.clone(),
-                                    else_rt.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                )
+                    let unified = match optional_representations.clone() {
+                        Some(joined) => joined.clone(),
+                        std::option::Option::None => {
+                            match inhabited_branch_types.clone().first().cloned() {
+                                Some(only) => {
+                                    if branch_declaration_yields.clone() {
+                                        only.clone()
+                                    } else {
+                                        crate::v1_compiler_infer_types::prefer_specific_type(
+                                            then_rt.clone(),
+                                            else_rt.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        )
+                                    }
+                                }
+                                std::option::Option::None => {
+                                    crate::v1_compiler_infer_types::prefer_specific_type(
+                                        then_rt.clone(),
+                                        else_rt.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    )
+                                }
                             }
                         }
-                        std::option::Option::None => {
-                            crate::v1_compiler_infer_types::prefer_specific_type(
-                                then_rt.clone(),
-                                else_rt.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            )
-                        }
                     };
-                    let branch_diags = if ((branch_declaration_yields.clone()
+                    let branch_diags = if ((((optional_representations.clone()
+                        != std::option::Option::None)
+                        || branch_declaration_yields.clone())
                         || crate::v1_compiler_infer_types::node_type_compatible(
                             then_rt.clone(),
                             else_rt.clone(),
@@ -17819,6 +17831,28 @@ pub fn std_optional_declaration_ref() -> Rc<DeclarationRef> {
 
 pub fn declaration_is_std_optional(d: Rc<DeclarationRef>) -> bool {
     (d.clone() == std_optional_declaration_ref())
+}
+
+pub fn optional_representations_join(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    if (((left.return_cardinality.clone() == Cardinality::CardOptional)
+        && (right.return_cardinality.clone() != Cardinality::CardOptional))
+        && node_is_std_optional(right.clone(), scope.clone()))
+    {
+        Some(left.clone())
+    } else {
+        if (((right.return_cardinality.clone() == Cardinality::CardOptional)
+            && (left.return_cardinality.clone() != Cardinality::CardOptional))
+            && node_is_std_optional(left.clone(), scope.clone()))
+        {
+            Some(right.clone())
+        } else {
+            std::option::Option::None
+        }
+    }
 }
 
 pub fn std_optional_present_arm(scope: Rc<InferScope>) -> Option<Rc<Node>> {
