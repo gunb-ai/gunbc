@@ -9177,9 +9177,21 @@ fn infer_caller_admission_application_diags(
   match application.kind {
     TypeNode { connective: Instantiation } => None
     TypeNode { connective: _ } => infer_caller_admission_callee_diags(application: application, caller: caller, module_symbol: module_symbol, entries: entries, declarations: declarations)
-    ComputationNode { behavior: _ } => infer_caller_admission_callee_diags(application: application, caller: caller, module_symbol: module_symbol, entries: entries, declarations: declarations)
+    ComputationNode { behavior: _ } =>
+      match list_introduction_elements_optional(node: application) {
+        Present { value: _ } => None
+        Absent => infer_caller_admission_callee_diags(application: application, caller: caller, module_symbol: module_symbol, entries: entries, declarations: declarations)
+      }
   }
 }
+
+// A LIST INTRODUCTION IS NOT A CALL EITHER (above). Its head is the marked reference to the declaration of
+// the free monoid (v2.std.list_introduction), which names a TYPE: nothing is applied and no admit
+// clause can ride it, so reading it as a callee found a declaration whose Arrow is unreadable and
+// refused (caller_admission_callee_unreadable). Every declared fn carries one -- its parameter-order
+// list (v2.std.arrow_signature) -- so once the head carried its identity from construction
+// (v2-namespace-cutover N2), every module with a fn refused here. Asked through the one reader of the
+// form, never by the head's spelling.
 
 // A TYPE INSTANTIATION IS NOT A CALL (above): `List<Pair>` names a declaration as its head exactly as a
 // call names its callee, but no admit clause rides a type's declaration and nothing is applied, so

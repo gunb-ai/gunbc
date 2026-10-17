@@ -1082,6 +1082,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
+    pattern: "object_source_serve_real_execution.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "provenance_calibration_report_real_execution.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
