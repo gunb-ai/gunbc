@@ -2,7 +2,7 @@ module test.claim.operator_endpoint_witness
 
 import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.optional { Present, Absent }
-import gunbc.harness.harness_operator_route { operator_pin_checked_path, operator_pinned_ca_file,
+import gunbc.harness.harness_operator_route { operator_pin_plan,
   harness_operator_route, operator_models_url, operator_chat_completions_url,
   operator_header_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
@@ -293,8 +293,8 @@ test fn the_real_client_argv_inhabits_the_pool_request_shape() -> Bool {
       operation_argv_bind_text(name: "request_body_file", text: "/s/req.json"),
       operation_argv_bind_text(name: "header_file", text: "/s/d/authorization"),
       operation_argv_bind_text(name: "response_headers_file", text: "/s/req.headers"),
-      operation_argv_bind_text(name: "ca_file", text: "/s/d/pinned-ca.pem"),
-      operation_argv_bind_text(name: "pinned_pubkey_file", text: "/s/d/pinned-pubkey.pem"),
+      operation_argv_bind_text(name: "ca_file", text: operator_pin_plan(header_file: "/s/d/authorization" as NonEmptyStr).ca_file as String),
+      operation_argv_bind_text(name: "pinned_pubkey_file", text: operator_pin_plan(header_file: "/s/d/authorization" as NonEmptyStr).pubkey_file as String),
       operation_argv_bind_text(name: "max_seconds", text: "600"),
     ]
   )), " ")
@@ -353,10 +353,14 @@ test fn an_unread_pool_limit_is_no_reading_and_the_lab_policy_is_enforced() -> B
     && pool_budget_enforced(policy: pool_output_budget_policy, upstream: pool_front_max_output_tokens) == pool_output_budget_policy.value
 }
 
-// The certificate the fingerprint is checked on is the staged copy curl is given, not the source file: a source
-// that changes after it was read cannot be what was checked (RED when the check ran on the source path).
-test fn the_pin_check_runs_on_the_file_curl_trusts_not_on_the_source() -> Bool {
-  let header_file = "/s/d/authorization" as NonEmptyStr
-  (operator_pin_checked_path(header_file: header_file) as String) == (operator_pinned_ca_file(header_file: header_file) as String)
-    && (operator_pin_checked_path(header_file: header_file) as String) == "/s/d/pinned-ca.pem"
+// The pin lives in two files beside the header file, one plan the route uses to write the certificate, to
+// fingerprint and extract the key FROM, and that curl is handed. The argv rendered from the plan names exactly the
+// plan's files (a pin repointed at the source under HOME, or a curl argument spelled elsewhere, no longer matches),
+// and both sit in the private directory, not at the source path.
+test fn the_pin_plan_is_the_files_curl_is_handed_and_lies_beside_the_header_file() -> Bool {
+  let plan = operator_pin_plan(header_file: "/s/d/authorization" as NonEmptyStr)
+  (plan.ca_file as String) == "/s/d/pinned-ca.pem"
+    && (plan.pubkey_file as String) == "/s/d/pinned-pubkey.pem"
+    && !string_contains(s: plan.ca_file as String, pattern: "gunbc-pool-front")
+    && the_real_client_argv_inhabits_the_pool_request_shape()
 }

@@ -27,7 +27,7 @@ import extdeps.openrouter.openrouter {
   openrouter_decode_rate_limited, openrouter_rate_limit_wire,
 }
 import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread, http_header_dump_status }
-import gunbc.harness.harness_operator_route { OperatorRoundFault, OperatorNoCapacity, OperatorCertificateNotPinned, operator_round_fault, operator_pinned_ca_file, operator_pinned_pubkey_file }
+import gunbc.harness.harness_operator_route { OperatorRoundFault, OperatorNoCapacity, OperatorCertificateNotPinned, operator_round_fault, operator_pin_plan }
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, harness_unexplained_refusal, session_messages_validation,
   session_validation_resumable, session_event_recovery_needed, session_cause_text, session_event_capacity_wait, session_event_capacity_resumed, session_capacity_wait_since_for, SessionRecoveryAwaitingCapacity,
@@ -1583,8 +1583,8 @@ fn harness_post_json_once(config: HarnessTurnConfig, header_file: NonEmptyStr?) 
             request_body_file: config.request_scratch_path as String as NonEmptyStr,
             header_file: hf,
             response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
-            ca_file: operator_pinned_ca_file(header_file: hf),
-            pinned_pubkey_file: operator_pinned_pubkey_file(header_file: hf),
+            ca_file: operator_pin_plan(header_file: hf).ca_file,
+            pinned_pubkey_file: operator_pin_plan(header_file: hf).pubkey_file,
             max_seconds: max_seconds,
           )
           HarnessRawPost { body: pinned.body, success: pinned.success, curl_exit: Present { value: pinned.exit_code } }

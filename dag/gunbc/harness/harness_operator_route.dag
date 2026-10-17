@@ -166,12 +166,19 @@ fn operator_header_sibling(header_file: NonEmptyStr, name: String) -> NonEmptySt
   join([join(list_init(xs: split(s: header_file as String, delimiter: "/")), "/"), "/", name], "") as NonEmptyStr
 }
 
-fn operator_pinned_ca_file(header_file: NonEmptyStr) -> NonEmptyStr {
-  operator_header_sibling(header_file: header_file, name: "pinned-ca.pem")
+// THE PIN PLAN: the two files the pin lives in, one spelling. The route writes the certificate to ca_file,
+// fingerprints and extracts the public key FROM ca_file, writes pubkey_file, and curl is handed exactly these two
+// (--cacert, --pinnedpubkey), so the checked bytes are the trusted bytes by construction.
+type OperatorPinPlan {
+  ca_file: NonEmptyStr
+  pubkey_file: NonEmptyStr
 }
 
-fn operator_pinned_pubkey_file(header_file: NonEmptyStr) -> NonEmptyStr {
-  operator_header_sibling(header_file: header_file, name: "pinned-pubkey.pem")
+fn operator_pin_plan(header_file: NonEmptyStr) -> OperatorPinPlan {
+  OperatorPinPlan {
+    ca_file: operator_header_sibling(header_file: header_file, name: "pinned-ca.pem"),
+    pubkey_file: operator_header_sibling(header_file: header_file, name: "pinned-pubkey.pem"),
+  }
 }
 
 type OperatorHeaderOpen
@@ -213,12 +220,6 @@ fn operator_read_certificate(route: HarnessOperatorRoute) -> OperatorCertificate
   }
 }
 
-// THE FILE THE FINGERPRINT AND THE PUBLIC KEY ARE TAKEN FROM IS THE FILE CURL IS GIVEN (--cacert): the staged
-// copy in the private temp directory, never the source under HOME, so the checked bytes are the trusted bytes.
-fn operator_pin_checked_path(header_file: NonEmptyStr) -> NonEmptyStr {
-  operator_pinned_ca_file(header_file: header_file)
-}
-
 fn operator_pin_staged_certificate(staged: NonEmptyStr, pem: String) -> OperatorCertificatePin {
   let fp = openssl.X509.Sha256Fingerprint(cert_file: staged as String)
   if fp.exit_code != 0 || !operator_certificate_pin_decision(fingerprint_stdout: fp.stdout) {
@@ -256,20 +257,20 @@ fn operator_open_header(route: HarnessOperatorRoute, session: NonEmptyStr) -> Op
                     OperatorHeaderRefused { detail: "mktemp -d failed for the operator bearer header file" }
                   } else {
                     let header_file = join([dir.path as String, "/authorization"], "") as NonEmptyStr
-                    let ca_file = operator_pin_checked_path(header_file: header_file)
+                    let plan = operator_pin_plan(header_file: header_file)
                     let wrote = Filesystem.WriteOwnerOnly(path: header_file as String, content: line as String)
-                    let wrote_ca = Filesystem.Write(path: ca_file as String, content: pem)
+                    let wrote_ca = Filesystem.Write(path: plan.ca_file as String, content: pem)
                     if !wrote.success || !wrote_ca.success {
                       let cleaned = shell.Remove.RecursiveForce(path: dir.path)
                       OperatorHeaderRefused { detail: "could not write the operator bearer header file or the pinned certificate file" }
                     } else {
-                      match operator_pin_staged_certificate(staged: ca_file, pem: pem) {
+                      match operator_pin_staged_certificate(staged: plan.ca_file, pem: pem) {
                         OperatorCertificateRefused { detail: d } => {
                           let cleaned = shell.Remove.RecursiveForce(path: dir.path)
                           OperatorHeaderRefused { detail: d }
                         }
                         OperatorCertificatePinned { certificate_pem: _, public_key_pem: pub } => {
-                          let wrote_pub = Filesystem.Write(path: operator_pinned_pubkey_file(header_file: header_file) as String, content: pub)
+                          let wrote_pub = Filesystem.Write(path: plan.pubkey_file as String, content: pub)
                           if !wrote_pub.success {
                             let cleaned = shell.Remove.RecursiveForce(path: dir.path)
                             OperatorHeaderRefused { detail: "could not write the pinned public key file" }
