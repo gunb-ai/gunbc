@@ -108,6 +108,7 @@ import std.syntax {
 }
 
 import extdeps.languages.dag.syntax { dag_parse_environment }
+import gunbc.structural_realization_bindings { optional_declaration_ref }
 import std.syntax { ParseEnvironment }
 
 // `consumed_end` is the end of the last non-newline token this stream has advanced past. It is
@@ -3572,13 +3573,26 @@ fn collect_type_args(tokens: TokenStream, ctx: ParseContext, args: List<Node>) -
   }
 }
 
+// `T?` IS THE std.optional APPLICATION, minted here and never a cardinality on T: the node references the
+// declaration gunbc.structural_realization_bindings optional_declaration_ref names, BY THAT IDENTITY (the
+// declaration slot is stamped now), applied to the payload. Its spelling is the kernel-span form
+// authored_name_at reads for compiler-generated nodes, so no scope can capture it and the user module
+// imports nothing; resolve binds a node carrying a declaration by that identity, not by lookup.
+fn optional_application_node(occurrence_identity: NodeOccurrenceIdentity, payload: Node, span: SourceSpan) -> Node {
+  let generated_name = optional_declaration_ref.decl_name as String
+  let generated_span = kernel_span(name: generated_name)
+  Node { occurrence_identity: occurrence_identity, name: generated_name, span: span, ident_span: Present { value: generated_span }, children: [payload], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: Present { value: optional_declaration_ref }, expr_data: NoExprData }
+}
+
 // THE TYPE COMPLETES HERE, not where its identity was minted: `te` was minted `CompletedLater` so the
 // `?` this reads is inside its extent. Every caller passes a `te` it minted for this call.
 fn maybe_optional(tokens: TokenStream, ctx: ParseContext, te: Node, start_span: SourceSpan) -> TypeResult {
   match eat(tokens: tokens, expected: ExpectQuestion) {
   EatConsumed { token: _, tokens: __ec } =>
-    let ctx = parse_context_record_node_from(ctx: ctx, node: te, start: start_span, to: __ec)
-    let ote = Node { occurrence_identity: te.occurrence_identity, name: te.name, span: te.span, ident_span: te.ident_span, children: te.children, connective: te.connective, params: te.params, inferred: te.inferred, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, module_item_kind: te.module_item_kind, declaration_marker: te.declaration_marker, declaration: te.declaration, expr_data: te.expr_data }
+    let inner_ctx = parse_context_record_node_from(ctx: ctx, node: te, start: start_span, to: __ec)
+    let minted = mint_parsed_node_identity(ctx: inner_ctx, at: CompletedLater)
+    let ote = optional_application_node(occurrence_identity: minted.identity, payload: te, span: start_span)
+    let ctx = parse_context_record_node_from(ctx: minted.ctx, node: ote, start: start_span, to: __ec)
     TypeResult { type_expr: ote, tokens: __ec, ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     TypeResult { type_expr: te, tokens: tokens, ctx: parse_context_record_node_from(ctx: ctx, node: te, start: start_span, to: tokens), err: none }
