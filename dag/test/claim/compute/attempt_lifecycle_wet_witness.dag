@@ -19,13 +19,13 @@ import gunbc.compute.work_provider_local {
   compute_settle_attempt, compute_attempt_settlement_wire, attempt_settlement_host_record,
   host_record_was_written,
   ProvideResult, ProvideFresh, ProvideAttached, compute_ceiling_retry_reference,
-  compute_provide_leaf, compute_layout, compute_work_identity, HostRecordWritten,
+  compute_provide_leaf, compute_layout_in, compute_work_identity, HostRecordWritten, compute_settled_record,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.compute.host_capacity { ComputeReservationRefused }
 import std.materialization_provider { ComputeWorkRequest }
-import std.materialization_store_grant { DurableHostVolumeRoot, WitnessScratchRoot }
+import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolume }
 import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget }
 import std.cache_identity { compute_work_artifact_kind }
 import std.measure { byte_size }
@@ -589,6 +589,49 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
     && (match other_operation { ComputeStoreAbsent => true  _ => false })
 }
 
+// THE OWNED TARGET'S LIFETIME ENDS AT SETTLEMENT, AND ONLY AT A SETTLEMENT THAT LANDED. Both cells run
+// the production compute_settled_record against a real scratch store and a real target tree. Landed:
+// the record commits and the target is gone. Forced failure: the run log is never written, so the
+// store refuses the record, the outcome is a refusal naming the kept path, and the target is still
+// there. RED against a settlement that leaves the target, or one that removes it before the commit.
+fn target_lifetime_settle(root_path: String, write_log: Bool) -> ProvideResult {
+  let layout = ComputeLayout {
+    root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
+    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: join([root_path, "/owned/target"], ""),
+    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+  }
+  let made = shell.Mkdir.Parents(path: layout.target_dir as FilePath)
+  let built = Filesystem.Write(path: join([layout.target_dir, "/artifact"], ""), content: "bytes")
+  let log = if write_log { Filesystem.Write(path: layout.log_path, content: "built\n").success } else { true }
+  let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
+  let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
+    WorkOutput { declared: "release/gunbc", blob: "b1" },
+    WorkOutput { declared: "release/claim_batch", blob: "b2" },
+  ], log_path: layout.log_path }
+  compute_settled_record(
+    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }, plan: ComputeMemoized },
+    layout: layout, identity: "fixture-identity", subject: ExactTree { tree: reuse_tree() }, op: work_default_build(), outcome: outcome)
+}
+
+test fn a_settlement_that_landed_removes_the_owned_target() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_life.XXXXXX").path
+  let r = target_lifetime_settle(root_path: root_path, write_log: true)
+  let gone = reuse_path_absent(path: join([root_path, "/owned/target"], ""))
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  removed.success && gone
+    && (match r { ProvideFresh { outcome: _, document: _, host_record } => match host_record { HostRecordWritten => true  _ => false }  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+}
+
+test fn a_settlement_that_failed_keeps_the_owned_target_and_refuses_located() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_life.XXXXXX").path
+  let r = target_lifetime_settle(root_path: root_path, write_log: false)
+  let kept = Filesystem.Read(path: join([root_path, "/owned/target/artifact"], "")).success
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  removed.success && kept
+    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "is KEPT") && string_contains(s: doc, pattern: "/owned/target")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+}
+
 // ── THE PRODUCTION SERVE-OR-PRODUCE DECISION, EXECUTED (side-chat review at 41a107ce81) ──────────
 //
 // The round trip above supplies its reads by hand: it never runs compute_provide_leaf, so deleting
@@ -608,8 +651,11 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
 // exists that would reserve a seat and launch a real unit.
 //
 // WHAT THIS DOES NOT EXECUTE: the producer. The record is committed by the production commit function
-// from a supplied outcome, not by a unit that built it; the cold side of a real request needs the
-// host's unit manager, ledger and durable volume.
+// from a supplied outcome, not by a unit that built it. THE PAIRED INHABITANCE CLAIM is
+// gunbc.instruments.compute_run_unit_cold cold_commit_and_attach: it runs the real compute_run_unit,
+// captures its declared outputs from the identity's owned target, commits that real outcome and
+// requires compute_provide_leaf to attach, on a host with a user unit manager (//gunbc/instruments:
+// compute-run-unit-cold). This supplied-outcome half may not stand without it.
 fn reuse_store(root_path: String) -> ComputeStore {
   ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
 }
@@ -683,7 +729,7 @@ fn reuse_served_without_production(root_path: String) -> Bool {
   let instance = srv1_live_dashboard_instance()
   let subject = ExactTree { tree: reuse_tree() }
   let toolchain = fixture_toolchain(rustc: "rustc fixture")
-  let work_dir = compute_layout(instance: instance, identity_hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: toolchain)).work_dir
+  let work_dir = compute_layout_in(instance: instance, store_root: DurableHostVolume, identity_hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: toolchain)).work_dir
   let before = reuse_path_absent(path: work_dir)
   let provided = compute_provide_leaf(store: reuse_store(root_path: root_path), instance: instance, owner: DirectInvocation { why: "wet witness" }, commit: "fixture-commit", subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
   let after = reuse_path_absent(path: work_dir)
@@ -712,4 +758,90 @@ fn reuse_cold_cli(root: String) -> ProcessExit {
 
 fn reuse_warm_cli(root: String) -> ProcessExit {
   if reuse_served_without_production(root_path: root) { ExitSuccess } else { ExitFailure { code: 1, reason: "the stored build was not served by attachment, or production was entered" } }
+}
+
+// ── C6: A STORED BUILD IS REUSED ONLY WHILE ITS BYTES VERIFY; MISSING AND CORRUPT BYTES REFUSE ─────
+//
+// The record committed by reuse_commit is served and its dependency resolves (the positive control,
+// so a read that refused everything is red). Then the byte part the record names is damaged in the
+// store, and the same two production reads -- compute_store_read, which attach goes through, and
+// compute_dependency_read, which hands VerifiedBuildBinaries to a dependent -- must REFUSE. They must
+// not answer Absent: an Absent is "build it again", and a damaged record answering Absent would
+// silently rebuild over a store that is lying; a Served would hand a dependent bytes nobody checked.
+// The damaged path is the one the verified reading itself names, so no path is spelled here.
+fn reuse_request() -> ComputeWorkRequest {
+  ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
+}
+
+fn reuse_served_and_resolved(root_path: String) -> Bool {
+  (match compute_store_read(store: reuse_store(root_path: root_path), req: reuse_request()) { ComputeStoreServed { ending: _, identity: _, document: _ } => true  _ => false })
+    && (match compute_dependency_read(store: reuse_store(root_path: root_path), build: reuse_request()) { ComputeDependencyResolved { dependency: _ } => true  ComputeDependencyRefused { detail: _ } => false })
+}
+
+fn reuse_gunbc_part_path(root_path: String) -> String {
+  match compute_dependency_read(store: reuse_store(root_path: root_path), build: reuse_request()) {
+    ComputeDependencyResolved { dependency } => match dependency { VerifiedBuildBinaries { gunbc, claim_batch: _ } => fabric_blob_reading_path(reading: gunbc) as String  _ => "" }
+    ComputeDependencyRefused { detail: _ } => ""
+  }
+}
+
+fn reuse_refuses_both_reads(root_path: String) -> Bool {
+  (match compute_store_read(store: reuse_store(root_path: root_path), req: reuse_request()) { ComputeStoreRefused { detail: _ } => true  _ => false })
+    && (match compute_dependency_read(store: reuse_store(root_path: root_path), build: reuse_request()) { ComputeDependencyRefused { detail: _ } => true  ComputeDependencyResolved { dependency: _ } => false })
+}
+
+test fn a_stored_binary_whose_bytes_changed_refuses_and_is_not_served_or_rebuilt() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+  let committed = reuse_commit(root_path: root_path)
+  let before = reuse_served_and_resolved(root_path: root_path)
+  let part = reuse_gunbc_part_path(root_path: root_path)
+  let damaged = if part == "" { false } else { Filesystem.Write(path: part as FilePath, content: "gunbc-bytes-CORRUPTED").success }
+  let refused = reuse_refuses_both_reads(root_path: root_path)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  committed && before && damaged && refused
+}
+
+test fn a_stored_binary_that_went_missing_refuses_and_is_not_served_or_rebuilt() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+  let committed = reuse_commit(root_path: root_path)
+  let before = reuse_served_and_resolved(root_path: root_path)
+  let part = reuse_gunbc_part_path(root_path: root_path)
+  let deleted = if part == "" { false } else { Filesystem.Delete(path: part as FilePath).success }
+  let refused = reuse_refuses_both_reads(root_path: root_path)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  committed && before && deleted && refused
+}
+
+// A declared output that was never produced cannot be committed: the staged file is absent, the
+// commit refuses, and no record exists afterwards (the read is Absent, not a success with a hole).
+test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+  let layout = ComputeLayout {
+    root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
+    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
+    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+  }
+  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
+    WorkOutput { declared: "release/gunbc", blob: "b1" },
+    WorkOutput { declared: "release/claim_batch", blob: "b2" },
+  ], log_path: layout.log_path }
+  let committed = compute_store_commit(
+    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
+    layout: layout, op: work_default_build(), outcome: outcome,
+    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
+  let after = compute_store_read(store: reuse_store(root_path: root_path), req: reuse_request())
+  // Positive control: the same commit with BOTH outputs staged lands, so the refusal above is the missing output and nothing else.
+  let g2 = Filesystem.Write(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let c2 = Filesystem.Write(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
+  let recommitted = compute_store_commit(
+    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
+    layout: layout, op: work_default_build(), outcome: outcome,
+    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  log.success && g.success && g2.success && c2.success
+    && (match committed { ComputeCommitRefused { detail } => string_contains(s: detail, pattern: "w.claim_batch")  _ => false })
+    && (match after { ComputeStoreAbsent => true  _ => false })
+    && (match recommitted { ComputeCommitted => true  _ => false })
 }

@@ -44,6 +44,8 @@ import std.content_hash {
   ContentHash,
   content_hash_combine_structural,
 }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { CasGeneration, cas_generation_following, cas_generation_count }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
 import extdeps.exec.command { ArgvCommand }
 import v2.extdeps.languages.bash_build {
@@ -723,7 +725,7 @@ fn fleet_converge_scope_matches(planned: FleetConvergeScope, observed: FleetConv
 
 fn fleet_converge_plan_held_lease(
   subject: FleetConvergePlanSubject,
-  prior_generation: Int,
+  generation: CasGeneration,
   owner_fingerprint: ContentHash,
 ) -> HeldLease {
   held_lease(
@@ -731,7 +733,7 @@ fn fleet_converge_plan_held_lease(
       lease_key: fleet_converge_plan_lease_key(host: subject.host),
       resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
       owner_fingerprint: owner_fingerprint,
-      generation: prior_generation + 1,
+      generation: generation,
     },
     observed: LeaseAbsent,
   )
@@ -2762,7 +2764,7 @@ fn fleet_converge_plan_artifact(
   observed_activation_readiness: RunnerActivationReadiness,
   observed_unit_standings: RunnerUnitStandings,
   observed_retirement: SlotRetirementEvidence,
-) -> FleetConvergePlanArtifact {
+) -> FleetConvergePlanArtifact? {
   fleet_converge_plan_artifact_of_request(
     request: FullHostConverge {
       host: host,
@@ -2783,55 +2785,57 @@ fn fleet_converge_plan_artifact(
 // a body row, one fold gets it -- and it would put a second answer beside the subject, the lease and
 // the bundle digest, which are the three things apply admits against.
 //
-// TOTAL, NOT OPTIONAL, and that is main's dissolution preserved rather than re-litigated: the Absent
-// arm answered "there is no plan artifact" when a hash did not match an expected union arm, which
-// every caller reads as nothing to converge rather than as could-not-classify. content_hash_atom
-// returns the structural digest directly, so there is no union to match and no arm to get wrong.
+// Hash classification stays total (content_hash_atom). Absent here is only a refused
+// lease-generation successor (negative prior or exhausted CasGeneration space).
 fn fleet_converge_plan_artifact_of_request(
   request: FleetConvergeRequest,
   prior_generation: Int,
-) -> FleetConvergePlanArtifact {
+) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(request: request)
   let baseline = observed_baseline_text(request: request)
-  let planned_generation = prior_generation + 1
-  let planned_terminal = fleet_converge_apply_terminal(request: request)
-  let body = join(
-    concat(
-      concat(
-        [
-          "# fleet-converge plan",
-          concat("subject_host:", subject.host as String),
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let planned_terminal = fleet_converge_apply_terminal(request: request)
+      let body = join(
+        concat(
           concat(
-            "subject_member_set:",
-            serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+            [
+              "# fleet-converge plan",
+              concat("subject_host:", subject.host as String),
+              concat(
+                "subject_member_set:",
+                serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+              ),
+              concat("plan_generation:", to_string(planned_generation)),
+              "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+              concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+              "observed_baseline:",
+              baseline,
+            ],
+            fleet_converge_plan_axis_lines(request: request),
           ),
-          concat("plan_generation:", to_string(planned_generation)),
-          "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
-          concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
-          "observed_baseline:",
-          baseline,
-        ],
-        fleet_converge_plan_axis_lines(request: request),
-      ),
-      fleet_converge_plan_refusal_counter_lines(request: request),
-      [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
-    ),
-    "\n",
-  )
-  let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
-  let lease = fleet_converge_plan_held_lease(
-    subject: subject,
-    prior_generation: prior_generation,
-    owner_fingerprint: owner_fp,
-  )
-  FleetConvergePlanArtifact {
-    subject: subject,
-    prior_generation: prior_generation,
-    plan_lease: lease,
-    apply_terminal: planned_terminal,
-    observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
-    plan_body: body,
-    apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+          fleet_converge_plan_refusal_counter_lines(request: request),
+          [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: planned_terminal,
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+      } }
+    }
   }
 }
 
@@ -2847,7 +2851,7 @@ fn fleet_converge_launch_environment_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
-) -> FleetConvergePlanArtifact {
+) -> FleetConvergePlanArtifact? {
   fleet_converge_plan_artifact_of_request(
     request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
     prior_generation: prior_generation,
@@ -2868,11 +2872,13 @@ fn fleet_converge_allocation_store_plan_artifact(
   let subject = fleet_converge_plan_subject(request: request)
   let spec = fabric_allocation_store_substrate_spec()
   let baseline = observed_baseline_text(request: request)
-  let planned_generation = prior_generation + 1
-  match runner_host_deploy_for(host: host as HostIdentity) {
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: _ } => Absent
     RunnerHostDeployRefused { host: _, cause: _ } => Absent
     RunnerHostDeployFound { deploy: deploy } => {
+      let planned_generation = cas_generation_count(g: generation)
       let operations = fabric_allocation_store_effect_operations(
         effect: fabric_allocation_store_ensure_effect(),
         job_user: deploy.job_user,
@@ -2906,25 +2912,20 @@ fn fleet_converge_allocation_store_plan_artifact(
         "\n",
       )
       let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
-      let lease = fleet_converge_plan_held_lease(
+      Present { value: FleetConvergePlanArtifact {
         subject: subject,
         prior_generation: prior_generation,
-        owner_fingerprint: owner_fp,
-      )
-      match content_hash_of_value(value: baseline as NonEmptyStr) {
-        Fnv1a64(structural) => Present { value: FleetConvergePlanArtifact {
+        plan_lease: fleet_converge_plan_held_lease(
           subject: subject,
-          prior_generation: prior_generation,
-          plan_lease: lease,
-          apply_terminal: fleet_converge_apply_terminal(request: request),
-          observed_baseline_hex: structural.digest,
-          plan_body: body,
-          apply_shell: apply_shell,
-        } }
-        Sha256Hash(_) => Absent
-        Sha1Hash(_) => Absent
-        Sha512Hash(_) => Absent
-      }
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: fleet_converge_apply_terminal(request: request),
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: apply_shell,
+      } }
+    }
     }
   }
 }

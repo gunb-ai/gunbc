@@ -1,0 +1,52 @@
+module test.claim.cursor_key_probe_witness
+
+import std.types { Bool, String, List }
+import extdeps.exec.command { argv_words }
+import extdeps.llm.cursor_cli { cursor_key_probe_command, cursor_disable_auto_update_flag, cursor_list_models_flag }
+import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program, cursor_agent_executable_path, cursor_agent_pinned_version }
+import gunbc.cursor_harness_credential { cursor_key_probe_reading, CursorKeyProbeReading, CursorKeyAccepted, CursorKeyRejected, CursorKeyProbeUnreadable }
+
+fn accepted(r: CursorKeyProbeReading) -> Bool {
+  match r {
+    CursorKeyAccepted => true
+    CursorKeyRejected { detail } => false
+    CursorKeyProbeUnreadable { exit_code, detail } => false
+  }
+}
+
+fn rejected(r: CursorKeyProbeReading) -> Bool {
+  match r {
+    CursorKeyAccepted => false
+    CursorKeyRejected { detail } => true
+    CursorKeyProbeUnreadable { exit_code, detail } => false
+  }
+}
+
+// Observed on 2026.09.15-d2fe57e, srv2 2026-10-17.
+test fn the_probe_is_list_models_on_the_supplied_program_with_the_flag() -> Bool {
+  let words = argv_words(command: cursor_key_probe_command(program: cursor_agent_pinned_program()))
+  words == [cursor_agent_executable_path(version: cursor_agent_pinned_version), cursor_disable_auto_update_flag, cursor_list_models_flag]
+}
+
+test fn a_valid_key_with_model_rows_is_accepted() -> Bool {
+  accepted(r: cursor_key_probe_reading(exit_code: 0, stdout: "Available models\n\nauto - Auto\ngpt-5 - GPT-5\n", stderr: ""))
+}
+
+test fn exit_zero_without_a_row_is_not_accepted() -> Bool {
+  !accepted(r: cursor_key_probe_reading(exit_code: 0, stdout: "Available models\n\n", stderr: ""))
+    && !accepted(r: cursor_key_probe_reading(exit_code: 0, stdout: "", stderr: ""))
+    && !accepted(r: cursor_key_probe_reading(exit_code: 0, stdout: "auto - Auto\n", stderr: ""))
+}
+
+test fn only_the_invalid_key_marker_on_a_failure_rejects() -> Bool {
+  rejected(r: cursor_key_probe_reading(exit_code: 1, stdout: "", stderr: "The provided API key is invalid. The API key was loaded from the CURSOR_API_KEY environment variable"))
+    && !rejected(r: cursor_key_probe_reading(exit_code: 1, stdout: "", stderr: "network unreachable"))
+    && !accepted(r: cursor_key_probe_reading(exit_code: 1, stdout: "Available models\nauto - Auto\n", stderr: ""))
+}
+
+// Pre-header output never counts as a model row: a preamble followed by the bare header is not acceptance.
+test fn a_preamble_before_the_header_is_not_a_model_row() -> Bool {
+  !accepted(r: cursor_key_probe_reading(exit_code: 0, stdout: "warning or preamble\nAvailable models\n", stderr: ""))
+    && !accepted(r: cursor_key_probe_reading(exit_code: 0, stdout: "warning or preamble\nAvailable models\n\n", stderr: ""))
+    && accepted(r: cursor_key_probe_reading(exit_code: 0, stdout: "warning or preamble\nAvailable models\nauto - Auto\n", stderr: ""))
+}

@@ -1,0 +1,54 @@
+module test.claim.retry_http_hint_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.measure { second, second_count }
+import std.retry_law {
+  RetryHintNone, RetryHintDelay, RetryHintUnresolved, RetryHintUnreadable, RetryAdmissible,
+  RetryLaw, RetryHistoryEvent, RealWorkFailure, retry_admissibility,
+}
+import std.nat { Zero }
+import extdeps.ietf.http_semantics { RetryAfterSeconds, RetryAfterAbsent, RetryAfterUnparsed, RetryAfterUnread }
+import gunbc.retry_http_hint { retry_hint_from_http }
+
+data witness_law: RetryLaw = RetryLaw {
+  initial_delay: second(count: 2),
+  delay_cap: second(count: 32),
+  real_work_failure_bound: 3,
+}
+
+test fn http_retry_after_seconds_is_a_delay_and_unparsed_is_unresolved() -> Bool {
+  (match retry_hint_from_http(after: RetryAfterSeconds { seconds: second(count: 7) }) {
+    RetryHintDelay { delay: n } => second_count(s: n) == 7
+    RetryHintNone => false
+    RetryHintUnresolved { cause: _ } => false
+  })
+    && (match retry_hint_from_http(after: RetryAfterAbsent) {
+      RetryHintNone => true
+      RetryHintDelay { delay: _ } => false
+      RetryHintUnresolved { cause: _ } => false
+    })
+    && (match retry_hint_from_http(after: RetryAfterUnparsed { text: "Fri, 31 Dec 1999 23:59:59 GMT" }) {
+      RetryHintUnresolved { cause: c } => (c as String) == "Retry-After was not delta-seconds"
+      RetryHintNone => false
+      RetryHintDelay { delay: _ } => false
+    })
+    && (match retry_hint_from_http(after: RetryAfterUnread { cause: "headers missing" }) {
+      RetryHintUnresolved { cause: c } => (c as String) == "Retry-After headers unread"
+      RetryHintNone => false
+      RetryHintDelay { delay: _ } => false
+    })
+}
+
+test fn an_http_date_retry_after_refuses_admissibility() -> Bool {
+  let history = [RetryHistoryEvent { class: RealWorkFailure, at: 50 }]
+  match retry_admissibility(
+    law: witness_law,
+    history: history,
+    hint: retry_hint_from_http(after: RetryAfterUnparsed { text: "Fri, 31 Dec 1999 23:59:59 GMT" }),
+    jitter: second(count: Zero),
+  ) {
+    RetryHintUnreadable { cause: _ } => true
+    RetryAdmissible { earliest: _, real_work_failures: _ } => false
+    _ => false
+  }
+}

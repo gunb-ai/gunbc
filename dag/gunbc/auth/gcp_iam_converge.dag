@@ -1,6 +1,6 @@
 module gunbc.auth.gcp_iam_converge
 
-import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation }
+import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation, mtcollins1_boot_run_scoped_federations }
 import std.types { Int, List, NonEmptyStr, String, Bool, Secret, Map }
 import std.measure { Second, second, second_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
@@ -9,7 +9,8 @@ import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
 import std.optional { Present, Absent, optional_present }
 import extdeps.crypto.sha2 { sha256_hex }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail, wif_pool_resource }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, wif_pool_resource, WifProviderOperation }
+import gunbc.auth.gcp_operation_wait { wif_create_operation_wait, iam_converge_token_lifetime }
 import extdeps.cloud.gcp.iam {
   IamCondition, GcpPolicy, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
@@ -101,10 +102,6 @@ data iam_observe_service_account: ServiceAccountEmail = "iam-observe@gunbai-secr
 // own policy and no other grant. The provider's condition pins this repository, the fleet-converge
 // workflow file at reviewed main, a workflow_dispatch on main and the gcp-iam-converge environment. That binding is
 // written once by the bootstrap ceremony; iam-converge's own policy is never a converge target.
-// THE ACTUATION TOKEN'S LIFETIME, passed to the impersonating auth step. Ten minutes covers a
-// provisioning run (three creates, one impersonation reconcile, a handful of secret grants, each with
-// readback) and ends before a leaked token is worth much.
-data iam_converge_token_lifetime: Second = second(count: 600)
 
 // ── The reach of setIamPolicy, bounded in three layers ───────────────────────────────────────
 // 1. FOUR CUSTOM ROLES, EACH BOUND ON THE RESOURCE ITS PERMISSIONS ARE AUTHORIZED AGAINST (HOLD
@@ -222,7 +219,7 @@ data gcp_iam_converge_targets: List<DedicatedFederation> = concat(
     map(provisioned_boot_federations(), f => boot_dedicated_federation(f: f)),
   ),
   concat(
-    concat([namecheap_dedicated_federation(), fleet_convergence_federation(), printer_dedicated_federation(), hetzner_cloud_control_federation()], native_product_federations()),
+    concat(concat([namecheap_dedicated_federation(), fleet_convergence_federation(), printer_dedicated_federation(), hetzner_cloud_control_federation()], mtcollins1_boot_run_scoped_federations()), native_product_federations()),
     [mtjade1_arrival_dedicated_federation()],
   ),
 )
@@ -1031,7 +1028,7 @@ fn execute_create(e: GcpIamEffect, token: Secret) -> String
   match e {
     CreateProvider { pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c } =>
       match gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c as NonEmptyStr) {
-        RestAnswered { answer: _ } => ""
+        RestAnswered { answer: a } => wif_create_operation_wait(token: token, subject: WifProviderOperation { pool_id: p as String, provider_id: v as String }, operation_name: a.operation_name, done: a.done, error: a.error, render_refusal: o => rest_refusal_text(o: o))
         RestRefused { refusal } => create_refusal(subject: concat("provider ", v as String), o: refusal)
       }
     AddPolicyCells { subject: _, observed_etag: _, cells: _ } => ""
@@ -1046,7 +1043,9 @@ fn first_refusal(xs: List<GcpIamEffect>, run: fn(GcpIamEffect) -> String) -> Str
   fold(xs, init: "", f: (acc, e) => if acc != "" { acc } else { run(e) })
 }
 
-// ONE TARGET: its approved creates, then -- only when something was created -- a re-read and
+// ONE TARGET: its approved creates, each followed by a wait for the create's long-running operation
+// (gunbc.auth.gcp_operation_wait: done, failed or the declared budget; a spent budget refuses and never
+// reissues the create), then -- only when something was created -- a re-read and
 // re-classification of the whole federation against its declaration (a created provider must read
 // back with the approved condition before anything is granted through it), then its approved policy
 // adds. No effect outside the approved list is issued.

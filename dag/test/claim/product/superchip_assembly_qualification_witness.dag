@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { gibibyte, gibibyte_to_byte_size }
 import extdeps.memory.types { Hbm }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
-import gunbc.fleet.fleet_asset_identity { gh200_dv5_a, gh200_dv5_b, p4261_k1_a }
+import gunbc.fleet.fleet_asset_identity { gh200_dv5_a, gh200_dv5_b, p4261_e1_b }
 import gunbc.spark.serving_promotion { QualityReceipt }
 import test.claim.spark.serving_promotion_witness { fx_key, fx_incumbent_key, fx_quality }
 import product.superchip_assembly_qualification {
@@ -46,7 +46,8 @@ import product.superchip_assembly_qualification {
   first_assembly,
   gh200_dv5_unit,
   gh200_dv5_second_unit,
-  unpaired_modules,
+  held_alternates,
+  p4261_e1_carrier,
   GpuMemoryClaimed,
   p4261_k1_carrier,
 }
@@ -55,25 +56,25 @@ fn mentions(lines: List<NonEmptyStr>, fragment: String) -> Bool {
   any(lines, l => (l as String).contains(fragment))
 }
 
-// THE REAL PATH: the first planned assembly, DV5 asset A on K1 asset A, as bought. Its faces agree at
-// photo grain, so it is not refused; nothing past a photograph has been read, so it stands at the first
-// stage, and the rest of the bench plan is listed after it -- including that the photographs establish
-// no input bound, and that the boot to observe is of THESE assets.
+// THE REAL PATH: the first planned assembly, DV5 asset A on the measured E1. The E1's module receptacles
+// were not photographed face-on, so mating is unobserved and names that photograph; it is not refused,
+// and the rest of the bench plan is listed after it -- including the E1's measured 60 V input bound, and
+// that the boot to observe is of THESE assets.
 test fn the_first_assembly_stands_at_mating_with_the_bench_plan_after_it() -> Bool {
   match assembly_qualification(a: first_assembly) {
     AssemblyBlockedAt { stage: s, open_here: here, open_later: later } =>
       qualification_stage_label(stage: s) == qualification_stage_label(stage: MechanicallyMated)
-        && mentions(lines: here, fragment: "consistent at photo grain")
-        && mentions(lines: later, fragment: "rev K1")
+        && mentions(lines: here, fragment: "photograph the E1's two module receptacles")
+        && mentions(lines: later, fragment: "rev E1")
         && mentions(lines: later, fragment: "450-1000 W configurable range")
         && mentions(lines: later, fragment: "boot storage")
         && mentions(lines: later, fragment: "expected 120 V")
-        && mentions(lines: later, fragment: "no input bound established")
+        && mentions(lines: later, fragment: "at most 60 V")
         && mentions(lines: later, fragment: "reads as SKU215")
-        && mentions(lines: later, fragment: "shows no RJ45")
+        && mentions(lines: later, fragment: "USB 3.0 SuperSpeed Micro-B")
         && mentions(lines: later, fragment: "ARLINGTON-MB takes J7 12 V, J135 12 V, J9 (rail unprinted)")
         && mentions(lines: later, fragment: "GenZ 4C+ slot J31")
-        && mentions(lines: later, fragment: "observe module gh200-dv5-a (699-2G530-0215-DV5) booting to BMC and OS on carrier p4261-k1-a")
+        && mentions(lines: later, fragment: "observe module gh200-dv5-a (699-2G530-0215-DV5) booting to BMC and OS on carrier p4261-e1-b")
     _ => false
   }
 }
@@ -139,12 +140,16 @@ test fn a_claim_is_placed_against_the_row_and_the_family_separately() -> Bool {
   other && outside
 }
 
-// As bought: one assembly, and the second DV5 -- the same part number, a different asset -- held
-// unpaired rather than invented into an assembly with a carrier that was never bought.
-test fn the_purchase_is_one_assembly_and_one_held_module() -> Bool {
-  count(unpaired_modules) == 1
-    && match unpaired_modules.first() {
-      Present { value: u } => u.board_part_number == gh200_dv5_unit.board_part_number && (u.asset as String) == (gh200_dv5_b as String)
+// As ruled: one assembly under qualification, the DV5 on the measured E1, and one held alternate -- the
+// DV9 (a different asset, read as a different part number) on the K1. No asset is in both pairs.
+test fn the_purchase_is_one_assembly_and_one_held_alternate() -> Bool {
+  (first_assembly.carrier.asset as String) == (p4261_e1_carrier.asset as String)
+    && (first_assembly.unit.asset as String) == (gh200_dv5_a as String)
+    && count(held_alternates) == 1
+    && match held_alternates.first() {
+      Present { value: a } => a.unit.board_part_number != gh200_dv5_unit.board_part_number
+        && (a.unit.asset as String) == (gh200_dv5_b as String)
+        && (a.carrier.asset as String) == (p4261_k1_carrier.asset as String)
       Absent => false
     }
 }
@@ -157,7 +162,7 @@ data supplied_configuration: AsBuiltConfiguration = AsBuiltConfiguration {
   thermal_assembly: Present { value: "supplied cold plate 1" },
 }
 
-data supplied_scope: ReceiptScope = ReceiptScope { module: gh200_dv5_a, carrier: p4261_k1_a, configuration: supplied_configuration }
+data supplied_scope: ReceiptScope = ReceiptScope { module: gh200_dv5_a, carrier: p4261_e1_b, configuration: supplied_configuration }
 
 fn supplied_workload(candidate: QualityReceipt, scope: ReceiptScope) -> WorkloadAcceptance {
   WorkloadAcceptance {
@@ -207,10 +212,25 @@ fn measured_unit(gpu_gib: Nat, cpu_gib: Nat) -> SuperchipUnitObservation {
   }
 }
 
+// The E1 as a supplied scenario sees it: its module receptacles photographed (supplied), every other
+// field the real observation's.
+data supplied_e1_carrier: CarrierUnitObservation = CarrierUnitObservation {
+  asset: p4261_e1_carrier.asset,
+  layout: p4261_e1_carrier.layout,
+  module_face: MezzanineFacePhotographed {
+    connector_count: 2,
+    contact_rows_per_connector: 6,
+    arrangement: OneAtEachEndOfLongAxis,
+    source: "supplied",
+  },
+  provenance: p4261_e1_carrier.provenance,
+  source: "supplied",
+}
+
 fn assembly_of(unit: SuperchipUnitObservation, configuration: AsBuiltConfiguration, bench: BenchRecord) -> SuperchipAssembly {
   SuperchipAssembly {
     unit: unit,
-    carrier: p4261_k1_carrier,
+    carrier: supplied_e1_carrier,
     row: nvidia_gh200_480gb_catalog,
     configuration: configuration,
     bench: bench,
@@ -238,7 +258,8 @@ test fn a_fully_read_assembly_is_workload_qualified() -> Bool {
 }
 
 // THE SAME PART NUMBER IS NOT THE SAME UNIT. Every receipt was taken on module asset A; attached to an
-// assembly of module asset B -- same part number, same carrier, same configuration -- not one of them
+// assembly of module asset B given A's part number (supplied: the received B reads DV9, so the
+// same-part case is a hypothesis here) -- same carrier, same configuration -- not one of them
 // counts, and the assembly stops at the first stage that needs a receipt, naming the two assets. The
 // same receipts on asset A's assembly qualify it (a_fully_read_assembly_is_workload_qualified).
 test fn a_receipt_for_another_unit_of_the_same_part_does_not_transfer() -> Bool {
@@ -246,7 +267,7 @@ test fn a_receipt_for_another_unit_of_the_same_part_does_not_transfer() -> Bool 
     asset: gh200_dv5_second_unit.asset,
     serial: Present { value: "supplied-serial-b" },
     board_designation: gh200_dv5_second_unit.board_designation,
-    board_part_number: gh200_dv5_second_unit.board_part_number,
+    board_part_number: gh200_dv5_unit.board_part_number,
     die_marking: gh200_dv5_second_unit.die_marking,
     listed_gpu_memory: gh200_dv5_second_unit.listed_gpu_memory,
     listed_cpu_memory: gh200_dv5_second_unit.listed_cpu_memory,
@@ -338,7 +359,7 @@ test fn a_contradicted_requirement_refuses_at_its_stage() -> Bool {
       site_ac_supply: first_assembly.bench.site_ac_supply,
       thermal_path: ReadContradicted {
         reason: "supplied: no assembly fits the lidless package",
-        scope: ReceiptScope { module: gh200_dv5_a, carrier: p4261_k1_a, configuration: thermal_only },
+        scope: ReceiptScope { module: gh200_dv5_a, carrier: p4261_e1_b, configuration: thermal_only },
       },
       protective_shutdown: first_assembly.bench.protective_shutdown,
       management_path: first_assembly.bench.management_path,
@@ -363,10 +384,6 @@ test fn a_mismatched_connector_face_refuses_mating() -> Bool {
     unit: first_assembly.unit,
     carrier: CarrierUnitObservation {
       asset: p4261_k1_carrier.asset,
-      serial: p4261_k1_carrier.serial,
-      carrier_designation: p4261_k1_carrier.carrier_designation,
-      carrier_part_number: p4261_k1_carrier.carrier_part_number,
-      revision: p4261_k1_carrier.revision,
       layout: p4261_k1_carrier.layout,
       module_face: MezzanineFacePhotographed {
         connector_count: 3,

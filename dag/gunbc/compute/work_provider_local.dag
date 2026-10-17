@@ -3,6 +3,8 @@ module gunbc.compute.work_provider_local
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
+import std.env_binding { EnvBinding }
+import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import std.measure { byte_size_count }
@@ -20,9 +22,10 @@ import extdeps.gunbc
 import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.systemd { ExecStopProperty, BindPathsProperty }
 import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
-  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty,
+  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty, NamedUnitSetting,
   SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
@@ -40,7 +43,11 @@ import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
 }
-import extdeps.cache.sccache { sccache_installed_binary_path }
+import gunbc.owned_cargo_target { owned_cargo_target_dir }
+import extdeps.cache.sccache {
+  sccache_installed_binary_path, sccache_server_uds_env_var,
+}
+import extdeps.linux.procfs { procfs_status_effective_uid }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
@@ -84,7 +91,7 @@ import std.materialization_ladder {
   materialization_ladder, ladder_verdict_is_green, ladder_verdict_prescribes, verdict_identity,
 }
 import std.realization { Materialization, Memoize, Recompute, Share }
-import std.materialization_store_grant { MaterializationStoreRoot, DurableHostVolumeRoot, materialization_store_frame, materialization_store_root_path, materialization_store_staging_root_path }
+import std.materialization_store_grant { MaterializationStoreRoot, materialization_store_frame, materialization_store_staging_root_path }
 import std.materialization_object {
   ArtifactPayload, ArtifactBlobPart, StoreLookup, StoreLookupHit, StoreLookupMiss, StoreLookupRefused, StoreLookupRefusal,
   StoreLookupObjectUnavailable, StoreLookupObjectMalformed, StoreLookupManifestUninterpretable, StoreLookupPayloadMissing,
@@ -114,7 +121,7 @@ import gunbc.compute.work_request {
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable, UnitLaunchRefused,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
@@ -167,9 +174,19 @@ fn compute_lease_holder_line(seat_dir: String) -> String {
   join(["holder ", seat_dir, "\n"], "")
 }
 
-fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
+// THE LAYOUT EXISTS ONLY FOR AN INSTANCE THAT DECLARES A STORE, because its staging directory is
+// derived from that store. Production, which already holds the store, builds it with compute_layout_in.
+fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout? {
+  match instance.materialization_store_root {
+    Absent => none
+    Present { value: store_root } => Present { value: compute_layout_in(instance: instance, store_root: store_root, identity_hex: identity_hex) }
+  }
+}
+
+fn compute_layout_in(instance: HostDashboardInstance, store_root: MaterializationStoreRoot, identity_hex: String) -> ComputeLayout {
   let root = compute_root(instance: instance) as String
-  let work_dir = join([root, "/work/", identity_hex], "")
+  let work_root = join([root, "/work"], "")
+  let work_dir = join([work_root, "/", identity_hex], "")
   ComputeLayout {
     root: root,
     work_dir: work_dir,
@@ -177,8 +194,19 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     out_dir: join([work_dir, "/out"], ""),
     leases_dir: compute_leases_dir(root: root),
     lease_path: compute_lease_path(leases_dir: compute_leases_dir(root: root), identity_hex: identity_hex),
-    staging_dir: compute_staging_dir(),
-    target_dir: join([root, "/target"], ""),
+    staging_dir: materialization_store_staging_root_path(root: store_root),
+    // The writable target belongs to THIS IDENTITY (C4), not to the host: it is the owned cargo
+    // target partition gunbc.owned_cargo_target.owned_cargo_target_dir applied to the compute work root and
+    // this identity -- <root>/work/<identity>/target, under the identity's own work_dir (the same
+    // per-identity home that holds its checkout), a sibling of src, instead of one host-wide
+    // target shared by every identity. Two identities can therefore never write to, or capture
+    // from, one another's target. Per-identity is what the lease makes safe: the lease is keyed
+    // by the same identity and is taken create-if-absent, so no two attempts of one identity can
+    // overlap and the target the build writes is exactly the one compute_return_outputs hashes
+    // from (TargetRoot). The target is DISPOSABLE: compute_settled_record removes it once the
+    // outputs are returned and the store settlement has landed, while the lease is still held, so
+    // cross-request reuse lives in the shared sccache and the result store, never in a target.
+    target_dir: owned_cargo_target_dir(base_root: work_root, owner: identity_hex),
     log_path: join([work_dir, "/log"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
     attempts_dir: join([root, "/attempts"], ""),
@@ -386,11 +414,15 @@ fn provide_result_document(r: ProvideResult) -> String {
 // THE MODE IS ALWAYS SPELLED. claim_batch defaults to hermetic, so leaving the flag off for a wet
 // request ran it hermetic while its identity said wet -- the key and the realization answering two
 // different questions. Both arms now name their mode, so the run is the operation the key describes.
+// THE ONE TARGET AUTHORITY IS cargo's --target-dir, NOT the CARGO_TARGET_DIR environment variable:
+// sccache hashes every CARGO_* variable of a rustc invocation into the Rust compile key
+// (extdeps.cache.sccache sccache_rust_key_facts), so exporting the per-identity target through the
+// environment made every identity's key unique and no Rust compile was ever reused across identities.
 fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency: ComputeDependency) -> List<String> {
   match op {
     BuildGunbcBinaries { profile, bins } =>
       concat(
-        concat([compute_program(instance: instance, cap: CargoCapability), "build"], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
+        concat([compute_program(instance: instance, cap: CargoCapability), "build", "--target-dir", layout.target_dir], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
         concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", gunbc_binary_name(b: b) as String])),
       )
     CompileEntry { entry } =>
@@ -436,14 +468,44 @@ fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
 // THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
 // gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a
 // unit, shared with the agent session's unit. A compute unit states no process bounds.
-fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<SystemdRunProperty> {
-  compute_grant_unit_properties(granted: granted, working_directory: layout.checkout, process_bounds: none)
+fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte, path_virtualization: ComputeUnitPathVirtualization) -> List<SystemdRunProperty> {
+  concat(
+    compute_grant_unit_properties(granted: granted, working_directory: compute_unit_working_directory(layout: layout, path_virtualization: path_virtualization), process_bounds: none),
+    compute_path_virtualization_properties(layout: layout, path_virtualization: path_virtualization),
+  )
+}
+
+// THE ONLY PATH VIRTUALIZATION A UNIT MAY TAKE, CLOSED, a sibling of ComputeUnitStopObservation for the
+// same reason: a caller picks an arm and compute_run_unit alone maps it to BindPaths= (systemd.exec(5)),
+// so no caller can append a raw property. sccache's Rust key hashes the checkout path (CARGO_MANIFEST_DIR)
+// and the target path (CARGO_TARGET_DIR, OUT_DIR); two identities of one commit therefore miss each other
+// unless they present the same paths. The unit's OWN backing directories (layout.checkout, layout.target_dir)
+// are bound, in the unit's private mount namespace, onto paths the caller names; nothing is shared between
+// units, and the backing directories stay per identity. The destinations must already exist.
+type ComputeUnitPathVirtualization
+  = NoPathVirtualization
+  | CheckoutAndTargetAtStablePaths { checkout_at: String, target_at: String }
+
+fn compute_unit_working_directory(layout: ComputeLayout, path_virtualization: ComputeUnitPathVirtualization) -> String {
+  match path_virtualization {
+    NoPathVirtualization => layout.checkout
+    CheckoutAndTargetAtStablePaths { checkout_at, target_at: _ } => checkout_at
+  }
+}
+
+fn compute_path_virtualization_properties(layout: ComputeLayout, path_virtualization: ComputeUnitPathVirtualization) -> List<SystemdRunProperty> {
+  match path_virtualization {
+    NoPathVirtualization => []
+    CheckoutAndTargetAtStablePaths { checkout_at, target_at } =>
+      [NamedUnitSetting { property: BindPathsProperty, value: join([layout.checkout, ":", checkout_at, " ", layout.target_dir, ":", target_at], "") as NonEmptyStr }]
+  }
 }
 
 // Run the operation as a transient user unit and wait for it: the unit carries THE MEMORY THE POOL
 // GRANTED -- not a ceiling read independently from the instance, which would let the reservation and
-// the enforcement drift apart -- the checkout as working directory, the shared per-host target
-// directory and the sccache wrapper.
+// the enforcement drift apart -- the checkout as working directory, the run-owned target directory
+// (under this run's work_dir, so the lease's single identity bounds what the build writes and what
+// capture reads) and the shared sccache wrapper.
 // WHO OWES THE READ, AND WHY A TRUNCATION CANNOT UNDER-REPORT A PEAK HERE. A truncated stderr is the
 // worst-directed hazard in this mechanism: it makes the number SMALLER -- "Memory peak: 11G" cut to
 // "Memory peak: 1G" parses cleanly as a tenth of the real figure -- and under-reporting is the
@@ -506,7 +568,61 @@ fn compute_operation_env(op: WorkOperation) -> List<SystemdSetenvBinding> {
   }
 }
 
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, granted: Kibibyte) -> ComputeUnitRunReading {
+// The unit's environment is the user manager plus --setenv only. An undeclared sccache endpoint
+// falls through to TCP 4226, which another uid's server can hold. The socket is keyed by USER
+// (the launching uid's runtime dir / sccache.sock), not by layout/identity, so one server serves
+// every identity of that uid. SCCACHE_DIR is unbound: HostDashboardInstance does not declare a
+// cache dir, and ci_cache_instance is the CI runner's store, not production's.
+fn compute_user_sccache_server_uds(user_runtime_dir: FilePath) -> NonEmptyStr {
+  join([user_runtime_dir as String, "/sccache.sock"], "") as NonEmptyStr
+}
+
+fn compute_launching_user_runtime_dir() -> FilePath? {
+  let status = Filesystem.Read(path: "/proc/self/status")
+  if !status.success {
+    none
+  } else {
+    match procfs_status_effective_uid(content: status.content) {
+      Absent => none
+      Present { value: uid } => {
+        let runtime_dir = join(["/run/user/", to_string(value: uid)], "") as FilePath
+        let listed = Filesystem.List(path: runtime_dir)
+        if listed.success {
+          Present { value: runtime_dir }
+        } else {
+          none
+        }
+      }
+    }
+  }
+}
+
+fn compute_unit_sccache_setenv(user_runtime_dir: FilePath) -> List<SystemdSetenvBinding> {
+  [
+    SystemdSetenvBinding {
+      name: sccache_server_uds_env_var,
+      value: compute_user_sccache_server_uds(user_runtime_dir: user_runtime_dir),
+    },
+  ]
+}
+
+// THE ONLY EXTENSION OF THE UNIT'S PROPERTIES, CLOSED. compute_unit_properties is the one authority
+// tying the memory grant to the unit, so a caller cannot append properties: it picks an arm here, and
+// compute_run_unit alone maps the arm to a property. SccacheStatsAtStop is ExecStop= (systemd.service(5)),
+// which runs after the main process and before KillMode reaps the unit's sccache server.
+type ComputeUnitStopObservation = NoStopObservation | SccacheStatsAtStop
+
+fn compute_stop_observation_properties(observation: ComputeUnitStopObservation) -> List<SystemdRunProperty> {
+  match observation {
+    NoStopObservation => []
+    SccacheStatsAtStop => [NamedUnitSetting { property: ExecStopProperty, value: join([sccache_installed_binary_path, " --show-stats"], "") as NonEmptyStr }]
+  }
+}
+
+// launcher_env is applied to the systemd-run process via env(1), not as unit --setenv. Empty is
+// inherit; a cold instrument supplies XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS when the job env
+// has none. One fold: production and the instrument both call this.
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observation: ComputeUnitStopObservation, path_virtualization: ComputeUnitPathVirtualization) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -520,20 +636,28 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
     })
     match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
-      properties: compute_unit_properties(layout: layout, granted: granted),
-      setenv_bindings: concat([
-        SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
-        SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
-      ], env),
+      properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization), compute_stop_observation_properties(observation: stop_observation)),
+      setenv_bindings: concat(
+        concat(
+          [
+            SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
+          ],
+          compute_unit_sccache_setenv(user_runtime_dir: user_runtime_dir),
+        ),
+        env,
+      ),
       command_argv: argv,
     ) {
       SystemdSummaryPrintingWaitRefused { cause: why } =>
         ComputeUnitRunRefused { cause: why }
       SystemdSummaryPrintingWaitReady { wait: launcher } => {
         let r = compute_exec(
-          program: systemd_run,
+          program: env_absolute_program().invocation as String,
           workdir: layout.checkout,
-          args: systemd_summary_printing_wait_argv(w: launcher),
+          args: env_prefixed_args(
+            bindings: launcher_env,
+            command_argv: concat([systemd_run], systemd_summary_printing_wait_argv(w: launcher)),
+          ),
         )
         ComputeUnitRunExecuted { run: ComputeUnitRun {
           exec: r,
@@ -915,8 +1039,11 @@ fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout
 // and the commit's link is a link, never a copy (C1b refuses a cross-device stage). It is DERIVED from
 // the store root's path, never re-spelled. A staged file is named by the work identity and the
 // declared output, and is removed once the commit has linked it.
-fn compute_staging_dir() -> String {
-  materialization_store_staging_root_path(root: compute_durable_store.root)
+fn compute_staging_dir(instance: HostDashboardInstance) -> String? {
+  match instance.materialization_store_root {
+    Absent => none
+    Present { value: store_root } => Present { value: materialization_store_staging_root_path(root: store_root) }
+  }
 }
 
 fn compute_staged_path(layout: ComputeLayout, declared: String) -> String {
@@ -1483,8 +1610,8 @@ fn compute_settled_record(
 ) -> ProvideResult {
   let document = work_outcome_wire(o: outcome, subject: subject, op: op)
   match compute_store_commit(materialization: materialization, layout: layout, op: op, outcome: outcome, document: document) {
-    ComputeCommitNotOwed => ProvideFresh { outcome: outcome, document: document, host_record: HostRecordWritten }
-    ComputeCommitted => ProvideFresh { outcome: outcome, document: document, host_record: HostRecordWritten }
+    ComputeCommitNotOwed => ProvideFresh { outcome: outcome, document: document, host_record: compute_remove_owned_target(layout: layout) }
+    ComputeCommitted => ProvideFresh { outcome: outcome, document: document, host_record: compute_remove_owned_target(layout: layout) }
     ComputeCommitRefused { detail } =>
       compute_fresh(
         outcome: WorkRefusedByInfrastructure {
@@ -1492,12 +1619,28 @@ fn compute_settled_record(
           cause: StoreUnavailable {
             detail: join([
               "the work ended ", work_outcome_ending(o: outcome),
-              " and its reservation was released, but the materialization store refused its record, so it is not shared: ",
+              " and its reservation was released, but the materialization store refused its record, so it is not shared (the owned target at ",
+              layout.target_dir, " is KEPT, since settlement did not land): ",
               detail,
             ], ""),
           },
         },
         subject: subject, op: op)
+  }
+}
+
+// THE OWNED TARGET'S LIFETIME ENDS AT SETTLEMENT, while the identity's lease is still held. The target
+// is per-identity (gunbc.owned_cargo_target) and identities change with every source, toolchain and
+// provider revision, so a target nothing removes grows without bound. It is removed only after the
+// outputs were returned and the store settlement landed (the callers' commit arms); a settlement that
+// did not land keeps it. A failed removal never changes what the work did: like a lease that could
+// not be dropped, it rides as a located host-record loss naming the path to remove.
+fn compute_remove_owned_target(layout: ComputeLayout) -> HostRecordStatus {
+  let removed = shell.Remove.RecursiveForce(path: layout.target_dir as FilePath)
+  if removed.success {
+    HostRecordWritten
+  } else {
+    HostRecordLost { detail: join(["the owned target at ", layout.target_dir, " could not be removed after settlement; remove it by hand: rm -rf failed"], "") }
   }
 }
 
@@ -1673,14 +1816,23 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
 // them.
 
 // THE STORE A COMPUTE REQUEST USES: a root and the budgets it is opened under. The budgets are policy
-// (gunbc.materialization_store_budgets), handed to the transport as a parameter; production uses the
-// one durable root under that layer's rows, and a witness supplies a scratch root with fixture rows.
+// (gunbc.materialization_store_budgets), handed to the transport as a parameter; production uses
+// compute_store(instance), whose root IS the instance field (DurableHostVolume,
+// PersistentInstanceWorkspace or FrameJobWorkspace — never rewritten), and a witness supplies a
+// scratch root with fixture rows.
 type ComputeStore {
   root: MaterializationStoreRoot
   budgets: List<LocalStoreFamilyBudget>
 }
 
-data compute_durable_store: ComputeStore = ComputeStore { root: DurableHostVolumeRoot, budgets: materialization_store_durable_family_budgets }
+fn compute_store(instance: HostDashboardInstance) -> ComputeStore? {
+  match instance.materialization_store_root {
+    Absent => none
+    Present { value: store_root } => Present {
+      value: ComputeStore { root: store_root, budgets: materialization_store_durable_family_budgets },
+    }
+  }
+}
 
 data compute_requests_frame: Frame = Frame { name: "compute-host-requests", kind: UnboundedSiblingsFrame }
 
@@ -1702,7 +1854,7 @@ type ComputeMaterialization {
 // declares), so the ladder judges against exactly the bound that will hold the bytes; a family the
 // root declares no budget for has no provider and the ladder refuses.
 fn compute_store_providers(family: ArtifactKindId) -> List<std.materialization_ladder.CacheProvider> {
-  match local_store_family_budget(budgets: compute_durable_store.budgets, family: family) {
+  match local_store_family_budget(budgets: materialization_store_durable_family_budgets, family: family) {
     Present { value: b } => [local_store_family_provider(family: family, budget: b.budget)]
     Absent => []
   }
@@ -2018,7 +2170,7 @@ fn compute_execution_identity(identity: String, plan: ComputeMaterializationPlan
 }
 
 // WHICH STORE IS POLICY, SO IT ARRIVES AS A PARAMETER (DESIGN section 3: an operation carrying a literal
-// it should receive has leaked policy). The production caller names compute_durable_store once, in
+// it should receive has leaked policy). The production caller names compute_store(instance) once, in
 // compute_provide_admitted; the serve-or-produce decision below is the same code for any store, which
 // is what lets its inhabitance claim execute it against a scratch root.
 fn compute_provide_leaf(
@@ -2037,7 +2189,7 @@ fn compute_provide_leaf(
     ComputeMaterializationRefused { detail } =>
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
     ComputeMaterializationPlanned { plan } => {
-      let layout = compute_layout(instance: instance, identity_hex: compute_execution_identity(identity: identity, plan: plan, occurrence: clock_now_probed_at_or_unknown() as String))
+      let layout = compute_layout_in(instance: instance, store_root: store.root, identity_hex: compute_execution_identity(identity: identity, plan: plan, occurrence: clock_now_probed_at_or_unknown() as String))
       let materialization = ComputeMaterialization { store: store, request: request, plan: plan }
       match compute_read_stored_outcome(materialization: materialization) {
         ComputeStoreServed { ending, identity: stored_identity, document } =>
@@ -2485,7 +2637,18 @@ fn compute_spawn_and_collect(
   grant_was_ceiling: Bool,
   launched: AttemptGate,
 ) -> ComputeAttempt {
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), granted: granted) {
+  match compute_launching_user_runtime_dir() {
+    Absent =>
+      ComputeAttempt {
+        outcome: WorkRefusedByInfrastructure {
+          identity: identity,
+          cause: ToolchainUnobserved { detail: "launching user's /run/user/<uid> is not present, so SCCACHE_SERVER_UDS cannot be declared on the unit" },
+        },
+        summary: compute_unspawned_summary(),
+        gate: launched,
+      }
+    Present { value: user_runtime_dir } =>
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observation: NoStopObservation, path_virtualization: NoPathVirtualization) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
@@ -2514,6 +2677,7 @@ fn compute_spawn_and_collect(
   }
     }
   }
+  }
 }
 
 // NOTHING WAS SPAWNED, SO NOTHING WAS SUMMARIZED: the same absence main's checkout-failure arm
@@ -2539,11 +2703,16 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
         SubjectResolutionRefused { detail } =>
           compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
         SubjectResolved { subject } =>
-          match op {
-            BuildGunbcBinaries { profile: _, bins: _ } =>
-              compute_provide_leaf(store: compute_durable_store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-            CompileEntry { entry: _ } => compute_provide_dependent(store: compute_durable_store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
-            RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: compute_durable_store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+          match compute_store(instance: instance) {
+            Absent =>
+              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
+            Present { value: store } =>
+              match op {
+                BuildGunbcBinaries { profile: _, bins: _ } =>
+                  compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+                CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+              }
           }
       }
   }

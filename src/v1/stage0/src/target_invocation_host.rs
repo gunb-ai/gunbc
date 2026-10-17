@@ -326,6 +326,12 @@ pub enum TargetProducer {
     NativeServeProgram {
         entry: &'static str,
     },
+    /// `CliWireProgramProducer { entry, function }`: wet interpreter eval of a CliWireResponse
+    /// fold. Generic over entry and function so a second such instrument is a registry row.
+    CliWireProgram {
+        entry: &'static str,
+        function: &'static str,
+    },
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -472,6 +478,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("brand-mark-assets"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/brand_mark_assets_control.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
@@ -546,6 +558,43 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("regen-round-cost"),
             TargetProducer::RegenRoundCost,
+        ),
+        (
+            instrument_label("compute-run-unit-cold"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                function: "compute_run_unit_cold_exit",
+            },
+        ),
+        (
+            instrument_label("compute-wrong-capture"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
+                function: "compute_wrong_capture_exit",
+            },
+        ),
+        (
+            // C5: the dependency-only arm of the C1 instrument. Same entry file, its own entry
+            // function -- one body of logic (wrong_capture_run) behind both labels.
+            instrument_label("compute-dependency-wrong-capture"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
+                function: "compute_dependency_wrong_capture_exit",
+            },
+        ),
+        (
+            instrument_label("compute-run-unit-sccache-probe"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                function: "compute_run_unit_sccache_probe_exit",
+            },
+        ),
+        (
+            instrument_label("compute-run-unit-cold-same-path"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                function: "compute_run_unit_cold_same_path_exit",
+            },
         ),
     ]
 }
@@ -945,6 +994,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         } => run_native_process_memory(&self_host_source_roots(), workload),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
+        TargetProducer::CliWireProgram { entry, function } => run_cli_wire_program(entry, function),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
         }
@@ -996,6 +1046,12 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "required_lane_resolution_census_exit",
         ),
     }
+}
+
+/// Generic CliWireProgramProducer realization: entry and function are the binding's, never a
+/// string-match inside NativeClaimProgram.
+fn run_cli_wire_program(entry: &'static str, function: &'static str) -> InvocationOutcome {
+    run_cli_wire_census(function, entry, function)
 }
 
 /// THE PRIMITIVE EGRESS CENSUS PRODUCERS (gunbc#11642): evaluate one of the

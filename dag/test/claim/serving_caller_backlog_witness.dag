@@ -3,6 +3,7 @@ module test.claim.serving_caller_backlog_witness
 import std.types { Bool, String, NonEmptyStr, Int, List, EpochSecs }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import std.nat { Nat }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first }
 import std.algebra { length }
 import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd }
@@ -38,7 +39,6 @@ import gunbc.serving.caller_backlog {
 }
 import product.capacity.event_chain { PartitionId, EventId, ChainEvent, ChainEnvelope }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased }
-import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import gunbc.harness.harness_seat {
   HarnessCallerTurn, harness_caller_turn, harness_current_grant_in, harness_commit_fence,
   HarnessCommitFenceReady, HarnessCommitGrantUnread, HarnessCommitClockUnread,
@@ -58,6 +58,13 @@ import gunbc.serving.caller_retry_contract {
 }
 import gunbc.serving.router_realization {
   MaintainAuthoritativeBindingLedger, ForbiddenInRealization, PermittedInRealization, router_capability_permission,
+}
+
+fn witness_cas_generation(n: Int) -> CasGeneration {
+  match cas_generation(n: n) {
+    Present { value: g } => g
+    Absent => cas_generation_first()
+  }
 }
 
 data work_a: LogicalWorkId = "logical-work-a" as LogicalWorkId
@@ -505,25 +512,28 @@ test fn w_typed_waiting_persist_is_the_admitted_publication_path() -> Bool {
 
 // A serving seat is fenced on its LeaseGrant generation, not a money account. Stale generation
 // refuses; the live one completes. Same fold as the compute-cell arm.
-data seat_grant_gen2: LeaseGrant = LeaseGrant {
-  reference: "grant-work-a" as NonEmptyStr,
-  fence: LeaseFence { grant: "evt-1" as GrantIdentity, generation: 2 },
-  granted_at: 0,
-  maximum_duration_seconds: 60,
-  expires_at: 60,
+fn seat_grant_gen2() -> LeaseGrant {
+  LeaseGrant {
+    reference: "grant-work-a" as NonEmptyStr,
+    fence: LeaseFence { grant: "evt-1" as GrantIdentity, generation: witness_cas_generation(n: 2) },
+    granted_at: 0,
+    maximum_duration_seconds: 60,
+    expires_at: 60,
+  }
 }
 
-fn seat_holder(generation: Nat, grant: String) -> LeaseFence {
+fn seat_holder(generation: CasGeneration, grant: String) -> LeaseFence {
   LeaseFence { grant: grant as GrantIdentity, generation: generation }
 }
 
 test fn w_seat_lease_stale_generation_cannot_commit() -> Bool {
   let waiting = persisted_waiting()
-  let ahead = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 3, grant: "evt-1"), at: 10 }, work: work_a)
-  let foreign = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 2, grant: "evt-other"), at: 10 }, work: work_a)
-  let expired = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 2, grant: "evt-1"), at: 60 }, work: work_a)
-  let stale = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 1, grant: "evt-1"), at: 10 }, work: work_a)
-  let live = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 2, grant: "evt-1"), at: 10 }, work: work_a)
+  let grant = seat_grant_gen2()
+  let ahead = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: grant, holder: seat_holder(generation: witness_cas_generation(n: 3), grant: "evt-1"), at: 10 }, work: work_a)
+  let foreign = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: grant, holder: seat_holder(generation: witness_cas_generation(n: 2), grant: "evt-other"), at: 10 }, work: work_a)
+  let expired = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: grant, holder: seat_holder(generation: witness_cas_generation(n: 2), grant: "evt-1"), at: 60 }, work: work_a)
+  let stale = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: grant, holder: seat_holder(generation: cas_generation_first(), grant: "evt-1"), at: 10 }, work: work_a)
+  let live = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: grant, holder: seat_holder(generation: witness_cas_generation(n: 2), grant: "evt-1"), at: 10 }, work: work_a)
   (match ahead { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
     && (match foreign { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
     && (match expired { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })

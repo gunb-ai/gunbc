@@ -20,6 +20,8 @@ import gunbc.plans.harness_session_lifecycle { harness_session_lifecycle_plan }
 import gunbc.plans.v2_compiler_architecture { v2_compiler_architecture_plan }
 import gunbc.plans.durable_work_handoff { durable_work_handoff_plan }
 import gunbc.plans.source_layout_authority { source_layout_authority_plan }
+import gunbc.plans.physical_machine_boot_program { physical_machine_boot_program_plan }
+import gunbc.plans.gunb_ai_projection { gunb_ai_projection_plan }
 
 data batch_g_plans: List<Plan> = [
   resolver_type_name_collision_wall_plan,
@@ -40,5 +42,7 @@ data batch_g_plans: List<Plan> = [
   harness_session_lifecycle_plan,
   v2_compiler_architecture_plan,
   durable_work_handoff_plan,
-  source_layout_authority_plan
+  source_layout_authority_plan,
+  physical_machine_boot_program_plan,
+  gunb_ai_projection_plan
 ]
