@@ -39,7 +39,8 @@ pub use crate::std_types::{
     container_template_alias_algebra, container_template_alias_rows, is_container_type, SourceSpan,
 };
 pub use crate::v1_compiler_infer_env::{
-    text_crossing_by_identity, type_reference_declaration_ref, TypeBinding, TypeEnv,
+    alias_settled_agree, settled_args_agree, text_crossing_by_identity,
+    type_reference_declaration_ref, TypeBinding, TypeEnv,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -2421,7 +2422,6 @@ pub enum TextJudgment {
 #[serde(tag = "_variant")]
 pub enum TextNotAskedReason {
     TextNotAskedInVariantFieldSummary,
-    TextNotAskedForCallableComponentResidue,
     TextNotAskedForSyntheticWitnessNodes,
 }
 
@@ -2625,7 +2625,7 @@ pub fn node_type_compatible(
                                                 if (left_opt.clone() || right_opt.clone()) {
                                                     false
                                                 } else {
-                                                    crate::v1_std_core::type_name_compatible(
+                                                    (crate::v1_std_core::type_name_compatible(
                                                         crate::v1_std_core::authored_name_at(
                                                             source_indices.clone(),
                                                             left.clone(),
@@ -2634,7 +2634,12 @@ pub fn node_type_compatible(
                                                             source_indices.clone(),
                                                             right.clone(),
                                                         ),
-                                                    )
+                                                    ) || alias_identity_in_judgment(
+                                                        left.clone(),
+                                                        right.clone(),
+                                                        source_indices.clone(),
+                                                        text.clone(),
+                                                    ))
                                                 }
                                             }
                                         }
@@ -2646,6 +2651,61 @@ pub fn node_type_compatible(
                 }
             }
         }
+    })
+}
+
+pub fn alias_identity_in_judgment(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    match (*text.clone()).clone() {
+        TextJudgment::TextJudgedIn { env: e, .. } => {
+            crate::v1_compiler_infer_env::alias_settled_agree(
+                left.clone(),
+                right.clone(),
+                source_indices.clone(),
+                e.clone(),
+                |a, b| {
+                    applied_argument_agrees(
+                        child_type_node(a.clone()),
+                        child_type_node(b.clone()),
+                        source_indices.clone(),
+                        text.clone(),
+                    )
+                },
+            )
+        }
+        TextJudgment::TextNotAsked { reason: _, .. } => false,
+    }
+}
+
+pub fn applied_argument_agrees(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        (node_type_compatible(
+            left.clone(),
+            right.clone(),
+            source_indices.clone(),
+            text.clone(),
+        ) && (((left.children.clone().len() as i64) != (right.children.clone().len() as i64))
+            || crate::v1_compiler_infer_env::settled_args_agree(
+                left.children.clone(),
+                right.children.clone(),
+                |a, b| {
+                    applied_argument_agrees(
+                        child_type_node(a.clone()),
+                        child_type_node(b.clone()),
+                        source_indices.clone(),
+                        text.clone(),
+                    )
+                },
+            )))
     })
 }
 
@@ -3536,7 +3596,5 @@ pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TextNotAskedInVariantFieldSummary;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct TextNotAskedForCallableComponentResidue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TextNotAskedForSyntheticWitnessNodes;
