@@ -1215,6 +1215,15 @@ pub fn emit_graph_records_type_decl(
                 && (item.connective.clone() == Connective::NoConnective))
                 && ((item.children.clone().len() as i64) == 0))
                 && ((item.params.clone().len() as i64) == 0))
+                || ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                    && (crate::v1_compiler_coercion::realized_checkpoint(
+                        crate::v1_compiler_coercion::declaration_realization(
+                            item.clone(),
+                            crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                            RenderTarget::Rust,
+                        ),
+                    )
+                    .is_some()))
         }
     }
 }

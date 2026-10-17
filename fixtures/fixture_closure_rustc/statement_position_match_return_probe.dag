@@ -1,0 +1,18 @@
+module fixture.closure.rustc_statement_position_match_return_probe
+
+import std.types { Int }
+
+// A non-final match in STATEMENT position whose arms disagree on type: one arm returns, the other
+// yields a value the block discards. The emitter lowered this as a bare `match {..}` statement,
+// which rustc types as (), so the value arm was refused with E0308. The arm is the shape
+// v1.compiler.emit_rust rust_field_carrier_final_type itself authored, which is how the self-host
+// build found it. The fix is in emit_rust_block_stmts: a non-final match statement is terminated.
+type Pick = Take | Skip
+
+fn pick_or_next(p: Pick, n: Int) -> Int {
+  match p {
+    Take => return n
+    Skip => n
+  }
+  n + 1
+}

@@ -2358,6 +2358,57 @@ pub(crate) fn run_append_concat_form_discrimination(
     }
 }
 
+/// The statement-position match pair -- subject `v1.compiler.emit_rust` `emit_rust_block_stmts`.
+/// The green was a rustc E0308 on the seed before the terminator was added; the red is the
+/// route's own `FIXTURE_RED_PATH`, so what this pair adds is its green arm.
+#[cfg(test)]
+const FIXTURE_STATEMENT_MATCH_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/statement_position_match_return_probe.dag";
+
+#[cfg(test)]
+pub(crate) fn run_statement_position_match_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_STATEMENT_MATCH_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
+/// The declaring-type-parameter record pair -- subject `v1.compiler.emit_rust`
+/// `record_field_declaring_generic_names`. The green was a TypeDeclNotDeclared refusal before the
+/// declaring item supplied the field type's generic scope.
+#[cfg(test)]
+const FIXTURE_RECORD_DECLARING_PARAM_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/record_field_declaring_param_probe.dag";
+
+#[cfg(test)]
+pub(crate) fn run_record_declaring_param_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_RECORD_DECLARING_PARAM_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
+/// The Nat kernel-alias field pair -- subject `v1.compiler.emit_rust` `shared_layer_of_resolution`.
+/// The green was a TypeDeclNotDeclared `compile_error!` refusal before a declaration realized by an
+/// opaque kernel alias row was answered at the value layer.
+#[cfg(test)]
+const FIXTURE_NAT_KERNEL_ALIAS_FIELD_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/nat_kernel_alias_field_probe.dag";
+
+#[cfg(test)]
+pub(crate) fn run_nat_kernel_alias_field_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_NAT_KERNEL_ALIAS_FIELD_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
 /// THE SHELL PROJECTION'S RETURN CONVENTION, A PERMANENT REGRESSION CONTROL
 /// (`gunbc.recurring_failure_mode` `shell_projection_return_convention_selected_by_arity`).
 ///

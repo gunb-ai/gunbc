@@ -798,6 +798,8 @@ fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineI
         && item.connective == NoConnective
         && (item.children |> count) == 0
         && (item.params |> count) == 0
+        || (item.module_item_kind == ModuleItemTypeDeclaration
+          && realized_checkpoint(decision: declaration_realization(item: item, dag_name: authored_name_at(source_indices: source_indices, node: item), target: Rust)) != none)
   }
 }
 

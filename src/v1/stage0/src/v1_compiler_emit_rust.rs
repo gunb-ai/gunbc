@@ -5913,7 +5913,7 @@ pub fn emit_rust_block_stmts(
                 });
             }
             Some(stmt) => {
-                let line = emit_typed_expr(
+                let raw_line = emit_typed_expr(
                     stmt.clone(),
                     registry.clone(),
                     scope.clone(),
@@ -5922,6 +5922,15 @@ pub fn emit_rust_block_stmts(
                     emit_info.clone(),
                     1024,
                 );
+                let is_discarded_match = match (*stmt.expr_data.clone()).clone() {
+                    ExprData::ExprMatch => remaining.clone().iter().skip(1).next().is_some(),
+                    _ => false,
+                };
+                let line = if is_discarded_match {
+                    v1_rt::concat(raw_line.clone(), ";".to_string())
+                } else {
+                    raw_line.clone()
+                };
                 let next_scope =
                     crate::v1_compiler_emit::scope_after_expr(stmt.clone(), scope.clone());
                 {

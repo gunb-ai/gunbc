@@ -1,0 +1,23 @@
+module fixture.closure.rustc_record_field_declaring_param_probe
+
+import std.types { Int }
+
+// A record whose field type is its DECLARATION's type parameter `R`, constructed in a fn that does
+// not bind `R` (here none at all). The declared field type is written in the declaring type's
+// generic scope, so the box/shared-layer decision must take that scope from the declaring item; judged
+// in the constructing fn's scope, `R` named nothing and the emitter refused with
+// TypeDeclNotDeclared. The shape is std.algebra OrderingFold<R>.
+type Triple<R> {
+  less: R
+  equal: R
+  greater: R
+}
+
+fn build_triple(a: Int, b: Int, c: Int) -> Triple<Int> {
+  Triple { less: a, equal: b, greater: c }
+}
+
+fn triple_sum(a: Int, b: Int, c: Int) -> Int {
+  let t = build_triple(a: a, b: b, c: c)
+  t.less + t.equal + t.greater
+}

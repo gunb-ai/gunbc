@@ -1,0 +1,9 @@
+module stlc.recursive_flat
+
+type Link {
+  n: Int
+}
+
+fn hold_flat() -> Link {
+  Link { n: 1 }
+}

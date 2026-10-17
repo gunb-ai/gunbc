@@ -747,6 +747,84 @@ fn ct_append_concat_form_fixture_closure_discrimination_test() -> String {
     "    }\n\n")
 }
 
+fn ct_statement_position_match_fixture_closure_discrimination_test() -> String {
+  concat(
+    "    /// Statement-position match lowering, subject `v1.compiler.emit_rust` `emit_rust_block_stmts`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;\n",
+    "    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.\n",
+    "    #[test]\n",
+    "    #[ignore]\n",
+    "    fn statement_position_match_fixture_closure_discrimination() {\n",
+    "        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();\n",
+    "        let pair = crate::cli_run::run_statement_position_match_discrimination(&probe_root);\n",
+    "        for line in crate::cli_run::fixture_discrimination_report(&pair) {\n",
+    "            eprintln!(\"statement-position-match {}\", line);\n",
+    "        }\n",
+    "        assert!(\n",
+    "            crate::cli_run::fixture_closure_reached_rustc(&pair.red),\n",
+    "            \"the red arm never reached a rustc verdict: {}\",\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.red)\n",
+    "        );\n",
+    "        assert!(\n",
+    "            crate::cli_run::fixture_discrimination_passed(&pair),\n",
+    "            \"the statement-position-match control must COMPILE and the route red must still be refused; control={} red={}\",\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.green),\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.red)\n",
+    "        );\n",
+    "    }\n\n")
+}
+
+fn ct_record_declaring_param_fixture_closure_discrimination_test() -> String {
+  concat(
+    "    /// A record field typed by its declaring type's parameter, subject `v1.compiler.emit_rust` `record_field_declaring_generic_names`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;\n",
+    "    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.\n",
+    "    #[test]\n",
+    "    #[ignore]\n",
+    "    fn record_declaring_param_fixture_closure_discrimination() {\n",
+    "        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();\n",
+    "        let pair = crate::cli_run::run_record_declaring_param_discrimination(&probe_root);\n",
+    "        for line in crate::cli_run::fixture_discrimination_report(&pair) {\n",
+    "            eprintln!(\"record-declaring-param {}\", line);\n",
+    "        }\n",
+    "        assert!(\n",
+    "            crate::cli_run::fixture_closure_reached_rustc(&pair.red),\n",
+    "            \"the red arm never reached a rustc verdict: {}\",\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.red)\n",
+    "        );\n",
+    "        assert!(\n",
+    "            crate::cli_run::fixture_discrimination_passed(&pair),\n",
+    "            \"the record-declaring-param control must COMPILE and the route red must still be refused; control={} red={}\",\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.green),\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.red)\n",
+    "        );\n",
+    "    }\n\n")
+}
+
+fn ct_nat_kernel_alias_field_fixture_closure_discrimination_test() -> String {
+  concat(
+    "    /// A record field typed Nat, realized by an opaque kernel alias row, subject `v1.compiler.emit_rust` `shared_layer_of_resolution`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;\n",
+    "    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.\n",
+    "    #[test]\n",
+    "    #[ignore]\n",
+    "    fn nat_kernel_alias_field_fixture_closure_discrimination() {\n",
+    "        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();\n",
+    "        let pair = crate::cli_run::run_nat_kernel_alias_field_discrimination(&probe_root);\n",
+    "        for line in crate::cli_run::fixture_discrimination_report(&pair) {\n",
+    "            eprintln!(\"nat-kernel-alias-field {}\", line);\n",
+    "        }\n",
+    "        assert!(\n",
+    "            crate::cli_run::fixture_closure_reached_rustc(&pair.red),\n",
+    "            \"the red arm never reached a rustc verdict: {}\",\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.red)\n",
+    "        );\n",
+    "        assert!(\n",
+    "            crate::cli_run::fixture_discrimination_passed(&pair),\n",
+    "            \"the nat-kernel-alias-field control must COMPILE and the route red must still be refused; control={} red={}\",\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.green),\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.red)\n",
+    "        );\n",
+    "    }\n\n")
+}
+
 fn ct_shell_projection_arity_fixture_closure_discrimination_test() -> String {
   concat(
     "    /// THE SHELL PROJECTION'S RETURN CONVENTION, JUDGED BY RUSTC. Subject:\n",
@@ -5841,6 +5919,9 @@ fn compiler_tests_source() -> String {
     ct_empty_map_turbofish_fixture_closure_discrimination_test(),
     ct_argv_word_list_splice_fixture_closure_discrimination_test(),
     ct_append_concat_form_fixture_closure_discrimination_test(),
+    ct_statement_position_match_fixture_closure_discrimination_test(),
+    ct_record_declaring_param_fixture_closure_discrimination_test(),
+    ct_nat_kernel_alias_field_fixture_closure_discrimination_test(),
     ct_shell_projection_arity_fixture_closure_discrimination_test(),
     ct_unlisted_import_use_witness_test(),
     ct_call_shape_wall_witness_test(),

@@ -1,0 +1,14 @@
+module stlc.recursive_chain
+
+// One declaration of leaf Link is recursive; recursive_flat declares the same leaf non-recursive.
+// EmitGraphInfo.recursive_type_set is keyed on the leaf, so declaration identity cannot say which
+// of the two the set entry belongs to: the census must answer SharingUndeterminedByDeclaration,
+// never a Same/Different it would have read off a last-write-wins entry.
+type Link {
+  next: Link?
+  n: Int
+}
+
+fn hold_chain() -> Link {
+  Link { next: none, n: 0 }
+}
