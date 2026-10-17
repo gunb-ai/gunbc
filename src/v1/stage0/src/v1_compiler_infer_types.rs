@@ -23,6 +23,9 @@ pub use crate::std_coercion::SubtractionRefinement;
 use crate::std_coercion::SubtractionRefinement::{
     SubtractionEscapesTo, SubtractionRefinementAmbiguous, SubtractionStaysInOperandAlgebra,
 };
+use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
+pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
@@ -41,6 +44,7 @@ pub use crate::std_types::{
 };
 pub use crate::v1_compiler_infer_env::{text_crossing_by_identity, type_reference_declaration_ref};
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -2441,6 +2445,244 @@ pub fn text_crossing_in_judgment(left: Rc<Node>, right: Rc<Node>, text: Rc<TextJ
     }
 }
 
+pub fn type_node_is_callable(n: Rc<Node>) -> bool {
+    ((n.connective.clone() == Connective::Arrow) || ((n.params.clone().len() as i64) > 0))
+}
+
+pub fn node_declaration_file(n: Rc<Node>) -> String {
+    match n.ident_span.clone() {
+        Some(sp) => sp.file.clone(),
+        std::option::Option::None => "".to_string(),
+    }
+}
+
+pub fn node_declaration_identity(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    crate::v1_compiler_type_head_exposure::type_declaration_identity_key(
+        node_declaration_file(n.clone()),
+        crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+    )
+}
+
+pub fn whole_declaration_carried(n: Rc<Node>) -> Option<Rc<DeclarationRef>> {
+    match n.declaration.clone() {
+        Some(d) => match (*d.field.clone()).clone() {
+            DeclField::WholeDeclaration => Some(d.clone()),
+            DeclField::NamedField { field_name: _, .. } => std::option::Option::None,
+            DeclField::TypeParameter { name: _, .. } => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn declaration_carried_through_resolution(
+    mut __tco_loop_n: Rc<Node>,
+    mut __tco_loop_hops: i64,
+) -> Option<Rc<DeclarationRef>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n;
+        #[allow(unused_mut)]
+        let mut hops = __tco_loop_hops;
+        match whole_declaration_carried(n.clone()) {
+            Some(d) => {
+                break Some(d.clone());
+            }
+            std::option::Option::None => {
+                if (hops.clone() <= 0) {
+                    break std::option::Option::None;
+                } else {
+                    match n.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: r, .. }) => {
+                            let __tco_0 = r.clone();
+                            let __tco_1 = v1_rt::int_sub(hops, 1);
+                            __tco_loop_n = __tco_0;
+                            __tco_loop_hops = __tco_1;
+                            continue;
+                        }
+                        _ => {
+                            break std::option::Option::None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn std_optional_declaration_ref() -> Rc<DeclarationRef> {
+    crate::std_decl_ref::decl_ref("std.optional".to_string(), "Optional".to_string())
+}
+
+pub fn declaration_is_std_optional(d: Rc<DeclarationRef>) -> bool {
+    (d.clone() == std_optional_declaration_ref())
+}
+
+pub fn applied_arguments_identical(
+    left_args: Rc<Vec<Rc<Node>>>,
+    right_args: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match left_args.clone().first().cloned() {
+            Some(l) => match right_args.clone().first().cloned() {
+                Some(r) => {
+                    (applied_argument_types_identical(
+                        child_type_node(l.clone()),
+                        child_type_node(r.clone()),
+                        source_indices.clone(),
+                    ) && applied_arguments_identical(
+                        Rc::new(v1_rt::list_skip(&left_args.clone(), 1)),
+                        Rc::new(v1_rt::list_skip(&right_args.clone(), 1)),
+                        source_indices.clone(),
+                    ))
+                }
+                std::option::Option::None => false,
+            },
+            std::option::Option::None => true,
+        }
+    })
+}
+
+pub fn applied_argument_types_identical(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((((left.return_cardinality.clone() == right.return_cardinality.clone())
+        && applied_argument_heads_identical(left.clone(), right.clone(), source_indices.clone()))
+        && ((left.children.clone().len() as i64) == (right.children.clone().len() as i64)))
+        && applied_arguments_identical(
+            left.children.clone(),
+            right.children.clone(),
+            source_indices.clone(),
+        ))
+}
+
+pub fn applied_argument_heads_identical(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (type_node_is_callable(left.clone()) || type_node_is_callable(right.clone())) {
+        ((type_node_is_callable(left.clone()) && type_node_is_callable(right.clone()))
+            && callable_signatures_agree(left.clone(), right.clone(), |a, b| {
+                applied_argument_types_identical(a.clone(), b.clone(), source_indices.clone())
+            }))
+    } else {
+        match left.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::CompilerError { .. }) => false,
+            Some(InferredNode::TypeVariable { id: left_id, .. }) => {
+                match right.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::TypeVariable { id: right_id, .. }) => {
+                        type_variables_identical_by_owner(
+                            left.clone(),
+                            right.clone(),
+                            left_id.clone(),
+                            right_id.clone(),
+                        )
+                    }
+                    _ => false,
+                }
+            }
+            _ => match right.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::CompilerError { .. }) => false,
+                Some(InferredNode::TypeVariable { id: _, .. }) => false,
+                _ => match whole_declaration_carried(left.clone()) {
+                    Some(l) => match whole_declaration_carried(right.clone()) {
+                        Some(r) => crate::std_decl_ref::declaration_ref_eq(l.clone(), r.clone()),
+                        std::option::Option::None => false,
+                    },
+                    std::option::Option::None => match whole_declaration_carried(right.clone()) {
+                        Some(_) => false,
+                        std::option::Option::None => {
+                            match type_reference_identity_key(left.clone(), source_indices.clone())
+                            {
+                                Some(li) => match type_reference_identity_key(
+                                    right.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    Some(ri) => (li.clone() == ri.clone()),
+                                    std::option::Option::None => false,
+                                },
+                                std::option::Option::None => false,
+                            }
+                        }
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub fn type_variables_identical_by_owner(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    left_id: String,
+    right_id: String,
+) -> bool {
+    match left.declaration.clone() {
+        Some(l) => match right.declaration.clone() {
+            Some(r) => crate::std_decl_ref::declaration_ref_eq(l.clone(), r.clone()),
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => match right.declaration.clone() {
+            Some(_) => false,
+            std::option::Option::None => (left_id.clone() == right_id.clone()),
+        },
+    }
+}
+
+pub fn type_reference_identity_key(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    {
+        let target = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+            _ => n.clone(),
+        };
+        if (crate::v1_std_core::authored_name_at(source_indices.clone(), target.clone())
+            == "".to_string())
+        {
+            std::option::Option::None
+        } else {
+            Some(node_declaration_identity(
+                target.clone(),
+                source_indices.clone(),
+            ))
+        }
+    }
+}
+
+pub fn optional_instance_at_payload_of(
+    leaf: Rc<Node>,
+    instance: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (instance.return_cardinality.clone() != Cardinality::Required) {
+        false
+    } else {
+        match declaration_carried_through_resolution(instance.clone(), 3) {
+            Some(d) => {
+                ((declaration_is_std_optional(d.clone())
+                    && ((instance.children.clone().len() as i64) == 1))
+                    && match instance.children.clone().first().cloned() {
+                        Some(ch) => applied_argument_types_identical(
+                            crate::v1_std_core::with_required_cardinality(leaf.clone()),
+                            child_type_node(ch.clone()),
+                            source_indices.clone(),
+                        ),
+                        std::option::Option::None => false,
+                    })
+            }
+            std::option::Option::None => false,
+        }
+    }
+}
+
 pub fn node_type_compatible(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -2625,19 +2867,35 @@ pub fn node_type_compatible(
                                                     }
                                                 }
                                             } else {
-                                                if (left_opt.clone() || right_opt.clone()) {
-                                                    false
-                                                } else {
-                                                    crate::v1_std_core::type_name_compatible(
-                                                        crate::v1_std_core::authored_name_at(
-                                                            source_indices.clone(),
-                                                            left.clone(),
-                                                        ),
-                                                        crate::v1_std_core::authored_name_at(
-                                                            source_indices.clone(),
+                                                if ((left_opt.clone()
+                                                    && optional_instance_at_payload_of(
+                                                        left.clone(),
+                                                        right.clone(),
+                                                        source_indices.clone(),
+                                                    ))
+                                                    || (right_opt.clone()
+                                                        && optional_instance_at_payload_of(
                                                             right.clone(),
-                                                        ),
-                                                    )
+                                                            left.clone(),
+                                                            source_indices.clone(),
+                                                        )))
+                                                {
+                                                    true
+                                                } else {
+                                                    if (left_opt.clone() || right_opt.clone()) {
+                                                        false
+                                                    } else {
+                                                        crate::v1_std_core::type_name_compatible(
+                                                            crate::v1_std_core::authored_name_at(
+                                                                source_indices.clone(),
+                                                                left.clone(),
+                                                            ),
+                                                            crate::v1_std_core::authored_name_at(
+                                                                source_indices.clone(),
+                                                                right.clone(),
+                                                            ),
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
