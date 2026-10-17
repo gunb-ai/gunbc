@@ -47,7 +47,6 @@ service dpkg.Package {
 // 36375956111, srv1: "remote words are not portable under the far-side shell re-parse"), because the
 // word carries shell metacharacters. The Status line of the plain record is the same fact.
 data dpkg_query_program: NonEmptyStr = "dpkg-query"
-
 fn dpkg_query_identity() -> ProgramIdentity = uncataloged_program(invocation: dpkg_query_program)
 
 fn dpkg_query_status_argv(package: NonEmptyStr) -> List<String> {
@@ -138,3 +137,4 @@ fn dpkg_query_status_verdict_of(exit_code: Int, stdout: String, stderr: String) 
 fn dpkg_query_status_command(package:NonEmptyStr) -> ArgvCommand {
  argv_command(program:uncataloged_program(invocation:dpkg_query_program),arguments:dpkg_query_status_argv(package:package).skip(n:1))
 }
+
