@@ -21,6 +21,7 @@ import gunbc.fleet.site_pxe_edge_converge {
 // S0, gunbc.firmware_network_boot_standing (drafted on session/swift-wren-451): the preparation route and the standing a firmware probe answers.
 import gunbc.firmware_network_boot_standing {
   FirmwareNetworkBootPreparationRoute,
+  PreparationBlockingOn,
   FirmwareNetworkBootStanding,
   Ready,
   NeedsPreparation,
@@ -68,9 +69,13 @@ type DeliveryEvidence {
 
 // Network boot needs the firmware either already ready or prepared through exactly one named route.
 // Virtual media bypasses the NIC boot path, so its arm carries no firmware field at all.
+// The blocker travels beside the route because they answer different questions (what is in the way vs how
+// to act on it): an arm that kept only the route would be indifferent to WHICH blocker the standing named,
+// so two standings blocked differently but sharing a route would arm identically and an operator could not
+// read from the arm what the preparation is for. Both are copied from the standing, never chosen here.
 type FirmwarePreparation
   = FirmwareAlreadyReady
-  | FirmwarePreparedVia { route: FirmwareNetworkBootPreparationRoute }
+  | FirmwarePreparedVia { route: FirmwareNetworkBootPreparationRoute, blocking: PreparationBlockingOn }
 
 type ArmMissingEvidence
   = FirmwareStandingNotObserved
@@ -134,7 +139,7 @@ fn derive_pxe(evidence: DeliveryEvidence) -> ArmShape {
     Unobserved { unanswered: _ } => ArmUnobserved { missing: FirmwareStandingNotObserved }
     Refused { cause: _, gaps: _ } => ArmRefused { cause: FirmwareProbeRefused { standing: evidence.firmware } }
     Ready { firmware_mode: _, network_interface: _, evidence: _ } => derive_pxe_with(evidence: evidence, firmware: FirmwareAlreadyReady)
-    NeedsPreparation { route: r, blocking: _ } => derive_pxe_with(evidence: evidence, firmware: FirmwarePreparedVia { route: r })
+    NeedsPreparation { route: r, blocking: b } => derive_pxe_with(evidence: evidence, firmware: FirmwarePreparedVia { route: r, blocking: b })
   }
 }
 

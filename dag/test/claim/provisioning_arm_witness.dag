@@ -57,6 +57,7 @@ import gunbc.firmware_network_boot_standing {
   Unobserved,
   Refused,
   OverrideMechanismUnsupported,
+  NoInterfaceCarriesPxe,
   IpmiOneShotOverride,
   RedfishOneShotOverride,
   TransportRefusedVendorCommand,
@@ -200,7 +201,7 @@ test fn two_strategies_with_the_same_identity_derive_different_arms() -> Bool {
 
 test fn the_pxe_arm_carries_the_pinned_chainloader_and_the_preparation_route() -> Bool {
   match derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha") {
-    ArmedPxeOrUefiHttp { chainloader: c, firmware: f, origin: _, seed: _ } => c.installed_filename == "snponly.efi" && f == FirmwarePreparedVia { route: IpmiOneShotOverride { channel: "fixture-lan" as NonEmptyStr } }
+    ArmedPxeOrUefiHttp { chainloader: c, firmware: f, origin: _, seed: _ } => c.installed_filename == "snponly.efi" && f == FirmwarePreparedVia { route: IpmiOneShotOverride { channel: "fixture-lan" as NonEmptyStr }, blocking: OverrideMechanismUnsupported }
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
     ArmUnobserved { missing: _ } => false
     ArmRefused { cause: _ } => false
@@ -298,4 +299,13 @@ test fn fixture_seed_is_a_real_binding_from_the_s4_producer() -> Bool {
     Present { value: _ } => true
     Absent => false
   }
+}
+
+// The same route under a different blocker is a different arm: the arm reports what the standing said was
+// in the way, so a derivation that drops the blocker (or defaults it) is indifferent to it and goes red here.
+test fn the_same_route_under_a_different_blocker_derives_a_different_arm() -> Bool {
+  let same_route = IpmiOneShotOverride { channel: "fixture-lan" as NonEmptyStr }
+  let a = derive(strategy: PxeOrUefiHttp, evidence: evidence_with(firmware: NeedsPreparation { route: same_route, blocking: OverrideMechanismUnsupported }, chainloader: pinned(), virtual_media: media_available()), unit: "unit-alpha")
+  let b = derive(strategy: PxeOrUefiHttp, evidence: evidence_with(firmware: NeedsPreparation { route: same_route, blocking: NoInterfaceCarriesPxe }, chainloader: pinned(), virtual_media: media_available()), unit: "unit-alpha")
+  a != b
 }
