@@ -4491,7 +4491,7 @@ fn infer_type_declaration_ref(t: Node) -> Optional<DeclarationRef> {
       match qualified_name_last_segment(qn: denotation.declaration) {
         Absent => optional_absent()
         Present { value: leaf } =>
-          optional_present(value: decl_ref(module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: path)), decl_name: symbol_lexeme(sym: leaf)))
+          optional_present(value: decl_ref(module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: denotation.declaration)), decl_name: symbol_lexeme(sym: leaf)))
       }
   }
 }
