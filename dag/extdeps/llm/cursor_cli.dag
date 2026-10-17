@@ -3,7 +3,7 @@ module extdeps.llm.cursor_cli
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, brand }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.program { ProgramIdentity }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -109,15 +109,27 @@ data cursor_sandbox_unsupported_error_class: NonEmptyStr = "SandboxUnsupportedEr
 data cursor_sandbox_env_var: NonEmptyStr = "CURSOR_SANDBOX" as NonEmptyStr
 data cursor_sandbox_linux_native_value: NonEmptyStr = "native" as NonEmptyStr
 
-// cursor-agent has no CliTool row, so its identity is on the debt roster (extdeps.exec.program
-// uncataloged_program). The preflight builder takes the identity as a parameter, so a placement that
-// pins an exact executable supplies its own identity without a second builder.
-fn cursor_cli_program_identity() -> ProgramIdentity {
-  uncataloged_program(invocation: cursor_cli_program as NonEmptyStr)
+// THIS MODULE OWNS THE COMMAND SURFACE AND NO PLACEMENT. Every builder below takes the program from its
+// caller, so which executable runs (an exact root-owned path, gunbc.host.cursor_agent_realization) is the
+// caller's fact and there is no second, PATH-named route here. cursor_cli_program stays only as the
+// CLI's own name, for a reader that matches a process by name rather than launching one.
+//
+// --disable-auto-update IS A HIDDEN GLOBAL OPTION. Read on cursor-agent 2026.10.16-e3cb207 (linux/arm64,
+// 2026-10-17): absent from `--help`, yet `--disable-auto-update status --format json` and
+// `status --format json --disable-auto-update` both answer the status JSON, and `--print
+// --disable-auto-update <unknown option>` fails on the unknown option and not on the flag. Not read on the
+// pinned 2026.09.15-d2fe57e build, whose tarball was not on hand; the first install readback is the
+// check. A root-owned pinned tree cannot be written by the invoking user, so every pinned invocation
+// passes it and never attempts a self-update.
+data cursor_disable_auto_update_flag: String = "--disable-auto-update"
+
+// The status command: whether the CLI accepts the key in CURSOR_API_KEY.
+fn cursor_status_command(program: ProgramIdentity) -> ArgvCommand {
+  argv_command(program: program, arguments: [cursor_disable_auto_update_flag, "status", "--format", "json"])
 }
 
 fn cursor_sandbox_preflight_command(program: ProgramIdentity) -> ArgvCommand {
-  argv_command(program: program, arguments: ["sandbox", "run", "printenv", cursor_sandbox_env_var as String])
+  argv_command(program: program, arguments: [cursor_disable_auto_update_flag, "sandbox", "run", "printenv", cursor_sandbox_env_var as String])
 }
 
 // MODEL IS A PER-INVOCATION ARGUMENT AND THE ROSTER IS AN ACCOUNT FACT. --model takes an identifier
@@ -187,9 +199,9 @@ type CursorProcessInvocation {
   environment: List<CursorEnvBinding>
 }
 
-fn cursor_common_argv(run: CursorRunShape) -> List<String> {
+fn cursor_common_argv(program: ProgramIdentity, run: CursorRunShape) -> List<String> {
   concat(
-    [cursor_cli_program, "--print"],
+    [program.invocation as String, cursor_disable_auto_update_flag, "--print"],
     concat(
       ["--output-format", cursor_output_format_wire(f: run.output_format)],
       concat(
@@ -218,25 +230,25 @@ fn cursor_tail_argv(run: CursorRunShape) -> List<String> {
 
 // The argv of a run whose key reaches the process through CURSOR_API_KEY set by someone else: the
 // environment arm's argv, with nothing about the key in it.
-fn cursor_environment_authenticated_argv(run: CursorRunShape) -> List<String> {
-  concat(cursor_common_argv(run: run), cursor_tail_argv(run: run))
+fn cursor_environment_authenticated_argv(program: ProgramIdentity, run: CursorRunShape) -> List<String> {
+  concat(cursor_common_argv(program: program, run: run), cursor_tail_argv(run: run))
 }
 
-fn shape_cursor_invocation(inv: CursorInvocation) -> CursorProcessInvocation {
+fn shape_cursor_invocation(program: ProgramIdentity, inv: CursorInvocation) -> CursorProcessInvocation {
   match inv.auth {
     CursorApiKeyArgument { key } =>
       CursorProcessInvocation {
-        program: cursor_cli_program,
+        program: program.invocation as String,
         argv: concat(
-          cursor_common_argv(run: inv.run),
+          cursor_common_argv(program: program, run: inv.run),
           concat(["--api-key", key as String], cursor_tail_argv(run: inv.run)),
         ),
         environment: [],
       }
     CursorApiKeyEnvironment { key } =>
       CursorProcessInvocation {
-        program: cursor_cli_program,
-        argv: cursor_environment_authenticated_argv(run: inv.run),
+        program: program.invocation as String,
+        argv: cursor_environment_authenticated_argv(program: program, run: inv.run),
         environment: [
           CursorEnvBinding { name: cursor_api_key_env_var, value: key },
         ],
