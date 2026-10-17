@@ -128,7 +128,9 @@ fn boot_subject_admission_in(
   evidence: MegaRacOperationEvidence,
   hosts: List<ManagedHost>,
   host: HostIdentity,
-  medium: BootMedium,, execution_revision: NonEmptyStr) -> BootSubjectAdmission {
+  medium: BootMedium,
+  execution_revision: NonEmptyStr,
+) -> BootSubjectAdmission {
   fold(
     hosts,
     init: BootSubjectRefused { host: host, cause: BootSubjectHostNotManaged },

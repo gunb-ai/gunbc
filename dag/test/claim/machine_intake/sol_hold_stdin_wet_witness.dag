@@ -17,8 +17,8 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
 import gunbc.machine_intake.megarac_kvm_still { KvmObserverNotStarted }
 import gunbc.machine_intake.mtcollins1_boot_run { SolCollectorUnrecorded }
-import gunbc.machine_intake.mtcollins1_sol_notice {
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.machine_intake.mtcollins1_sol_notice {
   SolNoticePaths, SolNoticeDelivery, SolNoticeDelivered, SolNoticeDeliveryFailed, SolNoticeLiveLog,
   sol_notice_pass, sol_notice_channel_key, sol_notice_marker_path, mtcollins1_sol_notice_watch, mtcollins1_sol_notice_stop_suffix, sol_notice_finish,
 }
