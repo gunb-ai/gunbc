@@ -11732,7 +11732,13 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else {
       variant_literal_expected_application(owner: present_application_owner, expected: expected, scope: scope)
     }
-    let resolved_node = if applied_expected_owner != none {
+    let resolved_node = if !is_present_ctor && parent_is_std_optional && absent_adopts_expected(expected: expected, scope: scope) {
+      // THE ABSENT ARM CARRIES NO PAYLOAD, SO THE EXPECTED OPTIONAL IS ITS ONLY TYPE. Without this the
+      // literal kept the kernel coproduct whose payload type is unbound, and an `if c { Absent } else
+      // { <T?> }` join compared that unbound payload against T? (v1.compiler.infer ExprIf). It sits
+      // before the expected-owner application, which answers the coproduct for a `T?` expectation.
+      match expected { Present { value: exp } => exp  Absent => raw_resolved }
+    } else if applied_expected_owner != none {
       applied_expected_owner.value
     } else if is_present_ctor {
       let val_field = fi_infer_results |> filter(fir => name_is_std_optional_payload_member(scope: scope, name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices))) |> first
@@ -11754,11 +11760,6 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           }
         Absent => payload_optional
       }
-    } else if parent_is_std_optional && absent_adopts_expected(expected: expected, scope: scope) {
-      // THE ABSENT ARM CARRIES NO PAYLOAD, SO THE EXPECTED OPTIONAL IS ITS ONLY TYPE. Without this the
-      // literal kept the kernel coproduct whose payload type is unbound, and an `if c { Absent } else
-      // { <T?> }` join compared that unbound payload against T? (v1.compiler.infer ExprIf).
-      match expected { Present { value: exp } => exp  Absent => raw_resolved }
     } else { raw_resolved }
     let type_diags = match effective_lookup {
       Present { value: _ } => []
