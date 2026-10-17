@@ -1,0 +1,108 @@
+module gunbc.fleet.fleet_fan_converge
+
+import std.types { Bool, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.measure { percent_count }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.megarac_fan_policy { MegaRacFanPwmAllAdmitted, MegaRacFanPwmAllRefused, megarac_fan_pwm_all_of }
+import product.fan_policy_standing { ConvergeRouteBound, ConvergeRouteUnbound, FanDutyConvergeRoute }
+import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPolicy, HeldAtDutyFloor }
+import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
+
+// THE FLEET FAN CONVERGENCE FOLD: desired (product.fleet_fan_policy) against observed, deciding
+// Noop / Apply / Refuse, then a standing read from an INDEPENDENT second observation.
+//
+// SELECTION PRECEDES CONVERGENCE (DESIGN 3d): this fold takes ONE host's family and ONE
+// observation. Which hosts exist comes from the managed-host registry, not from here.
+//
+// BOOT IS A CONSUMER AND NEVER A WRITER. Nothing here is imported by a boot path in this change; the
+// admission gate that reads FleetFanConvergenceStanding is a separate change that waits on the
+// post-power-on fan read.
+//
+// NO WRITE IS BOUND BY THIS MODULE. Apply names the family's existing route and nothing executes it
+// here; the MegaRAC route is ConvergeRouteUnbound, so a MegaRAC host can only Refuse with that
+// route's read obligation until a wet write fold exists and the operator approves binding it.
+
+// WHAT ONE ADAPTER READ OF A HOST'S FAN CONTROL ANSWERED, normalized onto the policy's own posture
+// vocabulary. An unreadable control is its own arm and is never folded onto automatic.
+type FleetFanObserved
+  = FleetFanControlObserved { control: FleetFanControl }
+  | FleetFanControlUnobservable { cause: NonEmptyStr }
+
+type FleetFanDecision
+  = FleetFanNoop
+  | FleetFanApply { target: FleetFanControl, route: FanDutyConvergeRoute }
+  | FleetFanRefuse { cause: NonEmptyStr }
+
+type FleetFanConvergenceStanding
+  = FleetFanConverged
+  | FleetFanDiverged { observed: FleetFanControl }
+  | FleetFanUnobservable { cause: NonEmptyStr }
+
+fn fleet_fan_control_eq(a: FleetFanControl, b: FleetFanControl) -> Bool {
+  match a {
+    FirmwareAutomatic => match b {
+      FirmwareAutomatic => true
+      HeldAtDutyFloor { floor: _ } => false
+    }
+    HeldAtDutyFloor { floor: fa } => match b {
+      FirmwareAutomatic => false
+      HeldAtDutyFloor { floor: fb } => percent_count(p: fa) == percent_count(p: fb)
+    }
+  }
+}
+
+// WHAT A FAMILY'S UPSTREAM CAN EXPRESS. Automatic is the firmware default and every family has it.
+// A held floor is refused unless the family's upstream is read to express it: MegaRAC by its closed
+// admitted-wire set, OpenBMC until its phosphor zone-floor expressibility is read (a typed bet,
+// DESIGN 4d, so the answer is a refusal and not a guess).
+fn fleet_fan_family_refusal(family: BmcFirmwareFamily, control: FleetFanControl) -> NonEmptyStr? {
+  match control {
+    FirmwareAutomatic => Absent
+    HeldAtDutyFloor { floor: f } => match family {
+      AmiMegaRac => match megarac_fan_pwm_all_of(duty: f) {
+        MegaRacFanPwmAllAdmitted { wire: _ } => Absent
+        MegaRacFanPwmAllRefused { duty: _ } =>
+          Present { value: "MegaRAC fan_pwm_all admits only the closed 20..100 step-5 duty set" as NonEmptyStr }
+      }
+      OpenBmc =>
+        Present { value: "read obligation: whether phosphor-fan zone config expresses a held duty floor on this board is unread" as NonEmptyStr }
+    }
+  }
+}
+
+fn fleet_fan_decide(policy: FleetFanPolicy, family: BmcFirmwareFamily, observed: FleetFanObserved) -> FleetFanDecision {
+  match observed {
+    FleetFanControlUnobservable { cause: c } => FleetFanRefuse { cause: c }
+    FleetFanControlObserved { control: seen } =>
+      if fleet_fan_control_eq(a: seen, b: policy.control) {
+        FleetFanNoop
+      } else {
+        match fleet_fan_family_refusal(family: family, control: policy.control) {
+          Present { value: why } => FleetFanRefuse { cause: why }
+          Absent => match fan_converge_route_for_family(family: family) {
+            ConvergeRouteBound { authority: a, write_operation: w, transport: t, readback: r } =>
+              FleetFanApply {
+                target: policy.control,
+                route: ConvergeRouteBound { authority: a, write_operation: w, transport: t, readback: r },
+              }
+            ConvergeRouteUnbound { authority: _, read_obligation: o } => FleetFanRefuse { cause: o }
+          }
+        }
+      }
+  }
+}
+
+// THE STANDING TAKES ONLY A READBACK OBSERVATION. There is no parameter an apply result could be
+// passed in, so an actuation return cannot mint convergence (DESIGN 3d).
+fn fleet_fan_standing(policy: FleetFanPolicy, readback: FleetFanObserved) -> FleetFanConvergenceStanding {
+  match readback {
+    FleetFanControlUnobservable { cause: c } => FleetFanUnobservable { cause: c }
+    FleetFanControlObserved { control: seen } =>
+      if fleet_fan_control_eq(a: seen, b: policy.control) {
+        FleetFanConverged
+      } else {
+        FleetFanDiverged { observed: seen }
+      }
+  }
+}

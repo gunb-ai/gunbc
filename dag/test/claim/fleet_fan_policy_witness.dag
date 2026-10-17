@@ -1,0 +1,113 @@
+module test.claim.fleet_fan_policy_witness
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.measure { celsius, celsius_count, percent }
+import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import product.fleet_fan_policy {
+  ChassisOutlet,
+  DimmChannel,
+  FirmwareAutomatic,
+  FleetFanControl,
+  FleetFanGuardVerdict,
+  FleetFanPolicy,
+  GuardHolds,
+  GuardRestoreAutomatic,
+  HeldAtDutyFloor,
+  SocJunction,
+  ThermalGuardRole,
+  VoltageRegulator,
+  fleet_fan_control_after,
+  fleet_fan_guard_reading,
+  fleet_fan_policy,
+  fleet_fan_run_exit,
+  fleet_fan_trip_for,
+}
+import gunbc.machine_intake.megarac_fan_thermal_guard {
+  megarac_temperature_trips,
+}
+
+// SUPPLIED: temperatures. EXECUTED: the policy fold and, for the MegaRAC arm, the real
+// megarac_temperature_trips path that now reads the fleet policy (the inhabitance claim: deleting
+// that wiring reds witness_megarac_guard_reads_the_fleet_policy).
+
+fn held_policy() -> FleetFanPolicy {
+  FleetFanPolicy { control: HeldAtDutyFloor { floor: percent(20) }, guard: fleet_fan_policy.guard, unreadable_sensor_trips: true }
+}
+
+fn is_restore(v: FleetFanGuardVerdict) -> Bool {
+  match v {
+    GuardHolds => false
+    GuardRestoreAutomatic { cause: _ } => true
+  }
+}
+
+fn is_automatic(c: FleetFanControl) -> Bool {
+  match c {
+    FirmwareAutomatic => true
+    HeldAtDutyFloor { floor: _ } => false
+  }
+}
+
+fn reading_trips(role: ThermalGuardRole, c: Int) -> Bool {
+  is_restore(fleet_fan_guard_reading(policy: fleet_fan_policy, role: role, reading: Present { value: celsius(c) }))
+}
+
+// THE FLEET REST POSTURE IS FIRMWARE AUTOMATIC.
+test fn witness_fleet_policy_rests_in_automatic() -> Bool {
+  is_automatic(fleet_fan_policy.control) && fleet_fan_policy.unreadable_sensor_trips
+}
+
+// TRIP IS AT-OR-ABOVE, PER ROLE. The oracle is the datasheet (100C continuous junction, Ampere) less
+// the stated 15C margin, and the three uncited figures as authored; each is checked on both sides.
+test fn witness_guard_trips_at_boundary_per_role() -> Bool {
+  reading_trips(role: SocJunction, c: 85) && !reading_trips(role: SocJunction, c: 84)
+    && reading_trips(role: DimmChannel, c: 85) && !reading_trips(role: DimmChannel, c: 84)
+    && reading_trips(role: VoltageRegulator, c: 90) && !reading_trips(role: VoltageRegulator, c: 89)
+    && reading_trips(role: ChassisOutlet, c: 70) && !reading_trips(role: ChassisOutlet, c: 69)
+}
+
+// AN UNREADABLE SENSOR TRIPS (fail-closed) - and only because the policy says so, which the second
+// half proves by flipping it.
+test fn witness_unreadable_sensor_trips_toward_automatic() -> Bool {
+  let off = FleetFanPolicy { control: fleet_fan_policy.control, guard: fleet_fan_policy.guard, unreadable_sensor_trips: false }
+  is_restore(fleet_fan_guard_reading(policy: fleet_fan_policy, role: SocJunction, reading: Absent))
+    && !is_restore(fleet_fan_guard_reading(policy: off, role: SocJunction, reading: Absent))
+}
+
+// EVERY RESTORE LEAVES AUTOMATIC, WHATEVER THE POLICY WAS HOLDING; HOLDS KEEPS THE POLICY'S POSTURE.
+test fn witness_every_exit_leaves_automatic() -> Bool {
+  let held = held_policy()
+  let tripped = fleet_fan_guard_reading(policy: held, role: SocJunction, reading: Present { value: celsius(99) })
+  is_automatic(fleet_fan_control_after(policy: held, verdict: tripped))
+    && is_automatic(fleet_fan_control_after(policy: held, verdict: fleet_fan_run_exit()))
+    && !is_automatic(fleet_fan_control_after(policy: held, verdict: GuardHolds))
+}
+
+// THE UNCITED FIGURES STAY TYPED BETS AND THE SOC FIGURE STAYS CITED (DESIGN 4d).
+test fn witness_guard_standing_cited_versus_bet() -> Bool {
+  match fleet_fan_policy.guard.first() {
+    Absent => false
+    Present { value: c } => match c.standing {
+      CitedToAuthority { authority: _ } => true
+      TranscribedUncited { read_obligation: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    }
+  }
+}
+
+test fn witness_trip_lookup_is_total_over_the_policy_roles() -> Bool {
+  match fleet_fan_trip_for(policy: fleet_fan_policy, role: ChassisOutlet) {
+    Absent => false
+    Present { value: t } => celsius_count(t) == 70
+  }
+}
+
+// INHABITANCE: the MegaRAC guard's own predicate agrees with the fleet fold on both sides of a trip,
+// so the real adapter path reads the policy and not a private copy.
+test fn witness_megarac_guard_reads_the_fleet_policy() -> Bool {
+  megarac_temperature_trips(sensor: "CPU0_SOC_Temp" as NonEmptyStr, temperature: celsius(85))
+    && !megarac_temperature_trips(sensor: "CPU0_SOC_Temp" as NonEmptyStr, temperature: celsius(84))
+    && megarac_temperature_trips(sensor: "Outlet_1_Temp" as NonEmptyStr, temperature: celsius(70))
+    && !megarac_temperature_trips(sensor: "Not_A_Guard_Sensor" as NonEmptyStr, temperature: celsius(120))
+}

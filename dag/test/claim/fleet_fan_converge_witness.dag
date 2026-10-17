@@ -1,0 +1,98 @@
+module test.claim.fleet_fan_converge_witness
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.measure { percent }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPolicy, HeldAtDutyFloor, fleet_fan_policy }
+import gunbc.fleet.fleet_fan_converge {
+  FleetFanApply,
+  FleetFanConverged,
+  FleetFanControlObserved,
+  FleetFanControlUnobservable,
+  FleetFanDiverged,
+  FleetFanNoop,
+  FleetFanRefuse,
+  FleetFanUnobservable,
+  fleet_fan_decide,
+  fleet_fan_standing,
+}
+
+// SUPPLIED: the adapter's normalized observation. EXECUTED: the real decision and the real route
+// dispatch fan_converge_route_for_family, so the route's binding state decides Apply vs Refuse.
+
+fn held(p: Int) -> FleetFanPolicy {
+  FleetFanPolicy { control: HeldAtDutyFloor { floor: percent(p) }, guard: fleet_fan_policy.guard, unreadable_sensor_trips: true }
+}
+
+fn seen_held(p: Int) -> FleetFanControl { HeldAtDutyFloor { floor: percent(p) } }
+
+test fn witness_matching_control_is_noop() -> Bool {
+  match fleet_fan_decide(policy: fleet_fan_policy, family: AmiMegaRac, observed: FleetFanControlObserved { control: FirmwareAutomatic }) {
+    FleetFanNoop => true
+    FleetFanApply { target: _, route: _ } => false
+    FleetFanRefuse { cause: _ } => false
+  }
+}
+
+// OPENBMC'S ROUTE IS BOUND, SO A DIVERGENT HOST GETS AN APPLY; MEGARAC'S IS UNBOUND, SO THE SAME
+// DIVERGENCE REFUSES - the discriminating pair for the route dispatch.
+test fn witness_divergence_applies_on_bound_route_and_refuses_on_unbound() -> Bool {
+  let seen = FleetFanControlObserved { control: seen_held(30) }
+  let on_openbmc = match fleet_fan_decide(policy: fleet_fan_policy, family: OpenBmc, observed: seen) {
+    FleetFanApply { target: _, route: _ } => true
+    FleetFanNoop => false
+    FleetFanRefuse { cause: _ } => false
+  }
+  let on_megarac = match fleet_fan_decide(policy: fleet_fan_policy, family: AmiMegaRac, observed: seen) {
+    FleetFanRefuse { cause: _ } => true
+    FleetFanNoop => false
+    FleetFanApply { target: _, route: _ } => false
+  }
+  on_openbmc && on_megarac
+}
+
+// A FLOOR THE FAMILY CANNOT EXPRESS REFUSES BEFORE ANY ROUTE IS CONSULTED: 22 is off MegaRAC's
+// step-5 set and OpenBMC's held floor is unread.
+test fn witness_inexpressible_floor_refuses() -> Bool {
+  let seen = FleetFanControlObserved { control: FirmwareAutomatic }
+  let megarac = match fleet_fan_decide(policy: held(22), family: AmiMegaRac, observed: seen) {
+    FleetFanRefuse { cause: _ } => true
+    FleetFanNoop => false
+    FleetFanApply { target: _, route: _ } => false
+  }
+  let openbmc = match fleet_fan_decide(policy: held(30), family: OpenBmc, observed: seen) {
+    FleetFanRefuse { cause: _ } => true
+    FleetFanNoop => false
+    FleetFanApply { target: _, route: _ } => false
+  }
+  megarac && openbmc
+}
+
+test fn witness_unobservable_refuses_and_is_never_converged() -> Bool {
+  let u = FleetFanControlUnobservable { cause: "bmc unreachable" as NonEmptyStr }
+  let d = match fleet_fan_decide(policy: fleet_fan_policy, family: OpenBmc, observed: u) {
+    FleetFanRefuse { cause: _ } => true
+    FleetFanNoop => false
+    FleetFanApply { target: _, route: _ } => false
+  }
+  let s = match fleet_fan_standing(policy: fleet_fan_policy, readback: u) {
+    FleetFanUnobservable { cause: _ } => true
+    FleetFanConverged => false
+    FleetFanDiverged { observed: _ } => false
+  }
+  d && s
+}
+
+test fn witness_standing_reads_only_the_readback() -> Bool {
+  let ok = match fleet_fan_standing(policy: fleet_fan_policy, readback: FleetFanControlObserved { control: FirmwareAutomatic }) {
+    FleetFanConverged => true
+    FleetFanDiverged { observed: _ } => false
+    FleetFanUnobservable { cause: _ } => false
+  }
+  let bad = match fleet_fan_standing(policy: fleet_fan_policy, readback: FleetFanControlObserved { control: seen_held(20) }) {
+    FleetFanDiverged { observed: _ } => true
+    FleetFanConverged => false
+    FleetFanUnobservable { cause: _ } => false
+  }
+  ok && bad
+}

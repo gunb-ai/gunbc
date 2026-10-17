@@ -1,0 +1,160 @@
+module product.fleet_fan_policy
+
+import std.types { Bool, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.measure { Celsius, CelsiusDelta, Percent, celsius, celsius_count, celsius_delta, celsius_delta_count }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.cpu.ampere {
+  ampere_altra_max_m12830_thermal_limits,
+  ampere_altra_max_rev_a1_datasheet_authority,
+}
+
+// WHAT THE FLEET WANTS OF ITS FANS, ONCE, FOR EVERY MACHINE (operator ruling 2026-10-17,
+// gunbc.design_ruling fan_policy_is_one_fleet_management_workflow).
+//
+// This is DESIRED STATE and nothing else. It names no host, no BMC family, no sensor spelling and no
+// header: those are facts of a machine row or of a family adapter, and a fleet policy that carried
+// them would be the per-machine literal the ruling forbids. Observation is product.fan_policy_standing;
+// the adapters that read and write a family live beside gunbc.fleet.fleet_fan_converge_routes.
+//
+// FIRMWARE AUTOMATIC CONTROL IS THE ONLY POSTURE THE FLEET RESTS IN. FleetFanControl has a held arm
+// because a bench run may want a quiet floor, but that arm is only ever a guarded excursion: the
+// guard below trips toward automatic and a run exit does the same, and neither is a field anyone
+// can set, so no FleetFanPolicy value describes a trip or an exit that leaves manual control on.
+type FleetFanControl
+  = FirmwareAutomatic
+  | HeldAtDutyFloor { floor: Percent }
+
+// THE PHYSICAL ROLE A GUARD TEMPERATURE PLAYS, NOT THE SENSOR NAME A FAMILY SPELLS IT WITH.
+// Mapping a family's sensor strings onto a role is adapter work (for MegaRAC,
+// gunbc.machine_intake.megarac_fan_thermal_guard megarac_guard_sensor_class).
+type ThermalGuardRole
+  = SocJunction
+  | DimmChannel
+  | VoltageRegulator
+  | ChassisOutlet
+
+// A TRIP FIGURE CARRIES ITS OWN STANDING (DESIGN 4d). The SoC figure is a datasheet ceiling less a
+// stated margin; the other three are TranscribedUncited bets. A trip is policy toward restoring
+// automatic control and is never a wall against cooling, so a consumer may use an uncited figure to
+// trip toward automatic and may never use it to justify LOWER cooling.
+type ThermalGuardCondition {
+  role: ThermalGuardRole
+  trip: Celsius
+  standing: CitedFigureStanding
+}
+
+type FleetFanPolicy {
+  control: FleetFanControl
+  guard: List<ThermalGuardCondition>
+  unreadable_sensor_trips: Bool
+}
+
+// POLICY MARGIN, NOT A DATASHEET FIGURE. Ampere cites 100C continuous junction; a trip at that
+// wall is too late for held duty. Fifteen degrees is the same span the fleet quiet curve uses
+// between emergency full duty (85C) and that junction maximum.
+data fleet_fan_soc_trip_margin: CelsiusDelta = celsius_delta(15)
+
+fn fleet_fan_soc_trip() -> Celsius {
+  celsius(celsius_count(ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature) - celsius_delta_count(fleet_fan_soc_trip_margin))
+}
+
+data fleet_fan_dimm_trip_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "JEDEC or DIMM-vendor operating-temperature ceiling for the parts fitted. The 85C trip is policy toward restoring automatic control, not a cited wall against cooling.",
+}
+
+data fleet_fan_vrd_trip_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "VRD-vendor operating-temperature ceiling for the VRDs the BMC names. The 90C trip is policy toward restoring automatic control, not a cited wall against cooling.",
+}
+
+data fleet_fan_outlet_trip_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Chassis or BMC thermal documentation outlet-temperature limit. The 70C trip is policy toward restoring automatic control, not a cited wall against cooling.",
+}
+
+fn fleet_fan_guard() -> List<ThermalGuardCondition> {
+  [
+    ThermalGuardCondition {
+      role: SocJunction,
+      trip: fleet_fan_soc_trip(),
+      standing: CitedToAuthority { authority: ampere_altra_max_rev_a1_datasheet_authority },
+    },
+    ThermalGuardCondition { role: DimmChannel, trip: celsius(85), standing: fleet_fan_dimm_trip_standing },
+    ThermalGuardCondition { role: VoltageRegulator, trip: celsius(90), standing: fleet_fan_vrd_trip_standing },
+    ThermalGuardCondition { role: ChassisOutlet, trip: celsius(70), standing: fleet_fan_outlet_trip_standing },
+  ]
+}
+
+// THE FLEET POLICY. Automatic control, the guard above, and an unreadable guard sensor counts as a
+// trip (fail-closed: not knowing the temperature is never a reason to keep manual control).
+data fleet_fan_policy: FleetFanPolicy = FleetFanPolicy {
+  control: FirmwareAutomatic,
+  guard: fleet_fan_guard(),
+  unreadable_sensor_trips: true,
+}
+
+fn fleet_fan_trip_for(policy: FleetFanPolicy, role: ThermalGuardRole) -> Celsius? {
+  fleet_fan_trip_in(guard: policy.guard, role: role)
+}
+
+fn fleet_fan_trip_in(guard: List<ThermalGuardCondition>, role: ThermalGuardRole) -> Celsius? {
+  match guard.first() {
+    Absent => Absent
+    Present { value: c } => if fleet_fan_role_eq(a: c.role, b: role) {
+      Present { value: c.trip }
+    } else {
+      fleet_fan_trip_in(guard: guard.skip(n: 1), role: role)
+    }
+  }
+}
+
+fn fleet_fan_role_eq(a: ThermalGuardRole, b: ThermalGuardRole) -> Bool {
+  match a {
+    SocJunction => match b { SocJunction => true, DimmChannel => false, VoltageRegulator => false, ChassisOutlet => false }
+    DimmChannel => match b { SocJunction => false, DimmChannel => true, VoltageRegulator => false, ChassisOutlet => false }
+    VoltageRegulator => match b { SocJunction => false, DimmChannel => false, VoltageRegulator => true, ChassisOutlet => false }
+    ChassisOutlet => match b { SocJunction => false, DimmChannel => false, VoltageRegulator => false, ChassisOutlet => true }
+  }
+}
+
+// WHAT A GUARD READING MEANS, FAMILY-AGNOSTICALLY. The only non-Holds outcomes are RestoreAutomatic,
+// and there is no constructor for any other: the guard trips toward automatic or it holds.
+type FleetFanGuardVerdict
+  = GuardHolds
+  | GuardRestoreAutomatic { cause: GuardRestoreCause }
+
+type GuardRestoreCause
+  = GuardTripped { role: ThermalGuardRole, temperature: Celsius }
+  | GuardSensorUnreadable { role: ThermalGuardRole }
+  | GuardRunExited
+
+fn fleet_fan_guard_reading(policy: FleetFanPolicy, role: ThermalGuardRole, reading: Celsius?) -> FleetFanGuardVerdict {
+  match fleet_fan_trip_for(policy: policy, role: role) {
+    Absent => GuardHolds
+    Present { value: trip } => match reading {
+      Absent => if policy.unreadable_sensor_trips {
+        GuardRestoreAutomatic { cause: GuardSensorUnreadable { role: role } }
+      } else {
+        GuardHolds
+      }
+      Present { value: t } => if celsius_count(t) >= celsius_count(trip) {
+        GuardRestoreAutomatic { cause: GuardTripped { role: role, temperature: t } }
+      } else {
+        GuardHolds
+      }
+    }
+  }
+}
+
+// EVERY RUN EXIT RESTORES AUTOMATIC: success mid-phase, refusal, timeout, kill. One value, no input.
+fn fleet_fan_run_exit() -> FleetFanGuardVerdict {
+  GuardRestoreAutomatic { cause: GuardRunExited }
+}
+
+// THE POSTURE A VERDICT LEAVES THE FAN CONTROL IN. Total over the verdict, and the restore arm is
+// FirmwareAutomatic whatever the policy's own control was.
+fn fleet_fan_control_after(policy: FleetFanPolicy, verdict: FleetFanGuardVerdict) -> FleetFanControl {
+  match verdict {
+    GuardHolds => policy.control
+    GuardRestoreAutomatic { cause: _ } => FirmwareAutomatic
+  }
+}

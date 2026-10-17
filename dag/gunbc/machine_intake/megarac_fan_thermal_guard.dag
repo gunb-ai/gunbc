@@ -2,15 +2,17 @@ module gunbc.machine_intake.megarac_fan_thermal_guard
 
 import std.types { Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
-import std.measure { Celsius, CelsiusDelta, Percent, celsius, celsius_count, celsius_delta, celsius_delta_count }
-import extdeps.external_authority {
-  CitedFigureStanding,
-  CitedToAuthority,
-  TranscribedUncited,
-}
-import extdeps.cpu.ampere {
-  ampere_altra_max_m12830_thermal_limits,
-  ampere_altra_max_rev_a1_datasheet_authority,
+import std.measure { Celsius, Percent }
+import product.fleet_fan_policy {
+  ChassisOutlet,
+  DimmChannel,
+  GuardHolds,
+  GuardRestoreAutomatic,
+  SocJunction,
+  ThermalGuardRole,
+  VoltageRegulator,
+  fleet_fan_policy,
+  fleet_fan_guard_reading,
 }
 import extdeps.bmc.megarac_fan_policy {
   CoolingManagerAutomatic,
@@ -33,48 +35,10 @@ import gunbc.machine_intake.megarac_fan_mode_observation {
 
 data megarac_manual_duty_soc_sensor: NonEmptyStr = "CPU0_SOC_Temp"
 
-data megarac_manual_duty_soc_ceiling_standing: CitedFigureStanding = CitedToAuthority {
-  authority: ampere_altra_max_rev_a1_datasheet_authority,
-}
+// The trip figures and their citations are the FLEET's, not MegaRAC's: product.fleet_fan_policy
+// fleet_fan_policy. This module only classifies this family's sensor names onto a guard role.
 
-fn megarac_manual_duty_soc_ceiling() -> Celsius {
-  ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature
-}
-
-// POLICY MARGIN, NOT A DATASHEET FIGURE. Ampere cites 100C continuous junction; a trip at that
-// wall is too late for manual low duty. Fifteen degrees is the same span the fleet quiet curve
-// uses between emergency full duty (85C) and that junction maximum.
-data megarac_manual_duty_soc_trip_margin: CelsiusDelta = celsius_delta(15)
-
-fn megarac_manual_duty_soc_trip() -> Celsius {
-  celsius(celsius_count(megarac_manual_duty_soc_ceiling()) - celsius_delta_count(megarac_manual_duty_soc_trip_margin))
-}
-
-data megarac_manual_duty_dimm_trip: Celsius = celsius(85)
-
-data megarac_manual_duty_dimm_ceiling_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "JEDEC or DIMM-vendor operating-temperature ceiling for the parts fitted on this unit. The 85C trip is policy toward restoring automatic control, not a cited wall against cooling.",
-}
-
-data megarac_manual_duty_vrd_trip: Celsius = celsius(90)
-
-data megarac_manual_duty_vrd_ceiling_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "VRD-vendor operating-temperature ceiling for the VRDs this BMC names. The 90C trip is policy toward restoring automatic control, not a cited wall against cooling.",
-}
-
-data megarac_manual_duty_outlet_trip: Celsius = celsius(70)
-
-data megarac_manual_duty_outlet_ceiling_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Foxconn Mt. Collins outlet-temperature limit from the chassis or BMC thermal documentation. The 70C trip is policy toward restoring automatic control, not a cited wall against cooling.",
-}
-
-type MegaRacGuardSensorClass
-  = SocJunction
-  | DimmChannel
-  | VoltageRegulator
-  | ChassisOutlet
-
-fn megarac_guard_sensor_class(sensor: NonEmptyStr) -> MegaRacGuardSensorClass? {
+fn megarac_guard_sensor_class(sensor: NonEmptyStr) -> ThermalGuardRole? {
   let s = sensor as String
   match (s == "CPU0_SOC_Temp") {
     true => Present { value: SocJunction }
@@ -100,20 +64,17 @@ fn megarac_guard_sensor_class(sensor: NonEmptyStr) -> MegaRacGuardSensorClass? {
   }
 }
 
-fn megarac_guard_trip_celsius(kind: MegaRacGuardSensorClass) -> Celsius {
-  match kind {
-    SocJunction => megarac_manual_duty_soc_trip()
-    DimmChannel => megarac_manual_duty_dimm_trip
-    VoltageRegulator => megarac_manual_duty_vrd_trip
-    ChassisOutlet => megarac_manual_duty_outlet_trip
-  }
-}
-
 fn megarac_temperature_trips(sensor: NonEmptyStr, temperature: Celsius) -> Bool {
   match megarac_guard_sensor_class(sensor: sensor) {
     Absent => false
-    Present { value: kind } =>
-      celsius_count(temperature) >= celsius_count(megarac_guard_trip_celsius(kind: kind))
+    Present { value: kind } => match fleet_fan_guard_reading(
+      policy: fleet_fan_policy,
+      role: kind,
+      reading: Present { value: temperature },
+    ) {
+      GuardHolds => false
+      GuardRestoreAutomatic { cause: _ } => true
+    }
   }
 }
 
