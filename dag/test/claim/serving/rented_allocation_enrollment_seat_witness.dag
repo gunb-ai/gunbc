@@ -7,6 +7,7 @@ import gunbc.host.host_standup { HostStandupStep, HostStandupAssimilationPhase, 
 import gunbc.host.host_assimilation_program { assimilation_program_for }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, inference_serving_enrollment_participation }
 import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { byte_size_count, hardware_thread_count_value }
 import std.decimal { ExactDecimal }
 import extdeps.external_authority { ExternalAuthority }
@@ -23,7 +24,7 @@ import gunbc.fleet.vast_ai_guest {
 import gunbc.serving.rented_allocation { RentedServingAllocation, RentedContractRead, rented_allocation_replica }
 import gunbc.serving.rented_allocation_host_enrollment {
   RentedHostEnrollmentDerived, RentedHostEnrollmentRefused, RentedHostEnrollmentDerivation,
-  rented_allocation_host_enrollment, rented_contract_unread_no_route_obligation,
+  rented_allocation_host_enrollment, rented_contract_unread_no_route_obligation, rented_host_resources_mismatch_obligation,
 }
 import gunbc.harness.rented_allocation_seat { RentedSeatDerived, RentedSeatRefused, rented_allocation_seat }
 import gunbc.harness.harness_seat { harness_seat_partition }
@@ -61,6 +62,10 @@ fn s_host(arch: String) -> VastAiOfferHostResources {
   VastAiOfferHostResources { cpu_arch: arch, cpu_cores: 64, cpu_ram: 65536, disk_space: ExactDecimal { units: 20485, fraction_digits: 1 } }
 }
 
+fn s_host_decl() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.serving.rented_allocation_enrollment_seat_witness", decl_name: "s_host")
+}
+
 fn s_cite() -> ExternalAuthority {
   vast_ai_show_instances_page
 }
@@ -84,7 +89,7 @@ fn s_acquisition(resource_id: String) -> ProviderResourceAcquisition {
 }
 
 fn s_derive(standings: VastGuestStandings, acquisition: ProviderResourceAcquisition?) -> RentedHostEnrollmentDerivation {
-  rented_allocation_host_enrollment(a: s_read_allocation(), host: s_host(arch: "amd64"), standings: standings, acquisition: acquisition)
+  rented_allocation_host_enrollment(a: s_read_allocation(), host: s_host(arch: "amd64"), host_decl: s_host_decl(), standings: standings, acquisition: acquisition)
 }
 
 fn s_refusal_text(r: RentedHostEnrollmentDerivation) -> String {
@@ -124,7 +129,7 @@ test fn the_derived_intent_is_inference_participation_over_a_provider_guest_with
 
 // THE REFUSALS ARE TYPED: an unread contract names no route; an unread entitlement is its own obligation.
 test fn an_unread_contract_refuses_with_its_obligation() -> Bool {
-  match rented_allocation_host_enrollment(a: a_allocation(route: a_tunnel(target_port: 8000)), host: s_host(arch: "amd64"), standings: s_documented_standings(), acquisition: Absent) {
+  match rented_allocation_host_enrollment(a: a_allocation(route: a_tunnel(target_port: 8000)), host: s_host(arch: "amd64"), host_decl: s_host_decl(), standings: s_documented_standings(), acquisition: Absent) {
     RentedHostEnrollmentRefused { allocation: _, obligation: o } => o == rented_contract_unread_no_route_obligation
     RentedHostEnrollmentDerived { allocation: _, intent: _ } => false
   }
@@ -150,8 +155,24 @@ test fn the_real_identity_url_standing_refuses_naming_the_pages() -> Bool {
 }
 
 test fn a_non_amd64_offer_refuses_on_architecture() -> Bool {
-  s_refusal_text(r: rented_allocation_host_enrollment(a: s_read_allocation(), host: s_host(arch: "arm64"), standings: s_documented_standings(), acquisition: Absent))
+  s_refusal_text(r: rented_allocation_host_enrollment(a: s_read_allocation(), host: s_host(arch: "arm64"), host_decl: s_host_decl(), standings: s_documented_standings(), acquisition: Absent))
     == (vast_ai_guest_architecture_obligation as String)
+}
+
+// THE HOST RESOURCES ARE TIED TO THE CONTRACT OFFER: i_instance states 64 hard threads, s_host states 64 cpu_cores,
+// so the fixture agrees (this is the pairing for the shared field), and a host of another machine refuses.
+test fn host_resources_of_another_machine_refuse() -> Bool {
+  let other = VastAiOfferHostResources { cpu_arch: "amd64", cpu_cores: 32, cpu_ram: 65536, disk_space: ExactDecimal { units: 20485, fraction_digits: 1 } }
+  s_refusal_text(r: rented_allocation_host_enrollment(a: s_read_allocation(), host: other, host_decl: s_host_decl(), standings: s_documented_standings(), acquisition: Absent))
+    == (rented_host_resources_mismatch_obligation as String)
+}
+
+test fn the_entitlement_cites_the_supplied_host_declaration_not_a_type() -> Bool {
+  match s_derive(standings: s_documented_standings(), acquisition: Absent) {
+    RentedHostEnrollmentDerived { allocation: _, intent: i } =>
+      match i.backing { ProviderGuest { route: _, entitlement: e, resource: _ } => e.offer == s_host_decl()  _ => false }
+    RentedHostEnrollmentRefused { allocation: _, obligation: _ } => false
+  }
 }
 
 // THE DERIVED ENTITLEMENT READS THE DOCUMENTED FIELDS: 64 vCPUs, 65536 MB, 2048.5 GB, decimal basis.

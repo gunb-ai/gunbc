@@ -1,8 +1,11 @@
 module gunbc.serving.rented_allocation_host_enrollment
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, Bool, NonEmptyStr, List }
+import product.fabric.supply { SupplierOffer }
 import std.optional { Present, Absent }
-import std.decl_ref { decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { hardware_thread_count }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import product.host_identity { HostIdentity }
@@ -48,6 +51,18 @@ fn rented_resource_awaited_obligation(id: RentedAllocationIdentity) -> NonEmptyS
 
 data rented_acquisition_names_another_resource_obligation: NonEmptyStr = "the supplied provider acquisition names a resource id other than the allocation's contract id, so it is another rental's binding" as NonEmptyStr
 
+data rented_host_resources_mismatch_obligation: NonEmptyStr = "the supplied Vast host resources do not agree with the allocation's accepted contract offer (cpu_cores differs from the offer's hard thread requirement), so they describe another machine" as NonEmptyStr
+
+// THE ONE FIELD THE CONTRACT OFFER SHARES WITH THE HOST RESOURCES is the thread count (the offer's hard
+// threads, bound from the same machine); memory and disk are not on a SupplierOffer, so they cannot be
+// cross-checked and the host resources are otherwise a supplied reading.
+fn rented_host_matches_contract(offer: SupplierOffer<NonEmptyStr>, host: VastAiOfferHostResources) -> Bool {
+  match checked_int_to_nat(n: host.cpu_cores) {
+    Absent => false
+    Present { value: n } => offer.shape.hard.threads == hardware_thread_count(count: n)
+  }
+}
+
 fn rented_resource_binding(a: RentedServingAllocation, acquisition: ProviderResourceAcquisition?) -> ProviderResourceBinding? {
   match acquisition {
     Absent => Present { value: ProviderResourceAwaited { read_obligation: rented_resource_awaited_obligation(id: a.identity) } }
@@ -56,11 +71,14 @@ fn rented_resource_binding(a: RentedServingAllocation, acquisition: ProviderReso
   }
 }
 
-fn rented_allocation_host_enrollment(a: RentedServingAllocation, host: VastAiOfferHostResources, standings: VastGuestStandings, acquisition: ProviderResourceAcquisition?) -> RentedHostEnrollmentDerivation {
+fn rented_allocation_host_enrollment(a: RentedServingAllocation, host: VastAiOfferHostResources, host_decl: DeclarationRef, standings: VastGuestStandings, acquisition: ProviderResourceAcquisition?) -> RentedHostEnrollmentDerivation {
   match a.contract {
     RentedContractUnread { obligation: _ } => RentedHostEnrollmentRefused { allocation: a.identity, obligation: rented_contract_unread_no_route_obligation }
     RentedContractRead { offer: offer } =>
-      match vast_ai_guest_entitlement(host: host, offer: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "VastAiOfferHostResources"), standings: standings) {
+      if !rented_host_matches_contract(offer: offer, host: host) {
+        RentedHostEnrollmentRefused { allocation: a.identity, obligation: rented_host_resources_mismatch_obligation }
+      } else {
+      match vast_ai_guest_entitlement(host: host, offer: host_decl, standings: standings) {
         VastGuestEntitlementUnread { obligation: o } => RentedHostEnrollmentRefused { allocation: a.identity, obligation: o }
         VastGuestEntitlementRead { entitlement: e } =>
           match rented_resource_binding(a: a, acquisition: acquisition) {
@@ -75,6 +93,7 @@ fn rented_allocation_host_enrollment(a: RentedServingAllocation, host: VastAiOff
                 },
               }
           }
+      }
       }
   }
 }
