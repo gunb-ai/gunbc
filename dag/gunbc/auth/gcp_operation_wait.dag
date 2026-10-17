@@ -28,22 +28,26 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 // THE BUDGET IS DATA AND THE TICKS ARE DERIVED from it and the cadence, the same shape as
 // gunbc.auth.gcp_iam_converge_run gcp_iam_converge_poll_ticks. Cadence and budget are chosen so one
 // create's wait fits inside the apply step's actuation allowance
-// (gcp_operation_budget_fits_actuation_allowance, witnessed). One apply step may create a provider
-// for every declared target, so the step timeout ALSO adds targets x budget
-// (gcp_iam_converge_run gcp_iam_converge_create_waits_seconds): the waits cannot add up past the
-// timeout, and a slow create ends in the typed budget-spent refusal.
+// (gcp_operation_budget_fits_actuation_allowance, witnessed). THE TOKEN IS THE WHOLE BOUND: all of a
+// step's waits share one impersonated token of iam_converge_token_lifetime, so many slow creates can
+// outlast it; a read after expiry is refused as OperationWaitUnreadable (typed, the create is never
+// reissued) and the operator's rerun re-observes before it writes.
 data gcp_operation_poll_cadence: Second = second(count: 5)
 
 data gcp_operation_poll_budget: Second = second(count: 120)
 
-data gcp_iam_converge_actuation_allowance: Second = second(count: 600)
+// THE ACTUATION TOKEN'S LIFETIME, passed to the impersonating auth step. Ten minutes covers a
+// provisioning run (creates, one impersonation reconcile, a handful of secret grants, each with
+// readback) and ends before a leaked token is worth much. It lives here because the waits are bounded
+// by it and gunbc.auth.gcp_iam_converge, which imports this module, cannot be imported back.
+data iam_converge_token_lifetime: Second = second(count: 600)
 
 fn gcp_operation_poll_ticks() -> Int {
   second_count(s: gcp_operation_poll_budget) / second_count(s: gcp_operation_poll_cadence)
 }
 
 fn gcp_operation_budget_fits_actuation_allowance() -> Bool {
-  second_count(s: gcp_operation_poll_budget) <= second_count(s: gcp_iam_converge_actuation_allowance)
+  second_count(s: gcp_operation_poll_budget) <= second_count(s: iam_converge_token_lifetime)
 }
 
 // ── ONE READ, and the pure decision after it ─────────────────────────────────────────────────────

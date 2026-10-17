@@ -21,11 +21,11 @@ import gunbc.auth.approval_gate {
   approval_standing_read, StandingReadAt, StandingClockUnreadable,
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization, ApprovalPollStanding }
-import gunbc.auth.gcp_operation_wait { gcp_iam_converge_actuation_allowance, gcp_operation_poll_budget }
+import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge {
   GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstatePartialNoop, GcpIamEstateRefused, estate_refused_texts,
   GcpIamRequest, GcpIamRequested, GcpIamUnrequestable,
-  gcp_iam_converge_request, observe_and_plan_estate, diff_targets, gcp_iam_converge_targets, execute_approved_estate,
+  gcp_iam_converge_request, observe_and_plan_estate, diff_targets, execute_approved_estate,
 }
 
 // ── THE CONVERGING RUN (fleet-converge mode gcp_iam_converge, its own job on srv1) ────────────
@@ -59,16 +59,11 @@ data gcp_iam_converge_submit_timeout: Second = second(count: 30)
 // THE STEP BUDGET IS DERIVED FROM THE CONSENT WINDOW, not chosen beside it: the request step waits at
 // most the filing window for the tap, and plan, apply and readback are bounded API calls. Ten
 // minutes over the window is the actuation allowance, the same as the impersonated token's lifetime.
-// THE CREATES' WAITS ARE ADDED ON TOP (review 81291): one apply step may create a provider for every
-// declared target, each waiting up to the operation budget, so the worst case is targets x budget.
-// Counting it here keeps a slow create ending in the typed budget-spent refusal, never in the
-// workflow timeout killing the job.
-fn gcp_iam_converge_create_waits_seconds() -> Int {
-  gcp_iam_converge_targets.length() * second_count(s: gcp_operation_poll_budget)
-}
-
+// THE WAITS CANNOT OUTLAST THE TOKEN (review 81321): every create's operation reads share the one
+// impersonated token, so past its lifetime a read is refused as unreadable (typed, the create is never
+// reissued) whatever the step timeout allows; the lifetime is therefore the whole actuation bound.
 fn gcp_iam_converge_step_timeout_minutes() -> Int {
-  (second_count(s: gcp_iam_converge_file_window) + second_count(s: gcp_iam_converge_actuation_allowance) + gcp_iam_converge_create_waits_seconds() + 59) / 60
+  (second_count(s: gcp_iam_converge_file_window) + second_count(s: iam_converge_token_lifetime) + 59) / 60
 }
 
 // THE ACTUATION TOKEN'S VARIABLE. The workflow's impersonating auth step publishes it to the apply

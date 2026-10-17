@@ -2993,7 +2993,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: gcp-iam-converge
-    timeout-minutes: 82
+    timeout-minutes: 60
     if: github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'branch_run_grant'
     permissions:
       contents: read
@@ -3111,7 +3111,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'gcp_iam_converge'
-        timeout-minutes: 62
+        timeout-minutes: 40
       - name: "Branch run grant: read the run from GitHub and the account's policy as iam-observe, file one request, wait for the operator"
         id: branch_run_grant_request
         run: |-
@@ -3122,7 +3122,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           BRANCH_RUN_KEY: ${{ github.event.inputs.transaction_nonce }}
         if: github.event.inputs.mode == 'branch_run_grant'
-        timeout-minutes: 62
+        timeout-minutes: 40
       - name: WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a live approval)
         id: wif_auth_iam_converge
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093

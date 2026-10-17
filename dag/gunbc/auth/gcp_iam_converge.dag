@@ -10,7 +10,7 @@ import std.scoped_authorization { AttemptIdentity, AuthorizationScope, Authorize
 import std.optional { Present, Absent, optional_present }
 import extdeps.crypto.sha2 { sha256_hex }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, wif_pool_resource, WifProviderOperation }
-import gunbc.auth.gcp_operation_wait { wif_create_operation_wait }
+import gunbc.auth.gcp_operation_wait { wif_create_operation_wait, iam_converge_token_lifetime }
 import extdeps.cloud.gcp.iam {
   IamCondition, GcpPolicy, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
@@ -105,7 +105,6 @@ data iam_observe_service_account: ServiceAccountEmail = "iam-observe@gunbai-secr
 // THE ACTUATION TOKEN'S LIFETIME, passed to the impersonating auth step. Ten minutes covers a
 // provisioning run (three creates, one impersonation reconcile, a handful of secret grants, each with
 // readback) and ends before a leaked token is worth much.
-data iam_converge_token_lifetime: Second = second(count: 600)
 
 // ── The reach of setIamPolicy, bounded in three layers ───────────────────────────────────────
 // 1. FOUR CUSTOM ROLES, EACH BOUND ON THE RESOURCE ITS PERMISSIONS ARE AUTHORIZED AGAINST (HOLD
