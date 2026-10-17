@@ -57,15 +57,25 @@ fn host_board_architecture(access: BmcAccessObservationStanding) -> BoardSocArch
 //
 // Same chain as host_board_architecture, and it stops one link earlier: no architecture derivation,
 // just the families the board admits.
-fn host_board_soc_families(access: BmcAccessObservationStanding) -> List<SoCFamily>? {
+// THE SoC FAMILIES THE BOUND BOARD ADMITS, AS A NON-EMPTY SET OR NOTHING. The `?` is exactly one fact:
+// NO ROW WAS REACHED -- no access observation, no hardware authority, or no edge naming the authority.
+// It is NOT also "the roster is empty", and that is the point (review 81501): BoardSocEdge.soc_families is
+// FreeSemigroup, so an edge cannot be written empty, and flattening it to a List here threw that guarantee
+// away at the one consumer that leads to SMpro -- which then rebuilt the empty case at runtime, with a
+// refusal cause and a rendered sentence, for a state that is impossible to write. Returning the carrier
+// keeps the fact the type already carried (DESIGN Sec 5, and the ruling nonemptiness_is_constructed_or_proved).
+fn host_board_soc_families(access: BmcAccessObservationStanding) -> FreeSemigroup<SoCFamily>? {
   match access {
     BmcAccessObserved { observation: obs } => {
       let lookup = board_authority_for(observation: obs.identity.board, bindings: board_authority_bindings)
       match board_facts_authority(lookup: lookup) {
         Absent => none
         Present { value: authority } => match board_soc_edges_for(authority: authority) {
+          // THE EDGE IS RETURNED AS WRITTEN. No flattening, no re-counting: soc_families is a
+          // FreeSemigroup, so a non-empty roster is what an edge can be, and the caller gets that fact
+          // rather than a List it has to interrogate again.
           Absent => none
-          Present { value: edge } => Present { value: non_empty_to_list(xs: edge.soc_families) }
+          Present { value: edge } => Present { value: edge.soc_families }
         }
       }
     }

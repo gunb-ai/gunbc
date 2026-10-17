@@ -31,6 +31,7 @@
 module gunbc.host.smpro_platform_capability
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.machine_intake.ampere_smpro_observation {
   SmproPassObservation, SmproPassSubject, SmproSite, SmproSiteRefusal, SmproSiteStanding,
   SmproSiteAdmitted, SmproSiteRefused,
@@ -86,11 +87,6 @@ type SmproUnestablishedCause
     AccessUnobserved { endpoint: BmcControllerEndpoint }
   // The access was observed but reaches no board row with a SoC edge: no hardware authority to ask.
   | NoBoardRowBound { endpoint: BmcControllerEndpoint }
-  // A board row is bound and it admits NO SoC family: the roster itself is empty. Nullary on purpose
-  // -- neither producer can reach a board LABEL (host_board_soc_families returns the families only), so
-  // a board field would be a slot waiting to be filled with a guess. Nullary coproduct arms are
-  // precedented in this corpus: BmcSecureRefusalCause.PreviouslyRotatedCredentialRequired.
-  | BoardAdmitsNoSocFamily
   // The roster MIXES carrying and non-carrying families and nothing selects one. The counts ride along
   // as NUMBERS rather than being folded into the sentence: they are what a witness asserts (one mixed
   // family of two is a different finding from one of nine, and a rule that miscounted the roster would
@@ -143,24 +139,21 @@ fn smpro_facility(access: BmcAccessObservationStanding) -> SmproFacilityStanding
 // production path above resolves the families through the board authority; this one takes them
 // directly, so a witness can ask about a family (an aarch64 family the cited set does not name, a
 // family the set names, and no family at all) without minting a board row per question.
-fn smpro_facility_of_families(families: List<SoCFamily>) -> SmproFacilityStanding {
+fn smpro_facility_of_families(families: FreeSemigroup<SoCFamily>) -> SmproFacilityStanding {
   let c = smpro_admitted_counts(families: families)
-  if c.total == 0 {
-    // NO family at all: nothing is known about the silicon. Unknown, NOT a negative about some
-    // family — the collapse the architecture key produced.
-    SmproFacilityUnestablished { cause: BoardAdmitsNoSocFamily }
-  } else if c.carrying == c.total {
+  // THE LEAD IS THE CARRIER'S OWN HEAD. `first_soc_family` -- a first() over a List whose Absent had to
+  // be answered here three times, plus an empty-roster refusal cause and a rendered sentence for it --
+  // is DELETED with them (review 81501). BoardSocEdge.soc_families is a FreeSemigroup, so a non-empty
+  // roster is the only shape that can be written and reached this function: the type carries the
+  // constraint, so the check that restated it was a second representation of it (DESIGN Sec 5, and the
+  // ruling nonemptiness_is_constructed_or_proved).
+  let lead = families.head
+  if c.carrying == c.total {
     // UNANIMOUS YES: whatever is in the slot, it carries the interface.
-    match first_soc_family(families: families) {
-      Present { value: lead } => SmproFacilityCarried { family: lead }
-      Absent => SmproFacilityUnestablished { cause: BoardAdmitsNoSocFamily }
-    }
+    SmproFacilityCarried { family: lead }
   } else if c.carrying == 0 {
     // UNANIMOUS NO: every family the board admits is negatively answered by the cited set.
-    match first_soc_family(families: families) {
-      Present { value: lead } => SmproFacilityNotCarried { family: lead }
-      Absent => SmproFacilityUnestablished { cause: BoardAdmitsNoSocFamily }
-    }
+    SmproFacilityNotCarried { family: lead }
   } else {
     // MIXED ROSTER. The board's edge is a COMPATIBILITY roster -- what may be installed -- so it does
     // not say which silicon is in the slot, and no SMpro question about THIS machine is answerable from
@@ -178,13 +171,11 @@ fn smpro_facility_of_families(families: List<SoCFamily>) -> SmproFacilityStandin
 // silicon is IN the slot. Answering Carried because ANY rostered family carries SMpro would license an
 // SMpro read on a machine whose actual silicon does not have the interface, which is the same class of
 // error as keying on the architecture: it reads a possibility as a fact about this machine.
-fn smpro_admitted_counts(families: List<SoCFamily>) -> SmproAdmittedCounts {
-  let carrying = families |> filter(f => ampere_soc_family_carries_smpro(family: f))
-  SmproAdmittedCounts { total: count(families), carrying: count(carrying) }
-}
-
-fn first_soc_family(families: List<SoCFamily>) -> SoCFamily? {
-  families |> first()
+fn smpro_admitted_counts(families: FreeSemigroup<SoCFamily>) -> SmproAdmittedCounts {
+  // Counted over the list the carrier unfolds to; the carrier remains the authority on the shape.
+  let roster = non_empty_to_list(xs: families)
+  let carrying = roster |> filter(f => ampere_soc_family_carries_smpro(family: f))
+  SmproAdmittedCounts { total: count(roster), carrying: count(carrying) }
 }
 
 // THE MACHINE'S SMpro FACT AS CARRIED ON THE MANAGED ROW, and the reason it is shaped this way rather
@@ -240,19 +231,6 @@ fn platform_arm_for(family: SoCFamily, site: SmproSiteStanding) -> SmproPlatform
   match site {
     SmproSiteAdmitted { site: s } => SmproPlatformCarried { family: family, site: s }
     SmproSiteRefused { cause: c } => SmproPlatformSiteRefused { family: family, cause: c }
-  }
-}
-
-// THE SAME VERDICT OVER AN EXPLICIT FAMILY SET, for a witness that asks about silicon without minting a
-// board row per question. Mirrors smpro_facility_of_families above it, one arm at a time.
-fn smpro_platform_standing_of_families(
-  families: List<SoCFamily>,
-  site: SmproSiteStanding,
-) -> SmproPlatformStanding {
-  match smpro_facility_of_families(families: families) {
-    SmproFacilityCarried { family: family } => platform_arm_for(family: family, site: site)
-    SmproFacilityNotCarried { family: family } => SmproPlatformNotCarried { family: family }
-    SmproFacilityUnestablished { cause: reason } => SmproPlatformUnestablished { cause: reason }
   }
 }
 
@@ -360,8 +338,6 @@ fn smpro_unestablished_cause_text(cause: SmproUnestablishedCause) -> String {
     NoBoardRowBound { endpoint: e } =>
       join(["the controller ", (e.host as String),
         " is observed but reaches no board row, so there is no hardware authority to ask what silicon is installed"], "")
-    BoardAdmitsNoSocFamily =>
-      "the bound board row admits no SoC family, so nothing is known about the silicon this machine carries"
     MixedRosterWithoutInstalledSelection { total: total, carrying: carrying } =>
       join(["the bound board's compatibility roster mixes SMpro-carrying and non-carrying SoC families (",
         to_string(value: carrying), " of ", to_string(value: total),
