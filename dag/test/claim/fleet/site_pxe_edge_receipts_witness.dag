@@ -230,7 +230,7 @@ test fn missing_client_digest_is_refused_not_assumed_equal() -> Bool {
 
 test fn cross_family_digests_are_incomparable_not_different() -> Bool {
   attempt_refusal_is(
-    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: Fnv1a64(Fnv1a64Structural { hex: "0000000000000000" }) }, accepted: 30),
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: Fnv1a64(Fnv1a64Structural { digest: "0000000000000000" }) }, accepted: 30),
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
     want: "families",
   )
