@@ -3,11 +3,10 @@
 
 use self::ParsedOccurrenceBindingSource::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
-pub use crate::std_occurrence_binding_candidates::declaration_exposure_from_containment;
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 pub use crate::std_occurrence_binding_candidates::{
-    AuthoredOrderRow, DeclarationExposureGrounding, DeclarationExposureRow,
-    OccurrenceBindingCandidateInputs, OccurrenceModulePathRow,
+    declaration_exposure_from_containment, AuthoredOrderRow, DeclarationExposureGrounding,
+    DeclarationExposureRow, OccurrenceBindingCandidateInputs, OccurrenceModulePathRow,
 };
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceId, OccurrenceIndexEntry,
@@ -18,8 +17,7 @@ pub use crate::v1_compiler_parse::{parse_with_table, parse_with_table_ready_modu
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::NewlineIndex;
-pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
+pub use crate::v1_std_core::{build_newline_index, empty_intern_table, NewlineIndex};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

@@ -3,15 +3,13 @@
 
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_types::{Bool, SourceSpan};
-pub use crate::v1_compiler_parse::parse_with_table;
-pub use crate::v1_compiler_parse::ParseWithTableResult;
+pub use crate::v1_compiler_parse::{parse_with_table, ParseWithTableResult};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::CompilerDiagnostic;
 use crate::v1_std_core::CompilerDiagnostic::ParseError;
 pub use crate::v1_std_core::NewlineIndex;
-pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
+pub use crate::v1_std_core::{build_newline_index, empty_intern_table, CompilerDiagnostic};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

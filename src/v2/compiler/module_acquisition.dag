@@ -22,8 +22,7 @@ import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bin
 import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.generated_head_demand { generated_head_demand }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.optional_layers { occupancy_declaration_spelling }
-import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
 
@@ -429,7 +428,7 @@ fn acquisition_read_requests(
 // site is promoted from a qualified reference (whose unknown module requests nothing) to an imported member (whose
 // unknown module refuses). An authored reference spelled the same is owed the same declaration.
 fn acquisition_sugar_member_texts(references: List<String>) -> List<String> {
-  let sugar = qualified_name_to_dotted_string(qn: occupancy_declaration_spelling())
+  let sugar = qualified_name_to_dotted_string(qn: optional_declaration_identity())
   match list_find_first(xs: references, predicate: fn(t) { t == sugar }) {
     Present { value: _ } => [sugar]
     Absent => []

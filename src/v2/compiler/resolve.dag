@@ -16,13 +16,13 @@ import v2.std.anonymous_binder { is_anonymous_param_label }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup }
 import v2.std.witness { map_get_checked }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
-import v2.std.optional_layers { occupancy_declaration_spelling, wrap_type_node_occupancy_at }
+import v2.std.optional_layers { wrap_type_node_occupancy_at }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.compilers.target_model { target_model_canonical_operation_wire_node }
 import v2.std.diagnostic { Correction, CorrectionNotModeled, Diagnostic, Diagnostics, NonEmptyDiagnostics, declaration_locus, node_locus, Outcome, UserInputBoundary, Unavailable, Accepted, None, Some, diagnostics_merge, diagnostics_fatal_reason, diagnostics_singleton, bind_outcome, rejected_with_pending, ExternalContractUnknown, Rejected, outcome_with_diagnostics }
 import v2.compiler.primitive_authority { primitive_authority_path, primitive_authority_row_names_head }
 import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_roster_primitive_call_row_optional, fold_family_realization }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node }
+import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node }
 import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY, default_name_resolution_policy }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
 import v2.std.symbol_index { ExcludedCandidate, symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of, EligibleLookup, ExcludedByCategory, LexicalEligibility, symbol_index_lexical_eligibility }
@@ -5208,11 +5208,11 @@ fn resolve_walk_with_namespace_policy(
 // local type named Optional resolves to its own declaration and stays an Instantiation.
 // THE DECLARATION `T?` LOWERS FROM MUST BACK THE OCCUPANCY IT LOWERS TO (ruling gunbc.design_ruling
 // optional_sugar_is_declaration_bound). Acquisition proves only that SOME declaration sits at the canonical path
-// (occupancy_declaration_spelling); the contract is read here, from the declaration the index holds there, by
+// (optional_declaration_identity); the contract is read here, from the declaration the index holds there, by
 // structure: exactly one type parameter, an `Absent` arm carrying no payload, and a `Present` arm whose one field
 // `value` has that parameter as its type. An absent or incompatible declaration refuses, never lowers.
 fn resolve_optional_declaration_refusal_optional(ctx: ResolveContext, at: Node) -> Optional<Diagnostic> {
-  match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: occupancy_declaration_spelling()) {
+  match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: optional_declaration_identity()) {
     Absent => optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_optional_declaration_unavailable, at: at))
     Present { value: decl } =>
       if optional_declaration_backs_occupancy(ctx: ctx, decl: decl) {
@@ -5240,7 +5240,7 @@ fn resolve_optional_application_contract_refusal_optional(ctx: ResolveContext, n
     Cons { head: head, tail: Cons { head: _, tail: Empty } } =>
       match declaration_reference_path_optional(node: head) {
         Present { value: path } =>
-          if path == occupancy_declaration_spelling() {
+          if path == optional_declaration_identity() {
             resolve_optional_declaration_refusal_optional(ctx: ctx, at: n)
           } else {
             optional_absent()
@@ -5252,7 +5252,7 @@ fn resolve_optional_application_contract_refusal_optional(ctx: ResolveContext, n
 }
 
 fn optional_declaration_backs_occupancy(ctx: ResolveContext, decl: Node) -> Bool {
-  match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: occupancy_declaration_spelling()) {
+  match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: optional_declaration_identity()) {
     Present { value: binders } =>
       match binder_conj_names(conj: binders) {
         Cons { head: param, tail: Empty } =>
@@ -5332,7 +5332,7 @@ fn resolve_type_application_normalized(n: Node) -> Node {
     Cons { head: head, tail: Cons { head: argument, tail: Empty } } =>
       match declaration_reference_path_optional(node: head) {
         Present { value: path } =>
-          if path == occupancy_declaration_spelling() {
+          if path == optional_declaration_identity() {
             wrap_type_node_occupancy_at(base: argument, occurrence_id: n.occurrence_id)
           } else {
             n

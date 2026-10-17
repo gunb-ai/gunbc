@@ -35,17 +35,13 @@ use crate::std_checked_arithmetic::CheckedInt::{CheckedIntOverflow, CheckedIntRe
 use crate::std_checked_arithmetic::CheckedIntOperands::BinaryOperands;
 use crate::std_checked_arithmetic::IntegerArithmeticOperation::{IntegerAdd, IntegerMultiply};
 pub use crate::std_checked_arithmetic::{
-    checked_int_multiply, checked_int_to_nat, int_inclusive_max,
+    checked_int_multiply, checked_int_to_nat, int_inclusive_max, CheckedInt, CheckedIntOperands,
+    IntegerArithmeticOperation, IntegerOverflow,
 };
-pub use crate::std_checked_arithmetic::{
-    CheckedInt, CheckedIntOperands, IntegerArithmeticOperation, IntegerOverflow,
-};
-pub use crate::std_decimal::checked_decimal_pow10;
-pub use crate::std_decimal::ExactDecimal;
+pub use crate::std_decimal::{checked_decimal_pow10, ExactDecimal};
 pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_nat::Nat;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, NonEmptyStr};
