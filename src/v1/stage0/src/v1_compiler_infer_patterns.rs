@@ -4,15 +4,17 @@
 use self::ConstructorRoster::*;
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
+pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_primitive_projection::{never_type_declaration, never_type_qualified_path};
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::*;
 use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{
-    lookup_type, lookup_type_by_name, lookup_type_for, symbol_index_lookup,
+    declaration_ref_of_declaration_node, declaration_ref_of_type_node, lookup_type,
+    lookup_type_by_name, lookup_type_for, symbol_index_lookup, TypeEnv,
 };
 pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
@@ -34,11 +36,8 @@ pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
     find_child_named, generic_param_name_at, is_compiler_error, kernel_span, make_error_node,
     match_pattern_is_irrefutable, no_span, none_type, qualified_last_segment,
-    with_optional_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
-    InferredNode, MatchPattern, NewlineIndex, Node,
+    with_optional_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
+    ErrorNode, ExprData, InferredNode, MatchPattern, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -954,9 +953,91 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
                         }),
                     })
                 } else {
-                    Rc::new(ConstructorRoster::ConstructorsOpen)
+                    if is_uninhabited_sum(resolved.clone(), env.clone()) {
+                        Rc::new(ConstructorRoster::ConstructorsClosed {
+                            names: Rc::new(vec![]),
+                        })
+                    } else {
+                        Rc::new(ConstructorRoster::ConstructorsOpen)
+                    }
                 }
             }
+        }
+    }
+}
+
+pub fn peel_never_identity_candidate(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+    match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+        Some(def) => def.clone(),
+        std::option::Option::None => match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
+            _ => n.clone(),
+        },
+    }
+}
+
+pub fn never_identity_node(env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    crate::v1_compiler_infer_env::symbol_index_lookup(
+        env.symbol_index.clone(),
+        crate::std_primitive_projection::never_type_qualified_path(),
+    )
+}
+
+pub fn candidate_joins_never_identity(n: Rc<Node>, identity: Rc<Node>) -> bool {
+    match (*identity.occurrence_identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceSynthetic => false,
+        _ => (n.occurrence_identity.clone() == identity.occurrence_identity.clone()),
+    }
+}
+
+pub fn node_names_never_declaration(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match crate::v1_compiler_infer_env::declaration_ref_of_type_node(
+        n.clone(),
+        env.source_indices.clone(),
+        env.clone(),
+    ) {
+        Some(d) => crate::std_decl_ref::declaration_ref_eq(d.clone(), never_type_declaration()),
+        std::option::Option::None => {
+            match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
+                n.clone(),
+                env.source_indices.clone(),
+                env.clone(),
+            ) {
+                Some(d) => {
+                    crate::std_decl_ref::declaration_ref_eq(d.clone(), never_type_declaration())
+                }
+                std::option::Option::None => false,
+            }
+        }
+    }
+}
+
+pub fn node_is_never_declaration(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match never_identity_node(env.clone()) {
+        std::option::Option::None => false,
+        Some(identity) => {
+            let peeled = peel_never_identity_candidate(resolved.clone(), env.clone());
+            let peeled2 = peel_never_identity_candidate(peeled.clone(), env.clone());
+            (((((candidate_joins_never_identity(resolved.clone(), identity.clone())
+                || candidate_joins_never_identity(peeled.clone(), identity.clone()))
+                || candidate_joins_never_identity(peeled2.clone(), identity.clone()))
+                || node_names_never_declaration(resolved.clone(), env.clone()))
+                || node_names_never_declaration(peeled.clone(), env.clone()))
+                || node_names_never_declaration(peeled2.clone(), env.clone()))
+        }
+    }
+}
+
+pub fn is_uninhabited_sum(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    if (resolved.connective.clone() == Connective::Disj) {
+        ((resolved.children.clone().len() as i64) == 0)
+    } else {
+        if ((resolved.connective.clone() != Connective::NoConnective)
+            || ((resolved.children.clone().len() as i64) != 0))
+        {
+            false
+        } else {
+            node_is_never_declaration(resolved.clone(), env.clone())
         }
     }
 }

@@ -7,6 +7,8 @@ import std.algebra { trim, list_head }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { ExactDecimal }
 import std.measure {
+  MoneyAmountMicro,
+  money_amount_micro,
   DecimalMoneyPerHourConversion,
   exact_decimal_to_money_per_hour_ceil,
 }
@@ -315,6 +317,70 @@ type VastAiCharges {
   next_token: String?
   results: List<VastAiCharge>
 }
+
+// WHO A CHARGE ROW BELONGS TO, AS VAST DOCUMENTS IT. docs.vast.ai/api-reference/billing/show-charges
+// (operationId showCharges, GET /api/v0/charges): results[].source is "Identifier in the form
+// {type}-{id}. For tree-format serverless wrappers, uses endpoint-<id> or workergroup-<id>", and
+// results[].type is instance, volume or serverless. items[].source is nullable, so attribution is read
+// from the contract row only. Nothing else in a row names an instance: metadata carries template_id,
+// label, endpoint_id and workergroup_id, none of which is one. A source that matches no documented
+// prefix is Unrecognized, never read as an instance.
+type VastAiChargeSourceKind
+  = VastAiChargeFromInstance
+  | VastAiChargeFromVolume
+  | VastAiChargeFromServerless
+  | VastAiChargeFromEndpoint
+  | VastAiChargeFromWorkergroup
+  | VastAiChargeSourceUnrecognized
+
+data vast_ai_charge_instance_prefix: String = "instance-"
+
+fn vast_ai_charge_source_kind(source: String) -> VastAiChargeSourceKind {
+  if starts_with(s: source, prefix: vast_ai_charge_instance_prefix) {
+    VastAiChargeFromInstance
+  } else if starts_with(s: source, prefix: "volume-") {
+    VastAiChargeFromVolume
+  } else if starts_with(s: source, prefix: "serverless-") {
+    VastAiChargeFromServerless
+  } else if starts_with(s: source, prefix: "endpoint-") {
+    VastAiChargeFromEndpoint
+  } else if starts_with(s: source, prefix: "workergroup-") {
+    VastAiChargeFromWorkergroup
+  } else {
+    VastAiChargeSourceUnrecognized
+  }
+}
+
+// The source string Vast writes for one instance contract. Compared whole, so instance-10 never matches
+// instance-100.
+fn vast_ai_instance_charge_source(instance_id: NonEmptyStr) -> String {
+  concat(vast_ai_charge_instance_prefix, instance_id as String)
+}
+
+// The REQUIRED select_filters day range of GET /charges: day.gte and day.lte, unix seconds UTC (same
+// page). A request without it is the documented 400 missing_date_range.
+type VastAiChargesDayRange {
+  gte: Int
+  lte: Int
+}
+
+type VastAiChargesRefusal
+  = VastAiChargesMissingDateRange
+  | VastAiChargesRefusedStatus { status: Int }
+
+// The page documents 400 with error code missing_date_range for an absent day range; any other
+// non-200 is a refusal that names only its status.
+fn vast_ai_charges_refusal(status: Int, error: String) -> VastAiChargesRefusal {
+  if status == 400 && error == "missing_date_range" {
+    VastAiChargesMissingDateRange
+  } else {
+    VastAiChargesRefusedStatus { status: status }
+  }
+}
+
+// amount is a float "rounded to 3 decimals" (same page): each row is within half of one thousandth of a
+// dollar of the contract's true total, which is 500 micro-dollars.
+data vast_ai_charge_amount_rounding: MoneyAmountMicro = money_amount_micro(count: 500)
 
 service vast_ai.Charges {
   config {

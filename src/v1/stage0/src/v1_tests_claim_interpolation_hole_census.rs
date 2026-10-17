@@ -6,8 +6,7 @@ use self::HoleSite::*;
 use self::HoleTypeReading::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_types::{Bool, List, Map};
-pub use crate::v1_compiler_compile::compile_to_resolved;
-pub use crate::v1_compiler_compile::SourceFile;
+pub use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
 pub use crate::v1_compiler_infer::type_node_label;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_tokenize::tokenize;
@@ -22,9 +21,9 @@ use crate::v1_std_core::ExprData::{
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::TokenShape::{ShStrBegin, ShStrEnd, ShStrMid};
 pub use crate::v1_std_core::{
-    authored_name_at, byte_to_line_col, param_node_name_at, source_text_at,
+    authored_name_at, byte_to_line_col, param_node_name_at, source_text_at, ExprData, InferredNode,
+    NewlineIndex, Node, Token, TokenShape,
 };
-pub use crate::v1_std_core::{ExprData, InferredNode, NewlineIndex, Node, Token, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

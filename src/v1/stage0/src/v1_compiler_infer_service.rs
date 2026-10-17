@@ -8,9 +8,8 @@ use self::ServiceEffectAnalysis::*;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_infer_items::inferred_to_outputs;
 use crate::v1_compiler_infer_items::ItemKind::*;
-pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, TypedModule};
+pub use crate::v1_compiler_infer_items::{inferred_to_outputs, ItemInfo, ItemKind, TypedModule};
 pub use crate::v1_compiler_infer_types::{emit_map_has, nominal_type_ref};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -30,11 +29,9 @@ use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, call_semantics_target, callable_identity, expr_call_func_at,
     expr_var_name_at, field_access_base, field_access_field_at, is_rest_transport, method_receiver,
-    no_span, param_node_type_expr, unit_type,
-};
-pub use crate::v1_std_core::{
-    CallSemantics, CallTargetIdentity, Cardinality, Connective, DeclarationMarker,
-    DeclaredCallableIdentity, ExprData, InferredNode, NewlineIndex, Node,
+    no_span, param_node_type_expr, unit_type, CallSemantics, CallTargetIdentity, Cardinality,
+    Connective, DeclarationMarker, DeclaredCallableIdentity, ExprData, InferredNode, NewlineIndex,
+    Node,
 };
 pub use crate::v1_std_core::{ParsedModuleItemKind, VarBindingKind};
 use crate::NonEmptyBTreeSet;
