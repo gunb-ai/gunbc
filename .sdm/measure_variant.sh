@@ -96,6 +96,33 @@ set -e
 grep -h "generic-arg-pass-excl" .sdm/run/e_${V}_spec.log || echo "NO-INSTRUMENT"
 grep -hiE "compile.reconcile done in" .sdm/run/e_${V}_spec.log || echo "NO-RECONCILE-MARK"
 
+# ---- emitted v2 closure, for file-by-file attribution ------------------------------
+# The two rows of gunbc.emitted_subject_build_gate: the self-host entry and the
+# v2-native-cli entry. Emitted with the SAME binary that produced the counters above, into
+# a per-variant directory, and reduced to a manifest of path + sha256 so the two variants'
+# closures can be diffed offline and EVERY differing file attributed (identical count alone
+# is not the deliverable). Gated by CLOSURES=yes so only the two A/B variants pay for it.
+if [ "${CLOSURES:-no}" = yes ]; then
+  echo "@@@ VARIANT=$V CLOSURES"
+  for ROW in "self-host:src/v2/compiler/source_root_eval.dag" "v2-native-cli:src/v2/cli/compile_cli.dag"; do
+    LABEL="${ROW%%:*}"; ENTRY="${ROW#*:}"
+    OUT=".sdm/run/closure_${V}_${LABEL}"
+    rm -rf "$OUT"
+    set +e
+    t0=$(date +%s)
+    $BIN compile $SOURCE_ROOT_ARGS --entry "$ENTRY" --target rust --output-dir "$OUT" \
+      > .sdm/run/cl_${V}_${LABEL}.log 2>&1
+    crc=$?
+    set -e
+    echo "CLOSURE $V $LABEL entry=$ENTRY rc=$crc elapsed=$(( $(date +%s) - t0 ))s"
+    if [ $crc -ne 0 ]; then echo "CLOSURE-OUTPUT-BEGINS $LABEL"; head -25 .sdm/run/cl_${V}_${LABEL}.log; echo "CLOSURE-OUTPUT-ENDS"; else
+      (cd "$OUT" && find . -type f | sort | while read -r f; do
+         echo "MANIFEST $V $LABEL ${f#./} $(sha256sum "$f" | cut -d' ' -f1)"; done)
+      echo "CLOSURE $V $LABEL files=$(find "$OUT" -type f | wc -l)"
+    fi
+  done
+fi
+
 # ---- the witness, run the way claims are ACTUALLY run ------------------------------
 # A `test fn` under dag/test/claim is executed by `claim_batch --entry E --function F`,
 # which prints one PASS/FAIL verdict per function. This witness is cited by no roster and

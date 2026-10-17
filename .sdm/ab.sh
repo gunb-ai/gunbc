@@ -79,24 +79,44 @@ build() { # variant
   [ -x "$B" ] || { echo "BUILD-OK-NO-BINARY $B"; return 1; }
   echo "built $1 $(date -u +%H:%M:%S) bin_sha256=$(sha256sum "$B" | cut -d' ' -f1) bytes=$(stat -c %s "$B")"
 }
+# Variant list comes from argv so a dispatch stays well inside the runner's action window
+# (bb --timeout 45m; output is buffered until the action ends, so an overlong action that
+# dies loses EVERYTHING, including results already measured). The authoritative A/B pairs
+# control with keep and repeats control, all in one dispatch on one runner:
+#   dispatch 1: control keep control2      (A/B + repeatability)
+#   dispatch 2: delete                     (the item-5 deletion test)
+# control2 re-measures the tree control already composed, so it skips the hook re-apply
+# (which is correctly fail-closed against re-application) and prints the instrument sha.
 START=$(date +%s)
 rc_all=0
-for V in control keep delete; do
+VARIANTS="${*:-control keep control2}"
+for VRAW in $VARIANTS; do
+  V="$VRAW"; SKIPHOOK=no
+  [ "$V" = control2 ] && { V=control; SKIPHOOK=yes; }
   ELAPSED=$(( $(date +%s) - START ))
   # Variants are ordered by importance: control and keep are the required A/B, delete is
   # the item-5 deletion test. Past the guard the remaining variants are SKIPPED with a
   # printed reason rather than risking the results already measured.
-  if [ $ELAPSED -gt 2100 ] && [ "$V" != control ]; then
-    echo "VARIANT-SKIPPED $V elapsed=${ELAPSED}s"; continue
+  if [ $ELAPSED -gt 1800 ]; then
+    echo "VARIANT-SKIPPED $V($VRAW) elapsed=${ELAPSED}s (window guard)"; rc_all=1; continue
   fi
   echo "@@@@ VARIANT=$V start $(date -u +%H:%M:%S) elapsed=${ELAPSED}s"
-  compose "$V" || { echo "COMPOSE-FAILED $V"; rc_all=1; continue; }
-  case "$V" in control) SIDE=control ;; *) SIDE=treatmentB ;; esac
-  echo "hook side for $V = $SIDE"
-  python3 .sdm/hooks.py "$SIDE" .sdm/gap_block.rs "$MIRROR" src/v1/stage0/src/v1_compiler_compile.rs \
-    || { echo "HOOK-FAILED $V"; rc_all=1; continue; }
+  if [ "$SKIPHOOK" = no ]; then
+    compose "$V" || { echo "COMPOSE-FAILED $V"; rc_all=1; continue; }
+    case "$V" in control) SIDE=control ;; *) SIDE=treatmentB ;; esac
+    echo "hook side for $V = $SIDE"
+    python3 .sdm/hooks.py "$SIDE" .sdm/gap_block.rs "$MIRROR" src/v1/stage0/src/v1_compiler_compile.rs \
+      || { echo "HOOK-FAILED $V"; rc_all=1; continue; }
+  else
+    echo "instrument reused; mirror sha256=$(sha256sum $MIRROR | cut -d' ' -f1)"
+  fi
   build "$V" || { echo "VARIANT-SKIPPED-BUILD-FAILED $V"; rc_all=1; continue; }
+  # Only the two A/B variants emit the v2 closure (two more heavy compiles each); the
+  # repeat and the item-5 variant skip it.
+  case "$VRAW" in control|keep) export CLOSURES=yes ;; *) export CLOSURES=no ;; esac
+  echo "closures for $VRAW = $CLOSURES"
   bash .sdm/measure_variant.sh "$V" || { echo "MEASURE-REPORTED-FAILURE $V"; rc_all=1; }
 done
+echo "variants measured: $VARIANTS"
 echo "############ AB done $(date -u +%H:%M:%S) rc_all=$rc_all elapsed=$(( $(date +%s) - START ))s"
 exit $rc_all
