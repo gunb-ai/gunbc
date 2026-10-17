@@ -21,7 +21,6 @@ pub use crate::std_occurrence_identity::{
     occurrence_id_allocator_initial, occurrence_transport_refusal, NodeOccurrenceIdentity,
     OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
-pub use crate::std_optional::Optional;
 pub use crate::std_source_annotation::{
     source_annotation_graph_concat, source_annotation_graph_empty, SourceAnnotationGraph,
     UnboundAnnotationCapture,

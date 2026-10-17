@@ -11268,6 +11268,16 @@ fn optional_declaration_instance(payload: Node, scope: InferScope) -> Node? {
   }
 }
 
+// THE OPTIONAL<PAYLOAD> AN EXPECTED TYPE SUPPLIES (operator ruling H3): `T?` is the declaration's own
+// instance, so the expected type is Optional exactly when it is that instance. Absent otherwise.
+fn expected_optional_instance(expected: Node?, scope: InferScope) -> Node? {
+  match expected {
+    Absent => none
+    Present { value: exp } =>
+      if node_is_std_optional(n: exp, scope: scope) { Present { value: exp } } else { none }
+  }
+}
+
 // THE PRESENT ARM AND ITS MEMBER, READ FROM THE CANONICAL DECLARATION: the arm of
 // std.optional::Optional that carries a member, and that member's name. Neither is a spelling
 // compared against "Present" / "value".

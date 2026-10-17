@@ -37,7 +37,6 @@ pub use crate::std_induction::{
     SubValueRelation,
 };
 pub use crate::std_measure::{byte_size, byte_size_count, ByteSize};
-pub use crate::std_optional::Optional;
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::BinOp::{Div, Sub};
 use crate::std_syntax::LiteralValue::*;

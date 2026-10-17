@@ -6,7 +6,6 @@ pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_coercion::TypeCheckpoint;
-pub use crate::std_optional::Optional;
 pub use crate::std_target_representation::{
     RepresentationSpelling, RepresentationValue, SourceTypeTargetBinding,
 };

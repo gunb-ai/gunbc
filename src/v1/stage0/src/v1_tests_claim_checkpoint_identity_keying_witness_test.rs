@@ -3,7 +3,6 @@
 
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::{CorpusDeclared, DeclarationIdentityAbsent};
-pub use crate::std_optional::Optional;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{literal_suffix, type_realization_decision};

@@ -65,7 +65,6 @@ pub use crate::std_occurrence_identity::{
     OccurrenceProjection, OccurrenceTransport, OccurrenceTransportRefusal,
     OccurrenceTransportValidation, ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
-pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, CommitSha, FilePath, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

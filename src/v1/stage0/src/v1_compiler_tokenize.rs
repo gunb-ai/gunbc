@@ -4,7 +4,6 @@
 use self::EscapeProcessResult::*;
 use self::ScanStep::*;
 use self::StringScanResult::*;
-pub use crate::std_optional::Optional;
 use crate::std_source_annotation::AnnotationPlacement::{
     LeadingAfterLineIndent, TrailingAfterSemanticToken,
 };

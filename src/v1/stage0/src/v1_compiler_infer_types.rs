@@ -24,7 +24,6 @@ use crate::std_coercion::SubtractionRefinement::{
 pub use crate::std_coercion::{dag_subtraction_refinement, SubtractionRefinement};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-pub use crate::std_optional::Optional;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
