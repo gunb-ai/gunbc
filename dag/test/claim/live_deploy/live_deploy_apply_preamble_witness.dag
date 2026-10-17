@@ -152,15 +152,29 @@ test fn every_script_command_has_its_own_named_step() -> Bool {
 // The legs are the script's order. If install were reordered before the staged syntax check, a broken
 // sudoers file would reach /etc/sudoers.d before anything noticed — the exact fail-open the script's
 // ordering existed to prevent.
+// One step TEXT per leg, the way the script writes it. An Either leg is one leg that runs two commands
+// with `||`, so its text names both halves in that order — pinning the pair, not just the check.
+// All four arms are enumerated on purpose: a fifth arm must be handled here rather than swallowed by a
+// wildcard, or the claim would keep passing while a leg's steps went unasserted.
+fn w_leg_step_text(leg: LiveDeployPreambleLeg) -> String {
+  match leg {
+    PreambleArgv { step: s, command: _ } => live_deploy_preamble_step_name(step: s)
+    PreambleStdin { step: s, command: _, payload: _ } => live_deploy_preamble_step_name(step: s)
+    PreambleEffect { step: s, effect: _ } => live_deploy_preamble_step_name(step: s)
+    PreambleEither { check_step: cs, check: _, act_step: as_, act: _ } =>
+      join([live_deploy_preamble_step_name(step: cs), live_deploy_preamble_step_name(step: as_)], " || ")
+  }
+}
+
 test fn the_legs_are_written_in_the_scripts_order() -> Bool {
-  let names = list_map(xs: w_legs(), f: leg => live_deploy_preamble_step_name(step: live_deploy_preamble_leg_step(leg: leg)))
+  let names = list_map(xs: w_legs(), f: leg => w_leg_step_text(leg: leg))
   let joined = join(names, ",")
     // the four sudoers commands, in order, before anything else
   string_contains(s: joined, pattern: "sudoers-stage,sudoers-visudo-check,sudoers-install,sudoers-policy-final,")
     // one grant leg per roster row, and the principal leg LAST
     && list_length(items: names) == preamble_leg_count
     && list_length(items: names) == 4 + preamble_grant_count + 1
-    && string_contains(s: joined, pattern: "principal-check,principal-ensure")
+    && string_contains(s: joined, pattern: "principal-check || principal-ensure")
 }
 
 // The drop-in's bytes are DATA: they cross as stdin payload, never as an argv element, so no byte of

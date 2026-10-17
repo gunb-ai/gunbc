@@ -4927,9 +4927,61 @@ fn live_deploy_preamble_leg_step(leg: LiveDeployPreambleLeg) -> LiveDeployPreamb
     PreambleArgv { step: s, command: _ } => s
     PreambleStdin { step: s, command: _, payload: _ } => s
     PreambleEffect { step: s, effect: _ } => s
-    // Only used when the whole leg fails without naming an inner command; the Either leg always
-    // reports the step that died through LegRefusedAt, so this is the check's step as a last resort.
+    // The check half is the leg's identity: it is what runs unconditionally, and the act half is
+    // addressed by name through live_deploy_preamble_leg_step_named when an outcome names it.
     PreambleEither { check_step: cs, check: _, act_step: _, act: _ } => cs
+  }
+}
+
+// The step a leg runs that an injected outcome could be aimed at, for a given half. The Either leg has
+// TWO steps — the check and the conditional act — and an outcome must be able to name either one, or
+// the act half of that leg is unaddressable and can never be refused in a witness.
+fn live_deploy_preamble_leg_step_named(leg: LiveDeployPreambleLeg, step: String) -> LiveDeployPreambleStep {
+  match leg {
+    PreambleArgv { step: s, command: _ } => s
+    PreambleStdin { step: s, command: _, payload: _ } => s
+    PreambleEffect { step: s, effect: _ } => s
+    PreambleEither { check_step: cs, check: _, act_step: as_, act: _ } =>
+      if step == live_deploy_preamble_step_name(step: as_) { as_ } else { cs }
+  }
+}
+
+// No leg step is ever spelled like this, so a leg that has no act half can never be mistaken for one
+// that does: comparing against this sentinel is how the act branches stay non-matching for argv, stdin
+// and effect legs instead of falling through to their only step.
+data live_deploy_preamble_no_such_step: String = "\u{1f43e}no-such-preamble-step\u{1f43e}"
+
+// The act half's step name, or the sentinel above for a leg that has no act half.
+fn live_deploy_preamble_either_act_name(leg: LiveDeployPreambleLeg) -> String {
+  match leg {
+    PreambleArgv { step: _, command: _ } => live_deploy_preamble_no_such_step
+    PreambleStdin { step: _, command: _, payload: _ } => live_deploy_preamble_no_such_step
+    PreambleEffect { step: _, effect: _ } => live_deploy_preamble_no_such_step
+    PreambleEither { check_step: _, check: _, act_step: as_, act: _ } =>
+      live_deploy_preamble_step_name(step: as_)
+  }
+}
+
+// The script ran `id -u -- X || sudo -n useradd -r -s /usr/sbin/nologin X`: a check that could not run
+// is refused AS A CHECK, so nobody reading the host thinks the account was provisioned and failed.
+// Only the check half of an Either leg earns that prefix; an act failure reports the act's own detail.
+// This is the single place the prefix is applied — live_deploy_preamble_observe_leg hands up the raw
+// reason, so the pure fold and the impure runner cannot drift apart on it.
+fn live_deploy_preamble_leg_detail(
+  leg: LiveDeployPreambleLeg,
+  step: LiveDeployPreambleStep,
+  detail: String,
+) -> String {
+  match leg {
+    PreambleEither { check_step: cs, check: _, act_step: _, act: _ } =>
+      if live_deploy_preamble_step_name(step: cs) == live_deploy_preamble_step_name(step: step) {
+        join(["precondition check could not run: ", detail], "")
+      } else {
+        detail
+      }
+    PreambleArgv { step: _, command: _ } => detail
+    PreambleStdin { step: _, command: _, payload: _ } => detail
+    PreambleEffect { step: _, effect: _ } => detail
   }
 }
 
@@ -4961,7 +5013,14 @@ fn live_deploy_preamble_next_state(
         LegActRan => PreambleLegOk { consumed: n + 1 }
         LegEffectRefused { reason: why } => live_deploy_preamble_failed(leg: leg, detail: why, consumed: n)
         LegRefusedAt { step: s, reason: why, calls: _ } =>
-          PreambleLegFailed { step: s, reason: live_deploy_preamble_refusal_text(step: s, detail: why), consumed: n }
+          PreambleLegFailed {
+            step: s,
+            reason: live_deploy_preamble_refusal_text(
+              step: s,
+              detail: live_deploy_preamble_leg_detail(leg: leg, step: s, detail: why),
+            ),
+            consumed: n,
+          }
         LegObserved { outcome: out } =>
           match out {
             RunArgvTransportRefused { reason: why } => live_deploy_preamble_failed(leg: leg, detail: why, consumed: n)
@@ -4978,7 +5037,14 @@ fn live_deploy_preamble_next_state(
 
 fn live_deploy_preamble_failed(leg: LiveDeployPreambleLeg, detail: String, consumed: Int) -> LiveDeployPreambleLegState {
   let step = live_deploy_preamble_leg_step(leg: leg)
-  PreambleLegFailed { step: step, reason: live_deploy_preamble_refusal_text(step: step, detail: detail), consumed: consumed }
+  PreambleLegFailed {
+    step: step,
+    reason: live_deploy_preamble_refusal_text(
+      step: step,
+      detail: live_deploy_preamble_leg_detail(leg: leg, step: step, detail: detail),
+    ),
+    consumed: consumed,
+  }
 }
 
 // The refusal shape both my witnesses and W1's pin verbatim: `live_deploy_preamble: <step> refused —
@@ -5020,8 +5086,10 @@ fn live_deploy_preamble_observe_leg(leg: LiveDeployPreambleLeg, access: DeployAc
     // exists to remove. So the check's own transport refusal is reported as one, at the check's step.
     PreambleEither { check_step: cs, check: c, act_step: as_, act: a_ } =>
       match run_argv_over_host_effect_transport(command: c, transport: access.transport) {
+        // The raw reason only: live_deploy_preamble_leg_detail is the single place the "could not run
+        // as a check" framing is applied, so the pure fold and this runner cannot drift on its wording.
         RunArgvTransportRefused { reason: why } =>
-          LegRefusedAt { step: cs, reason: join(["precondition check could not run: ", why], ""), calls: 1 }
+          LegRefusedAt { step: cs, reason: why, calls: 1 }
         RunArgvTransportObserved { observed: o } =>
           if o.success {
             LegActSkipped
@@ -5091,6 +5159,11 @@ fn live_deploy_preamble_injected_result(
     LegTransportRefused { step: s, reason: why } =>
       if here == s {
         LegObserved { outcome: RunArgvTransportRefused { reason: why } }
+      } else if live_deploy_preamble_either_act_name(leg: leg) == s {
+        // A transport refusal aimed at the ACT half of an Either leg. Production runs the check first
+        // (one call spent) and only then dies on the act, so the result costs two calls — mirroring
+        // live_deploy_preamble_observe_leg or the witness and the host disagree about the cost.
+        LegRefusedAt { step: live_deploy_preamble_leg_step_named(leg: leg, step: s), reason: why, calls: 2 }
       } else {
         live_deploy_preamble_success_result(leg: leg)
       }
@@ -5099,6 +5172,14 @@ fn live_deploy_preamble_injected_result(
     LegExited { step: s, exit_code: c, stderr: err } =>
       if here == s {
         LegObserved { outcome: RunArgvTransportObserved { observed: ShellExecObserved { exit_code: c, success: false, stdout: "", stderr: err } } }
+      } else if live_deploy_preamble_either_act_name(leg: leg) == s {
+        // A non-zero exit aimed at the act half: production observes the check succeed, runs the act,
+        // and reports the act's exit through LegRefusedAt at two calls — not a bare LegObserved at one.
+        LegRefusedAt {
+          step: live_deploy_preamble_leg_step_named(leg: leg, step: s),
+          reason: join(["exited ", to_string(c), ": ", err], ""),
+          calls: 2,
+        }
       } else {
         live_deploy_preamble_success_result(leg: leg)
       }
