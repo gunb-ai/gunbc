@@ -40,12 +40,14 @@ import extdeps.llm.cursor_sandbox_apparmor {
 // command surface and says nothing of Ubuntu; the two vendor modules own the artifact and rule set.
 //
 // WHAT THIS MODULE DOES NOT DO, and what each is waiting on. (1) It does not install anything: the
-// download+verify+unpack effect is the generic verified-install effect (PR 14155, open at authoring) and
+// download+verify+unpack effect is the generic verified download+install effect (the capability, not a PR number) and
 // the fleet-converge mode that targets srv2 from a srv1 executor over the administrator SSH edge
 // (gunbc.fleet.host_credential_custody_converge is the pattern) is declared against it; this module is
 // the SUBJECT such a converge folds over, and the readback it must pass. (2) It does not run the free
-// sandbox preflight: that is the typed reading in gunbc.cursor_harness_credential, which joins this
-// readback as a further conjunct once on main. Building a second preflight here would be the fork.
+// sandbox preflight: the command and typed reading are gunbc.cursor_harness_credential's, and this module
+// only supplies the pinned identity and folds the reading in as the readback's preflight leg. (3) Nothing
+// but the witness reads the readback yet: its consumer is that converge, which runs the commands and
+// supplies the observations; status and the worker turn also still name the PATH program.
 //
 // RULE SET: the vendor's 0.6.2 cursor_sandbox_agent_cli rules VERBATIM, with exactly two changes: the
 // attachment is the exact root-owned helper path, never versions/* or /home/*, and `userns,` is explicit
