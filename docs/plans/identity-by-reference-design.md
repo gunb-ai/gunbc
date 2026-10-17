@@ -64,8 +64,57 @@ This needs answers to the questions below before any sweep.
 | Q6 | Check: refuse new `Map<String, X>` / `*_name: String` where X or the field denotes a declaration? | Hard to detect mechanically; maybe convention plus a narrow lint on known shapes |
 | Q7 | Order relative to #14192's migration | Probably after the List/Map cut, so the sweep only rewrites each site once |
 
-## 6. Next step
+## 6. Survey results (origin/main `fb6f04c403`, 2026-10-17)
 
-Classify the ~560 `Map<String, …>` sites and the `*_name: String` fields into (a) references to program
-entities, (b) genuine text or external identifiers, (c) unclear. That turns the counts above into a real
-scope.
+### 6.1 Q1: identity types that already exist
+
+| Type | Declared | Identity or spelling? |
+|---|---|---|
+| `^decl` caret reference | syntax; compiler-resolved, produces a `Symbol` | Identity |
+| `Symbol` | `src/v2/std/node.dag:32` (interned, `symbol_eq`) | Identity |
+| `QualifiedName = FreeMonoid<Symbol>` | `src/v2/std/qualified_name.dag:32` | Path of identities; equality is structural |
+| `DeclarationRef {module_path, decl_name: NonEmptyStr, field}` | `dag/std/decl_ref.dag:15` (~7.9k uses) | **Right shape, spelling payload** |
+| `ResolvedDeclRef {module: String, name: Symbol}` | `src/v2/compiler/discovery_enumeration.dag:5` | Half identity, half spelling |
+| `ModuleId` (branded `NonEmptyStr`), `ModuleIdentity {name: String}` | `dag/gunbc/crate_partition.dag:34`, `src/v2/lens/module_impact_query.dag:47` | Spelling wrappers: forks of one concept |
+| `ContentHash` | `dag/std/content_hash.dag:53` | Identity by content |
+| `Node` + `NodeOccurrenceIdentity` / `Path` | `src/v2/std/node.dag` | A value with positional identity |
+| `RoadmapNodeId` | roadmap tree | Branded string, its own domain |
+
+**Candidate answer to Q1: no new type is needed.** Re-key `DeclarationRef` on identities
+(`module_path: QualifiedName`, `decl_name: Symbol`) so the compiler builds it from `^decl`. Then:
+- `ResolvedDeclRef`, `ModuleId` and `ModuleIdentity` collapse into it or into `QualifiedName` (a carrier-boundary
+  fork in #14192's terms);
+- SCM objects key by `ContentHash`;
+- roadmap code keys by `RoadmapNodeId`, not bare `String`.
+
+### 6.2 Classification
+
+Each site is classed as (a) a reference to an in-program entity, (b) genuine text or an external identifier, or
+(c) unclear. Map counts come from a heuristic over all lines, hand-corrected on a sample: roughly ±10%. The 870
+`*_name / *_ref / *_id` fields were classified by name and spot-checked.
+
+| Population | (a) convert | (b) stays a string | (c) unclear |
+|---|---|---|---|
+| `Map<String, …>` (572 lines; 51 are not code) | ~340 | ~106 | ~76 |
+| `*_name / *_ref / *_id: String` fields (870) | ~225 | ~560 | ~80 |
+
+The (a) work is concentrated in about 20 files:
+- ~160 module/declaration-keyed indexes in `src/v2` (`name_resolve`, `module_impact_query`, `module_graph`,
+  `module_acquisition`, …);
+- ~120 roadmap maps plus 94 `node_id` fields in `dag/gunbc/roadmap`, a typing-only change to `RoadmapNodeId`;
+- ~15 SCM object indexes, which move to `ContentHash`.
+
+(b) is mostly cloud, GitHub and Google identifiers, paths and labels, all correctly strings.
+
+**Scope:** ~550 sites truly need converting. The work is incremental, and the `DeclarationRef` re-key comes first
+because every declaration-keyed conversion depends on it.
+
+### 6.3 New open question
+
+| # | Question | Notes |
+|---|---|---|
+| Q8 | Are dashboard sessions (`session_name` / `session_id`, ~40 sites) in-program entities? | They are modelled in the program but named outside it. Leaning: external identifiers, so they stay a branded string |
+
+## 7. Next step
+
+Settle Q1 (re-key `DeclarationRef`) and Q8, then plan the `DeclarationRef` re-key as the first change.
