@@ -584,11 +584,21 @@ fn declaration_reference_path_optional(node: Node) -> Optional<QualifiedName> {
 // here. It is keyed on a QualifiedName rather than a bare spelling because every consumer that asks who a
 // type is already passes a QualifiedName around; a String key would need a spelling-to-path conversion at
 // each of them, and a conversion per consumer is a place the two can disagree.
-// ITS CONSUMERS ARE EVERY DECLARATION-KEYED READER OF AN OPTIONAL TYPE, and there is exactly one of each
-// kind: v2.std.optional_layers (the wrapper model) reads it as its declaration spelling, and
-// gunbc.structural_realization_bindings' optional_declaration_ref row (the seed-kernel mint, #14087) reads
-// it as the declaration the mint stands for. Neither spells the path itself; a second copy of the three
-// segments is the drift this row exists to prevent (DESIGN section 3: one authority per concept).
+// EVERY CONSUMER THAT ASKS WHICH DECLARATION AN OPTIONAL TYPE DENOTES ANSWERS WITH THIS, and this PR moves
+// all of them here: v2.std.optional_layers' occupancy_declaration_spelling — the hand-built copy of these
+// three segments — is DELETED and its six call sites call this fn instead: four in v2.compiler.resolve (the
+// Optional-backs-Occupancy contract, at its symbol_index_lookup, its declared-binders read and the two path
+// comparisons beside them), one in v2.compiler.module_acquisition's sugar-member demand, and one in
+// v2.compiler.reference_site_collector's Occupancy arm. After this merge `git grep -c
+// 'symbol_intern_lexeme(lexeme: "optional")' src/v2 dag` counts 1, in this module — a review-time fact about
+// the tree, not something a claim enforces. What v2.test.claim.optional_declaration_identity DOES pin by
+// execution is that this identity is what the route demands: an authored `T?` param, collected by the
+// reference collector and put to module acquisition's own sugar-member demand, must come back owing
+// std.optional.Optional. Drop the collector's Occupancy arm, or drift the identity, and that row goes red.
+// A LATER CHANGE, NOT THIS ONE: gunbc.structural_realization_bindings' optional_declaration_ref row
+// (the seed-kernel mint, #14087, lively-fox-74) will read it too, replacing that row's separate
+// decl_ref(module_path: "std.optional", decl_name: "Optional") spelling; #14087 imports this fn and it is
+// not touched here.
 // WHY THE READING BOUNDARY AND NOT THE WRAPPER: the Occupancy wrapper is itself on the retirement list —
 // the sugar is to denote the declaration and the wrapper is to dissolve into it. So nothing here adds a
 // field to the wrapper or stores a declaration on it; consumers stop reading the wrapper's shape and start
