@@ -171,9 +171,6 @@ pub type Bool = bool;
 
 pub type Unit = ();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Never(pub std::marker::PhantomData<()>);
-
 pub type Json = serde_json::Value;
 
 pub type Bytes = std::vec::Vec<u8>;
