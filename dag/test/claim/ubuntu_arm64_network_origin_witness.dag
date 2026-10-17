@@ -159,11 +159,11 @@ test fn a_pin_refuses_malformed_hex_and_empty_size() -> Bool {
 }
 
 test fn the_installer_url_derives_from_release_and_architecture() -> Bool {
-  let arm = match ubuntu_installer_filesystem_url(release: Noble2404Point5, architecture: Aarch64) {
+  let arm = match ubuntu_installer_filesystem_url(edition: Noble2404Point5, architecture: Aarch64) {
     Present { value: u } => (u as String) == "http://cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.5-live-server-arm64.iso"
     Absent => false
   }
-  let x86 = match ubuntu_installer_filesystem_url(release: Noble2404Point5, architecture: X86_64) {
+  let x86 = match ubuntu_installer_filesystem_url(edition: Noble2404Point5, architecture: X86_64) {
     Present { value: _ } => false
     Absent => true
   }

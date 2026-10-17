@@ -30,14 +30,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // variant, so a pin cannot name a release the origin was not measured against.
 type UbuntuRelease = Noble2404Point5
 
-fn ubuntu_release_version_token(release: UbuntuRelease) -> NonEmptyStr {
-  match release {
+fn ubuntu_release_version_token(edition: UbuntuRelease) -> NonEmptyStr {
+  match edition {
     Noble2404Point5 => "24.04.5"
   }
 }
 
-fn ubuntu_release_series_directory(release: UbuntuRelease) -> NonEmptyStr {
-  match release {
+fn ubuntu_release_series_directory(edition: UbuntuRelease) -> NonEmptyStr {
+  match edition {
     Noble2404Point5 => "24.04"
   }
 }
@@ -54,12 +54,12 @@ fn ubuntu_cdimage_architecture_token(architecture: Architecture) -> NonEmptyStr?
 
 // The ISO is the installer filesystem: subiquity fetches it with url= after the kernel and initrd
 // boot, so it is a network artefact in its own right, not media.
-fn ubuntu_installer_filesystem_url(release: UbuntuRelease, architecture: Architecture) -> NonEmptyStr? {
+fn ubuntu_installer_filesystem_url(edition: UbuntuRelease, architecture: Architecture) -> NonEmptyStr? {
   match ubuntu_cdimage_architecture_token(architecture: architecture) {
     Present { value: arch } => Present {
       value: concat(
-        "http://cdimage.ubuntu.com/ubuntu/releases/", ubuntu_release_series_directory(release: release) as String,
-        "/release/ubuntu-", ubuntu_release_version_token(release: release) as String,
+        "http://cdimage.ubuntu.com/ubuntu/releases/", ubuntu_release_series_directory(edition: edition) as String,
+        "/release/ubuntu-", ubuntu_release_version_token(edition: edition) as String,
         "-live-server-", arch as String, ".iso",
       ) as NonEmptyStr
     }
@@ -109,16 +109,16 @@ fn pinned_artefact(sha256_hex: NonEmptyStr, size_bytes: Int, standing: CitedFigu
 // constructor with its own pins. architecture is a field so consumers (the PXE edge's
 // client-architecture roster) read the origin's architecture instead of assuming it.
 type UbuntuNetworkOrigin sole_constructor {
-  release: UbuntuRelease
+  edition: UbuntuRelease
   architecture: Architecture
   kernel: PinnedArtefact
   initrd: PinnedArtefact
   installer_filesystem: PinnedArtefact
 }
 
-fn ubuntu_arm64_network_origin(release: UbuntuRelease, kernel: PinnedArtefact, initrd: PinnedArtefact, installer_filesystem: PinnedArtefact) -> UbuntuNetworkOrigin {
+fn ubuntu_arm64_network_origin(edition: UbuntuRelease, kernel: PinnedArtefact, initrd: PinnedArtefact, installer_filesystem: PinnedArtefact) -> UbuntuNetworkOrigin {
   UbuntuNetworkOrigin {
-    release: release,
+    edition: edition,
     architecture: Aarch64,
     kernel: kernel,
     initrd: initrd,
@@ -233,7 +233,7 @@ fn ubuntu_noble_arm64_network_origin() -> UbuntuNetworkOrigin? {
     Present { value: k } => match ubuntu_noble_arm64_initrd_pin() {
       Present { value: i } => match ubuntu_noble_arm64_installer_filesystem_pin() {
         Present { value: f } => Present {
-          value: ubuntu_arm64_network_origin(release: Noble2404Point5, kernel: k, initrd: i, installer_filesystem: f)
+          value: ubuntu_arm64_network_origin(edition: Noble2404Point5, kernel: k, initrd: i, installer_filesystem: f)
         }
         Absent => Absent
       }
