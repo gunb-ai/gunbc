@@ -24,7 +24,9 @@ import gunbc.host.host_memory_observation {
   HostFixedOverheadMeasured, HostFixedOverheadUnmeasured, host_fixed_overhead_from_capture,
   gunbc_ci_host_usable_ram_for, gunbc_ci_host_fixed_overhead_for,
   mtcollins1_census_boot_capture_path,
-  mtcollins1_census_envelope_attempt, census_envelope_from_capture_text, census_envelope_from_read,
+  mtcollins1_census_envelope_attempt, census_cpu_bios_model_reading, CensusLscpuSectionAbsent, CensusLscpuSectionPending,
+  CensusLscpuSectionMalformed, CensusLscpuExitNonzero, CensusLscpuNoBiosModelLine, CensusLscpuAmbiguousBiosModelLines,
+  CensusLscpuCaptureUnread, census_envelope_from_capture_text, census_envelope_from_read,
 }
 import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsInteractiveSessions, host_session_residency }
 import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
@@ -140,6 +142,25 @@ test fn mtcollins1_RED_a_bios_line_naming_another_part_keeps_no_citation() -> Bo
   cpu_bios_line_names_part(line: "BIOS Model name:      Ampere(R) Altra(R) Processor Q80-30 CPU @ 3.0GHz", model_number: "Q80-30")
     && cpu_bios_line_names_part(line: "BIOS Model name:      Ampere(R) Altra(R) Processor Q64-30 CPU @ 3.0GHz", model_number: "Q80-30") == false
     && cpu_bios_line_names_part(line: "BIOS Model name:      Ampere(R) Altra(R) Processor Q80-30X CPU", model_number: "Q80-30") == false
+}
+
+test fn mtcollins1_RED_missing_lscpu_refuses_the_cpu_reading_with_its_own_cause_while_ram_stays_measured() -> Bool {
+  let e = census_envelope(meminfo_body: concat(meminfo_argv, "MemTotal: 134217728 kB\nMemAvailable: 130000000 kB\n----EXIT meminfo: 0\n"))
+  let ram_ok = measured_bytes(a: host_usable_ram_from_capture(envelope: e)) > 0
+  let cpu_cause_ok = match census_cpu_bios_model_reading(envelope: e) {
+    ObservationRefused { cause: c } =>
+      match c {
+        CensusLscpuSectionAbsent => true
+        CensusLscpuSectionPending => false
+        CensusLscpuSectionMalformed { reason: _ } => false
+        CensusLscpuExitNonzero { exit_code: _ } => false
+        CensusLscpuNoBiosModelLine => false
+        CensusLscpuAmbiguousBiosModelLines => false
+        CensusLscpuCaptureUnread { cause: _ } => false
+      }
+    ObservationEstablished { observed: _ } => false
+  }
+  ram_ok && cpu_cause_ok
 }
 
 test fn mtcollins1_offer_cpu_width_equals_the_measured_one_socket_reading() -> Bool {
