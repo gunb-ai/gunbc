@@ -103,7 +103,7 @@ data rented_allocation_host_enrollment_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.harness.rented_allocation_seat", decl_name: "rented_allocation_seat"),
     reason: "the seat is derived from an allocation but no harness fold reads it yet, because no real allocation is enrolled",
-    dissolution: unbound_dissolution(description: "trigger: #13989 lands with the current card — sufficient for harness_bind_seat to be called with this seat for the real allocation"),
+    dissolution: unbound_dissolution(description: "trigger: the flex wet create (product.fabric.flex_market) produces a RentedAllocationAcquired allocation whose intent gunbc.serving.rented_allocation_host_enrollment derives — sufficient for harness_bind_seat to be called with this seat for the real allocation"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.serving_key_grant", decl_name: "serving_key_grant_bind"),

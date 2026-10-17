@@ -4990,6 +4990,70 @@ pub fn run_type_declaration_use_census_runs(
     })
 }
 
+/// `census-infer` over each of `root_sets`, in order, over ONE prepared binary (built from
+/// `source_roots`). `gunbc test //gunbc/instruments:namespace-wave-binding-diff` reads the runs; the
+/// host decides nothing about them.
+pub fn run_census_infer_root_sets(
+    source_roots: &[String],
+    root_sets: &[Vec<String>],
+) -> Result<Vec<CensusInferRun>, String> {
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    root_sets
+        .iter()
+        .map(|roots| run_census_infer_with(&preparation.binary_path, roots))
+        .collect()
+}
+
+/// `census-scoped <subject>` over `source_roots` with an already-prepared binary: its stdout and
+/// status, its stderr relayed. Nothing about the run is decided here.
+fn run_census_scoped_with(
+    binary: &std::path::Path,
+    subject_labels: &[String],
+    source_roots: &[String],
+) -> Result<CensusInferRun, String> {
+    let mut args = vec!["census-scoped".to_string()];
+    args.extend(subject_labels.iter().cloned());
+    args.extend(source_roots.iter().cloned());
+    let output = Command::new(binary).args(&args).output().map_err(|e| {
+        format!(
+            "AMBIENT-NAME-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+            binary.display()
+        )
+    })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("AMBIENT-NAME-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
+    })?;
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    Ok(CensusInferRun {
+        stdout,
+        status: output.status.code(),
+    })
+}
+
+/// The runs `gunbc test //gunbc/instruments:ambient-name-census` reads, over ONE prepared binary:
+/// `census-infer` over each control root set, then ONE `census-scoped` over every subject module at
+/// once. The emitted compiler acquires the union of the subjects' closures and resolves each member
+/// once (v2.compiler.source_root_eval native_lane_census_scoped_ingest); its `binding_subject` lines
+/// say which subjects reach each member. One run per subject re-resolved every shared member once per
+/// subject (DESIGN §2), which on a wave of thirty rewritten modules outran the runner.
+pub fn run_census_controls_and_subjects(
+    source_roots: &[String],
+    control_root_sets: &[Vec<String>],
+    subjects: &[String],
+) -> Result<(Vec<CensusInferRun>, CensusInferRun), String> {
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let controls = control_root_sets
+        .iter()
+        .map(|roots| run_census_infer_with(&preparation.binary_path, roots))
+        .collect::<Result<Vec<_>, _>>()?;
+    let labels: Vec<String> = subjects
+        .iter()
+        .map(|subject| format!("//{}:all", subject.replace('.', "/")))
+        .collect();
+    let union = run_census_scoped_with(&preparation.binary_path, &labels, source_roots)?;
+    Ok((controls, union))
+}
+
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
 /// this process folds in every child it ever reaped -- cargo and rustc included -- so it cannot
 /// answer for the native binary alone; `wait4` returns the usage of the one pid it reaps. The host

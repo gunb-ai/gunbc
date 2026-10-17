@@ -3,7 +3,7 @@ module test.claim.serving.rented_allocation_enrollment_seat_witness
 import std.types { String, Bool, NonEmptyStr, List }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host.host_standup { HostStandupStep, HostStandupAssimilationPhase, Assimilation, InferenceServingProvision, ComputeFabricEnroll, RunnerDeploySlot, BuildCacheProvision, CodexRuntimeProvision, GreenPlaceReadiness }
+import gunbc.host.host_standup { HostStandupStep, HostStandupAssimilationPhase, Assimilation, Prefix, InferenceServingProvision, ComputeFabricEnroll, RunnerDeploySlot, BuildCacheProvision, CodexRuntimeProvision, GreenPlaceReadiness }
 import gunbc.host.host_assimilation_program { assimilation_program_for }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, inference_serving_enrollment_participation }
 import std.optional { Present, Absent }
@@ -18,7 +18,7 @@ import extdeps.pricing.object_storage { DecimalGigabyte }
 import extdeps.cloud.vast_ai { VastAiOfferHostResources, vast_ai_show_instances_page }
 import gunbc.secret_provision { fleet_secret_ref }
 import gunbc.fleet.provider_acquisition { ProviderApiAccount, ProviderResourceAcquisition, OperatorPerformed }
-import gunbc.fleet.fleet_host_backing { ProviderGuest, ProviderResourceAwaited, ProviderResourceAcquired }
+import gunbc.fleet.fleet_host_backing { ProviderGuest, OwnedMachine, ProviderResourceAwaited, ProviderResourceAcquired }
 import gunbc.fleet.vast_ai_guest {
   VastGuestStandings, VastNestedVirtualizationDocumented, VastIdentityUrlDocumented,
   vast_ai_guest_standings, vast_ai_guest_byte_basis_obligation, vast_ai_guest_nested_virtualization_obligation,
@@ -34,7 +34,7 @@ import gunbc.harness.harness_seat { harness_seat_partition }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive }
 import gunbc.serving.serving_launch {
   ServingServeNotListening, ServingServeKeyBinding, ServingServeKeyUnbound, ServingServeKeyBound,
-  ServingLaunchRefusedUnmetCauses, ServingLaunchRefusedKeyNotDelivered,
+  ServingLaunchNoop, ServingLaunchRefusedReadback, ServingLaunchRefusedUnmetCauses, ServingLaunchRefusedKeyNotDelivered,
   serving_launch_leg, serving_launch_leg_text,
 }
 import gunbc.serving.serving_key_grant {
@@ -120,7 +120,7 @@ fn s_derived_phases(r: RentedHostEnrollmentDerivation) -> List<HostStandupStep> 
 }
 
 fn s_has_phase(steps: List<HostStandupStep>, p: HostStandupAssimilationPhase) -> Bool {
-  any(xs: steps, predicate: fn(s) { match s.phase { Assimilation { phase: q } => q == p  _ => false } })
+  any(xs: steps, predicate: fn(s) { match s.phase { Assimilation { phase: q } => q == p  Prefix { phase: _ } => false } })
 }
 
 // THE DERIVED INTENT SELECTS EXACTLY THE INFERENCE PROGRAM: provision present, every runner phase absent.
@@ -135,7 +135,7 @@ test fn the_derived_intent_is_inference_participation_over_a_provider_guest_with
   match s_derive(standings: s_documented_standings(), acquisition: Absent) {
     RentedHostEnrollmentDerived { allocation: _, intent: i } =>
       i.participation == inference_serving_enrollment_participation
-        && (match i.backing { ProviderGuest { route: _, entitlement: _, resource: ProviderResourceAwaited { read_obligation: _ } } => true  _ => false })
+        && (match i.backing { ProviderGuest { route: _, entitlement: _, resource: r } => (match r { ProviderResourceAwaited { read_obligation: _ } => true  ProviderResourceAcquired { acquisition: _ } => false })  OwnedMachine { provisioning: _ } => false })
     RentedHostEnrollmentRefused { allocation: _, obligation: _ } => false
   }
 }
@@ -184,7 +184,7 @@ test fn host_resources_of_another_machine_refuse() -> Bool {
 test fn the_entitlement_cites_the_supplied_host_declaration_not_a_type() -> Bool {
   match s_derive(standings: s_documented_standings(), acquisition: Absent) {
     RentedHostEnrollmentDerived { allocation: _, intent: i } =>
-      match i.backing { ProviderGuest { route: _, entitlement: e, resource: _ } => e.offer == s_host_decl()  _ => false }
+      match i.backing { ProviderGuest { route: _, entitlement: e, resource: _ } => e.offer == s_host_decl()  OwnedMachine { provisioning: _ } => false }
     RentedHostEnrollmentRefused { allocation: _, obligation: _ } => false
   }
 }
@@ -197,7 +197,7 @@ test fn the_derived_entitlement_carries_the_documented_offer_figures() -> Bool {
         ProviderGuest { route: _, entitlement: e, resource: _ } =>
           byte_size_count(b: e.memory) == 65536000000 && byte_size_count(b: e.disk) == 2048500000000
             && hardware_thread_count_value(t: e.vcpus) == 64 && e.nested_virtualization
-        _ => false
+        OwnedMachine { provisioning: _ } => false
       }
     RentedHostEnrollmentRefused { allocation: _, obligation: _ } => false
   }
@@ -207,7 +207,7 @@ test fn the_derived_entitlement_carries_the_documented_offer_figures() -> Bool {
 test fn an_acquisition_for_the_contract_id_binds_the_resource() -> Bool {
   match s_derive(standings: s_documented_standings(), acquisition: Present { value: s_acquisition(resource_id: s_read_allocation().identity.contract as String) }) {
     RentedHostEnrollmentDerived { allocation: _, intent: i } =>
-      match i.backing { ProviderGuest { route: _, entitlement: _, resource: ProviderResourceAcquired { acquisition: _ } } => true  _ => false }
+      match i.backing { ProviderGuest { route: _, entitlement: _, resource: r } => (match r { ProviderResourceAcquired { acquisition: _ } => true  ProviderResourceAwaited { read_obligation: _ } => false })  OwnedMachine { provisioning: _ } => false }
     RentedHostEnrollmentRefused { allocation: _, obligation: _ } => false
   }
 }
@@ -271,7 +271,7 @@ fn s_argv() -> List<String> {
 
 // PAIRING: the real producer (the pattern selection) is what lets the grant bind.
 test fn the_real_pattern_selection_binds_the_grant() -> Bool {
-  match s_key_binding() { ServingServeKeyBound { grant: _ } => true  _ => false }
+  match s_key_binding() { ServingServeKeyBound { grant: _ } => true  ServingServeKeyUnbound { grant_name: _ } => false }
 }
 
 fn s_secret() -> String {
@@ -286,7 +286,7 @@ fn s_word_leaks(words: List<String>) -> Bool {
 // asserted absent from every argv word and the leg text, and the detector is shown to see it when present.
 test fn a_bound_key_refuses_on_missing_delivery_and_the_key_text_is_nowhere() -> Bool {
   let leg = serving_launch_leg(roots: s_roots(), launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: s_key_binding())
-  (match leg { ServingLaunchRefusedKeyNotDelivered { key_grant: _, detach: _ } => true  _ => false })
+  (match leg { ServingLaunchRefusedKeyNotDelivered { key_grant: _, detach: _ } => true  ServingLaunchNoop => false  ServingLaunchRefusedReadback { cause: _ } => false  ServingLaunchRefusedUnmetCauses { key_grant: _, detach: _ } => false })
     && !string_contains(s: serving_launch_leg_text(leg: leg), pattern: s_secret())
     && !s_word_leaks(words: s_argv())
 }
@@ -298,7 +298,9 @@ test fn the_leak_detector_sees_the_value_as_a_positional_key_or_env_word() -> Bo
 test fn an_unbound_key_still_refuses() -> Bool {
   match serving_launch_leg(roots: s_roots(), launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr }) {
     ServingLaunchRefusedUnmetCauses { key_grant: _, detach: _ } => true
-    _ => false
+    ServingLaunchNoop => false
+    ServingLaunchRefusedReadback { cause: _ } => false
+    ServingLaunchRefusedKeyNotDelivered { key_grant: _, detach: _ } => false
   }
 }
 

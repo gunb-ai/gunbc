@@ -1562,7 +1562,7 @@ fn closure_phase1_walk_module(
           list_snoc_item(
             xs: racc,
             item: match walk {
-              ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
+              ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: _ } =>
                 DeclPhase1Row {
                   module: module_qn,
                   name: binding.name,
