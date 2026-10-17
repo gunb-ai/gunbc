@@ -8,7 +8,7 @@ import std.temporal_effect {
   HeldLeaseObservedState,
   LeaseAbsent,
   LeaseRunningExpected,
-  LeaseRunningStale,
+  LeaseRunningPastExpiry,
   LeasePortForeign,
   LeaseInaccessible,
   held_lease_observed_verdict,
@@ -18,11 +18,12 @@ import std.measure { Second, second, second_count, Millisecond, millisecond, mil
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.machine_intake.mtcollins1_census_medium_readback {
-  mtcollins1_census_medium_readback, mtcollins1_census_readback_refusal_before_filing, mtcollins1_census_readback_refusal_before_attach,
+  census_medium_readback, census_readback_refusal_before_filing, census_readback_refusal_before_attach,
 }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
 import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image_stem }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, mtcollins1_census_image_stem, mtcollins1_census_machine }
+import gunbc.machine_intake.mtcollins1_census_medium_readback { mtcollins1_census_readback_attempt_raw }
 import gunbc.host.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
   boot_subject_admission_for, boot_subject_refusal_cause_text, boot_subject_machine,
@@ -342,7 +343,7 @@ fn mtcollins1_sol_collector_observe(pid_path: String) -> SolCollectorObservation
 fn held_lease_of_collector(observation: SolCollectorObservation) -> HeldLeaseObservedState {
   match observation {
     SolCollectorHeld => LeaseRunningExpected
-    SolCollectorExited { evidence: _ } => LeaseRunningStale
+    SolCollectorExited { evidence: _ } => LeaseRunningPastExpiry
     SolCollectorUnrecorded => LeaseAbsent
     SolCollectorUnobservable { cause: _ } => LeaseInaccessible
     SolCollectorPathUnset => LeaseInaccessible
@@ -2425,7 +2426,7 @@ fn mtcollins1_boot_actuate(
       let media = match before_attach {
         SolLostAt { outcome: o } => MediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
-          match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
+          match census_readback_refusal_before_attach(subject: mtcollins1_census_machine, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, attempt: mtcollins1_census_readback_attempt_raw)) {
             Present { value: why } => MediaAttachNotAttempted { reason: why as NonEmptyStr }
             Absent =>
               megarac_attach_boot_image(
@@ -2927,7 +2928,7 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() -> Runner
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
-  match mtcollins1_census_readback_refusal_before_filing(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
+  match census_readback_refusal_before_filing(subject: mtcollins1_census_machine, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, attempt: mtcollins1_census_readback_attempt_raw)) {
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }

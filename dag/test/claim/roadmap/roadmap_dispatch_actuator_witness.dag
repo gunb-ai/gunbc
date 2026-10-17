@@ -7,6 +7,11 @@ import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx
 
 import std.optional { Present }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.systemd {
+  systemd_unit_name_wire, systemd_service_unit_suffix,
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
+  SystemdUnitNameOverlong,
+}
 import extdeps.exec.command { argv_words }
 
 import std.algebra { fold_list }
@@ -120,6 +125,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   SystemdUnitContainer,
   TmuxSessionContainer,
   dispatch_session_container_for_provider,
+  DispatchSessionContainerPlan,
   DispatchSessionContainerReady,
   DispatchSessionContainerUnavailable,
   DispatchSpawnReady,
@@ -1441,11 +1447,71 @@ test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_ev
       match container {
         TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => false
         SystemdUnitContainer { plan } =>
-          plan.unit == dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
-            && plan.working_directory == "/wt"
-            && plan.stdout_path == events
-            && plan.stderr_path == log
+          match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+            SystemdUnitNameAdmitted { name } =>
+              (plan.unit as String) == (systemd_unit_name_wire(name: name) as String)
+                && plan.working_directory == "/wt"
+                && plan.attempt_worktree == "/wt"
+                && plan.stdout_path == events
+                && plan.stderr_path == log
+            SystemdUnitNameStemEmpty => false
+            SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+            SystemdUnitNameOverlong { length: _ } => false
+          }
       }
+  }
+}
+
+fn unit_name_overlong_node() -> String {
+  join([
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ], "")
+}
+
+fn container_plan_for_node(node_id: String) -> DispatchSessionContainerPlan {
+  let instance = srv1_live_dashboard_instance()
+  dispatch_session_container_for_provider(
+    provider: ClaudeCodeProvider,
+    instance: instance,
+    node_id: node_id,
+    attempt_key: "k",
+    session_name: "unused",
+    events_path: "/e",
+    worker_log_path: "/l",
+    pane_working_directory: "/wt",
+    worktree_path: "/wt",
+    provider_inner: ["claude", "-p"],
+    worker_role: AttemptWorkerRole,
+  )
+}
+
+test fn an_empty_node_id_refuses_a_systemd_container_plan() -> Bool {
+  match container_plan_for_node(node_id: "") {
+    DispatchSessionContainerUnavailable { step: st, detail: why } =>
+      (st as String) == "attempt-unit-name" && string_contains(s: why, pattern: "empty")
+    DispatchSessionContainerReady { container: _ } => false
+  }
+}
+
+test fn an_overlong_node_id_refuses_a_systemd_container_plan() -> Bool {
+  match container_plan_for_node(node_id: unit_name_overlong_node()) {
+    DispatchSessionContainerUnavailable { step: st, detail: why } =>
+      (st as String) == "attempt-unit-name" && string_contains(s: why, pattern: "255")
+    DispatchSessionContainerReady { container: _ } => false
+  }
+}
+
+test fn valid_attempt_unit_parts_render_as_the_historical_join() -> Bool {
+  match dispatch_attempt_unit_name(node_id: "n1", attempt_key: "k1") {
+    SystemdUnitNameAdmitted { name } =>
+      (systemd_unit_name_wire(name: name) as String)
+        == join(["gunbc-attempt-", "n1", "-", "k1", systemd_service_unit_suffix], "")
+    SystemdUnitNameStemEmpty => false
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+    SystemdUnitNameOverlong { length: _ } => false
   }
 }
 

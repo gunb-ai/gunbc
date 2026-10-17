@@ -346,6 +346,34 @@ data srv1_transition_interruption_authorization: InterruptionAuthorization = Int
   operator_reason: "operator decision 2026-09-17, scoped to srv1 surplus internal CI slots 13-50 (historical 50-slot remainder 22-50 and the 21-to-12 width-transition retirees 13-21): these may be interrupted for the 26/25 GiB transition; the decision does not name srv1-01..12, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
+// THE WIDTH CUTS OF 2026-10-16 ARE THEIR OWN DECISION, CARRIED BESIDE THE 09-17 ONE. Two cuts landed
+// that day: 7 to 5 (#14162, the user-work slice to 88 GiB) and 5 to 3 (#13942, the attempt-worker
+// slice stacked on it). Together they made srv1-03..06 required retirees, which the 09-17 scope
+// (13-50) does not name, so the retirement admission refused them until the operator decided. The
+// scope is enumerated for the same reason as srv4's: a range would acquire members if the width
+// moved again.
+data srv1_width_cut_2026_10_16_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: [
+    "actions-runner@srv1-03.service" as NonEmptyStr,
+    "actions-runner@srv1-04.service" as NonEmptyStr,
+    "actions-runner@srv1-05.service" as NonEmptyStr,
+    "actions-runner@srv1-06.service" as NonEmptyStr,
+  ],
+  operator_reason: "operator decision 2026-10-16 (escalation msg_62d72f56-a906-4379-9223-7e366c11aa45), scoped to srv1 internal CI slots 03-06: the retirees of the 7-to-5 and 5-to-3 width cuts may be interrupted; the decision does not extend to srv1-01, srv1-02, the shakedown slot 13, or anything else srv1 runs" as NonEmptyStr,
+}
+
+// srv1 HOLDS TWO WIDTH DECISIONS, so its width permission is their union and its reason names both,
+// joined rather than rewritten, the same composition host_interruption_reason applies to the fabric
+// reassignment.
+data srv1_width_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: concat(srv1_transition_interruption_authorization.scope, srv1_width_cut_2026_10_16_interruption_authorization.scope),
+  operator_reason: join([
+    srv1_transition_interruption_authorization.operator_reason as String,
+    " | ",
+    srv1_width_cut_2026_10_16_interruption_authorization.operator_reason as String,
+  ], "") as NonEmptyStr,
+}
+
 type HostInterruptionAuthorizationStanding
   = HostInterruptionAuthorizationPresent { authorization: InterruptionAuthorization }
   | HostInterruptionAuthorizationAbsent { host: HostIdentity, cause: String }
@@ -415,7 +443,7 @@ type WidthDecisionAuthorization
 
 fn host_width_interruption_authorization(host: HostIdentity) -> WidthDecisionAuthorization {
   if (host as String) == (operator_host_srv1 as String) {
-    WidthDecisionNamed { authorization: srv1_transition_interruption_authorization }
+    WidthDecisionNamed { authorization: srv1_width_interruption_authorization }
   } else if (host as String) == (operator_host_srv4 as String) {
     WidthDecisionNamed { authorization: srv4_transition_interruption_authorization }
   } else {
@@ -502,8 +530,9 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 // statement that GitHub has let the identity go.
 // A SLOT CAN LEAVE THE GITHUB POPULATION WITHOUT THE WIDTH MOVING, AND UNTIL NOW NOTHING SAID SO.
 //
-// required_retirees_for_host derives its set from a WIDTH TRANSITION: prior width down to committed
-// width, so srv4's 13..21 and srv1's 13..50. That covers a slot the host stops having. It does not
+// required_retirees_for_host derives its set from a WIDTH TRANSITION: prior committed identities
+// minus target committed identities, so srv1's 07..12 and 14..50 at width 7 (priors 50 and 12) and srv4 empty at
+// width 21 (prior 21). That covers a slot the host stops having. It does not
 // cover a slot the host still has whose PURPOSE changed -- and gunbc.runner.runner_slot_allocation
 // reassigns exactly that: a committed index stops serving GitHub Actions and becomes a fabric
 // execution cell. The index is inside the width, so the width transition produces no retiree for it,
@@ -1068,44 +1097,46 @@ fn observe_transition_retirement_evidence(
         ], ""),
       }
     RetireesKnown { units: units } =>
-      SlotRetirementEvidencePresent {
-        authorization: auth,
+      transition_retirement_admission_over(
+        host: host,
+        auth: auth,
+        required: units,
         standings: observe_retirement_standings(transport: transport, units: units),
-      }
+      )
   }
 }
 
-// PERMISSION COVERAGE IS A PURE DECISION OVER THE OBLIGATION, and it is exported so the plan can
-// refuse a partially-authorized transition without performing anything. Retiring only the covered
-// subset would release ceilings against a population that is still running, so an uncovered required
-// retiree refuses the whole transition rather than narrowing it.
+// COVERAGE IS OVER UNITS THIS OBSERVATION HAS NOT COMPLETED. A required retiree whose standing
+// this run reads as RetirementComplete (masked and stopped) is met for this plan; it is not
+// subtracted from the durable obligation and it is not named against a stored run id. An unmask
+// later is a different observation and returns the unit to the coverage demand. Units this run
+// has not completed still refuse the whole transition if any of them is outside the grant —
+// retiring only the covered remainder would release ceilings against a population still running.
 // AN UNRESOLVED OBLIGATION IS NOT A FULLY PERMITTED ONE. Coverage is a decision over a set, and a
 // host with no derivable set has nothing to cover -- which under the previous List shape arrived
 // here as the empty set and therefore as TransitionFullyPermitted: the strongest possible answer,
 // reached because nothing could be asked.
-fn transition_retirement_admission(
-  host: HostIdentity,
-  auth: InterruptionAuthorization,
-) -> SlotRetirementEvidence {
-  match transition_required_retiring(host: host) {
-    RetireesUnresolved { host: uh, cause: c } =>
-      SlotRetirementEvidenceAbsent {
-        cause: join([
-          "the retirement obligation for ", uh as String,
-          " is not derivable, so no interruption coverage can be decided over it and no retirement is admitted: ", c,
-        ], ""),
-      }
-    RetireesKnown { units: required } =>
-      transition_retirement_admission_over(host: host, auth: auth, required: required)
-  }
+fn outstanding_required_retirees(
+  required: List<NonEmptyStr>,
+  standings: List<RunnerRetirementStanding>,
+) -> List<NonEmptyStr> {
+  required |> filter(u =>
+    !any(standings, s =>
+      retirement_is_complete(s: s) && retirement_unit(s: s) == (u as String)
+    )
+  )
 }
 
 fn transition_retirement_admission_over(
   host: HostIdentity,
   auth: InterruptionAuthorization,
   required: List<NonEmptyStr>,
+  standings: List<RunnerRetirementStanding>,
 ) -> SlotRetirementEvidence {
-  match transition_interruption_coverage(auth: auth, required: required) {
+  match transition_interruption_coverage(
+    auth: auth,
+    required: outstanding_required_retirees(required: required, standings: standings),
+  ) {
     TransitionRetireesNotPermitted { permitted: _, unpermitted: u } =>
       SlotRetirementEvidenceAbsent {
         cause: join(
@@ -1118,7 +1149,7 @@ fn transition_retirement_admission_over(
         ),
       }
     TransitionFullyPermitted { units: _ } =>
-      SlotRetirementEvidencePresent { authorization: auth, standings: [] }
+      SlotRetirementEvidencePresent { authorization: auth, standings: standings }
   }
 }
 

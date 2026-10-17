@@ -1,6 +1,7 @@
 module extdeps.procps.kill
 
 import std.types { Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
@@ -38,8 +39,22 @@ fn procps_kill_standing() -> CitedFigureStanding {
 
 fn kill_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/kill")
 
+// THE QUIRK IS A REALIZATION FACT, NOT "THE HOST'S kill". A shell builtin named kill (bash
+// `kill -V` is "invalid signal specification") is not procps-ng. ProcpsNgArgvKill IS execve of
+// kill_program (`/usr/bin/kill`); the arm cannot hold another program.
+type KillSignalRealization
+  = ProcpsNgArgvKill
+  | ShellBuiltinKill
+
 fn procps_ng_kill_term_pgid_argv(pgid: Int) -> List<String> {
   [kill_program().invocation as String, "-TERM", "--", concat("-", to_string(pgid))]
+}
+
+fn procps_ng_kill_term_pgid_form(realization: KillSignalRealization, pgid: Int) -> List<String>? {
+  match realization {
+    ProcpsNgArgvKill => Present { value: procps_ng_kill_term_pgid_argv(pgid: pgid) }
+    ShellBuiltinKill => none
+  }
 }
 
 data procps_pgid_signal_host_consumer_frontier: DissolutionCondition = unbound_dissolution(

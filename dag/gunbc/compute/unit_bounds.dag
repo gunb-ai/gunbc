@@ -12,7 +12,7 @@ import std.measure { ByteSize, Kibibyte, kibibyte_to_byte_size, byte_size, byte_
 import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemoryHigh, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   SystemdSummaryPrintingWaitReading,
   SystemdSetenvBinding, systemd_run_user_scope_command, systemd_run_user_transient_command,
   systemd_run_user_wait_command,
@@ -22,6 +22,7 @@ import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
   modeled_system_slice_memory_max,
 }
+import gunbc.oomd_install { gunbc_oomd_sessions_slice }
 import gunbc.runner.runner_unit { runner_unit_prefix }
 
 // THE ONE FOLD FROM A CAPACITY GRANT TO THE PROPERTIES OF THE UNIT THAT HOLDS IT. It used to live in
@@ -68,8 +69,8 @@ fn unit_cpu_quota_percent(m: Millicore) -> Nat {
 // projected duplicate -p Slice= / MemorySwapMax= (review 79894).
 fn user_work_slice_binding_properties() -> List<SystemdRunProperty> {
   [
-    SystemdRunProperty { property: SliceProperty, value: user_work_slice_unit_name },
-    SystemdRunProperty { property: MemorySwapMax, value: to_string(value: byte_size_count(b: user_work_slice_memory_swap_max)) as NonEmptyStr },
+    NamedUnitSetting { property: SliceProperty, value: user_work_slice_unit_name },
+    NamedUnitSetting { property: MemorySwapMax, value: to_string(value: byte_size_count(b: user_work_slice_memory_swap_max)) as NonEmptyStr },
   ]
 }
 
@@ -80,15 +81,15 @@ fn user_work_run_properties(rest: List<SystemdRunProperty>) -> List<SystemdRunPr
 fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, process_bounds: UnitProcessBounds?) -> List<SystemdRunProperty> {
   concat(
     [
-      SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted))) as NonEmptyStr },
-      SystemdRunProperty { property: compute_kill_mode_property, value: compute_kill_mode_value() },
-      SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
+      NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted))) as NonEmptyStr },
+      NamedUnitSetting { property: compute_kill_mode_property, value: compute_kill_mode_value() },
+      NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     ],
     match process_bounds {
       Absent => []
       Present { value: b } => [
-        SystemdRunProperty { property: CPUQuota, value: join([to_string(value: unit_cpu_quota_percent(m: b.cpu_quota)), "%"], "") as NonEmptyStr },
-        SystemdRunProperty { property: TasksMax, value: to_string(value: b.tasks_max) as NonEmptyStr },
+        NamedUnitSetting { property: CPUQuota, value: join([to_string(value: unit_cpu_quota_percent(m: b.cpu_quota)), "%"], "") as NonEmptyStr },
+        NamedUnitSetting { property: TasksMax, value: to_string(value: b.tasks_max) as NonEmptyStr },
       ]
     },
   )
@@ -122,15 +123,25 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // UserSessionAbsent refuses: a host that owes the bound and has no user manager must not run
 // unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
 // in a declared slot cgroup, not because the user manager is missing.
-// ExemptSystemUnit skips only when a cgroup path segment is a modeled capped slice
-// AND that slice's live memory.max is finite (live_modeled_slice_standing). A name
-// in declared_system_slice_memory_maxes with unreadable or unbounded memory.max
-// refuses UncappedSystemSlice. sessions.slice is host policy, not a wrap census
-// name; a namespaced-root container is ExemptBoundedContainer only from a live
-// finite memory.max. An observed unbounded root memory.max refuses even when a
-// BuildBuddy run id is present. Unreadable root memory.max plus a non-empty
-// BUILDBUDDY_RUN_ID is ExternallyBoundedExecutor (the measured RBE case). A named
-// .service under an unmodeled slice refuses UncappedSystemSlice { unit, slice }.
+// ExemptSystemUnit skips only when a cgroup path segment is a recognized slice
+// AND that slice's live memory.max is finite (live_modeled_slice_standing), carrying
+// the local bound. recognized_system_slice is a name census: sessions.slice plus
+// units whose declared memory_max is positive (modeled_system_slice_memory_max).
+// Those declared magnitudes are not the skip bound; skip vs UncappedSystemSlice
+// is only the live memory.max. Unreadable, unbounded, or zero live memory.max
+// refuses UncappedSystemSlice.
+// sessions.slice is recognized by name (gunbc_oomd_sessions_slice) and still refuses
+// without a local finite cap. Wrapping that path into gunbc-user-work.slice when a
+// user manager is reachable is not a fallback: the enclosing slice is already a
+// named memory policy (oomd), so an unread/unbounded local max is UncappedSystemSlice,
+// not UserManagerOwed. WrapIntoUserWorkSlice would hide that deficit behind a second
+// envelope (review 80751). A namespaced-root container is ExemptBoundedContainer only from a live
+// finite memory.max. An observed unbounded or zero root memory.max refuses
+// BoundedContainerUncapped even when a BuildBuddy run id is present (review 80587).
+// ExternallyBoundedExecutor only when root memory.max is absent/unreadable AND
+// BUILDBUDDY_RUN_ID is non-empty. That env is an observed executor identity, not a
+// bound: admitted under the sleek-owl-397 ruling of 2026-10-15 (external boundary).
+// A named .service under an unmodeled slice refuses UncappedSystemSlice { unit, slice }.
 // A session cgroup with no modeled cap and no user manager refuses
 // UserSessionAbsent. Path from /proc/self/cgroup; User= is never consulted.
 //
@@ -157,8 +168,9 @@ type UserWorkScopeCgroupRead
 // through the one authority for those files, extdeps.linux.cgroup_v2_memory: each level's memory.max
 // parsed by parse_cgroup_memory_limit and folded by cgroup_tightest_hard_memory_limit (any ancestor's
 // limit binds the process, the tightest wins), and each level's memory.swap.max parsed by the same
-// parser. The process is bounded when a hard limit binds AND some level sets memory.swap.max to 0 (a
-// swap ceiling of 0 anywhere on the chain forbids swap below it). No binding limit, or swap allowed
+// parser. The process is bounded when a NONZERO hard limit binds AND some level sets memory.swap.max to 0 (a
+// swap ceiling of 0 anywhere on the chain forbids swap below it). A tightest limit of 0 is not a bound:
+// it is the zero cap this fold's other arms already refuse as uncapped. No binding limit, or swap allowed
 // on every level, is unbounded; a chain that could not be read is unread; neither admits (they fall
 // through to the user-manager arms below, which refuse where no user manager exists). The readings
 // are supplied, so the fold is the only policy; the seed trampoline performs the walk and mirrors
@@ -189,7 +201,7 @@ fn observed_cgroup_bound(observation: CgroupBoundObservation) -> CgroupBound {
     CgroupChainRead { levels: l, swap_max: w } => match cgroup_tightest_hard_memory_limit(levels: l) {
       CgroupNoHardLimit => CgroupChainUnbounded
       CgroupHardLimitBinds { dir: d, bytes: b } =>
-        if swap_forbidden_on_chain(swap_max: w) { CgroupBoundedBy { cgroup: d as String, memory_max: b } } else { CgroupChainUnbounded }
+        if byte_size_count(b: b) > 0 && swap_forbidden_on_chain(swap_max: w) { CgroupBoundedBy { cgroup: d as String, memory_max: b } } else { CgroupChainUnbounded }
     }
   }
 }
@@ -215,7 +227,7 @@ type UserWorkScopeStanding
   | RunnerSlotExempt
   | CiExempt
   | UnitTestExempt
-  | ExemptSystemUnit { unit: String, slice: String }
+  | ExemptSystemUnit { unit: String, slice: String, bound: ByteSize }
   | UncappedSystemSlice { unit: String, slice: String }
   | UserSessionAbsent
   | UserManagerOwed
@@ -258,13 +270,18 @@ fn last_cgroup_unit_with_dot_suffix(text: String, suffix: String) -> String? {
   }
 }
 
+fn recognized_system_slice(unit: String) -> Bool {
+  (unit == (gunbc_oomd_sessions_slice as String))
+    || match modeled_system_slice_memory_max(unit: unit) {
+      Present { value: _ } => true
+      Absent => false
+    }
+}
+
 fn innermost_modeled_capped_slice(text: String) -> String? {
   match reverse(
     cgroup_path_segments(text: text)
-      |> filter(seg => match modeled_system_slice_memory_max(unit: seg) {
-        Present { value: _ } => true
-        Absent => false
-      })
+      |> filter(seg => recognized_system_slice(unit: seg))
   ).first() {
     Absent => none
     Present { value: slice } => Present { value: slice }
@@ -292,7 +309,7 @@ fn live_modeled_slice_standing(unit: String, slice: String, slice_memory: RootCg
       if byte_size_count(b: bytes) == 0 {
         UncappedSystemSlice { unit: unit, slice: slice }
       } else {
-        ExemptSystemUnit { unit: unit, slice: slice }
+        ExemptSystemUnit { unit: unit, slice: slice, bound: bytes }
       }
     RootMemoryUnbounded => UncappedSystemSlice { unit: unit, slice: slice }
     RootMemoryUnreadable => UncappedSystemSlice { unit: unit, slice: slice }
@@ -332,12 +349,12 @@ fn system_unit_standing_from_cgroup(text: String, slice_memory: RootCgroupMemory
   match system_service_unit_from_cgroup(text: text) {
     NotSystemService => none
     SystemServiceNamed { unit, slice } =>
-      match modeled_system_slice_memory_max(unit: slice) {
-        Present { value: _ } =>
-          Present {
-            value: live_modeled_slice_standing(unit: unit, slice: slice, slice_memory: slice_memory),
-          }
-        Absent => Present { value: UncappedSystemSlice { unit: unit, slice: slice } }
+      if recognized_system_slice(unit: slice) {
+        Present {
+          value: live_modeled_slice_standing(unit: unit, slice: slice, slice_memory: slice_memory),
+        }
+      } else {
+        Present { value: UncappedSystemSlice { unit: unit, slice: slice } }
       }
   }
 }
@@ -470,7 +487,8 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
     RunnerSlotExempt => "RunnerSlotExempt"
     CiExempt => "CiExempt"
     UnitTestExempt => "UnitTestExempt"
-    ExemptSystemUnit { unit, slice } => join(["ExemptSystemUnit:", slice, ":", unit], "")
+    ExemptSystemUnit { unit, slice, bound } =>
+      join(["ExemptSystemUnit:", slice, ":", unit, ":", to_string(value: byte_size_count(b: bound))], "")
     UncappedSystemSlice { unit, slice } => join(["UncappedSystemSlice:", slice, ":", unit], "")
     UserSessionAbsent => "UserSessionAbsent"
     UserManagerOwed => "UserManagerOwed"
@@ -495,8 +513,8 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
     UnitTestExempt => SkipUserWorkScope { standing: UnitTestExempt }
     RunnerSlotExempt => SkipUserWorkScope { standing: RunnerSlotExempt }
     CiExempt => SkipUserWorkScope { standing: CiExempt }
-    ExemptSystemUnit { unit, slice } =>
-      SkipUserWorkScope { standing: ExemptSystemUnit { unit: unit, slice: slice } }
+    ExemptSystemUnit { unit, slice, bound } =>
+      SkipUserWorkScope { standing: ExemptSystemUnit { unit: unit, slice: slice, bound: bound } }
     UncappedSystemSlice { unit, slice } =>
       RefuseUserWorkScope { standing: UncappedSystemSlice { unit: unit, slice: slice } }
     CgroupUnreadable => RefuseUserWorkScope { standing: CgroupUnreadable }
@@ -547,7 +565,7 @@ fn user_work_wrap_high_property(memory_max: ByteSize, memory_high: MemoryBound) 
     MemoryUnbounded => []
     MemoryCapped { bytes: h } =>
       [
-        SystemdRunProperty {
+        NamedUnitSetting {
           property: MemoryHigh,
           value: to_string(value: nat_min(a: byte_size_count(b: h), b: byte_size_count(b: memory_max))) as NonEmptyStr,
         },
@@ -560,7 +578,7 @@ fn user_work_wrap_envelope_properties(memory_max: ByteSize, memory_high: MemoryB
     user_work_slice_binding_properties(),
     concat(
       [
-        SystemdRunProperty {
+        NamedUnitSetting {
           property: MemoryMax,
           value: to_string(value: byte_size_count(b: memory_max)) as NonEmptyStr,
         },

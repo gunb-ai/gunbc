@@ -25,35 +25,75 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub type Int8 =
-    crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;
+pub type Int8 = crate::std_machine_constraints::Compose<
+    i64,
+    crate::std_machine_constraints::MachineWidth<
+        crate::std_machine_constraints::StaticWidthIndex<8>,
+    >,
+>;
 
-pub type Int16 =
-    crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;
+pub type Int16 = crate::std_machine_constraints::Compose<
+    i64,
+    crate::std_machine_constraints::MachineWidth<
+        crate::std_machine_constraints::StaticWidthIndex<16>,
+    >,
+>;
 
-pub type Int32 =
-    crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;
+pub type Int32 = crate::std_machine_constraints::Compose<
+    i64,
+    crate::std_machine_constraints::MachineWidth<
+        crate::std_machine_constraints::StaticWidthIndex<32>,
+    >,
+>;
 
-pub type Int64 =
-    crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;
+pub type Int64 = crate::std_machine_constraints::Compose<
+    i64,
+    crate::std_machine_constraints::MachineWidth<
+        crate::std_machine_constraints::StaticWidthIndex<64>,
+    >,
+>;
 
-pub type Int128 =
-    crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;
+pub type Int128 = crate::std_machine_constraints::Compose<
+    i64,
+    crate::std_machine_constraints::MachineWidth<
+        crate::std_machine_constraints::StaticWidthIndex<128>,
+    >,
+>;
 
-pub type UInt8 =
-    crate::std_machine_constraints::Compose<UInt, crate::std_machine_constraints::MachineWidth<()>>;
+pub type UInt8 = crate::std_machine_constraints::Compose<
+    UInt,
+    crate::std_machine_constraints::MachineWidth<
+        crate::std_machine_constraints::StaticWidthIndex<8>,
+    >,
+>;
 
-pub type UInt16 =
-    crate::std_machine_constraints::Compose<UInt, crate::std_machine_constraints::MachineWidth<()>>;
+pub type UInt16 = crate::std_machine_constraints::Compose<
+    UInt,
+    crate::std_machine_constraints::MachineWidth<
+        crate::std_machine_constraints::StaticWidthIndex<16>,
+    >,
+>;
 
-pub type UInt32 =
-    crate::std_machine_constraints::Compose<UInt, crate::std_machine_constraints::MachineWidth<()>>;
+pub type UInt32 = crate::std_machine_constraints::Compose<
+    UInt,
+    crate::std_machine_constraints::MachineWidth<
+        crate::std_machine_constraints::StaticWidthIndex<32>,
+    >,
+>;
 
-pub type UInt64 =
-    crate::std_machine_constraints::Compose<UInt, crate::std_machine_constraints::MachineWidth<()>>;
+pub type UInt64 = crate::std_machine_constraints::Compose<
+    UInt,
+    crate::std_machine_constraints::MachineWidth<
+        crate::std_machine_constraints::StaticWidthIndex<64>,
+    >,
+>;
 
-pub type UInt128 =
-    crate::std_machine_constraints::Compose<UInt, crate::std_machine_constraints::MachineWidth<()>>;
+pub type UInt128 = crate::std_machine_constraints::Compose<
+    UInt,
+    crate::std_machine_constraints::MachineWidth<
+        crate::std_machine_constraints::StaticWidthIndex<128>,
+    >,
+>;
 
 pub type Int = i64;
 

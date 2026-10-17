@@ -13,7 +13,8 @@ import std.measure {
 }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.currency.currency { CurrencyCode }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, File }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand {
   term_money, term_delay, term_interruption, term_accepted_work, debt_payoff_objective,
@@ -38,6 +39,9 @@ import gunbc.harness.harness_reasoning_wire {
   harness_unit_placement, harness_serving_unit_compatibility, HarnessUnitsIdentical,
   HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
   PlacedOnFleetSeat, RunOnOperatorEndpoint, LeasedFromHostedQuota,
+}
+import product.fabric.serving_recipe {
+  serving_recipe_qwen3_8_27b_nvfp4_ninfer, PerGibibyteHour, MoneyPerGibibyteHour,
 }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiDriverVersionRead, VastAiDriverVersionUnread, VastAiDriverVersionMalformed,
@@ -380,9 +384,18 @@ data flex_rank_domain: DeclarationRef = decl_ref(module_path: "product.fabric.fl
 data flex_rank_coupling: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_coupling")
 data flex_rank_evidence: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_evidence")
 
+data flex_policy_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "dag/gunbc/design_ruling.dag#flex_market_policy_is_operator_decided"
+  }
+}
+
+data flex_policy_standing: CitedFigureStanding = CitedToAuthority { authority: flex_policy_authority }
+
 data flex_term_vram_hour: ObjectiveTerm = ObjectiveTerm {
   identity: decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_term_vram_hour"),
-  ground: TranscribedUncited { read_obligation: "card rank is money per VRAM-GiB-hour after the held switch premium, not fabric accepted-work" as NonEmptyStr },
+  ground: flex_policy_standing,
 }
 
 fn flex_level_identity(level: FlexBidLevel) -> DeclarationRef {
@@ -409,16 +422,19 @@ fn flex_level_from_identity(id: DeclarationRef) -> FlexBidLevel? {
   }
 }
 
+fn flex_fewer_samples(acc: FlexLevelTally?, t: FlexLevelTally) -> FlexLevelTally? {
+  match acc {
+    Absent => Present { value: t }
+    Present { value: cur } =>
+      if (t.samples < cur.samples) { Present { value: t } } else { Present { value: cur } }
+  }
+}
+
 fn flex_least_sampled_other(tallies: List<FlexLevelTally>, best: FlexBidLevel) -> FlexBidLevel? {
   let other: FlexLevelTally? = fold(
     filter(tallies, t => !flex_bid_level_eq(left: t.level, right: best)),
     init: none,
-    f: (acc, t) =>
-      match acc {
-        Absent => Present { value: t }
-        Present { value: cur } =>
-          if (t.samples < cur.samples) { Present { value: t } } else { Present { value: cur } }
-      },
+    f: (acc, t) => flex_fewer_samples(acc: acc, t: t),
   )
   match other {
     Absent => none
@@ -426,7 +442,13 @@ fn flex_least_sampled_other(tallies: List<FlexLevelTally>, best: FlexBidLevel) -
   }
 }
 
-fn flex_market_assessment() -> DecisionAssessment {
+data flex_level_coupling_bet: CitedFigureStanding = TranscribedUncited { read_obligation: "interruptible bid-level term-variable coupling is an empirical bet (sample count makes a productive-hour reading reliable); Vast search-offers documents the offer wire, not this monotone" as NonEmptyStr }
+
+fn flex_policy_terms() -> List<ObjectiveTerm> {
+  map(fabric_demand_objective_terms(), t => ObjectiveTerm { identity: t.identity, ground: flex_policy_standing })
+}
+
+fn flex_market_assessment(coupling: CitedFigureStanding) -> DecisionAssessment {
   let term_ids = fabric_demand_required_term_ids()
   DecisionAssessment {
     subject: DecisionSubject {
@@ -437,7 +459,7 @@ fn flex_market_assessment() -> DecisionAssessment {
       objective: ObjectiveMeasure {
         identity: debt_payoff_objective.profile,
         goal: LowerIsBetter,
-        terms: fabric_demand_objective_terms(),
+        terms: flex_policy_terms(),
       },
       choice_domain: ChoiceDomain {
         identity: flex_market_domain,
@@ -450,7 +472,7 @@ fn flex_market_assessment() -> DecisionAssessment {
         variable: flex_market_var,
         region: DecisionRegion { identity: flex_market_region },
         relation: MonotoneDecreasing,
-        coupling: TranscribedUncited { read_obligation: "interruptible bid-level term-variable coupling is a flex policy bet; Vast search-offers documents the offer wire, not this monotone" as NonEmptyStr },
+        coupling: coupling,
       }
     ),
     constraints: [
@@ -475,9 +497,9 @@ fn flex_market_assessment() -> DecisionAssessment {
   }
 }
 
-fn flex_select_scored_level(tallies: List<FlexLevelTally>, currency: CurrencyCode) -> RealizationSelectionResult<ParetoEntry> {
+fn flex_select_scored_level(tallies: List<FlexLevelTally>, currency: CurrencyCode, coupling: CitedFigureStanding) -> RealizationSelectionResult<ParetoEntry> {
   select_realization(
-    assessment: flex_market_assessment(),
+    assessment: flex_market_assessment(coupling: coupling),
     candidate_field_identity: flex_level_field,
     field: map(flex_scored_levels(tallies: tallies), t =>
       flex_level_entry(id: flex_level_identity(level: t.level), label: "bid-level" as NonEmptyStr, tally: t)
@@ -514,7 +536,7 @@ fn flex_rank_assessment() -> DecisionAssessment {
         variable: flex_rank_var,
         region: DecisionRegion { identity: flex_rank_region },
         relation: MonotoneDecreasing,
-        coupling: TranscribedUncited { read_obligation: "VRAM-GiB-hour rank sensitivity is a flex policy bet; Vast search-offers documents the offer wire, not this monotone" as NonEmptyStr },
+        coupling: flex_policy_standing,
       }
     ],
     constraints: [
@@ -558,16 +580,26 @@ fn flex_choose_bid_level(
   rentals_so_far: Nat,
   quote_currency: CurrencyCode,
 ) -> FlexLevelChoice {
+  flex_choose_bid_level_under(rows: rows, class: class, rentals_so_far: rentals_so_far, quote_currency: quote_currency, coupling: flex_level_coupling_bet)
+}
+
+fn flex_choose_bid_level_under(
+  rows: List<FlexRentalSample>,
+  class: FlexVramClass,
+  rentals_so_far: Nat,
+  quote_currency: CurrencyCode,
+  coupling: CitedFigureStanding,
+) -> FlexLevelChoice {
   let tallies = map(flex_bid_levels(), l => flex_tally_level(rows: rows, class: class, level: l))
   match flex_young_levels(tallies: tallies).first() {
     Present { value: young } =>
       FlexLevelChosen {
         level: young,
-        samples: fold(tallies, init: 0, f: (n, t) =>
+        samples: fold(tallies, init: Zero, f: (n, t) =>
           if flex_bid_level_eq(left: t.level, right: young) { t.samples } else { n }),
       }
     Absent =>
-      match flex_select_scored_level(tallies: tallies, currency: quote_currency) {
+      match flex_select_scored_level(tallies: tallies, currency: quote_currency, coupling: coupling) {
         SelectionNeedsEvidence { needs: _ } => FlexLevelNeedsEvidence
         SelectionNeedsPolicy { survivors: _ } => FlexLevelNeedsEvidence
         CandidateFieldUnestablished { causes: _ } => FlexLevelNeedsEvidence
@@ -585,7 +617,7 @@ fn flex_choose_bid_level(
               } else {
                 FlexLevelChosen {
                   level: best,
-                  samples: fold(tallies, init: 0, f: (n, t) =>
+                  samples: fold(tallies, init: Zero, f: (n, t) =>
                     if flex_bid_level_eq(left: t.level, right: best) { t.samples } else { n }),
                 }
               }
@@ -633,10 +665,6 @@ fn flex_held_effective_rate(rate: MoneyPerHour, held: Bool) -> MoneyPerHour {
     }
   }
 }
-
-type PerGibibyteHour
-
-type MoneyPerGibibyteHour = MoneyRate<PerGibibyteHour>
 
 type FlexVramHourly
   = FlexVramHourlyQuoted { rate: MoneyPerGibibyteHour }
@@ -949,34 +977,9 @@ fn flex_ninfer_qwen_probe() -> FlexCardProbe {
   FlexCardUnitEstablished { unit: Qwen3_8_27bOnNinfer }
 }
 
-type FlexHostDriverMinimum {
-  major: Nat
-  standing: CitedFigureStanding
-}
-
-data flex_ninfer_min_driver: FlexHostDriverMinimum = FlexHostDriverMinimum {
-  major: 580,
-  standing: TranscribedUncited {
-    read_obligation: "read the ninfer Qwen3.8-27b launch image NVIDIA driver major requirement; 580 is a transcribed flex screen, not a cited NVIDIA or ninfer figure" as NonEmptyStr,
-  },
-}
-
-data flex_vllm_min_driver: FlexHostDriverMinimum = FlexHostDriverMinimum {
-  major: 590,
-  standing: TranscribedUncited {
-    read_obligation: "read the vLLM CUDA 13 serving image NVIDIA driver major requirement; 590 is a transcribed flex screen, not a cited NVIDIA or vLLM figure" as NonEmptyStr,
-  },
-}
-
-fn flex_unit_min_host_driver(unit: HarnessServingUnit) -> Nat? {
-  match unit {
-    Qwen3_8_27bOnNinfer => Present { value: flex_ninfer_min_driver.major }
-    DeepseekV4FlashOnVllm => Present { value: flex_vllm_min_driver.major }
-    Glm53FlashOnVllm => Present { value: flex_vllm_min_driver.major }
-    NemotronUltraFreeOnOpenRouter => none
-  }
-}
-
+// The host driver floor is the RECIPE's fact (product.fabric.serving_recipe ServingDriverFloor), screened by
+// product.fabric.flex_vast_shadow flex_offer_screen_by_recipe with its standing; this module reads the offer's
+// driver only.
 fn flex_offer_driver_major(offer: VastAiOffer) -> Nat? {
   match vast_ai_ingest_search_offer_driver(offer: offer) {
     VastAiDriverVersionUnread => none
@@ -985,22 +988,3 @@ fn flex_offer_driver_major(offer: VastAiOffer) -> Nat? {
   }
 }
 
-fn flex_offer_meets_unit_driver(offer: VastAiOffer, unit: HarnessServingUnit) -> Bool {
-  match flex_unit_min_host_driver(unit: unit) {
-    Absent => true
-    Present { value: min } =>
-      match flex_offer_driver_major(offer: offer) {
-        Absent => false
-        Present { value: observed } => observed >= min
-      }
-  }
-}
-
-fn flex_serving_unit_accepts_offer(
-  required: HarnessServingUnit,
-  observed: FlexCardProbe,
-  offer: VastAiOffer,
-) -> Bool {
-  flex_rented_card_fungible(required: required, observed: observed)
-    && flex_offer_meets_unit_driver(offer: offer, unit: required)
-}

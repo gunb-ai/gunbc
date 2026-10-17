@@ -1,6 +1,6 @@
 module gunbc.live_deploy.member_identity
 
-import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha }
+import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha, HttpStatus }
 import std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest, HashAlgorithm, Sha256, Sha512 }
 import std.content_hash {
@@ -93,9 +93,24 @@ type UnitManagerStanding
 // (gunbc.running_release_identity), or the fact that no process is running. ActiveState alone is
 // not an identity: an Active process may be the previous release, and that is the case a restart
 // exists to repair.
+//
+// THE THIRD ARM IS THE ONE THE LEDGER COST FOURTEEN HOURS AND TWO OUT-OF-BAND RECOVERIES.
+// ProcessNotRunning and "I could not look" used to be the only two answers, so a process systemd
+// calls Active whose /healthz ANSWERS -- 503, from a serve still starting, crash-looping, or running
+// over a tree its binary no longer matches -- arrived as MemberUnobservable and was refused. That
+// folded the row's harm into the observation: the only modeled route to repair the service required
+// the service to be healthy. This arm says what was actually measured: the process answered, it was
+// in a server-error class, and its reply carried no release identity to read. It is NOT a readiness
+// verdict and decides nothing here on its own -- whether that means a replacement is the domain's
+// call, taken below over the member's own revision (DESIGN 6b, D14).
 type ServiceProcessIdentity
   = ProcessRunningRelease { revision: CommitSha }
   | ProcessNotRunning { active: SystemdUnitActiveState }
+  | ProcessObservedUnhealthy {
+    active: SystemdUnitActiveState,
+    status: HttpStatus,
+    detail: String,
+  }
 
 // A ROOT'S IDENTITY IS THE OWNED-DIRECTORY PROVIDER'S STANDING FOR IT, not a second judgement of owner
 // and mode made here. Presence is already carried by ObservedMember (an established absence is
@@ -201,6 +216,8 @@ fn service_process_identity_wire(p: ServiceProcessIdentity) -> String {
     ProcessRunningRelease { revision } => join(["running-release:", revision as String], "")
     ProcessNotRunning { active } =>
       join(["not-running:", systemd_unit_active_state_wire_label(s: active)], "")
+    ProcessObservedUnhealthy { active, status, detail: _ } =>
+      join(["observed-unhealthy:", systemd_unit_active_state_wire_label(s: active), ":answered:", to_string(status) as String], "")
   }
 }
 
@@ -257,6 +274,15 @@ type MemberRefusalCause
   | ObservationIsOfAnotherMember { observed: ConvergedMember }
   | HostUnobservable { cause: String }
   | HostStateRefused { cause: String }
+  // THE TWO ARMS THAT KEEP AN OBSERVED-UNHEALTHY PROCESS FROM BECOMING A RESTART HAMMER. The reading
+  // is sound -- the process answered and said it is not serving -- but a replacement is a repair only
+  // when this deploy has something NEW to put under the process. With the revision it would install
+  // equal to the revision installed on the host, a restart re-runs the release that just refused, so
+  // nothing is mutated and the refusal says why: repair is not the same word as retry (the row's
+  // guard that a refusal must not become a retry loop). The second arm is the same caution when the
+  // installed revision was never observed: not knowing what is running is not a licence to replace it.
+  | UnhealthyAtInstalledRelease { status: HttpStatus, detail: String, revision: CommitSha }
+  | UnhealthyReleasePositionUnobserved { status: HttpStatus, detail: String }
   | DecisionFiledUnderAnotherMember { found: ConvergedMember }
   | DesiredExecutableUnreadable { cause: String }
   | DesiredExecutableAbsent
@@ -268,6 +294,22 @@ fn member_refusal_text(c: MemberRefusalCause) -> String {
     ObservationIsOfAnotherMember { observed } => join(["observation is of ", converged_member_label(m: observed)], "")
     HostUnobservable { cause } => join(["could not observe the host: ", cause], "")
     HostStateRefused { cause } => join(["the host holds a state this deploy refuses to change: ", cause], "")
+    UnhealthyAtInstalledRelease { status, detail, revision } =>
+      join([
+        "the service process answered ",
+        to_string(status) as String,
+        " and is not serving, but the release this deploy would install is the revision already installed (",
+        revision as String,
+        "); a restart would re-run the release that just refused, so this is not a repair. Nothing was mutated. ",
+        detail,
+      ], "")
+    UnhealthyReleasePositionUnobserved { status, detail } =>
+      join([
+        "the service process answered ",
+        to_string(status) as String,
+        " and is not serving, but the release installed on the host was not observed, and not knowing what is running is not a licence to replace it. Nothing was mutated. ",
+        detail,
+      ], "")
     DecisionFiledUnderAnotherMember { found } => join(["decision slot holds a decision about ", converged_member_label(m: found)], "")
     DesiredExecutableUnreadable { cause } => join(["the release executable could not be read in the deploying checkout: ", cause], "")
     DesiredExecutableAbsent => "the release executable target/release/gunbc is absent from the deploying checkout; build before deploying"
@@ -307,8 +349,14 @@ fn process_identity_eq(a: ServiceProcessIdentity, b: ServiceProcessIdentity) -> 
     ProcessRunningRelease { revision: ra } => match b {
       ProcessRunningRelease { revision: rb } => (ra as String) == (rb as String)
       ProcessNotRunning { active: _ } => false
+      ProcessObservedUnhealthy { active: _, status: _, detail: _ } => false
     }
     ProcessNotRunning { active: _ } => false
+    // An unhealthy answer is never CONVERGED with anything, and never equal to another unhealthy
+    // answer either: two answers of 503 are not "the same state the release should be in", because
+    // no release is supposed to answer 503. Treating them as equal would have made a crash-looping
+    // serve look already-converged once it was typed distinctly -- the fold's whole point, undone.
+    ProcessObservedUnhealthy { active: _, status: _, detail: _ } => false
   }
 }
 
@@ -394,7 +442,39 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
 // candidate and reads HEAD, index and tracked worktree back as that one revision (#10722), and the
 // publication member invokes that oneshot and nothing else (#10724). The absent arm therefore needs
 // no member special case at all.
-fn decide_member(member: ConvergedMember, desired: MemberIdentity, observed: ObservedMember) -> MemberDecision {
+// WHERE THE RELEASE THAT THE BROKEN PROCESS WAS STARTED FROM SITS. The assessment of an
+// observed-unhealthy process cannot be made from the process alone: a replacement is a repair only if
+// this deploy has a different release to put under the process, and the release installed on a host is
+// a fact about the TREE member, not about the process. So the roster-level decision hands the process
+// decision the tree's own observation, and the position is read from it -- the same reading the tree
+// member's convergence uses, not a second account of it.
+//
+// The Unknown arm is not a placeholder for "nobody looked": it carries why the tree could not be read,
+// and it refuses the replacement rather than guessing one.
+type InstalledReleasePosition
+  = InstalledReleaseAt { revision: CommitSha }
+  | InstalledReleaseUnobserved { reason: String }
+
+fn installed_release_position(observed: fn(ConvergedMember) -> ObservedMember) -> InstalledReleasePosition {
+  match observed(TreePublication) {
+    MemberObserved { identity: TreeIdentity { tree } } => InstalledReleaseAt { revision: tree.revision }
+    MemberObserved { identity: _ } =>
+      InstalledReleaseUnobserved { reason: "the tree member reported an identity that is not a tree" }
+    MemberAbsentOnHost { member: _ } =>
+      InstalledReleaseUnobserved { reason: "no release tree is present on the host" }
+    MemberUnobservable { member: _, cause } =>
+      InstalledReleaseUnobserved { reason: join(["the release tree could not be observed: ", cause], "") }
+    MemberRefusedOnHost { member: _, cause } =>
+      InstalledReleaseUnobserved { reason: join(["the host refused the release tree observation: ", cause], "") }
+  }
+}
+
+fn decide_member(
+  member: ConvergedMember,
+  desired: MemberIdentity,
+  observed: ObservedMember,
+  installed: InstalledReleasePosition,
+) -> MemberDecision {
   if !converged_member_eq(a: member, b: member_identity_member(i: desired)) {
     MemberRefused { member: member, cause: DesiredIdentityIsForAnotherMember { desired: member_identity_member(i: desired) } }
   } else if !converged_member_eq(a: member, b: observed_member_member(o: observed)) {
@@ -405,10 +485,45 @@ fn decide_member(member: ConvergedMember, desired: MemberIdentity, observed: Obs
       MemberRefusedOnHost { member: _, cause } => MemberRefused { member: member, cause: HostStateRefused { cause: cause } }
       MemberAbsentOnHost { member: _ } => Create { member: member, to: desired }
       MemberObserved { identity } =>
-        if member_identity_eq(a: identity, b: desired) { AlreadyConverged { member: member } }
-        else { Replace { member: member, from: identity, to: desired } }
+        // THE DOMAIN ASSESSMENT FOR AN OBSERVED-UNHEALTHY PROCESS, taken here and not upstream, and
+        // over this member's own revision rather than a generic satisfied/unsatisfied Boolean (D14).
+        // The observer said only what it measured; whether 'active and answering 503' is something this
+        // deploy can repair is decided by what the deploy would install:
+        //   * a DIFFERENT release than the one installed -- the replacement the row's NEXT TRIGGER asks
+        //     the plan to carry, and the reason the 2026-10-15 refusal was wrong: that deploy was
+        //     precisely a new release over an old tree, so the repair existed and was withheld because
+        //     the process had to be healthy to receive it;
+        //   * the SAME release -- a restart would re-run the release that just refused, so nothing is
+        //     mutated and the refusal says why. A refusal must not become a retry loop.
+        //   * an UNREADABLE installed release -- not knowing what is running is not a licence to
+        //     replace it.
+        // Every other identity keeps the existing comparison, unchanged.
+        match identity {
+          ProcessAt { process: ProcessObservedUnhealthy { status, detail, active: _ } } =>
+            match desired {
+              ProcessAt { process: ProcessRunningRelease { revision: want } } =>
+                match installed {
+                  InstalledReleaseAt { revision: at } =>
+                    if (want as String) == (at as String) {
+                      MemberRefused { member: member, cause: UnhealthyAtInstalledRelease { status: status, detail: detail, revision: at } }
+                    } else {
+                      Replace { member: member, from: identity, to: desired }
+                    }
+                  InstalledReleaseUnobserved { reason: _ } =>
+                    MemberRefused { member: member, cause: UnhealthyReleasePositionUnobserved { status: status, detail: detail } }
+                }
+              _ => member_identity_compare(member: member, identity: identity, desired: desired)
+            }
+          _ => member_identity_compare(member: member, identity: identity, desired: desired)
+        }
     }
   }
+}
+
+// THE ORDINARY COMPARISON, spelled once so the unhealthy arm above cannot accidentally shadow it.
+fn member_identity_compare(member: ConvergedMember, identity: MemberIdentity, desired: MemberIdentity) -> MemberDecision {
+  if member_identity_eq(a: identity, b: desired) { AlreadyConverged { member: member } }
+  else { Replace { member: member, from: identity, to: desired } }
 }
 
 fn decision_is_converged(d: MemberDecision) -> Bool {
@@ -499,8 +614,12 @@ fn decide_release_members(
   desired: fn(ConvergedMember) -> MemberIdentity?,
   observed: fn(ConvergedMember) -> ObservedMember,
 ) -> List<MemberDecision> {
+  // The installed release position is read ONCE from the roster's own tree observation and handed to
+  // every member decision: the process member's assessment needs it, and reading it from the same
+  // observation the tree member is judged by is what keeps one meaning to 'what is installed'.
+  let installed = installed_release_position(observed: observed)
   map(roster, m => match desired(m) {
-    Present { value: d } => decide_member(member: m, desired: d, observed: observed(m))
+    Present { value: d } => decide_member(member: m, desired: d, observed: observed(m), installed: installed)
     Absent => MemberRefused { member: m, cause: DesiredIdentityUnavailable }
   })
 }

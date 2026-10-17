@@ -32,7 +32,7 @@ on:
       credential:
         description: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.fleet.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and its target host: a row scoped to one host is delivered there from whichever executor host names"
         required: false
-        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token, tracker_web_test_oauth_client_secret, gunbai_bot_publication_app_key]
+        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token, tracker_web_test_oauth_client_secret, gunbai_bot_publication_app_key, flex_vast_api_key]
         type: choice
       app_key_version:
         description: "app_key_version_verify only: the Secret Manager version NUMBER of ci-github-app-private-key to verify. The alias latest is refused -- it names whatever is newest when it resolves, so a mint through it proves nothing about a specific key"
@@ -2161,12 +2161,21 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         timeout-minutes: 5
-      - name: WIF auth (OIDC -> dedicated mtcollins1-boot pool -> mtcollins1-boot SA, access token only)
+      - name: "Run-scoped grant: wait for the grant run main's broker dispatched for this boot attempt"
+        id: branch_run_grant_await
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/branch_run_grant_await.dag --function await_grant
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        if: github.ref != 'refs/heads/main'
+        timeout-minutes: 50
+      - name: "WIF auth (OIDC -> selected mtcollins1 boot source: dedicated SA on reviewed main, run-scoped SA otherwise)"
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc
-          service_account: mtcollins1-boot@gunbai-secrets.iam.gserviceaccount.com
+          workload_identity_provider: ${{ github.ref == 'refs/heads/main' && 'projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc' || 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/gh-fleet-converge-dispatch-oidc' }}
+          service_account: ${{ github.ref == 'refs/heads/main' && 'mtcollins1-boot@gunbai-secrets.iam.gserviceaccount.com' || 'mtcollins1-boot-run@gunbai-secrets.iam.gserviceaccount.com' }}
           token_format: access_token
           create_credentials_file: false
         timeout-minutes: 5
@@ -2195,6 +2204,32 @@ jobs:
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
           echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        timeout-minutes: 5
+      - name: "Mt. Collins fan observation: IPMI SDR fan + temperature time series with power state (reads only)"
+        id: fan_policy_phase
+        run: |+
+          'set' '-euo' 'pipefail'
+          'umask' '077'
+          HDR_FILE="$RUNNER_TEMP"'/mtcollins1-fan-boot-phase-auth-header'
+          RESP_FILE="$RUNNER_TEMP"'/mtcollins1-fan-boot-phase-sm.json'
+          DEST_FILE="$RUNNER_TEMP"'/mtcollins1-fan-boot-phase-bmc-credential'
+          STATUS_FILE="$DEST_FILE"'-fetch-status'
+          'trap' ''\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$STATUS_FILE"
+          ' 'EXIT'
+          'rm' '-f' "$STATUS_FILE"
+          'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          ('rm' '-f' "$DEST_FILE" && 'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE" && 'chmod' '600' "$DEST_FILE" && 'printf' 'ok' > "$STATUS_FILE") || ('rm' '-f' "$DEST_FILE" && 'printf' 'fetch-failed' > "$STATUS_FILE")
+          'export' 'GUNBC_MTCOLLINS1_BMC_CREDENTIAL_FILE='"$DEST_FILE"
+          ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
+
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_fan_observe.dag --function mtcollins1_fan_observe_boot_phase_wet
+          first_line=$('head' '-n' '1' 'target/mtcollins1-fan-observation.txt' 2>/dev/null || 'true')
+          if '[' '-f' 'target/mtcollins1-fan-observation.txt' ']' && '[' "$first_line" '=' 'FanObserveBootPhaseTaken' ']'; then 'printf' '%s
+          ' 'fan_outcome=observed' > "$GITHUB_OUTPUT"; else 'printf' '%s
+          ' 'fan_outcome=refused' > "$GITHUB_OUTPUT"; 'cat' 'target/mtcollins1-fan-observation.txt' > "$GITHUB_STEP_SUMMARY"; 'echo' '::error::mtcollins1 boot stopped - the fan observation was refused; the typed cause and the controller'\''s verbatim answers are in the job summary and the fan-policy-phase-observation artifact'; exit 1; fi
+
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         timeout-minutes: 5
@@ -2290,8 +2325,18 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           GUNBC_BOOT_ATTEMPT_RECEIPT: ${{ github.event.inputs.attempt_receipt }}
           GUNBC_BOOT_ATTEMPT_NONCE: ${{ github.event.inputs.transaction_nonce }}
-        if: github.event.inputs.mode == 'mtcollins1_boot'
+        if: github.event.inputs.mode == 'mtcollins1_boot' && steps.fan_policy_phase.outputs.fan_outcome == 'observed'
         timeout-minutes: 134
+      - name: Upload fan-policy-phase observation series
+        id: fan_policy_phase_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fan-policy-phase-observation
+          path: target/mtcollins1-fan-observation.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always()
+        timeout-minutes: 10
       - name: Upload Mt. Collins unit 1 boot SOL capture and receipts
         id: mtcollins1_boot_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

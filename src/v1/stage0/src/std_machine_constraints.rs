@@ -39,6 +39,6 @@ pub type Compose<Algebra, MachineConstraint> =
     std::marker::PhantomData<(Algebra, MachineConstraint)>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct StaticWidthIndex;
+pub struct StaticWidthIndex<const N: u128>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PointerWidth;

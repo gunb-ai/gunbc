@@ -97,6 +97,7 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_key_argv"),
     decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_password_argv"),
     decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_renders_now"),
+    decl_ref(module_path: "test.claim.live_deploy.ensure_dependency_witness", decl_name: "both_subject_arms_reach_the_transport_as_argv_not_as_a_script_body"),
   ]
 {
   match fixture_attempt() {

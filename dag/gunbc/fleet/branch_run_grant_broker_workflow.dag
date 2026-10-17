@@ -28,7 +28,7 @@ import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witn
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.ci.ci_spec { gunbc_ci_branch_run_grant_broker_invoke }
 import gunbc.auth.branch_dispatch_federation { branch_run_key_variable, run_scoped_modes }
-import gunbc.auth.branch_run_grant_broker { branch_run_title_variable }
+import gunbc.auth.branch_run_grant_broker { branch_run_title_variable, branch_run_branch_variable }
 
 // THE WORKFLOW THAT ASKS FOR A RUN-SCOPED GRANT ON A BRANCH RUN'S BEHALF (gunbc.auth.branch_run_grant_broker).
 //
@@ -96,6 +96,7 @@ fn branch_run_grant_broker_step() -> Step {
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
       kv(key: branch_run_key_variable as String, value: yaml_string(s: "${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}")),
       kv(key: branch_run_title_variable as String, value: yaml_string(s: "${{ github.event.workflow_run.display_title }}")),
+      kv(key: branch_run_branch_variable as String, value: yaml_string(s: "${{ github.event.workflow_run.head_branch }}")),
     ] },
     working_directory: none,
     if_condition: none,
