@@ -1,0 +1,996 @@
+module test.claim.firmware_network_boot_standing_witness
+
+// WITNESS FOR THE CUT-6 READINESS SEAM (S0). Every test builds SYNTHETIC observations inside a
+// test fn; no data row here is a fleet fact. The property under test is the seam's honesty: a
+// Ready must be traceable to evidence, an unanswered axis must outrank a plausible Ready, a
+// refusal keeps its cause, and every route the seam emits is a route the catalog owns.
+
+import std.types { Bool, EpochMs, List, NonEmptyStr }
+// THE FRONTIER IS WITNESSED, NOT ASSERTED IN PROSE: the witness reads the bound triggers and
+// states what their status is TODAY, so the day the probe lands, this is the thing that changes.
+import std.dissolution { DissolutionPending, DissolutionFired }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ObservedByReceipt, TranscribedUncited }
+import extdeps.uri { uri_https }
+import extdeps.provisioning.network_boot { LegacyBiosPxe, UefiPxe, UefiHttpBoot }
+// THE SAME ENUM THE SEAM CLASSIFIES AGAINST, imported by the witness so a fixture states a KIND
+// rather than a label the seam would have to guess about.
+import extdeps.bmc.types {
+  BootTargetNone,
+  BootTargetPxe,
+  BootTargetHdd,
+  BootTargetCd,
+  BootTargetUsb,
+  BootTargetBiosSetup,
+  BootTargetDiags,
+  BootTargetUefiHttp,
+}
+import gunbc.network_boot_delivery { BootControlObserved, BootControlPredecessor, BootControlReceiptStanding, BootControlUnobserved }
+import gunbc.firmware_network_boot_standing {
+  AxisNotAsked,
+  AxisRefused,
+  BootOrderAxisUnanswered,
+  SecureBootAxisUnanswered,
+  BiosAxisUnanswered,
+  NetworkInterfaceAxisUnanswered,
+  BootOptionsAxisUnanswered,
+  BootOptionsObserved,
+  BootOptionsObservation,
+  BootOptionsRefused,
+  BootOptionsUnobserved,
+  BootOrderObserved,
+  BootOrderObservation,
+  BootOrderRefused,
+  BootOrderUnobserved,
+  BiosVersionObserved,
+  BiosVersionObservation,
+  BiosVersionRefused,
+  BiosVersionUnobserved,
+  AttemptConstructed,
+  AttemptDhcpStanding,
+  AttemptRouteUncataloged,
+  NetworkBootAttemptConstruction,
+  DhcpOfferObserved,
+  DhcpForeignOffer,
+  DhcpSilent,
+  FirmwareBootObservation,
+  FirmwareNetworkBootAttemptReceipt,
+  FirmwareNetworkBootPreparationRoute,
+  FirmwareNetworkBootRefusal,
+  FirmwareNetworkBootStanding,
+  HumanConsole,
+  IpmiOneShotOverride,
+  NetworkBootAttempt,
+  NicsObserved,
+  NicsObservation,
+  NicsRefused,
+  NicsUnobserved,
+  PreparationBlockingOn,
+  ReadyEvidence,
+  RedfishBiosAttributes,
+  RedfishOneShotOverride,
+  RedfishUefiBootNext,
+  RouteAuthority,
+  BootEntry,
+  boot_entry,
+  has_network_entry,
+  firmware_network_boot_probe_frontier,
+  firmware_network_boot_standing_consumer_frontier,
+  firmware_network_boot_probe_producer_ref,
+  firmware_network_boot_standing_consumer_ref,
+  frontier_status,
+  firmware_network_boot_observation_inhabitation,
+  inhabitation_is_claimed,
+  BoundaryInhabitation,
+  Uninhabited,
+  is_network_target,
+  route_for_blocking,
+  blocking_eq,
+  blocker_of,
+  route_of,
+  authority_of,
+  obligation_of,
+  SecureBootDisabled,
+  SecureBootEnabled,
+  SecureBootObservation,
+  SecureBootRefused,
+  SecureBootUnobserved,
+  AuthenticationRequired,
+  ReplyShapeUnrecognized,
+  ResourceNotFound,
+  TransportRefusedVendorCommand,
+  VendorCommandRejected,
+  UnansweredAxis,
+  UefiShellOverSol,
+  firmware_boot_observation,
+  firmware_network_boot_attempt_receipt,
+  firmware_network_boot_preparation_routes,
+  firmware_network_boot_standing,
+  network_boot_attempt,
+  ready_evidence,
+  route_eq,
+  route_is_cataloged,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_authority: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority { uri: uri_https(locator: "example.invalid/witness-fixture-not-fleet-fact") },
+}
+
+data witness_epoch: EpochMs = 1765000000000
+
+// TYPED FIXTURE PIECES. Every boot entry a fixture names carries the Redfish target KIND the BMC
+// protocol would report for it -- no fixture asks the seam to guess what a label means.
+fn pxe_stack() -> BootEntry { boot_entry(kind: BootTargetPxe, label: "UEFI Network Stack") }
+fn http_option() -> BootEntry { boot_entry(kind: BootTargetUefiHttp, label: "UEFI IPv4 HTTP") }
+fn disk(name: NonEmptyStr) -> BootEntry { boot_entry(kind: BootTargetHdd, label: name) }
+fn network_then_disk() -> List<BootEntry> { [pxe_stack(), disk("NVMe0")] }
+
+// SYNTHETIC OBSERVATIONS. Fully-answered, network-bootable: the only input shape that may
+// produce a Ready.
+fn good_observation() -> FirmwareBootObservation {
+  firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: network_then_disk() },
+    boot_options: BootOptionsObserved { options: [http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+}
+
+fn standing_of(observation: FirmwareBootObservation) -> FirmwareNetworkBootStanding {
+  firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") },
+  )
+}
+
+fn with_boot_order(boot_order: BootOrderObservation) -> FirmwareBootObservation {
+  firmware_boot_observation(
+    boot_order: boot_order,
+    boot_options: BootOptionsObserved { options: [http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+}
+
+fn with_boot_options(options: BootOptionsObservation) -> FirmwareBootObservation {
+  firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: network_then_disk() },
+    boot_options: options,
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+}
+
+fn with_nics(nics: NicsObservation) -> FirmwareBootObservation {
+  firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: network_then_disk() },
+    boot_options: BootOptionsObserved { options: [http_option()] },
+    nics: nics,
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+}
+
+fn with_secure_boot(secure_boot: SecureBootObservation) -> FirmwareBootObservation {
+  firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: network_then_disk() },
+    boot_options: BootOptionsObserved { options: [http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: secure_boot,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+}
+
+fn with_bios(bios_version: BiosVersionObservation) -> FirmwareBootObservation {
+  firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: network_then_disk() },
+    boot_options: BootOptionsObserved { options: [http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: bios_version,
+  )
+}
+
+test fn the_happy_unit_is_ready_and_carries_every_ready_field() -> Bool {
+  match standing_of(observation: good_observation()) {
+    Ready { firmware_mode: mode, network_interface: nic, evidence: ev } =>
+      match mode {
+        UefiPxe { tftp_root: _ } =>
+          nic == "eth0"
+            && match ev.observation.bios_version {
+                 BiosVersionObserved { version: v } => v == "1.08"
+                 _ => false
+               }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn evidence_observation(ev: ReadyEvidence) -> FirmwareBootObservation {
+  ev.observation
+}
+
+// THE HONESTY RUNG: on each of the five axes, an Unobserved arm outranks the identical-looking
+// Ready the other four axes would support. If any of these five produces Ready, a unit whose
+// Secure Boot (say) was never asked about gets an unsigned chainloader aimed at it.
+test fn boot_order_unobserved_never_reads_ready() -> Bool {
+  match standing_of(observation: with_boot_order(boot_order: BootOrderUnobserved { reason: "probe skipped" })) {
+    Unobserved { unanswered: gaps } => length_of(gaps)
+    _ => false
+  }
+}
+
+test fn boot_options_unobserved_never_reads_ready() -> Bool {
+  match standing_of(observation: with_boot_options(options: BootOptionsUnobserved { reason: "redfish refused listing" })) {
+    Unobserved { unanswered: gaps } => length_of(gaps)
+    _ => false
+  }
+}
+
+test fn nics_unobserved_never_reads_ready() -> Bool {
+  match standing_of(observation: with_nics(nics: NicsUnobserved { reason: "family cannot answer" })) {
+    Unobserved { unanswered: gaps } => length_of(gaps)
+    _ => false
+  }
+}
+
+test fn secure_boot_unobserved_never_reads_ready() -> Bool {
+  match standing_of(observation: with_secure_boot(secure_boot: SecureBootUnobserved { reason: "not asked" })) {
+    Unobserved { unanswered: gaps } => length_of(gaps)
+    _ => false
+  }
+}
+
+test fn bios_unobserved_never_reads_ready() -> Bool {
+  match standing_of(observation: with_bios(bios_version: BiosVersionUnobserved { reason: "no reader for family" })) {
+    Unobserved { unanswered: gaps } => length_of(gaps)
+    _ => false
+  }
+}
+
+// A non-empty gap list, without betting on a list-destructuring form the corpus does not use:
+// any() over an empty list is false, so this is exactly 'at least one axis went unanswered'.
+fn length_of(gaps: List<UnansweredAxis>) -> Bool {
+  any(gaps, g => true)
+}
+
+// On any axis, a REFUSAL keeps its cause instead of degrading to Unobserved: the remedies differ
+// (go ask vs. stop asking that way) and the report line differs too.
+test fn refusal_on_any_axis_keeps_its_cause() -> Bool {
+  match standing_of(observation: with_boot_order(boot_order: BootOrderRefused { refusal: VendorCommandRejected { detail: "ipmi vendor command rejected" } })) {
+    Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: r } }, gaps: _ } => r == "ipmi vendor command rejected"
+    _ => false
+  }
+    && match standing_of(observation: with_nics(nics: NicsRefused { refusal: ResourceNotFound { detail: "redfish nic collection denied" } })) {
+         Refused { cause: TransportRefusedVendorCommand { refusal: ResourceNotFound { detail: r } }, gaps: _ } => r == "redfish nic collection denied"
+         _ => false
+       }
+    && match standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: AuthenticationRequired { detail: "secure boot property hidden" } })) {
+         Refused { cause: TransportRefusedVendorCommand { refusal: _ }, gaps: _ } => true
+         _ => false
+       }
+}
+
+// SECURE BOOT ON IS NOT READY AND NOT REFUSED: it is preparation. The board may well boot the
+// pinned chainloader once a covering certificate is enrolled; saying Ready sends it to fail, and
+// saying Refused tells the operator the board cannot network boot, which is false.
+test fn secure_boot_enabled_is_preparation_with_a_cataloged_attribute_route() -> Bool {
+  match standing_of(observation: with_secure_boot(secure_boot: SecureBootEnabled)) {
+    NeedsPreparation { route: RedfishBiosAttributes { service_root: s, attribute: a }, blocking: b } =>
+      s == "redfish:Bios" && a == "SecureBoot"
+        && match b {
+             SecureBootBlocksUnsignedChainloader => route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "SecureBoot" })
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// A network-less boot order gets a route AND the blocking axis that explains the route; the
+// options axis being answered-and-empty must not look like the options axis being unasked.
+test fn answered_and_absent_is_preparation_not_unobserved() -> Bool {
+  match standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [] })) {
+    NeedsPreparation { route: r, blocking: b } =>
+      route_is_cataloged(route: r)
+        && match b {
+             NoNetworkBootOptionListed => true
+             _ => false
+           }
+    Unobserved { unanswered: _ } => false
+    _ => false
+  }
+}
+
+// More than one candidate NIC and no evidence which carries PXE must NOT silently pick the first.
+// This is the machine-name-selection failure wearing a different hat: deterministic, reproducible,
+// and wrong on the first board whose ports differ from the guess.
+test fn two_candidate_nics_refuse_to_guess_the_first() -> Bool {
+  match standing_of(observation: with_nics(nics: NicsObserved { nics: ["eth0", "eth1"] })) {
+    NeedsPreparation { route: r, blocking: b } =>
+      route_is_cataloged(route: r)
+        && match b {
+             NoInterfaceCarriesPxe => true
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// THE READINESS FN IS TOTAL: twelve inputs covering every axis arm of every axis produce a
+// standing (never a load error, never no-arm), each landing in exactly one of the four variants.
+test fn the_readiness_fn_is_total_over_a_mixed_observation_matrix() -> Bool {
+  is_standing(standing_of(observation: good_observation()))
+    && is_standing(standing_of(observation: with_boot_order(boot_order: BootOrderObserved { devices: [] })))
+    && is_standing(standing_of(observation: with_boot_order(boot_order: BootOrderUnobserved { reason: "x" })))
+    && is_standing(standing_of(observation: with_boot_order(boot_order: BootOrderRefused { refusal: VendorCommandRejected { detail: "x" } })))
+    && is_standing(standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [] })))
+    && is_standing(standing_of(observation: with_boot_options(options: BootOptionsUnobserved { reason: "x" })))
+    && is_standing(standing_of(observation: with_boot_options(options: BootOptionsRefused { refusal: ResourceNotFound { detail: "x" } })))
+    && is_standing(standing_of(observation: with_nics(nics: NicsObserved { nics: [] })))
+    && is_standing(standing_of(observation: with_nics(nics: NicsObserved { nics: ["a", "b"] })))
+    && is_standing(standing_of(observation: with_nics(nics: NicsUnobserved { reason: "x" })))
+    && is_standing(standing_of(observation: with_nics(nics: NicsRefused { refusal: AuthenticationRequired { detail: "x" } })))
+    && is_standing(standing_of(observation: with_secure_boot(secure_boot: SecureBootEnabled)))
+    && is_standing(standing_of(observation: with_secure_boot(secure_boot: SecureBootUnobserved { reason: "x" })))
+    && is_standing(standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: ReplyShapeUnrecognized { detail: "x" } })))
+    && is_standing(standing_of(observation: with_bios(bios_version: BiosVersionUnobserved { reason: "x" })))
+    && is_standing(standing_of(observation: with_bios(bios_version: BiosVersionRefused { refusal: VendorCommandRejected { detail: "x" } })))
+}
+
+fn is_standing(standing: FirmwareNetworkBootStanding) -> Bool {
+  match standing {
+    Ready { firmware_mode: _, network_interface: _, evidence: _ } => true
+    NeedsPreparation { route: _, blocking: _ } => true
+    Unobserved { unanswered: _ } => true
+    Refused { cause: _, gaps: _ } => true
+  }
+}
+
+// EVERY ROUTE THE SEAM CAN POINT AT IS A CATALOG ROW. This is what makes the catalog the owner
+// rather than a document about the code: decide()'s and the readiness fn's routes are checked
+// against the rows, so adding an un-rowed route anywhere breaks THIS test, not production.
+test fn every_route_the_seam_emits_is_cataloged() -> Bool {
+  every_emitted_route_cataloged(standing_of(observation: with_boot_order(boot_order: BootOrderObserved { devices: [] })))
+    && every_emitted_route_cataloged(standing_of(observation: with_boot_order(boot_order: BootOrderObserved { devices: [disk("NVMe0"), disk("NVMe1")] })))
+    && every_emitted_route_cataloged(standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [] })))
+    && every_emitted_route_cataloged(standing_of(observation: with_secure_boot(secure_boot: SecureBootEnabled)))
+    && every_emitted_route_cataloged(standing_of(observation: with_nics(nics: NicsObserved { nics: ["a", "b"] })))
+}
+
+fn every_emitted_route_cataloged(standing: FirmwareNetworkBootStanding) -> Bool {
+  match standing {
+    NeedsPreparation { route: r, blocking: _ } => route_is_cataloged(route: r)
+    _ => true
+  }
+}
+
+// EVERY ROUTE THE CATALOG OWNS ROUND-TRIPS, and two mechanisms never collapse into one another.
+// The attribute names here are the ones the catalog really rows -- the BootMode row that used to be
+// asserted was removed, because it resolved no blocker and no branch reached it: data claiming a
+// capability nothing could reach is the same defect as a code path with no data behind it.
+test fn every_cataloged_route_round_trips_and_never_confuses_mechanisms() -> Bool {
+  route_is_cataloged(route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" })
+    && route_is_cataloged(route: RedfishOneShotOverride { service_root: "redfish:Systems/Self" })
+    && route_is_cataloged(route: RedfishUefiBootNext { service_root: "redfish:Systems/Self", boot_option: "uefi-boot-next" })
+    && route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "NetworkStack" })
+    && route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "NicBootSelection" })
+    && route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "SecureBoot" })
+    && route_is_cataloged(route: UefiShellOverSol { sol_channel: "sol:0", script: "netboot.efi" })
+    && route_is_cataloged(route: HumanConsole { instruction: "attend the unit and select the network device" })
+    && !route_eq(
+         a: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
+         b: RedfishOneShotOverride { service_root: "ipmi:chassis-boot-override" },
+       )
+    && !route_eq(
+         a: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "NetworkStack" },
+         b: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "SecureBoot" },
+       )
+}
+
+// THE CATALOG IS NOT A HOST TABLE: rows are keyed on the route and every row carries an
+// authority; a row that lost its citation would turn "the fleet knows this mechanism" into
+// "somebody once said this works".
+test fn the_catalog_rows_are_route_keyed_and_each_carries_an_authority() -> Bool {
+  count_cataloged(firmware_network_boot_preparation_routes)
+}
+
+fn count_cataloged(rows: List<RouteAuthority>) -> Bool {
+  for_all(xs: rows, predicate: row => route_has_authority(row: row))
+}
+
+fn route_has_authority(row: RouteAuthority) -> Bool {
+  match authority_of(row: row) {
+    CitedToAuthority { authority: _ } => true
+    TranscribedUncited { read_obligation: _ } => true
+    ObservedByReceipt { observed: _ } => true
+  }
+}
+
+// THE ATTEMPT ABSORBS, NEVER DUPLICATES: an attempt on a route the fleet has no row for is
+// refused at construction (Absent), and a cataloged one keeps its BootControlReceiptStanding —
+// the type delivery owns — rather than this seam minting a rival receipt.
+test fn an_attempt_on_an_uncataloged_route_cannot_be_constructed() -> Bool {
+  let uncataloged_refused =
+    match synthetic_attempt(route: UefiShellOverSol { sol_channel: "sol:0", script: "made-up.efi" }) {
+      AttemptRouteUncataloged { route: _ } => true
+      AttemptConstructed { attempt: _ } => false
+    }
+  let cataloged_constructs =
+    match synthetic_attempt(route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" }) {
+      AttemptConstructed { attempt: _ } => true
+      AttemptRouteUncataloged { route: _ } => false
+    }
+  uncataloged_refused && cataloged_constructs
+}
+
+// The boot-control ABSORPTION is enforced at load time, not asserted here: NetworkBootAttempt's
+// boot_control field is typed as gunbc.network_boot_delivery's BootControlReceiptStanding, so a
+// rival spelling in this seam would not load. What this witness can say is which standing the
+// synthetic attempt carries — and that the seam's own receipt cannot be minted without one.
+fn boot_control_is_the_imported_standing(control: BootControlReceiptStanding) -> Bool {
+  match control {
+    BootControlUnobserved => true
+    BootControlObserved { receipt: _ } => false
+    BootControlPredecessor { observation: _ } => false
+  }
+}
+
+test fn the_attempt_receipt_cannot_be_minted_without_its_attempt_and_control_receipt() -> Bool {
+  match synthetic_attempt(route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" }) {
+    AttemptConstructed { attempt: built } => boot_control_is_the_imported_standing(control: built.boot_control)
+    AttemptRouteUncataloged { route: _ } => false
+  }
+}
+
+fn synthetic_attempt(route: FirmwareNetworkBootPreparationRoute) -> NetworkBootAttemptConstruction {
+  network_boot_attempt(
+    route: route,
+    boot_control: BootControlUnobserved,
+    reset_observed_at: witness_epoch,
+    resulting_dhcp: DhcpOfferObserved { offer_ref: "synthetic-offer" },
+    unit_label: "synthetic-unit",
+  )
+}
+
+// THE READY'S EVIDENCE IS THE OBSERVATION ITSELF: the constructor keeps what it checked, so a
+// later reader can re-derive the verdict instead of trusting the tag.
+test fn ready_evidence_preserves_the_observation_it_was_computed_from() -> Bool {
+  let observation = good_observation()
+  match firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    Ready { firmware_mode: UefiHttpBoot, network_interface: _, evidence: ev } =>
+      ev.observed_at == witness_epoch
+        && match ev.observation.bios_version {
+             BiosVersionObserved { version: v } => v == "1.08"
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// THE SEAM CANNOT MINT A MODE, ONLY CARRY ONE (review 81689). The same edge-facts-bearing
+// observation, offered to the seam with each of the two UEFI modes, yields a Ready carrying the
+// mode it was handed and nothing else: no second protocol field exists to contradict it, and the
+// seam has no TFTP root or URL of its own to fill one. If a site constant ever reappears in the
+// seam, or a second axis reappears beside the mode, THIS test cannot still pass, because the
+// match below names the arm's fields exactly.
+test fn the_seam_carries_the_edge_mode_it_was_given_and_adds_none_of_its_own() -> Bool {
+  match firmware_network_boot_standing(
+    observation: good_observation(),
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    Ready { firmware_mode: UefiHttpBoot, network_interface: _, evidence: _ } =>
+      match firmware_network_boot_standing(
+        observation: good_observation(),
+        authority: witness_authority,
+        observed_at: witness_epoch,
+        boot_mode: UefiPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") },
+      ) {
+        Ready { firmware_mode: UefiPxe { tftp_root: _ }, network_interface: _, evidence: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A LEGACY-BIOS UNIT IS REFUSED, NOT SILENTLY READY: the cut-6 edge serves UEFI only, so the
+// honest standing is a refusal naming the edge as the limitation. It must not read Unobserved (we
+// know the mode and we know our edge) and must not read Ready (it would boot nothing).
+test fn a_legacy_bios_unit_is_refused_because_the_edge_cannot_serve_it() -> Bool {
+  match firmware_network_boot_standing(
+    observation: good_observation(),
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: LegacyBiosPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") },
+  ) {
+    Refused { cause: FirmwareModeUnsupportedByEdge { why: _ }, gaps: _ } => true
+    _ => false
+  }
+}
+
+// A READY'S INTERFACE IS THE SINGLE OBSERVED NIC, verbatim, lowercased not by us: the seam does
+// not rewrite firmware spellings, because then the receipt would name something the firmware
+// never said.
+test fn the_ready_names_the_firmware_spelled_interface_verbatim() -> Bool {
+  match standing_of(observation: with_nics(nics: NicsObserved { nics: ["NIC-Port-1"] })) {
+    Ready { firmware_mode: _, network_interface: nic, evidence: _ } => nic == "NIC-Port-1"
+    _ => false
+  }
+}
+
+// THE ATTEMPT RECEIPT IS NOT MINTABLE WITHOUT ALL THREE PARTS. The receipt type is
+// sole_constructor, and the only way through it is an attempt, the standing that resulted, and
+// gunbc.network_boot_delivery's own boot-control receipt. This test mints the foreign-offer
+// case specifically: an attempt whose reset produced an offer from SOMEONE ELSE (another edge,
+// or the router answering when it should not be) still receipts completely, because 'the boot
+// went wrong in this specific way' is a fact worth keeping, not a reason to lose the receipt.
+test fn the_attempt_receipt_keeps_the_outcome_and_the_foreign_offer_too() -> Bool {
+  match synthetic_attempt(route: RedfishOneShotOverride { service_root: "redfish:Systems/Self" }) {
+    AttemptConstructed { attempt: built } =>
+      match firmware_network_boot_attempt_receipt(
+        attempt: built,
+        outcome: Refused {
+        cause: FirmwareModeUnsupportedByEdge { why: "edge serves UEFI only" },
+        gaps: [],
+      },
+      ) {
+        receipt =>
+          match receipt.attempt.resulting_dhcp {
+            DhcpOfferObserved { offer_ref: _ } => true
+            _ => false
+          }
+            && match receipt.outcome {
+                 Refused { cause: FirmwareModeUnsupportedByEdge { why: _ }, gaps: _ } => true
+                 _ => false
+               }
+      }
+    AttemptRouteUncataloged { route: _ } => false
+  }
+}
+
+// The foreign/silent DHCP standings are distinct facts (no packet vs. someone else answered) and
+// both must survive an attempt unchanged — collapsing them is how 'two edges are both answering'
+// gets reported as 'PXE is broken'.
+test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silence_from_foreign() -> Bool {
+  match network_boot_attempt(
+    route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
+    boot_control: BootControlUnobserved,
+    reset_observed_at: witness_epoch,
+    resulting_dhcp: DhcpForeignOffer { observed_from: "192.0.2.9" },
+    unit_label: "synthetic-unit",
+  ) {
+    AttemptConstructed { attempt: built } =>
+      match built.resulting_dhcp {
+        DhcpForeignOffer { observed_from: seen } => seen == "192.0.2.9"
+        DhcpSilent { why: _ } => false
+        DhcpOfferObserved { offer_ref: _ } => false
+      }
+    AttemptRouteUncataloged { route: _ } => false
+  }
+    && match network_boot_attempt(
+         route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
+         boot_control: BootControlUnobserved,
+         reset_observed_at: witness_epoch,
+         resulting_dhcp: DhcpSilent { why: "no offer within timeout" },
+         unit_label: "synthetic-unit",
+       ) {
+         AttemptConstructed { attempt: built } =>
+           match built.resulting_dhcp {
+             DhcpSilent { why: w } => w == "no offer within timeout"
+             _ => false
+           }
+         AttemptRouteUncataloged { route: _ } => false
+       }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REVIEW 81689 FINDINGS 4 AND 5, MADE TESTABLE. The type grew to carry every
+// unanswered axis and to keep gaps alongside a refusal; a bigger type that
+// nothing asserts is a bigger lie waiting to happen. These are the assertions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn names_boot_order_axis(gap: UnansweredAxis) -> Bool {
+  match gap {
+    BootOrderAxisUnanswered { absence: _ } => true
+    _ => false
+  }
+}
+
+fn names_secure_boot_axis(gap: UnansweredAxis) -> Bool {
+  match gap {
+    SecureBootAxisUnanswered { absence: _ } => true
+    _ => false
+  }
+}
+
+fn names_bios_axis(gap: UnansweredAxis) -> Bool {
+  match gap {
+    BiosAxisUnanswered { absence: _ } => true
+    _ => false
+  }
+}
+
+// THE GAP LIST IS NOT A SINGLE-ELEMENT LIST IN DISGUISE. Secure Boot and BIOS both
+// unanswered on one unit must appear as two gaps: the report line the type promises
+// ('three units were never asked about Secure Boot') is unanswerable if only the
+// first axis ever survives the fold.
+test fn every_unanswered_axis_survives_the_fold_not_just_the_first() -> Bool {
+  let observation = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [pxe_stack()] },
+    boot_options: BootOptionsObserved { options: [http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootUnobserved { reason: "family cannot answer" },
+    bios_version: BiosVersionUnobserved { reason: "no reader" },
+  )
+  match firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    Unobserved { unanswered: gaps } =>
+      any(gaps, g => names_secure_boot_axis(gap: g)) && any(gaps, g => names_bios_axis(gap: g))
+    _ => false
+  }
+}
+
+// A REFUSAL MUST NOT SWALLOW THE UNKNOWN. When boot order was refused and Secure
+// Boot was never asked, the operator needs BOTH facts in one visit: the refusal to
+// chase and the gap to go ask about. The pre-review shape returned the refusal and
+// silently dropped the Secure Boot unknown.
+test fn a_refusal_keeps_its_cause_and_reports_the_unasked_axes_too() -> Bool {
+  let observation = firmware_boot_observation(
+    boot_order: BootOrderRefused { refusal: VendorCommandRejected { detail: "ipmi vendor command rejected" } },
+    boot_options: BootOptionsObserved { options: [http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootUnobserved { reason: "never asked" },
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  match firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: d } }, gaps: gaps } =>
+      d == "ipmi vendor command rejected"
+        && any(gaps, g => names_boot_order_axis(gap: g))
+        && any(gaps, g => names_secure_boot_axis(gap: g))
+    _ => false
+  }
+}
+
+// NOT-ASKED AND REFUSED ARE DIFFERENT KINDS OF MISSING, per axis: a probe coverage
+// gap and a transport denial must be countable apart, or 'BMC will not answer' gets
+// filed as 'nobody ran the probe' and nobody goes to fix the BMC.
+test fn the_kind_of_absence_is_typed_per_axis() -> Bool {
+  let observation = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [pxe_stack()] },
+    boot_options: BootOptionsObserved { options: [http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootUnobserved { reason: "never asked" },
+    bios_version: BiosVersionRefused { refusal: AuthenticationRequired { detail: "credentials absent" } },
+  )
+  match firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    Refused { cause: TransportRefusedVendorCommand { refusal: AuthenticationRequired { detail: d } }, gaps: gaps } =>
+      d == "credentials absent"
+        && any(gaps, g => gap_was_not_asked(gap: g))
+        && any(gaps, g => gap_was_refused(gap: g))
+    _ => false
+  }
+}
+
+fn gap_was_not_asked(gap: UnansweredAxis) -> Bool {
+  match gap {
+    SecureBootAxisUnanswered { absence: AxisNotAsked { reason: _ } } => true
+    _ => false
+  }
+}
+
+fn gap_was_refused(gap: UnansweredAxis) -> Bool {
+  match gap {
+    BiosAxisUnanswered { absence: AxisRefused { refusal: _ } } => true
+    _ => false
+  }
+}
+
+// THE ROUTE MUST BE ABLE TO FIX WHAT IT CLAIMS IS BLOCKING. A boot order full of
+// non-network entries cannot be fixed by a one-shot override: an override only
+// points at an entry the list already contains, and this unit has none. The route
+// has to be the attribute that ENABLES a network stack, and it must not be a
+// one-shot wearing the right-looking name.
+test fn a_boot_order_with_no_network_entry_gets_the_route_that_can_add_one() -> Bool {
+  let observation = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [disk("NVMe0"), disk("NVMe1"), disk("SATA0")] },
+    boot_options: BootOptionsObserved { options: [http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  match firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    NeedsPreparation { route: RedfishBiosAttributes { service_root: s, attribute: a }, blocking: b } =>
+      s == "redfish:Bios"
+        && a == "NetworkStack"
+        && match b {
+             NoNetworkStackInBootOrder => route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "NetworkStack" })
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE TWO THINGS REVIEW 81711 FOUND, NOW WITNESSED DIRECTLY.
+// ---------------------------------------------------------------------------
+
+// NETWORK-NESS IS A KIND, NOT A SUBSTRING. Labels are made to mislead here on purpose: a firmware
+// can spell an iSCSI target 'IPv4', a diagnostics shell 'HTTP', or a USB recovery stick 'UEFI
+// Network Device', and the seam must be unmoved. The converse arm matters as much: an entry the
+// schema calls Pxe is network-bootable even when its label says nothing network-shaped at all, so a
+// unit is not stranded because a vendor named its option after the box it shipped in. If anyone
+// reintroduces label matching, one of these two arms goes red.
+test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
+  let misleadingly_network_labels: List<BootEntry> = [
+    boot_entry(kind: BootTargetHdd, label: "IPv4 iSCSI target (SanDisk)"),
+    boot_entry(kind: BootTargetUsb, label: "UEFI Network Device: USB Recovery"),
+    boot_entry(kind: BootTargetCd, label: "HTTP Boot Diagnostics"),
+    boot_entry(kind: BootTargetBiosSetup, label: "Network Stack Setup"),
+    boot_entry(kind: BootTargetDiags, label: "PXE Diagnostics Shell"),
+    boot_entry(kind: BootTargetNone, label: "Network Boot (Disabled)"),
+  ]
+  let honestly_network_label: BootEntry = boot_entry(kind: BootTargetPxe, label: "ALTRAD8UD-1L2T")
+  length(xs: misleadingly_network_labels) == 6
+    && !has_network_entry(entries: misleadingly_network_labels)
+    && has_network_entry(entries: [honestly_network_label])
+    && is_network_target(kind: BootTargetUefiHttp)
+    && !is_network_target(kind: BootTargetHdd)
+}
+
+// THE UNIT THAT LOOKS BOOTABLE AND ISN'T: a board whose entire boot order is 'IPv4'-named disks must
+// not read Ready. Under the substring rule this exact observation produced a Ready, because 'IPv4'
+// was on the spelling list -- a unit scheduled for a network boot it could never perform.
+test fn an_all_disk_boot_order_with_network_shaped_labels_is_not_ready() -> Bool {
+  let observation = firmware_boot_observation(
+    boot_order: BootOrderObserved {
+      devices: [
+        boot_entry(kind: BootTargetHdd, label: "IPv4 SanDisk NVMe"),
+        boot_entry(kind: BootTargetHdd, label: "UEFI Network Stack Data"),
+        boot_entry(kind: BootTargetCd, label: "HTTP Recovery"),
+      ],
+    },
+    boot_options: BootOptionsObserved { options: [http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  match firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    NeedsPreparation { route: r, blocking: b } =>
+      route_is_cataloged(route: r)
+        && match b {
+             NoNetworkStackInBootOrder => true
+             _ => false
+           }
+    Ready { firmware_mode: _, network_interface: _, evidence: _ } => false
+    _ => false
+  }
+}
+
+// THE PAIRING IS CHECKED FROM THE OUTSIDE, WHICH IS THE ONLY DIRECTION LEFT ONCE THE TYPE OWNS IT
+// (review 81734). Two independent things are asserted per row:
+//   (a) the row is FINDABLE under the blocker its own arm declares -- so blocker_of cannot drift
+//       away from the arms without the fold losing its route, and
+//   (b) the mechanism the arm PROJECTS to is one that can physically move that blocker.
+// (b) is written here against the executor vocabulary, NOT by calling a module helper: the module
+// no longer owns a capability function (it does not need one -- the wrong pairing is a type error),
+// so this table is the witness's own statement of what each mechanism can do. If a future edit
+// widens a remedy union so that an arm projects to something that cannot move its blocker, the
+// module still compiles and this goes red.
+test fn every_row_is_found_under_the_blocker_it_declares_and_its_mechanism_can_move_it() -> Bool {
+  for_all(xs: firmware_network_boot_preparation_routes, predicate: row =>
+    row_is_filed_under_its_blocker(row: row)
+      && mechanism_can_move(mechanism: route_of(row: row), blocker: blocker_of(row: row))
+  )
+}
+
+fn row_is_filed_under_its_blocker(row: RouteAuthority) -> Bool {
+  length(xs: filter(catalog_rows_for(blocker: blocker_of(row: row)), candidate => route_eq(a: route_of(row: candidate), b: route_of(row: row)))) > 0
+}
+
+// WITNESS-SIDE MECHANISM CAPABILITIES. Written out per blocker, in the executor's vocabulary, and
+// deliberately NOT a copy of anything in the module: the module's type says what is writable, this
+// says what is true, and the two agreeing is the claim under test.
+fn mechanism_can_move(mechanism: FirmwareNetworkBootPreparationRoute, blocker: PreparationBlockingOn) -> Bool {
+  match blocker {
+    // A stack that does not exist is created by a BIOS attribute, by nothing else.
+    NoNetworkStackInBootOrder => is_bios_attribute(mechanism: mechanism)
+    // An option that exists but is not selected is selected by a redirect -- and only by a redirect.
+    NoNetworkBootOptionListed => is_redirect(mechanism: mechanism)
+    // Which port boots is an attribute; a redirect cannot answer it (review 81711's bug).
+    NoInterfaceCarriesPxe => is_bios_attribute(mechanism: mechanism)
+    SecureBootBlocksUnsignedChainloader => is_bios_attribute(mechanism: mechanism)
+    OverrideMechanismUnsupported => is_out_of_band(mechanism: mechanism)
+  }
+}
+
+fn is_bios_attribute(mechanism: FirmwareNetworkBootPreparationRoute) -> Bool {
+  match mechanism {
+    RedfishBiosAttributes { service_root: _, attribute: _ } => true
+    _ => false
+  }
+}
+
+fn is_redirect(mechanism: FirmwareNetworkBootPreparationRoute) -> Bool {
+  match mechanism {
+    RedfishUefiBootNext { service_root: _, boot_option: _ } => true
+    RedfishOneShotOverride { service_root: _ } => true
+    IpmiOneShotOverride { channel: _ } => true
+    _ => false
+  }
+}
+
+fn is_out_of_band(mechanism: FirmwareNetworkBootPreparationRoute) -> Bool {
+  match mechanism {
+    UefiShellOverSol { sol_channel: _, script: _ } => true
+    HumanConsole { instruction: _ } => true
+    _ => false
+  }
+}
+
+// NO BLOCKER IS LEFT WITHOUT A REMEDY: every value of PreparationBlockingOn has at least one row,
+// so the readiness fn can never answer a real blocker with 'nobody owns this'. A new blocker
+// without a row breaks here rather than in a datacenter.
+test fn every_blocker_has_a_route_that_can_act_on_it() -> Bool {
+  blocker_has_row(blocker: NoNetworkStackInBootOrder)
+    && blocker_has_row(blocker: NoNetworkBootOptionListed)
+    && blocker_has_row(blocker: NoInterfaceCarriesPxe)
+    && blocker_has_row(blocker: SecureBootBlocksUnsignedChainloader)
+    && blocker_has_row(blocker: OverrideMechanismUnsupported)
+}
+
+fn blocker_has_row(blocker: PreparationBlockingOn) -> Bool {
+  match route_for_blocking(blocker: blocker) {
+    Present { value: row } => mechanism_can_move(mechanism: route_of(row: row), blocker: blocker)
+    Absent => false
+  }
+}
+
+// THE CATALOG VIEWED BY BLOCKER, which is the only view the readiness fn is allowed to use. The
+// witness keeps its own copy rather than reaching into a private helper, because 'can a blocker
+// even be looked up' is the thing under test and sharing the implementation would make the test
+// agree with the code by construction.
+fn catalog_rows_for(blocker: PreparationBlockingOn) -> List<RouteAuthority> {
+  filter(firmware_network_boot_preparation_routes, row => blocking_eq(a: blocker_of(row: row), b: blocker))
+}
+
+// THE PROJECTIONS ARE TOTAL AND DISCRIMINATING. blocker_of and route_of are the two reads the fold
+// has of a row; if either is edited to answer the wrong question, rows still typecheck and the
+// catalog still looks populated, while the fold silently hands out a route for the wrong blocker.
+// So each arm's projection is pinned by name, arm by arm, and every one of the five arms is written
+// out -- a new arm is a compile error here.
+test fn each_row_arms_project_to_the_blocker_and_mechanism_they_mean() -> Bool {
+  blocker_of(row: row_with_redirect(UefiBootNextRemedy { service_root: "redfish:Systems/Self", boot_option: "uefi-boot-next" }))
+    == NoNetworkBootOptionListed
+    && route_eq(
+         a: route_of(row: row_with_redirect(UefiBootNextRemedy { service_root: "redfish:Systems/Self", boot_option: "uefi-boot-next" })),
+         b: RedfishUefiBootNext { service_root: "redfish:Systems/Self", boot_option: "uefi-boot-next" },
+       )
+    && route_eq(
+         a: route_of(row: row_with_redirect(RedfishOneShotRemedy { service_root: "redfish:Systems/Self" })),
+         b: RedfishOneShotOverride { service_root: "redfish:Systems/Self" },
+       )
+    && route_eq(
+         a: route_of(row: row_with_redirect(IpmiOneShotRemedy { channel: "ipmi:chassis-boot-override" })),
+         b: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
+       )
+    && blocker_of(row: NoNetworkStackRow { remedy: NetworkStackAttribute { service_root: "redfish:Bios", attribute: "NetworkStack" }, authority: witness_authority, obligation: "x" })
+      == NoNetworkStackInBootOrder
+    && blocker_of(row: NoInterfaceCarriesPxeRow { remedy: NicBootAttribute { service_root: "redfish:Bios", attribute: "NicBootSelection" }, authority: witness_authority, obligation: "x" })
+      == NoInterfaceCarriesPxe
+    && blocker_of(row: SecureBootBlocksRow { remedy: SecureBootAttribute { service_root: "redfish:Bios", attribute: "SecureBoot" }, authority: witness_authority, obligation: "x" })
+      == SecureBootBlocksUnsignedChainloader
+    && blocker_of(row: OverrideUnsupportedRow { remedy: ConsoleRemedy { instruction: "attend" }, authority: witness_authority, obligation: "x" })
+      == OverrideMechanismUnsupported
+    && obligation_of(row: row_with_redirect(IpmiOneShotRemedy { channel: "ipmi:chassis-boot-override" })) == "x"
+}
+
+fn row_with_redirect(remedy: RedirectRemedy) -> RouteAuthority {
+  NoNetworkBootOptionRow { remedy: remedy, authority: witness_authority, obligation: "x" }
+}
+
+// EVERY VALUE OF THE BLOCKER UNION, written out so a new arm is a compile error here (each is
+// named) rather than an untested state.
+fn all_preparation_blockers() -> List<PreparationBlockingOn> {
+  [
+    NoNetworkStackInBootOrder,
+    NoNetworkBootOptionListed,
+    NoInterfaceCarriesPxe,
+    SecureBootBlocksUnsignedChainloader,
+    OverrideMechanismUnsupported,
+  ]
+}
+
+fn blocker_is_in(blocker: PreparationBlockingOn, candidates: List<PreparationBlockingOn>) -> Bool {
+  length(xs: filter(candidates, candidate => blocking_eq(a: candidate, b: blocker))) > 0
+}
+
+// ---------------------------------------------------------------------------
+// THE FRONTIER AND ITS INHABITATION CLAIM (review 81734, DESIGN 3c/5).
+// ---------------------------------------------------------------------------
+
+// THE FRONTIER IS BOUND TO A REAL DECLARATION NAME, NOT TO A DESCRIPTION. dissolution_status over
+// an empty population must say Pending (not Fired, not Unbound): Unbound would mean I had written a
+// description string, which is the thing the review asked me not to do, and Fired would mean a
+// missing producer counts as delivered.
+test fn the_frontiers_are_bound_and_report_their_true_status() -> Bool {
+  frontier_status(condition: firmware_network_boot_probe_frontier, present_decls: []) == DissolutionPending
+    && frontier_status(condition: firmware_network_boot_standing_consumer_frontier, present_decls: []) == DissolutionPending
+}
+
+// THE TRIGGER FIRES ON EVIDENCE, NOT ON WISHFUL READING: hand it the declaration it names and it
+// fires; hand it a DIFFERENT declaration in the same module and it stays pending. Without this arm
+// a trigger bound to the wrong decl_name would look identical to a correct one while the frontier.
+test fn a_frontier_fires_only_for_the_declaration_it_names() -> Bool {
+  let probe_present: List<DeclarationRef> = [
+    decl_ref(module_path: "gunbc.firmware_network_boot_probe", decl_name: "probe"),
+  ]
+  let lookalike_present: List<DeclarationRef> = [
+    decl_ref(module_path: "gunbc.firmware_network_boot_probe", decl_name: "probe_something_else"),
+  ]
+  // THE LITERAL, NOT THE MODULE FN: handing it the name the producer actually uses -- `probe`, read
+  // off gunbc.firmware_network_boot_probe -- is the point. If the module's ref drifts to a name no
+  // branch will ever declare, the frontier is unsatisfiable and this is what says so.
+  frontier_status(condition: firmware_network_boot_probe_frontier, present_decls: probe_present) == DissolutionFired
+    && frontier_status(condition: firmware_network_boot_probe_frontier, present_decls: lookalike_present) == DissolutionPending
+    && frontier_status(
+         condition: firmware_network_boot_standing_consumer_frontier,
+         present_decls: [ firmware_network_boot_standing_consumer_ref() ],
+       )
+       == DissolutionFired
+}
+
+// THE INHABITATION CLAIM IS HONEST ABOUT ITS OWN STATUS. Right now no real producer has ever emitted
+// a FirmwareBootObservation -- the witness hand-builds its fixtures -- so the claim MUST report
+// itself uninhabited. A version of this module that claimed InhabitedByProducer today would be
+// fabricating a receipt, and that is what this witness refuses.
+test fn the_inhabitation_claim_reports_uninhabited_until_a_producer_emits_it() -> Bool {
+  !inhabitation_is_claimed(claim: firmware_network_boot_observation_inhabitation)
+    && match firmware_network_boot_observation_inhabitation {
+         Uninhabited { owed_by: owed, over: boundary, falsified_by: falsifier } =>
+           // It names WHO owes it (the probe), WHAT is owed (the observation shape), and WHAT would
+           // falsify it. An empty or generic filler in any of the three is the defect.
+           declaration_ref_eq(a: owed, b: decl_ref(module_path: "gunbc.firmware_network_boot_probe", decl_name: "probe"))
+             && length(xs: boundary) > 40
+             && length(xs: falsifier) > 40
+         _ => false
+       }
+}
