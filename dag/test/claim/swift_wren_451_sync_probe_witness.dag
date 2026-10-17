@@ -1,0 +1,15 @@
+/// Synchronous probe of whether the remote runner executes THIS tree.
+/// Deleted after use; it is not a standing witness.
+module test.claim.swift_wren_451_sync_probe_witness;
+
+import test.claim.test_outcome;
+
+data SyncProbeDisposition:
+  | RanFromLocalTree { marker: String }
+  | DidNotRun
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn the_runner_ran_the_locally_written_probe() -> Bool {
+  true
+}
