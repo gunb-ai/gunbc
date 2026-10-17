@@ -818,8 +818,9 @@ fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expe
 // unbound payload (`Optional<T>` with T a variable), and an `if c { Absent } else { <T?> }` join then
 // compares that unbound payload against T?. variant_reference_inferred_node refuses an Optional
 // expectation on purpose -- `Mod` against `BinOp?` is a coercion the emitter owes a wrap for -- but
-// that hazard is a payload-carrying arm of ANOTHER coproduct; the Optional's own nullary arm is
-// already the optional.
+// that hazard is an arm of ANOTHER coproduct (`Red` against `Color?`); the Optional's own nullary arm is
+// already the optional. The owner is identified by declaration (declaration_is_std_optional), never by
+// the arm's shape: a user coproduct's no-payload arm keeps the refusal.
 fn expected_decided_variant_type(name: String, decided: Node, decided_name: String, expected: Node?, scope: InferScope) -> Node {
   match expected {
     Present { value: exp } =>
@@ -833,9 +834,14 @@ fn expected_decided_variant_type(name: String, decided: Node, decided_name: Stri
 }
 
 fn optional_nullary_arm_of(owner: Node, name: String, scope: InferScope) -> Bool {
-  match find_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
-    Present { value: arm } => (arm.children |> count) == 0
-    Absent => false
+  match variant_parent_identity_of(owner: Present { value: owner }, scope: scope) {
+    VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } =>
+      declaration_is_std_optional(d: d)
+        && match find_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
+          Present { value: arm } => (arm.children |> count) == 0
+          Absent => false
+        }
+    _ => false
   }
 }
 
