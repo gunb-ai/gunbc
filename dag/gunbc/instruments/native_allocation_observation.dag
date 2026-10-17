@@ -13,6 +13,14 @@ import gunbc.emit_state_threading_specimen { spec_build, spec_walk_tokens }
 // NativeEffectRealizationAdmission). `gunbc test //gunbc/instruments:native-allocation-observation`
 // emits this closure, builds it and runs it in one process; nothing is interpreted.
 //
+// THE ENROLLED CALIBRATION SUITE is this entry's whole body: the meter (an empty window reads zero, a
+// window around a known allocation reads it on both axes), the declared reference walk, a deliberately
+// cloning walk that must read ABOVE the reference, and the specimen's own walk. COPY WIDTH IS AN UNREAD
+// AXIS, NOT ZERO: the meter counts allocator operations and bytes requested, so a repair that trades an
+// allocation for a wider by-value copy (the clone-allocation-free record fact) lowers both counts here
+// while raising the words moved per clone, and this reading cannot see that cost. It is judged by the
+// wall-time comparison reported beside the counts, never by a count.
+//
 // FOUR ANSWERS, NOT ONE VERDICT, because a bound that reds when the repair succeeds punishes the repair:
 //   AVAILABILITY  the selecting main registered the counting allocator before any read
 //                 (observed_allocation_available). It is the realization's statement, never a nonzero count.
