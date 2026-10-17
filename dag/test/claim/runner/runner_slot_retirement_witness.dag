@@ -42,6 +42,7 @@ import gunbc.runner.runner_width_transition {
   transition_population_agreement,
   TransitionPopulationAgrees,
   TransitionPopulationDisagrees,
+  slot_width_transition_26_25,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
 import gunbc.host.host_operation_exec {
@@ -100,6 +101,9 @@ import gunbc.runner.runner_slot_retirement {
   TransitionRetireesNotPermitted,
   RetirementActuationAuthorized,
   RetirementActuationRefused,
+  transition_retirement_admission_over,
+  SlotRetirementEvidencePresent,
+  SlotRetirementEvidenceAbsent,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -993,6 +997,84 @@ test fn srv1s_declared_grant_does_not_cover_the_width_7_retirees() -> Bool {
     )
 }
 
+// THE 2026-10-16 GRANT COVERS THE TWO CUTS' RETIREES AND NOTHING srv1 STILL RUNS. Without it the 7-to-5
+// and 5-to-3 cuts left srv1-03..06 required with no permission, and the admission below refused. The
+// composed grant must cover 03..06 and 22 (the 09-17 part) and must not reach the committed 01 and 02,
+// or 07 (whose retirement is admitted by readback, not by permission). Slot 13 is not asserted here:
+// the 09-17 scope is 13..50 and this change does not edit it.
+test fn srv1s_composed_grant_covers_the_width_cut_retirees_and_not_the_committed_population() -> Bool {
+  match interruption_authorization_for_host(host: operator_host_srv1) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+    HostInterruptionAuthorizationPresent { authorization: auth } =>
+      interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-03.service")
+        && interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-06.service")
+        && interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-22.service")
+        && !interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-01.service")
+        && !interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-02.service")
+        && !interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-07.service")
+  }
+}
+
+// SUPPLIED COMPLETE STANDINGS ARE THIS RUN'S READBACK, not a stored Actions run id. 07..12
+// complete drop out of the coverage demand; 03..06 are covered by the 2026-10-16 grant and 14..50 by
+// the 09-17 grant.
+test fn srv1_admission_with_complete_readback_for_07_through_12_is_present() -> Bool {
+  let required = known_obligation_of(host: operator_host_srv1)
+  let completed = [
+    "actions-runner@srv1-07.service",
+    "actions-runner@srv1-08.service",
+    "actions-runner@srv1-09.service",
+    "actions-runner@srv1-10.service",
+    "actions-runner@srv1-11.service",
+    "actions-runner@srv1-12.service",
+  ] |> map(u => RetirementComplete { unit: u })
+  match interruption_authorization_for_host(host: operator_host_srv1) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+    HostInterruptionAuthorizationPresent { authorization: auth } =>
+      match transition_retirement_admission_over(
+        host: operator_host_srv1,
+        auth: auth,
+        required: required,
+        standings: completed,
+      ) {
+        SlotRetirementEvidenceAbsent { cause: _ } => false
+        SlotRetirementEvidencePresent { authorization: _, standings: ss } =>
+          list_length(items: ss) == 6
+      }
+  }
+}
+
+// AN UNMASKED 07 IS A DIFFERENT OBSERVATION. Pending drain keeps it outstanding; the grant
+// still does not cover it; admission stays Absent. A completed-retirement row keyed by run
+// id would have stayed discharged.
+test fn srv1_admission_stays_absent_if_07_is_not_complete_on_this_readback() -> Bool {
+  let required = known_obligation_of(host: operator_host_srv1)
+  let standings = concat(
+    [RetirementPendingDrain { unit: "actions-runner@srv1-07.service", cause: "unmasked" }],
+    [
+      "actions-runner@srv1-08.service",
+      "actions-runner@srv1-09.service",
+      "actions-runner@srv1-10.service",
+      "actions-runner@srv1-11.service",
+      "actions-runner@srv1-12.service",
+    ] |> map(u => RetirementComplete { unit: u }),
+  )
+  match interruption_authorization_for_host(host: operator_host_srv1) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+    HostInterruptionAuthorizationPresent { authorization: auth } =>
+      match transition_retirement_admission_over(
+        host: operator_host_srv1,
+        auth: auth,
+        required: required,
+        standings: standings,
+      ) {
+        SlotRetirementEvidencePresent { authorization: _, standings: _ } => false
+        SlotRetirementEvidenceAbsent { cause: c } =>
+          string_contains(s: c, pattern: "actions-runner@srv1-07.service")
+      }
+  }
+}
+
 // THE OBLIGATION DOES NOT READ THE CENSUS, which is the durability property the declaration exists
 // for. A host whose surplus has entirely delisted still owes exactly the same identities -- that is
 // what closes the orphan escape, where required=[] and census=[] and standings=[] once admitted.
@@ -1036,7 +1118,7 @@ test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
 test fn an_open_transition_derives_the_prior_minus_target_obligation() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesKnown { units: units } =>
-      list_length(items: units) == 43
+      list_length(items: units) == 47
         && any(units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-01.service")
     RetireesUnresolved { host: _, cause: _ } => false
@@ -1122,42 +1204,49 @@ test fn the_obligation_excludes_a_committed_member_above_the_fleet_range() -> Bo
   }
 }
 
-test fn srv1_at_committed_width_7_desires_six_fleet_plus_shakedown() -> Bool {
+test fn srv1_at_committed_width_3_desires_two_fleet_plus_shakedown() -> Bool {
   match gunbc_runner_committed_width(host: operator_host_srv1) {
     RunnerWidthUnresolved { cause: _ } => false
     RunnerWidthDerived { slots: w } =>
-      w == 7
+      w == 3
         && match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
           RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
           RunnerHostDeployAdmitted { deploy: d } =>
-            d.runner_count == 7
-              && list_length(items: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 7
+            d.runner_count == 3
+              && list_length(items: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 3
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-01.service")
-              && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-06.service")
+              && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-02.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-13.service")
-              && !any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-07.service")
+              && !any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-03.service")
         }
   }
 }
 
-test fn srv1_at_width_7_owes_the_open_fifty_and_twelve_deltas() -> Bool {
+test fn srv1_at_width_3_owes_the_open_fifty_twelve_seven_and_five_deltas() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesUnresolved { host: _, cause: _ } => false
     RetireesKnown { units: units } =>
-      list_length(items: units) == 43
+      list_length(items: units) == 47
+        && any(units, u => (u as String) == "actions-runner@srv1-03.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-04.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-05.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-06.service")
         && any(units, u => (u as String) == "actions-runner@srv1-07.service")
         && any(units, u => (u as String) == "actions-runner@srv1-12.service")
         && any(units, u => (u as String) == "actions-runner@srv1-14.service")
         && any(units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-13.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-02.service")
   }
 }
 
-test fn srv1_keeps_the_open_fifty_row_and_adds_twelve_to_seven() -> Bool {
+test fn srv1_keeps_the_open_fifty_row_and_the_twelve_seven_and_five_cuts() -> Bool {
   let rows = transition_row_for_host(host: operator_host_srv1)
-  list_length(items: rows) == 2
+  list_length(items: rows) == 4
     && any(rows, t => (t.transition_id as String) == "runner-slot-26-25-gib" && t.prior_width == 50)
     && any(rows, t => (t.transition_id as String) == "runner-slot-width-12-7" && t.prior_width == 12)
+    && any(rows, t => (t.transition_id as String) == "runner-slot-width-7-5" && t.prior_width == 7)
+    && any(rows, t => (t.transition_id as String) == "runner-slot-width-5-3" && t.prior_width == 5)
 }
 
 test fn a_host_at_its_current_width_owes_no_retirees() -> Bool {
@@ -1176,7 +1265,7 @@ test fn a_host_at_its_current_width_owes_no_retirees() -> Bool {
 // production read yields the same derived obligation the decision produces for that width.
 test fn the_production_wrapper_reaches_the_supplied_decision() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
-    RetireesKnown { units: units } => list_length(items: units) == 43
+    RetireesKnown { units: units } => list_length(items: units) == 47
     RetireesUnresolved { host: _, cause: _ } => false
   }
 }
@@ -1208,17 +1297,29 @@ test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Boo
 // PERMISSION AND OBLIGATION STAY DIFFERENT FACTS. srv1's recorded interruption authorization still
 // covers 13-50; that is what the operator permitted, not what this transition requires, and it is
 // not edited to match.
+//
+// THE HOST IS TAKEN FROM THE OPEN TRANSITIONS FOR THE SAME REASON. This row then read srv4, whose
+// committed width came to equal its prior (21), so its obligation emptied and the row failed on
+// Absent before reaching the decision, red on main while the agreeing arm went unexecuted on the
+// real path. The first open transition whose obligation is non-empty is the specimen; the supplied
+// arm is the_same_surplus_with_a_derived_obligation_is_decided, and this row stays the real-path
+// read of required_retirees_for_host. When no open transition owes a retiree there is no
+// inhabitant, and the row fails rather than passing vacuously.
 test fn a_surplus_inside_the_manifest_agrees() -> Bool {
-  match known_obligation_of(host: operator_host_srv4).first() {
+  match slot_width_transition_26_25 |> filter(t => list_length(known_obligation_of(host: t.host)) > 0) |> first() {
     Absent => false
-    Present { value: required_unit } =>
-      match transition_population_agreement(
-        host: operator_host_srv4,
-        observed_surplus: [required_unit],
-      ) {
-        TransitionPopulationAgrees => true
-        TransitionPopulationDisagrees { unexpected: _ } => false
-        TransitionPopulationUndecidable { host: _, cause: _ } => false
+    Present { value: open } =>
+      match known_obligation_of(host: open.host).first() {
+        Absent => false
+        Present { value: required_unit } =>
+          match transition_population_agreement(
+            host: open.host,
+            observed_surplus: [required_unit],
+          ) {
+            TransitionPopulationAgrees => true
+            TransitionPopulationDisagrees { unexpected: _ } => false
+            TransitionPopulationUndecidable { host: _, cause: _ } => false
+          }
       }
   }
 }

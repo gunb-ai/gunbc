@@ -5,18 +5,15 @@ pub use crate::extdeps_languages_dag_syntax::{dag_parse_environment, render_anno
 use crate::std_source_annotation::AnnotationPlacement::{
     LeadingAfterLineIndent, TrailingAfterSemanticToken,
 };
-pub use crate::std_source_annotation::{keyed_annotation_rows_agree, source_annotation_graph_rows};
 pub use crate::std_source_annotation::{
-    AnnotationPlacement, KeyedAnnotationRow, SourceAnnotationDebt, SourceAnnotationGraph,
-    UnboundAnnotationCapture,
+    keyed_annotation_rows_agree, source_annotation_graph_rows, AnnotationPlacement,
+    KeyedAnnotationRow, SourceAnnotationDebt, SourceAnnotationGraph, UnboundAnnotationCapture,
 };
 pub use crate::std_types::{Bool, List, SourceSpan};
-pub use crate::v1_compiler_annotation_bind::KeyedAnnotationRegion;
 pub use crate::v1_compiler_annotation_bind::{
-    bind_annotations, keyed_annotation_regions, keyed_annotation_rows,
+    bind_annotations, keyed_annotation_regions, keyed_annotation_rows, KeyedAnnotationRegion,
 };
-pub use crate::v1_compiler_parse::parse_with_table;
-pub use crate::v1_compiler_parse::ParseWithTableResult;
+pub use crate::v1_compiler_parse::{parse_with_table, ParseWithTableResult};
 pub use crate::v1_compiler_tokenize::tokenize_artifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

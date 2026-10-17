@@ -2,19 +2,20 @@
 // Source module: v1.compiler.emit_core_support
 
 pub use crate::gunbc_rust_emitted_crate::EmittedRustCrate;
-pub use crate::gunbc_rust_emitted_edge::module_to_filename;
-pub use crate::gunbc_rust_emitted_edge::EmittedEdge;
+pub use crate::gunbc_rust_emitted_edge::{module_to_filename, EmittedEdge};
 pub use crate::std_unicode_scalar::{ascii_lowercase, ascii_uppercase, ascii_uppercase_first};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_items::leaf_owner_modules_from_registry;
-pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
+pub use crate::v1_compiler_infer_items::{
+    leaf_owner_modules_from_registry, ResolvedGraph, TypedModule,
+};
 pub use crate::v1_compiler_infer_service::UniqueAccum;
 pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
 use crate::v1_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
-pub use crate::v1_compiler_languages::{language_spec_for_target, test_conventions_for_target};
-pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
+pub use crate::v1_compiler_languages::{
+    language_spec_for_target, test_conventions_for_target, LanguageSpec, TestNameStyle,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::{EmittedSymbolCollision, ModuleFilenameCollision};
@@ -23,9 +24,9 @@ use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
-pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at, make_error_node};
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node, ParsedModuleItemKind, TextFile,
+    authored_name_at, field_init_node_name_at, make_error_node, CompilerDiagnostic, Connective,
+    ErrorNode, NewlineIndex, Node, ParsedModuleItemKind, TextFile,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

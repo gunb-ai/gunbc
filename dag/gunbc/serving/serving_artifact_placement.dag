@@ -1,0 +1,347 @@
+module gunbc.serving.serving_artifact_placement
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.algebra { list_append }
+import std.optional { Present, Absent }
+import std.measure { ByteSize, byte_size_count }
+import std.content_hash { Sha256Digest }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.program { ProgramIdentity }
+import extdeps.crypto.hash { sha256sum_program }
+import extdeps.tools.stat { stat_program }
+import extdeps.posix.test_utility { test_program }
+import extdeps.tools.gnu_coreutils { readlink_program, ls_program, cat_program, mkdir_parents_command, rm_force_command, mv_exact_destination_command, ln_symbolic_force_command }
+import gunbc.cloudflare.r2_origin { OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt }
+import gunbc.serving.rented_ninfer_source { RentedArtifactSource, NinferEngineRelease, NinferInstalledFile }
+
+// WHERE A RENTED CARD KEEPS WHAT IT FETCHED, AND THE ONLY COMMANDS THIS PROGRAM MAY ISSUE AGAINST IT. The
+// card's own run.sh ran `rm -f $MD/model.ninfer` before it fetched, and on 2026-10-13 that destroyed a
+// verified model. This module is the RED against that shape: every path a verified artifact can live at is a
+// path this program never removes or overwrites, and the predicate below judges any command sequence against
+// that rule so a run.sh-shaped sequence is refused by the same code that admits this program's own.
+//
+// THE LAYOUT. Each artifact lives at <root>/sha256/<digest>. A fetch writes <root>/partial/<digest>.<attempt>,
+// a verified rename moves it into place on the same filesystem, and the path the engine reads is a symlink
+// switched by rename only (a sibling `.next` link renamed over it), never removed and recreated. The kernel
+// fact that decides why the model path is not on tmpfs (O_DIRECT is rejected there) is owned by
+// gunbc.host.host_software_surface; this module cites it and restates nothing of it.
+type ServingStoreRoots {
+  root: NonEmptyStr
+  model_link: NonEmptyStr
+  serve_log: NonEmptyStr
+}
+
+fn serving_digest_path(roots: ServingStoreRoots, digest: Sha256Digest) -> String {
+  join([roots.root as String, "/sha256/", digest.hex as String], "")
+}
+
+fn serving_partial_directory(roots: ServingStoreRoots) -> String {
+  join([roots.root as String, "/partial"], "")
+}
+
+fn serving_partial_path(roots: ServingStoreRoots, digest: Sha256Digest, attempt: NonEmptyStr) -> String {
+  join([roots.root as String, "/partial/", digest.hex as String, ".", attempt as String], "")
+}
+
+fn serving_link_next_path(roots: ServingStoreRoots) -> String {
+  join([roots.model_link as String, ".next"], "")
+}
+
+// WHAT THE LAB READ BACK FROM THE CARD before this program acts, as supplied values: the program decides over
+// readings and never over its own earlier commands.
+type ServingCopyReading
+  = ServingCopyVerified
+  | ServingCopyAbsent
+  | ServingCopyDiffers { observed: Sha256Digest }
+  | ServingCopyUnreadable { cause: NonEmptyStr }
+
+type ServingLinkReading
+  = ServingLinkPointsAt { target: NonEmptyStr }
+  | ServingLinkAbsent
+  | ServingLinkUnreadable { cause: NonEmptyStr }
+
+type ServingFetchResult
+  = ServingFetchSucceeded
+  | ServingFetchFailed { cause: NonEmptyStr }
+
+// THE FETCH LEG REFUSES ON ITS CREDENTIAL BEFORE IT BUILDS A COMMAND. A read token for the models bucket is
+// not minted into custody (OriginCredentialMintEntryUnbuilt), so there is nothing to sign a request with;
+// the leg refuses typed on the arm rather than reaching for a key. No R2 key or API key from the card's
+// run.sh is copied or used here: the operator owes rotating them.
+type ServingFetchLeg
+  = ServingFetchRefusedMintEntryUnbuilt { secret_id: NonEmptyStr }
+  | ServingFetchRefusedCredentialUnminted { secret_id: NonEmptyStr }
+  | ServingFetchRefusedNoSignedFetchBuilder
+
+fn serving_fetch_leg(source: RentedArtifactSource) -> ServingFetchLeg {
+  match source.read_credential {
+    OriginCredentialMintEntryUnbuilt { secret_id: s } => ServingFetchRefusedMintEntryUnbuilt { secret_id: s }
+    OriginCredentialUnminted { mint_entry: _, secret_id: s } => ServingFetchRefusedCredentialUnminted { secret_id: s }
+    OriginCredentialPinned { access_key_id: _, token_value: _ } => ServingFetchRefusedNoSignedFetchBuilder
+  }
+}
+
+fn serving_fetch_leg_text(leg: ServingFetchLeg) -> String {
+  match leg {
+    ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => join(["fetch refused: no mint entry exists for the read token ", s as String, "; nothing is signed with an unnamed secret"], "")
+    ServingFetchRefusedCredentialUnminted { secret_id: s } => join(["fetch refused: the read token ", s as String, " has an entry but is not minted into custody"], "")
+    ServingFetchRefusedNoSignedFetchBuilder => "fetch refused: a pinned credential exists but no typed signed-fetch command builder does"
+  }
+}
+
+// THE COMMANDS AFTER A FETCH ATTEMPT, over the readback of the digest path taken before it. Only an observed
+// ABSENCE promotes (a rename into place); a copy already verified there is never the destination of a rename,
+// so a late-arriving fetch result is dropped with its own partial. A failed fetch removes ONLY its own
+// partial. Stale partials from a crashed attempt are not removed here: they are S5 release's population.
+type ServingArtifactSequence
+  = ServingArtifactCommands { commands: List<ArgvCommand> }
+  | ServingArtifactRefusedCopyDiffers { observed: Sha256Digest, own_partial_cleanup: List<ArgvCommand> }
+  | ServingArtifactRefusedCopyUnreadable { cause: NonEmptyStr, own_partial_cleanup: List<ArgvCommand> }
+
+// A copy at the content-addressed path that differs from its digest, or cannot be read, is a deficit this
+// program does not repair: it refuses typed with what it observed, and carries only the removal of its OWN
+// partial. The path itself is never a removal or overwrite target (S5 release owns deletion).
+fn serving_artifact_sequence(
+  roots: ServingStoreRoots,
+  digest: Sha256Digest,
+  attempt: NonEmptyStr,
+  existing: ServingCopyReading,
+  fetch: ServingFetchResult,
+) -> ServingArtifactSequence {
+  let partial = serving_partial_path(roots: roots, digest: digest, attempt: attempt)
+  let prepare = [mkdir_parents_command(path: serving_partial_directory(roots: roots))]
+  let own_partial_cleanup = list_append(left: prepare, right: [rm_force_command(path: partial)])
+  match fetch {
+    ServingFetchFailed { cause: _ } => ServingArtifactCommands { commands: own_partial_cleanup }
+    ServingFetchSucceeded =>
+      match existing {
+        ServingCopyAbsent => ServingArtifactCommands { commands: list_append(left: prepare, right: [mv_exact_destination_command(source: partial, destination: serving_digest_path(roots: roots, digest: digest))]) }
+        ServingCopyVerified => ServingArtifactCommands { commands: own_partial_cleanup }
+        ServingCopyDiffers { observed: o } => ServingArtifactRefusedCopyDiffers { observed: o, own_partial_cleanup: own_partial_cleanup }
+        ServingCopyUnreadable { cause: c } => ServingArtifactRefusedCopyUnreadable { cause: c, own_partial_cleanup: own_partial_cleanup }
+      }
+  }
+}
+
+fn serving_artifact_commands(sequence: ServingArtifactSequence) -> List<ArgvCommand> {
+  match sequence {
+    ServingArtifactCommands { commands: c } => c
+    ServingArtifactRefusedCopyDiffers { observed: _, own_partial_cleanup: c } => c
+    ServingArtifactRefusedCopyUnreadable { cause: _, own_partial_cleanup: c } => c
+  }
+}
+
+// THE MODEL LINK SWITCH, to a digest path the caller has verified: a sibling link is created and renamed over
+// the live one, so the engine never sees the path absent. Already pointing at the verified path is a no-op.
+type ServingLinkSwitch
+  = ServingLinkSwitchNoop
+  | ServingLinkSwitchCommands { commands: List<ArgvCommand> }
+  | ServingLinkSwitchRefusedUnreadable { cause: NonEmptyStr }
+
+fn serving_link_switch(roots: ServingStoreRoots, digest: Sha256Digest, link: ServingLinkReading) -> ServingLinkSwitch {
+  let target = serving_digest_path(roots: roots, digest: digest)
+  let switch = ServingLinkSwitchCommands {
+    commands: [
+      ln_symbolic_force_command(target: target, link_name: serving_link_next_path(roots: roots)),
+      mv_exact_destination_command(source: serving_link_next_path(roots: roots), destination: roots.model_link as String),
+    ],
+  }
+  match link {
+    ServingLinkPointsAt { target: t } => if (t as String) == target { ServingLinkSwitchNoop } else { switch }
+    ServingLinkAbsent => switch
+    ServingLinkUnreadable { cause: c } => ServingLinkSwitchRefusedUnreadable { cause: c }
+  }
+}
+
+// THE ENGINE: EXTRACT INTO STAGING, VERIFY THE INSTALLED FILES, THEN RENAME INTO PLACE. The shipped tarball's
+// own digest is unpinned (gunbc.serving.rented_ninfer_source RentedTarballUnobserved), so the install is
+// judged on the INSTALLED binary and rev file against the release's NinferInstalledFile pins. That dissolves
+// the tarball obligation only partially: it shows the installed bytes are the pinned bytes, never that the
+// tarball is the one a store holds.
+type ServingInstalledFileReading
+  = ServingInstalledFileRead { bytes: ByteSize, sha256: Sha256Digest }
+  | ServingInstalledFileUnreadable { cause: NonEmptyStr }
+
+type ServingEngineVerdict
+  = ServingEngineVerified
+  | ServingEngineFileDigestDiffers { relative_path: NonEmptyStr, pinned: Sha256Digest, observed: Sha256Digest }
+  | ServingEngineFileBytesDiffer { relative_path: NonEmptyStr, pinned: ByteSize, observed: ByteSize }
+  | ServingEngineFileUnreadable { relative_path: NonEmptyStr, cause: NonEmptyStr }
+
+fn serving_installed_file_verdict(pin: NinferInstalledFile, reading: ServingInstalledFileReading) -> ServingEngineVerdict {
+  match reading {
+    ServingInstalledFileUnreadable { cause: c } => ServingEngineFileUnreadable { relative_path: pin.relative_path, cause: c }
+    ServingInstalledFileRead { bytes: b, sha256: d } =>
+      if (d.hex as String) != (pin.sha256.hex as String) {
+        ServingEngineFileDigestDiffers { relative_path: pin.relative_path, pinned: pin.sha256, observed: d }
+      } else {
+        if byte_size_count(b: b) != byte_size_count(b: pin.bytes) {
+          ServingEngineFileBytesDiffer { relative_path: pin.relative_path, pinned: pin.bytes, observed: b }
+        } else {
+          ServingEngineVerified
+        }
+      }
+  }
+}
+
+fn serving_engine_verdict(engine: NinferEngineRelease, binary: ServingInstalledFileReading, rev_file: ServingInstalledFileReading) -> ServingEngineVerdict {
+  match serving_installed_file_verdict(pin: engine.binary, reading: binary) {
+    ServingEngineVerified => serving_installed_file_verdict(pin: engine.rev_file, reading: rev_file)
+    refused => refused
+  }
+}
+
+fn serving_engine_directory(roots: ServingStoreRoots, engine: NinferEngineRelease) -> String {
+  join([roots.root as String, "/engine/", engine.release_name as String], "")
+}
+
+fn serving_engine_staging_directory(roots: ServingStoreRoots, engine: NinferEngineRelease, attempt: NonEmptyStr) -> String {
+  join([roots.root as String, "/partial/engine.", engine.release_name as String, ".", attempt as String], "")
+}
+
+// THE RENAME INTO PLACE EXISTS ONLY FOR A VERIFIED ENGINE, and a refusal names the file and the figure.
+type ServingEnginePromotion
+  = ServingEnginePromoted { commands: List<ArgvCommand> }
+  | ServingEngineRefused { verdict: ServingEngineVerdict }
+
+fn serving_engine_promotion(roots: ServingStoreRoots, engine: NinferEngineRelease, attempt: NonEmptyStr, verdict: ServingEngineVerdict) -> ServingEnginePromotion {
+  match verdict {
+    ServingEngineVerified => ServingEnginePromoted {
+      commands: [mv_exact_destination_command(
+        source: serving_engine_staging_directory(roots: roots, engine: engine, attempt: attempt),
+        destination: serving_engine_directory(roots: roots, engine: engine),
+      )],
+    }
+    refused => ServingEngineRefused { verdict: refused }
+  }
+}
+
+// THE PREDICATE: A SEQUENCE THAT REMOVES OR OVERWRITES A PROTECTED PATH IS REFUSED. The protected set is the
+// verified digest paths, the live link's target and the live link itself. Read-only programs may name them;
+// rm may not name one or any directory containing one; mv and ln may not take one as a destination or a
+// source, except the single legal switch: renaming this program's own `.next` link onto the model link.
+// A path that merely contains a protected path as a directory prefix is covered, so `rm -f <root>/sha256`
+// cannot slip through as a parent.
+type ServingProtectedPaths {
+  paths: List<String>
+  model_link: String
+  model_link_next: String
+}
+
+fn serving_covers(argument: String, protected: String) -> Bool {
+  argument == protected || string_contains(s: protected, pattern: concat(argument, "/"))
+}
+
+fn serving_names_protected(argument: String, protected: ServingProtectedPaths) -> Bool {
+  any(xs: protected.paths, predicate: fn(p) { serving_covers(argument: argument, protected: p) })
+    || serving_covers(argument: argument, protected: protected.model_link)
+}
+
+// Read-only is a fact of the modeled program identity, not of a spelling: each row is the identity its own
+// extdeps module declares. curl is absent (its -o writes a file).
+fn serving_read_only_program(program: ProgramIdentity) -> Bool {
+  program == sha256sum_program() || program == readlink_program() || program == stat_program() || program == ls_program() || program == cat_program() || program == test_program()
+}
+
+fn serving_operand_words(command: ArgvCommand) -> List<String> {
+  filter(command.arguments, a => !starts_with(s: a, prefix: "-"))
+}
+
+// A relative operand cannot be judged against absolute protected paths without the working directory, so
+// it is treated as endangering (fail closed) rather than skipped.
+fn serving_relative_operand(argument: String) -> Bool {
+  !starts_with(s: argument, prefix: "/")
+}
+
+fn serving_operands(command: ArgvCommand) -> List<String> {
+  filter(serving_operand_words(command: command), a => starts_with(s: a, prefix: "/"))
+}
+
+fn serving_destination_forbidden(destination: String, protected: ServingProtectedPaths) -> Bool {
+  serving_names_protected(argument: destination, protected: protected) || destination == protected.model_link
+}
+
+// A command with no absolute operand where one is required has no destination to judge: it is endangering
+// (fail closed), never a fabricated empty path.
+fn serving_mutating_endangers(invocation: String, command: ArgvCommand, protected: ServingProtectedPaths) -> Bool {
+  let operands = serving_operands(command: command)
+  match last(operands) {
+    Absent => true
+    Present { value: destination } =>
+      if invocation == "mv" {
+        match get(xs: operands, index: 0) {
+          Absent => true
+          Present { value: source } =>
+            if source == protected.model_link_next && destination == protected.model_link {
+              false
+            } else {
+              serving_destination_forbidden(destination: destination, protected: protected) || serving_names_protected(argument: source, protected: protected)
+            }
+        }
+      } else {
+        if invocation == "ln" {
+          serving_destination_forbidden(destination: destination, protected: protected)
+        } else {
+          any(xs: operands, predicate: fn(a) { serving_destination_forbidden(destination: a, protected: protected) })
+        }
+      }
+  }
+}
+
+// An operand with a `.` or `..` segment or a doubled slash names a path by a spelling the string comparison
+// cannot place (`<root>/partial/../sha256/<digest>` is neither equal to nor inside the protected path), so it
+// refuses with the relative operands. Symlinked directories are not followed: the layout creates none.
+// A flag that carries a path or a value (`--target-directory=DIR`) names a destination inside the flag itself,
+// where the operand filter would drop it, so it refuses with the unplaceable spellings.
+fn serving_flag_carries_path(argument: String) -> Bool {
+  starts_with(s: argument, prefix: "-") && (string_contains(s: argument, pattern: "/") || string_contains(s: argument, pattern: "="))
+}
+
+fn serving_unplaceable_spelling(argument: String) -> Bool {
+  serving_flag_carries_path(argument: argument) || string_contains(s: argument, pattern: "/../") || string_contains(s: argument, pattern: "/./") || string_contains(s: argument, pattern: "//")
+    || ends_with(s: argument, suffix: "/..") || ends_with(s: argument, suffix: "/.")
+}
+
+// A relative operand cannot be placed against the absolute protected set, so every program off the read-only
+// list that carries one is refused BEFORE the per-program branches (mv and ln included).
+fn serving_command_endangers(command: ArgvCommand, protected: ServingProtectedPaths) -> Bool {
+  let invocation = command.program.invocation as String
+  if serving_read_only_program(program: command.program) {
+    false
+  } else {
+    any(xs: serving_operand_words(command: command), predicate: fn(a) { serving_relative_operand(argument: a) || serving_unplaceable_spelling(argument: a) })
+      || serving_mutating_endangers(invocation: invocation, command: command, protected: protected)
+  }
+}
+
+fn serving_sequence_endangers(commands: List<ArgvCommand>, protected: ServingProtectedPaths) -> Bool {
+  any(xs: commands, predicate: fn(c) { serving_command_endangers(command: c, protected: protected) })
+}
+
+// DECLARED FRONTIER (DESIGN 3c): the rows below are consumed by the startup program's wet driver, which is not
+// in this change.
+data serving_startup_placement_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.serving_artifact_placement", decl_name: "serving_fetch_leg"),
+    reason: "the wet end-to-end run is gated on rotation of the keys the card holds plus a mint entry for cloudflare-r2-models-read-token; until then every R2 fetch leg refuses typed",
+    dissolution: unbound_dissolution(description: "feature:rented-models-read-mint — the operator rotates the card's keys and a mint entry for the models read token exists; then a typed signed-fetch binding replaces the refusing arms"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.serving_artifact_placement", decl_name: "serving_artifact_sequence"),
+    reason: "stale partials left by a crashed attempt are residue this program never removes; they are counted here, not silent",
+    dissolution: unbound_dissolution(description: "feature:rented-release-s5 — S5 release owns deleting stale partials and any verified digest path; the population is every <root>/partial entry no live attempt owns"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.serving_artifact_placement", decl_name: "serving_engine_verdict"),
+    reason: "the engine tarball digest is unpinned, so installed-file verification dissolves RentedTarballUnobserved's consumer obligation only partially",
+    dissolution: unbound_dissolution(description: "feature:rented-tarball-digest-read — an operator reads the tarball's sha256 and size from the store that holds it and pins it"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.serving_artifact_placement", decl_name: "serving_sequence_endangers"),
+    reason: "an on-card onstart script (delivery B) is not modeled; the program runs from the lab over the anchored FleetSsh transport",
+    dissolution: unbound_dissolution(description: "trigger:a Vast restart observed to drop the launch — only then is an on-card onstart script modeled"),
+  ),
+]

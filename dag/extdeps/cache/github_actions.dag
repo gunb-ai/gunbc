@@ -25,11 +25,13 @@ import std.cache_interface {
   Repo,
   ByteCapacity,
   CapacityBounded,
-  EffectiveLimitUnobserved,
+  ExactLimit,
   LeastRecentlyUsed,
-  ReleasedNever,
+  ReleasedAfterIdle,
   ReplaceExisting,
 }
+import std.measure { ByteSize, Second, byte_size, second, seconds_per_day }
+import std.types { Bool }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -42,6 +44,32 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data gha_actions_cache_id: CacheInterfaceId = "gha_actions_cache"
+
+// Cited: docs.github.com caching-dependencies-to-speed-up-workflows, Restrictions for accessing
+// a cache. A default-branch save is restorable by pull requests (and other refs); a pull-request
+// save is created for the merge ref and is restorable only by re-runs of that pull request.
+type GhaCacheEntryScope
+  = GhaCacheDefaultBranchScope
+  | GhaCachePullRequestMergeRefScope
+
+fn gha_cache_entry_restorable_by(saved: GhaCacheEntryScope, restorer: GhaCacheEntryScope) -> Bool {
+  match saved {
+    GhaCacheDefaultBranchScope => true
+    GhaCachePullRequestMergeRefScope => match restorer {
+      GhaCachePullRequestMergeRefScope => true
+      GhaCacheDefaultBranchScope => false
+    }
+  }
+}
+
+fn gha_actions_cache_idle_release() -> Second {
+  second(count: 7 * seconds_per_day())
+}
+
+// Cited: docs.github.com usage limits — "By default, the limit is 10 GB per repository".
+fn gha_actions_cache_default_byte_cap() -> ByteSize {
+  byte_size(count: 10 * 1000 * 1000 * 1000)
+}
 
 data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
   identity: gha_actions_cache_id
@@ -71,7 +99,7 @@ data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: TarArchive
     locality: CrossHostNetwork
-    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
+    retention: { release_policy: ReleasedAfterIdle { idle: gha_actions_cache_idle_release() }, capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: gha_actions_cache_default_byte_cap() } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
     atomicity: WriteThenCommit
     auth: ApiKey
     read_latency: WanTensMs
@@ -90,6 +118,27 @@ data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
       evidence: VendorCitation {
         source: "GitHub Actions cache key input"
         url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#usage-limits-and-eviction-policy"
+      }
+    },
+    {
+      field: "placement.retention.release_policy"
+      evidence: VendorCitation {
+        source: "GitHub will remove any cache entries that have not been accessed in over 7 days"
+        url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#usage-limits-and-eviction-policy"
+      }
+    },
+    {
+      field: "placement.retention.capacity"
+      evidence: VendorCitation {
+        source: "By default, the limit is 10 GB per repository; LRU by last access once at capacity"
+        url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#usage-limits-and-eviction-policy"
+      }
+    },
+    {
+      field: "key_derivation.visibility_scope"
+      evidence: VendorCitation {
+        source: "Workflow runs can restore caches created in either the current branch or the default branch; a pull_request save is scoped to refs/pull/.../merge"
+        url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#restrictions-for-accessing-a-cache"
       }
     },
   ]

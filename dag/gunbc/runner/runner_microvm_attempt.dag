@@ -6,7 +6,7 @@ import gunbc.runner.runner_microvm_attempt_identity {
 import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd { SystemdUnitProperty, SliceProperty, PartOf }
-import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_instance_name }
 import gunbc.fabric.fabric_cell_converge {
@@ -72,7 +72,7 @@ fn runner_microvm_attempt_jail_base(attempt: MicroVmAttempt) -> String {
 // cgroup later is a different operation with different guarantees and no atomicity. So the property
 // travels with the launch or the launch is wrong.
 fn runner_microvm_attempt_slice_property(attempt: MicroVmAttempt) -> SystemdRunProperty {
-  SystemdRunProperty {
+  NamedUnitSetting {
     property: SliceProperty,
     value: fabric_cell_slice_name(slot: attempt.slot) as NonEmptyStr,
   }
@@ -119,7 +119,7 @@ fn runner_microvm_attempt_slice_property(attempt: MicroVmAttempt) -> SystemdRunP
 // reservation, discarding the accounting gunbc.runner.runner_microvm_attempt exists to keep. Separate
 // slices, bound lifetimes.
 fn runner_microvm_attempt_part_of_property(attempt: MicroVmAttempt) -> SystemdRunProperty {
-  SystemdRunProperty {
+  NamedUnitSetting {
     property: PartOf,
     value: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: attempt.slot) as String),
   }

@@ -35,7 +35,7 @@ data ts_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "last",            template: "\{recv\}[\{recv\}.length - 1]",               wraps_result: false },
   { method_name: "first",           template: "\{recv\}[0]",                                  wraps_result: false },
   { method_name: "enumerate",       template: "\{recv\}.map((v, i) => [i, v])",               wraps_result: false },
-  { method_name: "chars",           template: "Array.from(\{recv\}).map(c => c.charCodeAt(0))", wraps_result: false },
+  { method_name: "chars",           template: "Array.from(\{recv\}).map(c => c.codePointAt(0)!)", wraps_result: false },
   { method_name: "skip",            template: "\{recv\}.slice(\{arg\})",                      wraps_result: false },
   { method_name: "take",            template: "\{recv\}.slice(0, \{arg\})",                   wraps_result: false },
   { method_name: "string_contains", template: "\{recv\}.includes(\{arg\})",                   wraps_result: false },

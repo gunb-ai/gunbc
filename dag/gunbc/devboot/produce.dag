@@ -88,6 +88,7 @@ import extdeps.git.plumbing {
 }
 import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
 import extdeps.rust.target_triple { parse_rust_target_triple }
+import gunbc.owned_cargo_target { owned_cargo_target_dir }
 import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
 import extdeps.rust.cargo {
   CargoTarget, Lib, Bin, CargoTest, Example, Bench,
@@ -178,8 +179,13 @@ fn devboot_source_dir(work_root: String, token: String) -> String {
   join([work_root, "/", token, "/source"], "")
 }
 
+// The partition of an owned cargo target is the one concept gunbc.owned_cargo_target owns
+// (C4): <work_root>/<owner>/target. devboot and the compute provider
+// (compute_layout) consume it; the host-seed targets join as they stop sharing the ambient
+// host target, a named frontier. This fn delegates rather
+// than re-deriving the join, so the shape has exactly one home.
 fn devboot_target_dir(work_root: String, token: String) -> String {
-  join([work_root, "/", token, "/target"], "")
+  owned_cargo_target_dir(base_root: work_root, owner: token)
 }
 
 type SourceMaterialization

@@ -58,8 +58,10 @@ type RunnerWidthTransition sole_constructor {
 // equals the target and they owe no retirees while those rows stay open. srv1 keeps
 // `runner-slot-26-25-gib` at prior 50 until a typed completion receipt supersedes it; run
 // 38785880931 is cited in the PR body and is not readable evidence here (review 80879). The
-// 12→7 cut is a second open row. Required is the union: committed(50) minus committed(7) =
-// srv1-07..12 and 14..50 (13 stays). srv2 is absent deliberately.
+// 12→7 cut is a second open row, and the 7→5 cut (user-work slice to 88 GiB, operator ruling
+// 2026-10-16, gunbc.live_deploy.user_work_pool_slots) a third, and the 5→3 cut (the attempt-worker slice
+// stacked on it, operator decision 2026-10-15 msg_57614325) a fourth. Required is the union:
+// committed(50) minus committed(3) = srv1-03..12 and 14..50 (13 stays). srv2 is absent deliberately.
 //
 // A ROW IS SUPERSEDED ONLY WHEN ITS OWN TRANSITION COMPLETES. Editing `prior_width` to match a later
 // observation would destroy the durability the declaration exists for -- the set would track the
@@ -75,6 +77,16 @@ data slot_width_transition_26_25: List<RunnerWidthTransition> = [
     transition_id: "runner-slot-width-12-7" as NonEmptyStr,
     host: operator_host_srv1,
     prior_width: 12,
+  },
+  RunnerWidthTransition {
+    transition_id: "runner-slot-width-7-5" as NonEmptyStr,
+    host: operator_host_srv1,
+    prior_width: 7,
+  },
+  RunnerWidthTransition {
+    transition_id: "runner-slot-width-5-3" as NonEmptyStr,
+    host: operator_host_srv1,
+    prior_width: 5,
   },
   RunnerWidthTransition {
     transition_id: "runner-slot-26-25-gib" as NonEmptyStr,

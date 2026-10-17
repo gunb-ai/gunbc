@@ -48,15 +48,19 @@ import gunbc.session_lease {
   Start,
   classify_process_port_upsert,
 }
-import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv }
+import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv, git_non_bare_git_dir_name }
 import std.measure { ByteSize, byte_size_count, Kibibyte }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus,
   MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
-  ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty,
-  RemainAfterExitProperty, ExecStopPostProperty,
+  ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty, ReadOnlyPathsProperty,
+  ExecStopPostProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty,
+  systemd_service_unit_name, systemd_unit_name_wire, systemd_unit_name_refusal_detail,
+  SystemdUnitNameAdmission, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty,
+  SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitHook, AttemptExitHookRendered, AttemptExitHookRefused, attempt_exit_hook,
@@ -67,10 +71,11 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 import extdeps.posix.signal { linux_standard_signal_number, linux_standard_signal_render }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
+  SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet,
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_command_argument_words,
 }
-import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
+import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties, UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -138,6 +143,7 @@ import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
   FilesystemCreateKindUnrecognized, filesystem_create_new,
 }
+import std.filesystem { path_parent_directory }
 import extdeps.shell
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile }
@@ -1340,6 +1346,11 @@ fn dispatch_attempt_state_path_for_instance(
 // not to loosen the reader but to stop writing the wrong content into a typed stream. The worker's
 // stdout keeps its own sibling file, and provider-events.jsonl is written only by something that
 // speaks the schema.
+// THE WORKER-OWNED CHILD OF THE ATTEMPT DIRECTORY. Owner-side records (request-binding.json,
+// launch-identity.json, attempt-key, admission) stay in dispatch_attempt_state_path_for_instance
+// itself, which is read-only to the unit. The log path is the single producer of that child:
+// ReadWritePaths scratch is path_parent_directory of stdout, and events/request scratch follow
+// this same parent. Do not add a parallel worker-dir function.
 fn dispatch_attempt_worker_log_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -1351,7 +1362,7 @@ fn dispatch_attempt_worker_log_path_for_instance(
       node_id: node_id,
       attempt_key: attempt_key,
     ),
-    "/worker-stdout.log",
+    "/worker/worker-stdout.log",
   ], "")
 }
 
@@ -1361,11 +1372,11 @@ fn dispatch_attempt_request_scratch_path_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    dispatch_attempt_state_path_for_instance(
+    path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
       instance: instance,
       node_id: node_id,
       attempt_key: attempt_key,
-    ),
+    )),
     "/harness-request.json",
   ], "")
 }
@@ -1376,11 +1387,11 @@ fn dispatch_attempt_events_path_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    dispatch_attempt_state_path_for_instance(
+    path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
       instance: instance,
       node_id: node_id,
       attempt_key: attempt_key,
-    ),
+    )),
     "/provider-events.jsonl",
   ], "")
 }
@@ -1829,30 +1840,42 @@ fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key
 // event the attempt's next obligation waits on, and a unit that stays `active (exited)` never stops,
 // so its stop hook could not fire at that moment. With an exit hook the unit stops with its process
 // and its record carries the exit; the belt reads a collected reviewer from that record
-// (gunbc.roadmap.roadmap_belt_actuate belt_review_process). The SUPERVISOR shares this shape and passes no
-// hook: its convene gate still reads the retained unit, and moving it onto the record is not part of
-// this change -- so Absent keeps RemainAfterExit exactly as before, and that is the only reason the
-// parameter is optional.
+// (gunbc.roadmap.roadmap_belt_actuate belt_review_process). The SUPERVISOR shares this shape and now carries the same
+// hook (AttemptSupervisorRole): its convene gate reads the exit record, not a retained unit, so a
+// finished supervisor no longer stays loaded and blocks the continuation it authorized
+// (gunbc.recurring_failure_mode an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable).
+// ExecStopPost runs after a failed unit too, so a failed supervisor records its failure; RemainAfterExit
+// is gone from every role.
 fn dispatch_review_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
   log_path: String,
   review_dir: String,
-  exit_hook: NonEmptyStr?,
+  exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
-  concat([
-    SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
-    SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
-    SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
-    SystemdRunProperty { property: StandardErrorProperty, value: join(["append:", log_path], "") as NonEmptyStr },
-    SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
-    SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
-    SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
-    SystemdRunProperty { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
-  ], match exit_hook {
-    Present { value: hook } => [SystemdRunProperty { property: ExecStopPostProperty, value: hook }]
-    Absent => [SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr }]
-  })
+  concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_model_driven_privilege_confinement_properties(), concat([
+    NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+    NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
+    NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
+    NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", log_path], "") as NonEmptyStr },
+    NamedUnitSetting { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
+    NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
+    NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
+    NamedUnitSetting { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
+  ], [NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook }])))
+}
+
+// THE PRIVILEGE CONFINEMENT EVERY UNIT RUNNING MODEL-DRIVEN CODE CARRIES, spelled once: no setuid or
+// setgid escalation, no setuid/setgid file creation, and an empty capability bounding set. Worker,
+// reviewer, auditor and supervisor units share it (WORKER-ROOT-EQUIVALENT-2, item 4). The review roles
+// launch through the user manager, which cannot switch uid, so they keep the owner's identity and this
+// is their whole privilege reduction; the dedicated identity needs the system-manager launcher.
+fn dispatch_model_driven_privilege_confinement_properties() -> List<SystemdRunProperty> {
+  [
+    NamedUnitSetting { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },
+    NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
+    EmptyCapabilityBoundingSet,
+  ]
 }
 
 data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
@@ -1919,7 +1942,7 @@ fn dispatch_review_unit_command(
       working_directory: instance.repo_root as String,
       log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
       review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-      exit_hook: Present { value: exit_hook },
+      exit_hook: exit_hook,
     ),
     setenv_bindings: [],
     command_argv: gunbc_harness_review_argv(
@@ -1981,7 +2004,7 @@ fn dispatch_audit_unit_command(
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/auditor-stdout.log"], ""),
       review_dir: dir,
-      exit_hook: Present { value: exit_hook },
+      exit_hook: exit_hook,
     ),
     setenv_bindings: [],
     command_argv: [
@@ -2036,6 +2059,7 @@ fn dispatch_supervisor_unit_command(
   turn: Int,
   worktree_path: String,
   brief: String,
+  exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   gunbc_user_work_transient_command(
@@ -2045,7 +2069,7 @@ fn dispatch_supervisor_unit_command(
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/supervisor-stdout.log"], ""),
       review_dir: dir,
-      exit_hook: none,
+      exit_hook: exit_hook,
     ),
     setenv_bindings: [],
     command_argv: [
@@ -2865,6 +2889,11 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
 // a new step -- the attempt directory and the one subdirectory it is required to contain come into
 // existence together, and publication_receipt_directory_is_named_once_note's requirement that a
 // reader be able to LIST the directory holds from attempt birth instead of from first publish.
+// The worker/ child (path_parent_directory of dispatch_attempt_worker_log_path_for_instance) is
+// in this same list: the belt runs attempt_state_prepare_argv_for_instance as step
+// attempt-state-prepare, then belt_attempt_state_initialize_for_instance writes
+// launch-identity.json, then the unit starts. ReadWritePaths has no '-' prefix, so a missing
+// worker/ is NAMESPACE 226 rather than a silent drop of the write grant (Manager B).
 fn attempt_state_prepare_argv_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -2881,6 +2910,11 @@ fn attempt_state_prepare_argv_for_instance(
         node_id: node_id,
         attempt_key: attempt_key,
       ),
+      path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      )),
       dispatch_attempt_publication_dir_for_instance(
         instance: instance,
         node_id: node_id,
@@ -2958,8 +2992,16 @@ fn attempt_current_pointer_argv_for_instance(
 // `duplicate session` has no spelling here. A unit that has exited stays loaded in `failed` or
 // `inactive` carrying its Result, which is the evidence the next step reads; clearing it is an
 // explicit act rather than a side effect of starting the next attempt.
-fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
-  join(["gunbc-attempt-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
+  join(["gunbc-attempt-", node_id, "-", attempt_key], "")
+}
+
+fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> SystemdUnitNameAdmission {
+  if node_id == "" {
+    SystemdUnitNameStemEmpty
+  } else {
+    systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: node_id, attempt_key: attempt_key))
+  }
 }
 
 // THE WORKER'S UNIT PROPERTIES, and every one of them answers something the tmux path either could
@@ -2969,7 +3011,9 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 // applied through the same grant-to-unit fold the compute provider uses
 // (gunbc.compute.unit_bounds compute_grant_unit_properties), so the memory the ledger counts and the
 // memory the cgroup enforces are one figure; it used to be the instance ceiling read directly. WorkingDirectory is the controller checkout for the reason
-// dispatch_pane_working_directory states. StandardOutput and StandardError append to the attempt's
+// dispatch_pane_working_directory states (harness: repo_root). ReadWritePaths starts with this
+// attempt's worktree, not that cwd: a harness worker that ran from /source used to carve /source
+// writable (bright-moth-475 on 13942, live unit ReadWritePaths). StandardOutput and StandardError append to the attempt's
 // own events path, so capture is a unit property rather than a quoted shell payload piped through
 // a terminal multiplexer. ExecStopPost is the attempt's exit record (gunbc.roadmap.roadmap_attempt_exit_spool
 // attempt_exit_hook): one create-only mkdir whose name carries the manager's stop-time facts, written
@@ -2977,6 +3021,7 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 fn dispatch_worker_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
+  attempt_worktree: String,
   worker_log_path: String,
   granted: Kibibyte,
   process_bounds: UnitProcessBounds,
@@ -2985,6 +3030,7 @@ fn dispatch_worker_unit_properties(
   dispatch_worker_unit_stream_properties(
     instance: instance,
     working_directory: working_directory,
+    attempt_worktree: attempt_worktree,
     stdout_path: worker_log_path,
     stderr_path: worker_log_path,
     granted: granted,
@@ -2996,6 +3042,7 @@ fn dispatch_worker_unit_properties(
 fn dispatch_worker_unit_stream_properties(
   instance: HostDashboardInstance,
   working_directory: String,
+  attempt_worktree: String,
   stdout_path: String,
   stderr_path: String,
   granted: Kibibyte,
@@ -3003,15 +3050,19 @@ fn dispatch_worker_unit_stream_properties(
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
   concat(
-    compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
+    concat(
+      compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
+      dispatch_model_driven_privilege_confinement_properties(),
+    ),
     [
-      SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", stdout_path], "") as NonEmptyStr },
-      SystemdRunProperty { property: StandardErrorProperty, value: join(["append:", stderr_path], "") as NonEmptyStr },
-      SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
-      SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
-      SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
-      SystemdRunProperty { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance) as NonEmptyStr },
-      SystemdRunProperty { property: ExecStopPostProperty, value: exit_hook },
+      NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", stdout_path], "") as NonEmptyStr },
+      NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", stderr_path], "") as NonEmptyStr },
+      NamedUnitSetting { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
+      NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
+      NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
+      NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
+      NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_git_pointer_readonly_paths(instance: instance, attempt_worktree: attempt_worktree) as NonEmptyStr },
+      NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
     ],
   )
 }
@@ -3032,17 +3083,121 @@ fn dispatch_worker_unit_stream_properties(
 // not (attempt_worker_unit_observation), and a unit that is gone with NO record is reported as
 // exactly that -- never as a worker that did not run.
 
-// THE WORKER MAY WRITE ONLY UNDER THE INSTANCE ROOT: its worktree, its attempt state, the spool. The
-// second belt-dispatched attempt (2026-09-04) edited the deploy tree instead of its worktree, having
-// inferred the tree from the one absolute path it was shown; ProtectHome=read-only with these paths
-// carved out makes that a refused write rather than a dirty release tree. The repository's own
-// .git/worktrees directory is writable because the attempt worktree's git metadata lives there.
-fn dispatch_worker_writable_paths(instance: HostDashboardInstance) -> String {
-  join([
-    instance.instance_root as String,
-    " ",
-    instance.repo_root as String, "/.git/worktrees",
-  ], "")
+// THE WORKER'S WRITABLE SET IS THIS ATTEMPT'S PATHS, NOT THE INSTANCE ROOT AND NOT THE WHOLE
+// DISPATCH STATE. ProtectSystem=strict makes /usr /boot /etc /opt read-only except ReadWritePaths.
+// Spelling instance_root as that carve-out on srv1_live (instance_root=/opt/gunbc) reopened
+// /opt/gunbc/bin and the deployed checkout (smart-gull-336 item c). Carving the whole common
+// git dir would reopen the same class: the worker plants .git/hooks or .git/config, then
+// belt_commit_staged runs git from the belt process and the hook executes as the controller
+// (bright-moth-475 on 13942). Choice (1): keep objects/refs/logs/packed-refs and THIS attempt's
+// .git/worktrees/<entry> writable; do not carve .git itself, so hooks, config, and info cannot be
+// created or written, and never the .git/worktrees parent: its sibling entries hold other attempts'
+// commondir and gitdir, and a worker that could rewrite them would redirect the controller's git in
+// that sibling's worktree (review 81064). Choice (2)
+// (never run git with authority in a worker-writable repo) is the publication-transport
+// precedent and is not this cut; belt_commit_git still prefixes git_command_config_inert_args
+// so a planted hook would not be the hooksPath the controller uses. /tmp is PrivateTmp=yes.
+//
+// THE SHARED REF STORE IS A DECLARED RESIDUAL, NOT CONFINED. refs/, logs/ and packed-refs stay
+// writable as wholes because git updates a ref through a <ref>.lock created beside it, so the ref's
+// directory must be writable, and refs/heads/dispatch/ holds every attempt's branch. A worker can
+// therefore move any ref in the shared repository, including another attempt's branch and the
+// controller's base refs; it still cannot reach hooks or config, and the controller's own git runs
+// with git_command_config_inert_args. Removal: a per-attempt git directory (the worker commits into a
+// repository of its own whose objects borrow the shared store as an alternate, and the controller
+// fetches the attempt branch from it), recorded on
+// gunbc.recurring_failure_mode.protect_carve_out_reopens_the_protected_subject.
+fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance, attempt_worktree: String) -> List<String> {
+  let git = join([instance.repo_root as String, "/.git"], "")
+  [
+    join([git, "/objects"], ""),
+    join([git, "/refs"], ""),
+    join([git, "/logs"], ""),
+    dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
+    join([git, "/packed-refs"], ""),
+  ]
+}
+
+fn dispatch_worktree_entry_name(attempt_worktree: String) -> String {
+  fold(split(s: attempt_worktree, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+}
+
+fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_worktree: String) -> String {
+  join([instance.repo_root as String, "/.git/worktrees/", dispatch_worktree_entry_name(attempt_worktree: attempt_worktree)], "")
+}
+
+// THE GITFILE AND WORKTREE POINTER FILES REDIRECT THE CONTROLLER'S GIT. They sit inside the
+// writable carve-outs (the worktree and .git/worktrees/<n>/), and ReadOnlyPaths= on those exact
+// files wins over the parent ReadWritePaths. systemd can only bind a path that exists, so the
+// entries carry NO '-' prefix (systemd.exec(5): '-' ignores a missing path): the belt's staged
+// spawn runs worktree-add before it starts the unit (gunbc.roadmap.roadmap_belt_actuate), so all
+// three exist at start, and a missing one fails the unit start instead of leaving the file open.
+// Index, HEAD, refs and logs under the private dir stay writable.
+//
+// config.worktree IS NOT ONE OF THEM and is not claimed read-only. git worktree add does not create
+// it, so no mount can hold it, and the worker can create it under the writable .git/worktrees/<n>/.
+// It is inert rather than protected: git reads $GIT_DIR/config.worktree only when
+// extensions.worktreeConfig is set (git-worktree(1), CONFIGURATION FILE), and that key lives in the
+// common config, dispatch_worker_common_git_config, which no writable root covers (review 81053).
+type DispatchWorkerGitPointerFiles {
+  gitfile: String
+  commondir: String
+  gitdir_file: String
+}
+
+fn dispatch_worker_git_pointer_files(instance: HostDashboardInstance, attempt_worktree: String) -> DispatchWorkerGitPointerFiles {
+  let private_dir = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree)
+  DispatchWorkerGitPointerFiles {
+    gitfile: join([attempt_worktree, "/", git_non_bare_git_dir_name], ""),
+    commondir: join([private_dir, "/commondir"], ""),
+    gitdir_file: join([private_dir, "/gitdir"], ""),
+  }
+}
+
+fn dispatch_worker_worktree_config(instance: HostDashboardInstance, attempt_worktree: String) -> String {
+  join([dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree), "/config.worktree"], "")
+}
+
+fn dispatch_worker_common_git_config(instance: HostDashboardInstance) -> String {
+  join([instance.repo_root as String, "/.git/config"], "")
+}
+
+fn dispatch_worker_git_pointer_readonly_list(instance: HostDashboardInstance, attempt_worktree: String) -> List<String> {
+  let pointers = dispatch_worker_git_pointer_files(instance: instance, attempt_worktree: attempt_worktree)
+  [pointers.gitfile, pointers.commondir, pointers.gitdir_file]
+}
+
+fn dispatch_worker_git_pointer_readonly_paths(instance: HostDashboardInstance, attempt_worktree: String) -> String {
+  join(dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: attempt_worktree), separator: " ")
+}
+
+fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> List<String> {
+  concat(
+    [attempt_worktree, scratch_directory],
+    dispatch_worker_git_writable_paths(instance: instance, attempt_worktree: attempt_worktree),
+  )
+}
+
+fn dispatch_worker_writable_paths(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> String {
+  join(dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory), separator: " ")
+}
+
+fn dispatch_worker_path_is_readonly(instance: HostDashboardInstance, attempt_worktree: String, path: String) -> Bool {
+  any(
+    dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: attempt_worktree),
+    p => path == p,
+  )
+}
+
+fn dispatch_worker_path_is_writable(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String, path: String) -> Bool {
+  if dispatch_worker_path_is_readonly(instance: instance, attempt_worktree: attempt_worktree, path: path) {
+    false
+  } else {
+    any(
+      dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory),
+      root => path == root || starts_with(s: path, prefix: join([root, "/"], "")),
+    )
+  }
 }
 
 // THE WORKER UNIT IS PLANNED WITHOUT ITS BOUNDS AND STARTED WITH THEM. Everything about the unit
@@ -3054,7 +3209,10 @@ fn dispatch_worker_writable_paths(instance: HostDashboardInstance) -> String {
 type DispatchWorkerUnitPlan {
   systemd_run_program: FilePath
   unit: NonEmptyStr
+  node_id: String
+  attempt_key: String
   working_directory: String
+  attempt_worktree: String
   stdout_path: String
   stderr_path: String
   inner_argv: List<String>
@@ -3065,20 +3223,12 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
   dispatch_worker_unit_stream_properties(
     instance: instance,
     working_directory: plan.working_directory,
+    attempt_worktree: plan.attempt_worktree,
     stdout_path: plan.stdout_path,
     stderr_path: plan.stderr_path,
     granted: granted,
     process_bounds: process_bounds,
     exit_hook: plan.exit_hook,
-  )
-}
-
-fn dispatch_worker_unit_command(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> SystemdRunCommandReading {
-  gunbc_user_work_transient_command(
-    unit: plan.unit,
-    properties: dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: process_bounds),
-    setenv_bindings: [],
-    command_argv: plan.inner_argv,
   )
 }
 
@@ -3100,6 +3250,7 @@ fn dispatch_systemd_unit_container_plan(
   node_id: String,
   attempt_key: String,
   pane_working_directory: String,
+  worktree_path: String,
   stdout_path: String,
   stderr_path: String,
   provider_inner: List<String>,
@@ -3117,22 +3268,43 @@ fn dispatch_systemd_unit_container_plan(
         ], ""),
       }
     Present { value: program } =>
-      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
-        AttemptExitHookRefused { reason } =>
-          DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
-        AttemptExitHookRendered { exec_line } =>
-          DispatchSessionContainerReady {
-            container: SystemdUnitContainer {
-              plan: DispatchWorkerUnitPlan {
-                systemd_run_program: program,
-                unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
-                working_directory: pane_working_directory,
-                stdout_path: stdout_path,
-                stderr_path: stderr_path,
-                inner_argv: provider_inner,
-                exit_hook: exec_line,
-              },
-            },
+      match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+        SystemdUnitNameStemEmpty =>
+          DispatchSessionContainerUnavailable {
+            step: "attempt-unit-name" as NonEmptyStr,
+            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty),
+          }
+        SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+          DispatchSessionContainerUnavailable {
+            step: "attempt-unit-name" as NonEmptyStr,
+            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }),
+          }
+        SystemdUnitNameOverlong { length: n } =>
+          DispatchSessionContainerUnavailable {
+            step: "attempt-unit-name" as NonEmptyStr,
+            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }),
+          }
+        SystemdUnitNameAdmitted { name } =>
+          match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
+            AttemptExitHookRefused { reason } =>
+              DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
+            AttemptExitHookRendered { exec_line } =>
+              DispatchSessionContainerReady {
+                container: SystemdUnitContainer {
+                  plan: DispatchWorkerUnitPlan {
+                    systemd_run_program: program,
+                    unit: systemd_unit_name_wire(name: name),
+                    node_id: node_id,
+                    attempt_key: attempt_key,
+                    working_directory: pane_working_directory,
+                    attempt_worktree: worktree_path,
+                    stdout_path: stdout_path,
+                    stderr_path: stderr_path,
+                    inner_argv: provider_inner,
+                    exit_hook: exec_line,
+                  },
+                },
+              }
           }
       }
   }
@@ -3192,6 +3364,7 @@ fn dispatch_session_container_for_provider(
         node_id: node_id,
         attempt_key: attempt_key,
         pane_working_directory: pane_working_directory,
+        worktree_path: worktree_path,
         stdout_path: worker_log_path,
         stderr_path: worker_log_path,
         provider_inner: provider_inner,
@@ -3204,6 +3377,7 @@ fn dispatch_session_container_for_provider(
         node_id: node_id,
         attempt_key: attempt_key,
         pane_working_directory: pane_working_directory,
+        worktree_path: worktree_path,
         stdout_path: events_path,
         stderr_path: worker_log_path,
         provider_inner: provider_inner,
@@ -4268,12 +4442,23 @@ type AttemptUnitObservation
 // indirection buys local-vs-ssh dispatch, which this observation does not need: the belt runs on
 // the host whose units it is reading, so the local manager IS the subject.
 fn attempt_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> AttemptUnitObservation {
-  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_unit_property_wire(property: property))
-  if read.success {
-    AttemptUnitFinished { exit_status: trim(read.value) }
+  if starts_with(s: unit as String, prefix: "gunbc-attempt-") {
+    let read = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
+    if read.success {
+      AttemptUnitFinished { exit_status: trim(read.value) }
+    } else {
+      AttemptUnitUnreadable {
+        reason: join(["systemctl show refused for ", unit as String], ""),
+      }
+    }
   } else {
-    AttemptUnitUnreadable {
-      reason: join(["systemctl --user show refused for ", unit as String], ""),
+    let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_unit_property_wire(property: property))
+    if read.success {
+      AttemptUnitFinished { exit_status: trim(read.value) }
+    } else {
+      AttemptUnitUnreadable {
+        reason: join(["systemctl --user show refused for ", unit as String], ""),
+      }
     }
   }
 }

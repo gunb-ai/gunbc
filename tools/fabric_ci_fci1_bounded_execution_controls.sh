@@ -22,7 +22,7 @@ canonical_root=/var/lib/gunbc/fabric/allocation
 scratch=$(mktemp -d /tmp/fci1-bounded-controls.XXXXXX)
 trap 'rm -rf -- "$scratch"' EXIT
 fci1_install_controls_slice || exit 2
-trap 'rm -rf -- "$scratch"; fci1_remove_controls_slice' EXIT
+trap 'rm -rf -- "$scratch"; fci1_remove_controls_slice || exit 1' EXIT
 
 store_digest() {
   if [[ -d $canonical_root ]]; then

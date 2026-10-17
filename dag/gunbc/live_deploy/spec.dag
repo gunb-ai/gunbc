@@ -37,6 +37,7 @@ import gunbc.host.host_software_surface {
 }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name,
+  attempt_worker_slice_unit_name,
   repository_convergence_slice_unit_name,
   approval_broker_slice_unit_name,
 }
@@ -503,6 +504,10 @@ fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
 
 fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", gunbc_approval_broker_slice_unit_name as String], "") as NonEmptyStr
+}
+
+fn gunbc_attempt_worker_slice_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", attempt_worker_slice_unit_name as String], "") as NonEmptyStr
 }
 
 // THE BROKER'S SERVICE CONFIG IS THE SAME TYPE, NOT A PARALLEL ONE. What a served gunbc process

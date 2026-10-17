@@ -1,0 +1,234 @@
+module test.claim.host.microvm_controller_install_typed_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { list_at_optional }
+import std.content_hash { content_hash_validate_lower_hex_length }
+import gunbc.host.host_effect_realize {
+  MicrovmControllerInstallStep, MicrovmControllerInstallReady, MicrovmControllerInstallRefused,
+  microvm_controller_install_staging, microvm_controller_starts_no_instance_refusal,
+  microvm_controller_step_text, microvm_controller_step_name, microvm_controller_step_stdin,
+  microvm_controller_step_words, microvm_controller_argv_step,
+}
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
+import extdeps.systemd.systemctl { systemctl_start_command }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR census W5 (shell-to-dag: microVM controller install).
+//
+// WHAT CHANGED: gunbc.host.host_effect_realize
+// realize_microvm_controller_install_on_host no longer carries
+// gunbc.live_deploy.emit microvm_controller_install_script (a `set -euo
+// pipefail` body of authored mktemp/printf/install/tar/systemctl text) through
+// retained_srvn. It PLANS a List<MicrovmControllerInstallStep> and folds it
+// over run_argv[_stdin]_over_host_effect_transport. Every claim below reads
+// that PLAN -- substrate-free, which is what makes this SubstrateInputsOnly --
+// and asserts what the script could not state about itself:
+//
+//  1. NO SHELL ON THE EDGE: no step's words carry a shell control word, and
+//     the unit and sudoers bodies cross as STDIN BYTES, never as words.
+//  2. THE W5 INVARIANT AS A PROPERTY: no step carries a systemctl lifecycle
+//     verb (systemd(1): `start` "starts (activates) the given units"); the edge
+//     writes TEMPLATE units and reloads the manager. `daemon-reload` is
+//     admitted, so the check is about the verb and not the program's name.
+//  3. THE FOLD'S SHAPE SURVIVES AS DATA: install legs carry sudo, the download
+//     and extract legs do not; the dispatch grant keeps all six legs in order
+//     at 0440; the daemon reload is LAST; a digest check never carries its
+//     expected value in the words.
+//
+// THE REDS, each of which fails if the property it guards is removed:
+//  - the invariant check applied to an INJECTED `systemctl start` (built by the
+//    production builder) must report it -- otherwise claim 2 could pass because
+//    the check never fires for anything;
+//  - the digest claim is the negative of the retired `echo '<hex>  <path>' |
+//    sha256sum -c -`, whose expected hex WAS a word.
+
+// The words that would turn a step's words into a PROGRAM rather than a command.
+data microvm_w5_shell_control_words: List<String> = ["||", "&&", ";", "set -e", "2>/dev/null", "`", "$("]
+
+// A sha256 digest field, as the retired `-c -` spelling embedded it.
+data microvm_w5_digest_width: Int = 64
+
+fn microvm_w5_revision() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr }
+}
+
+fn microvm_w5_steps() -> List<MicrovmControllerInstallStep> {
+  match microvm_controller_install_staging(revision: microvm_w5_revision()) {
+    MicrovmControllerInstallReady { steps: steps } => steps
+    MicrovmControllerInstallRefused { reason: _ } => []
+  }
+}
+
+fn microvm_w5_names() -> List<String> {
+  map(microvm_w5_steps(), s => microvm_controller_step_name(step: s))
+}
+
+fn microvm_w5_named(fragment: String) -> List<MicrovmControllerInstallStep> {
+  filter(microvm_w5_steps(), s => string_contains(s: microvm_controller_step_name(step: s), pattern: fragment))
+}
+
+fn microvm_w5_nth_name(index: Int) -> String {
+  match list_at_optional(xs: microvm_w5_names(), index: index) {
+    Present { value: n } => n
+    Absent => ""
+  }
+}
+
+// THE GUARD THAT KEEPS EVERY OTHER CLAIM HONEST: a refused plan yields the empty
+// list, and over [] `all` is true and `>= 0` holds -- so without this the whole
+// file could pass by planning nothing. The floor is the leg count the retired
+// pipeline actually ran (tree copy 1, vmm 7, image 5, dirs 4, units 5-7,
+// executor 3, grant 6, reload 1).
+test fn microvm_w5_plan_is_constructible_with_every_leg() -> Bool {
+  list_length(items: microvm_w5_steps()) >= 28
+}
+
+// GREEN (1): no step's words carry a shell control word.
+test fn microvm_w5_no_step_carries_a_shell_control_word() -> Bool {
+  let surface = join(map(microvm_w5_steps(), s => microvm_controller_step_text(step: s)), "\n")
+  !any(microvm_w5_shell_control_words, w => string_contains(s: surface, pattern: w))
+}
+
+// GREEN (1b): the file bodies cross as STDIN BYTES. A unit body contains
+// `[Unit]`; the sudoers grant is installed from a staged path. Neither may
+// appear among a step's ARGUMENT WORDS, and enough legs must carry a payload
+// that the claim is not vacuous.
+test fn microvm_w5_file_bodies_are_stdin_payloads_not_words() -> Bool {
+  let with_stdin = filter(microvm_w5_steps(), s => microvm_controller_step_stdin(step: s) != "")
+  let unit_bodies_in_argv = any(microvm_w5_steps(), s =>
+    string_contains(s: microvm_controller_step_text(step: s), pattern: "[Unit]")
+      || string_contains(s: microvm_controller_step_text(step: s), pattern: "[Service]"))
+  list_length(items: with_stdin) >= 6 && !unit_bodies_in_argv
+}
+
+// GREEN (2): THE W5 INVARIANT, and it is not vacuous -- the one systemctl verb
+// this edge legitimately runs is present.
+test fn microvm_w5_starts_no_instance_but_reloads() -> Bool {
+  let clean = all(microvm_w5_steps(), s => microvm_controller_starts_no_instance_refusal(step: s) == "")
+  let reloaded = any(microvm_w5_steps(), s => string_contains(s: microvm_controller_step_text(step: s), pattern: "daemon-reload"))
+  clean && reloaded
+}
+
+// THE RED FOR (2): an injected `systemctl start`, built by the PRODUCTION
+// builder, must be reported. Flip the invariant list to empty and this goes
+// red while the claim above stays green -- which is exactly the hole it closes.
+test fn microvm_w5_invariant_check_reports_an_injected_start() -> Bool {
+  let injected = map(
+    [systemctl_start_command(unit: "gunbc-microvm-slot@7.service" as NonEmptyStr)],
+    c => microvm_controller_argv_step(name: "injected start", command: c),
+  )
+  !all(injected, s => microvm_controller_starts_no_instance_refusal(step: s) == "")
+}
+
+// GREEN (3a): elevation matches the retired builder leg for leg -- installs were
+// shell_privileged_command_text_of_argv, the download/extract were not.
+test fn microvm_w5_installs_are_elevated_and_the_download_is_not() -> Bool {
+  // Only legs whose words THIS module spells: the tree leg is named "…tree
+  // install" too, but its argv belongs to W6's vertical and it spells no words
+  // of ours, so it is out of scope for an elevation claim about this module.
+  let installs = filter(microvm_w5_named("install"), s => list_length(items: microvm_controller_step_words(step: s)) > 0)
+  let downloads = filter(microvm_w5_steps(), s => microvm_controller_step_name(step: s) == "vmm tarball download")
+  list_length(items: installs) >= 6
+    && list_length(items: downloads) == 1
+    && all(installs, s => string_contains(s: microvm_controller_step_text(step: s), pattern: "sudo"))
+    && all(downloads, s => !string_contains(s: microvm_controller_step_text(step: s), pattern: "sudo"))
+}
+
+// GREEN (3b): the dispatch grant keeps ALL SIX legs of the retired script, in
+// order. A check quietly dropped when the shell lines became steps fails this.
+test fn microvm_w5_grant_keeps_all_six_legs_in_order() -> Bool {
+  let grant = filter(microvm_w5_names(), n => string_contains(s: n, pattern: "dispatch grant"))
+  list_length(items: grant) == 6
+    && string_contains(s: nth_text(items: grant, index: 0), pattern: "(stage)")
+    && string_contains(s: nth_text(items: grant, index: 1), pattern: "visudo check")
+    && string_contains(s: nth_text(items: grant, index: 2), pattern: "install (pending)")
+    && string_contains(s: nth_text(items: grant, index: 3), pattern: "policy check (pending)")
+    && string_contains(s: nth_text(items: grant, index: 4), pattern: "rename")
+    && string_contains(s: nth_text(items: grant, index: 5), pattern: "policy check (live)")
+}
+
+// GREEN (3c): the sudoers drop-in installs 0440 -- the mode row the repo already
+// owns. A world-readable sudoers file is a defect.
+test fn microvm_w5_grant_is_installed_0440() -> Bool {
+  any(microvm_w5_named("install (pending)"), s => string_contains(s: microvm_controller_step_text(step: s), pattern: "0440"))
+}
+
+// GREEN (3d): the daemon reload is LAST. The retired script ran it last because
+// a reload before a unit write leaves the manager unaware of that unit.
+test fn microvm_w5_daemon_reload_is_last() -> Bool {
+  let n = list_length(items: microvm_w5_steps())
+  n > 0 && string_contains(s: microvm_w5_nth_name(index: n - 1), pattern: "daemon-reload")
+}
+
+// GREEN (3e): no tree-copy loop here. The retired builder's first leg was
+// `cd <checkout> && find <subdirs> -type f | xargs sudo install`; that vertical
+// is W6's (approval_broker_tree_install, witnessed in PR 14138), so this edge
+// must not carry find/xargs among its own words.
+test fn microvm_w5_carries_no_second_tree_copy() -> Bool {
+  let words = fold(microvm_w5_steps(), init: [], f: (acc, s) => concat(acc, microvm_controller_step_words(step: s)))
+  !any(words, w => w == "find" || w == "xargs" || w == "-print0" || w == "-type")
+}
+
+// GREEN (3f): the vmm receipt observes BOTH binaries -- the reader
+// (apply.dag microvm_controller_vmm_receipt_present) checks both names appear.
+test fn microvm_w5_vmm_receipt_observes_both_binaries() -> Bool {
+  let receipt = filter(microvm_w5_steps(), s => microvm_controller_step_name(step: s) == "vmm receipt")
+  list_length(items: receipt) == 1
+    && all(receipt, s =>
+      string_contains(s: microvm_controller_step_text(step: s), pattern: "firecracker")
+      && string_contains(s: microvm_controller_step_text(step: s), pattern: "jailer"))
+}
+
+// GREEN (3g) / THE RED FOR THE RETIRED DIGEST SPELLING: a digest check's words
+// carry the FILE PATH only. The retired leg was
+// `echo '<hex>  <path>' | sha256sum -c -`, where the expected value WAS a word;
+// here it is a plan field, so a step can never claim a digest by spelling one.
+test fn microvm_w5_digest_checks_carry_no_expected_hex_in_words() -> Bool {
+  // "digest" is matched on the STEP NAME only -- deliberately not on the
+  // command text, because an installed image path embeds the demo image's
+  // identity, which is itself a 64-hex value that belongs in the words.
+  let checks = microvm_w5_named("digest")
+  list_length(items: checks) >= 3
+    && all(checks, s => !any(microvm_controller_step_words(step: s), w =>
+      content_hash_validate_lower_hex_length(text: w, expected_hex_digits: microvm_w5_digest_width)))
+}
+
+// GREEN (3h) / THE INHABITANCE CLAIM ON THE REAL ROUTE: every leg this module
+// runs has a CATALOGED external binary as its program -- install, mkdir, curl,
+// tar, sha256sum, dd, mv, visudo, systemctl, and sudo for the elevated legs.
+// That is what "the step inhabits the argv route" means concretely: the fold
+// hands these words to run_argv_over_host_effect_transport, and nothing on this
+// edge can be a shell interpreter. `sh`/`bash`/`dash` appearing as a program
+// would mean the shell carrier had crept back onto the edge, and this claim
+// goes red the moment that happens.
+// Each entry is the invocation a real op DECLARES, read off the op rather than
+// guessed: `install` (gnu_coreutils coreutils_install_binary_name), `mkdir`
+// (mkdir_program — bare, not an absolute path), `curl` (curl_program), `tar`
+// (tar_program), `sha256sum` (sha256sum_program), `dd`
+// (coreutils_dd_binary_name), `mv` (mv_program), and `/usr/bin/sudo`
+// (elevation.sudo_program — the elevated legs, and the daemon-reload and
+// visudo ops, whose PROGRAM is sudo with the tool named as an argument:
+// systemctl_daemon_reload_command puts systemctl_path_resolved_program() in
+// arguments, not in program).
+data microvm_w5_cataloged_programs: List<String> = [
+  "install", "mkdir", "curl", "tar", "sha256sum", "dd", "mv", "/usr/bin/sudo",
+]
+
+test fn microvm_w5_every_leg_inhabits_a_cataloged_argv_program() -> Bool {
+  let legs = filter(microvm_w5_steps(), s => list_length(items: microvm_controller_step_words(step: s)) > 0)
+  let programs = map(legs, s => nth_text(items: microvm_controller_step_words(step: s), index: 0))
+  list_length(items: legs) >= 20
+    && all(programs, pr => any(microvm_w5_cataloged_programs, c => c == pr))
+    && !any(programs, pr => pr == "sh" || pr == "bash" || pr == "dash" || pr == "env")
+}
+
+// A bounded positional read: an out-of-range index yields "" so a claim fails on
+// the text rather than stopping the run.
+fn nth_text(items: List<String>, index: Int) -> String {
+  match list_at_optional(xs: items, index: index) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
