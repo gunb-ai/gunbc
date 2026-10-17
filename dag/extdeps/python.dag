@@ -1,7 +1,6 @@
 module extdeps.python
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
-import extdeps.exec.command { ArgvCommand, argv_command }
 
 import std.types { FilePath, List, Unit, NonEmptyStr }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
@@ -49,16 +48,8 @@ type PythonProgramText = NonEmptyStr
 
 data python_program_flag: String = "-c"
 data python_interpreter_command: String = "python3"
-// -I runs in isolated mode: no PYTHON* environment, no user site directory, no script directory on sys.path.
-data python_isolated_flag: String = "-I"
 
 fn python_program() -> ProgramIdentity = uncataloged_program(invocation: python_interpreter_command as NonEmptyStr)
-
-// `python3 -I -c <program> <arguments>`: the program text is one argv element handed to the interpreter, never
-// re-parsed by a shell, and the arguments arrive as sys.argv[1:].
-fn python_inline_program_command(program: PythonProgramText, arguments: List<String>) -> ArgvCommand {
-  argv_command(program: python_program(), arguments: concat([python_isolated_flag, python_program_flag, program as String], arguments))
-}
 
 fn python_run_program_argv(program: PythonProgramText) -> List<String> {
   [python_interpreter_command, python_program_flag, program as String]
