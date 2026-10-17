@@ -108,8 +108,7 @@ fn parse_verdict_restore_receipts_key(ordinal: Int) -> String {
 }
 
 // THE LOCATOR: the first-parent ancestors of the base, newest first, to the declared ordinals, each
-// written as a step output (the restore keys read them) and appended to the record the verb reads to
-// name the ancestor it used. The script is a bash node tree emitted through bash_emit, as the
+// written as a step output, which the restore keys and the record step read. The script is a bash node tree emitted through bash_emit, as the
 // release-bins runners are; no shell is authored here. A `git rev-list` that cannot answer (a
 // base sha outside the checkout) leaves the output empty, and an empty sha is a key no entry carries,
 // so the restore is a typed miss rather than a failed required job.
@@ -147,10 +146,6 @@ fn parse_verdict_locate_statements(ordinal: Int) -> List<Node> {
     parse_verdict_tee_append(
       line: parse_verdict_words(ws: [parse_verdict_lit(t: join([parse_verdict_ordinal_output(ordinal: ordinal), "="], "")), parse_verdict_var(n: variable)]),
       path: parse_verdict_var(n: "GITHUB_OUTPUT")
-    ),
-    parse_verdict_tee_append(
-      line: parse_verdict_var(n: variable),
-      path: parse_verdict_words(ws: [parse_verdict_var(n: "RUNNER_TEMP"), parse_verdict_lit(t: join(["/", parse_verdict_restore_ancestors_basename], ""))])
     )
   ]
 }
