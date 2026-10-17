@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_quota
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.durable_compare_and_set { cas_generation_count }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { Measure, Second, second, second_count }
@@ -9,7 +10,8 @@ import product.capacity.quota { quota_partition, quota_root_pool }
 import product.capacity.event_chain { PartitionId }
 import product.capacity.pool_events { PoolSettled, PoolUpstreamObserved, SeatRequest }
 import product.capacity.pool { pool_window_at, WindowResolved, WholeLifetime, InstantBeforeAnchor }
-import product.capacity.lease { LeasePolicy, LeaseGrant, FencedResource }
+import std.resource_release_law { FencedResource }
+import product.capacity.lease { LeasePolicy, LeaseGrant }
 import gunbc.fabric.fabric_event_log_host { HostEventLogStore, HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log {
@@ -185,7 +187,7 @@ fn fabric_quota_settle_at(lease: QuotaLease, actual: Nat, now: EpochSecs) -> Quo
 
 fn quota_lease_wire(l: QuotaLease) -> String {
   match l {
-    QuotaLeased { grant: g, partition: p, store: _, limit: _ } => join(["leased ", g.reference as String, " on ", p as String, " fence=", g.fence.grant as String, "@", to_string(g.fence.generation), " expires_at=", to_string(g.expires_at)], "")
+    QuotaLeased { grant: g, partition: p, store: _, limit: _ } => join(["leased ", g.reference as String, " on ", p as String, " fence=", g.fence.grant as String, "@", to_string(cas_generation_count(g: g.fence.generation)), " expires_at=", to_string(g.expires_at)], "")
     QuotaFull { wire: w } => join(["full ", w], "")
     QuotaLeaseRefused { detail: d } => join(["refused ", d], "")
   }

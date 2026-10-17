@@ -1,5 +1,6 @@
 module test.claim.fabric.flex_bid_admission_witness
 
+import std.apply_mode { Plan }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool }
 import std.nat { Nat }
@@ -48,7 +49,7 @@ import product.fabric.flex_policy {
   FlexNewAcquisition, FlexExistingAcquisition, AcquisitionActive, AcquisitionPending,
   occupancy_sum, FlexOccupancySummed,
   FlexOnDemandReference, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
-  FlexOnDemandReferenceMissing, FlexActuationDry,
+  FlexOnDemandReferenceMissing,
   FlexHorizonPriced, FlexHorizonUnobserved, FlexHorizonRefused,
   FlexMarketPriceUnobserved, FlexMarketQuoteCurrencyMismatch, FlexCandidateConsequencesUnestablished,
   flex_bid_admission, flex_price_offer, flex_on_demand_reference_cost,
@@ -168,7 +169,7 @@ fn t_policy(cap: MoneyPerHour) -> FlexPolicy {
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
-    actuation: FlexActuationDry,
+    actuation: Plan,
   }
 }
 
@@ -182,7 +183,7 @@ fn t_policy_eur(cap: MoneyPerHour) -> FlexPolicy {
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
-    actuation: FlexActuationDry,
+    actuation: Plan,
   }
 }
 

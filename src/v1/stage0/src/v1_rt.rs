@@ -334,6 +334,17 @@ pub fn utf8_encode_bytes(s: String) -> Vec<u8> {
     s.into_bytes().into_iter().collect()
 }
 
+/// std.bytes octets_bytes: the Bytes carrier of a list of octets, refusing a member outside
+/// 0..=255 as the interpreter's free_call.octets_bytes arm does.
+pub fn octets_bytes(o: Rc<Vec<i64>>) -> Vec<u8> {
+    o.iter()
+        .map(|v| {
+            u8::try_from(*v)
+                .unwrap_or_else(|_| panic!("std.bytes octets_bytes: {} is not an octet", v))
+        })
+        .collect()
+}
+
 /// std.error_primitives pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
 /// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.
 pub fn pure_dag_seam_unreachable() -> i64 {

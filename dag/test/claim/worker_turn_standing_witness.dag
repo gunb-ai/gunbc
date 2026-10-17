@@ -35,8 +35,18 @@ import gunbc.dispatch_selection {
 }
 import extdeps.llm.cli_lifecycle { CodexCliProvider, ProviderInstance }
 import gunbc.codex_harness_credential { codex_harness_credential_context, codex_worker_turn_codex_home }
-import gunbc.cursor_harness_credential { cursor_status_reading }
-import gunbc.worker_turn_standing { cursor_standing_from_status, cursor_entitlement_trip_pending_reason }
+import gunbc.cursor_harness_credential {
+  cursor_status_reading,
+  cursor_sandbox_preflight_reading,
+  cursor_sandbox_discriminating_preflight_command,
+  cursor_sandbox_outside_sentinel,
+  CursorSandboxPreflightReading,
+  CursorSandboxReady,
+  CursorSandboxUnavailable,
+  CursorSandboxNotEntered,
+  CursorSandboxPreflightUnreadable,
+}
+import gunbc.worker_turn_standing { cursor_standing_from_readings, cursor_entitlement_trip_pending_reason, cursor_sandbox_unavailable_reason_prefix }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_actuator_worker_turn_selection_observed,
   DispatchAttemptPrepared,
@@ -45,6 +55,8 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   CursorDispatchProvider,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
+import extdeps.llm.cursor_cli { cursor_cli_program_identity }
+import extdeps.exec.command { argv_words }
 import test.claim.roadmap.roadmap_dispatch_actuator_witness { sized_derivable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -152,19 +164,125 @@ test fn the_observed_codex_offer_names_the_custody_codex_home() -> Bool {
 data observed_unauthenticated_status: String = "{\n  \"status\": \"unauthenticated\",\n  \"isAuthenticated\": false,\n  \"hasAccessToken\": false,\n  \"hasRefreshToken\": false,\n  \"message\": \"Not logged in\"\n}"
 data supplied_authenticated_status: String = "{\"status\":\"authenticated\",\"isAuthenticated\":true}"
 
+// THE SANDBOX PREFLIGHT, supplied at its boundary. The unsupported reading is the srv2 capture of
+// 2026-10-16 verbatim (cursor-agent 2026.09.15-d2fe57e, `sandbox run printenv CURSOR_SANDBOX`, exit
+// 1). The ready reading is a SUPPLIED hypothesis -- no host has yet answered it; its inhabitance is
+// the pinned srv2 realization's readback.
+data observed_srv2_sandbox_unsupported_stdout: String = "Executing command: printenv CURSOR_SANDBOX\nWorking directory: /tmp/c1-trip.Ff9HV3/ws\nSandbox policy: {\n  \"type\": \"workspace_readwrite\",\n  \"readBoundary\": \"system\",\n  \"networkPolicy\": {\n    \"version\": 1,\n    \"default\": \"deny\"\n  },\n  \"additionalReadwritePaths\": [],\n  \"additionalReadonlyPaths\": [],\n  \"ignoreMapping\": {}\n}\nFailed to execute command: SandboxUnsupportedError: Sandbox policy 'workspace_readwrite' is not supported on this system. Ensure the sandbox helper binary is available, or use 'insecure_none'. Reason: Linux preflight failed with exit code 2 (unsupported kernel features). stderr: Error: Failed to resolve Linux sandbox backend: Unsupported sandbox configuration: Linux auto backend selection failed. Landlock error: Unsupported sandbox configuration: IO error: Step 1-2/7 (user namespace) failed: IO error: Failed to write /proc/self/uid_map (mapping UID 0 -> 1000): Operation not permitted (os error 1) (errno 1). Bubblewrap error: Unsupported sandbox configuration: IO error: Bubblewrap namespace setup failed: IO error: Failed to write /proc/self/uid_map (mapping UID 0 -> 1000): Operation not permitted (os error 1) (errno 1)\n"
+data observed_srv2_sandbox_unsupported_stderr: String = "Error: command failed unexpectedly.\n"
+data supplied_sandbox_entered_stdout: String = "Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\nSandbox policy: {\n  \"type\": \"workspace_readwrite\"\n}\nnative\n"
+data supplied_sandbox_not_entered_stdout: String = "Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\nSandbox policy: {\n  \"type\": \"workspace_readwrite\"\n}\n"
+
+fn sandbox_ready() -> CursorSandboxPreflightReading {
+  cursor_sandbox_preflight_reading(exit_code: 0, stdout: supplied_sandbox_entered_stdout, stderr: "")
+}
+
+fn sandbox_unsupported_on_srv2() -> CursorSandboxPreflightReading {
+  cursor_sandbox_preflight_reading(exit_code: 1, stdout: observed_srv2_sandbox_unsupported_stdout, stderr: observed_srv2_sandbox_unsupported_stderr)
+}
+
 test fn cursor_status_never_makes_the_offer_selectable_before_the_entitlement_trip() -> Bool {
-  let accepted = cursor_standing_from_status(reading: cursor_status_reading(stdout: supplied_authenticated_status))
-  let rejected = cursor_standing_from_status(reading: cursor_status_reading(stdout: observed_unauthenticated_status))
+  let accepted = cursor_standing_from_readings(status: cursor_status_reading(stdout: supplied_authenticated_status), sandbox: sandbox_ready())
+  let rejected = cursor_standing_from_readings(status: cursor_status_reading(stdout: observed_unauthenticated_status), sandbox: sandbox_ready())
   let accepted_pending = match accepted {
     ProviderStandingUnobserved { reason } => reason == cursor_entitlement_trip_pending_reason
     ProviderStandingFromFact { fact: _ } => false
   }
   let rejected_named = match rejected {
-    ProviderStandingUnobserved { reason } => string_contains(s: reason as String, pattern: "rejects")
+    ProviderStandingUnobserved { reason } => string_contains(s: reason as String, pattern: "holds no stored auth")
     ProviderStandingFromFact { fact: _ } => false
   }
   accepted_pending && rejected_named
     && !provider_standing_is_selection_eligible(standing: accepted, draw: LimitDispatchDrawAutomatic)
+}
+
+// THE srv2 CAPTURE READS UNAVAILABLE, and an accepted key on that host refuses with the HOST's cause,
+// not the entitlement reason and not a status-unreadable one.
+test fn the_srv2_sandbox_capture_refuses_the_accepted_key_with_the_host_cause() -> Bool {
+  let reading_unavailable = match sandbox_unsupported_on_srv2() {
+    CursorSandboxUnavailable { detail } => string_contains(s: detail, pattern: "uid_map") && string_contains(s: detail, pattern: "SandboxUnsupportedError")
+    CursorSandboxReady => false
+    CursorSandboxNotEntered { detail: _ } => false
+    CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
+  }
+  let standing = cursor_standing_from_readings(status: cursor_status_reading(stdout: supplied_authenticated_status), sandbox: sandbox_unsupported_on_srv2())
+  let host_cause = match standing {
+    ProviderStandingUnobserved { reason } =>
+      string_contains(s: reason as String, pattern: cursor_sandbox_unavailable_reason_prefix)
+        && reason != cursor_entitlement_trip_pending_reason
+    ProviderStandingFromFact { fact: _ } => false
+  }
+  reading_unavailable && host_cause && !provider_standing_is_selection_eligible(standing: standing, draw: LimitDispatchDrawAutomatic)
+}
+
+// EXIT 0 IS NOT READY WITHOUT THE SUBJECT'S OWN READ: a run that printed no in-sandbox value is
+// not-entered, and an accepted key over it still refuses.
+test fn a_preflight_exit_0_without_the_in_sandbox_read_is_not_ready() -> Bool {
+  let reading = cursor_sandbox_preflight_reading(exit_code: 0, stdout: supplied_sandbox_not_entered_stdout, stderr: "")
+  let not_entered = match reading {
+    CursorSandboxNotEntered { detail: _ } => true
+    CursorSandboxReady => false
+    CursorSandboxUnavailable { detail: _ } => false
+    CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
+  }
+  let refused = match cursor_standing_from_readings(status: cursor_status_reading(stdout: supplied_authenticated_status), sandbox: reading) {
+    ProviderStandingUnobserved { reason } => string_contains(s: reason as String, pattern: "CURSOR_SANDBOX=native")
+    ProviderStandingFromFact { fact: _ } => false
+  }
+  let ready_reads_ready = match sandbox_ready() {
+    CursorSandboxReady => true
+    CursorSandboxNotEntered { detail: _ } => false
+    CursorSandboxUnavailable { detail: _ } => false
+    CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
+  }
+  not_entered && refused && ready_reads_ready
+}
+
+// A NON-ZERO EXIT WITHOUT THE CLI'S ERROR CLASS IS UNREADABLE, carrying its status -- 124 included,
+// which is not read as the bound firing.
+test fn an_unmarked_nonzero_preflight_is_unreadable_and_keeps_its_status() -> Bool {
+  let on_124 = match cursor_sandbox_preflight_reading(exit_code: 124, stdout: "", stderr: "") {
+    CursorSandboxPreflightUnreadable { exit_code, detail: _ } => exit_code == 124
+    CursorSandboxReady => false
+    CursorSandboxNotEntered { detail: _ } => false
+    CursorSandboxUnavailable { detail: _ } => false
+  }
+  let on_other = match cursor_sandbox_preflight_reading(exit_code: 1, stdout: "Executing command: printenv CURSOR_SANDBOX\n", stderr: "boom\n") {
+    CursorSandboxPreflightUnreadable { exit_code, detail } => exit_code == 1 && detail == "boom"
+    CursorSandboxReady => false
+    CursorSandboxNotEntered { detail: _ } => false
+    CursorSandboxUnavailable { detail: _ } => false
+  }
+  on_124 && on_other
+}
+
+// AN INHERITED native CANNOT MAKE AN UNSANDBOXED PREFLIGHT READY. The one preflight invocation
+// starts its outer process with CURSOR_SANDBOX set to the sentinel, so a caller environment that
+// already holds native never reaches the command; an unsandboxed fallback then prints the sentinel
+// back, and that reads not-entered, never ready.
+test fn an_inherited_native_cannot_make_an_unsandboxed_preflight_ready() -> Bool {
+  let argv = join(argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_cli_program_identity())), " ")
+  let sentinel_set_outside = argv == concat(concat("env CURSOR_SANDBOX=", cursor_sandbox_outside_sentinel as String), " cursor-agent sandbox run printenv CURSOR_SANDBOX")
+  let unsandboxed_stdout = concat(concat("Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\n", cursor_sandbox_outside_sentinel as String), "\n")
+  let not_ready = match cursor_sandbox_preflight_reading(exit_code: 0, stdout: unsandboxed_stdout, stderr: "") {
+    CursorSandboxNotEntered { detail } => string_contains(s: detail, pattern: "sentinel survived")
+    CursorSandboxReady => false
+    CursorSandboxUnavailable { detail: _ } => false
+    CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
+  }
+  sentinel_set_outside && not_ready
+}
+
+// A REJECTED KEY'S REASON WINS: on a host whose sandbox is also unavailable, the reason names the
+// rejection. This is REASON PRECEDENCE IN THE PURE JOIN only: the live call site evaluates the
+// preflight as an argument of the join, so a rejected key does not skip running it.
+test fn a_rejected_key_refuses_before_the_sandbox_reading_is_consulted() -> Bool {
+  match cursor_standing_from_readings(status: cursor_status_reading(stdout: observed_unauthenticated_status), sandbox: sandbox_unsupported_on_srv2()) {
+    ProviderStandingUnobserved { reason } =>
+      string_contains(s: reason as String, pattern: "holds no stored auth")
+        && !string_contains(s: reason as String, pattern: cursor_sandbox_unavailable_reason_prefix)
+    ProviderStandingFromFact { fact: _ } => false
+  }
 }
 
 // THE ROUTE, through the production actuator selection: on an instance that does not hold the

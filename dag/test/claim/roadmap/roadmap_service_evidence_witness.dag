@@ -33,7 +33,8 @@ import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
 import gunbc.roadmap.roadmap_result_returned { ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved }
 import gunbc.roadmap.roadmap_event_log { AttemptResultOutcome, ResultVerificationFailed, LegacyEmailPrincipal, RoadmapEventId }
 import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
-import std.durable_compare_and_set { cas_generation_first }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
@@ -45,6 +46,13 @@ import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementGrant, SessionPlacementObservation, SessionPlacementUnreadable,
   session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json,
   session_placement_record_basename, session_placement_release_basename, session_placement_observation_of,
+}
+
+fn witness_cas_generation(n: Int) -> CasGeneration {
+  match cas_generation(n: n) {
+    Present { value: g } => g
+    Absent => cas_generation_first()
+  }
 }
 
 // The attempt's launch record is planted as the belt writes it (attempt_launch_record_json; a legacy
@@ -288,7 +296,7 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
         Present { value: u } => u
         Absent => "unnameable" as NonEmptyStr
       },
-      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 },
+      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: witness_cas_generation(n: 7) },
       granted_at: 1000,
       maximum_duration_seconds: 14400,
       expires_at: 15400,

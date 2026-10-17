@@ -29,11 +29,13 @@ import gunbc.auth.gcp_iam_converge {
   service_account_resource,
   GrantSet, SecretPolicyReading, gcp_iam_converge_grant_sets, grant_set_secrets, gcp_iam_converge_grant_set_secrets,
   plan_grant_set, gcp_iam_estate_labels_unique, grant_set_payload_permissions,
+  custody_accessor_cell_converge_owned, custody_accessor_roster_rows,
+  custody_accessor_cell_owner, AccessorCellOwnedByAnotherSet,
 }
-import gunbc.fleet.host_credential_custody_converge { HostCredentialCustodyRow, CursorWorkerTurnApiKey, host_credential_custody_row }
+import gunbc.fleet.host_credential_custody_converge { HostCredentialCustodyRow, HostCustodyCredential, CursorWorkerTurnApiKey, FlexVastApiKey, host_credential_custody_row, host_custody_credential_roster, host_custody_credential_wire }
 import std.list { distinct_by_key }
 import gunbc.cloudflare.r2_mint_secret_access { r2_mint_custody_grants }
-import gunbc.auth.fleet_secret_accessor_roster { cursor_api_key_harness_accessor_row, fleet_accessor_grant }
+import gunbc.auth.fleet_secret_accessor_roster { cursor_api_key_harness_accessor_row, flex_vast_api_key_accessor_row, fleet_accessor_grant, fleet_accessor_grant_roster }
 import gunbc.auth.gcp_secret_access { GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
 import gunbc.auth.github_gcp_federation { federated_service_account_member }
 import gunbc.cloudflare.r2_origin { fabric_workspace_read_secret_id, fabric_workspace_write_secret_id }
@@ -652,26 +654,63 @@ test fn the_hand_applied_accessor_cells_read_back_as_noop() -> Bool {
   }
 }
 
-// THE CURSOR CUSTODY CELL IS THE ROSTER'S, SELECTED AND NOT RE-DECLARED, AND IT IS THE CELL THE CUSTODY
-// ROW READS. The set's one grant equals fleet_accessor_grant over the roster row, and its secret is the
-// custody row's `secret`: renaming or repointing either side without the other turns this red, and
-// deleting the roster row leaves no declarer for the cell.
-test fn the_cursor_custody_cell_is_the_rosters_and_names_the_custody_secret() -> Bool {
-  match filter(gcp_iam_converge_grant_sets, x => x.label == "worker-turn custody accessor cells").first() {
-    Present { value: g } => g.grants.length() == 1
-      && g.grants == [fleet_accessor_grant(row: cursor_api_key_harness_accessor_row)]
-      && map(grant_set_secrets(g: g), x => x as String) == [host_credential_custody_row(c: CursorWorkerTurnApiKey).secret.secret as String]
+// THE CONVERGE OWNS EXACTLY THE CURSOR AND FLEX CUSTODY CELLS: an explicit policy row (DESIGN 5 admits a
+// policy literal), compared at identity grain over the closed selection, so flipping any arm of
+// gunbc.auth.gcp_iam_converge custody_accessor_cell_owner turns this red.
+test fn the_converge_owns_exactly_the_cursor_and_flex_custody_cells() -> Bool {
+  map(filter(host_custody_credential_roster, c => custody_accessor_cell_converge_owned(c: c)), c => host_custody_credential_wire(c: c))
+    == [host_custody_credential_wire(c: CursorWorkerTurnApiKey), host_custody_credential_wire(c: FlexVastApiKey)]
+}
+
+fn custody_secret_of(c: HostCustodyCredential) -> String {
+  host_credential_custody_row(c: c).secret.secret as String
+}
+
+fn selected_custody_credentials() -> List<HostCustodyCredential> {
+  filter(host_custody_credential_roster, c => custody_accessor_cell_converge_owned(c: c))
+}
+
+// THE CUSTODY SET IS THE ROSTER'S CELLS FOR EXACTLY THE SELECTED CREDENTIALS, an identity join and not a
+// count: every selected credential has exactly one roster row naming its custody secret, the set's secrets
+// are those custody secrets in roster order, and its grants are fleet_accessor_grant over those rows, so a
+// missing or duplicated roster row, or a custody row repointed without its roster row, is red.
+test fn the_custody_cells_are_the_rosters_for_exactly_the_selected_credentials() -> Bool {
+  match filter(gcp_iam_converge_grant_sets, x => x.label == "custody accessor cells").first() {
+    Present { value: g } =>
+      all(selected_custody_credentials(), c => filter(fleet_accessor_grant_roster, r => (r.target.secret as String) == custody_secret_of(c: c)).length() == 1)
+        && map(grant_set_secrets(g: g), x => x as String) == map(selected_custody_credentials(), c => custody_secret_of(c: c))
+        && g.grants == map(custody_accessor_roster_rows(), r => fleet_accessor_grant(row: r))
+        && g.grants == [fleet_accessor_grant(row: cursor_api_key_harness_accessor_row), fleet_accessor_grant(row: flex_vast_api_key_accessor_row)]
     Absent => false
   }
 }
 
-// THE ESTATE'S BOOTSTRAP POPULATION GROWS BY EXACTLY THE CURSOR SECRET: the two sets that existed keep
+// A CREDENTIAL LEFT OUT BECAUSE ANOTHER SET OWNS ITS CELL NAMES A SET THAT DOES: every
+// AccessorCellOwnedByAnotherSet arm names a grant set of this converge whose secrets include the
+// credential's custody secret, so the reason is checked against the sets and cannot go stale silently.
+// At least one such arm exists (OCI), so the claim is not vacuous.
+test fn a_cell_owned_by_another_set_is_in_that_set() -> Bool {
+  let owned_elsewhere = filter(host_custody_credential_roster, c => match custody_accessor_cell_owner(c: c) {
+    AccessorCellOwnedByAnotherSet { label: _ } => true
+    _ => false
+  })
+  owned_elsewhere.length() > 0
+    && all(owned_elsewhere, c => match custody_accessor_cell_owner(c: c) {
+      AccessorCellOwnedByAnotherSet { label: l } => match filter(gcp_iam_converge_grant_sets, g => g.label == l).first() {
+        Present { value: g } => any(grant_set_secrets(g: g), x => (x as String) == custody_secret_of(c: c))
+        Absent => false
+      }
+      _ => false
+    })
+}
+
+// THE ESTATE'S BOOTSTRAP POPULATION GROWS BY EXACTLY THE CUSTODY SECRETS: the two sets that existed keep
 // the secrets they had (the r2 custody set's own, and the hand-applied set's OpenRouter and OCI), and
-// the population is those followed by the Cursor secret and nothing else.
-test fn the_cursor_secret_joins_the_grant_set_secrets_and_the_others_are_unchanged() -> Bool {
+// the population is those followed by the Cursor and flex Vast secrets and nothing else.
+test fn the_custody_secrets_join_the_grant_set_secrets_and_the_others_are_unchanged() -> Bool {
   let r2 = map(distinct_by_key(xs: r2_mint_custody_grants(), key: x => x.target.secret as String), x => x.target.secret as String)
   let expected = distinct_by_key(
-    xs: concat(r2, ["openrouter-free-tier-api-key-harness", "oracle-oci-api-signing-key", "cursor-api-key-harness"]),
+    xs: concat(r2, ["openrouter-free-tier-api-key-harness", "oracle-oci-api-signing-key", "cursor-api-key-harness", "flex-vast-api-key"]),
     key: x => x,
   )
   map(gcp_iam_converge_grant_set_secrets(), x => x as String) == expected
@@ -685,7 +724,15 @@ test fn the_cursor_secret_joins_the_grant_set_secrets_and_the_others_are_unchang
 // (and at least one) is the secretPolicy role's, whose permissions hold no payload read and no create,
 // and the bootstrap readback expects the payload permissions denied on it.
 test fn iam_converge_holds_no_payload_read_on_the_cursor_secret() -> Bool {
-  let res = gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: "cursor-api-key-harness" as NonEmptyStr)
+  iam_converge_holds_no_payload_read_on(secret: "cursor-api-key-harness" as NonEmptyStr)
+}
+
+test fn iam_converge_holds_no_payload_read_on_the_flex_vast_secret() -> Bool {
+  iam_converge_holds_no_payload_read_on(secret: "flex-vast-api-key" as NonEmptyStr)
+}
+
+fn iam_converge_holds_no_payload_read_on(secret: NonEmptyStr) -> Bool {
+  let res = gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: secret)
   let probes = iam_converge_bootstrap_readback()
   let on_secret = filter(iam_converge_bindings(), b => b.resource == res)
   on_secret.length() > 0

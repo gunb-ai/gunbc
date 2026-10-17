@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, millicore }
-import std.durable_compare_and_set { CasGeneration }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_count, cas_generation_first }
 import product.capacity.lease { LeaseGrant }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
@@ -464,7 +464,7 @@ type SessionPlacementRecord {
   unit: String
   reference: String
   grant_identity: String
-  fence_generation: Nat
+  fence_generation: CasGeneration
   granted_at: EpochSecs
   expires_at: EpochSecs
   partition: String
@@ -501,7 +501,7 @@ fn session_placement_record_json(r: SessionPlacementRecord) -> JsonValue {
     json_kv(key: "unit", value: json_string(s: r.unit)),
     json_kv(key: "reference", value: json_string(s: r.reference)),
     json_kv(key: "grant_identity", value: json_string(s: r.grant_identity)),
-    json_kv(key: "fence_generation", value: json_int(n: r.fence_generation)),
+    json_kv(key: "fence_generation", value: json_int(n: cas_generation_count(g: r.fence_generation))),
     json_kv(key: "granted_at", value: json_int(n: r.granted_at)),
     json_kv(key: "expires_at", value: json_int(n: r.expires_at)),
     json_kv(key: "partition", value: json_string(s: r.partition)),
@@ -536,7 +536,7 @@ fn session_placement_record_write(stores: SessionPlacementStores, host: String, 
 // case the reader requires that there IS no placement record to disagree with.
 type SessionGrantBinding {
   grant_identity: String
-  fence_generation: Nat
+  fence_generation: CasGeneration
 }
 
 fn session_release_outcome_wire(r: ComputeRelease) -> String {
@@ -572,7 +572,7 @@ fn session_placement_release_write(records_dir: String, node_id: String, attempt
     Absent => []
     Present { value: b } => [json_kv(key: "grant", value: json_object(members: [
       json_kv(key: "grant_identity", value: json_string(s: b.grant_identity)),
-      json_kv(key: "fence_generation", value: json_int(n: b.fence_generation)),
+      json_kv(key: "fence_generation", value: json_int(n: cas_generation_count(g: b.fence_generation))),
     ]))]
   }))))
   if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
@@ -643,6 +643,11 @@ fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
     session_field_cause(key: "reference", r: reference),
     session_field_cause(key: "grant_identity", r: grant_identity),
     session_field_cause(key: "fence_generation", r: fence_generation),
+    match fence_generation {
+      FieldRead { value: n } => match cas_generation(n: n as Int) { Absent => "fence_generation is not a granted fence"  Present { value: _ } => "" }
+      FieldAbsent => ""
+      FieldMalformed { cause: _ } => ""
+    },
     session_epoch_cause(key: "granted_at", r: granted_at),
     session_epoch_cause(key: "expires_at", r: expires_at),
     session_field_cause(key: "partition", r: partition),
@@ -662,7 +667,11 @@ fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
           unit: session_string_or(r: unit),
           reference: session_string_or(r: reference),
           grant_identity: session_string_or(r: grant_identity),
-          fence_generation: session_nat_or(r: fence_generation),
+          fence_generation: match fence_generation {
+            FieldRead { value: n } => match cas_generation(n: n as Int) { Present { value: g } => g  Absent => cas_generation_first() }
+            FieldAbsent => cas_generation_first()
+            FieldMalformed { cause: _ } => cas_generation_first()
+          },
           granted_at: session_int_or(r: granted_at),
           expires_at: session_int_or(r: expires_at),
           partition: session_string_or(r: partition),
@@ -758,8 +767,8 @@ fn session_release_grant_mismatch(doc: JsonValue, grant: SessionGrantReading) ->
         SessionGrantRecorded { record } =>
           match json_field_nat(obj: g, key: "fence_generation") {
             FieldRead { value: f } =>
-              if identity != record.grant_identity || f != record.fence_generation {
-                join(["the release returned grant ", identity, " at fence ", to_string(value: f), ", and this attempt's placement holds ", record.grant_identity, " at fence ", to_string(value: record.fence_generation)], "")
+              if identity != record.grant_identity || (f as Int) != cas_generation_count(g: record.fence_generation) {
+                join(["the release returned grant ", identity, " at fence ", to_string(value: f), ", and this attempt's placement holds ", record.grant_identity, " at fence ", to_string(value: cas_generation_count(g: record.fence_generation))], "")
               } else { "" }
             FieldAbsent => "the release's grant carries no fence generation"
             FieldMalformed { cause } => cause

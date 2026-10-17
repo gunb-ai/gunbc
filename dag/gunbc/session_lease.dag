@@ -21,6 +21,8 @@ type ProcessPortScope {
   expected_process_fingerprint: NonEmptyStr
 }
 
+// PortObservedStaleExpected: the live process fingerprint is not the expected one.
+// That is not grant expiry. Expiry of a held lease is std.temporal_effect LeaseRunningPastExpiry.
 type ProcessPortObservation
   = PortAbsent
   | PortObserved {

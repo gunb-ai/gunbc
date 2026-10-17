@@ -56,7 +56,7 @@ fn census_ran(source: String) -> Bool {
 
 // ── RED 1: the durable-commit proof ────────────────────────────────────────────────────────────
 
-data forged_commit_proof_source: String = "module probe_fleet_obs_forged_commit\nimport gunbc.fleet_observation.capture_chunk { LocalCommitStanding, LocallyCommitted, DurableCommitProof }\nimport std.content_hash { ContentHash, content_hash_of_value }\nfn forged() -> LocalCommitStanding {\n  LocallyCommitted { proof: DurableCommitProof { committed_content: content_hash_of_value(value: \"nothing-was-ever-stored\") } }\n}\n"
+data forged_commit_proof_source: String = "module probe_fleet_obs_forged_commit\nimport std.durable_transfer { LocalCommitStanding, LocallyCommitted }\nimport gunbc.fleet_observation.capture_chunk { DurableCommitProof, CapturePersistenceRefusal }\nimport std.content_hash { ContentHash, content_hash_of_value }\nfn forged() -> LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> {\n  LocallyCommitted { proof: DurableCommitProof { committed_content: content_hash_of_value(value: \"nothing-was-ever-stored\") } }\n}\n"
 
 test fn a_forged_durable_commit_proof_is_refused_at_compile() -> Bool {
   seal_violations(source: forged_commit_proof_source, subject: "DurableCommitProof") == 1
@@ -95,13 +95,13 @@ test fn a_forged_silence_proof_is_refused_at_compile() -> Bool {
 // to resolve, or because a name was misspelled, looks identical to one that refuses because the wall
 // fired. Each control imports the SAME modules and reaches the SAME types through the sanctioned
 // route, and must draw ZERO violations on the same key.
-data sanctioned_commit_source: String = "module probe_fleet_obs_sanctioned_commit\nimport gunbc.fleet_observation.capture_chunk { LocalCommitStanding, local_commit_from_cas }\nimport std.durable_compare_and_set { CasOutcome }\nimport std.types { NonEmptyStr }\nfn sanctioned(o: CasOutcome<NonEmptyStr>) -> LocalCommitStanding {\n  local_commit_from_cas(outcome: o)\n}\n"
+data sanctioned_commit_source: String = "module probe_fleet_obs_sanctioned_commit\nimport std.durable_transfer { LocalCommitStanding }\nimport gunbc.fleet_observation.capture_chunk { DurableCommitProof, CapturePersistenceRefusal, local_commit_from_cas }\nimport std.durable_compare_and_set { CasOutcome }\nimport std.types { NonEmptyStr }\nfn sanctioned(o: CasOutcome<NonEmptyStr>) -> LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> {\n  local_commit_from_cas(outcome: o)\n}\n"
 
 test fn the_sanctioned_commit_route_draws_no_violation() -> Bool {
   seal_violations(source: sanctioned_commit_source, subject: "DurableCommitProof") == 0
 }
 
-data sanctioned_chunk_source: String = "module probe_fleet_obs_sanctioned_chunk\nimport gunbc.fleet_observation.capture_chunk { CommittedChunk, CaptureChunk, LocalCommitStanding, committed_chunk }\nfn sanctioned(c: CaptureChunk, s: LocalCommitStanding) -> CommittedChunk? {\n  committed_chunk(chunk: c, standing: s)\n}\n"
+data sanctioned_chunk_source: String = "module probe_fleet_obs_sanctioned_chunk\nimport std.durable_transfer { LocalCommitStanding }\nimport gunbc.fleet_observation.capture_chunk { CommittedChunk, CaptureChunk, DurableCommitProof, CapturePersistenceRefusal, committed_chunk }\nfn sanctioned(c: CaptureChunk, s: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>) -> CommittedChunk? {\n  committed_chunk(chunk: c, standing: s)\n}\n"
 
 test fn the_sanctioned_chunk_route_draws_no_violation() -> Bool {
   seal_violations(source: sanctioned_chunk_source, subject: "CommittedChunk") == 0

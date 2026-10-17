@@ -5,7 +5,7 @@ import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import v2.std.witness { Holds, Witness }
-import v2.extdeps.languages.dag { DagCanonicalBoolLiteral, DagCanonicalIntLiteral, DagCanonicalSymbolLiteral, DagCanonicalStringLiteral, dag_canonical_literal_from_node, qualified_name_from_module_node }
+import v2.extdeps.languages.dag { DagCanonicalBoolLiteral, DagCanonicalIntLiteral, DagCanonicalSymbolLiteral, DagCanonicalStringLiteral, DagCanonicalFloatLiteral, dag_canonical_literal_from_node, qualified_name_from_module_node }
 import std.algebra { Cons, Empty, fold_list, skip, list_at_optional, list_tail }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, node_locus, outcome_accepted }
@@ -91,6 +91,7 @@ fn body_is_decidable_literal(body: Node) -> Bool {
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } => true
     Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } => true
     Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } => true
+    Accepted { value: DagCanonicalFloatLiteral { lexeme: _ }, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
