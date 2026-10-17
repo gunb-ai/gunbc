@@ -1,9 +1,10 @@
 module test.claim.machine_intake.chassis_fan_establishment_witness
 
 import std.types { Bool, List, NonEmptyStr }
+import extdeps.external_authority { TranscribedUncited }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import gunbc.machine_intake.chassis_fan_establishment {
-  ChassisFansEstablished, ChassisFansRefused, FittedFanSetEstablished, FittedFanSetNotEstablished, chassis_fan_verdict,
+  ChassisFansEstablished, ChassisFansRefused, FittedFanSet, FittedFanSetEstablished, FittedFanSetNotEstablished, chassis_fan_verdict,
 }
 
 // SUPPLIED VALUES AT ONE BOUNDARY: the fitted set and the SDR rows are inputs, the verdict is the subject.
@@ -13,21 +14,23 @@ fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
   SdrTypeLine { name: name, sensor_number: "0x00" as NonEmptyStr, status: "ok" as NonEmptyStr, entity_id: "29.1" as NonEmptyStr, reading_text: reading }
 }
 
-fn fitted() -> List<NonEmptyStr> { ["FAN1" as NonEmptyStr, "FAN2" as NonEmptyStr, "FAN3" as NonEmptyStr] }
+fn established_set() -> FittedFanSet {
+  FittedFanSetEstablished { first: "FAN1" as NonEmptyStr, rest: ["FAN2" as NonEmptyStr, "FAN3" as NonEmptyStr], standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }
+}
 
 fn spinning_rows() -> List<SdrTypeLine> {
   [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]
 }
 
 fn established(rows: List<SdrTypeLine>) -> Bool {
-  match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: fitted() }, lines: rows) {
+  match chassis_fan_verdict(fitted: established_set(), lines: rows) {
     ChassisFansEstablished => true
     ChassisFansRefused { cause: _ } => false
   }
 }
 
 fn refused(rows: List<SdrTypeLine>) -> Bool {
-  match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: fitted() }, lines: rows) {
+  match chassis_fan_verdict(fitted: established_set(), lines: rows) {
     ChassisFansEstablished => false
     ChassisFansRefused { cause: _ } => true
   }
@@ -59,13 +62,6 @@ test fn no_rows_at_all_refuses() -> Bool {
 
 test fn an_unestablished_fitted_set_refuses_even_when_every_fan_spins() -> Bool {
   match chassis_fan_verdict(fitted: FittedFanSetNotEstablished { read_obligation: "operator statement naming the fitted headers" as NonEmptyStr }, lines: spinning_rows()) {
-    ChassisFansEstablished => false
-    ChassisFansRefused { cause: _ } => true
-  }
-}
-
-test fn an_empty_fitted_set_refuses() -> Bool {
-  match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: [] }, lines: spinning_rows()) {
     ChassisFansEstablished => false
     ChassisFansRefused { cause: _ } => true
   }

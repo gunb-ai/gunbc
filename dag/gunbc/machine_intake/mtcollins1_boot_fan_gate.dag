@@ -1,12 +1,14 @@
 module gunbc.machine_intake.mtcollins1_boot_fan_gate
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, IpmiChassisPowerDown, ipmi_chassis_control_verb, chassis_observation_text, chassis_observation_is_off }
-import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, ChassisFanVerdict, ChassisFansEstablished, ChassisFansRefused, chassis_fan_verdict }
+import extdeps.external_authority { TranscribedUncited, cited_figure_read_obligation }
+import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, FittedFanSetNotEstablished, ChassisFanVerdict, ChassisFansEstablished, ChassisFansRefused, chassis_fan_verdict }
 import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, observe_fan_round, round_fan_lines }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
 import gunbc.machine_intake.megarac_boot_media_attach { megarac_stale_power_off_samples, megarac_stale_power_off_interval }
@@ -24,7 +26,9 @@ import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_
 // this row, and the row is not re-derived from the live read. A nonzero RPM proves a tach signal, not airflow (these tach
 // readings were earlier judged unfaithful at the operator's PWM setting).
 data mtcollins1_fitted_fan_set: FittedFanSet = FittedFanSetEstablished {
-  headers: ["FAN4_0_Speed" as NonEmptyStr, "FAN4_1_Speed" as NonEmptyStr, "FAN5_0_Speed" as NonEmptyStr, "FAN5_1_Speed" as NonEmptyStr],
+  first: "FAN4_0_Speed" as NonEmptyStr,
+  rest: ["FAN4_1_Speed" as NonEmptyStr, "FAN5_0_Speed" as NonEmptyStr, "FAN5_1_Speed" as NonEmptyStr],
+  standing: TranscribedUncited { read_obligation: "established once from the committed observation of boot run 39005709187 (round 0, 2026-10-17T05:25:07Z) and the operator's stated-uncertain account; OPEN: four physical fans or two dual-rotor positions, and the SEL Device Present reading for FAN1..FAN6 versus the observed FAN1..FAN3 No Reading; a tach signal is not airflow" as NonEmptyStr },
 }
 
 // WHERE THE COOLING MANAGER STANDS WHEN THE GATE STOPS THE BOOT. The fan-mode GET is cited, not executed by
@@ -82,6 +86,18 @@ fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -
   boot_fan_gate_power_off_poll(username: username, password_file: password_file, remaining: megarac_stale_power_off_samples)
 }
 
+// THE FITTED SET IS A TYPED BET, AND THE STOP SAYS SO: a refusal reads the set's own standing into the
+// failure text, so the operator sees what the verdict rested on (and what is still open) beside the cause.
+fn fitted_set_standing_text(fitted: FittedFanSet) -> String {
+  match fitted {
+    FittedFanSetNotEstablished { read_obligation: o } => join(["fitted set not established: ", o as String], "")
+    FittedFanSetEstablished { first: _, rest: _, standing: st } => match cited_figure_read_obligation(standing: st) {
+      Present { value: o } => join(["fitted set standing (typed bet): ", o as String], "")
+      Absent => "fitted set standing: cited or observed by receipt"
+    }
+  }
+}
+
 // THE GATING POST-POWER-ON READ AND, ON REFUSAL, THE SAFE STOP. The settle window is the fan observation's own
 // transition window (no second constant). A fan that never spins up inside it is Refused, never Taken. On a
 // refusal: PowerDown + bounded readback; if not read off, ONE repeated PowerDown + readback, then
@@ -100,7 +116,7 @@ fn mtcollins1_boot_fan_gate(username: NonEmptyStr, password_file: NonEmptyStr) -
       let first = boot_fan_gate_power_down(username: username, password_file: password_file)
       let first_off = chassis_observation_is_off(observation: first)
       let second = if first_off { first } else { boot_fan_gate_power_down(username: username, password_file: password_file) }
-      exit_failure(reason: boot_fan_gate_stop_text(cause: cause, first_off: first_off, repeated: first_off == false, second_off: chassis_observation_is_off(observation: second), last_readback: chassis_observation_text(observation: second) as String))
+      exit_failure(reason: join([fitted_set_standing_text(fitted: mtcollins1_fitted_fan_set), ". ", boot_fan_gate_stop_text(cause: cause, first_off: first_off, repeated: first_off == false, second_off: chassis_observation_is_off(observation: second), last_readback: chassis_observation_text(observation: second) as String)], ""))
     }
   }
 }

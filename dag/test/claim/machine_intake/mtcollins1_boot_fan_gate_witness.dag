@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisUnreadable }
 import std.algebra { string_contains }
+import extdeps.external_authority { TranscribedUncited }
 import gunbc.machine_intake.chassis_fan_establishment { ChassisFanVerdict, ChassisFansEstablished, ChassisFansRefused, FittedFanSet, FittedFanSetEstablished }
 import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable }
 import std.measure { sdr_undecoded_line_count }
@@ -16,7 +17,7 @@ fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
   SdrTypeLine { name: name, sensor_number: "0x00" as NonEmptyStr, status: "ok" as NonEmptyStr, entity_id: "29.1" as NonEmptyStr, reading_text: reading }
 }
 
-fn fitted() -> FittedFanSet { FittedFanSetEstablished { headers: ["FAN1" as NonEmptyStr, "FAN2" as NonEmptyStr] } }
+fn fitted() -> FittedFanSet { FittedFanSetEstablished { first: "FAN1" as NonEmptyStr, rest: ["FAN2" as NonEmptyStr], standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } } }
 
 fn round(on: Bool, lines: List<SdrTypeLine>) -> FanObservationRound {
   FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: on }, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsRead { lines: lines, undecoded_line_count: sdr_undecoded_line_count(count: 0) } }

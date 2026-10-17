@@ -3,6 +3,7 @@ module gunbc.machine_intake.chassis_fan_establishment
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { rpm_count }
+import extdeps.external_authority { CitedFigureStanding }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
 
 // WHETHER THE CHASSIS FANS SPIN, JUDGED OVER THE FANS THE UNIT IS FITTED WITH AND NO OTHER.
@@ -20,7 +21,7 @@ import extdeps.bmc.ipmi_sdr { SdrTypeLine, SdrFanRpm, SdrFanDuty, SdrFanNoReadin
 // "all fitted fans spin".
 type FittedFanSet
   = FittedFanSetNotEstablished { read_obligation: NonEmptyStr }
-  | FittedFanSetEstablished { headers: List<NonEmptyStr> }
+  | FittedFanSetEstablished { first: NonEmptyStr, rest: List<NonEmptyStr>, standing: CitedFigureStanding }
 
 type ChassisFanVerdict
   = ChassisFansEstablished
@@ -52,18 +53,21 @@ fn fitted_header_failure(lines: List<SdrTypeLine>, header: NonEmptyStr) -> Strin
   }
 }
 
+// NONEMPTY BY CONSTRUCTION: the set is a head and a tail, so "established as empty" has no constructor.
+fn fitted_headers(first: NonEmptyStr, rest: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(rest, init: [first], f: (acc, h) => acc.append(h))
+}
+
 fn chassis_fan_verdict(fitted: FittedFanSet, lines: List<SdrTypeLine>) -> ChassisFanVerdict {
   match fitted {
     FittedFanSetNotEstablished { read_obligation: why } =>
       ChassisFansRefused { cause: join(["the fitted fan set is not established: ", why as String], "") as NonEmptyStr }
-    FittedFanSetEstablished { headers: headers } => {
-      let failures = fold(headers, init: [], f: (acc, h) => match fitted_header_failure(lines: lines, header: h) {
+    FittedFanSetEstablished { first: first, rest: rest, standing: _ } => {
+      let failures = fold(fitted_headers(first: first, rest: rest), init: [], f: (acc, h) => match fitted_header_failure(lines: lines, header: h) {
         Absent => acc
         Present { value: f } => acc.append(f)
       })
-      if headers.length() == 0 {
-        ChassisFansRefused { cause: "the fitted fan set is established as empty, so no fan can be shown to spin" }
-      } else if failures.length() > 0 {
+      if failures.length() > 0 {
         ChassisFansRefused { cause: join(failures, "; ") as NonEmptyStr }
       } else {
         ChassisFansEstablished
