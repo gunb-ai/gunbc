@@ -31,6 +31,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_commit_git, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  WorkerIsServiceUser,
   HostDashboardInstance,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
@@ -867,6 +868,7 @@ fn lab_instance_at_repo(root: FilePath) -> HostDashboardInstance {
     toolchain: lab.toolchain,
     dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
     directory_owner: lab.directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: lab.materialization_store_root,
     publication_base_branch: lab.publication_base_branch,
   }
