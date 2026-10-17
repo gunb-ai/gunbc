@@ -2369,6 +2369,24 @@ fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
+// A GENERIC ARGUMENT THAT IS A NATURAL LITERAL KEEPS ITS VALUE: `MachineWidth<8>` lowers its `8` to the
+// int-literal atom with its magnitude edge (the shape a value-position literal has), never a childless
+// atom -- the value is the argument, and a bare token class cannot be read back (A0-2 literal admission).
+fn body_lower_type_int_literal_argument_optional(node: Node) -> Optional<Node> {
+  match body_lower_int_literal_with_magnitude_optional(node: node) {
+    Present { value: literal } => optional_present(value: literal)
+    Absent =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: sym } =>
+          match dag_int_literal_node_from_lexeme(lexeme: symbol_lexeme(sym: sym), occurrence_id: node.occurrence_id) {
+            Accepted { value: literal, diagnostics: _ } => optional_present(value: literal)
+            Rejected { diagnostics: _ } => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+  }
+}
+
 fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
@@ -2395,6 +2413,9 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
         Absent
       }
     Absent =>
+      match body_lower_type_int_literal_argument_optional(node: node) {
+        Present { value: literal } => Present { value: literal }
+        Absent =>
       match dag_binding_branded_atom_identity(node: node) {
         Present { value: binding } =>
           Present { value: body_lower_type_atom_node(sym: binding, source: node) }
@@ -2422,6 +2443,7 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
                   })
               }
           }
+      }
       }
   }
 }
