@@ -267,15 +267,28 @@ type PowerAfterAttempt
 // consumer passes its own census END marker (or TerminalNotObserved if the marker was not seen); the
 // boot does not know the census exists.
 
-fn power_after_attempt(power: HostPowerState, terminal: TerminalObserved) -> PowerAfterAttempt {
+// THE READING, BEFORE THE PAIRING. A consumer that never made the read at all (no account modeled to
+// read with, no time left in the budget) must say so, and that is not the same fact as a read that
+// failed: HostPowerState describes what a read ANSWERED, so "not taken" belongs on the reading, not on
+// an arm of PowerAfterAttempt. Without this carrier the adapter kept its own MegaRacPowerAfter sum to
+// state it -- a second home for the pairing (review 81601).
+type HostPowerReading
+  = HostPowerRead { state: HostPowerState }
+  | HostPowerNotTaken { reason: NonEmptyStr }
+
+fn power_after_attempt(power: HostPowerReading, terminal: TerminalObserved) -> PowerAfterAttempt {
   match power {
-    PowerOn => PoweredOnAfterAttempt
-    PowerOff =>
-      match terminal {
-        TerminalMarker { marker: _ } => PoweredOffAfterTerminal
-        TerminalNotObserved => PoweredOffWithoutTerminal
+    HostPowerNotTaken { reason: r } => PowerAfterNotTaken { reason: r }
+    HostPowerRead { state: s } =>
+      match s {
+        PowerOn => PoweredOnAfterAttempt
+        PowerOff =>
+          match terminal {
+            TerminalMarker { marker: _ } => PoweredOffAfterTerminal
+            TerminalNotObserved => PoweredOffWithoutTerminal
+          }
+        PowerUnread { reason: r } => PowerAfterUnobserved { reason: r }
       }
-    PowerUnread { reason: r } => PowerAfterUnobserved { reason: r }
   }
 }
 
@@ -303,17 +316,32 @@ type BootOverrideConsumption
   | OverrideNotHandedOff { reason: NonEmptyStr }
   | OverrideConsumptionUnread { reason: NonEmptyStr }
 
-fn boot_override_consumption(pending_before: Bool, pending_after: Bool, booted_through_override_device: Bool) -> BootOverrideConsumption {
-  if pending_before {
-    OverridePendingBeforeAttempt
-  } else {
-    if pending_after {
-      OverrideStillPendingAfterAttempt
-    } else if booted_through_override_device {
-      OverrideConsumedByAttempt
-    } else {
-      OverrideNoLongerPendingAfterAttempt
-    }
+// WHAT ONE PARAMETER-5 READ CAN SAY, before anything is decided about consumption. Three states, not
+// two: the flag matched this attempt's override, it did not, or the read never answered -- and the
+// last one carries WHY, which is the half a Bool loses. A consumer that reads the controller reduces
+// its own reading to this and hands it here; that reduction is the adapter's job, the decision below is
+// not its to make (review 81601: this decision had a second copy in the adapter, and production called
+// that copy).
+type BootOverrideStanding
+  = OverrideFlagPending
+  | OverrideFlagNotPending
+  | OverrideReadUnanswered { reason: NonEmptyStr }
+
+fn boot_override_consumption(before: BootOverrideStanding, after: BootOverrideStanding, booted_through_override_device: Bool) -> BootOverrideConsumption {
+  match before {
+    OverrideReadUnanswered { reason: r } => OverrideConsumptionUnread { reason: r }
+    OverrideFlagPending => OverridePendingBeforeAttempt
+    OverrideFlagNotPending =>
+      match after {
+        OverrideReadUnanswered { reason: r } => OverrideConsumptionUnread { reason: r }
+        OverrideFlagPending => OverrideStillPendingAfterAttempt
+        OverrideFlagNotPending =>
+          if booted_through_override_device {
+            OverrideConsumedByAttempt
+          } else {
+            OverrideNoLongerPendingAfterAttempt
+          }
+      }
   }
 }
 
@@ -417,6 +445,34 @@ type DerivedFinding
   | OverrideNotConsumed { consumption: BootOverrideConsumption }
   | PoweredOffWithoutTerminalMarker
   | PresentationAfterHandoff { presentation: BootPresentation }
+
+// THE DERIVED FINDINGS HAVE ONE RENDERING, here, beside the sum and beside the derivation that mints
+// them. The adapter used to render two of them ("the one-shot boot override was still pending...", "the
+// host was powered off after the attempt without an observed terminal...") from its OWN copies of the
+// two decisions; those copies are deleted (review 81601), and a finding the core derives is a finding
+// the core renders. The two sentences are unchanged, so a reader of the bundle sees the same text.
+fn derived_finding_text(f: DerivedFinding) -> String {
+  match f {
+    MediaAttachNotReady { record: _ } => "media attach: the presentation was not ready for this attempt"
+    MediaAttachSessionHeld { record: _ } => "media attach: the presentation was served only while our own session held it"
+    HandoffWithheldAtRecheck { handoff: _ } => "the pre-handoff recheck withheld the handoff, so no boot-device or power write was made"
+    HandoffUnconfirmed { handoff: _ } => "the boot-device and power handoff was attempted and not confirmed"
+    OverrideNotConsumed { consumption: c } => override_not_consumed_text(c: c)
+    PoweredOffWithoutTerminalMarker => "the host was powered off after the attempt without an observed terminal: the image did not reach its end"
+    PresentationAfterHandoff { presentation: p } => concat("after the handoff the presentation was still served: ", presentation_text(p: p))
+  }
+}
+
+// THE OVERRIDE FINDING'S SENTENCES, in the module that owns the consumption sum. The two the harness
+// used to write itself are kept verbatim; the rest route through override_consumption_text so a reader
+// sees one vocabulary for one sum.
+fn override_not_consumed_text(c: BootOverrideConsumption) -> String {
+  match c {
+    OverrideStillPendingAfterAttempt => "the one-shot boot override was still pending after the attempt: the host did not boot through it"
+    OverridePendingBeforeAttempt => "a boot override matching this attempt's was already pending before it was set, so its consumption cannot be attributed to this attempt"
+    _ => override_consumption_text(c: c)
+  }
+}
 
 // THE ANSWER TO "WHAT WENT WRONG WITH THIS ATTEMPT", kept as the TWO sources it has rather than one
 // flattened list. Two sums may not share an arm name in this language, which is a fact of the checker

@@ -44,10 +44,16 @@ import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_s
 import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  BmcAuthRefused, BmcSessionUnestablished, BootParam5Read, MegaRacEndMediaNotTaken, MegaRacHandoffNotReached, MegaRacMediaAttachNotAttempted, MegaRacOverrideConsumedByCensusBoot, MegaRacOverrideNoLongerPendingAfterAttempt, MegaRacOverrideNotHandedOff, MegaRacPoweredOffAfterAttempt, megarac_diagnostics_allowance,
+  BmcAuthRefused, BmcSessionUnestablished, BootParam5Read, MegaRacEndMediaNotTaken, MegaRacHandoffNotReached, MegaRacMediaAttachNotAttempted, megarac_diagnostics_allowance,
 }
 import gunbc.host.smpro_platform_capability {
   SmproNotTaken, SmproProbed, SmproReading,
+}
+// The override and the post-attempt power are the CORE's sums since review 81601 deleted this row's
+// copies; the witness names the arms of the sums the record actually stores.
+import gunbc.host.boot_attempt {
+  HostPowerReading, HostPowerRead, PowerOff,
+  OverrideNotHandedOff, OverrideConsumedByAttempt, OverrideNoLongerPendingAfterAttempt,
 }
 
 // A WITNESS SUBJECT IS MINTED THROUGH THE REAL ADMISSION over mtcollins1's real managed-host row, with
@@ -751,22 +757,22 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
 // carries both passes and decides consumption from the two boot parameter 5 reads.
 test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let consumed = BootParam5Read { readback: "Boot Flag Invalid", at: "t" }
-  let never = mtcollins1_boot_run_record(media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: MegaRacPoweredOffAfterAttempt, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"))
+  let never = mtcollins1_boot_run_record(media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: HostPowerRead { state: PowerOff }, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"))
   let ended = mtcollins1_boot_run_record(
     media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" },
     stage: ActuationCensusEnded { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
-    before: consumed, after: consumed, power_after: MegaRacPoweredOffAfterAttempt,
+    before: consumed, after: consumed, power_after: HostPowerRead { state: PowerOff },
     timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
   )
-  (match never.override { MegaRacOverrideNotHandedOff { reason: _ } => true _ => false })
+  (match never.override { OverrideNotHandedOff { reason: _ } => true _ => false })
     && (match never.smpro_power_on { SmproNotTaken { reason: _ } => true _ => false })
-    && (match ended.override { MegaRacOverrideConsumedByCensusBoot => true _ => false })
+    && (match ended.override { OverrideConsumedByAttempt => true _ => false })
     && (match mtcollins1_boot_run_record(
       media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" },
       stage: ActuationPoweredOn { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
-      before: consumed, after: consumed, power_after: MegaRacPoweredOffAfterAttempt,
+      before: consumed, after: consumed, power_after: HostPowerRead { state: PowerOff },
       timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
-    ).override { MegaRacOverrideNoLongerPendingAfterAttempt => true _ => false })
+    ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
     && (match ended.smpro_census { SmproProbed { observation: _ } => true _ => false })
 }
 

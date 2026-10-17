@@ -34,6 +34,12 @@ import gunbc.host.boot_attempt {
   PoweredOffAfterTerminal, PoweredOffWithoutTerminal, PoweredOnAfterAttempt, PowerAfterUnobserved, PowerAfterNotTaken,
   OverrideConsumedByAttempt, OverrideNoLongerPendingAfterAttempt, OverridePendingBeforeAttempt,
   OverrideStillPendingAfterAttempt, OverrideNotHandedOff, OverrideConsumptionUnread,
+  // THE DECISIONS, NOW CALLED WHERE THEY LIVE. Review 81601 deleted the adapter's copies of the
+  // power pairing and the override consumption (and the sums they were copied from), so these claims
+  // call gunbc.host.boot_attempt's own functions and name the core's input carriers.
+  power_after_attempt, boot_override_consumption,
+  HostPowerReading, HostPowerRead, HostPowerNotTaken,
+  BootOverrideStanding, OverrideFlagPending, OverrideFlagNotPending, OverrideReadUnanswered,
   StandingFinding, DerivedFinding, EveryReadFailed, CredentialMayRemain,
   MediaAttachNotReady, MediaAttachSessionHeld, HandoffWithheldAtRecheck,
   HandoffUnconfirmed, OverrideNotConsumed, PoweredOffWithoutTerminalMarker, CredentialMayRemain,
@@ -66,6 +72,13 @@ import gunbc.host.boot_attempt {
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_run_record, MegaRacRunRecord, BootParam5Reading, BootParam5NotTaken,
+  BootParam5Read, BootParam5Unread, BmcUnreachable,
+  megarac_boot_override_consumption, megarac_power_after_from_observation,
+}
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootCdrom, aarch64_uefi_once_boot_selection,
+  ipmi_boot_expected_flag_rendering, ipmi_boot_expected_device_rendering,
+  ipmi_boot_expected_mode_rendering, ipmi_boot_expected_persistence_rendering,
 }
 import gunbc.host.smpro_platform_capability { SmproReading, SmproNotTaken }
 import gunbc.host.managed_host_boot_phase_timing { boot_phase_timing_not_taken }
@@ -77,17 +90,13 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacHandoff, MegaRacHandoffNotReached, MegaRacHandoffWithheldAtRecheck, MegaRacHandoffAttempted,
   MegaRacHandoffCallResult, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed,
   MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved,
-  MegaRacPowerAfter, MegaRacPoweredOffAfterAttempt, MegaRacPoweredOnAfterAttempt,
-  MegaRacPowerAfterUnobserved, MegaRacPowerAfterNotTaken,
-  MegaRacOverride, MegaRacOverrideConsumedByCensusBoot, MegaRacOverrideNoLongerPendingAfterAttempt,
-  MegaRacOverridePendingBeforeAttempt, MegaRacOverrideStillPendingAfterAttempt, MegaRacOverrideNotHandedOff,
-  MegaRacOverrideConsumptionUnread,
+  megarac_power_reading_not_taken, megarac_override_standing,
   HarnessFinding, MegaRacEveryReadFailed, MegaRacMediaAttachNotReady, MegaRacMediaAttachSessionHeld,
   MegaRacHandoffWithheld, MegaRacHandoffUnconfirmed, MegaRacPresentationAfterHandoff,
-  MegaRacOverrideNotConsumed, MegaRacPoweredOffWithoutTerminal, MegaRacCredentialMayRemain,
+  MegaRacCredentialMayRemain,
   megarac_host_power, megarac_presentation, megarac_stale_power_off_record, megarac_media_attach_record,
   megarac_handoff_call_result, megarac_handoff_media_record, megarac_end_media_record,
-  megarac_power_after_attempt, megarac_override_consumption, megarac_standing_findings,
+  megarac_standing_findings,
   megarac_boot_harness,
 }
 
@@ -422,77 +431,167 @@ test fn an_observed_end_look_is_a_presentation() -> Bool {
 }
 
 // ── POWER AFTER: the census end becomes a terminal, not a boot fact ──────────────────
+//
+// ONE CARRIER CANNOT ANSWER BOTH QUESTIONS. The reading says what the chassis answered (on / off / no
+// answer / never attempted); whether the attempt reached its terminal is the record's own field. So the
+// pairing is given BOTH, exactly as the record builder gives them, and the same off answers two
+// different ways depending only on the terminal it is paired with. These claims call the core's
+// power_after_attempt directly: this row keeps no copy of that decision (review 81601).
 
-// ONE CARRIER CANNOT ANSWER BOTH QUESTIONS. The raw power carrier now says only what the chassis reads
-// (on / off / no answer); whether the attempt reached its terminal is the record's own field. So the
-// classifier is given BOTH, exactly as the record builder gives them, and the same off answers two
-// different ways depending only on the terminal it is paired with.
 test fn powered_off_with_an_observed_terminal_is_powered_off_after_a_terminal() -> Bool {
-  megarac_power_after_attempt(p: MegaRacPoweredOffAfterAttempt,
+  power_after_attempt(power: HostPowerRead { state: PowerOff },
     terminal: TerminalMarker { marker: "the diagnostic census ended" }) == PoweredOffAfterTerminal
 }
 
 test fn powered_off_with_no_terminal_is_powered_off_without_a_terminal() -> Bool {
-  megarac_power_after_attempt(p: MegaRacPoweredOffAfterAttempt,
+  power_after_attempt(power: HostPowerRead { state: PowerOff },
     terminal: TerminalNotObserved) == PoweredOffWithoutTerminal
 }
 
-// The on arm needs no terminal to answer, but the pairing is total: the caller always holds the
-// record's terminal, and this claim supplies the not-observed one so an on answer cannot quietly
-// depend on it.
+// The on answer needs no terminal, but the pairing is total: the caller always holds the record's
+// terminal, and this claim supplies the not-observed one so an on answer cannot quietly depend on it.
 test fn powered_on_after_the_attempt_is_powered_on() -> Bool {
-  megarac_power_after_attempt(p: MegaRacPoweredOnAfterAttempt, terminal: TerminalNotObserved) ==
+  power_after_attempt(power: HostPowerRead { state: PowerOn }, terminal: TerminalNotObserved) ==
     PoweredOnAfterAttempt
 }
 
-// The unobserved arm carries the READ's reason and nothing else: a boot whose post-attempt chassis
-// read did not answer reports why, and cannot also carry a decoded power (review 81117).
+// The unread arm carries the READ's reason and nothing else: a boot whose post-attempt chassis read did
+// not answer reports why, and cannot also carry a decoded power (review 81117).
 test fn an_unobserved_power_after_carries_only_its_reason() -> Bool {
-  match megarac_power_after_attempt(p: MegaRacPowerAfterUnobserved { reason: "the System Power line was unreadable" },
+  match power_after_attempt(power: HostPowerRead { state: PowerUnread { reason: "the System Power line was unreadable" } },
       terminal: TerminalNotObserved) {
     PowerAfterUnobserved { reason: r } => string_contains(s: r, pattern: "System Power line")
     _ => false
   }
 }
 
+// A read never attempted is a THIRD answer, not a failed one: no account to read with, or no time left.
+// The reading carries it (HostPowerNotTaken) so the adapter needs no arm of its own for it.
 test fn a_power_after_never_read_says_so() -> Bool {
-  match megarac_power_after_attempt(p: MegaRacPowerAfterNotTaken { reason: "no time left" },
+  match power_after_attempt(power: HostPowerNotTaken { reason: "no time left" as NonEmptyStr },
       terminal: TerminalNotObserved) {
     PowerAfterNotTaken { reason: r } => r == "no time left"
     _ => false
   }
 }
 
-// ── OVERRIDE: the census boot IS the attempt's readback ──────────────────────────────
+// THE READER ITSELF, not just the pairing: what the chassis answered becomes what the record stores,
+// and the not-taken helper states the read that was never made.
+test fn the_chassis_read_becomes_the_stored_reading() -> Bool {
+  (match megarac_power_after_from_observation(observation: ChassisPowerRead { power_on: false }) {
+     HostPowerRead { state: PowerOff } => true
+     _ => false
+   })
+    && (match megarac_power_after_from_observation(observation: ChassisPowerRead { power_on: true }) {
+         HostPowerRead { state: PowerOn } => true
+         _ => false
+       })
+    && (match megarac_power_after_from_observation(observation: ChassisUnreadable) {
+         HostPowerRead { state: PowerUnread { reason: r } } => count(r) > 0
+         _ => false
+       })
+    && (match megarac_power_reading_not_taken(reason: "no account is modeled to read it with" as NonEmptyStr) {
+         HostPowerNotTaken { reason: _ } => true
+         _ => false
+       })
+}
+
+// ── OVERRIDE: what the two reads said, decided once ──────────────────────────────────
+//
+// These five claims used to call this row's COPY of the decision (megarac_override_consumption, mapping
+// a MegaRacOverride sum one-to-one onto the core's). That copy is deleted (review 81601); what is left
+// to witness here is the REDUCTION this row owns -- two parameter-5 readings becoming the core's input
+// standings -- and then the core's decision over them. The row's own contribution is which rendering
+// counts as pending, and that the census END marker is what establishes consumption by THIS attempt.
+
+fn p5(readback: String) -> BootParam5Reading = BootParam5Read { readback: readback, at: "t" }
+
+// THE PENDING FIXTURE is assembled from the renderings the handoff's own verdict expects (the same
+// boot_readback_verdict the classifier uses), so "this attempt's override is pending" cannot drift from
+// what the controller's text means. "Boot Flag Invalid" is what the controller renders once a boot
+// consumed the one-shot override.
+fn p5_pending_text() -> String {
+  join([
+    ipmi_boot_expected_flag_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_persistence_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_mode_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_device_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+  ], "\n")
+}
+
+data p5_consumed_text: String = "Boot parameter version: 1\nBoot Flag Invalid\nBoot Device Selector : No override"
+
+fn p5_unread(which: String) -> BootParam5Reading {
+  BootParam5Unread { cause: BmcUnreachable { endpoint: "bmc.test" as NonEmptyStr, at: "t" as NonEmptyStr, detail: which } }
+}
 
 test fn an_override_consumed_by_the_census_boot_is_consumed_by_the_attempt() -> Bool {
-  megarac_override_consumption(o: MegaRacOverrideConsumedByCensusBoot) == OverrideConsumedByAttempt
+  boot_override_consumption(before: OverrideFlagNotPending, after: OverrideFlagNotPending,
+    booted_through_override_device: true) == OverrideConsumedByAttempt
 }
 
 test fn an_override_no_longer_pending_after_the_attempt_stays_that() -> Bool {
-  megarac_override_consumption(o: MegaRacOverrideNoLongerPendingAfterAttempt) == OverrideNoLongerPendingAfterAttempt
+  boot_override_consumption(before: OverrideFlagNotPending, after: OverrideFlagNotPending,
+    booted_through_override_device: false) == OverrideNoLongerPendingAfterAttempt
 }
 
 test fn an_override_pending_before_the_attempt_stays_that() -> Bool {
-  megarac_override_consumption(o: MegaRacOverridePendingBeforeAttempt) == OverridePendingBeforeAttempt
+  boot_override_consumption(before: OverrideFlagPending, after: OverrideFlagNotPending,
+    booted_through_override_device: true) == OverridePendingBeforeAttempt
 }
 
 test fn an_override_still_pending_after_the_attempt_stays_that() -> Bool {
-  megarac_override_consumption(o: MegaRacOverrideStillPendingAfterAttempt) == OverrideStillPendingAfterAttempt
+  boot_override_consumption(before: OverrideFlagNotPending, after: OverrideFlagPending,
+    booted_through_override_device: true) == OverrideStillPendingAfterAttempt
 }
 
-test fn an_override_never_handed_off_carries_its_reason() -> Bool {
-  match megarac_override_consumption(o: MegaRacOverrideNotHandedOff { reason: "no key" }) {
-    OverrideNotHandedOff { reason: r } => r == "no key"
-    _ => false
-  }
-}
-
+// The two facts the row cannot decide away: an unanswered read answers Unread with its cause, and an
+// unanswered read BEFORE the attempt is not silently treated as not-pending.
 test fn an_override_read_that_failed_says_so() -> Bool {
-  match megarac_override_consumption(o: MegaRacOverrideConsumptionUnread { reason: "ipmi down" }) {
+  match boot_override_consumption(before: OverrideReadUnanswered { reason: "ipmi down" as NonEmptyStr },
+      after: OverrideFlagNotPending, booted_through_override_device: true) {
     OverrideConsumptionUnread { reason: r } => r == "ipmi down"
     _ => false
   }
+}
+
+test fn an_override_read_that_failed_after_the_attempt_says_so_too() -> Bool {
+  match boot_override_consumption(before: OverrideFlagNotPending,
+      after: OverrideReadUnanswered { reason: "ipmi down" as NonEmptyStr },
+      booted_through_override_device: true) {
+    OverrideConsumptionUnread { reason: r } => r == "ipmi down"
+    _ => false
+  }
+}
+
+// THE REDUCTION THE ROW OWNS. The same readback string, read twice, becomes the two standings; a read
+// that never answered becomes Unanswered with the cause named, so the row cannot lose why.
+test fn the_two_reads_become_the_core_input_standings() -> Bool {
+  let sel = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+  (megarac_override_standing(read: p5(p5_consumed_text), which: "after", selection: sel) == OverrideFlagNotPending)
+    && (megarac_override_standing(read: p5(p5_pending_text()), which: "after", selection: sel) == OverrideFlagPending)
+    && (match megarac_override_standing(read: p5_unread("link down"), which: "before", selection: sel) {
+         OverrideReadUnanswered { reason: r } => string_contains(s: r, pattern: "before")
+           && string_contains(s: r, pattern: "unreachable")
+         _ => false
+       })
+}
+
+// THE DECISION THE ROW OWNS, AND NOTHING MORE: the census END marker is the argument that establishes
+// consumption by THIS attempt (design §4d -- the flag's valid bit times out on its own, so order is the
+// argument). The row supplies that argument; it no longer makes the decision with it.
+test fn the_census_end_marker_is_what_establishes_consumption() -> Bool {
+  let sel = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+  let before = BootParam5NotTaken { reason: "not taken yet" }
+  (megarac_boot_override_consumption(before: p5(p5_consumed_text), after: p5(p5_consumed_text), selection: sel,
+      booted_through_override_device: true) == OverrideConsumedByAttempt)
+    && (megarac_boot_override_consumption(before: p5(p5_consumed_text), after: p5(p5_consumed_text), selection: sel,
+      booted_through_override_device: false) == OverrideNoLongerPendingAfterAttempt)
+    && (match megarac_boot_override_consumption(before: before, after: p5(p5_consumed_text), selection: sel,
+      booted_through_override_device: true) {
+        OverrideConsumptionUnread { reason: _ } => true
+        _ => false
+      })
 }
 
 // ── THE HARNESS FINDINGS ARE TWO KINDS, AND THE RECORD STORES ONLY ONE ────────────────────────────
@@ -566,8 +665,6 @@ test fn a_stored_finding_never_duplicates_what_the_fields_already_say() -> Bool 
       before: presented_result(), handoff: MegaRacHandoffAttemptedUnconfirmed { reason: "no answer" },
       after: presented_result() } },
     MegaRacPresentationAfterHandoff { look: a_not_served_look() },
-    MegaRacOverrideNotConsumed { consumption: MegaRacOverrideStillPendingAfterAttempt },
-    MegaRacPoweredOffWithoutTerminal,
   ]
   count(megarac_standing_findings(raw: derived_arms)) == 0
 }
@@ -576,7 +673,6 @@ test fn a_stored_finding_never_duplicates_what_the_fields_already_say() -> Bool 
 // findings that mixes both kinds yields exactly the standing ones, in the caller's order.
 test fn a_mixed_harness_list_yields_only_the_standing_ones() -> Bool {
   let mixed = every_read()
-    + [MegaRacOverrideNotConsumed { consumption: MegaRacOverrideStillPendingAfterAttempt }]
     + [MegaRacCredentialMayRemain]
   let mapped = megarac_standing_findings(raw: mixed)
   count(mapped) == 2
@@ -619,8 +715,8 @@ fn a_full_run() -> MegaRacRunRecord {
     smpro_census: no_smpro(),
     override_before: no_param5(),
     override_after: no_param5(),
-    override: MegaRacOverrideConsumedByCensusBoot,
-    power_after: MegaRacPoweredOnAfterAttempt,
+    override: OverrideConsumedByAttempt,
+    power_after: HostPowerRead { state: PowerOn },
     timing: boot_phase_timing_not_taken(reason: "fixture: no timing")
   }
 }
@@ -637,8 +733,8 @@ fn a_stopped_run() -> MegaRacRunRecord {
     smpro_census: no_smpro(),
     override_before: no_param5(),
     override_after: no_param5(),
-    override: MegaRacOverrideNotHandedOff { reason: "nothing was handed off" },
-    power_after: MegaRacPowerAfterNotTaken { reason: "the actuation refused" },
+    override: OverrideNotHandedOff { reason: "nothing was handed off" as NonEmptyStr },
+    power_after: HostPowerNotTaken { reason: "the actuation refused" as NonEmptyStr },
     timing: boot_phase_timing_not_taken(reason: "fixture: no timing")
   }
 }
@@ -885,7 +981,7 @@ test fn a_boot_that_never_reached_anything_derives_only_the_power_finding() -> B
     census_ended: false, end_media: stopped.end_media, handoff_media: stopped.handoff_media, media: stopped.media,
     smpro_power_on: stopped.smpro_power_on, smpro_census: stopped.smpro_census,
     override_before: stopped.override_before, override_after: stopped.override_after,
-    override: stopped.override, power_after: MegaRacPoweredOffAfterAttempt, timing: stopped.timing,
+    override: stopped.override, power_after: HostPowerRead { state: PowerOff }, timing: stopped.timing,
   }
   let findings = derived_of(off_without_end)
   count(findings) == 1
@@ -993,19 +1089,19 @@ test fn the_override_and_power_findings_derive_from_their_fields() -> Bool {
     census_ended: true, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: MegaRacOverrideStillPendingAfterAttempt, power_after: raw.power_after, timing: raw.timing,
+    override: OverrideStillPendingAfterAttempt, power_after: raw.power_after, timing: raw.timing,
   }
   let off_no_terminal = MegaRacRunRecord {
     census_ended: false, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: raw.override, power_after: MegaRacPoweredOffAfterAttempt, timing: raw.timing,
+    override: raw.override, power_after: HostPowerRead { state: PowerOff }, timing: raw.timing,
   }
   let off_with_terminal = MegaRacRunRecord {
     census_ended: true, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: raw.override, power_after: MegaRacPoweredOffAfterAttempt, timing: raw.timing,
+    override: raw.override, power_after: HostPowerRead { state: PowerOff }, timing: raw.timing,
   }
   count(derived_of(pending)) == 1
     && any(derived_of(pending), f => match f {

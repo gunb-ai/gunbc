@@ -30,9 +30,15 @@ import extdeps.bmc.ipmi_boot_selection {
 }
 import gunbc.host.boot_attempt {
   AttemptIdentityUnavailable, AttemptRunId, BootOverrideConsumption, ConsoleExceedsBound, ConsoleNotConfigured, NotRetained, ConsoleRetained, CaptureContents, boot_override_consumption, power_after_attempt, console_bound, console_reading, console_size_of_stat, OverrideConsumptionUnread, OverridePendingBeforeAttempt, OverrideStillPendingAfterAttempt, TerminalObserved, TerminalMarker, TerminalNotObserved,
+  // Since review 81601 the override consumption and the after-the-attempt power are the CORE's sums:
+  // this row's claims name their arms, and the finding a record states is the core's to derive.
+  OverrideConsumedByAttempt, OverrideNoLongerPendingAfterAttempt, PowerAfterAttempt,
+  HostPowerReading, HostPowerRead, HostPowerNotTaken, HostPowerState, PowerOn, PowerOff, PowerUnread,
+  PoweredOffAfterTerminal, PoweredOffWithoutTerminal, PoweredOnAfterAttempt,
+  PowerAfterUnobserved, PowerAfterNotTaken, DerivedFinding, run_record_derived_findings, derived_finding_text,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacOverride, MegaRacOverrideConsumedByCensusBoot, MegaRacOverrideNoLongerPendingAfterAttempt, MegaRacOverrideNotHandedOff, MegaRacPowerAfterUnobserved, MegaRacPoweredOffAfterCensusEnd, MegaRacPoweredOffWithoutCensusEnd, MegaRacPoweredOnAfterAttempt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, override_harness, power_after_harness, processor_anomalies, redfish_budget_refusal, redfish_collection_assembly,
+  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, processor_anomalies, redfish_budget_refusal, redfish_collection_assembly,
 }
 import gunbc.machine_intake.mtcollins1_boot_row {
   mtcollins1_boot_account_receipt, mtcollins1_boot_collection_member_bound, mtcollins1_boot_console_reading, mtcollins1_boot_redfish_read_budget, mtcollins1_boot_row_value,
@@ -183,9 +189,14 @@ fn row_account(bundle: BootDiagnosticBundle) -> MegaRacAccountReceipt {
   mtcollins1_boot_account_receipt(e: megarac_boot_evidence(row: mtcollins1_boot_row_value, bundle: bundle))
 }
 
+// WHAT THE BUNDLE FOUND, as strings. THREE sources, each with its one renderer: the power-on fold's
+// account notes, this row's harness findings, and the findings the attempt's OWN RECORD states -- the
+// last derived and worded by the neutral core, since review 81601 deleted this row's copies of the two
+// decisions that produce the override and the powered-off-without-a-terminal findings.
 fn found(bundle: BootDiagnosticBundle) -> List<String> {
   let f = megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle, account: row_account(bundle: bundle))
-  concat(f.account.notes, map(f.harness, h => harness_finding_text(f: h)))
+  concat(concat(f.account.notes, map(f.harness, h => harness_finding_text(f: h))),
+    map(f.derived, d => derived_finding_text(f: d)))
 }
 
 fn any_contains(xs: List<String>, pattern: String) -> Bool {
@@ -914,7 +925,7 @@ fn p5_pending() -> String {
 
 data p5_consumed: String = "Boot parameter version: 1\nBoot Flag Invalid\nBoot Device Selector : No override"
 
-fn consumption_with(before: String, after: String, census_ended: Bool) -> MegaRacOverride {
+fn consumption_with(before: String, after: String, census_ended: Bool) -> BootOverrideConsumption {
   megarac_boot_override_consumption(
     before: BootParam5Read { readback: before, at: "t0" },
     after: BootParam5Read { readback: after, at: "t1" },
@@ -923,50 +934,57 @@ fn consumption_with(before: String, after: String, census_ended: Bool) -> MegaRa
   )
 }
 
-fn consumption(before: String, after: String) -> MegaRacOverride {
+fn consumption(before: String, after: String) -> BootOverrideConsumption {
   consumption_with(before: before, after: after, census_ended: true)
 }
 
+// The harness no longer carries an override finding at all (review 81601): the record's own override
+// field states the fact and gunbc.host.boot_attempt derives the finding from it, so a consumed override
+// is silent in BOTH lists, and this row cannot raise the finding on its own.
 test fn an_override_gone_after_a_census_boot_is_consumed_by_it() -> Bool {
-  match consumption(before: p5_consumed, after: p5_consumed) { MegaRacOverrideConsumedByCensusBoot => true _ => false }
-    && count(override_harness(c: consumption(before: p5_consumed, after: p5_consumed))) == 0
+  match consumption(before: p5_consumed, after: p5_consumed) { OverrideConsumedByAttempt => true _ => false }
 }
 
 // REVIEW 71115: an override no longer pending is not a consumption without the discriminator. The
 // BMC's own valid-bit timeout, a power-off or another writer clears it too.
 test fn an_override_gone_without_a_census_boot_is_only_no_longer_pending() -> Bool {
-  match consumption_with(before: p5_consumed, after: p5_consumed, census_ended: false) { MegaRacOverrideNoLongerPendingAfterAttempt => true _ => false }
+  match consumption_with(before: p5_consumed, after: p5_consumed, census_ended: false) { OverrideNoLongerPendingAfterAttempt => true _ => false }
 }
 
+// Still pending after the attempt is a finding, and it is no longer this row's harness that raises it:
+// the record's override field states it and the core derives it (megarac_boot_record_mapping_witness
+// claims the count and the wording over real records). What is claimed HERE is the part this row owns:
+// which readback rendering produces that answer.
 test fn an_override_still_pending_after_the_attempt_was_not_consumed() -> Bool {
-  match consumption(before: p5_consumed, after: p5_pending()) { MegaRacOverrideStillPendingAfterAttempt => true _ => false }
-    && count(override_harness(c: consumption(before: p5_consumed, after: p5_pending()))) == 1
+  match consumption(before: p5_consumed, after: p5_pending()) { OverrideStillPendingAfterAttempt => true _ => false }
 }
 
 test fn an_override_already_pending_before_the_attempt_is_not_attributed_to_it() -> Bool {
-  match consumption(before: p5_pending(), after: p5_consumed) { MegaRacOverridePendingBeforeAttempt => true _ => false }
+  match consumption(before: p5_pending(), after: p5_consumed) { OverridePendingBeforeAttempt => true _ => false }
 }
 
 test fn consumption_without_a_read_is_never_minted() -> Bool {
   match megarac_boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), booted_through_override_device: true) {
-    MegaRacOverrideConsumptionUnread { reason: _ } => true
+    OverrideConsumptionUnread { reason: _ } => true
     _ => false
   }
 }
 
-// The carrier answers the chassis question alone; the finding needs the terminal too, so the claim
-// pairs them the way the record builder does. The same off reading is expected after a terminal and a
-// finding without one -- which is only testable now that the terminal is NOT baked into the arm name
-// (before, flipping the record's census_ended changed nothing about the finding).
+// THE READER ANSWERS THE CHASSIS QUESTION ALONE. What the chassis said becomes what the record stores,
+// in the core's reading carriers -- on, off, "did not answer", with the decoder's cause kept. Whether
+// that off is a FINDING is no longer this module's question to answer here: the core pairs the reading
+// with the record's terminal (power_after_attempt) and derives the finding from the pair, which
+// megarac_boot_record_mapping_witness claims over real records, including that the same off is silent
+// after a terminal and a finding without one (review 81601 deleted this row's harness arm for it).
 test fn power_off_after_the_census_end_marker_is_expected_not_a_finding() -> Bool {
   let off = megarac_power_after_from_observation(observation: ChassisPowerRead { power_on: false })
   let ended: TerminalObserved = TerminalMarker { marker: "the diagnostic census ended" }
   let open_ended: TerminalObserved = TerminalNotObserved
-  (match off { MegaRacPoweredOffAfterAttempt => true _ => false })
-    && count(power_after_harness(p: off, terminal: ended)) == 0
-    && count(power_after_harness(p: off, terminal: open_ended)) == 1
-    && (match megarac_power_after_from_observation(observation: ChassisPowerRead { power_on: true }) { MegaRacPoweredOnAfterAttempt => true _ => false })
-    && (match megarac_power_after_from_observation(observation: ChassisUnreadable) { MegaRacPowerAfterUnobserved { reason: _ } => true _ => false })
+  (match off { HostPowerRead { state: PowerOff } => true _ => false })
+    && (power_after_attempt(power: off, terminal: ended) == PoweredOffAfterTerminal)
+    && (power_after_attempt(power: off, terminal: open_ended) == PoweredOffWithoutTerminal)
+    && (match megarac_power_after_from_observation(observation: ChassisPowerRead { power_on: true }) { HostPowerRead { state: PowerOn } => true _ => false })
+    && (match megarac_power_after_from_observation(observation: ChassisUnreadable) { HostPowerRead { state: PowerUnread { reason: _ } } => true _ => false })
 }
 
 // ── INHABITANCE: THE POWER-ON ACCOUNT OVER THE REAL ROUTE ────────────────────────────────────────

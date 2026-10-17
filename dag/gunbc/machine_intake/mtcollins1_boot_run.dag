@@ -113,13 +113,19 @@ import gunbc.machine_intake.mtcollins1_power_on_account { AttemptConfigurationRe
 // is produced by megarac_boot_run_record(...) where a neutral consumer wants one.
 import gunbc.host.boot_attempt {
   AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
+  // The reading the poll answers with, the pairing that turns it into an after-the-attempt state, and
+  // the terminal that pairing needs. The row keeps no sum of its own for either decision (review 81601).
+  HostPowerReading, HostPowerRead, HostPowerNotTaken, HostPowerState, PowerOn, PowerOff, PowerUnread,
+  power_after_attempt, PowerAfterAttempt, PoweredOffAfterTerminal,
+  TerminalObserved, TerminalMarker, TerminalNotObserved,
+  OverrideNotHandedOff,
 }
 import gunbc.machine_intake.mtcollins1_boot_row {
   mtcollins1_boot_console, mtcollins1_boot_row_value, mtcollins1_boot_account_receipt, mtcollins1_kvm_observer_dir
 }
 import gunbc.host.smpro_platform_capability { SmproReading, SmproProbed, SmproNotTaken }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  BootDiagnosticBundle, MegaRacRunRecord, MegaRacMediaAttach, MegaRacHandoff, MegaRacEndMedia, MegaRacPowerAfter, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached, MegaRacEndMediaNotTaken, MegaRacPowerAfterNotTaken, MegaRacPowerAfterUnobserved, MegaRacPoweredOnAfterAttempt, MegaRacPoweredOffAfterCensusEnd, MegaRacPoweredOffWithoutCensusEnd, MegaRacOverrideNotHandedOff, SelSnapshotReading, SelSnapshotNotTaken, SdrCacheReading, SdrCacheNotTaken, SensorsNotTaken, inventory_not_taken, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, BmcReachability, BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, bmc_reachability_text, harness_finding_text, bundle_write_receipt_line, recheck_text, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, megarac_ipmi_endpoint, megarac_boot_sdr_cache, megarac_boot_sel_snapshot, megarac_boot_sensors, megarac_boot_inventory, megarac_boot_hpm_check, megarac_boot_param5, megarac_boot_chassis_power, megarac_boot_bmc_reachability, megarac_boot_write_bundle, megarac_boot_outcome_after_bundle, megarac_boot_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_boot_override_consumption, megarac_power_after_from_observation, SdrCacheUnread, MegaRacHandoffAttempted, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacEndMediaObserved, megarac_boot_evidence,
+  BootDiagnosticBundle, MegaRacRunRecord, MegaRacMediaAttach, MegaRacHandoff, MegaRacEndMedia, megarac_power_reading_not_taken, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached, MegaRacEndMediaNotTaken, SelSnapshotReading, SelSnapshotNotTaken, SdrCacheReading, SdrCacheNotTaken, SensorsNotTaken, inventory_not_taken, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, BmcReachability, BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, bmc_reachability_text, harness_finding_text, bundle_write_receipt_line, recheck_text, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, megarac_ipmi_endpoint, megarac_boot_sdr_cache, megarac_boot_sel_snapshot, megarac_boot_sensors, megarac_boot_inventory, megarac_boot_hpm_check, megarac_boot_param5, megarac_boot_chassis_power, megarac_boot_bmc_reachability, megarac_boot_write_bundle, megarac_boot_outcome_after_bundle, megarac_boot_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_boot_override_consumption, megarac_power_after_from_observation, SdrCacheUnread, MegaRacHandoffAttempted, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacEndMediaObserved, megarac_boot_evidence,
 }
 import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -1990,7 +1996,7 @@ type MtCollins1BootActuation {
   stage: MtCollins1BootActuationStage
   override_before: BootParam5Reading
   override_after: BootParam5Reading
-  power_after: MegaRacPowerAfter
+  power_after: HostPowerReading
   timing: BootPhaseTiming
   screen: KvmObserverRecord
   runner_host: RunnerHostUp?
@@ -2005,7 +2011,7 @@ fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtColl
     stage: ActuationNotPoweredOn { reason: reason },
     override_before: BootParam5NotTaken { reason: reason },
     override_after: BootParam5NotTaken { reason: reason },
-    power_after: MegaRacPowerAfterNotTaken { reason: reason },
+    power_after: megarac_power_reading_not_taken(reason: reason),
     screen: kvm_observer_record_not_started(attempt: "", reason: reason),
     timing: boot_phase_timing_not_taken(reason: reason),
     runner_host: none,
@@ -2038,14 +2044,13 @@ fn smpro_phase_result(reading: SmproReading) -> BootPhaseRunResult {
   }
 }
 
-fn power_after_phase_result(p: MegaRacPowerAfter) -> BootPhaseRunResult {
+fn power_after_phase_result(p: HostPowerReading) -> BootPhaseRunResult {
   match p {
-    MegaRacPowerAfterUnobserved { reason: _ } => PhaseRefused { cause: "chassis power unobserved (observation in the run record)" }
-    MegaRacPowerAfterNotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
+    HostPowerNotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
+    HostPowerRead { state: PowerUnread { reason: _ } } => PhaseRefused { cause: "chassis power unobserved (observation in the run record)" }
     // Either chassis answer verified the phase: the poll took a reading. Whether the attempt reached its
     // terminal is a separate fact (the stage, then MegaRacRunRecord.census_ended), not a power arm.
-    MegaRacPoweredOffAfterAttempt => PhaseVerified
-    MegaRacPoweredOnAfterAttempt => PhaseVerified
+    HostPowerRead { state: _ } => PhaseVerified
   }
 }
 
@@ -2072,7 +2077,7 @@ fn actuation_after_watch(
   end_media: MegaRacEndMedia,
   override_before: BootParam5Reading,
   override_after: BootParam5Reading,
-  power_after: MegaRacPowerAfter,
+  power_after: HostPowerReading,
   outcome: ProcessExit,
   screen: KvmObserverRecord,
   timing: BootPhaseTiming,
@@ -2150,27 +2155,30 @@ fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
 // unit off, so an ON read then is re-read up to the sample bound before it is taken as the answer;
 // without the END marker one read is the observation. Unreadable or undecodable reads are recorded as
 // such, never as a power state.
-fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, remaining: Int) -> MegaRacPowerAfter
+fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, remaining: Int) -> HostPowerReading
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
   ]
 {
   match mtcollins1_bmc_username {
-    Absent => MegaRacPowerAfterNotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
+    Absent => megarac_power_reading_not_taken(reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" as NonEmptyStr)
     Present { value: user } => {
       let observed = megarac_power_after_from_observation(observation: megarac_boot_chassis_power(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr))
+      // THE POLL POLLS A READING, NOT A DECISION. Whether to sample again is asked of the power the
+      // read ANSWERED (the core's HostPowerState); a read that did not answer, and a read that was
+      // never made because no account is modeled to make it, are both final and returned as they are.
       match observed {
-        MegaRacPoweredOnAfterAttempt =>
+        HostPowerNotTaken { reason: _ } => observed
+        HostPowerRead { state: PowerUnread { reason: _ } } => observed
+        HostPowerRead { state: PowerOff } => observed
+        HostPowerRead { state: PowerOn } =>
           if census_ended && remaining > 1 {
             let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_power_after_interval)
             mtcollins1_boot_power_after_poll(password_file: password_file, census_ended: census_ended, remaining: remaining - 1)
           } else {
             observed
           }
-        MegaRacPoweredOffAfterAttempt => observed
-        MegaRacPowerAfterUnobserved { reason: _ } => observed
-        MegaRacPowerAfterNotTaken { reason: _ } => observed
       }
     }
   }
@@ -2687,7 +2695,7 @@ type MtCollins1BootAttempt {
   stage: MtCollins1BootActuationStage
   override_before: BootParam5Reading
   override_after: BootParam5Reading
-  power_after: MegaRacPowerAfter
+  power_after: HostPowerReading
   timing: BootPhaseTiming
   screen: KvmObserverRecord
   runner_host: RunnerHostUp?
@@ -2731,7 +2739,7 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
     stage: ActuationNotPoweredOn { reason: "the attempt ended before the unit hold" },
     override_before: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
     override_after: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
-    power_after: MegaRacPowerAfterNotTaken { reason: "the attempt ended before the unit hold" },
+    power_after: megarac_power_reading_not_taken(reason: "the attempt ended before the unit hold" as NonEmptyStr),
     timing: boot_phase_timing_not_taken(reason: "the attempt ended before the unit hold"),
     screen: kvm_observer_record_not_started(attempt: "", reason: "the attempt ended before the unit hold"),
     runner_host: none,
@@ -2768,17 +2776,13 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         sdr_cache: sdr,
         sensors: megarac_boot_sensors(row: mtcollins1_boot_row_value, password_file: pf, sdr: sdr),
         // The post-attempt SMpro pass is skipped only when the off is the census image's own doing:
-        // powered off AND the attempt reached its END marker. The two facts come from their own homes --
-        // the chassis answer from the power carrier, the terminal from the stage that produced it -- and
-        // are paired here rather than being pre-baked into the carrier's arm name.
-        smpro: match power_after {
-          MegaRacPoweredOffAfterAttempt => match mtcollins1_boot_terminal_of_stage(stage: attempt.stage) {
-            TerminalMarker { marker: _ } => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
-            TerminalNotObserved => mtcollins1_boot_smpro_read(username: user, password_file: pf)
-          }
-          MegaRacPoweredOnAfterAttempt => mtcollins1_boot_smpro_read(username: user, password_file: pf)
-          MegaRacPowerAfterUnobserved { reason: _ } => mtcollins1_boot_smpro_read(username: user, password_file: pf)
-          MegaRacPowerAfterNotTaken { reason: _ } => mtcollins1_boot_smpro_read(username: user, password_file: pf)
+        // powered off AND the attempt reached its END marker. The pairing is the CORE'S question --
+        // power_after_attempt over this row's power reading and this row's terminal -- and the skip is
+        // taken from the state it answers with, so this call site and the run record cannot pair the two
+        // facts differently. Everything else (powered on, read did not answer, read never made) reads.
+        smpro: match power_after_attempt(power: power_after, terminal: mtcollins1_boot_terminal_of_stage(stage: attempt.stage)) {
+          PoweredOffAfterTerminal { marker: _ } => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
+          _ => mtcollins1_boot_smpro_read(username: user, password_file: pf)
         },
         inventory: megarac_boot_inventory(row: mtcollins1_boot_row_value, username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
@@ -2802,7 +2806,7 @@ fn mtcollins1_boot_terminal_of_stage(stage: MtCollins1BootActuationStage) -> Ter
   }
 }
 
-fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: MegaRacPowerAfter, timing: BootPhaseTiming) -> MegaRacRunRecord {
+fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: HostPowerReading, timing: BootPhaseTiming) -> MegaRacRunRecord {
   match stage {
     ActuationNotPoweredOn { reason: why } =>
       MegaRacRunRecord {
@@ -2814,7 +2818,10 @@ fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacH
         smpro_census: SmproNotTaken { reason: why },
         override_before: before,
         override_after: after,
-        override: MegaRacOverrideNotHandedOff { reason: why },
+        // The override was never handed off: the attempt never got that far. That is a fact of THIS
+        // row's actuation (the stage says so), stated with the core's own arm -- the core's decision
+        // cannot be run over reads that were never made.
+        override: OverrideNotHandedOff { reason: why },
         power_after: power_after,
         timing: timing,
       }

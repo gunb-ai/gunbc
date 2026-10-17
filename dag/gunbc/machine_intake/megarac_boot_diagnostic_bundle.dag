@@ -170,9 +170,14 @@ import gunbc.host.boot_attempt {
   HandoffMedia, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
   handoff_media_text, EndMedia, EndMediaNotTaken, EndMediaObserved, end_media_text,
   PowerAfterAttempt, PoweredOffAfterTerminal, PoweredOffWithoutTerminal, PoweredOnAfterAttempt,
-  PowerAfterUnobserved, PowerAfterNotTaken, power_after_text, BootOverrideConsumption,
+  PowerAfterUnobserved, PowerAfterNotTaken, power_after_text, power_after_attempt,
+  HostPowerReading, HostPowerRead, HostPowerNotTaken,
+  BootOverrideConsumption, BootOverrideStanding, OverrideFlagPending, OverrideFlagNotPending,
+  OverrideReadUnanswered, OverrideNotHandedOff, OverrideConsumptionUnread,
   OverrideConsumedByAttempt, OverrideNoLongerPendingAfterAttempt, OverridePendingBeforeAttempt,
-  OverrideStillPendingAfterAttempt, override_consumption_text, StandingFinding, TerminalObserved,
+  OverrideStillPendingAfterAttempt, override_consumption_text, boot_override_consumption,
+  DerivedFinding, derived_finding_text, run_record_derived_findings,
+  StandingFinding, TerminalObserved,
   TerminalMarker, TerminalNotObserved, terminal_text, DiagnosticRef, DiagnosticRetained,
   DiagnosticNotRetained, DiagnosticUnavailable, diagnostic_ref_text, BootRunRecord,
   // The neutral record does not answer "what went wrong" itself: run_record_findings (imported by
@@ -566,40 +571,7 @@ fn megarac_end_media_record(e: MegaRacEndMedia) -> EndMedia {
   }
 }
 
-// THE POWER AFTER THE ATTEMPT. The census end is THIS consumer's terminal -- the diagnostic census that
-// reads the machine out after the boot -- so the raw census-end distinction becomes the neutral
-// terminal-observed marker, and only the boot's own report is classified here. The mapping from
-// terminal to "the census ended" lives with the census consumer, not in the boot.
-// THE TWO INPUTS ARE PAIRED HERE, AT THE ONE PLACE THAT PAIRS THEM: the chassis answer from this
-// module's carrier, the terminal from the record's own terminal field. Neither type encodes the other.
-fn megarac_power_after_attempt(p: MegaRacPowerAfter, terminal: TerminalObserved) -> PowerAfterAttempt {
-  match p {
-    MegaRacPoweredOffAfterAttempt => match terminal {
-      TerminalMarker { marker: _ } => PoweredOffAfterTerminal
-      TerminalNotObserved => PoweredOffWithoutTerminal
-    }
-    MegaRacPoweredOnAfterAttempt => PoweredOnAfterAttempt
-    MegaRacPowerAfterUnobserved { reason: reason } => PowerAfterUnobserved { reason: reason }
-    MegaRacPowerAfterNotTaken { reason: reason } => PowerAfterNotTaken { reason: reason }
-  }
-}
 
-// THE OVERRIDE, raw to neutral. Both records answer the same question -- was the one-shot boot flag
-// consumed by the boot we just made -- so "consumed by the census boot" is "consumed by the attempt":
-// the census IS the attempt's readback. A pending-before/before-pair the raw record keeps separately
-// is the neutral pending-before classification, which is what the neutral form asks.
-fn megarac_override_consumption(o: MegaRacOverride) -> BootOverrideConsumption {
-  match o {
-    MegaRacOverrideConsumedByCensusBoot => OverrideConsumedByAttempt
-    MegaRacOverrideNoLongerPendingAfterAttempt => OverrideNoLongerPendingAfterAttempt
-    MegaRacOverridePendingBeforeAttempt => OverridePendingBeforeAttempt
-    MegaRacOverrideStillPendingAfterAttempt => OverrideStillPendingAfterAttempt
-    MegaRacOverrideNotHandedOff { reason: reason } => OverrideNotHandedOff { reason: reason }
-    MegaRacOverrideConsumptionUnread { reason: reason } => OverrideConsumptionUnread { reason: reason }
-  }
-}
-
-// THE RAW HARNESS FINDINGS, NARROWED TO WHAT THE NEUTRAL RECORD MAY STORE.
 //
 // The harness raises nine kinds of finding. SEVEN of them are classifications of a raw record that the
 // neutral record already carries classified (an attach that was not ready, a withheld handoff, an
@@ -630,8 +602,6 @@ fn megarac_standing_findings(raw: List<HarnessFinding>) -> List<StandingFinding>
     MegaRacHandoffWithheld { handoff: _ } => []
     MegaRacHandoffUnconfirmed { handoff: _ } => []
     MegaRacPresentationAfterHandoff { look: _ } => []
-    MegaRacOverrideNotConsumed { consumption: _ } => []
-    MegaRacPoweredOffWithoutTerminal => []
   })
 }
 
@@ -673,8 +643,12 @@ fn megarac_boot_run_record(raw: MegaRacRunRecord, console: ConsoleReading, ident
     end_media: megarac_end_media_record(e: raw.end_media),
     handoff_media: megarac_handoff_media_record(h: raw.handoff_media),
     media: megarac_media_attach_record(r: raw.media),
-    override: megarac_override_consumption(o: raw.override),
-    power_after: megarac_power_after_attempt(p: raw.power_after, terminal: terminal),
+    // BOTH DECISIONS ARE THE CORE'S, so both are taken from what the raw record already holds: the
+    // consumption was decided by boot_override_consumption when this row built its record, and the
+    // after-the-attempt power is the core pairing this row's READING with this row's terminal. There is
+    // no megarac_override_consumption / megarac_power_after_attempt 1:1 mapping to call any more.
+    override: raw.override,
+    power_after: power_after_attempt(power: raw.power_after, terminal: terminal),
     timing: raw.timing,
     identity: identity,
     diagnostic: diagnostic,
@@ -727,34 +701,13 @@ type BootParam5Reading
   | BootParam5Unread { cause: BmcReadCause }
   | BootParam5NotTaken { reason: NonEmptyStr }
 
-type MegaRacOverride
-  = MegaRacOverrideConsumedByCensusBoot
-  | MegaRacOverrideNoLongerPendingAfterAttempt
-  | MegaRacOverridePendingBeforeAttempt
-  | MegaRacOverrideStillPendingAfterAttempt
-  | MegaRacOverrideNotHandedOff { reason: NonEmptyStr }
-  | MegaRacOverrideConsumptionUnread { reason: NonEmptyStr }
-
 // THE ARMS ANSWER ONLY THE CHASSIS QUESTION: on, off, or no answer. They used to key on the census
-// END marker (MegaRacPoweredOffAfterCensusEnd / ...WithoutCensusEnd) while MegaRacRunRecord separately
+// END marker while MegaRacRunRecord separately
 // carried `census_ended` -- two representations of one fact that could disagree, because the finding
 // was read off the power arm's NAME, so flipping census_ended changed nothing. Now the neutral
 // classifier pairs this carrier with the record's own terminal field, which is the single home of the
 // terminal fact: "powered off" and "no terminal" can combine, and "off after a terminal" together with
 // "no terminal" cannot be written (DESIGN §3 one fact one home; §5 construction over validation).
-type MegaRacPowerAfter
-  = MegaRacPoweredOffAfterAttempt
-  | MegaRacPoweredOnAfterAttempt
-  // WHY A REASON AND NOT THE CHASSIS OBSERVATION. The arm once carried the whole
-  // ChassisPowerObservation, whose own sum includes ChassisPowerRead { power_on: Bool } -- so a value
-  // could say the post-attempt power was never observed while carrying a decoded power-on, and the
-  // classifier that is supposed to be the only writer never does that. The arm is the RAW fact that the
-  // read did not answer: undecodable carries the decoder's cause, unreadable carries its fixed reason.
-  // Nothing is lost -- ChassisUnreadable itself carries no data -- and the contradiction is unwritable
-  // (review 81117, DESIGN §5, applied one layer down from the neutral record the reviewer named).
-  | MegaRacPowerAfterUnobserved { reason: NonEmptyStr }
-  | MegaRacPowerAfterNotTaken { reason: NonEmptyStr }
-
 // ─── THE MEDIA ATTACH, AS THIS ATTEMPT'S RECORD ─────────────────────────────────────────────────
 //
 // THE HANDOFF IS GATED ON THIS RECORD, AND THE BUNDLE CARRIES THE SAME RECORD (side chat on
@@ -979,8 +932,6 @@ type HarnessFinding
   | MegaRacHandoffWithheld { handoff: MegaRacHandoff }
   | MegaRacHandoffUnconfirmed { handoff: MegaRacHandoff }
   | MegaRacPresentationAfterHandoff { look: MegaRacAttachResult }
-  | MegaRacOverrideNotConsumed { consumption: MegaRacOverride }
-  | MegaRacPoweredOffWithoutTerminal
   | MegaRacCredentialMayRemain
 
 fn media_attach_harness(record: MegaRacMediaAttach) -> List<HarnessFinding> {
@@ -1168,8 +1119,13 @@ type MegaRacRunRecord {
   smpro_census: SmproReading
   override_before: BootParam5Reading
   override_after: BootParam5Reading
-  override: MegaRacOverride
-  power_after: MegaRacPowerAfter
+  // THE CONSUMPTION AND THE POST-ATTEMPT POWER, stored as the core's OWN types. This module used to
+  // keep a MegaRacOverride sum and a MegaRacPowerAfter sum beside these fields and map them 1:1 into
+  // the neutral ones -- two decisions, two renderers, and production called this module's copy (review
+  // 81601). What is raw here is the READINGS above (override_before / override_after / the chassis
+  // observation folded into power_after); what is decided is the core's, and only the core's.
+  override: BootOverrideConsumption
+  power_after: HostPowerReading
   timing: BootPhaseTiming
 }
 
@@ -1183,8 +1139,8 @@ fn megarac_run_record_not_taken(reason: NonEmptyStr) -> MegaRacRunRecord {
     smpro_census: SmproNotTaken { reason: reason },
     override_before: BootParam5NotTaken { reason: reason },
     override_after: BootParam5NotTaken { reason: reason },
-    override: MegaRacOverrideNotHandedOff { reason: reason },
-    power_after: MegaRacPowerAfterNotTaken { reason: reason },
+    override: OverrideNotHandedOff { reason: reason },
+    power_after: HostPowerNotTaken { reason: reason },
     timing: boot_phase_timing_not_taken(reason: reason),
   }
 }
@@ -1218,92 +1174,71 @@ fn boot_param5_unread_reason(r: BootParam5Reading, which: String) -> NonEmptyStr
 // that only a boot through the override's device produces: the census END marker, which only the
 // census image on the attached virtual CD prints, for this machine and this run. Without it the
 // verdict records what was observed and says consumption is not established.
-fn megarac_boot_override_consumption(before: BootParam5Reading, after: BootParam5Reading, selection: IpmiBootSelection, booted_through_override_device: Bool) -> MegaRacOverride {
-  match before {
+// WHAT THIS ROW'S PARAMETER-5 READS SAY, expressed in the core's own input vocabulary. Two facts are
+// this row's and no one else's, and both live here: WHICH rendering counts as "this attempt's override
+// is pending" (boot_override_pending, the same boot_readback_verdict that confirmed the set -- so the
+// set and the readback can never disagree about what the controller's text means), and what the row
+// accepts as the discriminator that consumption by THIS attempt is established (the caller passes
+// booted_through_override_device, which for this row means the census END marker: the IPMI boot-flag
+// valid bit times out on its own, a power-off or another writer clears it, and a changed rendering can
+// stop matching, so ORDER IS THE ARGUMENT -- DESIGN §4d, review 71115).
+//
+// Everything after that -- already-pending before, still pending after, consumed, no longer pending,
+// unread -- is the core's decision: boot_override_consumption. This module no longer makes it, holds a
+// sum for it, or words it (review 81601; the six-arm MegaRacOverride sum and its 1:1 map to the core's
+// six arms are deleted, and the core function that used to be dead outside witnesses is now what
+// production calls).
+fn megarac_override_standing(read: BootParam5Reading, which: String, selection: IpmiBootSelection) -> BootOverrideStanding {
+  match read {
     BootParam5Read { readback: b, at: _ } =>
       if boot_override_pending(readback: b, selection: selection) {
-        MegaRacOverridePendingBeforeAttempt
+        OverrideFlagPending
       } else {
-        match after {
-          BootParam5Read { readback: a, at: _ } =>
-            if boot_override_pending(readback: a, selection: selection) {
-              MegaRacOverrideStillPendingAfterAttempt
-            } else if booted_through_override_device {
-              MegaRacOverrideConsumedByCensusBoot
-            } else {
-              MegaRacOverrideNoLongerPendingAfterAttempt
-            }
-          other => match boot_param5_unread_reason(r: other, which: "after the attempt") {
-            Present { value: why } => MegaRacOverrideConsumptionUnread { reason: why }
-            Absent => MegaRacOverrideConsumptionUnread { reason: "boot parameter 5 after the attempt was not read" }
-          }
-        }
+        OverrideFlagNotPending
       }
-    other => match boot_param5_unread_reason(r: other, which: "before the attempt") {
-      Present { value: why } => MegaRacOverrideConsumptionUnread { reason: why }
-      Absent => MegaRacOverrideConsumptionUnread { reason: "boot parameter 5 before the attempt was not read" }
-    }
+    BootParam5Unread { cause: c } => OverrideReadUnanswered { reason: concat("boot parameter 5 ", which, " was not read (", bmc_read_cause_kind(cause: c), ")") as NonEmptyStr }
+    BootParam5NotTaken { reason: why } => OverrideReadUnanswered { reason: concat("boot parameter 5 ", which, " was not taken: ", why as String) as NonEmptyStr }
   }
 }
 
-fn megarac_power_after_from_observation(observation: ChassisPowerObservation) -> MegaRacPowerAfter {
-  match observation {
-    ChassisPowerRead { power_on: on } =>
-      if on { MegaRacPoweredOnAfterAttempt } else { MegaRacPoweredOffAfterAttempt }
-    ChassisStatusUndecodable { cause: c } => MegaRacPowerAfterUnobserved { reason: c }
-    ChassisUnreadable => MegaRacPowerAfterUnobserved { reason: "the chassis status read returned nothing decodable" }
-  }
+fn megarac_boot_override_consumption(before: BootParam5Reading, after: BootParam5Reading, selection: IpmiBootSelection,
+                                     booted_through_override_device: Bool) -> BootOverrideConsumption {
+  boot_override_consumption(
+    before: megarac_override_standing(read: before, which: "before the attempt", selection: selection),
+    after: megarac_override_standing(read: after, which: "after the attempt", selection: selection),
+    booted_through_override_device: booted_through_override_device)
 }
 
-fn override_harness(c: MegaRacOverride) -> List<HarnessFinding> {
-  match c {
-    MegaRacOverrideStillPendingAfterAttempt => [MegaRacOverrideNotConsumed { consumption: c }]
-    MegaRacOverridePendingBeforeAttempt => [MegaRacOverrideNotConsumed { consumption: c }]
-    MegaRacOverrideConsumedByCensusBoot => []
-    MegaRacOverrideNoLongerPendingAfterAttempt => []
-    MegaRacOverrideNotHandedOff { reason: _ } => []
-    MegaRacOverrideConsumptionUnread { reason: _ } => []
-  }
+// THE POST-ATTEMPT POWER, REDUCED TO A READING. This module answers only "what did the chassis read
+// say" -- the pairing with the terminal that produces an after-the-attempt state is the core's
+// power_after_attempt, and this module keeps no sum for it (review 81601). A read that did not answer
+// keeps the decoder's cause; the row never fabricates a power it did not read.
+fn megarac_power_after_from_observation(observation: ChassisPowerObservation) -> HostPowerReading {
+  HostPowerRead { state: megarac_host_power(o: observation) }
 }
 
-// THE FINDING NEEDS BOTH FACTS, AND NOW IT IS GIVEN BOTH. This function used to take the power
-// carrier alone and answer from its arm name, so the record's census_ended never reached it: setting
-// that field true or false changed nothing about the finding (the witness claim
-// the_override_and_power_findings_derive_from_their_fields caught exactly that). The power arm says
-// only what the chassis reads; whether the attempt reached its terminal is the record's own field, and
-// the two are paired here, in the one place that pairs them.
-fn power_after_harness(p: MegaRacPowerAfter, terminal: TerminalObserved) -> List<HarnessFinding> {
-  match p {
-    MegaRacPoweredOffAfterAttempt => match terminal {
-      TerminalMarker { marker: _ } => []
-      TerminalNotObserved => [MegaRacPoweredOffWithoutTerminal]
-    }
-    MegaRacPoweredOnAfterAttempt => []
-    MegaRacPowerAfterUnobserved { reason: _ } => []
-    MegaRacPowerAfterNotTaken { reason: _ } => []
-  }
+// THE READ THAT WAS NEVER MADE (no account was modeled to read with, or the budget closed first). A
+// caller that did not attempt the read must not be able to hand back a power, and must not have to
+// invent a chassis cause for a read that never happened.
+fn megarac_power_reading_not_taken(reason: NonEmptyStr) -> HostPowerReading {
+  HostPowerNotTaken { reason: reason }
 }
 
-fn megarac_override_consumption_text(c: MegaRacOverride) -> String {
-  match c {
-    MegaRacOverrideConsumedByCensusBoot => "consumed by this attempt: cleared after a census END marker, which only a boot of the override's device prints"
-    MegaRacOverrideNoLongerPendingAfterAttempt => "no longer pending after the attempt, but no boot through the override's device was observed, so consumption by this attempt is not established"
-    MegaRacOverridePendingBeforeAttempt => "ALREADY PENDING before this attempt set it; consumption not attributable"
-    MegaRacOverrideStillPendingAfterAttempt => "STILL PENDING after the attempt; not consumed"
-    MegaRacOverrideNotHandedOff { reason: r } => concat("not handed off: ", r as String)
-    MegaRacOverrideConsumptionUnread { reason: r } => concat("undetermined: ", r as String)
-  }
-}
+// WHAT THE HARNESS CAN ADD THAT THE RECORD'S FIELDS CANNOT. Only the five arms below, and all five
+// are read from a RAW section of this row's own bundle: which BMC channel failed, what the attach's own
+// result line said, what the recheck saw, what the handoff attempt's confirmation looked like, what the
+// post-handoff look looked like. The two arms that used to sit here for the override and the post-attempt
+// power are DELETED (review 81601): the record's own override and power_after fields already state those
+// facts, gunbc.host.boot_attempt derives them in run_record_derived_findings, and the core renders them
+// -- a third copy of the decision in a harness list was how the two versions drifted. What the record's
+// fields cannot express stays here; what they already say is the core's finding, in the core's words.
 
-fn megarac_power_after_text(p: MegaRacPowerAfter) -> String {
-  match p {
-    MegaRacPoweredOffAfterAttempt => "off after the attempt"
-    MegaRacPoweredOnAfterAttempt => "on"
-    MegaRacPowerAfterUnobserved { reason: r } => concat("unobserved: ", r as String)
-    MegaRacPowerAfterNotTaken { reason: r } => concat("not taken: ", r as String)
-  }
-}
-
+// THE RAW RUN RECORD, RENDERED. The override line and the power line are the CORE'S words: the stored
+// override is already the core's BootOverrideConsumption (override_consumption_text) and the power line
+// pairs the core's reading with the record's terminal through the core's power_after_attempt
+// (power_after_text). This module has no vocabulary for either decision (review 81601) -- what it keeps
+// below are the sections whose detail exists only in this row's raw record.
+// WHAT A PARAMETER-5 READ LOOKS LIKE IN THE RAW RECORD: the readback itself, or why it did not answer.
 fn boot_param5_text(label: String, r: BootParam5Reading) -> String {
   match r {
     BootParam5Read { readback: rb, at: at } => concat("boot parameter 5 ", label, " (", at as String, "):\n", rb)
@@ -1317,8 +1252,9 @@ fn megarac_run_record_text(row: MegaRacBootRow, r: MegaRacRunRecord) -> String {
     concat("media=", megarac_media_attach_text(record: r.media)),
     concat("handoff_media=", megarac_handoff_media_text(h: r.handoff_media)),
     concat("end_media=", megarac_end_media_text(e: r.end_media)),
-    concat("override=", megarac_override_consumption_text(c: r.override)),
-    concat("power_after=", megarac_power_after_text(p: r.power_after)),
+    concat("override=", override_consumption_text(c: r.override)),
+    concat("power_after=", power_after_text(p: power_after_attempt(power: r.power_after,
+      terminal: megarac_run_terminal(r)))),
     "-- phase timing (gunbc.host.managed_host_boot_phase_timing) --",
     boot_phase_timing_text(t: r.timing),
     boot_param5_text(label: "before", r: r.override_before),
@@ -1829,12 +1765,13 @@ fn sensor_coverage(s: SensorReading) -> CarrierStanding {
   }
 }
 
-fn chassis_coverage(p: MegaRacPowerAfter) -> CarrierStanding {
+fn chassis_coverage(p: HostPowerReading) -> CarrierStanding {
   match p {
-    MegaRacPowerAfterUnobserved { reason: _ } => CarrierRefused { cause: "the post-attempt chassis read did not answer" }
-    MegaRacPowerAfterNotTaken { reason: r } => CarrierNotTaken { reason: r }
-    MegaRacPoweredOffAfterAttempt => CarrierRead
-    MegaRacPoweredOnAfterAttempt => CarrierRead
+    HostPowerNotTaken { reason: r } => CarrierNotTaken { reason: r }
+    HostPowerRead { state: state } => match state {
+      PowerUnread { reason: _ } => CarrierRefused { cause: "the post-attempt chassis read did not answer" }
+      _ => CarrierRead
+    }
   }
 }
 
@@ -1900,7 +1837,13 @@ fn megarac_boot_evidence(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> P
 // our harness did. The two are composed here because the harness records are this module's.
 type MegaRacBootFindings {
   account: MegaRacAccountReceipt
+  // WHAT THIS ROW'S HARNESS ADDED, from the raw sections the record's fields cannot express.
   harness: List<HarnessFinding>
+  // WHAT THE ATTEMPT'S OWN RECORD STATES, derived by gunbc.host.boot_attempt from its fields. Kept
+  // beside the harness list rather than merged into it: the two answer different questions and one
+  // must not be able to carry the other's facts (the same reason the core keeps standing and derived
+  // apart). Rendered as its own section, in the core's words -- this module has none for them.
+  derived: List<DerivedFinding>
 }
 
 fn megarac_boot_harness(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> List<HarnessFinding> {
@@ -1908,13 +1851,21 @@ fn megarac_boot_harness(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> Li
   concat(match failed { Absent => []  Present { value: xs } => [MegaRacEveryReadFailed { failed: xs }] },
     concat(media_attach_harness(record: bundle.run.media),
     concat(handoff_media_harness(h: bundle.run.handoff_media),
-    concat(override_harness(c: bundle.run.override),
-    concat(power_after_harness(p: bundle.run.power_after, terminal: megarac_run_terminal(bundle.run)),
-      if bundle.inventory.credential_removed { [] } else { [MegaRacCredentialMayRemain] })))))
+      if bundle.inventory.credential_removed { [] } else { [MegaRacCredentialMayRemain] })))
 }
 
 fn megarac_boot_findings(row: MegaRacBootRow, bundle: BootDiagnosticBundle, account: MegaRacAccountReceipt) -> MegaRacBootFindings {
-  MegaRacBootFindings { account: account, harness: megarac_boot_harness(row: row, bundle: bundle) }
+  // ONE HARNESS PASS, feeding both lists: the harness findings are this row's raw-section report, and
+  // they are also the standing list of the neutral record the core derives FROM. Deriving over the raw
+  // record instead would ask the core's questions of this row's fields, which is how the two versions
+  // of the override and power decisions drifted apart in the first place (review 81601).
+  let harness = megarac_boot_harness(row: row, bundle: bundle)
+  MegaRacBootFindings {
+    account: account,
+    harness: harness,
+    derived: run_record_derived_findings(record: megarac_boot_run_record(raw: bundle.run, console: bundle.console,
+      identity: bundle.attempt, harness: harness)),
+  }
 }
 
 fn harness_finding_text(f: HarnessFinding) -> String {
@@ -1949,15 +1900,6 @@ fn harness_finding_text(f: HarnessFinding) -> String {
       PresentationUnobserved { reason: why } => concat("the post-handoff look was UNOBSERVED, so whether the presentation survived the handoff is INDETERMINATE (", why as String, "): ", observation_text(r: a))
       PresentationReadyButSessionHeld { held: r } => concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))
     }
-    MegaRacOverrideNotConsumed { consumption: c } => match c {
-      MegaRacOverrideStillPendingAfterAttempt => "the one-shot boot override was still pending after the attempt: the host did not boot through it"
-      MegaRacOverridePendingBeforeAttempt => "a boot override matching this attempt's was already pending before it was set, so its consumption cannot be attributed to this attempt"
-      MegaRacOverrideConsumedByCensusBoot => megarac_override_consumption_text(c: c)
-      MegaRacOverrideNoLongerPendingAfterAttempt => megarac_override_consumption_text(c: c)
-      MegaRacOverrideNotHandedOff { reason: _ } => megarac_override_consumption_text(c: c)
-      MegaRacOverrideConsumptionUnread { reason: _ } => megarac_override_consumption_text(c: c)
-    }
-    MegaRacPoweredOffWithoutTerminal => "the host was powered off after the attempt without an observed terminal: the image did not reach its end"
     MegaRacCredentialMayRemain => "the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"
   }
 }
@@ -2068,6 +2010,11 @@ fn megarac_boot_bundle_text(row: MegaRacBootRow, bundle: BootDiagnosticBundle, a
     findings.account.text,
     "== what our harness did ==",
     if count(findings.harness) == 0 { "nothing to report" } else { join(map(findings.harness, f => harness_finding_text(f: f)), "\n") },
+    "== what the attempt's own record states went wrong (derived by the neutral core) ==",
+    // The two findings this row used to word itself -- the un-consumed override and the powered-off
+    // without a terminal -- are in this list, in the core's words. Deleting this section would hide a
+    // fact the record states; re-wording it here would put a second vocabulary on one sum.
+    if count(findings.derived) == 0 { "nothing to report" } else { join(map(findings.derived, d => derived_finding_text(f: d)), "\n") },
     "== bmc system event log ==",
     sel_snapshot_text(label: "before", s: bundle.sel_before),
     sel_snapshot_text(label: "after", s: bundle.sel_after),
