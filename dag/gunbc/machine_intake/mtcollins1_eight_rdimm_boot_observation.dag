@@ -32,5 +32,4 @@ data mtcollins1_eight_rdimm_two_rank_module_count: Int = 4
 
 data mtcollins1_eight_rdimm_trained_megatransfers: Int = 2133
 
-data mtcollins1_eight_rdimm_attestation_matches_firmware: Bool =
-  mtcollins1_eight_rdimm_receipt_attested_module_count == mtcollins1_eight_rdimm_firmware_read_module_count
+data mtcollins1_eight_rdimm_attestation_matches_firmware: Bool = mtcollins1_eight_rdimm_receipt_attested_module_count == mtcollins1_eight_rdimm_firmware_read_module_count
