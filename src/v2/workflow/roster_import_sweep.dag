@@ -127,6 +127,14 @@ fn roster_import_sweep_apply_exit(root_dir: String, paths_csv: String) -> Proces
 // roster_lock_acquire, and roster_apply_edit re-checks that the lock file still exists before it writes, so an entry
 // that never acquired the lock refuses `lock-not-held` and writes nothing. Symlinks inside the root are not resolved
 // (the root is exclusively owned for the run, per the contract above).
+// WHY NOT std.durable_exclusive_hold / std.temporal_effect::HeldLease (DESIGN §3b leasing home): durable_hold_*_assess
+// and held_lease are pure assessments over a caller-supplied observation; none of them takes or releases anything, and no
+// durable store for a source tree exists to observe. Using them first needs that store plus holder-liveness reporting,
+// which is more machinery than the apply they would guard. The cost of the lock file is a stuck lock after a killed run:
+// loud (every later apply refuses `apply-lock-unavailable` naming the root, writing nothing) and cleared by the root's
+// single owner deleting `<root>/.roster_import_sweep.lock`. Expiry and stale-holder recovery are not built.
+// TRIGGER to move onto the hold home: the first apply run by more than one writer or unattended (CI), when the
+// durable-hold store and liveness report exist.
 type RosterHeldLock sole_constructor {
   root: String
 }
