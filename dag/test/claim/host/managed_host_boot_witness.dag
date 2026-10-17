@@ -25,6 +25,7 @@ import gunbc.host.bmc_release_capability_catalog {
   megarac_release_capability_catalog, MegaRacReleaseCapabilityEntry,
   megarac_release_version_is_machine_read, megarac_release_entry_is_coherent,
   MegaRacVersionMachineRead, megarac_run_38789347052_evidence,
+  MegaRacEvidenceExecutedRun, MegaRacRunReadFirmware,
   bmc_capability_observation_citation,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
@@ -329,24 +330,44 @@ test fn w_the_handoff_admission_discriminates_on_every_managed_hosts_rows() -> B
 // the shipped ones, so only the disagreement is invented.
 fn drifted_release_entry() -> MegaRacReleaseCapabilityEntry {
   MegaRacReleaseCapabilityEntry {
-    // The release this row is keyed by -- the catalog's single key is exactly this field.
+    // KEYED AT 0.32 -- the release the fixture's host OBSERVES. This was the bug in the first draft:
+    // keyed at 0.45.3, the lookup's filter (which keys on exactly this field) never returned the entry,
+    // so it fell to Uncatalogued rather than Incoherent and the claim could not fire no matter what the
+    // gate did. The single release key means the manager's literal "keyed 0.45.3, row says 0.32" is now
+    // UNREPRESENTABLE -- there is no second field to disagree -- so the drift that remains reachable,
+    // and the one that actually matters, is on the EVIDENCE axis: the row declares one release while
+    // the run joined to it attests another.
     row: BmcFirmwareReleaseCapabilityRow {
-      firmware: megarac_firmware_0_45_3,
+      firmware: megarac_firmware_0_32,
       capabilities: [
         CapabilityBootSourceOverride,
         CapabilityPowerControl,
         CapabilityOemRemoteMedia,
       ],
     },
-    // FORGED: the row CLAIMS a machine read, which is the standing under which a row's release is
-    // supposed to rest on a machine read of its own build.
+    // FORGED: the row CLAIMS a machine read of 0.32. This standing is what makes the disagreement a
+    // defect rather than a gap -- machine-read is the standing under which a row's release is supposed
+    // to rest on an instrument read of that very build.
     version: MegaRacVersionMachineRead {
       read_from: "a forged pre-power hpm check -- no such read exists",
     },
-    // THE REAL RUN, whose committed bytes read NO version (the shipped value's own wording). A
-    // machine-read standing beside an executed run that read nothing is the disagreement: capabilities
-    // presented as machine-established on evidence that establishes nothing about the release.
-    evidence: megarac_run_38789347052_evidence,
+    // THE REAL RUN 38789347052 (real run id, real receipt path, the real exercised set) with ONE
+    // forged field: its committed bytes are made to read 0.45.3. So this row says "0.32, and an
+    // instrument read it" while the evidence it cites says the run it drove was 0.45.3. That is the
+    // row borrowing a run that does not belong to it, and it is the state the single key was added to
+    // make impossible on the key axis -- here it is reached on the evidence axis, which the key alone
+    // does not police.
+    evidence: MegaRacEvidenceExecutedRun {
+      run_id: "38789347052",
+      run_attempt: none,
+      exercised: [
+        CapabilityBootSourceOverride,
+        CapabilityPowerControl,
+        CapabilityOemRemoteMedia,
+      ],
+      firmware_read: MegaRacRunReadFirmware { read: megarac_firmware_0_45_3 },
+      receipt_path: "artifacts/bmc/mtcollins1-boot-run-38789347052/mtcollins1-boot-receipt.txt",
+    },
     citations: [bmc_capability_observation_citation(decl_name: "drifted_release_entry")],
   }
 }
@@ -362,7 +383,7 @@ test fn w_a_row_its_own_evidence_does_not_support_refuses_on_every_public_path()
     // support -- and it names WHICH release it refused, so a witness can tell "refused" from "silent".
     let row_refuses = match host_capability_row_in(table: drifted, access: h.access) {
       HostCapabilityRowIncoherent { firmware: f } =>
-        bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_45_3)
+        bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_32)
       _ => false
     }
     // 2. BOOT SELECTION refuses BEFORE any effect: no selection, so no attach, no override, no cycle.
@@ -375,7 +396,7 @@ test fn w_a_row_its_own_evidence_does_not_support_refuses_on_every_public_path()
       BmcAccessObserved { observation: o } =>
         match oob_boot_handoff_admission_in(table: drifted, observation: o) {
           OobHandoffRowIncoherent { firmware: f } =>
-            bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_45_3)
+            bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_32)
           _ => false
         }
       BmcAccessUnobserved { endpoint: _ } => false
@@ -384,7 +405,7 @@ test fn w_a_row_its_own_evidence_does_not_support_refuses_on_every_public_path()
     // everything: the shipped table, whose rows agree with their own evidence, resolves and selects.
     let shipped_resolves = match host_capability_row(access: h.access) {
       HostCapabilityRowKnown { row: row } =>
-        bmc_firmware_release_identity_eq(a: row.firmware, b: megarac_firmware_0_45_3)
+        bmc_firmware_release_identity_eq(a: row.firmware, b: megarac_firmware_0_32)
       _ => false
     }
     let shipped_boot = match boot_selection(host: h) {
