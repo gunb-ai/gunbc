@@ -3,6 +3,7 @@ module gunbc.runner.runner_host_unit_slot
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.decimal { decimal_digits_only }
+import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.github.actions_runner {
@@ -75,7 +76,6 @@ type HostUnitSlotRefusal
 type HostUnitSlotPurpose
   = AttemptSlot { attempt: NonEmptyStr }
   | ServiceSlot { boot: ServiceBootId, index: Int }
-  | RecoveredServiceSlot { name: ServiceSlotName }
 
 // A SERVICE BOOT IDENTITY IS BUILT FROM A KERNEL BOOT ID AND NOTHING ELSE. sole_constructor: its only
 // producer is service_boot_id_of over a HostCaptureRunIdentity, so a population or a sweep's current
@@ -158,7 +158,6 @@ fn purpose_spelling(host: HostIdentity, purpose: HostUnitSlotPurpose, registrati
     AttemptSlot { attempt: a } =>
       PurposeSpelled { unit: ephemeral_slot_unit(host: host, attempt: a), labels: ephemeral_slot_labels(host: host, attempt: a) }
     ServiceSlot { boot: i, index: n } => service_purpose_spelling(host: host, boot_id: i.boot_id, index: n, registration_labels: registration_labels)
-    RecoveredServiceSlot { name: c } => service_purpose_spelling(host: host, boot_id: c.boot_id, index: c.index, registration_labels: registration_labels)
   }
 }
 
@@ -193,7 +192,6 @@ fn host_unit_slot_attempt(slot: HostUnitSlot) -> NonEmptyStr? {
   match slot.purpose {
     AttemptSlot { attempt: a } => Present { value: a }
     ServiceSlot { boot: _, index: _ } => none
-    RecoveredServiceSlot { name: _ } => none
   }
 }
 
@@ -260,58 +258,101 @@ fn service_slot_split(body: String, tail: Int) -> ServiceSlotName? {
 
 // ── THE SERVICE POPULATION ──────────────────────────────────────────────────────────────────────
 
+// THE CURRENT POPULATION IS A SEALED VALUE, NOT A LIST A CALLER ASSEMBLES. It carries the controlled host
+// it was derived for, the admitted boot, and the exact bound units of indices 0..N-1 (N from the host's
+// committed runner width). sole_constructor: only current_service_population_over builds it, from a
+// width, a host and a boot, and it refuses an empty member set, so a population that grants no
+// membership to anyone cannot exist to be read as "nothing is a member".
+type CurrentServicePopulation sole_constructor {
+  host: ControlledHost
+  boot: ServiceBootId
+  units: List<NonEmptyStr>
+}
+
+type CurrentServicePopulationRefusal
+  = CurrentPopulationWidthUnresolved { cause: RunnerWidthUnresolvedCause }
+  | CurrentPopulationHostNotControlled { refusal: HostControlRefusal }
+  | CurrentPopulationSlotRefused { refusal: HostUnitSlotRefusal }
+  | CurrentPopulationEmpty
+
+type CurrentServicePopulationStanding
+  = CurrentServicePopulationDerived { population: CurrentServicePopulation }
+  | CurrentServicePopulationRefused { refusal: CurrentServicePopulationRefusal }
+
 // THE WORKFLOW A SERVICE SLOT RUNS: the required witness floor, spelled the way GitHub identifies a
 // selected workflow, <owner>/<repo>/<path>@<ref>, at the default branch.
 fn service_slot_selected_workflow() -> NonEmptyStr {
   join([gunbc_repository.full_name as String, "/", artifact_path(a: WitnessFloorYamlArtifact), "@refs/heads/", gunbc_repository.default_branch as String], "") as NonEmptyStr
 }
 
-type ServiceSlotPopulation
-  = ServiceSlotsDerived { slots: List<HostUnitSlotStanding> }
-  | ServiceSlotsWidthUnresolved { cause: RunnerWidthUnresolvedCause }
-  | ServiceSlotsHostNotControlled { refusal: HostControlRefusal }
-
 // A HOST'S SERVICE SLOTS ARE INDICES 0..N-1 where N is its committed runner width, which is derived
 // from the host's fleet compute offer (gunbc.runner.runner_slot_allocation gunbc_runner_committed_width);
-// an unresolved width is carried, never read as zero. No host is named: a host's population differs
+// an unresolved width is a refusal, never read as zero. No host is named: a host's population differs
 // from another's only by its offer.
 // CONSUMER FRONTIER (DESIGN section 3c): consumed today only by test.claim.runner.runner_jit_listed_registration_witness.
 // Its production consumer is the fleet-converge mode that registers the current boot's slots, which waits
 // on operator answer Q3 of the mtcollins1 stateless-registration design; lost_boot_sweep (gunbc.runner.runner_jit_deregistration)
 // is the same mode's other half.
-fn service_slot_population(host: HostControlStanding, boot: ServiceBootId) -> ServiceSlotPopulation {
+fn current_service_population(host: HostControlStanding, boot: ServiceBootId) -> CurrentServicePopulationStanding {
   match host {
-    HostControlRefused { refusal: r } => ServiceSlotsHostNotControlled { refusal: r }
+    HostControlRefused { refusal: r } => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: r } }
     HostControlled { controlled: b } =>
-      service_slot_population_over(host: host, width: gunbc_runner_committed_width(host: b.host), registration_labels: runner_registration_labels(host: b.host), boot: boot)
+      current_service_population_over(host: host, width: gunbc_runner_committed_width(host: b.host), registration_labels: runner_registration_labels(host: b.host), boot: boot)
   }
 }
 
-fn service_slot_population_over(host: HostControlStanding, width: RunnerWidthResolution, registration_labels: RunnerRegistrationLabelsResolution, boot: ServiceBootId) -> ServiceSlotPopulation {
-  match width {
-    RunnerWidthUnresolved { cause: c } => ServiceSlotsWidthUnresolved { cause: c }
-    RunnerWidthDerived { slots: n } =>
-      ServiceSlotsDerived {
-        slots: service_slot_indices(from: 0, count: n) |> map(i =>
-          host_unit_slot_over(host: host, purpose: ServiceSlot { boot: boot, index: i }, workflow: service_slot_selected_workflow(), registration_labels: registration_labels)),
+// THE FOLD OVER SUPPLIED WIDTH AND LABELS: the one production host's offer is not yet in the fleet
+// catalog, so the success shape is reachable only by supplying them. A boundary, so it is admitted to
+// its production wrapper and to the witness helper that supplies them, and to no one else.
+fn current_service_population_over(host: HostControlStanding, width: RunnerWidthResolution, registration_labels: RunnerRegistrationLabelsResolution, boot: ServiceBootId) -> CurrentServicePopulationStanding admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_host_unit_slot", decl_name: "current_service_population"),
+  decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "population_over_host"),
+] {
+  match host {
+    HostControlRefused { refusal: r } => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: r } }
+    HostControlled { controlled: b } =>
+      match width {
+        RunnerWidthUnresolved { cause: c } => CurrentServicePopulationRefused { refusal: CurrentPopulationWidthUnresolved { cause: c } }
+        RunnerWidthDerived { slots: n } => {
+          let slots = service_slot_indices(from: 0, count: n) |> map(i =>
+            host_unit_slot_over(host: host, purpose: ServiceSlot { boot: boot, index: i }, workflow: service_slot_selected_workflow(), registration_labels: registration_labels))
+          match filter(slots, st => match st { HostUnitSlotRefused { refusal: _ } => true _ => false }).first() {
+            Present { value: HostUnitSlotRefused { refusal: r } } => CurrentServicePopulationRefused { refusal: CurrentPopulationSlotRefused { refusal: r } }
+            _ => {
+              let units = reverse(fold(slots, init: [], f: (acc, st) => match st { HostUnitSlotBound { slot: s } => concat([s.unit], acc) _ => acc }))
+              if count(units) == 0 {
+                CurrentServicePopulationRefused { refusal: CurrentPopulationEmpty }
+              } else {
+                CurrentServicePopulationDerived { population: CurrentServicePopulation { host: b, boot: boot, units: units } }
+              }
+            }
+          }
+        }
       }
   }
 }
 
-// THE UNITS OF THE CURRENT POPULATION, or nothing when the population is not derivable. A population
-// that cannot be derived -- width unresolved, host not controlled, or any slot refused (a host with no
-// offer refuses every slot's labels) -- yields no membership at all, never an empty one: an empty
-// member set would read every current-boot name as a stranger.
-// CONSUMER FRONTIER (DESIGN section 3c): consumed by lost_boot_sweep (gunbc.runner.runner_jit_deregistration),
-// whose own consumer is the fleet-converge mode waiting on operator answer Q3.
-fn service_slot_member_units(population: ServiceSlotPopulation) -> List<NonEmptyStr>? {
-  match population {
-    ServiceSlotsWidthUnresolved { cause: _ } => none
-    ServiceSlotsHostNotControlled { refusal: _ } => none
-    ServiceSlotsDerived { slots: slots } => {
-      let units = fold(slots, init: [], f: (acc, st) => match st { HostUnitSlotBound { slot: s } => concat([s.unit], acc) _ => acc })
-      if count(units) == count(slots) { Present { value: reverse(units) } } else { none }
-    }
+// MEMBERSHIP: is this name one of the sealed population's bound units.
+fn current_population_has_unit(population: CurrentServicePopulation, unit: String) -> Bool {
+  population.units |> any(u => (u as String) == unit)
+}
+
+// A LISTED NAME'S CANONICAL SPELLING, WITHOUT A SLOT. Recovery needs only the unit name the grammar
+// rebuilds (and the registration labels' refusal, carried unchanged), so it reuses the spelling
+// derivation (service_purpose_spelling) and stops there: no HostUnitSlot, hence nothing launch- or
+// mint-capable, is built from a name read off a listing.
+type RecoveredServiceUnit
+  = RecoveredUnitSpelled { unit: NonEmptyStr }
+  | RecoveredUnitRefused { refusal: HostUnitSlotRefusal }
+
+fn recovered_service_unit(host: HostControlStanding, parsed: ServiceSlotName, registration_labels: RunnerRegistrationLabelsResolution) -> RecoveredServiceUnit {
+  match host {
+    HostControlRefused { refusal: r } => RecoveredUnitRefused { refusal: HostUnitSlotHostNotControlled { refusal: r } }
+    HostControlled { controlled: b } =>
+      match service_purpose_spelling(host: b.host, boot_id: parsed.boot_id, index: parsed.index, registration_labels: registration_labels) {
+        PurposeLabelsRefused { host: h, cause: c } => RecoveredUnitRefused { refusal: HostUnitSlotRegistrationLabelsRefused { host: h, cause: c } }
+        PurposeSpelled { unit: u, labels: _ } => RecoveredUnitSpelled { unit: u }
+      }
   }
 }
 
