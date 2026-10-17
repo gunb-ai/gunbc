@@ -146,17 +146,6 @@ data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
 ]
 
 
-// Structural equality over a closed union, written as a match rather than delegated: an arm that forgot a
-// case is a compile error, and the fold's per-axis lookups depend on this being exact.
-fn same_runtime_identity_axis(left: RuntimeIdentityAxis, right: RuntimeIdentityAxis) -> Bool {
-  match left {
-    BoardSerialAxis => match right { BoardSerialAxis => true _ => false }
-    BiosVersionAxis => match right { BiosVersionAxis => true _ => false }
-    ModelAxis => match right { ModelAxis => true _ => false }
-    NicSetAxis => match right { NicSetAxis => true _ => false }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // EACH AXIS, AS A STANDING -- one union each, with the three states as ARMS
 // ---------------------------------------------------------------------------
@@ -169,42 +158,53 @@ type RuntimeIdentityRefusal
   | AuthenticationFailed { detail: NonEmptyStr }
   | ReplyUnreadable { detail: NonEmptyStr }
 
-fn runtime_identity_refusal_detail(refusal: RuntimeIdentityRefusal) -> NonEmptyStr {
-  match refusal {
-    QueryUnsupported { detail: d } => d
-    AuthenticationFailed { detail: d } => d
-    ReplyUnreadable { detail: d } => d
+// THE ONE AXIS STANDING, shared by every axis. Four separate sums used to live here -- serial, firmware
+// version, model, address set -- each the same three states with a different payload name, and each with its
+// own absence projection beside siblings that answer the same question. That is one concept written four
+// times (DESIGN section 2: model a concept once and derive every use; its Int8..UInt128 example is exactly
+// this, one axis rather than ten types), and it made a fifth axis a fifth sum plus a fifth projection
+// instead of a row. What varies between axes is only the PAYLOAD TYPE, so that is what the parameter carries.
+//
+// The three states are ARMS, not a bool beside a value: a record with `read: Optional<T>` next to
+// `refused: Bool` can name a reading AND a refusal at once, or neither, and the wrapper then disagrees with
+// itself about whether anything was ever read. Here the states are mutually exclusive by construction.
+//
+// WHAT A FIFTH AXIS COSTS: an arm on `RuntimeIdentityAxis`, a field on each side record, and a row in the
+// table. NOT a union and NOT an absence fn. If a genuinely different state ever appears (a reading that is
+// stale rather than absent, say), it is a new arm here plus a new `AxisExamination` arm -- and every fold
+// over them stops compiling until it handles it, which is the price of getting the fourth axis free today.
+type AxisStanding<T>
+  = AxisWasRead { value: T }
+  | AxisStayedSilent { reason: NonEmptyStr }
+  | AxisWasRefused { refusal: RuntimeIdentityRefusal }
+
+// THE ONE PROJECTION from a standing to an absence. Four fns used to do this, one per axis sum, each the
+// same three lines; a fifth axis would have needed a fifth copy. The table grows by a row and this is simply
+// called on the new field.
+fn axis_absence<T>(standing: AxisStanding<T>) -> RuntimeIdentityAbsence? {
+  match standing {
+    AxisWasRead { value: _ } => Absent
+    AxisStayedSilent { reason: r } => Present { value: Unread { reason: r } }
+    AxisWasRefused { refusal: f } => Present { value: ControllerRefused { refusal: f } }
   }
 }
 
-// THE BOARD-SERIAL AXIS. The serial as one side reports it, verbatim; normalization would be a second
-// authority on what the string says, so equality is exact and the reading carries the raw value.
-type RuntimeBoardSerialStanding
-  = BoardSerialObserved { serial: NonEmptyStr }
-  | BoardSerialUnobserved { reason: NonEmptyStr }
-  | BoardSerialRefused { refusal: RuntimeIdentityRefusal }
-
-// THE FIRMWARE-VERSION AXIS. Same vocabulary the readiness seam uses for the same fact: the version the
-// unit reports for itself, as a reading rather than as a claim about a release.
-type RuntimeBiosVersionStanding
-  = BiosVersionRead { version: NonEmptyStr }
-  | BiosVersionMissing { reason: NonEmptyStr }
-  | BiosVersionQueryRefused { refusal: RuntimeIdentityRefusal }
-
-// THE MODEL AXIS: the board/product string one side reports. Corroborating by table, because a firmware
-// can report a generic string for several boards while a serial cannot.
-type RuntimeModelStanding
-  = ModelRead { model: NonEmptyStr }
-  | ModelMissing { reason: NonEmptyStr }
-  | ModelQueryRefused { refusal: RuntimeIdentityRefusal }
-
-// THE ADDRESS SET AXIS. Observed carries the addresses that side reported; an empty list is a side that
-// reported no addresses at all, which is a reading, not a gap -- and the table's intersection rule turns it
-// into a divergence rather than a shrug.
-type RuntimeNicSetStanding
-  = NicSetReported { addresses: List<Eui48Address> }
-  | NicSetMissing { reason: NonEmptyStr }
-  | NicSetQueryRefused { refusal: RuntimeIdentityRefusal }
+// WHAT ONE AXIS SAYS ABOUT A PAIR OF STANDINGS -- the single answer the fold consumes. Three fns used to
+// hand-match coproducts into bools (`both_sides_read`, `axis_is_decisive`, `same_runtime_identity_axis`) and
+// the fold branched on those bools: each had already thrown away WHICH ARM it came from, a new arm would
+// have been silently false, and a reader could not see the weight behind a decision. Here the evidence
+// travels with the verdict about it, the weight is CARRIED rather than flattened to "is decisive", and a new
+// state makes every consumer of this sum stop compiling until it handles the new arm.
+//
+// `AxisIncomparable` is unreachable and total at once. A pair is absent only when some side is not read, and
+// a side that is not read always yields a present absence -- so `AxisUnanswered` catches every real case.
+// The typechecker cannot know that, and the honest arm is one that CLAIMS nothing rather than a default that
+// guesses: if the reachability argument above ever becomes false, this is where the new state lands, and it
+// surfaces to an operator as a gap rather than being silently agreed with.
+type AxisExamination
+  = AxisCompared { axis: RuntimeIdentityAxis, pair: AxisReadingPair, weight: AxisWeight }
+  | AxisUnanswered { gap: RuntimeIdentityGap, weight: AxisWeight }
+  | AxisIncomparable { axis: RuntimeIdentityAxis, weight: AxisWeight }
 
 // What an axis did not answer, and WHETHER it stayed quiet or was refused. The absence is a SUM, not a
 // string: `Unread` (nobody got an answer) and `ControllerRefused` (an answer of "no" came back, with its
@@ -259,20 +259,20 @@ type RuntimeIdentityDivergence {
 // proof about the machine's own reportings, not a check that two labels were spelled the same.
 type PreBootIdentityStanding {
   unit: UnitKey
-  board_serial: RuntimeBoardSerialStanding
-  bios_version: RuntimeBiosVersionStanding
-  model: RuntimeModelStanding
-  nics: RuntimeNicSetStanding
+  board_serial: AxisStanding<NonEmptyStr>
+  bios_version: AxisStanding<NonEmptyStr>
+  model: AxisStanding<NonEmptyStr>
+  nics: AxisStanding<List<Eui48Address>>
 }
 
 // THE POST-BOOT REPORT: the same four axes, as the running OS reports them.
 type PostBootIdentityReport {
   unit: UnitKey
   reported_over: PostBootReportChannel
-  board_serial: RuntimeBoardSerialStanding
-  bios_version: RuntimeBiosVersionStanding
-  model: RuntimeModelStanding
-  nics: RuntimeNicSetStanding
+  board_serial: AxisStanding<NonEmptyStr>
+  bios_version: AxisStanding<NonEmptyStr>
+  model: AxisStanding<NonEmptyStr>
+  nics: AxisStanding<List<Eui48Address>>
 }
 
 // HOW the OS came to report. A semantic axis rather than a transport detail, because it changes what the
@@ -330,14 +330,15 @@ fn runtime_identity_match(
   pre: PreBootIdentityStanding,
   post: PostBootIdentityReport,
 ) -> RuntimeIdentityVerdict {
-  let diverged = all_divergences(pre: pre, post: post)
-  let gaps = fatal_gaps(pre: pre, post: post)
+  let examined = examinations(pre: pre, post: post)
+  let diverged = all_divergences(examined: examined)
+  let gaps = fatal_gaps(examined: examined)
   if diverged.length() > 0 {
     Mismatch { diverged: diverged, pre_unit: pre.unit, post_unit: post.unit }
   } else if gaps.length() > 0 {
     Unprovable { why: gaps, pre_unit: pre.unit, post_unit: post.unit }
   } else {
-    Match { axes_matched: axes_checked_and_passed(pre: pre, post: post), pre_unit: pre.unit, post_unit: post.unit }
+    Match { axes_matched: axes_checked_and_passed(examined: examined), pre_unit: pre.unit, post_unit: post.unit }
   }
 }
 
@@ -345,65 +346,61 @@ fn runtime_identity_match(
 // rather than a filter/map pair over a probe union: an axis with nothing to report contributes NO element,
 // so there is no "unreachable" placeholder value anywhere in this module that a bug could surface as a
 // verdict.
-fn all_divergences(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityDivergence> {
-  runtime_identity_axis_rows.flat_map(r => divergence_of_row(row: r, pre: pre, post: post))
+fn all_divergences(examined: List<AxisExamination>) -> List<RuntimeIdentityDivergence> {
+  examined.flat_map(e => match e {
+    AxisCompared { axis: a, pair: p, weight: _ } => if axes_agree(pair: p) { [] } else { [RuntimeIdentityDivergence { axis: a, readings: p }] }
+    AxisUnanswered { gap: _, weight: _ } => []
+    AxisIncomparable { axis: _, weight: _ } => []
+  })
 }
 
 // The gaps that can void a verdict: a gap on either side of any DECISIVE axis. Corroborating gaps are
 // deliberately not gathered here -- that is where "a mute BMC does not condemn a unit" lives.
-fn fatal_gaps(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityGap> {
-  runtime_identity_axis_rows.flat_map(r => fatal_gap_of_row(row: r, pre: pre, post: post))
+// A gap voids a binding only when the axis that stayed quiet was DECISIVE, matched on the carried weight at
+// the point of use rather than on an `is_decisive` bool: the arm that was matched stays visible in the code
+// that acts on it, and a new weight makes this stop compiling instead of quietly returning false.
+fn fatal_gaps(examined: List<AxisExamination>) -> List<RuntimeIdentityGap> {
+  examined.flat_map(e => match e {
+    AxisUnanswered { gap: g, weight: w } => match w {
+      DecisiveAxis => [g]
+      CorroboratingAxis => []
+    }
+    AxisCompared { axis: _, pair: _, weight: _ } => []
+    AxisIncomparable { axis: _, weight: _ } => []
+  })
 }
 
 // The axes a Match may claim: decisive axes, read on both sides, compared and passed. A corroborating axis
 // that agreed is not claimed, because it was not required -- claiming it would let a Match look stronger
 // than the table says it is.
-fn axes_checked_and_passed(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityAxis> {
-  runtime_identity_axis_rows.filter(r => axis_is_decisive(row: r)).filter(r => both_sides_read(row: r, pre: pre, post: post)).map(r => r.axis)
+fn axes_checked_and_passed(examined: List<AxisExamination>) -> List<RuntimeIdentityAxis> {
+  examined.flat_map(e => match e {
+    AxisCompared { axis: a, pair: _, weight: w } => match w {
+      DecisiveAxis => [a]
+      CorroboratingAxis => []
+    }
+    AxisUnanswered { gap: _, weight: _ } => []
+    AxisIncomparable { axis: _, weight: _ } => []
+  })
 }
 
 // ---------------------------------------------------------------------------
 // PER-AXIS READINGS AND COMPARISONS
 // ---------------------------------------------------------------------------
 
-// An axis contributes AT MOST ONE divergence and AT MOST ONE fatal gap, expressed as an Optional that the
-// fold flat_maps. There is deliberately no "no divergence" value carrying a dummy divergence, and no
-// unreachable placeholder string anywhere in this module: an axis with nothing to report contributes no
-// element, so a verdict can never be assembled from a fabricated reading.
-fn divergence_of_row(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityDivergence> {
-  match axis_pair(row: row, pre: pre, post: post) {
-    Present { value: pair } => if axes_agree(pair: pair) {
-      []
-    } else {
-      [RuntimeIdentityDivergence { axis: row.axis, readings: pair }]
+// WHAT EACH AXIS SAYS ABOUT A PAIR, in ONE pass the fold shares. Two decisions the fold makes -- does
+// anything diverge, and does anything stay unproven -- are derived from this single list, so they can never
+// disagree about what the standings said. `axis_is_decisive`, `both_sides_read` and the per-row gap/divergence
+// wrappers used to answer these as Bools derived separately, each re-deriving the standings and each free to
+// disagree; the weight is carried here instead of being flattened to "is decisive".
+fn examinations(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<AxisExamination> {
+  runtime_identity_axis_rows.map(r => match axis_pair(row: r, pre: pre, post: post) {
+    Present { value: p } => AxisCompared { axis: r.axis, pair: p, weight: r.weight }
+    Absent => match side_gap(row: r, pre: pre, post: post) {
+      Present { value: g } => AxisUnanswered { gap: g, weight: r.weight }
+      Absent => AxisIncomparable { axis: r.axis, weight: r.weight }
     }
-    Absent => []
-  }
-}
-
-fn fatal_gap_of_row(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityGap> {
-  if axis_is_decisive(row: row) {
-    match side_gap(row: row, pre: pre, post: post) {
-      Present { value: g } => [g]
-      Absent => []
-    }
-  } else {
-    []
-  }
-}
-
-fn axis_is_decisive(row: RuntimeIdentityAxisRow) -> Bool {
-  match row.weight {
-    DecisiveAxis => true
-    CorroboratingAxis => false
-  }
-}
-
-fn both_sides_read(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> Bool {
-  match axis_pair(row: row, pre: pre, post: post) {
-    Present { value: _ } => true
-    Absent => false
-  }
+  })
 }
 
 // THE READINGS OF ONE AXIS ON BOTH SIDES, or Absent when either side failed to read.
@@ -430,34 +427,38 @@ fn axis_pair(
   post: PostBootIdentityReport,
 ) -> AxisReadingPair? {
   match row.axis {
-    BoardSerialAxis => match pre.board_serial {
-      BoardSerialObserved { serial: ps } => match post.board_serial {
-        BoardSerialObserved { serial: os } => Present { value: TextPair { pre_text: ps, post_text: os } }
-        _ => Absent
-      }
-      _ => Absent
+    BoardSerialAxis => pair_of(
+      pre: pre.board_serial, post: post.board_serial,
+      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
+    BiosVersionAxis => pair_of(
+      pre: pre.bios_version, post: post.bios_version,
+      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
+    ModelAxis => pair_of(
+      pre: pre.model, post: post.model,
+      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
+    NicSetAxis => pair_of(
+      pre: pre.nics, post: post.nics,
+      build: (pv, ov) => AddressSetPair { pre_addresses: pv, post_addresses: ov })
+  }
+}
+
+// THE ONE PLACE A PAIR IS BUILT, so no axis can be compared against evidence its rule does not consume. The
+// four axes differed only in payload, which is why this is a parameter rather than four copies of the same
+// nested match -- the copies is what let one axis's arm be matched against another's field without anyone
+// noticing. A pair exists only when BOTH sides read; anything else is Absent and the gap path explains why.
+fn pair_of<T>(
+  pre: AxisStanding<T>,
+  post: AxisStanding<T>,
+  build: fn(T, T) -> AxisReadingPair,
+) -> AxisReadingPair? {
+  match pre {
+    AxisWasRead { value: pv } => match post {
+      AxisWasRead { value: ov } => Present { value: build(pv, ov) }
+      AxisStayedSilent { reason: _ } => Absent
+      AxisWasRefused { refusal: _ } => Absent
     }
-    BiosVersionAxis => match pre.bios_version {
-      BiosVersionRead { version: pv } => match post.bios_version {
-        BiosVersionRead { version: ov } => Present { value: TextPair { pre_text: pv, post_text: ov } }
-        _ => Absent
-      }
-      _ => Absent
-    }
-    ModelAxis => match pre.model {
-      ModelRead { model: pm } => match post.model {
-        ModelRead { model: om } => Present { value: TextPair { pre_text: pm, post_text: om } }
-        _ => Absent
-      }
-      _ => Absent
-    }
-    NicSetAxis => match pre.nics {
-      NicSetReported { addresses: pa } => match post.nics {
-        NicSetReported { addresses: oa } => Present { value: AddressSetPair { pre_addresses: pa, post_addresses: oa } }
-        _ => Absent
-      }
-      _ => Absent
-    }
+    AxisStayedSilent { reason: _ } => Absent
+    AxisWasRefused { refusal: _ } => Absent
   }
 }
 
@@ -527,45 +528,6 @@ fn side_gap(
   }
 }
 
-// Which side stayed quiet, and whether it was silence or a refusal. Both sides are checked so an Unprovable
-// is located rather than merely asserted; the pre-boot side is asked first because in this fleet the
-// firmware is the side that usually refuses.
-// WHY AN AXIS DID NOT ANSWER, derived from the axis union itself rather than from a caller's string. Each
-// of the four axis unions already distinguishes "not read" from "refused"; these fns carry that
-// distinction through into the gap instead of collapsing both arms into text. One fn per union, so adding
-// an axis adds an fn here and cannot silently drop a refusal arm -- the match is exhaustive.
-fn board_serial_absence(standing: RuntimeBoardSerialStanding) -> RuntimeIdentityAbsence? {
-  match standing {
-    BoardSerialObserved { serial: _ } => Absent
-    BoardSerialUnobserved { reason: r } => Present { value: Unread { reason: r } }
-    BoardSerialRefused { refusal: f } => Present { value: ControllerRefused { refusal: f } }
-  }
-}
-
-fn bios_version_absence(standing: RuntimeBiosVersionStanding) -> RuntimeIdentityAbsence? {
-  match standing {
-    BiosVersionRead { version: _ } => Absent
-    BiosVersionMissing { reason: r } => Present { value: Unread { reason: r } }
-    BiosVersionQueryRefused { refusal: f } => Present { value: ControllerRefused { refusal: f } }
-  }
-}
-
-fn model_absence(standing: RuntimeModelStanding) -> RuntimeIdentityAbsence? {
-  match standing {
-    ModelRead { model: _ } => Absent
-    ModelMissing { reason: r } => Present { value: Unread { reason: r } }
-    ModelQueryRefused { refusal: f } => Present { value: ControllerRefused { refusal: f } }
-  }
-}
-
-fn nic_set_absence(standing: RuntimeNicSetStanding) -> RuntimeIdentityAbsence? {
-  match standing {
-    NicSetReported { addresses: _ } => Absent
-    NicSetMissing { reason: r } => Present { value: Unread { reason: r } }
-    NicSetQueryRefused { refusal: f } => Present { value: ControllerRefused { refusal: f } }
-  }
-}
-
 fn pre_side_gap(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding) -> RuntimeIdentityGap? {
   match absence_on_firmware_side(row: row, pre: pre) {
     Present { value: a } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, absence: a } }
@@ -575,13 +537,12 @@ fn pre_side_gap(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding) -> Ru
 
 fn absence_on_firmware_side(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding) -> RuntimeIdentityAbsence? {
   match row.axis {
-    BoardSerialAxis => board_serial_absence(standing: pre.board_serial)
-    BiosVersionAxis => bios_version_absence(standing: pre.bios_version)
-    ModelAxis => model_absence(standing: pre.model)
-    NicSetAxis => nic_set_absence(standing: pre.nics)
+    BoardSerialAxis => axis_absence(standing: pre.board_serial)
+    BiosVersionAxis => axis_absence(standing: pre.bios_version)
+    ModelAxis => axis_absence(standing: pre.model)
+    NicSetAxis => axis_absence(standing: pre.nics)
   }
 }
-
 fn post_side_gap(row: RuntimeIdentityAxisRow, post: PostBootIdentityReport) -> RuntimeIdentityGap? {
   match absence_on_os_side(row: row, post: post) {
     Present { value: a } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, absence: a } }
@@ -591,13 +552,12 @@ fn post_side_gap(row: RuntimeIdentityAxisRow, post: PostBootIdentityReport) -> R
 
 fn absence_on_os_side(row: RuntimeIdentityAxisRow, post: PostBootIdentityReport) -> RuntimeIdentityAbsence? {
   match row.axis {
-    BoardSerialAxis => board_serial_absence(standing: post.board_serial)
-    BiosVersionAxis => bios_version_absence(standing: post.bios_version)
-    ModelAxis => model_absence(standing: post.model)
-    NicSetAxis => nic_set_absence(standing: post.nics)
+    BoardSerialAxis => axis_absence(standing: post.board_serial)
+    BiosVersionAxis => axis_absence(standing: post.bios_version)
+    ModelAxis => axis_absence(standing: post.model)
+    NicSetAxis => axis_absence(standing: post.nics)
   }
 }
-
 
 // ---------------------------------------------------------------------------
 // THE DECLARED CONSUMER FRONTIER (DESIGN 3c: name the consumer and its route, or classify).

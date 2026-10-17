@@ -22,48 +22,40 @@ import extdeps.network.mac { Eui48Address, mac_address, render_mac_address }
 import gunbc.machine_intake.subject { UnitKey }
 import gunbc.fleet.runtime_identity_match {
   BoardSerialAxis,
-  BoardSerialObserved,
-  BoardSerialRefused,
-  BoardSerialUnobserved,
   BiosVersionAxis,
-  BiosVersionMissing,
-  BiosVersionQueryRefused,
-  BiosVersionRead,
-  IdentitySide,
-  Match,
-  Mismatch,
   ModelAxis,
-  ModelMissing,
-  ModelQueryRefused,
-  ModelRead,
+  NicSetAxis,
+  IdentitySide,
+  PreBootFirmwareSide,
+  PostBootOsSide,
   NetworkSessionChannel,
   SerialConsoleChannel,
-  NicSetAxis,
-  NicSetMissing,
-  NicSetQueryRefused,
-  NicSetReported,
-  PostBootIdentityReport,
-  PreBootFirmwareSide,
-  PreBootIdentityStanding,
-  PostBootOsSide,
+  Match,
+  Mismatch,
+  Unprovable,
   RuntimeIdentityAxis,
-  RuntimeIdentityDivergence,
-  AxisReadingPair,
-  TextPair,
-  AddressSetPair,
-  RuntimeIdentityGap,
-  AuthenticationFailed,
-  QueryUnsupported,
-  ReplyUnreadable,
   RuntimeIdentityVerdict,
+  RuntimeIdentityDivergence,
+  RuntimeIdentityGap,
   RuntimeIdentityAbsence,
   ControllerRefused,
   Unread,
+  AxisStanding,
+  AxisWasRead,
+  AxisStayedSilent,
+  AxisWasRefused,
+  AxisReadingPair,
+  TextPair,
+  AddressSetPair,
+  QueryUnsupported,
+  AuthenticationFailed,
+  ReplyUnreadable,
   axes_agree,
-  same_runtime_identity_axis,
-  Unprovable,
   runtime_identity_axis_rows,
   runtime_identity_match,
+  runtime_identity_match_consumer_frontier,
+  runtime_identity_match_consumer_ref,
+  runtime_identity_match_frontier_status,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -115,10 +107,10 @@ fn fixture_mac_group() -> Eui48Address {
 fn pre_all_read() -> PreBootIdentityStanding {
   PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_a(), fixture_mac_b()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_a(), fixture_mac_b()] },
   }
 }
 
@@ -127,10 +119,10 @@ fn post_agreeing() -> PostBootIdentityReport {
   PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_b(), fixture_mac_c()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_b(), fixture_mac_c()] },
   }
 }
 
@@ -163,7 +155,7 @@ test fn test_verdict_predicates_are_exclusive() -> Bool {
 // stronger than the axis table says it is.
 test fn test_match_claims_only_decisive_axes() -> Bool {
   match runtime_identity_match(pre: pre_all_read(), post: post_agreeing()) {
-    Match { axes_matched: axes, pre_unit: _, post_unit: _ } => axes.all(a => same_runtime_identity_axis(left: a, right: BoardSerialAxis) || same_runtime_identity_axis(left: a, right: NicSetAxis))
+    Match { axes_matched: axes, pre_unit: _, post_unit: _ } => axes.all(a => (a == BoardSerialAxis) || (a == NicSetAxis))
     _ => false
   }
 }
@@ -176,10 +168,10 @@ fn post_with_other_serial() -> PostBootIdentityReport {
   PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialObserved { serial: fixture_other_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_b()] },
+    board_serial: AxisWasRead { value: fixture_other_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
   }
 }
 
@@ -189,7 +181,7 @@ test fn test_mismatch_carries_both_readings() -> Bool {
   match runtime_identity_match(pre: pre_all_read(), post: post_with_other_serial()) {
     Mismatch { diverged: ds, pre_unit: _, post_unit: _ } =>
       ds.length() == 1
-        && same_runtime_identity_axis(left: first_axis(divergences: ds), right: BoardSerialAxis)
+        && (first_axis(divergences: ds) == BoardSerialAxis)
         && first_pre_side(divergences: ds) == [fixture_serial]
         && first_post_side(divergences: ds) == [fixture_other_serial]
     _ => false
@@ -202,13 +194,13 @@ test fn test_corroborating_divergence_still_mismatches() -> Bool {
   let post = PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_other_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_b()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_other_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
-    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: BiosVersionAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && (first_axis(divergences: ds) == BiosVersionAxis)
     _ => false
   }
 }
@@ -219,13 +211,13 @@ test fn test_divergence_outranks_a_gap() -> Bool {
   let post = PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialObserved { serial: fixture_other_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelMissing { reason: "the image ships no reader for the model string" },
-    nics: NicSetReported { addresses: [fixture_mac_b()] },
+    board_serial: AxisWasRead { value: fixture_other_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisStayedSilent { reason: "the image ships no reader for the model string" },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
-    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: BoardSerialAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && (first_axis(divergences: ds) == BoardSerialAxis)
     _ => false
   }
 }
@@ -236,13 +228,13 @@ test fn test_disjoint_mac_sets_are_a_mismatch() -> Bool {
   let post = PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_c()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_c()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
-    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && (first_axis(divergences: ds) == NicSetAxis)
     _ => false
   }
 }
@@ -255,10 +247,10 @@ fn post_with_serial_unobserved() -> PostBootIdentityReport {
   PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: SerialConsoleChannel,
-    board_serial: BoardSerialUnobserved { reason: "the OS image reports no board serial" },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_b()] },
+    board_serial: AxisStayedSilent { reason: "the OS image reports no board serial" },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
   }
 }
 
@@ -267,7 +259,7 @@ fn post_with_serial_unobserved() -> PostBootIdentityReport {
 test fn test_missing_reading_is_unprovable_not_mismatch() -> Bool {
   let verdict = runtime_identity_match(pre: pre_all_read(), post: post_with_serial_unobserved())
   match verdict {
-    Unprovable { why: gaps, pre_unit: _, post_unit: _ } => gaps.length() == 1 && same_runtime_identity_axis(left: first_gap_axis(gaps: gaps), right: BoardSerialAxis)
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } => gaps.length() == 1 && (first_gap_axis(gaps: gaps) == BoardSerialAxis)
     _ => false
   }
 }
@@ -279,15 +271,15 @@ test fn test_refusal_is_unprovable_and_preserves_its_detail() -> Bool {
   let post = PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialRefused { refusal: QueryUnsupported { detail: "the controller rejects the serial query" } },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_b()] },
+    board_serial: AxisWasRefused { refusal: QueryUnsupported { detail: "the controller rejects the serial query" } },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
     Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
       gaps.length() == 1
-        && same_runtime_identity_axis(left: first_gap_axis(gaps: gaps), right: BoardSerialAxis)
+        && (first_gap_axis(gaps: gaps) == BoardSerialAxis)
         && first_gap_detail(gaps: gaps) == "the controller rejects the serial query"
         && first_gap_side(gaps: gaps) == PostBootOsSide
         && first_gap_is_refusal(gaps: gaps)
@@ -319,10 +311,10 @@ fn post_with_serial_refused() -> PostBootIdentityReport {
   PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialRefused { refusal: QueryUnsupported { detail: "the controller rejects the serial query" } },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_b()] },
+    board_serial: AxisWasRefused { refusal: QueryUnsupported { detail: "the controller rejects the serial query" } },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
   }
 }
 
@@ -331,10 +323,10 @@ fn post_with_serial_refused() -> PostBootIdentityReport {
 test fn test_pre_boot_gap_is_located_on_the_firmware_side() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: BoardSerialUnobserved { reason: "the firmware never answered" },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_b()] },
+    board_serial: AxisStayedSilent { reason: "the firmware never answered" },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre, post: post_agreeing()) {
     Unprovable { why: gaps, pre_unit: _, post_unit: _ } => gaps.length() == 1 && first_gap_side(gaps: gaps) == PreBootFirmwareSide
@@ -349,10 +341,10 @@ test fn test_corroborating_gap_does_not_void_the_binding() -> Bool {
   let post = PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: SerialConsoleChannel,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionMissing { reason: "the image ships no reader for the firmware version" },
-    model: ModelQueryRefused { refusal: ReplyUnreadable { detail: "the reply shape is not recognized" } },
-    nics: NicSetReported { addresses: [fixture_mac_b()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisStayedSilent { reason: "the image ships no reader for the firmware version" },
+    model: AxisWasRefused { refusal: ReplyUnreadable { detail: "the reply shape is not recognized" } },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
     Match { axes_matched: axes, pre_unit: _, post_unit: _ } => axes.length() == 2
@@ -384,20 +376,20 @@ fn exactly_one_of_three(verdict: RuntimeIdentityVerdict) -> Bool {
 fn pre_with_every_unobserved() -> PreBootIdentityStanding {
   PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: BoardSerialUnobserved { reason: "firmware silent" },
-    bios_version: BiosVersionMissing { reason: "firmware silent" },
-    model: ModelMissing { reason: "firmware silent" },
-    nics: NicSetMissing { reason: "firmware silent" },
+    board_serial: AxisStayedSilent { reason: "firmware silent" },
+    bios_version: AxisStayedSilent { reason: "firmware silent" },
+    model: AxisStayedSilent { reason: "firmware silent" },
+    nics: AxisStayedSilent { reason: "firmware silent" },
   }
 }
 
 fn pre_with_every_refused() -> PreBootIdentityStanding {
   PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: BoardSerialRefused { refusal: AuthenticationFailed { detail: "credentials rejected" } },
-    bios_version: BiosVersionQueryRefused { refusal: AuthenticationFailed { detail: "credentials rejected" } },
-    model: ModelQueryRefused { refusal: QueryUnsupported { detail: "no such query" } },
-    nics: NicSetQueryRefused { refusal: ReplyUnreadable { detail: "garbled reply" } },
+    board_serial: AxisWasRefused { refusal: AuthenticationFailed { detail: "credentials rejected" } },
+    bios_version: AxisWasRefused { refusal: AuthenticationFailed { detail: "credentials rejected" } },
+    model: AxisWasRefused { refusal: QueryUnsupported { detail: "no such query" } },
+    nics: AxisWasRefused { refusal: ReplyUnreadable { detail: "garbled reply" } },
   }
 }
 
@@ -405,10 +397,10 @@ fn post_with_every_unobserved() -> PostBootIdentityReport {
   PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: SerialConsoleChannel,
-    board_serial: BoardSerialUnobserved { reason: "no reader" },
-    bios_version: BiosVersionMissing { reason: "no reader" },
-    model: ModelMissing { reason: "no reader" },
-    nics: NicSetMissing { reason: "no reader" },
+    board_serial: AxisStayedSilent { reason: "no reader" },
+    bios_version: AxisStayedSilent { reason: "no reader" },
+    model: AxisStayedSilent { reason: "no reader" },
+    nics: AxisStayedSilent { reason: "no reader" },
   }
 }
 
@@ -416,10 +408,10 @@ fn post_with_every_refused() -> PostBootIdentityReport {
   PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialRefused { refusal: QueryUnsupported { detail: "no such query" } },
-    bios_version: BiosVersionQueryRefused { refusal: QueryUnsupported { detail: "no such query" } },
-    model: ModelQueryRefused { refusal: QueryUnsupported { detail: "no such query" } },
-    nics: NicSetQueryRefused { refusal: QueryUnsupported { detail: "no such query" } },
+    board_serial: AxisWasRefused { refusal: QueryUnsupported { detail: "no such query" } },
+    bios_version: AxisWasRefused { refusal: QueryUnsupported { detail: "no such query" } },
+    model: AxisWasRefused { refusal: QueryUnsupported { detail: "no such query" } },
+    nics: AxisWasRefused { refusal: QueryUnsupported { detail: "no such query" } },
   }
 }
 
@@ -445,13 +437,13 @@ test fn test_one_shared_address_binds() -> Bool {
 test fn test_empty_pre_boot_address_set_is_not_an_agreement() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [] },
   }
   match runtime_identity_match(pre: pre, post: post_agreeing()) {
-    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && (first_axis(divergences: ds) == NicSetAxis)
     _ => false
   }
 }
@@ -467,10 +459,10 @@ test fn test_empty_pre_boot_address_set_is_not_an_agreement() -> Bool {
 test fn test_a_divergence_can_report_a_side_that_reported_no_addresses() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [] },
   }
   match runtime_identity_match(pre: pre, post: post_agreeing()) {
     Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1
@@ -501,21 +493,21 @@ test fn test_a_text_divergence_reports_both_sides_verbatim() -> Bool {
 test fn test_a_shared_locally_administered_address_is_not_a_binding() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_locally_administered()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_locally_administered()] },
   }
   let post = PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_locally_administered()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_locally_administered()] },
   }
   match runtime_identity_match(pre: pre, post: post) {
-    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && (first_axis(divergences: ds) == NicSetAxis)
     _ => false
   }
 }
@@ -523,21 +515,21 @@ test fn test_a_shared_locally_administered_address_is_not_a_binding() -> Bool {
 test fn test_a_shared_group_address_is_not_a_binding() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_group()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_group()] },
   }
   let post = PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_group()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_group()] },
   }
   match runtime_identity_match(pre: pre, post: post) {
-    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
+    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && (first_axis(divergences: ds) == NicSetAxis)
     _ => false
   }
 }
@@ -548,18 +540,18 @@ test fn test_a_shared_group_address_is_not_a_binding() -> Bool {
 test fn test_a_shared_permanent_address_still_binds() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_a(), fixture_mac_locally_administered()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_a(), fixture_mac_locally_administered()] },
   }
   let post = PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_group(), fixture_mac_a()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_group(), fixture_mac_a()] },
   }
   classifies_as_match(verdict: runtime_identity_match(pre: pre, post: post))
 }
@@ -631,8 +623,7 @@ test fn test_the_frontier_is_a_bound_trigger_over_a_real_ref() -> Bool {
     BoundDissolution { trigger: DeclarationAppears { ref: r } } =>
       r.module_path == "gunbc.provisioning.network_boot_actuation"
         && r.decl_name == "network_boot_arm_actuator_steps"
-        && { let m = runtime_identity_match_consumer_ref()
-            m.module_path == r.module_path && m.decl_name == r.decl_name }
+        && refs_agree(a: runtime_identity_match_consumer_ref(), b: r)
     _ => false
   }
 }
@@ -648,18 +639,18 @@ test fn test_the_frontier_is_a_bound_trigger_over_a_real_ref() -> Bool {
 test fn test_verdict_does_not_branch_on_the_unit_label() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_a()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_a()] },
   }
   let post = PostBootIdentityReport {
     unit: fixture_other_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_model },
-    nics: NicSetReported { addresses: [fixture_mac_a()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_a()] },
   }
   // Different keys, agreeing axes: still Match, because no branch here consults a name. The two keys are
   // reported UNCHANGED, which is what makes the verdict honest -- this assertion used to read
@@ -688,6 +679,13 @@ fn first_axis(divergences: List<RuntimeIdentityDivergence>) -> RuntimeIdentityAx
 // The two sides of a divergence, read off the pair it carries and rendered here. `render_mac_address` is the
 // module's own spelling; the divergence hands over the addresses themselves so that a side which reported
 // NONE renders as an empty list rather than as an invented string.
+// Two refs are the same declaration. Written as an fn rather than inline, because the native parser rejects
+// a `{ let ... }` block in expression position -- the claim is the same, and a witness that only the
+// interpreter can parse is not a witness.
+fn refs_agree(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  a.module_path == b.module_path && a.decl_name == b.decl_name
+}
+
 fn side_renderings(readings: AxisReadingPair, side_is_pre: Bool) -> List<NonEmptyStr> {
   match readings {
     TextPair { pre_text: pt, post_text: po } => if side_is_pre { [pt] } else { [po] }
@@ -951,15 +949,15 @@ test fn test_model_divergence_is_a_corroborating_mismatch() -> Bool {
   let post = PostBootIdentityReport {
     unit: fixture_unit,
     reported_over: NetworkSessionChannel,
-    board_serial: BoardSerialObserved { serial: fixture_serial },
-    bios_version: BiosVersionRead { version: fixture_bios },
-    model: ModelRead { model: fixture_other_model },
-    nics: NicSetReported { addresses: [fixture_mac_b()] },
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_other_model },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
   }
   match runtime_identity_match(pre: pre_all_read(), post: post) {
     Mismatch { diverged: ds, pre_unit: _, post_unit: _ } =>
       ds.length() == 1
-        && same_runtime_identity_axis(left: first_axis(divergences: ds), right: ModelAxis)
+        && (first_axis(divergences: ds) == ModelAxis)
         && first_pre_side(divergences: ds) == [fixture_model]
         && first_post_side(divergences: ds) == [fixture_other_model]
     _ => false
