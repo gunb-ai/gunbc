@@ -10,12 +10,10 @@ use crate::extdeps_version::VersionComparison::{VersionCompared, VersionComparis
 pub use crate::extdeps_version::{
     ComparisonSide, VersionComparison, VersionConstraint, VersionIdentity, VersionScheme,
 };
-pub use crate::std_algebra::trim;
-pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
+pub use crate::std_algebra::{trim, Ordering};
 pub use crate::std_coercion::unicode_scalar_fold;
 pub use crate::std_integer::NonNegativeInt;
-pub use crate::std_optional::Optional;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

@@ -91,6 +91,16 @@ data primitive_utf8_encode_bytes: PrimitiveIdentity = primitive_identity_slug(na
 data primitive_octets_bytes: PrimitiveIdentity = primitive_identity_slug(name: "octets_bytes")
 data primitive_pure_dag_seam_unreachable: PrimitiveIdentity = primitive_identity_slug(name: "pure_dag_seam_unreachable")
 data primitive_to_string: PrimitiveIdentity = primitive_identity_slug(name: "to_string")
+
+// THE DECLARATION IDENTITY of std.error_primitives Never / absurd. Emit, v1 exhaustiveness and
+// v2 match coproduct-read consume these refs; they do not restate the module or name as string
+// helpers. Never has no producer.
+data never_type_declaration: DeclarationRef = decl_ref(module_path: "std.error_primitives", decl_name: "Never")
+data never_eliminator_declaration: DeclarationRef = decl_ref(module_path: "std.error_primitives", decl_name: "absurd")
+
+fn never_type_qualified_path() -> String {
+  concat(never_type_declaration.module_path as String, ".", never_type_declaration.decl_name as String)
+}
 data primitive_string_contains: PrimitiveIdentity = primitive_identity_slug(name: "string_contains")
 data primitive_chars: PrimitiveIdentity = primitive_identity_slug(name: "chars")
 

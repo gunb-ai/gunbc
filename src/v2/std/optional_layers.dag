@@ -3,11 +3,9 @@ module v2.std.optional_layers
 import std.nat { Nat, NatDifference, NatSubtrahendExceedsMinuend, Succ, Zero, nat_add, nat_sub }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Occupancy, node_with_occurrence_id, symbol_intern_lexeme, ComputationNode, Edge, Node, Positional, TypeNode }
+import v2.std.node { Occupancy, node_with_occurrence_id, ComputationNode, Edge, Node, Positional, TypeNode }
 import v2.std.node_query { node_positional_child_targets }
 import std.algebra { list_at_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
-import gunbc.structural_realization_bindings { optional_declaration_ref }
 
 // OPTIONAL-LAYER DEPTH IS std.nat Nat (Zero = required / no wrappers). A two-arm
 // Required | CardOptional sum is Zero | Succ under another name (DESIGN §2/#3). gunbc#13488's
@@ -90,14 +88,3 @@ fn wrap_type_node_occupancy_at(base: Node, occurrence_id: NodeOccurrenceIdentity
   )
 }
 
-// `T?` IS SUGAR DECLARED BY THE ONE ROW (ruling gunbc.design_ruling optional_sugar_is_declaration_bound):
-// gunbc.structural_realization_bindings optional_declaration_ref. The spelling is derived from that
-// DeclarationRef (module path segments, then decl_name); it is not a second authority for the path.
-// Module acquisition OWES that module (acquisition_sugar_member_texts promotes the site to an imported
-// member) and a source root lacking it refuses as an unknown imported member.
-fn occupancy_declaration_spelling() -> QualifiedName {
-  qualified_name_snoc(
-    qn: qualified_name_from_dotted_string(dotted: optional_declaration_ref.module_path as String),
-    segment: symbol_intern_lexeme(lexeme: optional_declaration_ref.decl_name as String)
-  )
-}

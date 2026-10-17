@@ -50,23 +50,11 @@ import std.rational { NonzeroNatFraction }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.optional { Present }
 
-// Read-only Vast observation plus M0 admission recorded as a shadow receipt. No create or destroy
-// operation is imported. Writes are gated on Wet AND a readable instance list AND not over cap;
-// Wet still has no wired create.
+// Read-only Vast observation plus M0 admission recorded as a shadow receipt. The create and destroy
+// writes live in product.fabric.flex_vast_loop; writes are gated on Wet AND a readable instance list
+// AND not over cap.
 
 data flex_search_offers_inhabitance_frontier: DissolutionCondition = unbound_dissolution(description: "DECLARED FRONTIER (DESIGN §3 pairing): an inhabitance claim that live vast_ai.SearchOffers Search emits VastAiOffer (ExactDecimal money, gpu_ram in MB), using flex_vast_api_read_grant on the Vast API key SecretRef. TRIGGER: that grant is issued and a wet readonly Search executes. SUFFICIENT FOR deleting this row once that claim is enrolled. NOT satisfied by supplied-value fixtures.")
-
-data flex_m3_rent_cooldown_starts_at_ask: DissolutionCondition = unbound_dissolution(description: "M3: start the rent cooldown at ASK time, because a timed-out create may have rented. TRIGGER: the wet create loop records ask time as cooldown origin. SUFFICIENT FOR deleting this row.")
-
-data flex_m3_pass_stops_at_first_failure: DissolutionCondition = unbound_dissolution(description: "M3: stop the observation/plan pass at the first failure so the next pass plans from what really happened. TRIGGER: the wet loop refuses to continue after the first typed failure. SUFFICIENT FOR deleting this row.")
-
-data flex_wet_create_release_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create/destroy loop consumes FlexCreateStanding, flex_reconcile_acquisition, flex_trial_total (reservation ceiling), flex_objective, and flex_delay_unvalued. TRIGGER: that loop is the remaining executing route if test.claim.fabric.flex_vast_shadow_witness is deleted. SUFFICIENT FOR deleting this row.")
-
-data flex_wet_create_estimated_refusal_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create path REFUSES to ask for an offer whose FlexShadowFieldEntry is ShadowEntryEstimated (member or non-member: the verdict is provisional on both sides), and a quote whose serving_unit_cost_for_selection is not SelectionQuoteEstablished never reaches select_supply (today only test.claim.fabric.flex_vast_shadow_witness and serving_recipe_witness execute these). TRIGGER: the wet create loop executes with the standings it was handed, or the screens rest on cited figures. SUFFICIENT FOR deleting this row.")
-
-data flex_wet_create_template_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create path builds the Vast create body from flex_serving_template(flex_serving_recipe), which reads flex_host_images and the recipe's published port, served model id and disk. TRIGGER: that wet create executes the template (flex_serving_template and flex_host_image have no production caller today; only test.claim.fabric.flex_vast_shadow_witness calls them). SUFFICIENT FOR deleting this row. The InferenceServingProvision path is modeled by gunbc.serving.serving_provision_derivation (model placement, engine release, start source and served model id from the ServingRecipe), which only witnesses execute today (its own frontier row).")
-
-data flex_rented_serving_allocation_join: DissolutionCondition = unbound_dissolution(description: "Wet create-answered constructs gunbc.serving.rented_allocation RentedServingAllocation keyed by rented_allocation_identity(provider: decl_ref(extdeps.cloud.vast_ai, extdeps_external_authority_anchor), contract: FlexCreateAnswered.instance_id) and hands enrollment via rented_allocation_enrollment. Origin is RentedAllocationAcquired { owner: NonEmptyStr, asked_at: EpochMs, asked_rate: MoneyPerHour, provider_ask: product.supplier.vast_ai VastAiAskReceipt { ask_id, machine_id } } with no contract id on the origin (deep-bear-539 #13915). Release and settlement standings are later slices keyed by RentedAllocationIdentity. TRIGGER: #13915 is on main and the wet loop's remaining executing route for hold/enrollment is rented_allocation_identity plus RentedServingAllocation. SUFFICIENT FOR deleting this row. NOT satisfied by FlexCreateStanding or flex_reconcile_acquisition. Release/settlement symbols are not this trigger.")
 
 type FlexWriteDecision
   = FlexWriteHeldDry
@@ -135,6 +123,20 @@ fn flex_mint_complete_instances(rows: List<VastAiInstance>, total: Int) -> FlexI
     FlexInstancesComplete {
       roster: FlexCompleteInstanceRoster { instances: rows, total: total },
     }
+  }
+}
+
+// The complete roster narrowed to the instances a predicate keeps; the sole constructor stays here.
+fn flex_roster_restrict(roster: FlexInstancesStanding, keep: fn(VastAiInstance) -> Bool) -> FlexInstancesStanding {
+  match roster {
+    FlexInstancesComplete { roster: complete } =>
+      FlexInstancesComplete {
+        roster: FlexCompleteInstanceRoster {
+          instances: complete.instances |> filter(i => keep(i)),
+          total: complete.instances |> filter(i => keep(i)) |> length,
+        },
+      }
+    other => other
   }
 }
 
@@ -449,7 +451,7 @@ type FlexTemplateRealization
 
 // The Vast create body for a recipe. A recipe whose host image or served model id is unread refuses
 // to realize rather than defaulting one. Consumer: the wet create path
-// (flex_wet_create_template_consumer_frontier).
+// (product.fabric.flex_vast_loop flex_create_request).
 fn flex_serving_template(recipe: ServingRecipe) -> FlexTemplateRealization {
   match flex_host_image(recipe: recipe) {
     Absent => FlexTemplateImageUnread
@@ -535,8 +537,8 @@ fn flex_offer_card_facts(offer: VastAiOffer, tolerance: FlexVramTolerance) -> Se
 
 // An offer is a member of the shadow field with a STANDING (DESIGN 4d). A screen that rests on an
 // uncited figure (the recipe's driver floor, the 1 GiB name/VRAM tolerance) admits the offer as ESTIMATED,
-// never established: the uncited standings it rests on travel with it, and flex_wet_create_estimated_refusal_frontier
-// states that a wet create refuses on them. The VERDICT is provisional on BOTH sides: an uncited screen that
+// never established: the uncited standings it rests on travel with it, and product.fabric.flex_vast_loop
+// flex_entry_wall refuses a wet create on them. The VERDICT is provisional on BOTH sides: an uncited screen that
 // would reject (floor not met, VRAM outside the tolerance) is Estimated with provisional_member false, never an
 // established exclusion, because the figure that rejected it was never cited.
 type FlexShadowFieldEntry
@@ -670,8 +672,12 @@ type FlexShadowBidReceipt {
   actuation: ApplyMode
 }
 
+fn flex_vast_offer_key_of_id(id: Int) -> OfferKey {
+  int_to_decimal_string(value: id) as OfferKey
+}
+
 fn flex_vast_offer_key(offer: VastAiOffer) -> OfferKey {
-  int_to_decimal_string(value: offer.id) as OfferKey
+  flex_vast_offer_key_of_id(id: offer.id)
 }
 
 // Search-offers does not carry start, transition, opportunity, readiness, a cited

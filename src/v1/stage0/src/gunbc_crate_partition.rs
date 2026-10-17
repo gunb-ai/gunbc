@@ -21,12 +21,10 @@ use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_graph::{
     graph_has_multi_node_scc, graph_reverse_reachable_members, graph_strongly_connected_components,
+    CallGraph, GraphEdge,
 };
-pub use crate::std_graph::{CallGraph, GraphEdge};
-pub use crate::std_optional::optional_present;
-pub use crate::std_optional::Optional;
-pub use crate::std_types::brand;
-pub use crate::std_types::{Bool, List, NonEmptyStr};
+pub use crate::std_optional::{optional_present, Optional};
+pub use crate::std_types::{brand, Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

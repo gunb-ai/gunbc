@@ -8,11 +8,19 @@ use self::TypeDeclResolution::*;
 use self::TypeRepr::*;
 use self::TypeSummaryLookup::*;
 use self::TypeSummaryQuestion::*;
+pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
+pub use crate::std_dissolution::{
+    dissolution_description, unbound_dissolution, DissolutionCondition,
+};
+use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
+    KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
+};
+pub use crate::std_literal_elaboration::{
+    kernel_mint_declaration_for, KernelMintDeclarationLookup,
+};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -24,16 +32,16 @@ use crate::v1_compiler_infer_env::BareOccurrenceBinding::{
 };
 pub use crate::v1_compiler_infer_env::{
     bare_occurrence_binding, empty_symbol_index, empty_type_env, symbol_index_lookup,
+    BareOccurrenceBinding, SymbolIndex, TypeEnv,
 };
-pub use crate::v1_compiler_infer_env::{BareOccurrenceBinding, SymbolIndex, TypeEnv};
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
 use crate::v1_compiler_infer_types::TextNotAskedReason::{
     TextNotAskedForCallableComponentResidue, TextNotAskedInVariantFieldSummary,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node, resolved_type,
+    TextJudgment, TextNotAskedReason,
 };
-pub use crate::v1_compiler_infer_types::{TextJudgment, TextNotAskedReason};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::CardOptional;
@@ -48,11 +56,9 @@ use crate::v1_std_core::ParsedModuleItemKind::{
 };
 pub use crate::v1_std_core::{
     authored_name_at, callable_identity, find_child_named, has_child_named, param_node_name_at,
-    qualified_last_segment, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, Connective, DeclaredCallableIdentity, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
+    qualified_last_segment, with_required_cardinality, Cardinality, Connective,
+    DeclaredCallableIdentity, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
+    LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -724,6 +730,27 @@ pub fn type_decl_qualifier_declarer(index: Rc<TypeDeclIndex>, authored: String) 
     }
 }
 
+pub fn type_decl_kernel_mint_declarer(index: Rc<TypeDeclIndex>, leaf: String) -> Option<String> {
+    match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+        kernel_mint_declaration_rows(),
+        leaf.clone(),
+    ))
+    .clone()
+    {
+        KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
+            let identity = type_decl_identity(d.module_path.clone(), d.decl_name.clone());
+            match v1_rt::map_get(&index.by_identity.clone(), identity.clone()) {
+                Some(_) => Some(identity.clone()),
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+        KernelMintDeclarationLookup::KernelMintDeclarationAbsent => std::option::Option::None,
+        KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: _, .. } => {
+            std::option::Option::None
+        }
+    }
+}
+
 pub fn type_decl_spelling_route(
     index: Rc<TypeDeclIndex>,
     authored: String,
@@ -761,7 +788,9 @@ pub fn type_decl_occurrence_identity(
         TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
             identity: identity, ..
         } => Some(identity.clone()),
-        TypeDeclOccurrenceBinding::OccurrenceIsKernelName => std::option::Option::None,
+        TypeDeclOccurrenceBinding::OccurrenceIsKernelName => {
+            type_decl_kernel_mint_declarer(index.clone(), leaf.clone())
+        }
         TypeDeclOccurrenceBinding::OccurrenceImported {
             identity: identity, ..
         } => Some(identity.clone()),

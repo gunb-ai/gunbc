@@ -1,6 +1,7 @@
 module gunbc.spark.fabric_switch_assessment
 
-import std.types { Bool, List, Never, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
+import std.error_primitives { Never }
 import std.nat { Nat }
 import extdeps.mikrotik.crs812 { Crs812LaneSpeed, Crs812FecMode }
 import std.goal_assessment {

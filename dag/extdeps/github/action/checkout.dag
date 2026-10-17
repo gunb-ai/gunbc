@@ -30,11 +30,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data checkout_v4_4_0: ActionRelease = ActionRelease {
-  owner: "actions", repo: "checkout", tag: "v4.4.0", commit: "11d5960a326750d5838078e36cf38b85af677262"
+  owner: "actions", repo: "checkout", tag: "v4.4.0", commit: "11d5960a326750d5838078e36cf38b85af677262", subdirectory: none
 }
 
 data checkout_v5_1_0: ActionRelease = ActionRelease {
-  owner: "actions", repo: "checkout", tag: "v5.1.0", commit: "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"
+  owner: "actions", repo: "checkout", tag: "v5.1.0", commit: "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", subdirectory: none
 }
 
 // Each declaration below was read from the action.yml blob at the release's commit

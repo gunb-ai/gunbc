@@ -511,7 +511,7 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
 fn func_env_declared_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
   if listed_import_required_bare_call_blocked(env: type_env, name: name) {
     FuncSigUnresolved
-  } else if contains(name, ".") {
+  } else if declared_module_owner(index: type_env.symbol_index, name: name) != none {
     decide_callable_candidates(candidates: owner_module_leaf_callable_candidates(
       env: func_env,
       owner: qualified_all_but_last(name: name),
@@ -556,7 +556,7 @@ type BorrowedCensusDeclLookup
   | BorrowedCensusDeclNotFound
 
 fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLookup {
-  if contains(name, ".") {
+  if declared_module_owner(index: type_env.symbol_index, name: name) != none {
     match symbol_index_lookup(index: type_env.symbol_index, qualified_name: name) {
       Present { value: node } =>
         BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }

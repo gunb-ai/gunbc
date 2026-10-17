@@ -1150,6 +1150,17 @@ fn shape_git_rev_parse_head_args() -> List<String> {
   ["rev-parse", "HEAD"]
 }
 
+// A worktree removal WITHOUT force: git itself refuses a tree with uncommitted changes, so the
+// release's own cleanliness check is backed by the tool's.
+fn shape_git_worktree_remove_argv(path: FilePath) -> List<String> {
+  ["worktree", "remove", path as String]
+}
+
+// Remote-tracking branches containing HEAD; non-empty means the head is on a remote.
+fn shape_git_branch_remote_contains_head_args() -> List<String> {
+  ["branch", "-r", "--contains", "HEAD"]
+}
+
 fn shape_git_merge_base_args(left: String, right: String) -> List<String> {
   ["merge-base", left, right]
 }

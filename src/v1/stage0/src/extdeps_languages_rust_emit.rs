@@ -2,17 +2,15 @@
 // Source module: extdeps.languages.rust.emit
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-pub use crate::extdeps_languages_rust_capabilities::RustCapability;
 use crate::extdeps_languages_rust_capabilities::RustCapability::*;
 pub use crate::extdeps_languages_rust_capabilities::{
     nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
-    record_derive_traits_heap,
+    record_derive_traits_heap, RustCapability,
 };
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_emit_model::SimpleMethodSpec;
 pub use crate::std_optional::Optional;
 pub use crate::std_syntax::BinOp;
@@ -28,10 +26,10 @@ use crate::std_trait_derive_shape::PairCompletionOp::{
     PairCompletionOpSub,
 };
 use crate::std_trait_derive_shape::PairCompletionOperand::{PairCompletionRhs, PairCompletionSelf};
-pub use crate::std_trait_derive_shape::{pair_completion_body_uses_rhs, pair_completion_op_rows};
 pub use crate::std_trait_derive_shape::{
-    PairCompletionArm, PairCompletionBody, PairCompletionComponent, PairCompletionFactor,
-    PairCompletionOp, PairCompletionOpRow, PairCompletionOperand, PairCompletionTerm,
+    pair_completion_body_uses_rhs, pair_completion_op_rows, PairCompletionArm, PairCompletionBody,
+    PairCompletionComponent, PairCompletionFactor, PairCompletionOp, PairCompletionOpRow,
+    PairCompletionOperand, PairCompletionTerm,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -219,12 +217,12 @@ pub fn fresh_rust_value_binding_name(blocked: Rc<Vec<String>>, prefix: String) -
                 (blocked.clone().len() as i64),
             )]),
         );
-        candidates
-            .iter()
-            .cloned()
-            .fold(std::option::Option::None, |found: _, candidate: String| {
+        candidates.iter().cloned().fold(
+            std::option::Option::None,
+            |found: Option<String>, candidate: String| {
                 rust_value_binding_choose_unblocked(found, candidate.clone(), blocked.clone())
-            })
+            },
+        )
     }
 }
 
