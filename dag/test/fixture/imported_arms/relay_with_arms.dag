@@ -1,0 +1,12 @@
+module test.fixture.imported_arms.relay_with_arms
+
+import std.types { Int }
+import test.fixture.imported_arms.provider { ArmT, ArmX, ArmY }
+
+// Imports the coproduct AND its arms, and declares neither: the shape of v2.std.logic importing Bool, True, False.
+fn arm_relay_with_arms(t: ArmT) -> ArmT {
+  match t {
+    ArmX => ArmY
+    ArmY => ArmX
+  }
+}

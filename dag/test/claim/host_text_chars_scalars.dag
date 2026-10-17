@@ -1,0 +1,40 @@
+module test.claim.host_text_chars_scalars
+
+import std.host_text { chars }
+import std.types { Bool, Char, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// std.host_text chars RETURNS THE UNICODE SCALAR VALUES OF ITS HOST TEXT, IN SOURCE ORDER (operator
+// ruling H4, 2026-10-17), through the imported declaration and so through its realization by identity
+// (the interpreter's std.host_text bridge family; Rust v1_rt::chars). Each case separates scalars
+// from a near-miss reading: bytes would give UTF-8 octets for every non-ASCII character, UTF-16 code
+// units a surrogate pair for the astral one, grapheme clusters one element for the decomposed accent.
+
+test fn chars_of_empty_host_text_is_empty_holds() -> Bool {
+  chars(text: "") == []
+}
+
+test fn chars_of_ascii_host_text_is_its_code_points_in_order_holds() -> Bool {
+  chars(text: "abc") == [97, 98, 99]
+}
+
+// U+00E9 precomposed: one scalar, not the two UTF-8 octets [195, 169].
+test fn chars_of_a_two_byte_scalar_is_one_scalar_not_its_bytes_holds() -> Bool {
+  chars(text: "é") == [233]
+}
+
+// "e" + U+0301 COMBINING ACUTE ACCENT: two scalars, although it renders as one grapheme.
+test fn chars_of_a_decomposed_accent_is_two_scalars_not_one_grapheme_holds() -> Bool {
+  chars(text: "é") == [101, 769]
+}
+
+// U+1F600: one scalar, not the UTF-16 surrogate pair [55357, 56832].
+test fn chars_of_an_astral_scalar_is_one_scalar_not_a_surrogate_pair_holds() -> Bool {
+  chars(text: "😀") == [128512]
+}
+
+test fn chars_keeps_source_order_across_mixed_widths_holds() -> Bool {
+  chars(text: "a😀é") == [97, 128512, 233]
+}

@@ -10994,6 +10994,15 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
             }
+            // std.host_text chars (operator ruling H4): a HostRealizedSeam reached by DECLARATION, the
+            // module literal below, never by the bare spelling -- `is_v4_bridge_family` admits the arm
+            // only when the item registry says the called `chars` IS std.host_text's. Unicode scalar
+            // values in source order: a Rust `char` is exactly one scalar value.
+            family STD_HOST_TEXT_BRIDGE_FNS "std.host_text"
+                lookup_eval_call_bridge_std_host_text eval_call_bridge__std_host_text_arm {
+                arm "v4_bridge.host_text_chars" { "chars" } =>
+                    eval_host_text_chars(&$args),
+            }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
@@ -11031,6 +11040,14 @@ macro_rules! v1_bridge_dispatch {
             }
         )*
     };
+}
+
+/// std.host_text chars: the host text's Unicode scalar values, in source order, as the
+/// `List<Char>` it is declared to return (a `Char` is an `Int` scalar on this carrier).
+fn eval_host_text_chars(args: &[(Option<String>, Value)]) -> InterpResult<Value> {
+    let text = expect_str_free_monoid(args.first().map(|(_, v)| v), "chars")?;
+    let items: Vec<Value> = text.chars().map(|c| Value::Int(c as i64)).collect();
+    Ok(list_value(items))
 }
 
 /// One guard for every bridge family.
@@ -24104,6 +24121,40 @@ macro_rules! v1_builtin_arms {
                 },
                 _ => Err(InterpError::TypeError {
                     msg: "observed_thread_cpu_nanos takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject availability: the seed interpreter runs under the default
+            // allocator and selected no counting provider, so the answer is the typed `false`, not a
+            // refusal and not a count (std.realization_measurement allocation_reading).
+            arm "free_call.observed_allocation_available" { "observed_allocation_available" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Ok(Some(Value::Bool(false))),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_available takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
+            // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
+            // reading (std.realization_measurement AllocationCounter).
+            arm "free_call.observed_allocation_operations" { "observed_allocation_operations" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Err(InterpError::TypeError {
+                    msg: "observed_allocation_operations: unobservable in the interpreter (no counting allocator); only a native entry that uses AllocationCounter observes it".to_string(),
+                }),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_operations takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
+            // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
+            // reading (std.realization_measurement AllocationCounter).
+            arm "free_call.observed_allocation_bytes" { "observed_allocation_bytes" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Err(InterpError::TypeError {
+                    msg: "observed_allocation_bytes: unobservable in the interpreter (no counting allocator); only a native entry that uses AllocationCounter observes it".to_string(),
+                }),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_bytes takes exactly one boundary label".to_string(),
                 }),
             },
 

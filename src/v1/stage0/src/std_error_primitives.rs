@@ -28,6 +28,14 @@ pub enum DivError {
     Overflow,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Never {}
+
+#[allow(unreachable_code)]
+pub fn absurd<T: Clone>(n: Never) -> T {
+    match n.clone() {}
+}
+
 pub fn pure_dag_seam_unreachable() -> i64 {
     v1_rt::pure_dag_seam_unreachable()
 }

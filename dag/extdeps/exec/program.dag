@@ -124,6 +124,8 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
 fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
   admit_callers: [
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program"),
+    decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_cli_program_identity"),
+    decl_ref(module_path: "gunbc.host.cursor_agent_realization", decl_name: "cursor_agent_pinned_program"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "nproc_program"),
@@ -173,6 +175,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.python", decl_name: "python_program"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_identity"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "operation_row_argv_command"),
     decl_ref(module_path: "extdeps.procps.sysctl", decl_name: "sysctl_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "scp_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_add_program"),
@@ -192,6 +195,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.squashfs_tools", decl_name: "unsquashfs_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_umount", decl_name: "umount_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_flock", decl_name: "flock_program"),
+    decl_ref(module_path: "extdeps.tools.util_linux_setsid", decl_name: "setsid_program"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_path_resolved_program"),
     decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_program"),
     decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),

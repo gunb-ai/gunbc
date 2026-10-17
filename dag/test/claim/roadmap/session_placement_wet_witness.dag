@@ -1,9 +1,10 @@
 module test.claim.roadmap.session_placement_wet_witness
 
 import extdeps.shell
-import std.types { Bool, String, List, NonEmptyStr, EpochSecs }
+import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
 import std.measure { kibibyte, kibibyte_count }
-import std.durable_compare_and_set { CasGeneration, cas_generation_first }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
@@ -40,6 +41,13 @@ import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
 import extdeps.languages.json.emit { serialize_json }
+
+fn witness_cas_generation(n: Int) -> CasGeneration {
+  match cas_generation(n: n) {
+    Present { value: g } => g
+    Absent => cas_generation_first()
+  }
+}
 
 // G5 WET CONTROLS (side-chat ruling on #13074 at b4d4a42): the settlement PASS run for real over a
 // slot store and records directory the witness creates with shell.Mktemp.DirWithTemplate, interrupted
@@ -137,7 +145,7 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
         Present { value: u } => u
         Absent => "unnameable" as NonEmptyStr
       },
-      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 },
+      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: witness_cas_generation(n: 7) },
       granted_at: 1000,
       maximum_duration_seconds: 14400,
       expires_at: 15400,
@@ -313,7 +321,7 @@ test fn a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_g
   let bound = match session_placement_observe_at(stores: stores, host: host, node_id: node_a, attempt_key: key_a) {
     SessionPlacementObserved { slot: _, grant, returned } =>
       (match grant {
-        SessionGrantRecorded { record } => record.grant_identity == "evt-7" && record.fence_generation == 7
+        SessionGrantRecorded { record } => record.grant_identity == "evt-7" && cas_generation_count(g: record.fence_generation) == 7
         SessionGrantNotRecorded { path: _ } => false
         SessionGrantUnreadable { path: _, detail: _ } => false
         SessionGrantForeign { path: _, detail: _ } => false

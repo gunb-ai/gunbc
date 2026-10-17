@@ -1006,6 +1006,123 @@ mod compiler_tests {
     }
 
     #[test]
+    fn if_join_admits_a_transparent_alias_of_its_other_branch() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let std_optional = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "dag/std/optional.dag".to_string(),
+                    content: include_str!("../../../../dag/std/optional.dag").to_string(),
+                });
+                let blocking_of = |content: &str| -> Vec<String> {
+                    let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: "probe_if_join_alias.dag".to_string(),
+                        content: content.to_string(),
+                    });
+                    let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![std_optional.clone(), src]));
+                    resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect()
+                };
+                let head = "module probe.if_join_alias\ntype Boxed<T> {\n  v: T\n}\ntype Other<T> {\n  v: T\n}\ntype IntBox = Boxed<Int>\ntype BoolBox = Boxed<Bool>\ntype BoxRow {\n  min: Int\n  ceiling: IntBox\n}\ntype Inner<T> {\n  v: T\n}\ntype NestBox = Boxed<Inner<Int>>\n";
+                let same = format!("{head}fn pick_same(a: IntBox, b: Boxed<Int>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
+                let optional = format!("{head}fn pick_box(acc: IntBox?, row: BoxRow, n: Int) -> IntBox? {{\n  if n >= row.min {{\n    match acc {{\n      Absent => Present {{ value: row.ceiling }}\n      Present {{ value: a }} => Present {{ value: a }}\n    }}\n  }} else {{\n    acc\n  }}\n}}\n");
+                let mismatch = format!("{head}fn pick_mismatch(a: BoolBox, b: Boxed<Int>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
+                let unrelated = format!("{head}fn pick_unrelated(a: Other<Int>, b: Boxed<Int>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
+                let nested = format!("{head}fn pick_nested(a: NestBox, b: Boxed<Inner<Bool>>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
+                let join_refused = |m: &Vec<String>| m.iter().any(|s| s.contains("if branches resolve to incompatible types"));
+                let same_msgs = blocking_of(&same);
+                // PINNED, NOT CORRECT: a parameter's declared type reference does not carry its declaration, so the join declines and still refuses. Flips when formal type references carry their DeclarationRef.
+                assert!(join_refused(&same_msgs), "known residual: two parameter-typed branches have no carried declaration to compare; if this now passes, invert this assertion: {:?}", same_msgs);
+                let optional_msgs = blocking_of(&optional);
+                assert!(optional_msgs.is_empty(), "an optional alias and its optional target are one type at an if-join, and the specimen compiles clean: {:?}", optional_msgs);
+                let mismatch_msgs = blocking_of(&mismatch);
+                assert!(join_refused(&mismatch_msgs), "an alias of Boxed<Bool> is not Boxed<Int>; the join must refuse: {:?}", mismatch_msgs);
+                let unrelated_msgs = blocking_of(&unrelated);
+                assert!(join_refused(&unrelated_msgs), "a same-shaped unrelated declaration is not an alias; the join must refuse: {:?}", unrelated_msgs);
+                let nested_msgs = blocking_of(&nested);
+                // NOT YET DISCRIMINATING: refused today because parameter-typed branches carry no declaration (the residual above). When that flips, this is the control that nested arguments agree structurally, not by head name.
+                assert!(join_refused(&nested_msgs), "an alias of Boxed<Inner<Int>> is not Boxed<Inner<Bool>>; nested arguments must agree structurally: {:?}", nested_msgs);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("if_join_admits_a_transparent_alias_of_its_other_branch panicked");
+    }
+
+    #[test]
+    fn if_join_argument_identity_is_strict_where_compatibility_is_permissive() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let std_optional = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "dag/std/optional.dag".to_string(),
+                    content: include_str!("../../../../dag/std/optional.dag").to_string(),
+                });
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_if_join_identity.dag".to_string(),
+                    content: "module probe.if_join_identity\ntype Boxed<T> {\n  v: T\n}\ntype Nothing {\n}\nfn p_opt(a: Int?) -> Int { 0 }\nfn p_opt2(a: Int?) -> Int { 0 }\nfn p_unit(a: Nothing) -> Int { 0 }\nfn p_int(a: Int) -> Int { 0 }\nfn p_box_int(a: Boxed<Int>) -> Int { 0 }\nfn p_box_int2(a: Boxed<Int>) -> Int { 0 }\nfn p_box_bool(a: Boxed<Bool>) -> Int { 0 }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![std_optional, src]));
+                let blocking: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert!(blocking.is_empty(), "specimen must typecheck: {:?}", blocking);
+                let graph = resolved.graph.as_ref().expect("typed graph");
+                let typed = graph.modules.iter().find(|m| m.module.name == "probe.if_join_identity").expect("probe module");
+                let ty = |n: &str| crate::v1_std_core::param_node_type_expr(typed.items.iter().find(|i| i.name == n).expect(n).params[0].clone());
+                let si = resolved.source_indices.clone();
+                let identical = |a: &std::rc::Rc<crate::v1_std_core::Node>, b: &std::rc::Rc<crate::v1_std_core::Node>| crate::v1_compiler_infer::if_branch_argument_types_identical(a.clone(), b.clone(), si.clone());
+                let compatible = |a: &std::rc::Rc<crate::v1_std_core::Node>, b: &std::rc::Rc<crate::v1_std_core::Node>| crate::v1_compiler_infer_types::node_type_compatible(a.clone(), b.clone(), si.clone(), std::rc::Rc::new(crate::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }));
+                let with_inferred = |n: &std::rc::Rc<crate::v1_std_core::Node>, inferred: crate::v1_std_core::InferredNode| {
+                    let mut m = (**n).clone();
+                    m.inferred = Some(std::rc::Rc::new(inferred));
+                    std::rc::Rc::new(m)
+                };
+                let opt = ty("p_opt");
+                let opt2 = ty("p_opt2");
+                let unit = ty("p_unit");
+                let int = ty("p_int");
+                let box_int = ty("p_box_int");
+                let box_int2 = ty("p_box_int2");
+                let box_bool = ty("p_box_bool");
+                let tv_t = with_inferred(&int, crate::v1_std_core::InferredNode::TypeVariable { id: "T".to_string() });
+                let tv_t2 = with_inferred(&int, crate::v1_std_core::InferredNode::TypeVariable { id: "T".to_string() });
+                let tv_u = with_inferred(&int, crate::v1_std_core::InferredNode::TypeVariable { id: "U".to_string() });
+                let with_owner = |n: &std::rc::Rc<crate::v1_std_core::Node>, owner: &str| {
+                    let mut m = (**n).clone();
+                    m.declaration = Some(crate::std_decl_ref::decl_type_parameter_ref("probe.if_join_identity".to_string(), owner.to_string(), "T".to_string()));
+                    std::rc::Rc::new(m)
+                };
+                let t_of_first = with_owner(&tv_t, "First");
+                let t_of_first_again = with_owner(&tv_t2, "First");
+                let t_of_second = with_owner(&tv_t, "Second");
+                let err = with_inferred(&int, crate::v1_std_core::InferredNode::CompilerError { message: "unresolved type".to_string(), span: crate::v1_std_core::no_span() });
+                // Positive controls: identity holds where the instantiations are one.
+                assert!(identical(&opt, &opt2), "Int? is identical to Int?");
+                assert!(identical(&int, &int), "Int is identical to Int");
+                assert!(identical(&box_int, &box_int2), "Boxed<Int> is identical to Boxed<Int>");
+                assert!(identical(&tv_t, &tv_t2), "a type variable is identical to itself");
+                // Each pair node_type_compatible admits must not pass as generic-argument identity.
+                let permissive: Vec<(&str, &std::rc::Rc<crate::v1_std_core::Node>, &std::rc::Rc<crate::v1_std_core::Node>)> = vec![
+                    ("Int? against a unit-like record", &opt, &unit),
+                    ("a type variable against Int", &tv_t, &int),
+                    ("a compiler-error side against Int", &err, &int),
+                    ("Boxed<Int> against Boxed<Bool>", &box_int, &box_bool),
+                ];
+                for (case, a, b) in permissive {
+                    assert!(compatible(a, b), "{} must be a pair node_type_compatible admits, or this witness proves nothing", case);
+                    assert!(!identical(a, b), "{} must not pass as generic-argument identity", case);
+                }
+                assert!(!identical(&tv_t, &tv_u), "two different type variables are not identical");
+                assert!(identical(&t_of_first, &t_of_first_again), "one owner's T is identical to itself");
+                assert!(!identical(&t_of_first, &t_of_second), "two owners' parameters both spelled T are not identical");
+                assert!(!identical(&t_of_first, &tv_t), "an owned parameter is not identical to an unowned variable of the same spelling");
+                assert!(!identical(&err, &err), "a compiler-error side is identical to nothing");
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "if_join_argument_identity_is_strict_where_compatibility_is_permissive panicked",
+        );
+    }
+
+    #[test]
     fn present_empty_list_fold_init_emits_no_unit_element() {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
@@ -5803,6 +5920,116 @@ mod compiler_tests {
         assert!(
             reads_as_a_type_item(sole_constructor_type, source_indices.clone()),
             "a sole_constructor type must still read as a type item"
+        );
+    }
+
+    // THE DECISION BEHIND AN IMPORTED RESOURCE'S USE-LINE. emit_specific_import_use_lines drops an
+    // imported name the env resolves to a bare kernel-identity leaf (a host-realized scalar), and a
+    // resource resolves to exactly that shape, so its use-line was dropped and the `uses` parameter
+    // type named nothing (E0425 in the emitted crate). The executed consumer of the positive arm is
+    // the native-allocation-observation label (red at gunbc#13892 head 170e4410b2b, green after the
+    // repair, same inputs); this row pins the decision itself on both arms and the same-spelling case.
+    #[test]
+    fn an_imported_resource_name_is_recognised_by_kind_and_name() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        use crate::v1_std_core::ParsedModuleItemKind::{
+            ModuleItemResource, ModuleItemTypeDeclaration,
+        };
+        let resource = item_of_kind(
+            "AllocationCounter",
+            ModuleItemResource,
+            vec!["kind", "mode"],
+        );
+        assert!(
+            crate::v1_compiler_emit_rust::resource_item_declares_name(
+                resource.clone(),
+                "AllocationCounter".to_string(),
+                source_indices.clone(),
+            ),
+            "an imported resource declaration must keep its use-line"
+        );
+        assert!(
+            !crate::v1_compiler_emit_rust::resource_item_declares_name(
+                resource,
+                "Other".to_string(),
+                source_indices.clone(),
+            ),
+            "a name the resource does not declare must not be kept by this arm"
+        );
+        let type_item = item_of_kind("AllocationCounter", ModuleItemTypeDeclaration, Vec::new());
+        assert!(
+            !crate::v1_compiler_emit_rust::resource_item_declares_name(
+                type_item,
+                "AllocationCounter".to_string(),
+                source_indices,
+            ),
+            "the same spelling declared as a type is not a resource"
+        );
+    }
+
+    // THE COUNTING ALLOCATOR IS INSTALLED BY DEMAND AND BY NOTHING ELSE. Rendering the native claim
+    // driver main for three binding sets: none (the pure main), a bound resource that is not the
+    // AllocationCounter (the effect main), and the AllocationCounter binding. Only the last may carry a
+    // #[global_allocator]; the first two are the negative controls, so a main that always rendered it
+    // (or one that rendered it for any effect main) turns this row red.
+    #[test]
+    fn the_counting_allocator_is_installed_only_by_demand() {
+        use crate::v1_compiler_emit_rust::emit_native_claim_driver_main_rs;
+        let render = |bindings: Vec<
+            std::rc::Rc<crate::v1_compiler_emit_rust::NativeEffectBindingText>,
+        >|
+         -> String {
+            emit_native_claim_driver_main_rs(
+                "c".to_string(),
+                "m".to_string(),
+                std::rc::Rc::new(bindings.into()),
+            )
+            .content
+            .clone()
+        };
+        let other = std::rc::Rc::new(crate::v1_compiler_emit_rust::NativeEffectBindingText {
+            var: "fs".to_string(),
+            type_path: "c::std_filesystem::Filesystem".to_string(),
+            binding_line: "    let fs = 0;\n".to_string(),
+            argument: "fs".to_string(),
+        });
+        let counter = std::rc::Rc::new(crate::v1_compiler_emit_rust::NativeEffectBindingText {
+            var: "counter".to_string(),
+            type_path: "c::std_realization_measurement::AllocationCounter".to_string(),
+            binding_line: "    let counter = 0;\n".to_string(),
+            argument: "counter".to_string(),
+        });
+        assert!(
+            !render(Vec::new()).contains("#[global_allocator]"),
+            "a pure main must carry no allocator"
+        );
+        assert!(
+            !render(vec![other.clone()]).contains("#[global_allocator]"),
+            "an effect main without the AllocationCounter must carry no allocator"
+        );
+        let registered =
+            |main: &str| main.contains("register_counting_allocator(&COUNTING_ALLOCATOR)");
+        assert!(
+            !registered(&render(Vec::new())),
+            "a pure main must register no provider"
+        );
+        assert!(
+            !registered(&render(vec![other.clone()])),
+            "an effect main without the AllocationCounter must register no provider"
+        );
+        let demanding = render(vec![other, counter]);
+        assert!(
+            demanding.contains("#[global_allocator]"),
+            "positive control: a main binding the AllocationCounter carries it"
+        );
+        assert!(
+            registered(&demanding),
+            "the allocator and its registration come from the one selection"
+        );
+        assert!(
+            demanding.find("register_counting_allocator").unwrap()
+                < demanding.find("native_claim_report(").unwrap(),
+            "registration precedes the first read"
         );
     }
 

@@ -8,7 +8,7 @@ import std.temporal_effect {
   HeldLeaseObservedState,
   LeaseAbsent,
   LeaseRunningExpected,
-  LeaseRunningStale,
+  LeaseRunningPastExpiry,
   LeasePortForeign,
   LeaseInaccessible,
   held_lease_observed_verdict,
@@ -354,7 +354,7 @@ fn mtcollins1_sol_collector_observe(pid_path: String) -> SolCollectorObservation
 fn held_lease_of_collector(observation: SolCollectorObservation) -> HeldLeaseObservedState {
   match observation {
     SolCollectorHeld => LeaseRunningExpected
-    SolCollectorExited { evidence: _ } => LeaseRunningStale
+    SolCollectorExited { evidence: _ } => LeaseRunningPastExpiry
     SolCollectorUnrecorded => LeaseAbsent
     SolCollectorUnobservable { cause: _ } => LeaseInaccessible
     SolCollectorPathUnset => LeaseInaccessible

@@ -170,7 +170,7 @@ test fn an_absent_repository_plans_the_tree_publication() -> Bool {
 // A DECISION ASKED OF THE WRONG MEMBER IS A REFUSAL, NOT A COMPARISON: the tree's decision handed an
 // executable observation cannot be converged or changed, only wrong.
 test fn an_observation_of_another_member_is_refused() -> Bool {
-  match decide_member(member: TreePublication, desired: desired_tree(), observed: MemberObserved { identity: desired_bin() }) {
+  match decide_member(member: TreePublication, desired: desired_tree(), observed: MemberObserved { identity: desired_bin() }, installed: InstalledReleaseUnobserved { reason: "this witness asks about a wrong-member observation, where the release position cannot matter" }) {
     MemberRefused { member: TreePublication, cause: ObservationIsOfAnotherMember { observed: Executable } } => true
     _ => false
   }

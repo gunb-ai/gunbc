@@ -575,7 +575,6 @@ test fn a_branch_boot_awaits_its_grant_before_the_fleet_key() -> Bool {
     && !string_contains(s: fleet_converge_mtcollins1_boot_wif_service_account(), pattern: "__GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__")
     && !string_contains(s: fleet_converge_mtcollins1_boot_wif_provider_resource(), pattern: "__GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__")
 }
-
 test fn the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision() -> Bool {
   let inputs = step_inputs_text(s: ci_fleet_key_agent_step())
   string_contains(s: inputs, pattern: "fleet-automation-ssh-key")

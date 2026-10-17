@@ -42,6 +42,11 @@ type Fci1BoundedExecutionContextEmission
 // Checkout root is deliberately absent: the instrument derives that live from its own path, then
 // passes the same root to the context and to WorkingDirectory. This artifact carries no second path
 // selector and no independently authored byte spelling.
+// SCAFFOLD - dissolve-on: the bash target grammar (v2.extdeps.languages.bash rows, built by
+// v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) gains here-documents,
+// [[ ]] conditionals, function definitions with return, and || lists; this env is then emitted from
+// those nodes. The install/remove lifecycle below is string-built shell for the same reason and on
+// the same trigger as the two FCI-1 scripts that source it; it adds no new trigger.
 fn expected_fci1_bounded_execution_context_env() -> Fci1BoundedExecutionContextEmission {
   match fci1_bounded_execution_context(checkout_root: ".") {
     Fci1MemoryMaxNonPositive { observed: value } =>
@@ -81,9 +86,12 @@ fn expected_fci1_bounded_execution_context_env() -> Fci1BoundedExecutionContextE
           "  [[ $(systemctl show ", fci1_controls_slice_unit_name as String, " --property=MemoryMax --value) == ", to_string(byte_size_count(b: fci1_controls_slice_memory_max())), " ]] || { echo 'ControlRefused: slice cap not live' >&2; fci1_remove_controls_slice; return 2; }\n",
           "}\n",
           "fci1_remove_controls_slice() {\n",
-          "  systemctl stop ", fci1_controls_slice_unit_name as String, " 2>/dev/null || true\n",
-          "  rm -f ", fci1_controls_slice_unit_path(), "\n",
-          "  systemctl daemon-reload\n",
+          "  local s=0\n",
+          "  systemctl stop ", fci1_controls_slice_unit_name as String, " 2>/dev/null || [[ $(systemctl show ", fci1_controls_slice_unit_name as String, " --property=LoadState --value) == not-found ]] || { echo 'ControlRefused: slice stop failed' >&2; s=1; }\n",
+          "  rm -f ", fci1_controls_slice_unit_path(), " || { echo 'ControlRefused: slice unit removal failed' >&2; s=1; }\n",
+          "  systemctl daemon-reload || { echo 'ControlRefused: daemon-reload after slice removal failed' >&2; s=1; }\n",
+          "  [[ ! -e ", fci1_controls_slice_unit_path(), " ]] || { echo 'ControlRefused: slice unit file still present' >&2; s=1; }\n",
+          "  return $s\n",
           "}\n",
           "fci1_run_bounded_driver() {\n",
           "  local checkout_root=$1; shift\n",

@@ -283,6 +283,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "string_length",      bridge_name: "string_length",    passes_by_ref: true,  wraps_result: false },
   { name: "substring",          bridge_name: "substring",        passes_by_ref: true,  wraps_result: false },
   { name: "string_contains",    bridge_name: "string_contains",  passes_by_ref: true,  wraps_result: false },
+  { name: "chars",              bridge_name: "chars",            passes_by_ref: true,  wraps_result: false },
   { name: "scan_while",         bridge_name: "scan_while",       passes_by_ref: true,  wraps_result: false },
   { name: "skip_horizontal_ws", bridge_name: "skip_horizontal_ws", passes_by_ref: true, wraps_result: false },
   { name: "scan_to_eol",        bridge_name: "scan_to_eol",      passes_by_ref: true,  wraps_result: false },
@@ -333,6 +334,9 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "trace_mark",         bridge_name: "trace_mark",       passes_by_ref: false, wraps_result: false },
   { name: "observed_monotonic_nanos", bridge_name: "observed_monotonic_nanos", passes_by_ref: false, wraps_result: false },
   { name: "observed_thread_cpu_nanos", bridge_name: "observed_thread_cpu_nanos", passes_by_ref: false, wraps_result: false },
+  { name: "observed_allocation_available", bridge_name: "observed_allocation_available", passes_by_ref: false, wraps_result: false },
+  { name: "observed_allocation_operations", bridge_name: "observed_allocation_operations", passes_by_ref: false, wraps_result: false },
+  { name: "observed_allocation_bytes", bridge_name: "observed_allocation_bytes", passes_by_ref: false, wraps_result: false },
 
   { name: "rc_ptr_eq",          bridge_name: "rc_ptr_eq",        passes_by_ref: false, wraps_result: false },
   { name: "rc_vec_ptr_eq",      bridge_name: "rc_vec_ptr_eq",    passes_by_ref: false, wraps_result: false },
@@ -345,6 +349,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "symbol_intern_lexeme", bridge_name: "symbol_intern_lexeme", passes_by_ref: false, wraps_result: false },
   { name: "bytes_octets",         bridge_name: "bytes_octets",         passes_by_ref: false, wraps_result: false },
   { name: "utf8_encode_bytes",    bridge_name: "utf8_encode_bytes",    passes_by_ref: false, wraps_result: false },
+  { name: "octets_bytes",         bridge_name: "octets_bytes",         passes_by_ref: false, wraps_result: false },
   { name: "pure_dag_seam_unreachable", bridge_name: "pure_dag_seam_unreachable", passes_by_ref: false, wraps_result: false }
 ]
 
