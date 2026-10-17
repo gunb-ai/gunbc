@@ -126,7 +126,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { type_names_settle_to_one_declaration, overlay_skips_kernel_name,
+import v1.compiler.infer_env { alias_head_reaches, alias_rhs_head_of_declaration, type_names_settle_to_one_declaration, overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -3813,22 +3813,9 @@ fn type_name_transparently_aliases_to(
         Present { value: target_ref } =>
           match alias_rhs_head_declaration(decl: alias_decl, type_env: type_env) {
             Absent => false
-            Present { value: head } => alias_head_chase_reaches(head: head, target: target_ref, type_env: type_env, fuel: 16)
+            Present { value: head } => alias_head_reaches(head: head, target: target_ref, type_env: type_env, fuel: 16)
           }
       }
-  }
-}
-
-fn alias_head_chase_reaches(head: DeclarationRef, target: DeclarationRef, type_env: TypeEnv, fuel: Int) -> Bool {
-  if declaration_ref_eq(a: head, b: target) {
-    true
-  } else if fuel <= 0 {
-    false
-  } else {
-    match alias_item_rhs_head(item_ref: head, type_env: type_env) {
-      Present { value: next } => alias_head_chase_reaches(head: next, target: target, type_env: type_env, fuel: fuel - 1)
-      Absent => false
-    }
   }
 }
 
@@ -3836,36 +3823,8 @@ fn alias_head_chase_reaches(head: DeclarationRef, target: DeclarationRef, type_e
 // not by its spelling -- and the identity its right-hand side head was resolved to.
 fn alias_rhs_head_declaration(decl: Node, type_env: TypeEnv) -> DeclarationRef? {
   match declaration_ref_of_declaration_node(decl: decl, source_indices: type_env.source_indices, env: type_env) {
-    Present { value: alias_ref } => alias_item_rhs_head(item_ref: alias_ref, type_env: type_env)
+    Present { value: alias_ref } => alias_rhs_head_of_declaration(item_ref: alias_ref, env: type_env)
     Absent => none
-  }
-}
-
-// THE ALIAS'S RHS HEAD, READ FROM THE REFERENCE THAT NAMES IT (quiet-gull-780 ruling B). The alias's
-// declaring module env is found by EXACT module path (the alias's own DeclarationRef): this module's env
-// when the alias is local, else a direct-import parent env. Its binding retains the RHS reference
-// (TypeBinding.alias_rhs), whose Node.declaration the one writer set in the alias's own scope. Nothing
-// here re-resolves a spelling, consults the census-built symbol index (pre-resolve, and qualified by the
-// non-hermetic global_bare_owner_module), or asks which module happens to declare a leaf name. An alias
-// declared outside the module and its direct imports, or a head with no recorded identity, answers none,
-// and every caller refuses on none.
-fn alias_item_rhs_head(item_ref: DeclarationRef, type_env: TypeEnv) -> DeclarationRef? {
-  let declaring = if type_env.module_path == (item_ref.module_path as String) {
-    Present { value: type_env }
-  } else {
-    type_env.parents |> filter(p => p.module_path == (item_ref.module_path as String)) |> first
-  }
-  match declaring {
-    Absent => none
-    Present { value: env } =>
-      match map_get(env.str_bindings, item_ref.decl_name as String) {
-        Absent => none
-        Present { value: binding } =>
-          match binding.alias_rhs {
-            Present { value: rhs } => rhs.declaration
-            Absent => none
-          }
-      }
   }
 }
 

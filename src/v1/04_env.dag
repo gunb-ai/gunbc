@@ -2238,3 +2238,25 @@ fn type_names_settle_to_one_declaration(left: String, right: String, env: TypeEn
       }
   }
 }
+
+// THE ALIAS'S RHS HEAD, READ FROM THE REFERENCE THAT NAMES IT. The alias's declaring module env is
+// found by exact module path; its binding retains the right-hand side reference (alias_rhs), whose
+// Node.declaration the one writer set in the alias's own scope. Nothing re-resolves a spelling. An
+// alias outside the module and its direct imports, or a head with no recorded identity, answers none.
+fn alias_rhs_head_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> DeclarationRef? {
+  match alias_rhs_of_declaration(item_ref: item_ref, env: env) {
+    Present { value: rhs } => rhs.declaration
+    Absent => none
+  }
+}
+
+fn alias_head_reaches(head: DeclarationRef, target: DeclarationRef, type_env: TypeEnv, fuel: Int) -> Bool {
+  if declaration_ref_eq(a: head, b: target) { true }
+  else if fuel <= 0 { false }
+  else {
+    match alias_rhs_head_of_declaration(item_ref: head, env: type_env) {
+      Present { value: next } => alias_head_reaches(head: next, target: target, type_env: type_env, fuel: fuel - 1)
+      Absent => false
+    }
+  }
+}
