@@ -1802,6 +1802,30 @@ fn dashboard_instance_provider_state_directory(instance: HostDashboardInstance) 
   }
 }
 
+// THE GIT DIRECTORIES A DEDICATED WORKER WRITES (WORKER-ROOT-EQUIVALENT-2, item 2). The worker commits
+// into repo_root/.git/objects, refs and logs (gunbc.roadmap.roadmap_dispatch_actuator
+// dispatch_worker_git_writable_paths), which the service user owns; a unit running as gunbc-worker
+// reaches them only through the shared attempt group, so each is declared group-writable setgid exactly as
+// the worktree and attempt-state roots are. NOT declared: .git itself, hooks, config, info and the
+// .git/worktrees parent, which stay service-user-only (gunbc#13942's carve-out). The staged arm declares
+// none, so prod's repository is untouched.
+// DECLARED RESIDUALS: the provider asserts these directories, not their existing contents (it does not
+// recurse), and packed-refs plus the per-attempt .git/worktrees/<key> are a file and a runtime-created
+// directory it cannot assert; both are read back by the lab qualification (a live worker commits).
+data dashboard_git_worker_directory_children: List<NonEmptyStr> = [".git/objects", ".git/refs", ".git/logs"] as List<NonEmptyStr>
+
+fn dashboard_instance_worker_git_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => map(dashboard_git_worker_directory_children, child => OwnedDirectoryDeclared {
+      member: join(["git-worker-", child as String], "") as NonEmptyStr,
+      path: dashboard_instance_child(root: instance.repo_root, child: child as String),
+      owner: dashboard_instance_worker_writable_owner(instance: instance),
+      mode: DirectoryOwnerGroupWritableSetgid,
+    })
+  }
+}
+
 // THE BUNDLE INBOX: where a bundle-seeded instance stages its source bundle. Demanded only by an
 // instance whose source seed IS a bundle, and the staged bundle path is built under the same function
 // (isolated_dashboard_instance), so the inbox ensured and the inbox written are one path.
@@ -1829,7 +1853,7 @@ fn dashboard_instance_own_directory_demands(instance: HostDashboardInstance) -> 
     dashboard_instance_dispatch_worktree_directory(instance: instance),
     dashboard_instance_dispatch_attempt_state_directory(instance: instance),
     dashboard_instance_provider_state_directory(instance: instance),
-  ], dashboard_instance_inbox_directories(instance: instance))
+  ], concat(dashboard_instance_worker_git_directories(instance: instance), dashboard_instance_inbox_directories(instance: instance)))
 }
 fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [
