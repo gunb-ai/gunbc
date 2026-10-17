@@ -141,15 +141,21 @@ fn expansion_of(application: &Rc<Node>) -> Rc<Node> {
     }
 }
 
+// An expansion RETAINS NO ARGUMENTS (slots replaced by name, params cleared), so an application refuses
+// even its own expansion, in both orders. The accepting twin of this refusal is the hand-built pair
+// below, whose Disj retains its arguments positionally in children.
 #[test]
-fn an_application_agrees_with_its_own_expansion_in_both_orders() {
+fn an_application_refuses_its_own_expansion_in_both_orders() {
     let int_box = box_application("Int");
     let expansion = expansion_of(&int_box);
     assert!(
-        equals(int_box.clone(), expansion.clone()),
-        "Box<Int> vs its own expansion"
+        !equals(int_box.clone(), expansion.clone()),
+        "Box<Int> vs its own expansion: no retained arguments, must refuse"
     );
-    assert!(equals(expansion, int_box), "its own expansion vs Box<Int>");
+    assert!(
+        !equals(expansion, int_box),
+        "reverse operand order must refuse too"
+    );
 }
 
 #[test]
@@ -242,18 +248,26 @@ fn pair_application(first: &str, second: &str) -> Rc<Node> {
 
 #[test]
 fn an_argument_that_vanishes_from_the_expansion_refuses_in_both_orders() {
+    let int_int = pair_application("Int", "Int");
     let int_bool = pair_application("Int", "Bool");
-    let expansion = expansion_of(&pair_application("Int", "Int"));
+    let other = expansion_of(&int_bool);
     assert!(
-        equals(expansion_of(&int_bool), expansion.clone()),
+        equals(expansion_of(&int_int), other.clone()),
         "premise: the two expansions are equal, so expansion equality cannot tell the instantiations apart"
     );
     assert!(
-        !equals(int_bool.clone(), expansion.clone()),
-        "Pair<Int, Bool> vs the expansion of Pair<Int, Int>: Bool is unrecoverable"
+        !equals(int_int.clone(), other.clone()),
+        "Pair<Int, Int> vs the expansion of Pair<Int, Bool>: U is never established"
     );
     assert!(
-        !equals(expansion, int_bool),
+        !equals(other.clone(), int_int),
         "reverse operand order must refuse too"
+    );
+    assert!(
+        !equals(
+            int_bool.clone(),
+            expansion_of(&pair_application("Int", "Int"))
+        ),
+        "Pair<Int, Bool> vs the expansion of Pair<Int, Int> refuses as well"
     );
 }
