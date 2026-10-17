@@ -125,11 +125,10 @@ fn compile_importer_with_t_question() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-// EXECUTED FINDING (re-enrollment run): importing a second `Optional` by name does NOT refuse any
-// more -- the seed has no mint to collide with, so the compile completes clean. That is the honest
-// rung (no wall), not structural impossibility. What keeps it from being a quiet fork is IDENTITY:
-// `T?` is std.optional's Optional (optional_declaration_ref) and the imported type is its own
-// declaration; passing one where the other is expected must refuse. RED below is that mismatch.
+// The class import_collides_with_a_kernel_name is DISSOLVED (review 81504, option A): `T?` binds no
+// name and denotes std.optional's Optional by declaration identity (optional_declaration_ref); an
+// imported user `Optional` is a distinct declaration, so the import is admitted. The crossed module
+// below holds BOTH in one module (the imported Optional and `Int?`) and proves they do not cross.
 data crossed_importer_source: String = "module probe_crossed_importer\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ Optional \}\n\nfn takes_imported(o: Optional) -> Int \{\n  0\n\}\n\nfn crosses(p: Int?) -> Int \{\n  takes_imported(o: p)\n\}\n"
 
 fn compile_crossed_importer() -> MultiModuleCompileFixtureOutcome {
@@ -143,7 +142,7 @@ fn compile_crossed_importer() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-// RED: the imported Optional and `T?` are two declarations; mixing them refuses (not a quiet fork).
+// RED: both declarations in one module stay distinct by identity; mixing them yields the typed row.
 test fn passing_t_question_where_the_imported_second_optional_is_expected_refuses() -> Bool {
   match outcome_rows(o: compile_crossed_importer()) {
     Present { value: rows } => fixture_has_class(rows: rows, wanted: "DeclaredTypeInhabitanceUndecided")
