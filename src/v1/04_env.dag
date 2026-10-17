@@ -2163,8 +2163,8 @@ fn alias_settled_agree(left: Node, right: Node, source_indices: Map<String, Newl
         Absent => false
         Present { value: r } =>
           declaration_ref_eq(a: l.head, b: r.head)
-            && (l.args |> count) == (r.args |> count)
-            && settled_args_agree(left: l.args, right: r.args, agree: agree)
+            && (((l.args |> count) == 0) || ((r.args |> count) == 0)
+              || (((l.args |> count) == (r.args |> count)) && settled_args_agree(left: l.args, right: r.args, agree: agree)))
       }
   }
 }
