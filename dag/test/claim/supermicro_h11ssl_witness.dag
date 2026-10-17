@@ -3,16 +3,15 @@ module test.claim.supermicro_h11ssl_witness
 import std.types { Bool }
 import gunbc.machine_intake.bmc_operator_credential_inventory {
   OperatorHeldSecretRef, operator_held_bmc_credential_inventory, operator_attested_bmc_inventory_roster,
-  operator_inventory_attests, FactoryLoginCredential,
+  operator_inventory_attests, FactoryLoginCredential, OobLicenceKey,
 }
-import extdeps.network.mac { mac_address }
+import extdeps.network.mac { mac_address, Eui48Address }
 import std.optional { Present, Absent }
 import std.measure { megatransfers_per_second, gigabyte }
-import extdeps.boards.types { PopulationSupported, PopulationUnsupported }
 import extdeps.boards.supermicro_h11ssl {
   Epyc7001, Epyc7002,
   Jbt1ClearCmos, Jpb1BmcEnable, BmcAccountResetNotStated,
-  supermicro_h11ssl_admit_population,
+  supermicro_h11ssl_population_standing, PicturedInPopulationGuide, UnbalancedNotRecommended, PlacementUnestablished,
   supermicro_h11ssl_max_data_rate,
   supermicro_h11ssl_jpwr2_pin, supermicro_h11ssl_jpwr1_pin, AtxGround, Atx12V, Atx5Vsb,
   supermicro_h11ssl_jumper_resets_bmc_accounts,
@@ -30,7 +29,7 @@ import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   WebLoginObservation, RedfishRootObservation, LicenceActivationObservation,
   ServiceRootRefused, ServiceRootAnswered,
   UnitVariantObserved, UnitStorageProjected, UnitStorageRefusedVariantUnread,
-  supermicro_h11ssl_unit_variant_standing, supermicro_h11ssl_unit_storage_projection,
+  supermicro_h11ssl_receipt_bmc_identity_coherent, H11sslLabelObservation, H11sslLicenceActivation, supermicro_h11ssl_unit_variant_standing, supermicro_h11ssl_unit_storage_projection,
 }
 
 // The 4-DIMM guides differ by CPU family: the 7001 guide is C1,A1,E1,H1 and the 7002 guide is
@@ -38,17 +37,22 @@ import gunbc.machine_intake.supermicro_h11ssl_first_contact {
 test fn w_four_dimm_population_is_family_specific() -> Bool {
   let seven_thousand_one = ["C1", "A1", "E1", "H1"]
   let seven_thousand_two = ["D1", "C1", "G1", "H1"]
-  let a = match supermicro_h11ssl_admit_population(family: Epyc7001, candidate: seven_thousand_one) { PopulationSupported => true  PopulationUnsupported { slots: _ } => false }
-  let b = match supermicro_h11ssl_admit_population(family: Epyc7002, candidate: seven_thousand_one) { PopulationSupported => false  PopulationUnsupported { slots: _ } => true }
-  let c = match supermicro_h11ssl_admit_population(family: Epyc7002, candidate: seven_thousand_two) { PopulationSupported => true  PopulationUnsupported { slots: _ } => false }
+  let a = match supermicro_h11ssl_population_standing(family: Epyc7001, candidate: seven_thousand_one) { PicturedInPopulationGuide => true  _ => false }
+  let b = match supermicro_h11ssl_population_standing(family: Epyc7002, candidate: seven_thousand_one) { PicturedInPopulationGuide => false  _ => true }
+  let c = match supermicro_h11ssl_population_standing(family: Epyc7002, candidate: seven_thousand_two) { PicturedInPopulationGuide => true  _ => false }
   a && b && c
 }
 
-// One-per-two-channel adjacent slots and an unlisted six-DIMM population are refused.
-test fn w_undocumented_populations_are_refused() -> Bool {
-  let adjacent = match supermicro_h11ssl_admit_population(family: Epyc7002, candidate: ["A1", "B1"]) { PopulationSupported => false  PopulationUnsupported { slots: _ } => true }
-  let six = match supermicro_h11ssl_admit_population(family: Epyc7001, candidate: ["A1", "B1", "C1", "D1", "E1", "F1"]) { PopulationSupported => false  PopulationUnsupported { slots: _ } => true }
-  adjacent && six
+// A set the manual does not picture is UNESTABLISHED, never 'unsupported': the manual calls six
+// DIMMs unbalanced and not recommended (exact slots unstated) and says most under-eight-channel
+// configurations are supported, so absent placement detail cannot manufacture a refusal. A
+// duplicated or foreign slot is not a board population at all and stays unestablished too.
+test fn w_unpictured_populations_are_unestablished_not_unsupported() -> Bool {
+  let adjacent = match supermicro_h11ssl_population_standing(family: Epyc7002, candidate: ["A1", "B1"]) { PlacementUnestablished { slots: _ } => true  _ => false }
+  let six = match supermicro_h11ssl_population_standing(family: Epyc7001, candidate: ["A1", "B1", "C1", "D1", "E1", "F1"]) { UnbalancedNotRecommended { exact_slots: _ } => true  _ => false }
+  let six_dup = match supermicro_h11ssl_population_standing(family: Epyc7001, candidate: ["A1", "A1", "C1", "D1", "E1", "F1"]) { PlacementUnestablished { slots: _ } => true  _ => false }
+  let six_foreign = match supermicro_h11ssl_population_standing(family: Epyc7001, candidate: ["A1", "B1", "C1", "D1", "E1", "Z9"]) { PlacementUnestablished { slots: _ } => true  _ => false }
+  adjacent && six && six_dup && six_foreign
 }
 
 test fn w_rates_differ_by_family() -> Bool {
@@ -226,4 +230,35 @@ test fn w_redfish_read_batches_are_on_the_transcript_basis() -> Bool {
   let bs = supermicro_h11ssl_redfish_read_batches
   let bad = map(bs, b => H11sslRedfishReadBatch { at: H11sslObservedInstant { at: b.at.at, basis: BmcClockReading }, observed_by: b.observed_by, resources: b.resources })
   supermicro_h11ssl_read_batches_on_transcript_basis(bs: bs) && !supermicro_h11ssl_read_batches_on_transcript_basis(bs: bad)
+}
+
+fn other_mac() -> Eui48Address {
+  mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 124)
+}
+
+// One BMC identity per receipt: the receipt's bmc_mac, the label login's reference and every
+// licence's inventory row agree. REDs: the receipt MAC moved off both references, the label login
+// reference moved off the receipt, and a licence's inventory row moved off the receipt.
+test fn w_receipt_bmc_identity_is_one_mac() -> Bool {
+  let r = supermicro_h11ssl_first_contact_receipt
+  let receipt_moved = H11sslFirstContactReceipt { board: r.board, bmc_address: r.bmc_address, bmc_mac: other_mac(), observations: r.observations, licences: r.licences, label: r.label }
+  let l = r.label
+  let label_moved = H11sslFirstContactReceipt {
+    board: r.board, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac, observations: r.observations, licences: r.licences,
+    label: H11sslLabelObservation {
+      top_label_serial_barcode: l.top_label_serial_barcode, lan_macs: l.lan_macs, jps1_silkscreen: l.jps1_silkscreen, label_photo: l.label_photo,
+      bmc_factory_credential: OperatorHeldSecretRef { bmc_mac: other_mac(), secret: FactoryLoginCredential },
+    },
+  }
+  let licence_moved = H11sslFirstContactReceipt {
+    board: r.board, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac, observations: r.observations, label: r.label,
+    licences: map(r.licences, x => H11sslLicenceActivation {
+      product_code: x.product_code,
+      source: OperatorHeldCertificate { certificate_number: "0823170253", inventory_row: OperatorHeldSecretRef { bmc_mac: other_mac(), secret: OobLicenceKey } },
+    }),
+  }
+  supermicro_h11ssl_receipt_bmc_identity_coherent(r: r)
+    && !supermicro_h11ssl_receipt_bmc_identity_coherent(r: receipt_moved)
+    && !supermicro_h11ssl_receipt_bmc_identity_coherent(r: label_moved)
+    && !supermicro_h11ssl_receipt_bmc_identity_coherent(r: licence_moved)
 }

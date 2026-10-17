@@ -110,7 +110,6 @@ type H11sslObservation
 type H11sslLicenceSource = OperatorHeldCertificate { certificate_number: NonEmptyStr, inventory_row: OperatorHeldSecretRef }
 type H11sslLicenceActivation {
   product_code: NonEmptyStr
-  bmc_mac: Eui48Address
   source: H11sslLicenceSource
 }
 
@@ -145,7 +144,7 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
     RedfishRootObservation { instant: H11sslObservedInstant { at: "2026-10-17T02:58:07Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", outcome: ServiceRootAnswered { redfish_version: "1.0.1", root_schema: "ServiceRoot.v1_1_0", uuid: "00000000-0000-0000-0000-AC1F6BE3F57B", members: [Systems, Chassis, Managers, Tasks, SessionService, AccountService, EventService, UpdateService, Registries] }, unit_state_changed: false },
   ],
   licences: [
-    H11sslLicenceActivation { product_code: "SFT-OOB-LIC", bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123), source: OperatorHeldCertificate { certificate_number: "0823170253", inventory_row: OperatorHeldSecretRef { bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123), secret: OobLicenceKey } } },
+    H11sslLicenceActivation { product_code: "SFT-OOB-LIC", source: OperatorHeldCertificate { certificate_number: "0823170253", inventory_row: OperatorHeldSecretRef { bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123), secret: OobLicenceKey } } },
   ],
   label: H11sslLabelObservation {
     top_label_serial_barcode: "55503A0100160200000EAJ0A1",
@@ -358,4 +357,19 @@ fn batch_on_transcript_basis(b: H11sslRedfishReadBatch) -> Bool {
 // Every read batch is timed on the one comparable basis, the observer's transcript.
 fn supermicro_h11ssl_read_batches_on_transcript_basis(bs: List<H11sslRedfishReadBatch>) -> Bool {
   all(bs, b => batch_on_transcript_basis(b: b))
+}
+
+fn licence_inventory_mac(l: H11sslLicenceActivation) -> Eui48Address {
+  match l.source {
+    OperatorHeldCertificate { certificate_number: _, inventory_row: ref } => ref.bmc_mac
+  }
+}
+
+// The receipt's bmc_mac is the one BMC identity: a licence activation's subject is that BMC (it
+// carries no MAC of its own), and every operator-held secret reference, the label login and each
+// licence's inventory row, must be keyed by that same MAC. A reference to another BMC's row is
+// incoherent, not merely different.
+fn supermicro_h11ssl_receipt_bmc_identity_coherent(r: H11sslFirstContactReceipt) -> Bool {
+  r.label.bmc_factory_credential.bmc_mac == r.bmc_mac
+    && all(r.licences, l => licence_inventory_mac(l: l) == r.bmc_mac)
 }
