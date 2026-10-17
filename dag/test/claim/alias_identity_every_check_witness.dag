@@ -135,3 +135,45 @@ data bare_function_type_source: String = "module probe_alias_bare_bare_function_
 test fn w_alias_and_expansion_agree_at_bare_function_type() -> Bool {
   refusal_count(source: bare_function_type_source) == 0
 }
+
+data prim_if_source: String = "module probe_alias_prim_if\nimport std.types { Int, Bool }\ntype Count = Int\nfn p(c: Bool, a: Count, b: Int) -> Int { if c { a } else { b } }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_if() -> Bool {
+  refusal_count(source: prim_if_source) == 0
+}
+
+data prim_match_arm_source: String = "module probe_alias_prim_match_arm\nimport std.types { Int, Bool }\ntype Count = Int\nfn p(c: Bool, a: Count, b: Int) -> Int { match c { true => a\n false => b } }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_match_arm() -> Bool {
+  refusal_count(source: prim_match_arm_source) == 0
+}
+
+data prim_argument_source: String = "module probe_alias_prim_argument\nimport std.types { Int, Bool }\ntype Count = Int\nfn take(x: Count) -> Int { x }\nfn p(b: Int) -> Int { take(x: b) }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_argument() -> Bool {
+  refusal_count(source: prim_argument_source) == 0
+}
+
+data prim_record_field_source: String = "module probe_alias_prim_record_field\nimport std.types { Int, Bool }\ntype Count = Int\ntype R { f: Count }\nfn p(b: Int) -> R { R { f: b } }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_record_field() -> Bool {
+  refusal_count(source: prim_record_field_source) == 0
+}
+
+data prim_return_source: String = "module probe_alias_prim_return\nimport std.types { Int, Bool }\ntype Count = Int\nfn p(b: Int) -> Count { b }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_return() -> Bool {
+  refusal_count(source: prim_return_source) == 0
+}
+
+data prim_list_element_source: String = "module probe_alias_prim_list_element\nimport std.types { Int, Bool }\ntype Count = Int\nfn p(b: Int) -> List<Count> { [b] }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_list_element() -> Bool {
+  refusal_count(source: prim_list_element_source) == 0
+}
+
+data prim_function_type_source: String = "module probe_alias_prim_function_type\nimport std.types { Int, Bool }\ntype Count = Int\nfn use(f: fn(Count) -> Int, b: Int) -> Int { f(b) }\nfn g(x: Int) -> Int { x }\nfn p(b: Int) -> Int { use(f: g, b: b) }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_function_type() -> Bool {
+  refusal_count(source: prim_function_type_source) == 0
+}
