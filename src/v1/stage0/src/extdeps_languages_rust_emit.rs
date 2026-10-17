@@ -219,12 +219,12 @@ pub fn fresh_rust_value_binding_name(blocked: Rc<Vec<String>>, prefix: String) -
                 (blocked.clone().len() as i64),
             )]),
         );
-        candidates
-            .iter()
-            .cloned()
-            .fold(std::option::Option::None, |found: _, candidate: String| {
+        candidates.iter().cloned().fold(
+            std::option::Option::None,
+            |found: Option<String>, candidate: String| {
                 rust_value_binding_choose_unblocked(found, candidate.clone(), blocked.clone())
-            })
+            },
+        )
     }
 }
 
