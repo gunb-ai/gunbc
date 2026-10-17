@@ -145,7 +145,19 @@ fn compile_crossed_importer() -> MultiModuleCompileFixtureOutcome {
 
 // RED: the imported Optional and `T?` are two declarations; mixing them refuses (not a quiet fork).
 test fn passing_t_question_where_the_imported_second_optional_is_expected_refuses() -> Bool {
-  !outcome_clean(o: compile_crossed_importer())
+  match outcome_rows(o: compile_crossed_importer()) {
+    Present { value: rows } => fixture_has_class(rows: rows, wanted: "DeclaredTypeInhabitanceUndecided")
+    Absent => false
+  }
+}
+
+// Discriminating control for the RED above: the same imported Optional with NO crossing carries no
+// DeclaredTypeInhabitanceUndecided row, so the class is the crossing's, not the fixture closure's.
+test fn the_uncrossed_imported_optional_carries_no_inhabitance_undecided_row() -> Bool {
+  match outcome_rows(o: compile_colliding_importer()) {
+    Present { value: rows } => !fixture_has_class(rows: rows, wanted: "DeclaredTypeInhabitanceUndecided")
+    Absent => false
+  }
 }
 
 // Pinned observation: importing the second Optional by name beside `T?` is itself admitted.
