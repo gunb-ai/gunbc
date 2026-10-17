@@ -6,11 +6,10 @@ pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceIndexEntry, Occ
 use crate::std_source_annotation::AnnotationScope::{
     ErasedSourceRegion, FileScope, OccurrenceScope,
 };
-pub use crate::std_source_annotation::{attach_annotations, source_annotation_graph_rows};
 pub use crate::std_source_annotation::{
-    AnnotationGap, AnnotationRegion, AnnotationScope, KeyedAnnotationRow,
-    NormalizedAnnotationCapture, SourceAnnotationDebt, SourceAnnotationGraph,
-    UnboundAnnotationCapture,
+    attach_annotations, source_annotation_graph_rows, AnnotationGap, AnnotationRegion,
+    AnnotationScope, KeyedAnnotationRow, NormalizedAnnotationCapture, SourceAnnotationDebt,
+    SourceAnnotationGraph, UnboundAnnotationCapture,
 };
 pub use crate::std_types::{Bool, List, SourceSpan};
 pub use crate::v1_compiler_parse::ParsedSourceExtent;

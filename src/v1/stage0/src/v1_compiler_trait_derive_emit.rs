@@ -3,7 +3,6 @@
 
 use self::KeyedMapVerdict::*;
 use self::V1FreeMonoidSupplementalRoute::*;
-pub use crate::extdeps_languages_rust_capabilities::RustCapability;
 use crate::extdeps_languages_rust_capabilities::RustCapability::{
     RustDebug, RustDeserialize, RustPartialEq, RustSerialize,
 };
@@ -12,41 +11,40 @@ pub use crate::extdeps_languages_rust_capabilities::{
     map_key_required_derive_traits, nullary_coproduct_derive_traits,
     payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
     rust_capability_shape_table, rust_traits_for_construction_contract,
-    symbol_wrapped_ord_carrier_derive_traits,
+    symbol_wrapped_ord_carrier_derive_traits, RustCapability,
 };
-pub use crate::extdeps_languages_rust_derive_contracts::RustVecSupplementalGenericBoundRow;
 pub use crate::extdeps_languages_rust_derive_contracts::{
     rust_btree_set_supplemental_generic_bound_rows,
-    rust_vec_freemonoid_supplemental_generic_bound_rows,
+    rust_vec_freemonoid_supplemental_generic_bound_rows, RustVecSupplementalGenericBoundRow,
 };
 pub use crate::extdeps_languages_rust_emit::{
     rust_supplemental_impls_group_completion, rust_trait_derive_attr_from_traits,
     rust_trait_derive_spelling,
 };
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
     ReprDeriveElemKernelInt, ReprDeriveElemNullaryEnumCopy, ReprDeriveElemPayloadCoproduct,
     ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
 };
 pub use crate::std_trait_derive_shape::{
     repr_grounding_derive_completeness_predicate, repr_grounding_group_completion_carrier,
+    ReprGroundingDeriveElemShape,
 };
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
-pub use crate::v1_compiler_emit::{emit_ident, to_pascal};
+pub use crate::v1_compiler_emit::emit_ident;
+pub use crate::v1_compiler_emit_core_support::to_pascal;
 pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, unique_strings};
 use crate::v1_compiler_infer_emit_info::TypeDeclResolution::{
     TypeDeclKernelSpellingUndecided, TypeDeclLeafAmbiguous, TypeDeclNotDeclared, TypeDeclResolved,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     resolve_type_decl_leaf, resolve_type_decl_reference, type_decl_identities_of_leaf,
+    TypeDeclIndex, TypeDeclResolution,
 };
-pub use crate::v1_compiler_infer_emit_info::{TypeDeclIndex, TypeDeclResolution};
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -57,10 +55,8 @@ use crate::v1_std_core::ContainerSpellingVerdict::{
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, generic_param_name_at,
-    param_node_type_expr, qualified_last_segment,
-};
-pub use crate::v1_std_core::{
-    Connective, ContainerSpellingVerdict, InferredNode, NewlineIndex, Node,
+    param_node_type_expr, qualified_last_segment, Connective, ContainerSpellingVerdict,
+    InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2383,7 +2379,6 @@ pub fn v1_record_derive_traits_copy_for_construction(
 
 pub fn v1_emit_struct_derives(
     name: String,
-    sharing_key: String,
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
@@ -2423,7 +2418,7 @@ pub fn v1_emit_struct_derives(
                 }
             }
         } else {
-            if v1_rt::set_contains(&shared_types, sharing_key.clone()) {
+            if v1_rt::set_contains(&shared_types, name.clone()) {
                 crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
                     v1_with_map_key_requirement(
                         v1_record_derive_traits_heap_for_construction(
@@ -4672,7 +4667,6 @@ pub fn v1_emit_type_params_with_clone_bounds(
 pub fn v1_emit_struct_from_capability_table(
     module_path: String,
     name: String,
-    sharing_key: String,
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
@@ -4710,7 +4704,7 @@ pub fn v1_emit_struct_from_capability_table(
         };
         if ((fm_params.clone().len() as i64) > 0) {
             {
-                let base = if v1_rt::set_contains(&shared_types, sharing_key.clone()) {
+                let base = if v1_rt::set_contains(&shared_types, name.clone()) {
                     v1_record_derive_traits_heap_for_construction(deserialize_forbidden.clone())
                 } else {
                     v1_record_derive_traits_copy_for_construction(deserialize_forbidden.clone())
@@ -4781,7 +4775,7 @@ pub fn v1_emit_struct_from_capability_table(
                 };
                 if ((ord_propagated_params.clone().len() as i64) > 0) {
                     {
-                        let base = if v1_rt::set_contains(&shared_types, sharing_key.clone()) {
+                        let base = if v1_rt::set_contains(&shared_types, name.clone()) {
                             v1_record_derive_traits_heap_for_construction(
                                 deserialize_forbidden.clone(),
                             )
@@ -4828,7 +4822,6 @@ pub fn v1_emit_struct_from_capability_table(
                     {
                         let derive_attr = v1_emit_struct_derives(
                             name.clone(),
-                            sharing_key.clone(),
                             children.clone(),
                             shared_types.clone(),
                             has_fn_fields.clone(),

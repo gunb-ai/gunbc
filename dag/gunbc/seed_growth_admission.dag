@@ -62,6 +62,7 @@ import gunbc.pool_reading_attribution_seed_growth { pool_reading_attribution_see
 import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_growth_justification }
 import gunbc.memory_envelope_receipt_seed_growth { memory_envelope_receipt_seed_growth_justification }
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
+import gunbc.parse_compiler_identity_seed_growth { parse_compiler_identity_seed_growth_justification }
 import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure_retention_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
@@ -72,6 +73,7 @@ import gunbc.shared_type_leaf_collision_census_seed_growth { shared_type_leaf_co
 import gunbc.cardinality_realization_seed_growth { cardinality_realization_seed_growth_justification }
 import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
 import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
+import gunbc.runtime_calibration_suite_seed_growth { runtime_calibration_suite_seed_growth_justification }
 import gunbc.observation_file_effect_seed_growth { observation_file_effect_seed_growth_justification }
 import gunbc.observation_scoped_run_seed_growth { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
@@ -319,6 +321,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     source_root_eval_driver_seed_growth_justification,
     memory_envelope_receipt_seed_growth_justification,
     gen_one_executable_keep_seed_growth_justification,
+    parse_compiler_identity_seed_growth_justification,
     emitted_build_failure_retention_seed_growth_justification,
     native_claim_program_seed_growth_justification,
     native_serve_program_seed_growth_justification,
@@ -329,6 +332,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     cardinality_realization_seed_growth_justification,
     native_route_refusal_summary_seed_growth_justification,
     native_route_advisory_summary_seed_growth_justification,
+    runtime_calibration_suite_seed_growth_justification,
     census_memo_seed_growth_justification,
     fixture_render_selection_seed_growth_justification,
     fixture_closure_union_emit_seed_growth_justification,

@@ -3343,6 +3343,36 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
 // bound stops a multi-type cycle (`type A = B` / `type B = A`) regardless. Both exhaust to the
 // ADMITTING arm -- where an unfollowable reference already landed -- never to a fabricated refusal,
 // because exhausting the walk establishes ignorance, not a mismatch.
+//
+// THE VALUE SHAPE IS NOT THE WALL (gunbc node://adhoc-ed047a8d-5b3, measured 2026-10-17). This
+// relation used to bail whenever the produced node had ANY children -- `(actual_base.children |>
+// count) > 0` -- on the reading that a structured produced side is another relation's judgment.
+// That reading was keyed on the VALUE'S RUNTIME SHAPE, not on its DECLARED type, and it admitted
+// the floor failure it now refuses: the corpus Bool is `type Bool = True | False`, so a Bool
+// VARIABLE's node carries two children while the `true` literal is a childless kernel spelling --
+// `takes(x: true)` refused and `takes(x: q)` with `q: Bool` accepted with zero diagnostics, and
+// `fn entry() -> Int { probe(q: true) }` then INTERPRETED the Bool through the Int formal
+// (measured; the emitted Rust carried `fn probe(q:bool) -> i64`). The shape gate was never the
+// exemption anyone meant to grant: every case it actually exempted (coproduct-pair at a
+// coproduct formal, record at a coproduct, refinement children) is refused or admitted elsewhere
+// by a cited name-level judgment -- the two-relation declared_type_obligation_diags wall, the
+// coproduct-head arm, the where-refinement peel above -- while what it wrongly exempted and this
+// rung now refuses is a KERNEL-NAMED declared type whose values are shaped: the corpus Bool
+// (`type Bool = True | False`) at a scalar formal at every consulted position, and `Bool` at a
+// differently-parameterised declared head (`FreeMonoid<Int>`), including through the generic type
+// argument this relation is consulted at as well (all eight flips measured on the pinned pair).
+// WHAT THIS RUNG DOES NOT CLAIM: a value whose declared head is NOT kernel-named -- a user
+// `type Nat = Zero | Succ { predecessor: Nat }`, a user `type Opt<T>`, a user coproduct -- still
+// leaves through the guard above (`is_kernel_type(actual_name) == false` admits, and `Unit` is
+// excluded) and is judged only by the two-relation wall, exactly as before this change; measured
+// unchanged on both sides of the pin. Closing that guard is the named next rung of
+// gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel, not this one.
+// The surviving accepts each carry a cited reason: name equality, the declared `dag_can_cast`
+// rows (Int<->Float) and the grounded identity rows (Int->Nat, String->FreeMonoid in
+// dag/std/coercion.dag -- the declared text unfold the operator ruled legitimate), the
+// structural-carrier template, the single-child refinement. A literal and a named value of the
+// same declared type now receive the SAME verdict, which is the DESIGN section 4b floor: values
+// inhabit their DECLARED types, not their literal spellings.
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   kernel_value_declared_type_mismatch_bounded(
     formal: formal, actual: actual, type_env: type_env, source_indices: source_indices,
@@ -3367,7 +3397,7 @@ fn kernel_value_declared_type_mismatch_bounded(
   let formal_carries_optional = formal.return_cardinality == CardOptional
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: formal)) == "Optional"
   let actual_base = if formal_carries_optional { actual } else { peel_where_refinement_base(ty: actual, type_env: type_env) }
-  if formal.connective == Arrow || actual.connective == Arrow || (actual_base.children |> count) > 0 {
+  if formal.connective == Arrow || actual.connective == Arrow {
     false
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
@@ -9605,7 +9635,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             true => none
             false =>
               let dotted = concat(recv_spine.dotted, ".", method_name)
-              match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: dotted) {
+              // A service operation is classified BEFORE a module path or a receiver (#14147: the
+              // module-path rewrite turned effect operations into missing functions).
+              match service_spine_projection(texpr: recv, scope: scope) {
+                Present { value: _ } => none
+                Absent =>
+              match declared_module_owner(index: scope.type_env.symbol_index, name: dotted) {
                 Absent => none
                 Present { value: _ } =>
                   Present { value: infer_expr(
@@ -9620,6 +9655,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     scope: scope,
                     expected: expected
                   ) }
+              }
               }
           }
       }
@@ -14476,7 +14512,7 @@ fn type_match_for_direct_call_target(type_env: TypeEnv, func_name: String, call_
 // one and absent from the other is a scope-construction defect rather than a case to absorb --
 // it REFUSES, and if that refusal ever fires it has found something real.
 fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTargetOutcome {
-  if contains(func_name, ".") {
+  if declared_module_owner(index: scope.type_env.symbol_index, name: func_name) != none {
     match func_env_declared_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
       FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
       FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
