@@ -2323,19 +2323,25 @@ fn captured_epoch_millisecond(hour: Int, minute: Int, second: Int) -> EpochMs {
   (iso8601_days_from_civil(y: 2026, m: 10, d: 16) * iso8601_seconds_per_day() + hour * 3600 + minute * 60 + second) * 1000
 }
 
-// a capture line reading `06:4x` licenses the minute it names; the closed interval runs to the
-// last whole second inside it, so every reading stays inside the recorded band
-fn captured_minute_band(hour: Int, minute: Int) -> CapturedInstant {
+// THE ONE MINT EVERY BAND GOES THROUGH, including what a claim asks when it wants to know what an
+// out-of-order pair does. A claim that re-implemented this fold would be checking a copy of the
+// mint, not the mint: same shape, and no way to tell the two apart when they diverge.
+fn captured_band(low: EpochMs, high: EpochMs) -> CapturedInstant {
   interval_construction_fold(
-    construction: closed_interval(
-      low: captured_epoch_millisecond(hour: hour, minute: minute, second: 0),
-      high: captured_epoch_millisecond(hour: hour, minute: minute, second: 59),
-      le: captured_instant_le,
-    ),
+    construction: closed_interval(low: low, high: high, le: captured_instant_le),
     fold: IntervalConstructionFold {
       ready: i => CaptureTimeBand { band: i },
       refused: r => CaptureTimeBandInverted { reason: r },
     },
+  )
+}
+
+// a capture line reading `06:4x` licenses the minute it names; the closed interval runs to the
+// last whole second inside it, so every reading stays inside the recorded band
+fn captured_minute_band(hour: Int, minute: Int) -> CapturedInstant {
+  captured_band(
+    low: captured_epoch_millisecond(hour: hour, minute: minute, second: 0),
+    high: captured_epoch_millisecond(hour: hour, minute: minute, second: 59),
   )
 }
 
@@ -2357,16 +2363,9 @@ fn recovery_inband_channel_instant() -> CapturedInstant {
 // the post-reset readback: the README dates the re-capture ~06:5xZ, so the band spans that whole
 // tens-of-minutes band instead of the 06:53:00 an exact field would have had to invent
 fn recovery_post_reset_instant() -> CapturedInstant {
-  interval_construction_fold(
-    construction: closed_interval(
-      low: captured_epoch_millisecond(hour: 6, minute: 50, second: 0),
-      high: captured_epoch_millisecond(hour: 6, minute: 59, second: 59),
-      le: captured_instant_le,
-    ),
-    fold: IntervalConstructionFold {
-      ready: i => CaptureTimeBand { band: i },
-      refused: r => CaptureTimeBandInverted { reason: r },
-    },
+  captured_band(
+    low: captured_epoch_millisecond(hour: 6, minute: 50, second: 0),
+    high: captured_epoch_millisecond(hour: 6, minute: 59, second: 59),
   )
 }
 
@@ -2781,16 +2780,9 @@ test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool 
     // A REVERSED PAIR REFUSES, IT IS NOT SWAPPED. The fold is the only route to a band, so this is
     // what the fold does when the pair is out of order: std.interval's own words, no band, and -- by
     // the type -- no absorbing plausible value.
-    && (match interval_construction_fold(
-      construction: closed_interval(
-        low: captured_epoch_millisecond(hour: 6, minute: 59, second: 59),
-        high: captured_epoch_millisecond(hour: 6, minute: 50, second: 0),
-        le: captured_instant_le,
-      ),
-      fold: IntervalConstructionFold {
-        ready: i => CaptureTimeBand { band: i },
-        refused: r => CaptureTimeBandInverted { reason: r },
-      },
+    && (match captured_band(
+      low: captured_epoch_millisecond(hour: 6, minute: 59, second: 59),
+      high: captured_epoch_millisecond(hour: 6, minute: 50, second: 0),
     ) {
       CaptureTimeBandInverted { reason: r } => string_non_empty(value: r)
       CaptureTimeBand { band: _ } => false
