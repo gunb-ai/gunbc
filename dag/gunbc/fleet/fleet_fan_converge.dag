@@ -4,7 +4,8 @@ import std.types { NonEmptyStr }
 import std.optional { Absent, Present }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
 import extdeps.bmc.megarac_fan_policy { MegaRacFanPwmAllAdmitted, MegaRacFanPwmAllRefused, megarac_fan_pwm_all_of }
-import product.fan_policy_standing { ConvergeRouteBound, ConvergeRouteUnbound, FanDutyConvergeRoute }
+import product.fan_policy_standing { FanDutyConvergeRoute }
+import gunbc.bmc.bmc_fan_converge { BmcFanRouteAdmitted, BmcFanRouteUnbound, bmc_fan_route_admission }
 import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPolicy, HeldAtDutyFloor }
 import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 
@@ -17,6 +18,11 @@ import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 // BOOT IS A CONSUMER AND NEVER A WRITER. Nothing here is imported by a boot path in this change; the
 // admission gate that reads FleetFanConvergenceStanding is a separate change that waits on the
 // post-power-on fan read.
+//
+// ROUTE ADMISSION IS gunbc.bmc.bmc_fan_converge bmc_fan_route_admission, CONSUMED, NOT RESTATED: that
+// module is the OpenBMC per-host executor and already decides Bound-vs-Unbound; this fold is the
+// family-agnostic desired/observed decision above it and shares that one admission rule. The OpenBMC
+// executor's own target and wet fold stay there until a later change moves them under this fold.
 //
 // NO WRITE IS BOUND BY THIS MODULE. Apply names the family's existing route and nothing executes it
 // here; the MegaRAC route is ConvergeRouteUnbound, so a MegaRAC host can only Refuse with that
@@ -66,13 +72,9 @@ fn fleet_fan_decide(policy: FleetFanPolicy, family: BmcFirmwareFamily, observed:
       } else {
         match fleet_fan_family_refusal(family: family, control: policy.control) {
           Present { value: why } => FleetFanRefuse { cause: why }
-          Absent => match fan_converge_route_for_family(family: family) {
-            ConvergeRouteBound { authority: a, write_operation: w, transport: t, readback: r } =>
-              FleetFanApply {
-                target: policy.control,
-                route: ConvergeRouteBound { authority: a, write_operation: w, transport: t, readback: r },
-              }
-            ConvergeRouteUnbound { authority: _, read_obligation: o } => FleetFanRefuse { cause: o }
+          Absent => match bmc_fan_route_admission(route: fan_converge_route_for_family(family: family)) {
+            BmcFanRouteAdmitted { route: r } => FleetFanApply { target: policy.control, route: r }
+            BmcFanRouteUnbound { read_obligation: o } => FleetFanRefuse { cause: o }
           }
         }
       }
