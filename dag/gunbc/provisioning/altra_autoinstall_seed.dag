@@ -948,7 +948,7 @@ fn audit_altra_autoinstall_seed(
           SeedRefused {
             cause: NoEntrypointAtAll { keys: 0, console_entry: entry.console_entry },
           }
-        _ => audit_seed_interactivity(
+        n => audit_seed_interactivity(
           network: network,
           install_packages: install_packages,
           late_packages: late_packages,
@@ -1008,7 +1008,6 @@ fn audit_seed_interactivity(
           }
       }
   }
-}
 }
 
 // A LOCALE CAN ITSELF BE THE QUESTION. Today both closed members are answerless, so this always returns
