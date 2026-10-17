@@ -45,12 +45,20 @@ for D in $A/ctrl $A/treat; do
   cp $A/harness/.sdm/fixtures/gap_depth_*.dag $D/dag/test/ 2>/dev/null || true
   cp $A/harness/.sdm/fixtures/garr_*.dag $D/dag/test/ 2>/dev/null || true
 done
-# the enrolled witness comes from the CANDIDATE commit (it is the treatment's
-# authority). Materialised in BOTH trees so each composes; a control-side witness
-# failure is itself the discriminating signal, and is reported rather than fatal.
+# The witness is SELF-CONTAINED: its specimens are inline `data ... : String` sources
+# fed to total_blocking_count_for / blocking_class_count_for, so there are no separate
+# subject fixtures to fetch. Materialising a second copy was a real bug: source-discovery
+# then sees `module test.claim.generic_argument_recheck_witness` declared by both
+# dag/test/claim/... and .sdm/witness.dag and refuses the WHOLE compile, voiding every
+# measurement. The file is already tracked in both trees (control keeps the treatment's
+# witness so both trees compose); we only assert blob identity against the candidate.
 for D in $A/ctrl $A/treat; do
-  git -C $R cat-file -p "$CAND_SHA:dag/test/claim/generic_argument_recheck_witness.dag" > $D/.sdm/witness.dag \
-    || echo "WITNESS-MISSING in $D"
+  W=dag/test/claim/generic_argument_recheck_witness.dag
+  rm -f $D/.sdm/witness.dag
+  WANT=$(git -C $R rev-parse "$CAND_SHA:$W" 2>/dev/null || echo NOBLOB)
+  GOT=$(git -C $D rev-parse "HEAD:$W" 2>/dev/null || echo MISSING)
+  if [ "$WANT" = "$GOT" ]; then echo "witness identity OK $(basename $D) blob=$GOT"
+  else echo "WITNESS-IDENTITY-MISMATCH $(basename $D) want=$WANT got=$GOT"; fi
 done
 echo "harness=$HSHA"
 
