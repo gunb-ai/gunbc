@@ -3123,17 +3123,7 @@ pub fn applied_spelling_arguments_agree(
                 node: expansion, ..
             }) => {
                 if is_coproduct_type(expansion.clone()) {
-                    (node_type_equals(
-                        expansion.clone(),
-                        other.clone(),
-                        source_indices.clone(),
-                        text.clone(),
-                    ) && applied_arguments_recovered(
-                        applied.clone(),
-                        other.clone(),
-                        source_indices.clone(),
-                        text.clone(),
-                    ))
+                    false
                 } else {
                     arguments_agree_in_lockstep(
                         applied.children.clone(),
@@ -3156,59 +3146,6 @@ pub fn applied_spelling_arguments_agree(
             ),
         }
     }
-}
-
-pub fn applied_arguments_recovered(
-    applied: Rc<Node>,
-    other: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    text: Rc<TextJudgment>,
-) -> bool {
-    {
-        let mut __all = true;
-        for a in applied.children.clone().iter().cloned() {
-            if !(type_occurs_in(
-                other.clone(),
-                child_type_node(a.clone()),
-                source_indices.clone(),
-                text.clone(),
-            )) {
-                __all = false;
-                break;
-            }
-        }
-        __all
-    }
-}
-
-pub fn type_occurs_in(
-    tree: Rc<Node>,
-    wanted: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    text: Rc<TextJudgment>,
-) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        (node_type_equals(
-            tree.clone(),
-            wanted.clone(),
-            source_indices.clone(),
-            text.clone(),
-        ) || !{
-            let mut __all = true;
-            for c in tree.children.clone().iter().cloned() {
-                if !(!type_occurs_in(
-                    child_type_node(c.clone()),
-                    wanted.clone(),
-                    source_indices.clone(),
-                    text.clone(),
-                )) {
-                    __all = false;
-                    break;
-                }
-            }
-            __all
-        })
-    })
 }
 
 pub fn node_type_equals_core(

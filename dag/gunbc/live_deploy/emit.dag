@@ -279,6 +279,7 @@ import gunbc.host.host_layout {
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
   slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
+  SliceControlUnit,
 }
 import gunbc.host.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
@@ -294,7 +295,7 @@ import gunbc.host.host_axis_caps {
   deploy_slice_control_converge_script,
 }
 import gunbc.ownership { Ownership }
-import std.algebra { list_tail }
+import std.algebra { FreeSemigroup, list_tail }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
@@ -2603,23 +2604,29 @@ fn slice_control_refused_command(host: HostIdentity, cause: String) -> String {
   )
 }
 
-fn apply_slice_control_converge_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  match slice_control_plan_for(host: spec.target.host.identity) {
-    SliceControlPlanDerived { units: _ } =>
-      [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
-    SliceControlPlanNotOwed => []
-    SliceControlPlanRefused { cause: _ } => []
-  }
+// THE SLICE-CONTROL MUTATE STEP, OVER AN ALREADY-DISCRIMINATED ROSTER.
+//
+// THIS USED TO TAKE THE SPEC AND RE-DERIVE THE PLAN, and that re-derivation is a fail-open: the two
+// arms it did not act on -- SliceControlPlanNotOwed and SliceControlPlanRefused -- both returned [],
+// so a host whose slice control was REFUSED got a plan with no slice step and no complaint. Its
+// sibling apply_slice_control_converge_fragments poisoned on Refused, which is what kept the hole
+// latent rather than live, but a helper whose type accepts a refused plan is a helper that will
+// eventually be called from somewhere that does not poison. The parameter is now the Derived
+// roster's units, so a refused plan has no representation here at all: the discrimination the
+// caller already made cannot be silently undone one layer down. (For the same reason the content
+// producer below, slice_control_converge_stmts, takes units rather than a host identity.)
+fn apply_slice_control_converge_steps(units: FreeSemigroup<SliceControlUnit>) -> List<PipelineStep> {
+  [deploy_raw(command: deploy_slice_control_converge_script(units: units))]
 }
 
 fn apply_slice_control_converge_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
   let host = spec.target.host.identity
   match slice_control_plan_for(host: host) {
     SliceControlPlanNotOwed => []
-    SliceControlPlanDerived { units: _ } =>
+    SliceControlPlanDerived { units } =>
       host_script_member_proceed(
         member: "slice-control" as NonEmptyStr,
-        mutate_steps: apply_slice_control_converge_steps(spec: spec),
+        mutate_steps: apply_slice_control_converge_steps(units: units),
       )
     SliceControlPlanRefused { cause } =>
       host_script_member_refused(
