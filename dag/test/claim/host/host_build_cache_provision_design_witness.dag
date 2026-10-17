@@ -246,12 +246,20 @@ test fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bo
 // phase to lie into, so the claim is now that no such PROBE is even derived.
 //
 // ASSERTED NON-VACUOUSLY, because a `!string_contains` claim is worth nothing if the string simply exists
-// nowhere: the first conjunct proves the renderer really is looking at the ensure's operations (it sees the
-// stats query the ensure does derive), and the rest prove the two probes it must not derive are absent.
-// Remove the renderer's content and the claim goes red rather than quietly passing.
+// nowhere: each claim first requires text the ensure DOES derive, and the requirement is anchored on the
+// legs the renderer must be looking at, not on text that merely happens to occur somewhere. The
+// path-authority claim anchors on the digest read (a leg the ensure derives precisely because it installs
+// something it has to identify), the supervision claim on the unit reload (a leg it derives precisely
+// because it writes a unit). Both are asserted over the install-needing host, which is the host whose plan
+// is longest, so a probe hidden in a leg only that host exercises still surfaces.
+//
+// The anchor choice is the substance of the guard. An earlier draft of the first claim anchored on
+// `--show-stats`, which is the OBSERVE and READ-BACK command and is not an ensure operation at all -- a
+// non-vacuity guard that can never be satisfied is not a guard, it is a permanently red claim, and it
+// would have been deleted as flaky with its refusal unnoticed.
 test fn design_witness_path_authority_probe_not_derived_by_the_ensure() -> Bool {
   let ops = build_cache_ensure_ops_under_witness()
-  string_contains(s: ops, pattern: "--show-stats")
+  string_contains(s: ops, pattern: "sha256sum")
     && !string_contains(s: ops, pattern: "path_authority=SHADOWED")
     && !string_contains(s: ops, pattern: "command -v sccache")
 }

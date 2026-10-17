@@ -316,7 +316,6 @@ import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.build_cache.build_cache_unit { build_cache_unit_text }
 import gunbc.host.build_cache_daemon_ensure {
-  BuildCacheDigestRefusal,
   BuildCacheEnsureExecuted,
   BuildCacheEnsureFold,
   BuildCachePlanRefused,
@@ -329,8 +328,12 @@ import gunbc.host.build_cache_daemon_ensure {
   EnsureCompleted,
   EnsureFailed,
   EnsurePlanRefused,
+  EnsureDigestRefused,
   EnsureSkipped,
   EnsureTransportBlocked,
+  ReadDigest,
+  RefusedBeforeInstall,
+  Runs,
   Ran,
   build_cache_binary_presence_of,
   build_cache_daemon_ensure_observation,

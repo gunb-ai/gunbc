@@ -13,6 +13,7 @@ import gunbc.build_cache.build_cache_provision_verdict {
   DaemonUnresponsive,
 }
 import gunbc.host.build_cache_daemon_ensure {
+  BuildCacheDigestRefusal,
   BuildCacheEnsureExecuted,
   BuildCacheEnsureOp,
   BuildCacheHostRunObserved,
@@ -30,8 +31,16 @@ import gunbc.host.build_cache_daemon_ensure {
   ObserveReadBlocked,
   ObserveStatsOk,
   ObserveUnresponsive,
-  Ran,
+  FetchArchive,
+  InstallStep,
+  ReadDigest,
+  RefusedBeforeInstall,
+  Runs,
+  UnitStep,
   build_cache_misconfigured_marker,
+  build_cache_ensure_run,
+  build_cache_ensure_run_legs,
+  build_cache_plan_legs_of_kind,
   build_cache_daemon_ensure_observation,
   build_cache_daemon_ensure_plan,
   build_cache_ensure_is_needed,
@@ -39,7 +48,10 @@ import gunbc.host.build_cache_daemon_ensure {
   build_cache_observe_observed,
   build_cache_read_back_observation,
 }
-import gunbc.host.verified_binary_install { AlreadyInstalled, VerifiedBinaryInstallPresence }
+import gunbc.host.verified_binary_install { AlreadyInstalled, InstallNeeded, VerifiedBinaryInstallPresence }
+import gunbc.shell_command_text { shell_command_text_of_argv }
+import extdeps.exec.command { argv_words }
+import std.string { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // THE CONTRACT OF THE BUILD-CACHE DAEMON ENSURE, ON THE HOST IT EXISTS FOR.
@@ -512,5 +524,147 @@ fn build_cache_words_say(words: Optional<String>, must_say: List<String>) -> Boo
       Present { value: _ } => true
       Absent => false
     }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE DIGEST GATE. Main's retired installer ran `curl` and then compared the downloaded archive
+// against the pinned release digest before extracting anything; a typed port that drops those two
+// legs would extract an archive that was never downloaded and install whatever came out of it
+// without ever checking what it was. These three claims are what makes that undroppable: one asks
+// what a mismatch permits, one asks what a match permits, and one asks what a host with no install
+// to do is asked at all. Each SUPPLIES its own boundary values (the pinned digests, a mismatched
+// line) rather than trusting the effect to be tested against something arbitrary.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test fn a_digest_mismatch_refuses_before_any_install_leg_runs() -> Bool {
+  // THE OBSERVED LINE IS SUPPLIED, not invented by the effect: a well-formed sha256sum line whose digest
+  // is not the pinned one. Well-formed matters — a malformed line would exercise a different refusal, and
+  // a claim that cannot tell those apart would pass on a gate that only checks the file exists.
+  let mismatched = "0000000000000000000000000000000000000000000000000000000000000000  /tmp/sccache.tar.gz"
+  match build_cache_ensure_run(
+    ops: build_cache_contract_install_plan(),
+    digest: sccache_release_0_15_0.digest_x86_64,
+    observed_digest_line: Present { value: mismatched },
+  ) {
+    Runs { legs: _ } => false
+    RefusedBeforeInstall { legs: permitted, op: gate, refusal: why } =>
+      // NOTHING INSTALLS, asserted as a computed list rather than as prose: no leg that extracts, no leg
+      // that moves a binary into /usr/local/bin, no leg that touches the unit or the daemon. The fetch and
+      // the read remain, because both ran and it is honest to report them.
+      list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 0
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 0
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
+        // BOTH DIGESTS ARE CARRIED: the pinned one and the one the download reported. A refusal that
+        // collapsed them could not distinguish a corrupt download from a swapped archive.
+        && build_cache_digest_refusal_names(refusal: why, expected: sccache_release_0_15_0.digest_x86_64.hex as String, observed: "0000000000000000000000000000000000000000000000000000000000000000")
+        // THE GATE IS REPORTED BY ITS OWN COMMAND, not as "something in the sequence failed".
+        && string_contains(s: shell_command_text_of_argv(argv: argv_words(command: gate.argv)), pattern: "sha256sum")
+        // AND THE OPERATOR SEES IT: the same refusal reaches the observation as a NotConverged whose text
+        // says outright that nothing was installed. An empty plan alone would read as a successful no-op.
+        && build_cache_words_say(
+          words: build_cache_refusal_detail(
+            ensure: Present {
+              value: EnsureDigestRefused { op: gate, refusal: why },
+            },
+            read_back: Present {
+              value: Ran { observed: BuildCacheHostRunObserved { exit_code: 0, stdout: zeroed_stats_table, stderr: "" } },
+            },
+          ),
+          must_say: [
+            "pinned release digest",
+            "782d2b5dd7ae0a55ebe368ab258114d0928d019ac2d949ab85d5d02f3926709e",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            "nothing was extracted",
+          ],
+        )
+    }
+}
+
+test fn the_pinned_digest_permits_every_leg_and_the_gate_is_not_vacuous() -> Bool {
+  // THE POSITIVE CONTROL, and the reason the claim above means anything: with the line the release row
+  // actually pins, the gate permits the WHOLE plan, install legs included. Delete the gate and the
+  // mismatch claim goes red; delete the plan's install legs and this one does.
+  let pinned = sccache_release_0_15_0.digest_x86_64.hex as String
+  let line = pinned + "  /tmp/sccache.tar.gz"
+  let ops = build_cache_contract_install_plan()
+  match build_cache_ensure_run(ops: ops, digest: sccache_release_0_15_0.digest_x86_64, observed_digest_line: Present { value: line }) {
+    RefusedBeforeInstall { legs: _, op: _, refusal: _ } => false
+    Runs { legs: permitted } =>
+      list_length(items: permitted) == list_length(items: ops)
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 5
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 5
+  }
+}
+
+test fn a_binary_that_is_already_installed_is_never_fetched_and_never_hashed() -> Bool {
+  // main's `if [ ! -x /usr/local/bin/sccache ]` gate, expressed as the ABSENCE of legs rather than as a
+  // runtime test inside the sequence: a host that already has the binary is not gated on a read it does not
+  // need, and — the part that would be a privacy and bandwidth incident if it regressed — nothing is
+  // downloaded from a release host on a host that never asked for it.
+  let ops = build_cache_contract_plan_legs(install: Present {
+    value: AlreadyInstalled { dest_path: sccache_installed_binary_path as String },
+  })
+  list_length(items: build_cache_plan_legs_of_kind(ops: ops, kind: FetchArchive)) == 0
+    && list_length(items: build_cache_plan_legs_of_kind(ops: ops, kind: ReadDigest)) == 0
+    // And the gate is genuinely inapplicable, not merely unsatisfied: an absent line, and a mismatched
+    // one, both permit the full plan, because there is no gate to apply.
+    && list_length(
+      items: build_cache_ensure_run_legs(
+        run: build_cache_ensure_run(ops: ops, digest: sccache_release_0_15_0.digest_x86_64, observed_digest_line: none),
+      ),
+    ) == list_length(items: ops)
+    && list_length(
+      items: build_cache_ensure_run_legs(
+        run: build_cache_ensure_run(
+          ops: ops,
+          digest: sccache_release_0_15_0.digest_x86_64,
+          observed_digest_line: Present { value: "0000000000000000000000000000000000000000000000000000000000000000  /tmp/x" },
+        ),
+      ),
+    ) == list_length(items: ops)
+}
+
+// THE PLAN FOR A HOST THAT HAS TO INSTALL, built once so the three gate claims ask about the same
+// sequence. `InstallNeeded` is the arm the presence probe returns when `test -x` fails, which is exactly
+// the state the fetch and the digest check exist for.
+fn build_cache_contract_install_plan() -> List<BuildCacheEnsureOp> {
+  build_cache_contract_plan_legs(install: Present {
+    value: InstallNeeded { dest_path: sccache_installed_binary_path as String },
+  })
+}
+
+fn build_cache_contract_plan_legs(install: Optional<VerifiedBinaryInstallPresence>) -> List<BuildCacheEnsureOp> {
+  match build_cache_daemon_ensure_plan(
+    instance: build_cache_contract_instance(),
+    arch_token: "x86_64" as NonEmptyStr,
+    digest: sccache_release_0_15_0.digest_x86_64,
+    install: install,
+  ) {
+    EnsureOps { ops: steps } => steps
+    BuildCachePlanRefused { reason: _ } => []
+  }
+}
+
+// WHETHER THE REFUSAL CARRIES BOTH DIGESTS AS TEXT AN OPERATOR CAN ACT ON. Matching on the rendered
+// values rather than on an arm name, because what has to survive is the information, not the spelling.
+fn build_cache_digest_refusal_names(refusal: BuildCacheDigestRefusal, expected: String, observed: String) -> Bool {
+  match refusal {
+    DigestRefused { reason: _, expected_hex: e, observed_line: line } =>
+      string_contains(s: e, pattern: expected)
+        && string_contains(s: line, pattern: observed)
+        && string_contains(s: reason_of(refusal: refusal), pattern: "digest")
+  }
+}
+
+// THE REFUSAL'S OWN WORDS, reached through the type rather than by matching on an arm name at every call
+// site. A grammar with no tuple patterns needs this one accessor to read a coproduct field from outside a
+// match; the match above keeps the exhaustiveness the type is supposed to guarantee.
+fn reason_of(refusal: BuildCacheDigestRefusal) -> String {
+  match refusal {
+    DigestRefused { reason: why, expected_hex: _, observed_line: _ } => why
   }
 }
