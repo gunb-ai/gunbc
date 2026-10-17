@@ -151,98 +151,22 @@ jobs:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
           GUNBC_NATIVE_PRODUCT_REUSE: fresh
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
-      - name: Resolve parse-verdict compiler identity
-        id: publish_parse_verdicts
-        run: |+
-          # dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable and writing GITHUB_OUTPUT. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together.
-          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
-          'set' '+e'
-          'set' '-o' 'pipefail'
-          ('sh' '-e' '-c' 'set -o pipefail; n=0; bin=; for f in "$RUNNER_TEMP"/v2-native-cli-gen-one-*; do [ -f "$f" ] || continue; case "$f" in *.closure_identity|*.parse_compiler_identity) continue ;; esac; n=$((n+1)); bin=$f; done; if [ "$n" -ne 1 ]; then echo "::error::IdentityUnknown: expected exactly one generation-one executable under RUNNER_TEMP, found $n"; exit 1; fi; cid="$bin.parse_compiler_identity"; if [ ! -s "$cid" ]; then echo "::error::IdentityUnknown: missing or empty parse-compiler identity beside the generation-one executable"; exit 1; fi; compiler=$(cat "$cid"); echo "compiler_identity=$compiler" >> "$GITHUB_OUTPUT"; echo "parser_bin=$bin" >> "$GITHUB_OUTPUT"') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
-          GUNBC_FLOOR_EXIT="$?"
-          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
-          GUNBC_FLOOR_CLASS='structural'
-          GUNBC_FLOOR_SIGNATURE=''
-          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
-          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
-          'exit' "$GUNBC_FLOOR_EXIT"
-
-        env:
-          GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      - name: Walk parse-population and publish verdict receipts
-        run: |+
-          # dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable and writing GITHUB_OUTPUT. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together.
-          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
-          'set' '+e'
-          'set' '-o' 'pipefail'
-          ('sh' '-e' '-c' 'set -o pipefail; bin="${{ steps.publish_parse_verdicts.outputs.parser_bin }}"; compiler="${{ steps.publish_parse_verdicts.outputs.compiler_identity }}"; if [ -z "$bin" ] || [ ! -x "$bin" ] || [ -z "$compiler" ]; then echo "::error::IdentityUnknown: parser identity or generation-one executable missing after the identity step"; exit 1; fi; mkdir -p ".gunbc/parse-verdicts"; "$bin" parse-population --compiler "$compiler" --source-root dag --source-root src/v2 > ".gunbc/parse-verdicts/receipts.tsv"') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
-          GUNBC_FLOOR_EXIT="$?"
-          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
-          GUNBC_FLOOR_CLASS='structural'
-          GUNBC_FLOOR_SIGNATURE=''
-          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
-          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
-          'exit' "$GUNBC_FLOOR_EXIT"
-
+      - name: Walk parse-population on default-branch push
+        run: |
+          ${{ runner.temp }}/v2-native-cli-gen-one parse-population --compiler ${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }} --write-identity ${{ runner.temp }}/gunbc-parse-compiler-identity --receipts ${{ runner.temp }}/gunbc-parse-verdict-receipts.tsv --source-root dag --source-root src/v2
         env:
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Save parse-verdict receipts to Actions cache
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: .gunbc/parse-verdicts
-          key: gunbc-materialization-parse-verdict-${{ steps.publish_parse_verdicts.outputs.compiler_identity }}-${{ github.sha }}
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      - name: Stage parse-compiler identity for sha-keyed cache
-        run: |+
-          # dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable and writing GITHUB_OUTPUT. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together.
-          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
-          'set' '+e'
-          'set' '-o' 'pipefail'
-          ('sh' '-e' '-c' 'set -o pipefail; compiler="${{ steps.publish_parse_verdicts.outputs.compiler_identity }}"; if [ -z "$compiler" ]; then echo "::error::IdentityUnknown: compiler identity missing before the sha-keyed identity save"; exit 1; fi; mkdir -p ".gunbc/parse-sha-identity"; printf %s "$compiler" > ".gunbc/parse-sha-identity/identity"') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
-          GUNBC_FLOOR_EXIT="$?"
-          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
-          GUNBC_FLOOR_CLASS='structural'
-          GUNBC_FLOOR_SIGNATURE=''
-          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
-          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
-          'exit' "$GUNBC_FLOOR_EXIT"
-
-        env:
-          GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+          path: ${{ runner.temp }}/gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ github.sha }}
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Save parse-compiler identity blob for this sha
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: .gunbc/parse-sha-identity
+          path: ${{ runner.temp }}/gunbc-parse-compiler-identity
           key: gunbc-parse-identity-${{ github.sha }}
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Why this lane is red, and what would be a real finding
