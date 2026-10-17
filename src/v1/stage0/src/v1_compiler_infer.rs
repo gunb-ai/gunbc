@@ -1320,13 +1320,28 @@ pub fn expected_decided_variant_type(
 }
 
 pub fn optional_nullary_arm_of(owner: Rc<Node>, name: String, scope: Rc<InferScope>) -> bool {
-    match crate::v1_std_core::find_child_named(
-        owner.clone(),
-        name.clone(),
-        scope.type_env.clone().source_indices.clone(),
-    ) {
-        Some(arm) => ((arm.children.clone().len() as i64) == 0),
-        std::option::Option::None => false,
+    match (*variant_parent_identity_of(Some(owner.clone()), scope.clone())).clone() {
+        VariantParentIdentity::VariantParentIdentified { ref key, .. }
+            if matches!(
+                key.as_ref(),
+                VariantParentKey::VariantParentDeclaration { declaration: _, .. }
+            ) =>
+        {
+            let VariantParentKey::VariantParentDeclaration { declaration: d, .. } = key.as_ref()
+            else {
+                unreachable!()
+            };
+            (crate::v1_compiler_infer_types::declaration_is_std_optional(d.clone())
+                && match crate::v1_std_core::find_child_named(
+                    owner.clone(),
+                    name.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(arm) => ((arm.children.clone().len() as i64) == 0),
+                    std::option::Option::None => false,
+                })
+        }
+        _ => false,
     }
 }
 
