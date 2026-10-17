@@ -25,6 +25,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // and the algorithm token that module already keys on); the media-shaped parts (NoCloud seed dir,
 // volume id, pinned dates, grub cmdline) are deliberately absent, because the seed arrives over
 // HTTP via the kernel command line, not on the medium.
+//
+// CONSUMER (DESIGN 3c): consumed in this change only by its witness; the executing consumer is a
+// declared later change of cut 6 of gunbc.plans.physical_machine_boot_program -- the provisioning
+// arm that serves the kernel and initrd from the PXE edge and points the installer at the ISO URL,
+// and the wet install step that fetches, hashes and calls verify_ubuntu_network_origin. Trigger:
+// that arm landing. Admission and selection of an origin stay in that consumer, never here.
 
 // CLOSED OVER THE RELEASES WE HAVE PINNED. A new point release is a new constructor and a new
 // pin row, never a version string a caller types: the version token below is derived from the
