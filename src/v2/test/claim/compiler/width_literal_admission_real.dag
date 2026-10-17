@@ -52,7 +52,7 @@ fn wlr_ingest(src: String) -> List<DagSourceReadWitness> {
 // The width refusal is looked for among ALL of infer's diagnostics: the real closure is 28 modules and infer judges
 // every one of them, so the program as a whole may be Rejected for reasons that are not this literal's. The claim
 // is about the literal, so it asks whether THIS refusal is present, not whether the program is accepted.
-fn wlr_width_refused(literal: String) -> Bool {
+fn wlr_has(literal: String, reason: Symbol) -> Bool {
   let src = concat(concat("module p\n\nimport std.integer { UInt8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  g(n: ", literal), ")\n}\n")
   match assemble_program_from_ingest(
     ingest: wlr_ingest(src: src),
@@ -62,15 +62,19 @@ fn wlr_width_refused(literal: String) -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } => diagnostics_list_has_reason(xs: concat([d.head], d.tail), reason: ^infer_reason_literal_outside_machine_width)
+        Accepted { value: _, diagnostics: _ } => reason == ^accepted
+        Rejected { diagnostics: d } => diagnostics_list_has_reason(xs: concat([d.head], d.tail), reason: reason)
       }
   }
 }
 
 // POSITIVE CONTROL on the real closure: 255 at the real UInt8 draws no width refusal (the 300 claim below shows the
 // same route does produce one, so absence here is the width admitting, not the route being dead).
-test fn wlr_real_uint8_255_is_admitted() -> Bool { !wlr_width_refused(literal: "255") }
+test fn wlr_real_uint8_255_is_admitted() -> Bool { !wlr_has(literal: "255", reason: ^infer_reason_literal_outside_machine_width) }
 
 // RED on the real closure: 300 at the real UInt8 draws the width's refusal.
-test fn wlr_real_uint8_300_refuses() -> Bool { wlr_width_refused(literal: "300") }
+test fn wlr_real_uint8_300_refuses() -> Bool { wlr_has(literal: "300", reason: ^infer_reason_literal_outside_machine_width) }
+
+test fn wlr_probe_300_accepted() -> Bool { wlr_has(literal: "300", reason: ^accepted) }
+test fn wlr_probe_300_grounding() -> Bool { wlr_has(literal: "300", reason: ^infer_grounding_not_derived) }
+test fn wlr_probe_300_inhabit() -> Bool { wlr_has(literal: "300", reason: ^application_argument_does_not_inhabit) }
