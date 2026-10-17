@@ -283,6 +283,61 @@ fn an_aliased_union_name_refuses_and_names_its_variants() {
 }
 
 #[test]
+fn an_imported_variant_name_is_accepted_under_a_pool_collision() {
+    // POSITIVE CONTROL FOR THE RESOLUTION, not for the shape. The refusal asks the question of the
+    // declaration THIS module's binding chain resolves the head to; it must never ask it of the
+    // corpus-wide pool. The witness that measured this (pre-fix, on main) is
+    // dag/test/claim/workspace_commissioning_apply_readback_witness.dag: it constructs the ARM
+    // UnitPropertyRead { value: status } of runner_microvm_slot_start's union
+    // `type UnitPropertyReading = UnitPropertyRead { value: String } | UnitPropertyUnread {...}`,
+    // with UnitPropertyRead imported BY NAME from that module --- and was refused, because the pool
+    // independently declares `type UnitPropertyRead = UnitPropertyValue | UnitPropertyUnreadable` at
+    // dag/gunbc/live_deploy/unit_standing.dag:39, a module the witness never imports. A lookup that
+    // answers "is this name a union" from the bare global overlay turns every arm whose name
+    // collides with an unrelated union elsewhere into a refusal.
+    //
+    // Two SourceFiles, because the collision only exists ACROSS modules: one file declares the union
+    // whose arm is constructed, the other declares an unrelated union UNDER THE ARM'S NAME, and a
+    // third compiles the construction that imports the first by name but not the second.
+    let mut files = Vec::new();
+    files.push(Rc::new(SourceFile {
+        // The arm's owner: the arm's authored name is UnitPropertyRead.
+        path: "zz_owner.dag".to_string(),
+        content: "module zz_owner\n\
+                  type UnitPropertyReading\n\
+                  \x20 = UnitPropertyRead { value: String }\n\
+                  \x20 | UnitPropertyUnread { property: String, detail: String }\n"
+            .to_string(),
+    }));
+    files.push(Rc::new(SourceFile {
+        // The collision: a DIFFERENT union, authored under the arm's name, in a module nobody
+        // imports below. Its variants are deliberately distinct so the refusal's message would name
+        // them if the resolution ever reached it.
+        path: "zz_collision.dag".to_string(),
+        content: "module zz_collision\n\
+                  type UnitPropertyRead\n\
+                  \x20 = UnitPropertyValue { value: String }\n\
+                  \x20 | UnitPropertyInvisible\n"
+            .to_string(),
+    }));
+    files.push(Rc::new(SourceFile {
+        path: "zz_consumer.dag".to_string(),
+        content: "module zz_consumer\n\
+                  import zz_owner { UnitPropertyReading, UnitPropertyRead, UnitPropertyUnread }\n\
+                  data zz_owner_status: UnitPropertyReading = UnitPropertyRead { value: \"running\" }\n\
+                  data zz_owner_unread: UnitPropertyReading = UnitPropertyUnread { property: \"ExecMainStatus\", detail: \"unreadable\" }\n"
+            .to_string(),
+    }));
+    let r = compile_to_resolved(Rc::new(files));
+    assert_eq!(
+        blocking(&r),
+        Vec::<String>::new(),
+        "an imported arm whose name is an unrelated union elsewhere in the pool is still a \
+         constructor; the refusal must consult the module's own binding, not the bare-name pool"
+    );
+}
+
+#[test]
 fn the_refusal_message_says_what_it_says() {
     // The message is the repair instruction, so it is tested rather than eyeballed: it names the
     // type written, says the declaration carries no record constructor, and lists the variants

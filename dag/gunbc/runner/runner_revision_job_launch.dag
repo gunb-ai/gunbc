@@ -27,7 +27,7 @@ import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.busybox { busybox_dd_sparse_image_command }
 import extdeps.tools.e2fsprogs { mke2fs_format_command, Ext2 }
 import extdeps.systemd { MemoryMax, MemorySwapMax, CPUQuota }
-import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting }
 
 // THE REVISION JOB'S LAUNCH: A CELL-GRANTED VM WITH NO NETWORK AND EVERY INPUT ON A DRIVE.
 //
@@ -122,9 +122,9 @@ fn revision_job_launch_plan(
           workspace_grant: mebibyte_to_byte_size(m: revision_job_work_disk),
           lease_expires_unix: none,
           runtime_properties: [
-            SystemdRunProperty { property: MemoryMax, value: to_string(byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr },
-            SystemdRunProperty { property: MemorySwapMax, value: "0" },
-            SystemdRunProperty { property: CPUQuota, value: concat(to_string(hardware_thread_count_value(t: admitted) * 100), "%") as NonEmptyStr },
+            NamedUnitSetting { property: MemoryMax, value: to_string(byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr },
+            NamedUnitSetting { property: MemorySwapMax, value: "0" },
+            NamedUnitSetting { property: CPUQuota, value: concat(to_string(hardware_thread_count_value(t: admitted) * 100), "%") as NonEmptyStr },
           ],
           tap_device: runner_slot_network(slot: attempt.slot).tap_device,
           guest_ip_boot_arg: "",

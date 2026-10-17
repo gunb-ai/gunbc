@@ -51,6 +51,14 @@ data zz_union_named_through_alias: String = "module zz_union_probe_alias\ntype Z
 // THE POSITIVE CONTROLS: the two arms, constructed the way the declaration says. These are the
 // spelling the refusal names, and they must stay accepted -- a wall that refuses the union name and
 // then refuses its arms has replaced one authoring blockage with another.
+//
+// ONE CONTROL CANNOT LIVE HERE. The control that matters most for WHERE the name is resolved -- an
+// arm imported BY NAME whose name is also an unrelated union elsewhere in the pool, the collision
+// that refused dag/test/claim/workspace_commissioning_apply_readback_witness.dag before the helper
+// was narrowed to the module's own binding chain -- needs TWO modules and this probe compiles one
+// source string. It lives in src/v1/tests/src/record_literal_names_a_union_type_refusal_test.rs as
+// an_imported_variant_name_is_accepted_under_a_pool_collision, which builds three SourceFiles (arm
+// owner / colliding union / consumer that imports the first and not the second).
 data zz_variant_named_arm: String = "module zz_union_probe_named_arm\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\ndata zz_d: ZzU = ZzNamed { property: ZzA { x: 1 }, value: 2 }\n"
 
 data zz_variant_empty_arm: String = "module zz_union_probe_empty_arm\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\ndata zz_d: ZzU = ZzEmpty\n"

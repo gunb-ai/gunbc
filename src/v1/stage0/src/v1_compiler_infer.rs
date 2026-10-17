@@ -17389,24 +17389,46 @@ pub fn record_lit_alias_struct_expansion(
     }
 }
 
+pub fn record_lit_union_name_is_not_an_arm(
+    decl: Rc<Node>,
+    type_name: String,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    if has_child_named(
+        decl.clone(),
+        type_name.clone(),
+        scope.type_env.clone().source_indices.clone(),
+    ) {
+        std::option::Option::None
+    } else {
+        Some(decl.clone())
+    }
+}
+
 pub fn record_lit_name_declares_union(
     type_name: String,
     scope: Rc<InferScope>,
 ) -> Option<Rc<Node>> {
-    match crate::v1_compiler_infer_env::lookup_type_by_name(
+    match crate::v1_compiler_infer_env::lookup_binding_on_chain(
         scope.type_env.clone(),
         type_name.clone(),
     ) {
         std::option::Option::None => std::option::Option::None,
-        Some(decl) => {
+        Some(binding) => {
+            let decl = binding.resolved.clone();
             if (decl.connective.clone() == Connective::Disj) {
-                Some(decl.clone())
+                record_lit_union_name_is_not_an_arm(
+                    decl.clone(),
+                    type_name.clone(),
+                    scope.clone(),
+                )
             } else {
                 record_lit_expansion_declares_union(decl.clone(), scope.clone())
             }
         }
     }
 }
+
 
 pub fn record_lit_expansion_declares_union(
     decl: Rc<Node>,
