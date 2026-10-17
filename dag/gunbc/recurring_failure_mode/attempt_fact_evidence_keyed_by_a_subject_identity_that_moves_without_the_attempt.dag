@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.attempt_fact_evidence_keyed_by_a_subject_identity_that_moves_without_the_attempt
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data attempt_fact_evidence_keyed_by_a_subject_identity_that_moves_without_the_attempt: RecurringFailureMode = RecurringFailureMode {
+  identity: "attempt_fact_evidence_keyed_by_a_subject_identity_that_moves_without_the_attempt" as NonEmptyStr,
+
+  receipts: [
+    "**EVIDENCE FOR A FACT ABOUT THE ATTEMPT IS LOOKED UP UNDER A VERIFICATION-SUBJECT IDENTITY THAT MOVES WHEN THE ATTEMPT DOES NOT** (INVALID STATE: the terminality guard of the operator resume of a refused verification took an EXACT-SUBJECT refused receipt as its evidence that the worker ended. The subject's change_window_identity folds target_generation, which is the deployed revision on the lab, so every deploy moved the key and the evidence became unreachable although the attempt, its branch and its head never changed).",
+
+    "RECEIPT: srv1 lab at lab-dev 485c1c5fa16, 2026-10-17 04:10-04:16Z, operator resume of node shell-dag-cron-entry-line-builder attempt 1c9b5bec8253061b, head e26c019c5d78b0984ee38536c166c9acbe037243: answered deferred, 'the agent has not reached a terminal state'. The verification dir held the 10-13 REFUSED receipt keyed a83b619683c79c0f (target_generation 032a4bc39bed) and the new window afec9ffd990865ea (target_generation 485c1c5fa16d, same base, same head). Every future deploy would defer it again.",
+
+    "HARM: a recovery that exists in the design is permanently unreachable for a legacy attempt (no provider events file), with a refusal reason that blames the worker rather than the lookup.",
+
+    "RECOGNITION RULE: a question about the attempt or its committed head (did the worker end, was this hand-in verified) answered from a record addressed by the six-field VerificationSubject. The subject is the right key for a VERDICT, whose truth depends on criteria and window; it is the wrong key for a fact that does not. Ask of each lookup which fields the fact depends on and key on exactly those.",
+
+    "REPAIR: gunbc.roadmap.roadmap_verification_receipt belt_attempt_terminality_evidence reads node identity, attempt key, branch and head only, over every receipt in the verification dir for that head; not_run establishes nothing; an unreadable or undecodable receipt is typed unreadable (neither absent nor evidence) and the guard refuses to run on it. The subject identity and the verdict decision are unchanged, so an old (B1,H) receipt still cannot answer (B2,H).",
+
+    "RUNG FOUND AT: 1, mitigatable (a typed deferral). CEILING: 3, structurally guaranteed would need the evidence relation to be derived from the dependency set of the fact; today it is a hand-chosen field subset covered by the c6 witnesses. NEXT-RUNG TRIGGER: the keying-relation read-set carrier (gunbc.plans.demand_engine_program M1) declaring which subject fields each lookup depends on.",
+  ],
+
+  evidence: [],
+}

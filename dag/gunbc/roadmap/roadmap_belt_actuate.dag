@@ -416,7 +416,8 @@ import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_f
   exact_verification_address_for,
   ExactVerificationAddress,
   verification_receipt_file_source_from_exact,
-  belt_verification_decision, belt_verification_resume_decision, belt_verification_recorded_refusal_matches,
+  belt_verification_decision, belt_verification_resume_decision, belt_attempt_terminality_evidence, attempt_head_receipts_read,
+  AttemptTerminalityEvidence, AttemptTerminalityEstablished, AttemptTerminalityNotEstablished, AttemptTerminalityEvidenceUnreadable,
   BeltVerificationRun,
   BeltVerificationDefer,
   BeltVerificationRefuse,
@@ -9400,15 +9401,21 @@ fn belt_verify_mode_is_resume(mode: BeltVerifyMode) -> Bool {
 
 // THE TERMINALITY PRECONDITION, decided where the evidence is known. A live-ready provider runs as
 // always. An attempt the provider ledger cannot show terminal (a legacy attempt with no events file) may
-// run ONLY when the exact-subject refused receipt stands in for it; any other run decision is deferred
+// run ONLY when a verification receipt for the same attempt and head (any window) stands in for it; any other run decision is deferred
 // with the unchanged reason, so a live worker is never verified.
-fn belt_verify_terminality_guard(provider_ready: Bool, recorded_refusal: Bool, decision: BeltVerificationDecision) -> BeltVerificationDecision {
+fn belt_verify_terminality_guard(provider_ready: Bool, evidence: AttemptTerminalityEvidence, decision: BeltVerificationDecision) -> BeltVerificationDecision {
   match decision {
     BeltVerificationRun =>
-      if provider_ready || recorded_refusal {
+      if provider_ready {
         BeltVerificationRun
       } else {
-        BeltVerificationDefer { reason: "the agent obligation is not satisfied: the agent has not reached a terminal state, so there is nothing to verify yet" }
+        match evidence {
+          AttemptTerminalityEstablished => BeltVerificationRun
+          AttemptTerminalityNotEstablished =>
+            BeltVerificationDefer { reason: "the agent obligation is not satisfied: the agent has not reached a terminal state, so there is nothing to verify yet" }
+          AttemptTerminalityEvidenceUnreadable { detail } =>
+            BeltVerificationEvidenceUnreadable { reason: concat("terminality evidence for this head is unreadable: ", detail) }
+        }
       }
     BeltVerificationDefer { reason: _ } => decision
     BeltVerificationRefuse { reason: _ } => decision
@@ -9560,7 +9567,14 @@ fn belt_verify_attempt_in_mode(
                           source: exact_source,
                           decision: belt_verify_terminality_guard(
                             provider_ready: provider_ready,
-                            recorded_refusal: belt_verification_recorded_refusal_matches(expected: subject, source: exact_source),
+                            evidence: belt_attempt_terminality_evidence(
+                              expected: subject,
+                              source: attempt_head_receipts_read(
+                                attempt_dir: address.attempt_dir,
+                                verification_dir: address.verification_dir,
+                                head_sha: head_sha,
+                              ),
+                            ),
                             decision: belt_verification_decision_in_mode(
                               mode: mode,
                               expected: subject,

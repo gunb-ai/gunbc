@@ -8,7 +8,17 @@ import gunbc.roadmap.roadmap_refused_retry {
 }
 import gunbc.compute.work_request { work_ending_wire, WorkEndedRefusedByInfrastructure, WorkEndedFailed, WorkEndedCancelled }
 import gunbc.roadmap.roadmap_validation_oracle { validation_verdict_detail, validation_refusal_cause_detail }
-import gunbc.roadmap.roadmap_verification_receipt { belt_verification_refused_cause, belt_verification_recorded_refusal_matches }
+import gunbc.roadmap.roadmap_verification_receipt {
+  belt_verification_refused_cause,
+  belt_attempt_terminality_evidence,
+  attempt_head_receipt_name_is_a_receipt,
+  AttemptTerminalityEstablished,
+  AttemptTerminalityNotEstablished,
+  AttemptTerminalityEvidenceUnreadable,
+  AttemptHeadReceiptsListed,
+  AttemptHeadReceiptsUnreadable,
+  AttemptHeadReceiptsSource,
+}
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -948,21 +958,129 @@ test fn c5_the_real_compute_refusal_inhabits_the_shape() -> Bool {
     && (match refusal_cause_class(cause: lookalike) { RefusalCauseInfrastructure => false  RefusalCauseCandidate => true })
 }
 
-// CLAIM C6 (legacy attempt, no provider events): an operator resume of a recorded REFUSED verification at
-// the exact subject runs although the provider ledger cannot show the worker terminal, because the
-// refusal is itself the evidence the worker ended. RED before: the verify gate deferred on the provider
-// channel alone. Controls: no receipt, a passed or failed receipt, or a receipt for another subject
-// establishes nothing, and an unready provider with no recorded refusal still defers (a live worker is
-// never verified).
-test fn c6_a_recorded_refusal_stands_in_for_provider_terminality_and_nothing_else_does() -> Bool {
-  let subject = fixture_subject(window: fixture_window_w1)
-  let refused = resume_receipt_source(verdict: infra_refusal_verdict())
-  let passed = resume_receipt_source(verdict: ValidationPassed { command: "fixture-command", oracle_identity: content_hash_of_value(value: "oracle-fixture") })
-  let other = ExactVerificationReceiptPresent { text: verification_receipt_json(receipt: fixture_receipt(window: fixture_window_w2, verdict: infra_refusal_verdict())) }
-  belt_verification_recorded_refusal_matches(expected: subject, source: refused)
-    && !belt_verification_recorded_refusal_matches(expected: subject, source: passed)
-    && !belt_verification_recorded_refusal_matches(expected: subject, source: other)
-    && !belt_verification_recorded_refusal_matches(expected: subject, source: ExactVerificationReceiptAbsent)
-    && (match belt_verify_terminality_guard(provider_ready: false, recorded_refusal: true, decision: BeltVerificationRun) { BeltVerificationRun => true  BeltVerificationDefer { reason: _ } => false  BeltVerificationRefuse { reason: _ } => false  BeltVerificationEvidenceUnreadable { reason: _ } => false })
-    && (match belt_verify_terminality_guard(provider_ready: false, recorded_refusal: false, decision: BeltVerificationRun) { BeltVerificationRun => false  BeltVerificationDefer { reason: _ } => true  BeltVerificationRefuse { reason: _ } => false  BeltVerificationEvidenceUnreadable { reason: _ } => false })
+fn terminality_receipt_text(head: CommitSha, window: Fnv1a64Structural, verdict: ValidationVerdict) -> ExactVerificationReceiptSource {
+  let base = fixture_receipt(window: window, verdict: verdict)
+  ExactVerificationReceiptPresent {
+    text: verification_receipt_json(receipt: VerificationReceipt {
+      subject: VerificationSubject {
+        node_identity: base.subject.node_identity,
+        criteria_digest: base.subject.criteria_digest,
+        attempt_key: base.subject.attempt_key,
+        branch: base.subject.branch,
+        head_sha: head,
+        change_window_identity: window,
+      },
+      oracle_identity: base.oracle_identity,
+      executions: [],
+      verdict: verdict,
+    }),
+  }
 }
+
+fn terminality_is_established(source: AttemptHeadReceiptsSource) -> Bool {
+  match belt_attempt_terminality_evidence(expected: fixture_subject(window: fixture_window_w2), source: source) {
+    AttemptTerminalityEstablished => true
+    AttemptTerminalityNotEstablished => false
+    AttemptTerminalityEvidenceUnreadable { detail: _ } => false
+  }
+}
+
+fn terminality_is_unreadable(source: AttemptHeadReceiptsSource) -> Bool {
+  match belt_attempt_terminality_evidence(expected: fixture_subject(window: fixture_window_w2), source: source) {
+    AttemptTerminalityEstablished => false
+    AttemptTerminalityNotEstablished => false
+    AttemptTerminalityEvidenceUnreadable { detail: _ } => true
+  }
+}
+
+fn terminality_guard_runs(evidence: AttemptTerminalityEvidence) -> Bool {
+  match belt_verify_terminality_guard(provider_ready: false, evidence: evidence, decision: BeltVerificationRun) {
+    BeltVerificationRun => true
+    BeltVerificationDefer { reason: _ } => false
+    BeltVerificationRefuse { reason: _ } => false
+    BeltVerificationEvidenceUnreadable { reason: _ } => false
+  }
+}
+
+// CLAIM C6 (TERMINALITY-EVIDENCE-1; legacy attempt, no provider events): the evidence that the worker ended
+// is a receipt for the same node, attempt, branch and head under ANY window, not the exact subject, because
+// the window identity moves with every deploy (target_generation) while the attempt does not.
+// The expected subject here is at window W2; the refused receipt was recorded under W1 (the 10-13 shape).
+// RED on lab-dev: the exact-subject relation found no receipt for W2 and the guard deferred.
+test fn c6_terminality_evidence_is_the_attempt_and_head_not_the_change_window() -> Bool {
+  let refused_w1 = terminality_receipt_text(head: fixture_head, window: fixture_window_w1, verdict: infra_refusal_verdict())
+  let passed_w1 = terminality_receipt_text(head: fixture_head, window: fixture_window_w1, verdict: ValidationPassed { command: "fixture-command", oracle_identity: content_hash_of_value(value: "oracle-fixture") })
+  terminality_is_established(source: AttemptHeadReceiptsListed { sources: [refused_w1] })
+    && terminality_is_established(source: AttemptHeadReceiptsListed { sources: [passed_w1] })
+    && terminality_guard_runs(evidence: belt_attempt_terminality_evidence(expected: fixture_subject(window: fixture_window_w2), source: AttemptHeadReceiptsListed { sources: [refused_w1] }))
+}
+
+// CLAIM C6b control: a receipt at a DIFFERENT head, or one that never ran, establishes nothing.
+test fn c6b_a_receipt_at_another_head_or_not_run_establishes_nothing() -> Bool {
+  let other_head = terminality_receipt_text(head: fixture_other_head, window: fixture_window_w1, verdict: infra_refusal_verdict())
+  let not_run = terminality_receipt_text(head: fixture_head, window: fixture_window_w1, verdict: ValidationNotRun)
+  !terminality_is_established(source: AttemptHeadReceiptsListed { sources: [other_head, not_run] })
+    && !terminality_is_unreadable(source: AttemptHeadReceiptsListed { sources: [other_head, not_run] })
+    && !terminality_guard_runs(evidence: belt_attempt_terminality_evidence(expected: fixture_subject(window: fixture_window_w2), source: AttemptHeadReceiptsListed { sources: [other_head] }))
+}
+
+// CLAIM C6c control (live worker): no receipt at all defers with the unchanged reason, and provider
+// terminality still runs without any receipt.
+test fn c6c_no_receipt_defers_with_the_unchanged_reason() -> Bool {
+  (match belt_verify_terminality_guard(provider_ready: false, evidence: belt_attempt_terminality_evidence(expected: fixture_subject(window: fixture_window_w2), source: AttemptHeadReceiptsListed { sources: [] }), decision: BeltVerificationRun) {
+    BeltVerificationDefer { reason } => string_contains(s: reason, pattern: "the agent has not reached a terminal state")
+    BeltVerificationRun => false
+    BeltVerificationRefuse { reason: _ } => false
+    BeltVerificationEvidenceUnreadable { reason: _ } => false
+  })
+    && (match belt_verify_terminality_guard(provider_ready: true, evidence: AttemptTerminalityNotEstablished, decision: BeltVerificationRun) { BeltVerificationRun => true  BeltVerificationDefer { reason: _ } => false  BeltVerificationRefuse { reason: _ } => false  BeltVerificationEvidenceUnreadable { reason: _ } => false })
+}
+
+// CLAIM C6d control: the old (B1,H) receipt still does not ANSWER the (B2,H) question. The exact-subject
+// decision on the W2 subject over a W1-only directory is a fresh Run (absent), never the old verdict, and
+// a W1 refused receipt presented as the W2 exact source is refused as another subject.
+test fn c6d_an_old_window_receipt_does_not_answer_the_new_subject() -> Bool {
+  let w2 = fixture_subject(window: fixture_window_w2)
+  (match belt_verification_resume_decision(expected: w2, source: ExactVerificationReceiptAbsent) { BeltVerificationRun => true  BeltVerificationDefer { reason: _ } => false  BeltVerificationRefuse { reason: _ } => false  BeltVerificationEvidenceUnreadable { reason: _ } => false })
+    && (match belt_verification_resume_decision(expected: w2, source: resume_receipt_source(verdict: infra_refusal_verdict())) { BeltVerificationRefuse { reason: _ } => true  BeltVerificationRun => false  BeltVerificationDefer { reason: _ } => false  BeltVerificationEvidenceUnreadable { reason: _ } => false })
+}
+
+// CLAIM C6e control: an unreadable or malformed receipt (or listing) is typed unreadable, never absent and
+// never a receipt, even beside an unrelated readable one; a readable matching one still wins.
+test fn c6e_an_unreadable_receipt_is_typed_not_read_as_absent() -> Bool {
+  let refused_w1 = terminality_receipt_text(head: fixture_head, window: fixture_window_w1, verdict: infra_refusal_verdict())
+  let other_head = terminality_receipt_text(head: fixture_other_head, window: fixture_window_w1, verdict: infra_refusal_verdict())
+  terminality_is_unreadable(source: AttemptHeadReceiptsListed { sources: [ExactVerificationReceiptUnreadable { detail: "eio" }] })
+    && terminality_is_unreadable(source: AttemptHeadReceiptsListed { sources: [other_head, ExactVerificationReceiptPresent { text: "this is not a receipt" }] })
+    && terminality_is_unreadable(source: AttemptHeadReceiptsUnreadable { detail: "listing failed" })
+    && terminality_is_established(source: AttemptHeadReceiptsListed { sources: [ExactVerificationReceiptUnreadable { detail: "eio" }, refused_w1] })
+    && !terminality_guard_runs(evidence: AttemptTerminalityEvidenceUnreadable { detail: "x" })
+    && (match belt_verify_terminality_guard(provider_ready: false, evidence: AttemptTerminalityEvidenceUnreadable { detail: "x" }, decision: BeltVerificationRun) { BeltVerificationEvidenceUnreadable { reason: _ } => true  BeltVerificationRun => false  BeltVerificationDefer { reason: _ } => false  BeltVerificationRefuse { reason: _ } => false })
+}
+
+// CLAIM C6f inhabitance: the receipt text and file names are the producer's own (verification_receipt_json,
+// exact_verification_receipt_basename), and the relation reads the four subject fields from them; the
+// current-selection pointer and another head's file are not receipts.
+test fn c6f_the_producers_shapes_feed_the_terminality_relation() -> Bool {
+  let w1_name = exact_verification_receipt_basename(head_sha: fixture_head as String, window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w1))
+  let w2_name = exact_verification_receipt_basename(head_sha: fixture_head as String, window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w2))
+  let other_name = exact_verification_receipt_basename(head_sha: fixture_other_head as String, window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w1))
+  attempt_head_receipt_name_is_a_receipt(name: w1_name, head_sha: fixture_head as String)
+    && attempt_head_receipt_name_is_a_receipt(name: w2_name, head_sha: fixture_head as String)
+    && !attempt_head_receipt_name_is_a_receipt(name: other_name, head_sha: fixture_head as String)
+    && !attempt_head_receipt_name_is_a_receipt(name: current_verification_selection_basename(head_sha: fixture_head as String), head_sha: fixture_head as String)
+    && terminality_is_established(source: AttemptHeadReceiptsListed { sources: [resume_receipt_source(verdict: infra_refusal_verdict())] })
+}
+
+// CLAIM C6g (review of 1c71e84371): the directory's other files are not receipts. The live dir holds
+// <head>.<w>.diff-window.json beside <head>.<w>.json and <head>.current-selection.json; only the last
+// receipt-shaped name is read, so a diff-window-only directory is NotEstablished (a defer), never Unreadable.
+test fn c6g_diff_window_and_selection_files_are_not_receipts() -> Bool {
+  let head = fixture_head as String
+  let w1 = git_diff_window_identity_hex(identity: fixture_window_w1)
+  let diff_window = join([head, ".", w1, ".diff-window.json"], "")
+  !attempt_head_receipt_name_is_a_receipt(name: diff_window, head_sha: head)
+    && !attempt_head_receipt_name_is_a_receipt(name: join([head, ".afec9ffd990865ea.diff-window.json"], ""), head_sha: head)
+    && attempt_head_receipt_name_is_a_receipt(name: join([head, ".a83b619683c79c0f.json"], ""), head_sha: head)
+}
+
