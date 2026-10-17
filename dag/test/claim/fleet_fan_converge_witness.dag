@@ -1,27 +1,30 @@
 module test.claim.fleet_fan_converge_witness
 
-import std.types { Bool, Int, NonEmptyStr }
+import std.types { Bool, Int, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { percent }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPolicy, HeldAtDutyFloor, fleet_fan_policy }
+import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_fan_converge {
-  FleetFanApply,
-  FleetFanDecision,
   FleetFanConverged,
   FleetFanControlObserved,
   FleetFanControlUnobservable,
+  FleetFanDecision,
   FleetFanDiverged,
   FleetFanNoop,
+  FleetFanObserved,
+  FleetFanReading,
   FleetFanRefuse,
+  FleetFanRefused,
   FleetFanUnobservable,
   fleet_fan_decide,
   fleet_fan_family_refusal,
   fleet_fan_standing,
 }
 
-// SUPPLIED: the adapter's normalized observation. EXECUTED: the real decision and the real route
-// dispatch fan_converge_route_for_family, so the route's binding state decides Apply vs Refuse.
+// SUPPLIED: the adapter's normalized observation. EXECUTED: the real decision and standing. There
+// is no Apply arm: every divergence refuses, since no projection to a family writer target exists.
 
 fn held(p: Int) -> FleetFanPolicy {
   FleetFanPolicy { control: HeldAtDutyFloor { floor: percent(p) }, guard: fleet_fan_policy.guard, unreadable_sensor_trips: true }
@@ -29,27 +32,32 @@ fn held(p: Int) -> FleetFanPolicy {
 
 fn seen_held(p: Int) -> FleetFanControl { HeldAtDutyFloor { floor: percent(p) } }
 
+fn h1() -> HostIdentity { "mtcollins1" as HostIdentity }
+fn h2() -> HostIdentity { "mtjade1" as HostIdentity }
+
+fn obs(host: HostIdentity, id: String, r: FleetFanReading) -> FleetFanObserved {
+  FleetFanObserved { host: host, observation_id: id as NonEmptyStr, reading: r }
+}
+
+fn saw(c: FleetFanControl) -> FleetFanReading { FleetFanControlObserved { control: c } }
+
 test fn witness_matching_control_is_noop() -> Bool {
-  match fleet_fan_decide(policy: fleet_fan_policy, family: AmiMegaRac, observed: FleetFanControlObserved { control: FirmwareAutomatic }) {
+  match fleet_fan_decide(policy: fleet_fan_policy, family: AmiMegaRac, host: h1(), observed: obs(host: h1(), id: "a", r: saw(c: FirmwareAutomatic))) {
     FleetFanNoop => true
-    FleetFanApply { target: _, route: _ } => false
     FleetFanRefuse { cause: _ } => false
   }
 }
 
-// OPENBMC'S ROUTE IS BOUND, SO A DIVERGENT HOST GETS AN APPLY; MEGARAC'S IS UNBOUND, SO THE SAME
-// DIVERGENCE REFUSES - the discriminating pair for the route dispatch.
-test fn witness_divergence_applies_on_bound_route_and_refuses_on_unbound() -> Bool {
-  let seen = FleetFanControlObserved { control: seen_held(30) }
-  let on_openbmc = match fleet_fan_decide(policy: fleet_fan_policy, family: OpenBmc, observed: seen) {
-    FleetFanApply { target: _, route: _ } => true
-    FleetFanNoop => false
-    FleetFanRefuse { cause: _ } => false
-  }
-  let on_megarac = match fleet_fan_decide(policy: fleet_fan_policy, family: AmiMegaRac, observed: seen) {
+// DIVERGENCE REFUSES ON BOTH FAMILIES (no projection exists), with the same typed cause.
+test fn witness_divergence_refuses_on_both_families() -> Bool {
+  let seen = obs(host: h1(), id: "a", r: saw(c: seen_held(30)))
+  let on_openbmc = match fleet_fan_decide(policy: fleet_fan_policy, family: OpenBmc, host: h1(), observed: seen) {
     FleetFanRefuse { cause: _ } => true
     FleetFanNoop => false
-    FleetFanApply { target: _, route: _ } => false
+  }
+  let on_megarac = match fleet_fan_decide(policy: fleet_fan_policy, family: AmiMegaRac, host: h1(), observed: seen) {
+    FleetFanRefuse { cause: _ } => true
+    FleetFanNoop => false
   }
   on_openbmc && on_megarac
 }
@@ -61,7 +69,6 @@ fn refused_with(d: FleetFanDecision, why: NonEmptyStr?) -> Bool {
       Absent => false
     }
     FleetFanNoop => false
-    FleetFanApply { target: _, route: _ } => false
   }
 }
 
@@ -72,46 +79,67 @@ fn is_present(v: NonEmptyStr?) -> Bool {
   }
 }
 
-// A FLOOR THE FAMILY CANNOT EXPRESS REFUSES BEFORE ANY ROUTE IS CONSULTED, AND THE CAUSE IS THE
-// FAMILY'S: MegaRAC's route is unbound too, so a bare Refuse cannot tell the two apart; the cause
-// must equal fleet_fan_family_refusal's. 22 is off MegaRAC's step-5 set, 30 is on it (family
-// refusal absent, so its Refuse comes from the route and differs); OpenBMC's held floor is unread.
+// A FLOOR THE FAMILY CANNOT EXPRESS REFUSES BEFORE ANY EQUALITY: MegaRAC 22% observed as 22% must
+// Refuse with the family's cause, never Noop. 30 is on the step-5 set and 22 is not.
 test fn witness_inexpressible_floor_refuses() -> Bool {
-  let seen = FleetFanControlObserved { control: FirmwareAutomatic }
   let off_set = fleet_fan_family_refusal(family: AmiMegaRac, control: seen_held(22))
   let on_set = fleet_fan_family_refusal(family: AmiMegaRac, control: seen_held(30))
   let openbmc = fleet_fan_family_refusal(family: OpenBmc, control: seen_held(30))
   is_present(off_set) && !is_present(on_set) && is_present(openbmc)
-    && refused_with(fleet_fan_decide(policy: held(22), family: AmiMegaRac, observed: seen), off_set)
-    && !refused_with(fleet_fan_decide(policy: held(30), family: AmiMegaRac, observed: seen), off_set)
-    && refused_with(fleet_fan_decide(policy: held(30), family: OpenBmc, observed: seen), openbmc)
+    && refused_with(fleet_fan_decide(policy: held(22), family: AmiMegaRac, host: h1(), observed: obs(host: h1(), id: "a", r: saw(c: seen_held(22)))), off_set)
+    && refused_with(fleet_fan_decide(policy: held(30), family: OpenBmc, host: h1(), observed: obs(host: h1(), id: "a", r: saw(c: seen_held(30)))), openbmc)
 }
 
 test fn witness_unobservable_refuses_and_is_never_converged() -> Bool {
   let u = FleetFanControlUnobservable { cause: "bmc unreachable" as NonEmptyStr }
-  let d = match fleet_fan_decide(policy: fleet_fan_policy, family: OpenBmc, observed: u) {
+  let d = match fleet_fan_decide(policy: fleet_fan_policy, family: OpenBmc, host: h1(), observed: obs(host: h1(), id: "a", r: u)) {
     FleetFanRefuse { cause: _ } => true
     FleetFanNoop => false
-    FleetFanApply { target: _, route: _ } => false
   }
-  let s = match fleet_fan_standing(policy: fleet_fan_policy, readback: u) {
+  let s = match fleet_fan_standing(policy: fleet_fan_policy, family: OpenBmc, host: h1(), decided_observation_id: "a" as NonEmptyStr, readback: obs(host: h1(), id: "b", r: u)) {
     FleetFanUnobservable { cause: _ } => true
     FleetFanConverged => false
     FleetFanDiverged { observed: _ } => false
+    FleetFanRefused { cause: _ } => false
   }
   d && s
 }
 
 test fn witness_standing_reads_only_the_readback() -> Bool {
-  let ok = match fleet_fan_standing(policy: fleet_fan_policy, readback: FleetFanControlObserved { control: FirmwareAutomatic }) {
+  let ok = match fleet_fan_standing(policy: fleet_fan_policy, family: OpenBmc, host: h1(), decided_observation_id: "a" as NonEmptyStr, readback: obs(host: h1(), id: "b", r: saw(c: FirmwareAutomatic))) {
     FleetFanConverged => true
     FleetFanDiverged { observed: _ } => false
     FleetFanUnobservable { cause: _ } => false
+    FleetFanRefused { cause: _ } => false
   }
-  let bad = match fleet_fan_standing(policy: fleet_fan_policy, readback: FleetFanControlObserved { control: seen_held(20) }) {
+  let bad = match fleet_fan_standing(policy: fleet_fan_policy, family: OpenBmc, host: h1(), decided_observation_id: "a" as NonEmptyStr, readback: obs(host: h1(), id: "b", r: saw(c: seen_held(20)))) {
     FleetFanDiverged { observed: _ } => true
     FleetFanConverged => false
     FleetFanUnobservable { cause: _ } => false
+    FleetFanRefused { cause: _ } => false
   }
   ok && bad
+}
+
+// SUBJECT IDENTITY: a readback for another host, or one that reuses the deciding observation's id,
+// refuses and is never Converged even when its control equals the desired one; a decision over
+// another host's observation refuses.
+test fn witness_subject_identity_is_checked() -> Bool {
+  let swapped = match fleet_fan_standing(policy: fleet_fan_policy, family: OpenBmc, host: h1(), decided_observation_id: "a" as NonEmptyStr, readback: obs(host: h2(), id: "b", r: saw(c: FirmwareAutomatic))) {
+    FleetFanRefused { cause: _ } => true
+    FleetFanConverged => false
+    FleetFanDiverged { observed: _ } => false
+    FleetFanUnobservable { cause: _ } => false
+  }
+  let reused = match fleet_fan_standing(policy: fleet_fan_policy, family: OpenBmc, host: h1(), decided_observation_id: "a" as NonEmptyStr, readback: obs(host: h1(), id: "a", r: saw(c: FirmwareAutomatic))) {
+    FleetFanRefused { cause: _ } => true
+    FleetFanConverged => false
+    FleetFanDiverged { observed: _ } => false
+    FleetFanUnobservable { cause: _ } => false
+  }
+  let other_host = match fleet_fan_decide(policy: fleet_fan_policy, family: OpenBmc, host: h1(), observed: obs(host: h2(), id: "a", r: saw(c: FirmwareAutomatic))) {
+    FleetFanRefuse { cause: _ } => true
+    FleetFanNoop => false
+  }
+  swapped && reused && other_host
 }

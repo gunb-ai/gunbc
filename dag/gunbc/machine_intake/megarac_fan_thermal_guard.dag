@@ -14,7 +14,8 @@ import product.fleet_fan_policy {
   fleet_fan_policy,
   fleet_fan_guard_reading,
 }
-import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
+import extdeps.cpu.ampere { ampere_altra_thermal_limits_for_model }
+import extdeps.cpu.types { ProcessorThermalLimits }
 import extdeps.bmc.megarac_fan_policy {
   CoolingManagerAutomatic,
   CoolingManagerDisabledManual,
@@ -65,24 +66,28 @@ fn megarac_guard_sensor_class(sensor: NonEmptyStr) -> ThermalGuardRole? {
   }
 }
 
-// This machine's own ceilings: mtcollins1 carries an Ampere Altra Max M128-30, whose cited continuous
-// junction maximum is the SoC trip's base. No other guard role takes a margin below a ceiling.
-fn megarac_guard_component_ceiling(kind: ThermalGuardRole) -> Celsius? {
+// The SoC ceiling comes from the host's own CPU model, never a fleet literal. A model with no limits
+// row yields Absent, which the policy reads as an unstated ceiling and trips toward automatic.
+// No other guard role takes a margin below a ceiling.
+fn megarac_guard_component_ceiling(kind: ThermalGuardRole, cpu_limits: ProcessorThermalLimits?) -> Celsius? {
   match kind {
-    SocJunction => Present { value: ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature }
+    SocJunction => match cpu_limits {
+      Present { value: l } => Present { value: l.maximum_continuous_junction_temperature }
+      Absent => Absent
+    }
     DimmChannel => Absent
     VoltageRegulator => Absent
     ChassisOutlet => Absent
   }
 }
 
-fn megarac_temperature_trips(sensor: NonEmptyStr, temperature: Celsius) -> Bool {
+fn megarac_temperature_trips(sensor: NonEmptyStr, temperature: Celsius, cpu_limits: ProcessorThermalLimits?) -> Bool {
   match megarac_guard_sensor_class(sensor: sensor) {
     Absent => false
     Present { value: kind } => match fleet_fan_guard_reading(
       policy: fleet_fan_policy,
       role: kind,
-      component_ceiling: megarac_guard_component_ceiling(kind: kind),
+      component_ceiling: megarac_guard_component_ceiling(kind: kind, cpu_limits: cpu_limits),
       reading: Present { value: temperature },
     ) {
       GuardHolds => false
@@ -149,6 +154,7 @@ type MegaRacThermalGuardVerdict
 fn megarac_first_trip(
   readings: List<MegaRacTempReading>,
   required: List<NonEmptyStr>,
+  cpu_limits: ProcessorThermalLimits?,
 ) -> MegaRacThermalGuardVerdict {
   match required.first() {
     Absent => MegaRacThermalGuardHolds
@@ -157,17 +163,17 @@ fn megarac_first_trip(
       Present { value: r } => match r {
         MegaRacTempUnreadable { sensor: u } => MegaRacThermalGuardUnread { sensor: u }
         MegaRacTempObserved { sensor: n, value: t } =>
-          if megarac_temperature_trips(sensor: n, temperature: t) {
+          if megarac_temperature_trips(sensor: n, temperature: t, cpu_limits: cpu_limits) {
             MegaRacThermalGuardTrip { sensor: n, temperature: t }
           } else {
-            megarac_first_trip(readings: readings, required: required.skip(n: 1))
+            megarac_first_trip(readings: readings, required: required.skip(n: 1), cpu_limits: cpu_limits)
           }
       }
     }
   }
 }
 
-fn megarac_thermal_guard_verdict(readings: List<MegaRacTempReading>) -> MegaRacThermalGuardVerdict {
+fn megarac_thermal_guard_verdict(readings: List<MegaRacTempReading>, cpu_model: NonEmptyStr) -> MegaRacThermalGuardVerdict {
   match megarac_first_unread(
     readings: readings,
     required: megarac_manual_duty_required_sensors,
@@ -176,6 +182,7 @@ fn megarac_thermal_guard_verdict(readings: List<MegaRacTempReading>) -> MegaRacT
     Absent => megarac_first_trip(
       readings: readings,
       required: megarac_manual_duty_required_sensors,
+      cpu_limits: ampere_altra_thermal_limits_for_model(model_number: cpu_model),
     )
   }
 }

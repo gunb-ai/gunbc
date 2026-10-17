@@ -317,11 +317,15 @@ fn megarac_guard_readable_fixture(soc: Int) -> List<MegaRacTempReading> {
   ]
 }
 
+// A model whose datasheet limits are read, so the SoC trip is derivable; mtcollins1's own Q80-30 is
+// covered by the fleet policy witness (no row, trips toward automatic).
+fn guard_cpu_model() -> NonEmptyStr { "M128-30" as NonEmptyStr }
+
 test fn thermal_guard_trip_re_enables_the_cooling_manager() -> Bool {
-  match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 85)) {
+  match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 85), cpu_model: guard_cpu_model()) {
     MegaRacThermalGuardTrip { sensor: s, temperature: t } =>
       (s as String) == "CPU0_SOC_Temp"
-        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 84)) {
+        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 84), cpu_model: guard_cpu_model()) {
           MegaRacThermalGuardHolds =>
             match megarac_fan_safety_restore(
               verdict: MegaRacThermalGuardTrip { sensor: s, temperature: t },
@@ -351,7 +355,7 @@ test fn unreadable_temperature_re_enables_the_cooling_manager() -> Bool {
     MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
     MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
   ]
-  match megarac_thermal_guard_verdict(readings: readings) {
+  match megarac_thermal_guard_verdict(readings: readings, cpu_model: guard_cpu_model()) {
     MegaRacThermalGuardUnread { sensor: s } =>
       (s as String) == "CPU0_SOC_Temp"
         && match megarac_fan_safety_restore(
@@ -385,7 +389,7 @@ test fn mid_boot_exit_leaves_the_cooling_manager_enabled() -> Bool {
   match megarac_fan_run_exit_restore() {
     ReEnableCoolingManager { cause: RunExited } =>
       (megarac_fan_exit_manager_readback_body() as String) == "{\"manager_disabled\":0}"
-        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 36)) {
+        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 36), cpu_model: guard_cpu_model()) {
           MegaRacThermalGuardHolds => true
           MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
           MegaRacThermalGuardUnread { sensor: _ } => false
@@ -405,7 +409,7 @@ test fn dimm_over_uncited_ceiling_re_enables_the_manager() -> Bool {
     MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
     MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
   ]
-  match megarac_thermal_guard_verdict(readings: readings) {
+  match megarac_thermal_guard_verdict(readings: readings, cpu_model: guard_cpu_model()) {
     MegaRacThermalGuardTrip { sensor: s, temperature: _ } =>
       (s as String) == "CPU0_DIMMG0_Temp"
         && match megarac_fan_safety_restore(

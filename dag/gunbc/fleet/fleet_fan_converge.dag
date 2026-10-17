@@ -1,16 +1,14 @@
 module gunbc.fleet.fleet_fan_converge
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String }
 import std.optional { Absent, Present }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
 import extdeps.bmc.megarac_fan_policy { MegaRacFanPwmAllAdmitted, MegaRacFanPwmAllRefused, megarac_fan_pwm_all_of }
-import product.fan_policy_standing { FanDutyConvergeRoute }
-import gunbc.bmc.bmc_fan_converge { BmcFanRouteAdmitted, BmcFanRouteUnbound, bmc_fan_route_admission }
+import product.host_identity { HostIdentity, host_identity_eq }
 import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPolicy, HeldAtDutyFloor }
-import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 
 // THE FLEET FAN CONVERGENCE FOLD: desired (product.fleet_fan_policy) against observed, deciding
-// Noop / Apply / Refuse, then a standing read from an INDEPENDENT second observation.
+// Noop / Refuse, then a standing read from an INDEPENDENT second observation.
 //
 // SELECTION PRECEDES CONVERGENCE (DESIGN 3d): this fold takes ONE host's family and ONE
 // observation. Which hosts exist comes from the managed-host registry, not from here.
@@ -19,30 +17,37 @@ import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 // admission gate that reads FleetFanConvergenceStanding is a separate change that waits on the
 // post-power-on fan read.
 //
-// ROUTE ADMISSION IS gunbc.bmc.bmc_fan_converge bmc_fan_route_admission, CONSUMED, NOT RESTATED: that
-// module is the OpenBMC per-host executor and already decides Bound-vs-Unbound; this fold is the
-// family-agnostic desired/observed decision above it and shares that one admission rule. The OpenBMC
-// executor's own target and wet fold stay there until a later change moves them under this fold.
+// NO WRITE EXISTS HERE, SO THERE IS NO APPLY ARM. A divergence refuses with a typed "no projection
+// from FleetFanControl to the family's writer target" cause for BOTH families. The write change
+// derives the OpenBMC config (OpenBmcFanConfigDesired) and the MegaRAC plan from FleetFanPolicy
+// and, in that same change, retires the overlapping authorities: gunbc.bmc.bmc_intent
+// fleet_bmc_valid_state's fan fields (it becomes derived), and megarac_fan_boot_phase_desire (the boot
+// change deletes it). Until then this fold is the single policy and those are the named leftovers.
 //
-// NO WRITE IS BOUND BY THIS MODULE. Apply names the family's existing route and nothing executes it
-// here; the MegaRAC route is ConvergeRouteUnbound, so a MegaRAC host can only Refuse with that
-// route's read obligation until a wet write fold exists and the operator approves binding it.
+// ADMISSION PRECEDES EVERYTHING: the desired control is admitted for the family first, so an
+// inexpressible target can never be Noop or Converged by happening to equal an observation.
+// SUBJECT IDENTITY: an observation names its host and a fresh observation id; a decision or standing
+// for another host, or a readback that reuses the deciding observation's id, refuses.
 
-// WHAT ONE ADAPTER READ OF A HOST'S FAN CONTROL ANSWERED, normalized onto the policy's own posture
-// vocabulary. An unreadable control is its own arm and is never folded onto automatic.
-type FleetFanObserved
+type FleetFanReading
   = FleetFanControlObserved { control: FleetFanControl }
   | FleetFanControlUnobservable { cause: NonEmptyStr }
 
+type FleetFanObserved {
+  host: HostIdentity
+  observation_id: NonEmptyStr
+  reading: FleetFanReading
+}
+
 type FleetFanDecision
   = FleetFanNoop
-  | FleetFanApply { target: FleetFanControl, route: FanDutyConvergeRoute }
   | FleetFanRefuse { cause: NonEmptyStr }
 
 type FleetFanConvergenceStanding
   = FleetFanConverged
   | FleetFanDiverged { observed: FleetFanControl }
   | FleetFanUnobservable { cause: NonEmptyStr }
+  | FleetFanRefused { cause: NonEmptyStr }
 
 // WHAT A FAMILY'S UPSTREAM CAN EXPRESS. Automatic is the firmware default and every family has it.
 // A held floor is refused unless the family's upstream is read to express it: MegaRAC by its closed
@@ -63,34 +68,57 @@ fn fleet_fan_family_refusal(family: BmcFirmwareFamily, control: FleetFanControl)
   }
 }
 
-fn fleet_fan_decide(policy: FleetFanPolicy, family: BmcFirmwareFamily, observed: FleetFanObserved) -> FleetFanDecision {
-  match observed {
-    FleetFanControlUnobservable { cause: c } => FleetFanRefuse { cause: c }
-    FleetFanControlObserved { control: seen } =>
-      if seen == policy.control {
-        FleetFanNoop
-      } else {
-        match fleet_fan_family_refusal(family: family, control: policy.control) {
-          Present { value: why } => FleetFanRefuse { cause: why }
-          Absent => match bmc_fan_route_admission(route: fan_converge_route_for_family(family: family)) {
-            BmcFanRouteAdmitted { route: r } => FleetFanApply { target: policy.control, route: r }
-            BmcFanRouteUnbound { read_obligation: o } => FleetFanRefuse { cause: o }
-          }
-        }
-      }
+fn fleet_fan_subject_refusal(expected: HostIdentity, observed: FleetFanObserved) -> NonEmptyStr? {
+  if host_identity_eq(a: expected, b: observed.host) {
+    Absent
+  } else {
+    Present { value: "observation is for a different host than the one being converged" as NonEmptyStr }
   }
 }
 
-// THE STANDING TAKES ONLY A READBACK OBSERVATION. There is no parameter an apply result could be
-// passed in, so an actuation return cannot mint convergence (DESIGN 3d).
-fn fleet_fan_standing(policy: FleetFanPolicy, readback: FleetFanObserved) -> FleetFanConvergenceStanding {
-  match readback {
-    FleetFanControlUnobservable { cause: c } => FleetFanUnobservable { cause: c }
-    FleetFanControlObserved { control: seen } =>
-      if seen == policy.control {
-        FleetFanConverged
-      } else {
-        FleetFanDiverged { observed: seen }
+fn fleet_fan_no_projection() -> NonEmptyStr {
+  "no projection from FleetFanControl to the family writer target exists yet" as NonEmptyStr
+}
+
+fn fleet_fan_decide(policy: FleetFanPolicy, family: BmcFirmwareFamily, host: HostIdentity, observed: FleetFanObserved) -> FleetFanDecision {
+  match fleet_fan_family_refusal(family: family, control: policy.control) {
+    Present { value: why } => FleetFanRefuse { cause: why }
+    Absent => match fleet_fan_subject_refusal(expected: host, observed: observed) {
+      Present { value: why } => FleetFanRefuse { cause: why }
+      Absent => match observed.reading {
+        FleetFanControlUnobservable { cause: c } => FleetFanRefuse { cause: c }
+        FleetFanControlObserved { control: seen } =>
+          if seen == policy.control {
+            FleetFanNoop
+          } else {
+            FleetFanRefuse { cause: fleet_fan_no_projection() }
+          }
       }
+    }
+  }
+}
+
+// THE STANDING TAKES ONLY A READBACK OBSERVATION and the id of the observation the decision used;
+// a reused id is not independent. There is no parameter an apply result could be passed in.
+fn fleet_fan_standing(policy: FleetFanPolicy, family: BmcFirmwareFamily, host: HostIdentity, decided_observation_id: NonEmptyStr, readback: FleetFanObserved) -> FleetFanConvergenceStanding {
+  match fleet_fan_family_refusal(family: family, control: policy.control) {
+    Present { value: why } => FleetFanRefused { cause: why }
+    Absent => match fleet_fan_subject_refusal(expected: host, observed: readback) {
+      Present { value: why } => FleetFanRefused { cause: why }
+      Absent =>
+        if (readback.observation_id as String) == (decided_observation_id as String) {
+          FleetFanRefused { cause: "readback reuses the deciding observation id and is not independent" as NonEmptyStr }
+        } else {
+          match readback.reading {
+            FleetFanControlUnobservable { cause: c } => FleetFanUnobservable { cause: c }
+            FleetFanControlObserved { control: seen } =>
+              if seen == policy.control {
+                FleetFanConverged
+              } else {
+                FleetFanDiverged { observed: seen }
+              }
+          }
+        }
+    }
   }
 }
