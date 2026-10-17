@@ -9,6 +9,7 @@ use self::NativeDriverCostRowStanding::*;
 use self::NativeDriverExclusiveRowKey::*;
 use self::NativeEffectClass::*;
 use self::NativeEffectScope::*;
+pub use crate::std_algebra::collection_map_shape;
 pub use crate::std_decl_ref::{decl_ref, DeclarationRef};
 pub use crate::std_measure::{
     millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count, Nanosecond,
