@@ -75,7 +75,7 @@ import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_command_argument_words,
 }
-import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
+import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties, UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -1853,7 +1853,7 @@ fn dispatch_review_unit_properties(
   review_dir: String,
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
-  concat([
+  concat(worker_root_equivalent_socket_denial_properties(), concat([
     NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
@@ -1862,7 +1862,7 @@ fn dispatch_review_unit_properties(
     NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
     NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
     NamedUnitSetting { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
-  ], [NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook }])
+  ], [NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook }]))
 }
 
 data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
