@@ -38,8 +38,10 @@ import v2.std.qualified_name { QualifiedName }
 // construction (the c.dag:866 defect was a spliced block, #14017). Output is rows, never writes:
 //   EDIT <path> <start> <end> <replacement>     replacement has newlines escaped as \n
 //   REFUSE <path> <cause>
-// The thin applier (tools/roster_import_sweep_apply.py) compare-and-sets the file digest and applies
-// them; it contains no matching and no semantics. Driven as
+// No applier is committed (tools/ is gitignored): the rows are applied by a session-local sha256
+// compare-and-set writer with no semantics. Applier home is an open question to the manager.
+// DISSOLVES when the row-driven generator over the ruled home table (N4/N5) replaces this fixed
+// four-row table; consumed until then by the sweep PRs. Driven as
 //   gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/roster_import_sweep.dag
 //     --function roster_import_sweep_for_paths --arg paths_csv=<comma-separated paths>
 //
