@@ -210,19 +210,22 @@ test fn both_in_band_recovery_writes_are_rostered_sites_of_the_census() -> Bool 
 // the witness above stayed green, because comparing a site-name STRING to itself can never notice an
 // absent symbol. DESIGN §3 makes that decidable from the Node tree, so this asks the parse-only
 // declaration census of the live corpus: for each row, the declaration its `site` names must be declared.
-// The names below are written by hand rather than read back from the census, so this cannot be satisfied
-// by the census agreeing with itself; deleting or renaming a gate, or editing a row's decl_name, turns it
-// red from either side.
-
-data recovery_route_module: String = "gunbc.machine_intake.bmc_recovery_route"
+// The names asked for below are written by hand and the answers come from the census of the live tree,
+// so this cannot be satisfied by the census agreeing with itself: deleting or renaming a gate, or editing
+// a row's decl_name, turns it red from either side.
 
 data recovery_live_pool_roots: List<String> = ["dag/gunbc/machine_intake"]
 
 data recovery_live_decl_facts: List<DeclFact> = decl_facts(pool_roots: recovery_live_pool_roots)
 
 fn recovery_declares_gate(gate: String) -> Bool {
+  // the declaration's OWN name field on a fact the census produced, never a qualified name this file
+  // assembles: a module path written as a literal here would be a second naming of the module (DESIGN
+  // section 3), and gluing two halves together would pass for a declaration that lives somewhere else
+  // entirely. Renaming the module moves the census's own names with it. An empty census makes this false
+  // rather than true, so a wrong pool root cannot pass quietly.
   any(xs: recovery_live_decl_facts, predicate: fn(d) {
-    d.qualified_name == concat(recovery_route_module, concat(".", gate))
+    d.name == gate
   })
 }
 

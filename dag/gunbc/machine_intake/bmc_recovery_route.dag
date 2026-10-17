@@ -1,6 +1,7 @@
 module gunbc.machine_intake.bmc_recovery_route
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Port, String, list_length }
+import std.interval { IntervalConstruction, IntervalConstructionFold, OrderedClosedInterval, closed_interval, interval_construction_fold }
 // THE OPTIONAL MINTS, not the raw arms: a branch that has to produce an optional uses these, because
 // `Present { value: SomeType { ... } }` parses as a type annotation followed by a block (see the note at
 // in_band_argv_credential_option). Absent/Present are still needed for MATCHING.
@@ -136,7 +137,7 @@ fn recovery_measured_refusal_policy() -> PublishedFactoryPasswordWritePolicy {
 // below is typed with THIS, which is why the reachability cannot carry a declared provider: the declared
 // arm has no such record to hand over. It also means the reachability cannot carry evidence that disagrees
 // with the medium it rests on, because there is one copy of those two fields, not three.
-type ExecutedRescueMedium { evidence: EvidenceRef, observed_at: EpochMs }
+type ExecutedRescueMedium { evidence: EvidenceRef, observed_at: CapturedInstant }
 
 type RescueHostMedium
   = UsbRescueMediumObserved { medium: ExecutedRescueMedium }
@@ -452,7 +453,7 @@ type InBandChannelObservation {
   channel: InBandAccessWithoutCredential
   administrator: InBandAdministratorAccount
   evidence: EvidenceRef
-  observed_at: EpochMs
+  observed_at: CapturedInstant
 }
 
 // The channel has to have been read FROM THE HOST THAT WAS DECLARED REACHABLE, on the device and
@@ -631,7 +632,7 @@ type RecoveryWriteRecord
       kind: RecoveryActuationKind
       request: EvidenceRef
       response: EvidenceRef
-      observed_at: EpochMs
+      observed_at: CapturedInstant
     }
   | ExecutedWithoutByteCapture { kind: RecoveryActuationKind, observed_exit: Int, detail: NonEmptyStr }
   | NotExecuted { kind: RecoveryActuationKind }
@@ -1258,9 +1259,9 @@ type RecoveryFactoryCredentialReadback
   = FactoryCredentialActiveAwaitingChange {
       message_id: NonEmptyStr
       evidence: EvidenceRef
-      observed_at: EpochMs
+      observed_at: CapturedInstant
     }
-  | CredentialNotAccepted { evidence: EvidenceRef, observed_at: EpochMs }
+  | CredentialNotAccepted { evidence: EvidenceRef, observed_at: CapturedInstant }
   | ReadbackInconclusive { detail: NonEmptyStr }
 
 // THE ONLY MINT OF ProvenResetReadback, AND IT REFUSES. It used to return a Bool, which left the caller
@@ -1301,7 +1302,7 @@ fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -
 type ProvenResetReadback sole_constructor {
   message_id: NonEmptyStr
   evidence: EvidenceRef
-  observed_at: EpochMs
+  observed_at: CapturedInstant
   capture: EvidenceRef
 }
 
@@ -1901,7 +1902,7 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     channel: InBandChannelPasswordless { transport: OpenIpmiDriver },
     administrator: recovery_administrator_account(),
     evidence: recovery_inband_channel_capture_ref,
-    observed_at: recovery_capture_instant(),
+    observed_at: recovery_inband_channel_instant(),
   }
   in_band_channel_admits(observation: observation, reachability: reached) == false
     // THE REFUSAL IS ABOUT THE ADDRESS AND NOTHING ELSE. Same observation, same reachability, only the
@@ -2074,7 +2075,7 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
     readback: FactoryCredentialActiveAwaitingChange {
       message_id: "Base.1.16.0.NoResource",
       evidence: recovery_post_reset_readback_capture_ref,
-      observed_at: recovery_capture_instant(),
+      observed_at: recovery_post_reset_instant(),
     },
   ) {
     Absent => true
@@ -2086,7 +2087,7 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
       readback: FactoryCredentialActiveAwaitingChange {
         message_id: "Base.1.16.0.PasswordChangeRequired",
         evidence: recovery_post_reset_readback_capture_ref,
-        observed_at: recovery_capture_instant(),
+        observed_at: recovery_post_reset_instant(),
       },
     ) {
       Present { value: p } =>
@@ -2100,7 +2101,7 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
     && (match recovery_readback_proves_reset(
       readback: CredentialNotAccepted {
         evidence: recovery_post_reset_readback_capture_ref,
-        observed_at: recovery_capture_instant(),
+        observed_at: recovery_post_reset_instant(),
       },
     ) {
       Absent => true
@@ -2116,7 +2117,7 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
     && recovery_readback_of(
       body: "{\"error\":{\"@Message.ExtendedInfo\":[{\"MessageId\":\"Base.1.16.0.PasswordChangeRequired\"}]}}",
       evidence: recovery_post_reset_readback_capture_ref,
-      observed_at: recovery_capture_instant(),
+      observed_at: recovery_post_reset_instant(),
     ) == recovery_factory_credential_readback()
 }
 
@@ -2291,17 +2292,82 @@ fn matches_the_readback_inconclusive(cause: RecoveryRouteUnavailable?, detail: N
 // ── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
 // The capture's own numbers, through the mints only.
 
-// A point INSIDE the band the capture itself records -- not a stopwatch reading.
-// 00_README.txt dates the checksummed bytes "Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the
-// reset", and 01_summary.txt carries `Date: 2026-10-16`. So the artifact supports the day exactly,
-// the hour exactly, and the minute only to its tens digit. The seconds and unit minute here are a
-// chosen point within that band because a field of this type needs one value; nothing in the model
-// claims more precision, and the claim below asserts only the day and the recorded band. Derived
-// through extdeps.units.iso8601_calendar rather than typed as a round number, so it cannot silently
-// name a different day than the artifact does -- and the previous value of this row did exactly that,
-// reading as 2025-10-09.
-fn recovery_capture_instant() -> EpochMs {
-  (iso8601_days_from_civil(y: 2026, m: 10, d: 16) * iso8601_seconds_per_day() + 6 * 3600 + 53 * 60) * 1000
+// A MINTED BAND, NOT A STOPWATCH READING. The artifact records its times to the precision the
+// capture itself has, and none of them to the second:
+//   02_inband_channel.txt   the device node's own date field: `Oct 16 06:27 /dev/ipmi0`
+//   00_README.txt           `PRIVILEGED WRITE 1 ... executed in the original run ~06:40Z`
+//   00_README.txt           `PRIVILEGED WRITE 2 (Redfish Manager.ResetToDefaults): executed ~06:45Z`
+//   00_README.txt           `Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the reset`
+// An EpochMs field holds ONE exact instant, so every value typed into one claims second precision
+// the bytes do not support (DESIGN section 5: "no plausible output is fabricated"; section 4d: an
+// inference is a bet and travels typed as one). So what an observation carries is the INTERVAL the
+// capture licenses, minted through std.interval -- a reversed pair becomes CaptureTimeBandInverted
+// carrying std.interval's own words about the pair rather than being swapped into order, and there
+// is no arm for "a time" at all, only for a band or for the refusal. Bounds go through
+// extdeps.units.iso8601_calendar rather than being typed as round numbers, so a bound cannot
+// silently name a different day than the artifact does.
+type CapturedInstant
+  = CaptureTimeBand { band: OrderedClosedInterval<EpochMs, EpochMs> }
+  | CaptureTimeBandInverted { reason: String }
+
+fn epoch_milliseconds_count(e: EpochMs) -> Int {
+  e
+}
+
+fn captured_instant_le(earlier: EpochMs, later: EpochMs) -> Bool {
+  epoch_milliseconds_count(e: earlier) <= epoch_milliseconds_count(e: later)
+}
+
+// one UTC instant on the captured day, from the hour/minute/second a capture line shows
+fn captured_epoch_millisecond(hour: Int, minute: Int, second: Int) -> EpochMs {
+  (iso8601_days_from_civil(y: 2026, m: 10, d: 16) * iso8601_seconds_per_day() + hour * 3600 + minute * 60 + second) * 1000
+}
+
+// a capture line reading `06:4x` licenses the minute it names; the closed interval runs to the
+// last whole second inside it, so every reading stays inside the recorded band
+fn captured_minute_band(hour: Int, minute: Int) -> CapturedInstant {
+  interval_construction_fold(
+    construction: closed_interval(
+      low: captured_epoch_millisecond(hour: hour, minute: minute, second: 0),
+      high: captured_epoch_millisecond(hour: hour, minute: minute, second: 59),
+      le: captured_instant_le,
+    ),
+    fold: IntervalConstructionFold {
+      ready: i => CaptureTimeBand { band: i },
+      refused: r => CaptureTimeBandInverted { reason: r },
+    },
+  )
+}
+
+// the band, read out of the carrier rather than out of a chosen point: a reader gets the ordered pair
+// (with std.interval's own bounds proof attached) and cannot mistake either bound for a stopwatch
+// reading. No accessor hands out one instant.
+fn captured_instant_band(instant: CapturedInstant) -> Optional<OrderedClosedInterval<EpochMs, EpochMs>> {
+  match instant {
+    CaptureTimeBand { band: b } => Some(b)
+    CaptureTimeBandInverted { reason: _ } => none
+  }
+}
+
+// the device node mtime, which 02 quotes to the minute: 06:27
+fn recovery_inband_channel_instant() -> CapturedInstant {
+  captured_minute_band(hour: 6, minute: 27)
+}
+
+// the post-reset readback: the README dates the re-capture ~06:5xZ, so the band spans that whole
+// tens-of-minutes band instead of the 06:53:00 an exact field would have had to invent
+fn recovery_post_reset_instant() -> CapturedInstant {
+  interval_construction_fold(
+    construction: closed_interval(
+      low: captured_epoch_millisecond(hour: 6, minute: 50, second: 0),
+      high: captured_epoch_millisecond(hour: 6, minute: 59, second: 59),
+      le: captured_instant_le,
+    ),
+    fold: IntervalConstructionFold {
+      ready: i => CaptureTimeBand { band: i },
+      refused: r => CaptureTimeBandInverted { reason: r },
+    },
+  )
 }
 
 fn recovery_rescue_host_address() -> Ipv4Address {
@@ -2360,7 +2426,7 @@ fn recovery_usb_medium() -> RescueHostMedium {
   UsbRescueMediumObserved {
     medium: ExecutedRescueMedium {
       evidence: recovery_inband_channel_capture_ref,
-      observed_at: recovery_capture_instant(),
+      observed_at: recovery_inband_channel_instant(),
     },
   }
 }
@@ -2409,7 +2475,7 @@ fn recovery_test_controller_observation() -> BmcAccessObservation {
     successful_read_surfaces: [],
     successful_write_surfaces: [],
     raw_response: content_hash_of_value(value: "in-band-recovery-fixture-raw-response"),
-    observed_at: recovery_capture_instant(),
+    observed_at: recovery_inband_channel_instant(),
   }
 }
 
@@ -2430,7 +2496,7 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
       channel: InBandChannelPasswordless { transport: OpenIpmiDriver },
       administrator: recovery_administrator_account(),
       evidence: recovery_inband_channel_capture_ref,
-      observed_at: recovery_capture_instant(),
+      observed_at: recovery_inband_channel_instant(),
     },
     controller: recovery_test_controller_observation(),
     in_band_device_identity: reading,
@@ -2475,7 +2541,7 @@ fn recovery_factory_credential_readback() -> RecoveryFactoryCredentialReadback {
   FactoryCredentialActiveAwaitingChange {
     message_id: "Base.1.16.0.PasswordChangeRequired",
     evidence: recovery_post_reset_readback_capture_ref,
-    observed_at: recovery_capture_instant(),
+    observed_at: recovery_post_reset_instant(),
   }
 }
 
@@ -2685,22 +2751,52 @@ test fn the_password_gate_admits_the_captured_channel_and_refuses_the_wrong_kind
     })
 }
 
-// THE CAPTURE'S INSTANT HAS A REFERENT OUTSIDE THIS FILE. Every capture-backed field carries
-// recovery_capture_instant(), so if that row were a plausible-looking number for the wrong day, every
-// fixture would still be self-consistent and nothing here would notice. The referent is 00_README.txt
-// ("Fresh re-capture taken 2026-10-16 ~06:5xZ") and 01_summary.txt ("Date: 2026-10-16"), read back
-// through extdeps.units.iso8601_calendar's own civil_from_days -- a different function than the one
-// that built the instant, so the two have to agree rather than one restating the other. The day is
-// asserted exactly; the hour and minute are asserted only to the README's "~06:5x" band, because that
-// is the resolution the artifact actually records and a tighter claim would be a fabrication.
-test fn the_capture_instant_reads_back_as_the_date_the_artifact_records() -> Bool {
-  let text = iso8601_utc_text(unix: recovery_capture_instant() as Int / 1000)
-  // "2026-10-16T06:53:00Z": the date prefix is the artifact's, "06:5" is the README's stated band.
-  starts_with(s: text, prefix: "2026-10-16T06:5")
-    // ...and NOT a day anyone would have guessed: the value this row replaced decoded to 2025-10-09, so
-    // a claim that only checked "some 2026 date" would have passed the fabrication too.
-    && starts_with(s: text, prefix: "2026-10-16") == true
-    && starts_with(s: text, prefix: "2025-") == false
+// THE CAPTURE'S TIME HAS A REFERENT OUTSIDE THIS FILE, AND ASSERTS ONLY ITS OWN PRECISION. Every
+// capture-backed field carries a band minted here, so if a bound were a plausible-looking number for
+// the wrong day every fixture would still be self-consistent and nothing here would notice. The
+// referents are 02_inband_channel.txt (`Oct 16 06:27 /dev/ipmi0`) and 00_README.txt ("Fresh
+// re-capture taken 2026-10-16 ~06:5xZ"), read back through extdeps.units.iso8601_calendar's
+// iso8601_utc_text -- a different function than the one that built the bounds, so the two have to
+// agree rather than one restating the other. The day is asserted exactly; the time is asserted only
+// as the band the artifact records, because a tighter claim would itself be the fabrication this
+// replaced: the value these bounds replaced decoded to 06:53:00.000, a reading nothing ever measured.
+test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool {
+  let channel = captured_instant_band(instant: recovery_inband_channel_instant())
+  let post_reset = captured_instant_band(instant: recovery_post_reset_instant())
+  // both mints produced bands; neither folded to the inverted arm
+  match channel {
+    Some(b) =>
+      // 02's own `06:27`, to the minute it shows -- and neither bound claims a second it has
+      iso8601_utc_text(unix: b.low as Int / 1000) == "2026-10-16T06:27:00Z"
+        && iso8601_utc_text(unix: b.high as Int / 1000) == "2026-10-16T06:27:59Z"
+        // the day is the artifact's, not a guessable one: the value this replaced decoded to 2025-10-09
+        && starts_with(s: iso8601_utc_text(unix: b.low as Int / 1000), prefix: "2026-10-16") == true
+    None => false
+  }
+    && (match post_reset {
+      Some(b) =>
+        // the README's ~06:5x band, whole: 06:50:00Z through 06:59:59Z
+        iso8601_utc_text(unix: b.low as Int / 1000) == "2026-10-16T06:50:00Z"
+          && iso8601_utc_text(unix: b.high as Int / 1000) == "2026-10-16T06:59:59Z"
+      None => false
+    })
+    // A REVERSED PAIR REFUSES, IT IS NOT SWAPPED. The fold is the only route to a band, so this is
+    // what the fold does when the pair is out of order: std.interval's own words, no band, and -- by
+    // the type -- no absorbing plausible value.
+    && (match interval_construction_fold(
+      construction: closed_interval(
+        low: captured_epoch_millisecond(hour: 6, minute: 59, second: 59),
+        high: captured_epoch_millisecond(hour: 6, minute: 50, second: 0),
+        le: captured_instant_le,
+      ),
+      fold: IntervalConstructionFold {
+        ready: i => CaptureTimeBand { band: i },
+        refused: r => CaptureTimeBandInverted { reason: r },
+      },
+    ) {
+      CaptureTimeBandInverted { reason: r } => string_non_empty(s: r)
+      CaptureTimeBand { band: _ } => false
+    })
 }
 
 // THE DEVICE NODE IS COMPARED AS AN ARM, AND THE TEXT A CAPTURE SHOWS IS DERIVED FROM THE ARM (review
