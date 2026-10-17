@@ -7,7 +7,7 @@ import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
 import std.bytes { octets_bytes }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.w3c.png {
-  PngDimensionOutOfRange, PngIdatTooLarge, PngPaletteSize, PngPaletteColorInadmissible, PngPaletteAlphaOutOfRange,
+  PngDimensionOutOfRange, PngIdatUpperBoundExceedsLimit, PngPaletteSize, PngPaletteColorInadmissible, PngPaletteAlphaOutOfRange,
   PngRowCount, PngRowWidth, PngIndexOutsidePalette,
 }
 import gunbc.design.brand_mark_raster { BrandRasterSizeOutOfRange, BrandRasterCanvasEmpty, BrandRasterMarkOutsideGround }
@@ -61,7 +61,7 @@ fn brand_asset_refusal_text(cause: BrandAssetRefusal) -> String {
     }
     BrandAssetPngRefused { cause: p } => match p {
       PngDimensionOutOfRange { axis: _, observed } => join(["PNG dimension ", brand_assets_n(v: observed), " out of range"], "")
-      PngIdatTooLarge { octets } => join(["PNG IDAT of ", brand_assets_n(v: octets), " octets too large"], "")
+      PngIdatUpperBoundExceedsLimit { upper_bound } => join(["PNG IDAT upper bound of ", brand_assets_n(v: upper_bound), " octets exceeds the chunk limit"], "")
       PngPaletteSize { entries } => join(["PNG palette of ", brand_assets_n(v: entries), " entries"], "")
       PngPaletteColorInadmissible { entry, color: _ } => join(["PNG palette entry ", brand_assets_n(v: entry), " colour inadmissible"], "")
       PngPaletteAlphaOutOfRange { entry, alpha } => join(["PNG palette entry ", brand_assets_n(v: entry), " alpha ", brand_assets_n(v: alpha)], "")
