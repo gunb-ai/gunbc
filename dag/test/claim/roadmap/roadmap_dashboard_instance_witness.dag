@@ -30,6 +30,7 @@ import gunbc.host.host_layout {
 }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  WorkerIsServiceUser,
   dispatch_base_branch,
   prod_role_realization,
   fleet_admitted_revision_source,
@@ -779,6 +780,7 @@ fn witness_production_slot(
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: srv1_live_dashboard_instance().directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: none,
   }
 }
@@ -1148,6 +1150,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
     directory_owner: live.directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: live.materialization_store_root,
   }
 }

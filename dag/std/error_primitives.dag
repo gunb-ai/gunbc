@@ -4,6 +4,22 @@ type Result<ok, err> = Ok { value: ok } | Err { value: err }
 
 type DivError = DivideByZero | Overflow
 
+// THE UNINHABITED TYPE, AND WHY IT LIVES HERE RATHER THAN BESIDE Unit. std.types imports
+// std.algebra, so algebra cannot import types. This module imports nothing, so both can name
+// Never. A dag-tree module may import it (v2.std.cross_tree.import_model: dag may not import v2).
+// An arm instantiated at Never has no constructor: the binding declares that arm unreachable for
+// that subject (std.goal_assessment AssessRefusal). There is no producer of Never.
+type Never
+
+// THE ELIMINATOR. Zero arms are exhaustive iff the scrutinee is an uninhabited sum (a coproduct
+// with zero arms, or this Never declaration by identity). An opaque without dag constructors is
+// not uninhabited. absurd inhabits every T; it cannot be applied to an Int. It consumes a Never;
+// it does not mint one.
+fn absurd<T>(n: Never) -> T {
+  match (n) {
+  }
+}
+
 // BOTTOM IS NOT A BYTES FACT, SO IT LIVES IN THE LEAF. The divergent seam and its result-type
 // projections lived in std.bytes, which imports std.types, which imports std.algebra -- so
 // std.algebra could not name the seam and spelled its own divergence as an unnamed `1 / 0`. This
