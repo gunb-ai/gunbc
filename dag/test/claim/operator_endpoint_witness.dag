@@ -2,7 +2,7 @@ module test.claim.operator_endpoint_witness
 
 import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.optional { Present, Absent }
-import gunbc.harness.harness_operator_route { operator_pin_plan, operator_pinned_post_request, operator_pinned_probe_request,
+import gunbc.harness.harness_operator_route { operator_pinned_certificate, operator_pin_plan, operator_pinned_post_request, operator_pinned_probe_request,
   harness_operator_route, operator_models_url, operator_chat_completions_url,
   operator_header_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
@@ -29,7 +29,7 @@ import gunbc.harness.harness_reasoning_wire {
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
 import std.measure { token_count_value }
 import extdeps.external_authority { CitedFigure, cited_figure_read }
-import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_certificate, pool_front_model_id, pool_front_session_header_name }
+import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_model_id, pool_front_session_header_name }
 import gunbc.harness.harness_turn { harness_post_is_retryable, HarnessPostOutcome, harness_outcome_label, TurnPoolNoCapacity, TurnBackendRefusedUnexplained }
 import gunbc.harness.harness_cli { harness_turn_exit }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -233,7 +233,7 @@ test fn a_session_identity_that_could_end_its_header_line_is_refused_not_sent() 
 // on the custody file's fingerprint, and no request is built for a refused one. A curl peer-verification exit
 // is the same refusal in the handshake.
 test fn a_certificate_with_another_fingerprint_is_not_pinned() -> Bool {
-  (operator_certificate_pin_decision(fingerprint_stdout: join(["sha256 Fingerprint=", pool_front_certificate.sha256_fingerprint as String, "\n"], "")))
+  (operator_certificate_pin_decision(fingerprint_stdout: join(["sha256 Fingerprint=", operator_pinned_certificate.sha256_fingerprint as String, "\n"], "")))
     && !(operator_certificate_pin_decision(fingerprint_stdout: "sha256 Fingerprint=AA:BB:CC\n"))
     && !(operator_certificate_pin_decision(fingerprint_stdout: ""))
     && !(operator_certificate_pin_decision(fingerprint_stdout: "no fingerprint here"))
@@ -265,8 +265,14 @@ test fn a_pinned_public_key_mismatch_curl_exit_90_is_not_pinned_and_never_retrie
   peer_exit_is_typed_not_pinned_and_never_retried(code: 90)
 }
 
-test fn a_peer_certificate_curl_exit_51_is_not_pinned_and_never_retried() -> Bool {
-  peer_exit_is_typed_not_pinned_and_never_retried(code: 51)
+// Exit 51 is CURLE_OBSOLETE51 at the pinned curl floor (>= 7.68), never emitted: it is no trust outcome, so it
+// carries no certificate fault and the round is not a certificate refusal.
+test fn curl_exit_51_is_obsolete_and_is_not_typed_as_a_certificate_refusal() -> Bool {
+  let p = w_post(success: false, exit_code: 51, status_line: "", body: "")
+  match p.fault {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 // CLAIM 3. A 503 from the front yields the typed no-capacity outcome: a hold on the retry policy, recorded, and

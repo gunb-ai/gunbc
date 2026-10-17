@@ -9,11 +9,11 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
 import extdeps.tools.openssl
-import extdeps.tools.curl { curl_exit_outcome, CurlPeerFailedVerification, CurlCaCertRejected, CurlPinnedPubkeyMismatch }
+import extdeps.tools.curl { curl_exit_outcome, CurlPeerFailedVerification, CurlPinnedPubkeyMismatch }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list }
 import extdeps.pool.pool_front {
-  pool_front_origin, pool_front_models_path, pool_front_chat_completions_path, pool_front_card_concurrency_high,
-  pool_front_authorization_header_line, pool_front_session_header_line, pool_front_certificate,
+  PoolFrontCertificate, pool_front_models_path, pool_front_chat_completions_path, pool_front_card_concurrency_high,
+  pool_front_authorization_header_line, pool_front_session_header_line,
   pool_front_certificate_is_pinned, pool_front_fingerprint_from_openssl_text, pool_front_status_meaning,
   PoolFrontNoTlsCardServing, PoolFrontAnswered, PoolFrontKeyRejected, PoolFrontRefused,
 }
@@ -42,9 +42,18 @@ data operator_placement_ruling: DeclarationRef = decl_ref(
 // gunbc.recurring_failure_mode the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card) is retired
 // with that card, which went away on 2026-10-17 03:28Z: there is no second path, and nothing else in this repository
 // reads the tunnel (operator_pod_launch survives only as the allocation record rented_allocation_witness imports).
-// The origin and both paths are the front's own declarations, not a second spelling of them.
+// THE LAB'S DEPLOYMENT OF THE FRONT, parameters of this binding and not upstream facts: the LAN origin, and the
+// self-signed mkcert development certificate (notAfter 2028-09-17) the lab pins. The two paths are the front's own
+// declarations (extdeps.pool.pool_front), not a second spelling of them.
+data operator_pool_front_origin: NonEmptyStr = "https://192.168.1.188:3737" as NonEmptyStr
+
+data operator_pinned_certificate: PoolFrontCertificate = PoolFrontCertificate {
+  sha256_fingerprint: "23:34:E0:C1:03:32:F8:0C:82:CA:D8:7F:D1:32:1E:1C:DF:0C:B6:CE:CF:B2:98:73:73:A0:12:3C:A4:F7:F1:CF" as NonEmptyStr,
+  not_after: "2028-09-17" as NonEmptyStr,
+}
+
 fn operator_endpoint_origin() -> NonEmptyStr? {
-  Present { value: pool_front_origin }
+  Present { value: operator_pool_front_origin }
 }
 
 fn operator_endpoint_url(path: NonEmptyStr) -> NonEmptyStr? {
@@ -127,7 +136,7 @@ fn operator_class_admission(route: HarnessOperatorRoute, class: ServingCoTenancy
 // $HOME/.config/gunbc-pool-front/api-key, owner the user that runs the harness, mode 0600, directory 0700. It is
 // read here into a 0600 header file and never appears in argv, a log or an event. The certificate is public:
 // $HOME/.config/gunbc-pool-front/server.pem, mode 0644, any provenance, because it is trusted only if its SHA-256
-// fingerprint equals the pinned one (extdeps.pool.pool_front pool_front_certificate) -- a different file refuses.
+// fingerprint equals the pinned one (operator_pinned_certificate) -- a different file refuses.
 fn operator_home_path(relative: NonEmptyStr) -> NonEmptyStr? {
   match shell.Env.Get(name: "HOME").value {
     Absent => none
@@ -243,7 +252,7 @@ type OperatorCertificatePin
 fn operator_certificate_pin_decision(fingerprint_stdout: String) -> Bool {
   match pool_front_fingerprint_from_openssl_text(stdout: fingerprint_stdout) {
     Absent => false
-    Present { value: f } => pool_front_certificate_is_pinned(pinned: pool_front_certificate, presented: f)
+    Present { value: f } => pool_front_certificate_is_pinned(pinned: operator_pinned_certificate, presented: f)
   }
 }
 
@@ -270,7 +279,7 @@ fn operator_read_certificate(route: HarnessOperatorRoute) -> OperatorCertificate
 fn operator_pin_staged_certificate(staged: NonEmptyStr, pem: String) -> OperatorCertificatePin {
   let fp = openssl.X509.Sha256Fingerprint(cert_file: staged as String)
   if fp.exit_code != 0 || !operator_certificate_pin_decision(fingerprint_stdout: fp.stdout) {
-    OperatorCertificateRefused { detail: join(["the pool front's certificate file is not the pinned certificate (expected SHA-256 ", pool_front_certificate.sha256_fingerprint as String, "); nothing was sent"], "") }
+    OperatorCertificateRefused { detail: join(["the pool front's certificate file is not the pinned certificate (expected SHA-256 ", operator_pinned_certificate.sha256_fingerprint as String, "); nothing was sent"], "") }
   } else {
     let pub = openssl.X509.PublicKeyPem(cert_file: staged as String)
     if pub.exit_code != 0 || trim(s: pub.stdout) == "" {
@@ -356,10 +365,10 @@ fn operator_round_fault(success: Bool, curl_exit: Int, status: HttpStatus?) -> O
     none
   } else {
     match curl_exit_outcome(code: curl_exit) {
-      // CurlCaCertRejected is the chain or the host name (a missing IP SAN) failing against the trusted anchor, not a
-      // different certificate: typed apart so a SAN defect is never read as "not the pinned certificate".
-      CurlCaCertRejected => Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: curl_exit } }
-      CurlPeerFailedVerification => Present { value: OperatorCertificateNotPinned { curl_exit: curl_exit } }
+      // CurlPeerFailedVerification is the chain, the expiry or the host name (a missing IP SAN) failing against the
+      // trusted anchor, not a different certificate: typed apart so a SAN defect is never read as "not the pinned
+      // certificate". CurlPinnedPubkeyMismatch is the pin itself firing.
+      CurlPeerFailedVerification => Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: curl_exit } }
       CurlPinnedPubkeyMismatch => Present { value: OperatorCertificateNotPinned { curl_exit: curl_exit } }
       _ =>
         match status {

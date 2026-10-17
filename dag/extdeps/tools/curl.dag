@@ -702,11 +702,13 @@ type CurlExitOutcome
   | CurlCouldNotConnect
   | CurlOperationTimedOut
   | CurlTlsHandshakeFailed
-  // THE TRUST DECISION, NOT THE NETWORK, one variant per upstream code (CURLE_PEER_FAILED_VERIFICATION 51,
-  // CURLE_SSL_CACERT 60, CURLE_SSL_PINNEDPUBKEYNOTMATCH 90). Kept apart from CurlTlsHandshakeFailed (35) because
-  // a caller that pins must refuse on them and never retry them as if the far side had been unreachable.
+  // THE TRUST DECISION, NOT THE NETWORK (libcurl-errors, curl.se/libcurl/c/libcurl-errors.html). At the pinned
+  // floor (>= 7.68) CURLE_PEER_FAILED_VERIFICATION is exit 60 -- CURLE_SSL_CACERT is its alias since 7.62.0, and
+  // its former value 51 is CURLE_OBSOLETE51, never emitted -- covering an untrusted chain, an expired certificate
+  // and a host name / IP SAN mismatch. CURLE_SSL_PINNEDPUBKEYNOTMATCH is exit 90. Both are kept apart from
+  // CurlTlsHandshakeFailed (35) because a caller that pins must refuse on them and never retry them as if the far
+  // side had been unreachable.
   | CurlPeerFailedVerification
-  | CurlCaCertRejected
   | CurlPinnedPubkeyMismatch
   | CurlEmptyReply
   | CurlReceiveFailed
@@ -719,8 +721,7 @@ fn curl_exit_outcome(code: Int) -> CurlExitOutcome {
     7 => CurlCouldNotConnect
     28 => CurlOperationTimedOut
     35 => CurlTlsHandshakeFailed
-    51 => CurlPeerFailedVerification
-    60 => CurlCaCertRejected
+    60 => CurlPeerFailedVerification
     90 => CurlPinnedPubkeyMismatch
     52 => CurlEmptyReply
     56 => CurlReceiveFailed
@@ -735,8 +736,7 @@ fn curl_exit_outcome_name(outcome: CurlExitOutcome) -> String {
     CurlCouldNotConnect => "could not connect (curl exit 7)"
     CurlOperationTimedOut => "operation timed out (curl exit 28)"
     CurlTlsHandshakeFailed => "TLS handshake failed (curl exit 35)"
-    CurlPeerFailedVerification => "the server's certificate failed verification (curl exit 51)"
-    CurlCaCertRejected => "the server's certificate did not verify against the trusted anchor (curl exit 60)"
+    CurlPeerFailedVerification => "the server's certificate failed verification: chain, expiry or host name (curl exit 60)"
     CurlPinnedPubkeyMismatch => "the server's public key was not the pinned one (curl exit 90)"
     CurlEmptyReply => "server sent an empty reply (curl exit 52)"
     CurlReceiveFailed => "failure receiving data (curl exit 56)"

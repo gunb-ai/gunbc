@@ -111,7 +111,6 @@ fn harness_bounded_presence(url: String) -> HarnessBoundedPresence {
       CurlCouldNotResolveHost => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
       CurlTlsHandshakeFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
       CurlPeerFailedVerification => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
-      CurlCaCertRejected => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
       CurlPinnedPubkeyMismatch => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
       CurlEmptyReply => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
       CurlReceiveFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }

@@ -49,7 +49,9 @@ data pool_front_contract_standing: CitedFigureStanding = TranscribedUncited {
 }
 
 // ── THE SURFACE ─────────────────────────────────────────────────────────────────────────────────
-data pool_front_origin: NonEmptyStr = "https://192.168.1.188:3737" as NonEmptyStr
+// The ORIGIN and the pinned CERTIFICATE are this lab's deployment of the front, not the interface: they are
+// parameters of the route binding (gunbc.harness.harness_operator_route operator_pool_front_origin,
+// operator_pinned_certificate), so a moved host or a reissued certificate edits no upstream module.
 data pool_front_chat_completions_path: NonEmptyStr = "/pool/v1/chat/completions" as NonEmptyStr
 data pool_front_models_path: NonEmptyStr = "/pool/v1/models" as NonEmptyStr
 
@@ -119,16 +121,11 @@ fn pool_front_session_header_line(session: NonEmptyStr) -> NonEmptyStr? {
 }
 
 // ── THE CERTIFICATE THE CLIENT PINS ─────────────────────────────────────────────────────────────
-// A self-signed mkcert development certificate. A client trusts exactly this certificate: it never turns
+// The shape of the certificate a client pins (the value is the deployment's, see above). A client trusts exactly it: it never turns
 // verification off and never trusts a certificate it has not matched against this fingerprint.
 type PoolFrontCertificate {
   sha256_fingerprint: NonEmptyStr
   not_after: NonEmptyStr
-}
-
-data pool_front_certificate: PoolFrontCertificate = PoolFrontCertificate {
-  sha256_fingerprint: "23:34:E0:C1:03:32:F8:0C:82:CA:D8:7F:D1:32:1E:1C:DF:0C:B6:CE:CF:B2:98:73:73:A0:12:3C:A4:F7:F1:CF" as NonEmptyStr,
-  not_after: "2028-09-17" as NonEmptyStr,
 }
 
 fn pool_front_fingerprint_canonical(text: String) -> String {
