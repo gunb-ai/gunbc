@@ -1,15 +1,14 @@
-/// Synchronous probe of whether the remote runner executes THIS tree.
-/// Deleted after use; it is not a standing witness.
-module test.claim.swift_wren_451_sync_probe_witness;
+/// Synchronous probe: does `ctrl-build --remote` execute the CALLER's working
+/// tree, or a ref fetched from origin? Deleted once answered; not a standing witness.
+module test.claim.swift_wren_451_sync_probe_witness
 
-import test.claim.test_outcome;
-
-data SyncProbeDisposition:
-  | RanFromLocalTree { marker: String }
-  | DidNotRun
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn the_runner_ran_the_locally_written_probe() -> Bool {
+// The name below is committed and pushed. The runner can only see a function
+// that exists in whatever tree it actually loaded.
+test fn pushed_side_marker() -> Bool {
   true
 }
