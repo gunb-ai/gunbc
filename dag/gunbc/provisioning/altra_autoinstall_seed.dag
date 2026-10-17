@@ -1073,18 +1073,25 @@ fn blocking_refusal(intent: PackageIntent) -> Optional<SeedInteractiveCause> {
 // counts — an unclassified package contributes nothing, because it answered nothing. The final +1 is the
 // entrypoint question, closed by the authorisation the caller had to earn to get here. The addressing and
 // mirror terms match their source sum types directly rather than through a Bool helper.
+fn intent_answered_its_question(intent: PackageIntent) -> Bool {
+  match intent {
+    QuestionAnswered { package: _, debconf_seed: _ } => true
+    QuestionUnanswered { package: _ } => false
+    UnclassifiedPackage { name: _, debconf_seed: _ } => false
+  }
+}
+
 fn questions_closed_count(
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
   network: SeedNetworkPosture,
 ) -> Int {
-  let closed = install_packages
-    .map(intent => package_prompting_verdict(intent: intent))
-    .filter(verdict => verdict_is_closed(verdict: verdict))
-    .length() + late_packages
-    .map(intent => package_prompting_verdict(intent: intent))
-    .filter(verdict => verdict_is_closed(verdict: verdict))
-    .length()
+  // COUNTED OVER THE INTENTS THEMSELVES, not over verdicts mapped from them. Mapping to a verdict and then
+  // filtering it would be a second, decorative pass: the green arm of the audit is only reachable when every
+  // intent left no question open, so such a filter is necessarily true of everything it sees — the shape the
+  // review called predicate dissolution, one layer deeper than the helpers it named. Counting the answered arm
+  // directly says the same thing once, and a new PackageIntent arm must state whether it counts as closed.
+  let closed = install_packages.filter(intent => intent_answered_its_question(intent: intent)).length() + late_packages.filter(intent => intent_answered_its_question(intent: intent)).length()
   let addressing_closed = match network.addressing {
     SeededNetplan { source: _ } => 1
     InstallerManaged => 0
@@ -1096,15 +1103,9 @@ fn questions_closed_count(
   closed + addressing_closed + mirror_closed + 1
 }
 
-// TOTAL OVER THE VERDICT SUM TYPE: only an answered question counts as closed. A new arm must say which side
-// it is on and cannot inherit "closed" the way a `_ => true` default would.
-fn verdict_is_closed(verdict: PackagePromptingVerdict) -> Bool {
-  match verdict {
-    ClosedQuestion { name: _, question: _ } => true
-    OpenQuestion { name: _, question: _ } => false
-    UnclassifiedPrompting { name: _ } => false
-  }
-}
+// TOTAL OVER PackageIntent, and the only place the proof's arithmetic decides what a closed question is. An
+// unanswered or unclassified intent contributes nothing: the first did not answer and the second was never
+// asked about. A new arm must say which side it is on rather than inheriting a count.
 
 // ---------------------------------------------------------------------------
 // 7. The seed record, its constructor, and the projection into upstream's payload.
