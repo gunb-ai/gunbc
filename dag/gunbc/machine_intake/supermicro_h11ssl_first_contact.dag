@@ -5,10 +5,8 @@ import std.nat { Nat }
 import gunbc.machine_intake.bmc_operator_credential_inventory { OperatorHeldSecretRef, FactoryLoginCredential, OobLicenceKey }
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp, rfc3339_compare, Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
-import std.optional { Present, Absent }
 import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyUnobserved }
-import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_authority }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_authority, H11sslVariant, H11sslStorageSupport, supermicro_h11ssl_storage_support }
 import extdeps.board_authority { BoardAuthorityRef }
 
 // RECEIPT, NOT UPSTREAM FACT (DESIGN section 3, external upstream decomposition). What THIS
@@ -29,17 +27,30 @@ import extdeps.board_authority { BoardAuthorityRef }
 type H11sslUnitBoardRevision { major: Nat, minor: Nat }
 data supermicro_h11ssl_unit_board_revision: H11sslUnitBoardRevision = H11sslUnitBoardRevision { major: 2, minor: 0 }
 
-type H11sslVariant = VariantI | VariantC | VariantNc
+// Which of -i/-C/-NC the unit is: unread until the FRU Board Part Number (or lspci for a SAS3008)
+// is read. The JPS1 silkscreen suggests -C or -NC but does not establish it.
+type H11sslUnitVariantStanding
+  = UnitVariantObserved { variant: H11sslVariant }
+  | UnitVariantUnread { read_obligation: NonEmptyStr }
 
-// Which of -i/-C/-NC the units are is unestablished; the JPS1 silkscreen suggests -C or -NC.
-data supermicro_h11ssl_unit_variant_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Read the IPMI FRU Board Part Number (and lspci for a SAS3008) before using any *_i_variant row of extdeps.boards.supermicro_h11ssl for these units.",
+data supermicro_h11ssl_unit_variant_standing: H11sslUnitVariantStanding = UnitVariantUnread {
+  read_obligation: "Read the IPMI FRU Board Part Number (and lspci for a SAS3008) before projecting any variant-specific row of extdeps.boards.supermicro_h11ssl onto this unit.",
+}
+
+type H11sslUnitStorageProjection
+  = UnitStorageProjected { variant: H11sslVariant, support: H11sslStorageSupport }
+  | UnitStorageRefusedVariantUnread { read_obligation: NonEmptyStr }
+
+// A unit's drive support is projected only from an observed variant; an unread variant refuses
+// rather than choosing a column.
+fn supermicro_h11ssl_unit_storage_projection(standing: H11sslUnitVariantStanding) -> H11sslUnitStorageProjection {
+  match standing {
+    UnitVariantObserved { variant: v } => UnitStorageProjected { variant: v, support: supermicro_h11ssl_storage_support(variant: v) }
+    UnitVariantUnread { read_obligation: o } => UnitStorageRefusedVariantUnread { read_obligation: o }
+  }
 }
 
 type H11sslCredentialTried = FactoryDefaultAdminAdmin | BoardLabelCredential
-
-// LicenceActivationCgi is POST /cgi/ipmi.cgi op=BIOS_LINCENSE_ACTIVATE.XML (the firmware's spelling).
-type H11sslObservationInstrument = WebLoginCgi | RedfishServiceRoot | LicenceActivationCgi
 
 // The members of an answered Redfish ServiceRoot, as the unit named them.
 type H11sslRedfishRootMember
@@ -49,11 +60,10 @@ type H11sslRedfishRootMember
 // How an observation's instant was obtained; never a BMC-side clock.
 type H11sslInstantBasis = RequestIssuedAtFromObserverTranscript | BmcClockReading
 
-type H11sslObservationOutcome
-  = SessionIssued
-  | LoginRejected
-  | ServiceRootRefused { message_id: NonEmptyStr }
-  | LicenceActivated { check_attribute: Nat }
+type H11sslLoginOutcome = SessionIssued | LoginRejected
+
+type H11sslRedfishRootOutcome
+  = ServiceRootRefused { message_id: NonEmptyStr }
   | ServiceRootAnswered {
       redfish_version: NonEmptyStr
       root_schema: NonEmptyStr
@@ -61,17 +71,37 @@ type H11sslObservationOutcome
       members: List<H11sslRedfishRootMember>
     }
 
-// One typed observation per probe: instrument, time, observer, outcome, and whether the probe
-// changed anything on the unit.
-type H11sslObservation {
-  instrument: H11sslObservationInstrument
-  credential: H11sslCredentialTried?
-  observed_at: Rfc3339Timestamp
-  instant_basis: H11sslInstantBasis
-  observed_by: NonEmptyStr
-  outcome: H11sslObservationOutcome
-  unit_state_changed: Bool
+type H11sslObservedInstant {
+  at: Rfc3339Timestamp
+  basis: H11sslInstantBasis
 }
+
+// One typed observation per probe. The instrument is the arm, so an instrument cannot carry an
+// outcome that is not its own: a web login yields a login outcome, the Redfish root yields a root
+// outcome, and the licence activation (POST /cgi/ipmi.cgi op=BIOS_LINCENSE_ACTIVATE.XML, the
+// firmware's spelling) yields the CHECK attribute it answered. Each records whether the probe
+// changed anything on the unit.
+type H11sslObservation
+  = WebLoginObservation {
+      credential: H11sslCredentialTried
+      instant: H11sslObservedInstant
+      observed_by: NonEmptyStr
+      outcome: H11sslLoginOutcome
+      unit_state_changed: Bool
+    }
+  | RedfishRootObservation {
+      instant: H11sslObservedInstant
+      observed_by: NonEmptyStr
+      outcome: H11sslRedfishRootOutcome
+      unit_state_changed: Bool
+    }
+  | LicenceActivationObservation {
+      credential: H11sslCredentialTried
+      instant: H11sslObservedInstant
+      observed_by: NonEmptyStr
+      check_attribute: Nat
+      unit_state_changed: Bool
+    }
 
 // Secrets are carried ONLY as references to the operator-held inventory row keyed by BMC MAC
 // (gunbc.machine_intake.bmc_operator_credential_inventory); no value is stored here. The label
@@ -107,11 +137,11 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
   bmc_address: "192.168.1.252",
   bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123),
   observations: [
-    H11sslObservation { instrument: WebLoginCgi, credential: Present { value: FactoryDefaultAdminAdmin }, observed_at: "2026-10-17T00:13:31Z", instant_basis: RequestIssuedAtFromObserverTranscript, observed_by: "merry-fox-82", outcome: LoginRejected, unit_state_changed: false },
-    H11sslObservation { instrument: WebLoginCgi, credential: Present { value: BoardLabelCredential }, observed_at: "2026-10-17T00:15:34Z", instant_basis: RequestIssuedAtFromObserverTranscript, observed_by: "merry-fox-82", outcome: SessionIssued, unit_state_changed: false },
-    H11sslObservation { instrument: RedfishServiceRoot, credential: Absent, observed_at: "2026-10-17T00:07:16Z", instant_basis: RequestIssuedAtFromObserverTranscript, observed_by: "merry-fox-82", outcome: ServiceRootRefused { message_id: "Base.v1_4_0.OemLicenseNotPassed" }, unit_state_changed: false },
-    H11sslObservation { instrument: LicenceActivationCgi, credential: Present { value: BoardLabelCredential }, observed_at: "2026-10-17T02:58:01Z", instant_basis: RequestIssuedAtFromObserverTranscript, observed_by: "merry-fox-82", outcome: LicenceActivated { check_attribute: 1 }, unit_state_changed: true },
-    H11sslObservation { instrument: RedfishServiceRoot, credential: Absent, observed_at: "2026-10-17T02:58:07Z", instant_basis: RequestIssuedAtFromObserverTranscript, observed_by: "merry-fox-82", outcome: ServiceRootAnswered { redfish_version: "1.0.1", root_schema: "ServiceRoot.v1_1_0", uuid: "00000000-0000-0000-0000-AC1F6BE3F57B", members: [Systems, Chassis, Managers, Tasks, SessionService, AccountService, EventService, UpdateService, Registries] }, unit_state_changed: false },
+    WebLoginObservation { credential: FactoryDefaultAdminAdmin, instant: H11sslObservedInstant { at: "2026-10-17T00:13:31Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", outcome: LoginRejected, unit_state_changed: false },
+    WebLoginObservation { credential: BoardLabelCredential, instant: H11sslObservedInstant { at: "2026-10-17T00:15:34Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", outcome: SessionIssued, unit_state_changed: false },
+    RedfishRootObservation { instant: H11sslObservedInstant { at: "2026-10-17T00:07:16Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", outcome: ServiceRootRefused { message_id: "Base.v1_4_0.OemLicenseNotPassed" }, unit_state_changed: false },
+    LicenceActivationObservation { credential: BoardLabelCredential, instant: H11sslObservedInstant { at: "2026-10-17T02:58:01Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", check_attribute: 1, unit_state_changed: true },
+    RedfishRootObservation { instant: H11sslObservedInstant { at: "2026-10-17T02:58:07Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", outcome: ServiceRootAnswered { redfish_version: "1.0.1", root_schema: "ServiceRoot.v1_1_0", uuid: "00000000-0000-0000-0000-AC1F6BE3F57B", members: [Systems, Chassis, Managers, Tasks, SessionService, AccountService, EventService, UpdateService, Registries] }, unit_state_changed: false },
   ],
   licences: [
     H11sslLicenceActivation { product_code: "SFT-OOB-LIC", bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123), source: OperatorHeldCertificate { certificate_number: "0823170253", inventory_row: OperatorHeldSecretRef { bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123), secret: OobLicenceKey } } },
@@ -133,11 +163,8 @@ data supermicro_h11ssl_first_contact_family_standing: BmcFirmwareFamilyStanding 
 }
 
 fn rejects_factory_default(o: H11sslObservation) -> Bool {
-  match o.outcome {
-    LoginRejected => match o.credential {
-      Present { value: FactoryDefaultAdminAdmin } => true
-      _ => false
-    }
+  match o {
+    WebLoginObservation { credential: FactoryDefaultAdminAdmin, instant: _, observed_by: _, outcome: LoginRejected, unit_state_changed: _ } => true
     _ => false
   }
 }
@@ -156,31 +183,51 @@ fn instant_precedes(a: Rfc3339Timestamp, b: Rfc3339Timestamp) -> Bool {
   }
 }
 
+fn observed_instant(o: H11sslObservation) -> H11sslObservedInstant {
+  match o {
+    WebLoginObservation { credential: _, instant: i, observed_by: _, outcome: _, unit_state_changed: _ } => i
+    RedfishRootObservation { instant: i, observed_by: _, outcome: _, unit_state_changed: _ } => i
+    LicenceActivationObservation { credential: _, instant: i, observed_by: _, check_attribute: _, unit_state_changed: _ } => i
+  }
+}
+
+// The one comparable basis: every step of the transition is timed by the observer's transcript.
+fn on_transcript_basis(o: H11sslObservation) -> Bool {
+  match observed_instant(o: o).basis {
+    RequestIssuedAtFromObserverTranscript => true
+    BmcClockReading => false
+  }
+}
+
+// Redfish root, refused, no state change.
 fn is_root_refused(o: H11sslObservation) -> Bool {
-  match o.outcome {
-    ServiceRootRefused { message_id: _ } => true
+  match o {
+    RedfishRootObservation { instant: _, observed_by: _, outcome: ServiceRootRefused { message_id: _ }, unit_state_changed: ch } => !ch && on_transcript_basis(o: o)
     _ => false
   }
 }
 
+// Licence activation CGI answering CHECK=1 and changing the unit.
 fn is_activation(o: H11sslObservation) -> Bool {
-  match o.outcome {
-    LicenceActivated { check_attribute: _ } => true
+  match o {
+    LicenceActivationObservation { credential: _, instant: _, observed_by: _, check_attribute: c, unit_state_changed: ch } => c == 1 && ch && on_transcript_basis(o: o)
     _ => false
   }
 }
 
+// Redfish root, answered, no state change.
 fn is_root_answered(o: H11sslObservation) -> Bool {
-  match o.outcome {
-    ServiceRootAnswered { redfish_version: _, root_schema: _, uuid: _, members: _ } => true
+  match o {
+    RedfishRootObservation { instant: _, observed_by: _, outcome: ServiceRootAnswered { redfish_version: _, root_schema: _, uuid: _, members: _ }, unit_state_changed: ch } => !ch && on_transcript_basis(o: o)
     _ => false
   }
 }
 
-// True only for the ordered transition on this BMC: a refused root, then a licence activation,
-// then an answered root, each strictly later than the one before (RFC 3339 instants). A
-// reordered or deleted step is false. Consumed by the witness now; the arrival-intake Redfish
-// path is the same declared frontier as the module header.
+// True only for the ordered transition on this BMC: a refused Redfish root, then a licence
+// activation (CHECK=1, state changed), then an answered Redfish root, all three timed on the
+// observer's transcript and each strictly later (RFC 3339) than the one before. A reordered,
+// deleted or differently-timed step is false. Consumed by the witness now; the arrival-intake
+// Redfish path is the same declared frontier as the module header.
 fn supermicro_h11ssl_redfish_root_answered_after_activation(r: H11sslFirstContactReceipt) -> Bool {
-  any(r.observations, refused => is_root_refused(o: refused) && any(r.observations, act => is_activation(o: act) && instant_precedes(a: refused.observed_at, b: act.observed_at) && any(r.observations, ans => is_root_answered(o: ans) && instant_precedes(a: act.observed_at, b: ans.observed_at))))
+  any(r.observations, refused => is_root_refused(o: refused) && any(r.observations, act => is_activation(o: act) && instant_precedes(a: observed_instant(o: refused).at, b: observed_instant(o: act).at) && any(r.observations, ans => is_root_answered(o: ans) && instant_precedes(a: observed_instant(o: act).at, b: observed_instant(o: ans).at))))
 }

@@ -19,11 +19,17 @@ import extdeps.boards.supermicro_h11ssl {
   supermicro_h11ssl_lan_option_rom_choices, Lan1, Lan2,
   OptionRomDisabled, OptionRomPxe, OptionRomIscsi, OptionRomLegacy, OptionRomEfi,
   supermicro_h11ssl_fan_pin, FanPwm,
+  supermicro_h11ssl_dimm_capacity_stated, Rdimm2R, Rdimm2Dr, Lrdimm3ds4R, Lrdimm3ds8R,
+  supermicro_h11ssl_storage_support, VariantI, VariantC, VariantNc,
 }
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   supermicro_h11ssl_first_contact_receipt, supermicro_h11ssl_factory_login_producer_admitted,
   supermicro_h11ssl_redfish_root_answered_after_activation, H11sslFirstContactReceipt,
-  LicenceActivated, ServiceRootRefused, SessionIssued, LoginRejected, ServiceRootAnswered, OperatorHeldCertificate,
+  OperatorHeldCertificate, H11sslObservation, H11sslObservedInstant, BmcClockReading,
+  WebLoginObservation, RedfishRootObservation, LicenceActivationObservation,
+  ServiceRootRefused, ServiceRootAnswered,
+  UnitVariantObserved, UnitStorageProjected, UnitStorageRefusedVariantUnread,
+  supermicro_h11ssl_unit_variant_standing, supermicro_h11ssl_unit_storage_projection,
 }
 
 // The 4-DIMM guides differ by CPU family: the 7001 guide is C1,A1,E1,H1 and the 7002 guide is
@@ -68,7 +74,7 @@ test fn w_manual_states_no_jumper_bmc_account_reset() -> Bool {
     && match supermicro_h11ssl_jumper_resets_bmc_accounts(j: Jpb1BmcEnable) { BmcAccountResetNotStated => true  _ => false }
 }
 
-// Both BIOS surfaces, cell by cell: EPYC 7001 (p.75) and EPYC 7002 (p.105) differ, and a family
+// Both BIOS surfaces, cell by cell: EPYC 7001 (p.75) and EPYC 7002 (LAN1 p.104, LAN2 p.105) differ, and a family
 // that collapsed to one vocabulary would drop iSCSI/Legacy.
 test fn w_lan_option_rom_matrices_by_cpu_family() -> Bool {
   supermicro_h11ssl_lan_option_rom_choices(family: Epyc7001, lan: Lan1) == [OptionRomDisabled, OptionRomPxe, OptionRomIscsi, OptionRomLegacy, OptionRomEfi]
@@ -84,24 +90,97 @@ test fn w_rejected_default_login_does_not_admit_factory_producer() -> Bool {
 fn without_outcome(r: H11sslFirstContactReceipt, drop_activation: Bool) -> H11sslFirstContactReceipt {
   H11sslFirstContactReceipt {
     board: r.board, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac,
-    observations: filter(r.observations, o => match o.outcome {
-      LicenceActivated { check_attribute: _ } => !drop_activation
-      ServiceRootRefused { message_id: _ } => drop_activation
-      SessionIssued => true
-      LoginRejected => true
-      ServiceRootAnswered { redfish_version: _, root_schema: _, uuid: _, members: _ } => true
+    observations: filter(r.observations, o => match o {
+      LicenceActivationObservation { credential: _, instant: _, observed_by: _, check_attribute: _, unit_state_changed: _ } => !drop_activation
+      RedfishRootObservation { instant: _, observed_by: _, outcome: ServiceRootRefused { message_id: _ }, unit_state_changed: _ } => drop_activation
+      RedfishRootObservation { instant: _, observed_by: _, outcome: ServiceRootAnswered { redfish_version: _, root_schema: _, uuid: _, members: _ }, unit_state_changed: _ } => true
+      WebLoginObservation { credential: _, instant: _, observed_by: _, outcome: _, unit_state_changed: _ } => true
     }),
     licences: r.licences, label: r.label,
   }
 }
 
+// The receipt with its licence activation replaced by `f` of it (instrument and arm unchanged).
+fn with_activation(r: H11sslFirstContactReceipt, f: fn(H11sslObservation) -> H11sslObservation) -> H11sslFirstContactReceipt {
+  H11sslFirstContactReceipt {
+    board: r.board, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac,
+    observations: map(r.observations, o => match o {
+      LicenceActivationObservation { credential: _, instant: _, observed_by: _, check_attribute: _, unit_state_changed: _ } => f(o)
+      _ => o
+    }),
+    licences: r.licences, label: r.label,
+  }
+}
+
+fn activation_on_bmc_clock(o: H11sslObservation) -> H11sslObservation {
+  match o {
+    LicenceActivationObservation { credential: c, instant: i, observed_by: by, check_attribute: k, unit_state_changed: ch } =>
+      LicenceActivationObservation { credential: c, instant: H11sslObservedInstant { at: i.at, basis: BmcClockReading }, observed_by: by, check_attribute: k, unit_state_changed: ch }
+    _ => o
+  }
+}
+
+fn activation_that_changed_nothing(o: H11sslObservation) -> H11sslObservation {
+  match o {
+    LicenceActivationObservation { credential: c, instant: i, observed_by: by, check_attribute: k, unit_state_changed: _ } =>
+      LicenceActivationObservation { credential: c, instant: i, observed_by: by, check_attribute: k, unit_state_changed: false }
+    _ => o
+  }
+}
+
+fn activation_refused_check(o: H11sslObservation) -> H11sslObservation {
+  match o {
+    LicenceActivationObservation { credential: c, instant: i, observed_by: by, check_attribute: _, unit_state_changed: ch } =>
+      LicenceActivationObservation { credential: c, instant: i, observed_by: by, check_attribute: 0, unit_state_changed: ch }
+    _ => o
+  }
+}
+
 // The ordered transition (refusal, then activation, then answer) holds on the receipt and is
-// false once the activation or the refusal is deleted.
+// false once the activation or the refusal is deleted, once the activation is timed on the BMC
+// clock between two transcript-timed steps, or once the activation did not answer CHECK=1 or
+// changed nothing. An instrument carrying another instrument's outcome has no constructor, so
+// that mismatch is structurally impossible rather than checked.
 test fn w_redfish_root_answered_only_after_ordered_activation() -> Bool {
   let r = supermicro_h11ssl_first_contact_receipt
   supermicro_h11ssl_redfish_root_answered_after_activation(r: r)
     && !supermicro_h11ssl_redfish_root_answered_after_activation(r: without_outcome(r: r, drop_activation: true))
     && !supermicro_h11ssl_redfish_root_answered_after_activation(r: without_outcome(r: r, drop_activation: false))
+    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: with_activation(r: r, f: activation_on_bmc_clock))
+    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: with_activation(r: r, f: activation_that_changed_nothing))
+    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: with_activation(r: r, f: activation_refused_check))
+}
+
+// The manual's 7001 table lists 4R under LRDIMM 3DS (beside 8R), not under RDIMM, and the 7002
+// RDIMM row reads '2R or 2DR'; each cell answers its own maximum and not its neighbour's.
+test fn w_dimm_module_kinds_and_capacities_per_family() -> Bool {
+  supermicro_h11ssl_dimm_capacity_stated(family: Epyc7001, module_kind: Lrdimm3ds4R, per_dimm_max: gigabyte(count: 64))
+    && supermicro_h11ssl_dimm_capacity_stated(family: Epyc7001, module_kind: Lrdimm3ds8R, per_dimm_max: gigabyte(count: 128))
+    && !supermicro_h11ssl_dimm_capacity_stated(family: Epyc7001, module_kind: Lrdimm3ds4R, per_dimm_max: gigabyte(count: 128))
+    && supermicro_h11ssl_dimm_capacity_stated(family: Epyc7002, module_kind: Rdimm2R, per_dimm_max: gigabyte(count: 64))
+    && supermicro_h11ssl_dimm_capacity_stated(family: Epyc7002, module_kind: Rdimm2Dr, per_dimm_max: gigabyte(count: 64))
+    && !supermicro_h11ssl_dimm_capacity_stated(family: Epyc7002, module_kind: Rdimm2Dr, per_dimm_max: gigabyte(count: 32))
+    && !supermicro_h11ssl_dimm_capacity_stated(family: Epyc7001, module_kind: Rdimm2Dr, per_dimm_max: gigabyte(count: 64))
+}
+
+// p.40 'Number of Supported Drives on Different Models', cell by cell; the unit's variant is
+// unread, so its storage projection refuses and a stated variant projects its own column.
+test fn w_storage_support_by_variant_and_unit_projection_requires_observed_variant() -> Bool {
+  let i = supermicro_h11ssl_storage_support(variant: VariantI)
+  let c = supermicro_h11ssl_storage_support(variant: VariantC)
+  let nc = supermicro_h11ssl_storage_support(variant: VariantNc)
+  let columns = i.sata_ports == 16 && i.sas3_ports == 0 && i.nvme_drives == 0
+    && c.sata_ports == 8 && c.sas3_ports == 8 && c.nvme_drives == 0
+    && nc.sata_ports == 8 && nc.sas3_ports == 8 && nc.nvme_drives == 2
+  let unread = match supermicro_h11ssl_unit_storage_projection(standing: supermicro_h11ssl_unit_variant_standing) {
+    UnitStorageRefusedVariantUnread { read_obligation: _ } => true
+    UnitStorageProjected { variant: _, support: _ } => false
+  }
+  let observed = match supermicro_h11ssl_unit_storage_projection(standing: UnitVariantObserved { variant: VariantNc }) {
+    UnitStorageProjected { variant: _, support: s } => s.nvme_drives == 2
+    UnitStorageRefusedVariantUnread { read_obligation: _ } => false
+  }
+  columns && unread && observed
 }
 
 // The receipt's secret references are attested by the declared roster for the declared inventory,

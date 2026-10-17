@@ -113,7 +113,7 @@ data supermicro_h11ssl_epyc_7702p_standing: CitedFigureStanding = TranscribedUnc
 // ---- Memory (p.15, pp.32-34).
 data supermicro_h11ssl_dimm_slots: List<NonEmptyStr> = ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"]
 
-type H11sslDimmModule = Rdimm1R | Rdimm2R | Rdimm4R | Lrdimm3ds8R | Rdimm3ds2R2H | Lrdimm3ds2S2R | Lrdimm3ds2S4R | Rdimm3ds2S2R | Rdimm3ds2S4R
+type H11sslDimmModule = Rdimm1R | Rdimm2R | Rdimm2Dr | Lrdimm3ds4R | Lrdimm3ds8R | Rdimm3ds2R2H | Lrdimm3ds2S2R | Lrdimm3ds2S4R | Rdimm3ds2S2R | Rdimm3ds2S4R
 
 type H11sslDimmCapacityRow {
   family: H11sslCpuFamily
@@ -122,22 +122,30 @@ type H11sslDimmCapacityRow {
   eight_channel_max: Gigabyte
 }
 
-// Pp.32-33 tables. The unit is the manual's 'GB', recorded as Gigabyte and not reinterpreted.
+// P.32 tables. The 7001 table lists 4R under LRDIMM 3DS beside 8R; the 7002 RDIMM row reads '2R or 2DR',
+// so 2DR is its own module kind with the row's capacities. The unit is the manual's 'GB', recorded as Gigabyte and not reinterpreted.
 // The 7001 '3DS RDIMM 2R2H' appears twice in the manual (64GB and 128GB); both rows are kept.
 data supermicro_h11ssl_dimm_capacity: List<H11sslDimmCapacityRow> = [
   H11sslDimmCapacityRow { family: Epyc7001, module_kind: Rdimm1R, per_dimm_max: gigabyte(count: 16), eight_channel_max: gigabyte(count: 128) },
   H11sslDimmCapacityRow { family: Epyc7001, module_kind: Rdimm2R, per_dimm_max: gigabyte(count: 64), eight_channel_max: gigabyte(count: 512) },
-  H11sslDimmCapacityRow { family: Epyc7001, module_kind: Rdimm4R, per_dimm_max: gigabyte(count: 64), eight_channel_max: gigabyte(count: 512) },
+  H11sslDimmCapacityRow { family: Epyc7001, module_kind: Lrdimm3ds4R, per_dimm_max: gigabyte(count: 64), eight_channel_max: gigabyte(count: 512) },
   H11sslDimmCapacityRow { family: Epyc7001, module_kind: Lrdimm3ds8R, per_dimm_max: gigabyte(count: 128), eight_channel_max: gigabyte(count: 1024) },
   H11sslDimmCapacityRow { family: Epyc7001, module_kind: Rdimm3ds2R2H, per_dimm_max: gigabyte(count: 64), eight_channel_max: gigabyte(count: 512) },
   H11sslDimmCapacityRow { family: Epyc7001, module_kind: Rdimm3ds2R2H, per_dimm_max: gigabyte(count: 128), eight_channel_max: gigabyte(count: 1024) },
   H11sslDimmCapacityRow { family: Epyc7002, module_kind: Rdimm1R, per_dimm_max: gigabyte(count: 32), eight_channel_max: gigabyte(count: 256) },
   H11sslDimmCapacityRow { family: Epyc7002, module_kind: Rdimm2R, per_dimm_max: gigabyte(count: 64), eight_channel_max: gigabyte(count: 512) },
+  H11sslDimmCapacityRow { family: Epyc7002, module_kind: Rdimm2Dr, per_dimm_max: gigabyte(count: 64), eight_channel_max: gigabyte(count: 512) },
   H11sslDimmCapacityRow { family: Epyc7002, module_kind: Lrdimm3ds2S2R, per_dimm_max: gigabyte(count: 128), eight_channel_max: gigabyte(count: 1024) },
   H11sslDimmCapacityRow { family: Epyc7002, module_kind: Lrdimm3ds2S4R, per_dimm_max: gigabyte(count: 256), eight_channel_max: gigabyte(count: 2048) },
   H11sslDimmCapacityRow { family: Epyc7002, module_kind: Rdimm3ds2S2R, per_dimm_max: gigabyte(count: 128), eight_channel_max: gigabyte(count: 1024) },
   H11sslDimmCapacityRow { family: Epyc7002, module_kind: Rdimm3ds2S4R, per_dimm_max: gigabyte(count: 256), eight_channel_max: gigabyte(count: 2048) },
 ]
+
+// Whether the manual states this per-DIMM maximum for this family and module kind (the 7001
+// 3DS RDIMM 2R2H kind has two stated maxima, so a kind can answer true for more than one).
+fn supermicro_h11ssl_dimm_capacity_stated(family: H11sslCpuFamily, module_kind: H11sslDimmModule, per_dimm_max: Gigabyte) -> Bool {
+  any(supermicro_h11ssl_dimm_capacity, r => r.family == family && r.module_kind == module_kind && r.per_dimm_max == per_dimm_max)
+}
 
 // The manual labels these 'MHz' (p.15, p.32); DDR4 rates are transfers, recorded as such.
 fn supermicro_h11ssl_max_data_rate(family: H11sslCpuFamily) -> MegatransfersPerSecond {
@@ -202,11 +210,25 @@ data supermicro_h11ssl_pcie_slots: List<PcieSlot> = [
 // J23, PCI-E 3.0 x4 M-key, 2280 and 22110 (pp.15,41).
 data supermicro_h11ssl_m2_lanes: Nat = 4
 
-// ---- Storage (pp.15,39-40). -i: SATA0-7, plus SATA8-11 on JNVME0 and SATA12-15 on JNVME1 via
-// breakout. L-SAS0-7 and JPS1 are -C/-NC only and absent here.
+// ---- Storage (pp.15,39-40). SATA0-7 are standard on every variant; the rest differs by variant.
 data supermicro_h11ssl_sata_ports_standard: Nat = 8
-data supermicro_h11ssl_sata_ports_via_jnvme_breakout: Nat = 8
-data supermicro_h11ssl_sas_ports_i_variant: Nat = 0
+
+// Drive support by manual variant (p.40, 'Number of Supported Drives on Different Models'). The
+// -i SATA8-15 ports share the JNVME0/1 connectors with the -NC NVMe ports (p.15), so no count is
+// family-wide: a unit projection must name an observed variant.
+type H11sslVariant = VariantI | VariantC | VariantNc
+type H11sslStorageSupport {
+  sata_ports: Nat
+  sas3_ports: Nat
+  nvme_drives: Nat
+}
+fn supermicro_h11ssl_storage_support(variant: H11sslVariant) -> H11sslStorageSupport {
+  match variant {
+    VariantI => H11sslStorageSupport { sata_ports: 16, sas3_ports: 0, nvme_drives: 0 }
+    VariantC => H11sslStorageSupport { sata_ports: 8, sas3_ports: 8, nvme_drives: 0 }
+    VariantNc => H11sslStorageSupport { sata_ports: 8, sas3_ports: 8, nvme_drives: 2 }
+  }
+}
 data supermicro_h11ssl_sata_dom_power_headers: List<NonEmptyStr> = ["JSD1", "JSD2"]
 
 // ---- Network (pp.15,17,37,49). Two Intel i210 gigabit RJ45 plus one dedicated IPMI RJ45 and
@@ -348,14 +370,14 @@ type H11sslOobLicenceGatedOperation
   = BiosFlashViaBmcWebGuiOrSum | BmcFeatureGateUnstated
 data supermicro_h11ssl_oob_licence_gated_operations: List<H11sslOobLicenceGatedOperation> = [BiosFlashViaBmcWebGuiOrSum]
 
-// ---- Boot (pp.75,86-87,105,119-120): boot mode LEGACY/UEFI/DUAL (default DUAL); LAN option ROM
-// choices are a BIOS surface that differs by CPU family (p.75 EPYC 7001, p.105 EPYC 7002);
+// ---- Boot (pp.75,86-87,104-105,119-120): boot mode LEGACY/UEFI/DUAL (default DUAL); LAN option ROM
+// choices are a BIOS surface that differs by CPU family (p.75 EPYC 7001, pp.104-105 EPYC 7002);
 // IPv4/IPv6 PXE and HTTP network stack.
 type H11sslBootMode = BootLegacy | BootUefi | BootDual
 data supermicro_h11ssl_boot_mode_default: H11sslBootMode = BootDual
 type H11sslLanOptionRom = OptionRomDisabled | OptionRomPxe | OptionRomIscsi | OptionRomLegacy | OptionRomEfi
 // EPYC 7001 (p.75): LAN1 Disabled/PXE/iSCSI/Legacy/EFI, LAN2 Disabled/PXE/iSCSI.
-// EPYC 7002 (p.105): LAN1 Disabled/PXE/EFI, LAN2 Disabled/PXE.
+// EPYC 7002 (LAN1 p.104, LAN2 p.105): LAN1 Disabled/PXE/EFI, LAN2 Disabled/PXE.
 fn supermicro_h11ssl_lan_option_rom_choices(family: H11sslCpuFamily, lan: H11sslLanPort) -> List<H11sslLanOptionRom> {
   match family {
     Epyc7001 => match lan {
