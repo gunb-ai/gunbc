@@ -4319,25 +4319,23 @@ fn infer_node_mention_contested(t: Node, bindings: SymbolIndex) -> Optional<Free
   }
 }
 
-// COMPOSE IS NOT A TRANSPARENT ALIAS. std.machine_constraints `type Compose<Algebra, MachineConstraint> = Phantom`
-// states that the composition has no inhabitant of its own, not that it denotes Phantom: unfolding it discarded the
-// carrier and the width, so the real std.integer UInt8 became an uninhabitable Phantom and every literal at a UInt8
-// formal refused application_argument_does_not_inhabit before the width was read (measured on the real closure,
-// v2.test.claim.compiler.width_literal_admission_real). Its arguments still normalize (UInt -> Nat), so the width
-// reader sees the carrier it names.
-fn infer_type_alias_unfolded_at(t: Node, bodies: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
-  match infer_type_declaration_ref(t: t) {
-    Present { value: head } =>
-      if head == decl_ref(module_path: "std.machine_constraints", decl_name: "Compose") {
-        optional_absent()
-      } else {
-        infer_type_alias_unfolded_at_head(t: t, bodies: bodies, bindings: bindings)
-      }
-    Absent => infer_type_alias_unfolded_at_head(t: t, bodies: bodies, bindings: bindings)
+fn infer_alias_body_is_phantom(aliased: Node) -> Bool {
+  match infer_type_declaration_ref(t: aliased) {
+    Present { value: head } => head == decl_ref(module_path: "std.constructors", decl_name: "Phantom")
+    Absent => false
   }
 }
 
-fn infer_type_alias_unfolded_at_head(t: Node, bodies: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
+// AN ALIAS WHOSE BODY IS Phantom IS NOT TRANSPARENT. std.constructors `type Phantom` has no inhabitant, so
+// `type Compose<Algebra, MachineConstraint> = Phantom` (std.machine_constraints) states that the composition is
+// uninhabited and carries its arguments as the constraint, not that it denotes Phantom. Unfolding it discarded the
+// carrier and the width: the real std.integer UInt8 became an uninhabitable Phantom and every literal at a UInt8
+// formal, 255 included, refused application_argument_does_not_inhabit before the width was read (measured on the real
+// closure, v2.test.claim.compiler.width_literal_admission_real). The rule is the CLASS -- a Phantom-bodied alias keeps
+// its head and its arguments, which still normalize (UInt -> Nat) -- not one declaration's name, so a second
+// Phantom-bodied constraint alias inherits it. Why the width READER (infer_machine_width_of) still names Compose and
+// MachineWidth: it is the one consumer that gives their arguments meaning; the opacity above is not.
+fn infer_type_alias_unfolded_at(t: Node, bodies: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
   let ha = infer_type_head_and_args(t: t)
   match declaration_reference_path_optional(node: ha.head) {
     Absent => optional_absent()
@@ -4351,7 +4349,12 @@ fn infer_type_alias_unfolded_at_head(t: Node, bodies: SymbolIndex, bindings: Sym
             Present { value: stored } =>
               let declared = infer_type_decl_identity_node(declared: stored, identity: identity)
               match type_decl_view(target: declared) {
-                TypeAlias { binders: _, aliased: aliased } => infer_type_alias_rhs(declared: declared, aliased: aliased, args: ha.args)
+                TypeAlias { binders: _, aliased: aliased } =>
+                  if infer_alias_body_is_phantom(aliased: aliased) {
+                    optional_absent()
+                  } else {
+                    infer_type_alias_rhs(declared: declared, aliased: aliased, args: ha.args)
+                  }
                 GenericTypeDecl { binders: _, member: _ } => optional_absent()
                 OpaqueTypeDecl { binders: _ } => optional_absent()
                 NotATypeDecl => optional_absent()
