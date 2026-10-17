@@ -557,21 +557,20 @@ fn recovery_in_band_password_actuation() -> RecoveryActuationKind {
   InBandTemporaryAdministratorPassword
 }
 
-// KIND AND ARM IDENTITY ARE THE CORPUS'S STRUCTURAL EQUALITY, NOT A HAND-WRITTEN TABLE. The two
-// matchers this replaces enumerated every pair of variants -- 3x3 for the reset arm alone -- so each new
-// RedfishResetToDefaultsType variant made them quadratically larger, and a missed pair silently read as
-// "different" or "same" with nothing complaining (§2: model a concept once and derive every use). The
-// canonical surface compares the values, which is the question actually being asked.
-fn recovery_actuation_kinds_are_same(a: RecoveryActuationKind, b: RecoveryActuationKind) -> Bool {
-  a == b
-}
-
-// The write record names which write it records, so the record matches the kind being asked about by
-// VALUE and not by a table of arms.
-fn recovery_write_record_names_kind(record: RecoveryWriteRecord, kind: RecoveryActuationKind) -> Bool {
+// THE ONE PREDICATE OVER THE LEDGER, UNDER THE NAME THAT DESCRIBES ITS ANSWER. Two names covered this
+// body -- one called itself "names the kind", which is not what it returns: an `NotExecuted` record DOES
+// name the kind and answers false, because nothing was run. That name was a second, slightly wrong
+// description of one concept (§3, nicknaming), and the two names drifted apart at the call sites.
+//
+// The arms are matched, not tabulated: the two executed arms carry a kind to compare BY VALUE against the
+// kind being asked about (an earlier shape enumerated every pair of variants, 3x3 for the reset arm alone,
+// so each new RedfishResetToDefaultsType variant grew them quadratically and a missed pair read as
+// "different" with nothing complaining). `NotExecuted` is not a false among peers -- it is the arm with no
+// execution to compare, so it answers for itself.
+fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActuationKind) -> Bool {
   match record {
-    ExecutedWithCapturedExchange { kind: k, request: _, response: _, observed_at: _ } => recovery_actuation_kinds_are_same(a: k, b: kind)
-    ExecutedWithoutByteCapture { kind: k, observed_exit: _, detail: _ } => recovery_actuation_kinds_are_same(a: k, b: kind)
+    ExecutedWithCapturedExchange { kind: k, request: _, response: _, observed_at: _ } => k == kind
+    ExecutedWithoutByteCapture { kind: k, observed_exit: _, detail: _ } => k == kind
     NotExecuted { kind: _ } => false
   }
 }
@@ -625,10 +624,6 @@ type RecoveryWriteRecord
     }
   | ExecutedWithoutByteCapture { kind: RecoveryActuationKind, observed_exit: Int, detail: NonEmptyStr }
   | NotExecuted { kind: RecoveryActuationKind }
-
-fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActuationKind) -> Bool {
-  recovery_write_record_names_kind(record: record, kind: kind)
-}
 
 // NOTHING ASKS "DOES THIS RECORD GROUND SUCCESS". The fold gates on recovery_write_was_attempted and on
 // the readback, and picks its success arm by which branch it lands in. What grounds success is carried by
@@ -772,7 +767,7 @@ fn admit_recovery_in_band_password_write(
     InBandChannelNotObserved { detail: _ } => true
   } {
     PasswordWriteRefused { cause: "the in-band channel is not the credential-free arm, so this is not the write the census row classifies" as NonEmptyStr }
-  } else if recovery_write_record_names_kind(record: write, kind: kind) == false {
+  } else if recovery_write_was_attempted(record: write, kind: kind) == false {
     PasswordWriteRefused { cause: "the write handed over does not name the in-band password actuation this gate classifies" as NonEmptyStr }
   } else {
     PasswordWriteAdmitted { authorized_by: recovery_in_band_password_write_site() }
