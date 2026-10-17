@@ -47,7 +47,8 @@ import extdeps.llm.cursor_sandbox_apparmor {
 // sandbox preflight: the command and typed reading are gunbc.cursor_harness_credential's, and this module
 // only supplies the pinned identity and folds the reading in as the readback's preflight leg. (3) Nothing
 // but the witness reads the readback yet: its consumer is that converge, which runs the commands and
-// supplies the observations; status and the worker turn also still name the PATH program.
+// supplies the observations. The status probe, the preflight and the worker turn all run cursor_agent_pinned_program
+// (gunbc.worker_turn_standing, gunbc.roadmap.roadmap_dispatch_actuator).
 //
 // RULE SET: the vendor's 0.6.2 cursor_sandbox_agent_cli rules VERBATIM, with exactly two changes: the
 // attachment is the exact root-owned helper path, never versions/* or /home/*, and `userns,` is explicit

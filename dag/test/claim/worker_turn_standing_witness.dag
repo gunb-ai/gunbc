@@ -55,7 +55,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   CursorDispatchProvider,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
-import extdeps.llm.cursor_cli { cursor_cli_program_identity }
+import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import extdeps.exec.command { argv_words }
 import test.claim.roadmap.roadmap_dispatch_actuator_witness { sized_derivable }
 
@@ -261,8 +261,8 @@ test fn an_unmarked_nonzero_preflight_is_unreadable_and_keeps_its_status() -> Bo
 // already holds native never reaches the command; an unsandboxed fallback then prints the sentinel
 // back, and that reads not-entered, never ready.
 test fn an_inherited_native_cannot_make_an_unsandboxed_preflight_ready() -> Bool {
-  let argv = join(argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_cli_program_identity())), " ")
-  let sentinel_set_outside = argv == concat(concat("env CURSOR_SANDBOX=", cursor_sandbox_outside_sentinel as String), " cursor-agent sandbox run printenv CURSOR_SANDBOX")
+  let argv = join(argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program())), " ")
+  let sentinel_set_outside = argv == concat(concat("env CURSOR_SANDBOX=", cursor_sandbox_outside_sentinel as String), " /opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursor-agent --disable-auto-update sandbox run printenv CURSOR_SANDBOX")
   let unsandboxed_stdout = concat(concat("Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\n", cursor_sandbox_outside_sentinel as String), "\n")
   let not_ready = match cursor_sandbox_preflight_reading(exit_code: 0, stdout: unsandboxed_stdout, stderr: "") {
     CursorSandboxNotEntered { detail } => string_contains(s: detail, pattern: "sentinel survived")
