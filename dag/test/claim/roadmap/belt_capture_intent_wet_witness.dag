@@ -81,7 +81,7 @@ fn plant_dirty(instance: HostDashboardInstance) -> String {
   let _wt = shell.Mkdir.Parents(path: worktree as FilePath)
   let _st = shell.Mkdir.Parents(path: state as FilePath)
   let _sub = shell.Mkdir.Parents(path: belt_attempt_submission_dir_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) as FilePath)
-  let seed = join([state, "-main"], "")
+  let seed = instance.repo_root as String
   let _seed_dir = shell.Mkdir.Parents(path: seed as FilePath)
   let primed = run_git(dir: seed, args: ["init", "-q"])
     && run_git(dir: seed, args: ["config", "user.name", "witness"])
