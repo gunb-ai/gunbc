@@ -85,6 +85,7 @@ import v2.std.node {
   LoopRealizedDeclarationEdge,
   core_edge_label,
   Found,
+  NotFound,
   Instantiation,
   arrow_body_target_lookup,
   Ambiguous,

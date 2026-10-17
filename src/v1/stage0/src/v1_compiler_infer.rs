@@ -26884,33 +26884,33 @@ pub fn if_branch_types_agree_through_alias_identity(
                 };
                 ((same_declaration.clone()
                     && ((left_args.clone().len() as i64) == (right_args.clone().len() as i64)))
-                    && if_branch_type_arguments_agree(
+                    && if_branch_type_arguments_identical(
                         left_args.clone(),
                         right_args.clone(),
-                        scope.clone(),
+                        scope.type_env.clone().source_indices.clone(),
                     ))
             }
         }
     }
 }
 
-pub fn if_branch_type_arguments_agree(
+pub fn if_branch_type_arguments_identical(
     left_args: Rc<Vec<Rc<Node>>>,
     right_args: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match left_args.clone().first().cloned() {
             Some(l) => match right_args.clone().first().cloned() {
                 Some(r) => {
-                    (if_branch_argument_types_agree(
+                    (if_branch_argument_types_identical(
                         crate::v1_compiler_infer_types::child_type_node(l.clone()),
                         crate::v1_compiler_infer_types::child_type_node(r.clone()),
-                        scope.clone(),
-                    ) && if_branch_type_arguments_agree(
+                        source_indices.clone(),
+                    ) && if_branch_type_arguments_identical(
                         Rc::new(v1_rt::list_skip(&left_args.clone(), 1)),
                         Rc::new(v1_rt::list_skip(&right_args.clone(), 1)),
-                        scope.clone(),
+                        source_indices.clone(),
                     ))
                 }
                 std::option::Option::None => false,
@@ -26920,31 +26920,122 @@ pub fn if_branch_type_arguments_agree(
     })
 }
 
-pub fn if_branch_argument_types_agree(
+pub fn if_branch_argument_types_identical(
     left: Rc<Node>,
     right: Rc<Node>,
-    scope: Rc<InferScope>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        let heads_agree = (crate::v1_compiler_infer_types::node_type_compatible(
+    ((((left.return_cardinality.clone() == right.return_cardinality.clone())
+        && if_branch_argument_heads_identical(
             left.clone(),
             right.clone(),
-            scope.type_env.clone().source_indices.clone(),
-            Rc::new(TextJudgment::TextJudgedIn {
-                env: scope.type_env.clone(),
-            }),
-        ) || if_branch_types_agree_through_alias_identity(
-            left.clone(),
-            right.clone(),
-            scope.clone(),
-        ));
-        ((heads_agree.clone()
-            && ((left.children.clone().len() as i64) == (right.children.clone().len() as i64)))
-            && if_branch_type_arguments_agree(
-                left.children.clone(),
-                right.children.clone(),
-                scope.clone(),
+            source_indices.clone(),
+        ))
+        && ((left.children.clone().len() as i64) == (right.children.clone().len() as i64)))
+        && if_branch_type_arguments_identical(
+            left.children.clone(),
+            right.children.clone(),
+            source_indices.clone(),
+        ))
+}
+
+pub fn if_branch_argument_heads_identical(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (type_node_is_callable(left.clone()) || type_node_is_callable(right.clone())) {
+        ((type_node_is_callable(left.clone()) && type_node_is_callable(right.clone()))
+            && crate::v1_compiler_infer_types::callable_signatures_agree(
+                left.clone(),
+                right.clone(),
+                |a, b| {
+                    if_branch_argument_types_identical(a.clone(), b.clone(), source_indices.clone())
+                },
             ))
+    } else {
+        match left.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::CompilerError { .. }) => false,
+            Some(InferredNode::TypeVariable { id: left_id, .. }) => {
+                match right.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::TypeVariable { id: right_id, .. }) => {
+                        if_branch_type_variables_identical(
+                            left.clone(),
+                            right.clone(),
+                            left_id.clone(),
+                            right_id.clone(),
+                        )
+                    }
+                    _ => false,
+                }
+            }
+            _ => match right.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::CompilerError { .. }) => false,
+                Some(InferredNode::TypeVariable { id: _, .. }) => false,
+                _ => match whole_declaration_carried(left.clone()) {
+                    Some(l) => match whole_declaration_carried(right.clone()) {
+                        Some(r) => crate::std_decl_ref::declaration_ref_eq(l.clone(), r.clone()),
+                        std::option::Option::None => false,
+                    },
+                    std::option::Option::None => match whole_declaration_carried(right.clone()) {
+                        Some(_) => false,
+                        std::option::Option::None => {
+                            match if_branch_reference_identity(left.clone(), source_indices.clone())
+                            {
+                                Some(li) => match if_branch_reference_identity(
+                                    right.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    Some(ri) => (li.clone() == ri.clone()),
+                                    std::option::Option::None => false,
+                                },
+                                std::option::Option::None => false,
+                            }
+                        }
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub fn if_branch_type_variables_identical(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    left_id: String,
+    right_id: String,
+) -> bool {
+    match left.declaration.clone() {
+        Some(l) => match right.declaration.clone() {
+            Some(r) => crate::std_decl_ref::declaration_ref_eq(l.clone(), r.clone()),
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => match right.declaration.clone() {
+            Some(_) => false,
+            std::option::Option::None => (left_id.clone() == right_id.clone()),
+        },
+    }
+}
+
+pub fn if_branch_reference_identity(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    {
+        let target = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+            _ => n.clone(),
+        };
+        if (crate::v1_std_core::authored_name_at(source_indices.clone(), target.clone())
+            == "".to_string())
+        {
+            std::option::Option::None
+        } else {
+            Some(node_declaration_identity(
+                target.clone(),
+                source_indices.clone(),
+            ))
+        }
     }
 }
 
