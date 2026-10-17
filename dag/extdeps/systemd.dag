@@ -106,6 +106,8 @@ type SystemdUnitProperty
   // unit's own mount namespace, which is how a unit sees a private path at a name other units also use.
   | BindPathsProperty
   | ReadOnlyPathsProperty
+  // systemd.exec(5) InaccessiblePaths=: paths made unreachable in the unit's mount namespace.
+  | InaccessiblePathsProperty
   | RemainAfterExitProperty
   | RuntimeMaxSecProperty
   | CollectModeProperty
@@ -192,6 +194,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     ReadWritePathsProperty => "ReadWritePaths" as NonEmptyStr
     BindPathsProperty => "BindPaths" as NonEmptyStr
     ReadOnlyPathsProperty => "ReadOnlyPaths" as NonEmptyStr
+    InaccessiblePathsProperty => "InaccessiblePaths" as NonEmptyStr
     RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
     RuntimeMaxSecProperty => "RuntimeMaxSec" as NonEmptyStr
     CollectModeProperty => "CollectMode" as NonEmptyStr
