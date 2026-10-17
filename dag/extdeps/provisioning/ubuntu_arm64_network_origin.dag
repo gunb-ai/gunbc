@@ -1,17 +1,23 @@
 module extdeps.provisioning.ubuntu_arm64_network_origin
 
-// SEAM: extdeps keeps what Canonical publishes; gunbc keeps what we concluded. This module owns
-// the release enum, the URL and casper layout, and the one digest Canonical itself publishes (the
-// ISO's). What a mirror served, and the kernel/initrd digests WE extracted, are in
-// gunbc.provisioning.ubuntu_arm64_network_origin_observation.
-import std.types { NonEmptyStr, String }
-import std.measure { FiniteByteSize, finite_byte_size, positive_measure_count }
+// SEAM: extdeps keeps what Canonical publishes; gunbc keeps what we concluded. This module adds
+// to extdeps.provisioning.ubuntu_install_media (the one home of the Ubuntu release, architecture
+// spelling, mirror URL construction and ISO row) only what a NETWORK origin needs beyond it: the
+// 24.04.5 row, which the same SHA256SUMS lists beside the 24.04.3 row, and the casper member
+// layout of that ISO. What a mirror served, our sizes, and the kernel/initrd digests WE extracted
+// are in gunbc.provisioning.ubuntu_arm64_network_origin_observation.
+import std.types { NonEmptyStr }
 import std.optional { Absent, Present }
-import std.content_hash { sha256_hex_digest }
-import extdeps.toolchain.types { Architecture, Aarch64 }
-import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
+import std.os.types { NobleNumbat2404Lts }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.provisioning.ubuntu_install_media {
+  UbuntuInstallMediaArtifactRow,
+  UbuntuLiveServer,
+  Aarch64,
+  Amd64,
+  noble_numbat_2404_3_live_server_arm64_sha256sums_authority,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -20,64 +26,34 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// WHERE THIS ORIGIN DIFFERS FROM ubuntu_seeded_install_media. That module derives an ISO and its
-// identity is the digest of bytes WE built, so it carries a build key and a published name. A
-// network origin is bytes CANONICAL publishes and a mirror serves: nothing here is built, so the
-// identity is a pin (a digest and a size per artefact) plus a verdict on whether what a mirror
-// served equals it. The transport-neutral vocabulary is reused as-is (extdeps.crypto.hash Digest); the media-shaped parts (NoCloud seed dir,
-// volume id, pinned dates, grub cmdline) are deliberately absent, because the seed arrives over
-// HTTP via the kernel command line, not on the medium.
+// WHERE THIS ORIGIN DIFFERS FROM ubuntu_seeded_install_media. That module derives an ISO whose
+// identity is the digest of bytes WE built. A network origin is bytes CANONICAL publishes and a
+// mirror serves: nothing here is built, so the identity is a pin per artefact plus a verdict on
+// whether what a mirror served equals it. The media-shaped parts (NoCloud seed dir, volume id,
+// pinned dates, grub cmdline) are absent, because the seed arrives over HTTP via the kernel command
+// line, not on the medium.
+//
+// DIVERGES FROM THE 24.04.3 ROW ubuntu_install_media pins, with a reason: that row is the medium
+// the USB/ISO path installs from; the network origin pins the point release the release directory
+// currently serves as its kernel/initrd source. Both rows name the same SHA256SUMS, so the authority
+// is reused (its symbol predates this row and names 24.04.3 only because that row came first).
 //
 // CONSUMER (DESIGN 3c): consumed by gunbc.provisioning.ubuntu_arm64_network_origin_observation in
 // this change, and through it by a declared later change of cut 6 of
 // gunbc.plans.physical_machine_boot_program (the PXE-edge arm serving kernel/initrd and the ISO url).
 
-// CLOSED OVER THE RELEASES WE HAVE PINNED. A new point release is a new constructor and a new
-// pin row, never a version string a caller types: the version token below is derived from the
-// variant, so a pin cannot name a release the origin was not measured against.
-type UbuntuRelease =
-  | Noble2404Point5
-
-fn ubuntu_release_version_token(edition: UbuntuRelease) -> NonEmptyStr {
-  match edition {
-    Noble2404Point5 => "24.04.5"
-  }
+data noble_numbat_2404_5_live_server_arm64: UbuntuInstallMediaArtifactRow = UbuntuInstallMediaArtifactRow {
+  distribution: NobleNumbat2404Lts,
+  point_release: "24.04.5",
+  architecture: Aarch64,
+  flavor: UbuntuLiveServer,
+  content_sha256: "f12484464c7d4d73e2167e0a7dbda1e669f8fae9bcf778dc0944937034b320cb",
+  sha256sums_authority: noble_numbat_2404_3_live_server_arm64_sha256sums_authority,
 }
 
-fn ubuntu_release_series_directory(edition: UbuntuRelease) -> NonEmptyStr {
-  match edition {
-    Noble2404Point5 => "24.04"
-  }
-}
-
-// cdimage names architectures by Debian's spelling, a partial projection of Architecture: an
-// architecture the archive does not publish for this product refuses rather than guessing a token
-// (extdeps.toolchain.types architecture_diagnostic_name is explicitly not a wire label).
-fn ubuntu_cdimage_architecture_token(architecture: Architecture) -> NonEmptyStr? {
-  match architecture {
-    Aarch64 => Present { value: "arm64" }
-    _ => Absent
-  }
-}
-
-// The ISO is the installer filesystem: subiquity fetches it with url= after the kernel and initrd
-// boot, so it is a network artefact in its own right, not media.
-fn ubuntu_installer_filesystem_url(edition: UbuntuRelease, architecture: Architecture) -> NonEmptyStr? {
-  match ubuntu_cdimage_architecture_token(architecture: architecture) {
-    Present { value: arch } => Present {
-      value: concat(
-        "http://cdimage.ubuntu.com/ubuntu/releases/", ubuntu_release_series_directory(edition: edition) as String,
-        "/release/ubuntu-", ubuntu_release_version_token(edition: edition) as String,
-        "-live-server-", arch as String, ".iso",
-      ) as NonEmptyStr
-    }
-    Absent => Absent
-  }
-}
-
-// The kernel and initrd are members of that same ISO's casper directory, a layout Canonical
-// authors. Their DIGESTS are not Canonical's (no upstream file lists them), so those pins live in
-// gunbc.provisioning.ubuntu_arm64_network_origin_observation.
+// The kernel and initrd are members of that ISO's casper directory, a layout Canonical authors.
+// Their DIGESTS are not Canonical's (no upstream file lists them), so those pins live in the
+// gunbc module.
 fn ubuntu_casper_kernel_member_path() -> NonEmptyStr {
   "casper/vmlinuz"
 }
@@ -86,39 +62,11 @@ fn ubuntu_casper_initrd_member_path() -> NonEmptyStr {
   "casper/initrd"
 }
 
-// A PIN IS A SHA-256 DIGEST AND A NON-ZERO SIZE, and the standing says where the digest came
-// from. The size is std.measure FiniteByteSize, so an empty artefact has no constructor rather
-// than a check. The constructor takes the hex, not a Digest, so a sha512 pin has no spelling, and
-// a hex that std.content_hash sha256_hex_digest refuses returns absence (one validator, no local width).
-// A second algorithm is a second constructor when an upstream publishes one.
-type PinnedArtefact sole_constructor {
-  digest: Digest
-  size: FiniteByteSize
-  standing: CitedFigureStanding
-}
-
-fn pinned_artefact(sha256_hex: NonEmptyStr, size: FiniteByteSize, standing: CitedFigureStanding) -> PinnedArtefact? {
-  match sha256_hex_digest(hex: sha256_hex as String) {
-    Present { value: _ } => Present { value: PinnedArtefact { digest: sha256_digest(hex: sha256_hex), size: size, standing: standing } }
-    Absent => Absent
+// An origin over aarch64 netboot artefacts admits only the aarch64 row: a row for another
+// architecture is absence, not a pin the origin could be built over.
+fn ubuntu_install_media_row_for_aarch64(row: UbuntuInstallMediaArtifactRow) -> UbuntuInstallMediaArtifactRow? {
+  match row.architecture {
+    Aarch64 => Present { value: row }
+    Amd64 => Absent
   }
 }
-
-// PROVENANCE. The ISO digest is CITED: Canonical publishes it in the release directory's
-// SHA256SUMS (detached signature SHA256SUMS.gpg beside it), and the pin equals that line. The
-// signature was NOT verified when pinning (no Ubuntu archive key was available in the session).
-data ubuntu_release_sha256sums_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "cdimage.ubuntu.com/ubuntu/releases/24.04/release/SHA256SUMS"
-  }
-}
-
-fn ubuntu_noble_arm64_installer_filesystem_pin() -> PinnedArtefact? {
-  pinned_artefact(
-    sha256_hex: "f12484464c7d4d73e2167e0a7dbda1e669f8fae9bcf778dc0944937034b320cb",
-    size: finite_byte_size(count: positive_measure_count(predecessor: 3825512447)),
-    standing: CitedToAuthority { authority: ubuntu_release_sha256sums_authority },
-  )
-}
-

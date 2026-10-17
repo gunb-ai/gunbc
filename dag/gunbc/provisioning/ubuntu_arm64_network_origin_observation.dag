@@ -10,18 +10,35 @@ module gunbc.provisioning.ubuntu_arm64_network_origin_observation
 // later change of cut 6 of gunbc.plans.physical_machine_boot_program (the PXE-edge provisioning arm
 // and the wet install step that calls verify_ubuntu_network_origin).
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.measure { ByteSize, byte_size_count, finite_byte_size, finite_byte_size_count, positive_measure_count }
+import std.measure { ByteSize, FiniteByteSize, byte_size_count, finite_byte_size, finite_byte_size_count, positive_measure_count }
+import std.content_hash { sha256_hex_digest }
 import extdeps.toolchain.types { Architecture, Aarch64 }
-import extdeps.external_authority { TranscribedUncited }
-import extdeps.crypto.hash { Digest }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow }
 import extdeps.provisioning.ubuntu_arm64_network_origin {
-  PinnedArtefact,
-  UbuntuRelease,
-  Noble2404Point5,
-  pinned_artefact,
-  ubuntu_noble_arm64_installer_filesystem_pin,
+  noble_numbat_2404_5_live_server_arm64,
+  ubuntu_install_media_row_for_aarch64,
+}
+
+// A PIN IS A SHA-256 DIGEST AND A NON-ZERO SIZE, and the standing says where the digest came
+// from. The size is std.measure FiniteByteSize, so an empty artefact has no constructor rather
+// than a check. The constructor takes the hex, not a Digest, so a sha512 pin has no spelling, and
+// a hex that std.content_hash sha256_hex_digest refuses returns absence (one validator, no local
+// width). A second algorithm is a second constructor when an upstream publishes one.
+type PinnedArtefact sole_constructor {
+  digest: Digest
+  size: FiniteByteSize
+  standing: CitedFigureStanding
+}
+
+fn pinned_artefact(sha256_hex: NonEmptyStr, size: FiniteByteSize, standing: CitedFigureStanding) -> PinnedArtefact? {
+  match sha256_hex_digest(hex: sha256_hex as String) {
+    Present { value: _ } => Present { value: PinnedArtefact { digest: sha256_digest(hex: sha256_hex), size: size, standing: standing } }
+    Absent => Absent
+  }
 }
 
 type OriginArtefactRole
@@ -29,25 +46,30 @@ type OriginArtefactRole
   | OriginInitrd
   | OriginInstallerFilesystem
 
-// THE ARCHITECTURE IS NOT A PARAMETER. The one constructor fixes Aarch64, so an origin that
-// claims another architecture over these artefacts is unnameable; an x86_64 origin is a different
-// constructor with its own pins. architecture is a field so consumers (the PXE edge's
-// client-architecture roster) read the origin's architecture instead of assuming it.
+// THE ARCHITECTURE IS NOT A PARAMETER. The one constructor fixes Aarch64 and admits only the
+// aarch64 installer-media row, so an origin that claims another architecture over these artefacts
+// is unnameable; an x86_64 origin is a different constructor with its own pins. architecture is a
+// field so consumers (the PXE edge's client-architecture roster) read the origin's architecture
+// instead of assuming it. The installer filesystem pin is derived from the media row, whose digest
+// and SHA256SUMS authority are Canonical's (extdeps.provisioning.ubuntu_install_media), so no
+// second ISO digest is authored here; only its size is ours, read from the mirror.
 type UbuntuNetworkOrigin sole_constructor {
-  edition: UbuntuRelease
+  installer_media: UbuntuInstallMediaArtifactRow
   architecture: Architecture
   kernel: PinnedArtefact
   initrd: PinnedArtefact
   installer_filesystem: PinnedArtefact
 }
 
-fn ubuntu_arm64_network_origin(edition: UbuntuRelease, kernel: PinnedArtefact, initrd: PinnedArtefact, installer_filesystem: PinnedArtefact) -> UbuntuNetworkOrigin {
-  UbuntuNetworkOrigin {
-    edition: edition,
-    architecture: Aarch64,
-    kernel: kernel,
-    initrd: initrd,
-    installer_filesystem: installer_filesystem,
+fn ubuntu_arm64_network_origin(media: UbuntuInstallMediaArtifactRow, installer_size: FiniteByteSize, kernel: PinnedArtefact, initrd: PinnedArtefact) -> UbuntuNetworkOrigin? {
+  match ubuntu_install_media_row_for_aarch64(row: media) {
+    Absent => Absent
+    Present { value: m } => match pinned_artefact(sha256_hex: m.content_sha256 as NonEmptyStr, size: installer_size, standing: CitedToAuthority { authority: m.sha256sums_authority }) {
+      Absent => Absent
+      Present { value: f } => Present {
+        value: UbuntuNetworkOrigin { installer_media: m, architecture: Aarch64, kernel: kernel, initrd: initrd, installer_filesystem: f }
+      }
+    }
   }
 }
 
@@ -104,7 +126,7 @@ fn verify_ubuntu_network_origin(origin: UbuntuNetworkOrigin, kernel: ArtefactRea
   }
 }
 
-data ubuntu_casper_member_read_obligation: NonEmptyStr = "Re-derive: curl -O http://cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.5-live-server-arm64.iso && sha256sum ubuntu-24.04.5-live-server-arm64.iso (must equal the SHA256SUMS line), then extract casper/vmlinuz and casper/initrd (xorriso -osirrox on -extract /casper/vmlinuz . or 7z e) and sha256sum each. Read on 2026-10-17 by parsing the ISO9660 casper directory directly. SHA256SUMS.gpg was not verified against the Ubuntu archive key."
+data ubuntu_casper_member_read_obligation: NonEmptyStr = "Re-derive: curl -O http://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.5-live-server-arm64.iso && sha256sum ubuntu-24.04.5-live-server-arm64.iso (must equal the SHA256SUMS line), then extract casper/vmlinuz and casper/initrd (xorriso -osirrox on -extract /casper/vmlinuz . or 7z e) and sha256sum each. Read on 2026-10-17 by parsing the ISO9660 casper directory directly. SHA256SUMS.gpg was not verified against the Ubuntu archive key."
 
 fn ubuntu_noble_arm64_kernel_pin() -> PinnedArtefact? {
   pinned_artefact(
@@ -122,16 +144,16 @@ fn ubuntu_noble_arm64_initrd_pin() -> PinnedArtefact? {
   )
 }
 
-// The origin row, absent if any literal above fails the constructor's own admission.
+// The origin row, absent if any literal above fails a constructor's own admission.
 fn ubuntu_noble_arm64_network_origin() -> UbuntuNetworkOrigin? {
   match ubuntu_noble_arm64_kernel_pin() {
     Present { value: k } => match ubuntu_noble_arm64_initrd_pin() {
-      Present { value: i } => match ubuntu_noble_arm64_installer_filesystem_pin() {
-        Present { value: f } => Present {
-          value: ubuntu_arm64_network_origin(edition: Noble2404Point5, kernel: k, initrd: i, installer_filesystem: f)
-        }
-        Absent => Absent
-      }
+      Present { value: i } => ubuntu_arm64_network_origin(
+        media: noble_numbat_2404_5_live_server_arm64,
+        installer_size: finite_byte_size(count: positive_measure_count(predecessor: 3825512447)),
+        kernel: k,
+        initrd: i,
+      )
       Absent => Absent
     }
     Absent => Absent

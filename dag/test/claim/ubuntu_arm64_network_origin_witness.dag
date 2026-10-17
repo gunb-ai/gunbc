@@ -4,14 +4,19 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import std.measure { byte_size, finite_byte_size, positive_measure_count }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.crypto.hash { sha256_digest, sha512_digest }
 import extdeps.external_authority { TranscribedUncited }
-import extdeps.provisioning.ubuntu_arm64_network_origin {
-  Noble2404Point5,
-  pinned_artefact,
-  ubuntu_installer_filesystem_url,
+import std.os.types { NobleNumbat2404Lts }
+import extdeps.provisioning.ubuntu_install_media {
+  UbuntuInstallMediaArtifactRow,
+  UbuntuInstallMediaMirrorRow,
+  UbuntuLiveServer,
+  Amd64,
+  CdimageUbuntuCom,
+  ubuntu_install_media_mirror_url,
 }
+import extdeps.provisioning.ubuntu_arm64_network_origin { noble_numbat_2404_5_live_server_arm64 }
 import gunbc.provisioning.ubuntu_arm64_network_origin_observation {
   ArtefactRead,
   ArtefactNotFetched,
@@ -23,6 +28,8 @@ import gunbc.provisioning.ubuntu_arm64_network_origin_observation {
   OriginInstallerFilesystem,
   verify_ubuntu_network_origin,
   ubuntu_noble_arm64_network_origin,
+  ubuntu_arm64_network_origin,
+  pinned_artefact,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -153,14 +160,33 @@ test fn a_pin_refuses_malformed_hex() -> Bool {
   short && upper
 }
 
-test fn the_installer_url_derives_from_release_and_architecture() -> Bool {
-  let arm = match ubuntu_installer_filesystem_url(edition: Noble2404Point5, architecture: Aarch64) {
-    Present { value: u } => (u as String) == "http://cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.5-live-server-arm64.iso"
+test fn the_installer_url_derives_from_the_media_row() -> Bool {
+  (ubuntu_install_media_mirror_url(
+    artifact: noble_numbat_2404_5_live_server_arm64,
+    mirror: UbuntuInstallMediaMirrorRow { host: CdimageUbuntuCom, locator: "cdimage.ubuntu.com" },
+  ) as String) == "https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.5-live-server-arm64.iso"
+}
+
+test fn an_origin_refuses_another_architectures_media() -> Bool {
+  let amd64_row = UbuntuInstallMediaArtifactRow {
+    distribution: NobleNumbat2404Lts,
+    point_release: "24.04.5",
+    architecture: Amd64,
+    flavor: UbuntuLiveServer,
+    content_sha256: iso_hex,
+    sha256sums_authority: noble_numbat_2404_5_live_server_arm64.sha256sums_authority,
+  }
+  let standing = TranscribedUncited { read_obligation: "witness" }
+  match pinned_artefact(sha256_hex: kernel_hex, size: finite_byte_size(count: positive_measure_count(predecessor: 18581402)), standing: standing) {
+    Present { value: k } => match ubuntu_arm64_network_origin(
+      media: amd64_row,
+      installer_size: finite_byte_size(count: positive_measure_count(predecessor: 3825512447)),
+      kernel: k,
+      initrd: k,
+    ) {
+      Present { value: _ } => false
+      Absent => true
+    }
     Absent => false
   }
-  let x86 = match ubuntu_installer_filesystem_url(edition: Noble2404Point5, architecture: X86_64) {
-    Present { value: _ } => false
-    Absent => true
-  }
-  arm && x86
 }
