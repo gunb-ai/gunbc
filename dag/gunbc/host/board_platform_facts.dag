@@ -27,58 +27,65 @@ import extdeps.ampere.mt_collins_board { mt_collins_board_soc_edge }
 // different set of SoC families adds a row; no code names a board here.
 data board_soc_edges: List<BoardSocEdge> = [mt_collins_board_soc_edge]
 
-// THE FIRMWARE ARCHITECTURE A HOST'S BOARD ESTABLISHES, OR NOT, reached from the observed board.
+// THE ONE BOARD LOOKUP: the host's observed board -> the SoC edge its authority names, or NONE.
 //
-// The chain: the observed board FRU -> the board authority the binding table resolves for it -> the
-// per-board SoC edge that authority names -> the architecture that edge's admitted families agree on.
-// Any link missing leaves the answer Unestablished.
-fn host_board_architecture(access: BmcAccessObservationStanding) -> BoardSocArchitectureStanding {
-  match access {
-    BmcAccessObserved { observation: obs } => {
-      let lookup = board_authority_for(observation: obs.identity.board, bindings: board_authority_bindings)
-      match board_facts_authority(lookup: lookup) {
-        Absent => Unestablished
-        Present { value: authority } =>
-          match board_soc_edges_for(authority: authority) {
-            Absent => Unestablished
-            Present { value: edge } => board_soc_architecture(edge: edge)
-          }
-      }
-    }
-    BmcAccessUnobserved { endpoint: _ } => Unestablished
-  }
-}
-
-// THE SoC FAMILIES A HOST'S BOARD ADMITS, OR NOTHING WHEN NOTHING IS KNOWN. This is the fact a
-// platform-FACILITY capability keys on (gunbc.host.smpro_platform_capability.smpro_facility): a named
-// family answers about the silicon, and an absent family means NOTHING is known about it — which is a
-// different answer from a family that lacks the facility, and must never be collapsed into one.
-//
-// Same chain as host_board_architecture, and it stops one link earlier: no architecture derivation,
-// just the families the board admits.
-// THE SoC FAMILIES THE BOUND BOARD ADMITS, AS A NON-EMPTY SET OR NOTHING. The `?` is exactly one fact:
-// NO ROW WAS REACHED -- no access observation, no hardware authority, or no edge naming the authority.
-// It is NOT also "the roster is empty", and that is the point (review 81501): BoardSocEdge.soc_families is
-// FreeSemigroup, so an edge cannot be written empty, and flattening it to a List here threw that guarantee
-// away at the one consumer that leads to SMpro -- which then rebuilt the empty case at runtime, with a
-// refusal cause and a rendered sentence, for a state that is impossible to write. Returning the carrier
-// keeps the fact the type already carried (DESIGN Sec 5, and the ruling nonemptiness_is_constructed_or_proved).
-fn host_board_soc_families(access: BmcAccessObservationStanding) -> FreeSemigroup<SoCFamily>? {
+// THE CHAIN, WRITTEN ONCE: the observed board FRU (host.access -> identity.board) -> the board
+// authority the binding table resolves for that FRU -> the per-board SoC edge that authority names.
+// Everything derived from a host's board goes through here. It was written twice before (once for the
+// architecture, once for the families, the second admitting in its own comment that it "stops one link
+// earlier") -- two resolutions of "which edge does this host's board name", which is DESIGN Sec 2's
+// "model a concept once and derive every use" violated and Sec 6b's trigger, the second local
+// implementation of one rule. A `none` from here is one fact with three causes, and they are deliberately
+// NOT distinguished: no access observation, no hardware-grade authority, or no edge naming the authority.
+// A caller that ever needs those apart asks for them individually; today none does.
+fn host_board_soc_edge(access: BmcAccessObservationStanding) -> BoardSocEdge? {
   match access {
     BmcAccessObserved { observation: obs } => {
       let lookup = board_authority_for(observation: obs.identity.board, bindings: board_authority_bindings)
       match board_facts_authority(lookup: lookup) {
         Absent => none
-        Present { value: authority } => match board_soc_edges_for(authority: authority) {
-          // THE EDGE IS RETURNED AS WRITTEN. No flattening, no re-counting: soc_families is a
-          // FreeSemigroup, so a non-empty roster is what an edge can be, and the caller gets that fact
-          // rather than a List it has to interrogate again.
-          Absent => none
-          Present { value: edge } => Present { value: edge.soc_families }
-        }
+        Present { value: authority } => board_soc_edges_for(authority: authority)
       }
     }
     BmcAccessUnobserved { endpoint: _ } => none
+  }
+}
+
+// THE FIRMWARE ARCHITECTURE A HOST'S BOARD ESTABLISHES, OR NOT, reached from the observed controller.
+//
+// The board lookup, then DERIVATION: the edge's admitted SoC families agree on one architecture, and a
+// board with no edge (or no observation, or no authority) leaves it Unestablished rather than defaulting.
+// The installed CPU is an observed fact (the mtcollins1 boot run observes it); this edge bounds what the
+// board may install and does not replace that observation.
+fn host_board_architecture(access: BmcAccessObservationStanding) -> BoardSocArchitectureStanding {
+  match host_board_soc_edge(access: access) {
+    Absent => Unestablished
+    Present { value: edge } => board_soc_architecture(edge: edge)
+  }
+}
+
+// THE SoC FAMILIES THE BOUND BOARD ADMITS, AS A NON-EMPTY SET OR NOTHING. This is the fact a
+// platform-FACILITY capability keys on (gunbc.host.smpro_platform_capability.smpro_facility): a named
+// family answers about the silicon, and an absent family means NOTHING is known about it -- which is a
+// different answer from a family that lacks the facility, and must never be collapsed into one.
+//
+// The board lookup, then PROJECTION of the edge's families: one link shorter than the architecture, and
+// the same chain, because both ask the same question first.
+//
+// The `?` is exactly one fact: NO ROW WAS REACHED -- no access observation, no hardware authority, or no
+// edge naming the authority. It is NOT also "the roster is empty", and that is the point (review 81501):
+// BoardSocEdge.soc_families is FreeSemigroup, so an edge cannot be written empty, and flattening it to a
+// List here threw that guarantee away at the one consumer that leads to SMpro -- which then rebuilt the
+// empty case at runtime, with a refusal cause and a rendered sentence, for a state that is impossible to
+// write. Returning the carrier keeps the fact the type already carried (DESIGN Sec 5, and the ruling
+// nonemptiness_is_constructed_or_proved).
+fn host_board_soc_families(access: BmcAccessObservationStanding) -> FreeSemigroup<SoCFamily>? {
+  // THE EDGE IS RETURNED AS WRITTEN. No flattening, no re-counting: soc_families is a
+  // FreeSemigroup, so a non-empty roster is what an edge can be, and the caller gets that fact
+  // rather than a List it has to interrogate again.
+  match host_board_soc_edge(access: access) {
+    Absent => none
+    Present { value: edge } => Present { value: edge.soc_families }
   }
 }
 
@@ -86,9 +93,10 @@ fn host_board_soc_families(access: BmcAccessObservationStanding) -> FreeSemigrou
 // board module mints its own row (extdeps.ampere.mt_collins_board.mt_collins_board_soc_edge), and this
 // table joins an authority to the edges that name it.
 fn board_soc_edges_for(authority: BoardAuthorityRef) -> BoardSocEdge? {
-  match board_soc_edges |> filter(e => board_authority_ref_eq(a: e.board, b: authority)) |> first() {
-    Absent => none
-    Present { value: e } => e
-  }
+  // filter |> first IS already the Optional this function returns; matching it open to hand back each
+  // arm unchanged re-derived the canonical surface inside the function for no answer (the same
+  // hand-unfolding this PR deleted in cpu_model_catalog_row_eq, whose comment is the rule: OPTIONAL
+  // EQUALITY IS COMPARISON, not a match).
+  board_soc_edges |> filter(e => board_authority_ref_eq(a: e.board, b: authority)) |> first()
 }
 

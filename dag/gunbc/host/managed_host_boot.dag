@@ -5,20 +5,14 @@ import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.host.boot_medium { BootMedium }
-import gunbc.host.board_platform_facts { host_board_architecture }
-import gunbc.host.controller_capability { controller_capability, CapabilityUnestablished }
-import gunbc.host.host_capability_row {
-  host_capability_row, HostCapabilityRowResolved, HostCapabilityRowUnobserved,
-  HostCapabilityRowNoCurrentRelease,
-}
 import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionOutcome,
   VirtualMediaBootSelectionRefusal,
   VirtualMediaBootSelectionAdmitted,
   VirtualMediaBootSelectionRefused,
-  virtual_media_boot_selection,
   virtual_media_boot_selection_refusal_text,
+  decide_virtual_media_boot_selection,
 }
 import gunbc.host.managed_host {
   ManagedHost,
@@ -35,7 +29,6 @@ import gunbc.host.bmc_control_binding {
   BmcControlEndpointMismatch,
   bmc_control_binding,
 }
-import gunbc.host.bmc_release_capability_catalog { MegaRacReleaseCapabilityKnown, MegaRacReleaseCapabilityUncatalogued, MegaRacReleaseCapabilityAmbiguous }
 
 // THE BOOT'S ONE-SHOT SELECTION IS BOOT POLICY for the pair (host, boot), so it is decided here and
 // never passed in: gunbc.host.host_reset_boot_selection decides the reset arm's own, and neither
@@ -58,28 +51,7 @@ import gunbc.host.bmc_release_capability_catalog { MegaRacReleaseCapabilityKnown
 // reflashed unit's row would otherwise keep naming the build it was probed on. Production passes
 // mtcollins1_megarac_operation_evidence(); there is no default and no fallback to the historical field.
 fn boot_selection(evidence: MegaRacOperationEvidence, host: ManagedHost) -> VirtualMediaBootSelectionOutcome {
-  let arch = host_board_architecture(access: host.access)
-  let media =
-    match host_capability_row(evidence: evidence, access: host.access) {
-      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: row } } =>
-        controller_capability(row: row).virtual_media
-      // Named arm by arm, deliberately: each refusal reason stays VISIBLE as a reason a selection
-      // refuses, not absorbed into a catch-all that cannot distinguish "nobody read the controller" from
-      // "nobody has read this build". All four answer the same way -- an unestablished capability cannot
-      // admit a selection -- but each is its own arm so a future divergence has somewhere to live. The
-      // fourth, NoCurrentRelease, is the arm this PR adds: nobody has said what the controller runs at all.
-      // The historical probe receipt is NOT read back as a fallback for it.
-      // The catalog's refusals stay separate INSIDE the catalog, where their repairs differ (go read the
-      // build, vs fix the catalog). To a boot they answer alike: no single established row means no
-      // selection. Named arms, not a catch-all, so each reason remains visible.
-      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityUncatalogued { firmware: _ } } =>
-        CapabilityUnestablished
-      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityAmbiguous { firmware: _, count: _ } } =>
-        CapabilityUnestablished
-      HostCapabilityRowUnobserved { endpoint: _ } => CapabilityUnestablished
-      HostCapabilityRowNoCurrentRelease { endpoint: _ } => CapabilityUnestablished
-    }
-  virtual_media_boot_selection(arch: arch, media: media)
+  decide_virtual_media_boot_selection(evidence: evidence, access: host.access)
 }
 
 // THE ONE RECORD A BOOT ATTACHES, SELECTS, POWER-CYCLES AND JUDGES. sole_constructor, so admit_boot_subject
