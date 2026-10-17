@@ -6,7 +6,7 @@
     "expected_sockets": [
       0
     ],
-    "requested": null,
+    "requested": "install seven additional DIMMs in socket 0 slots J3, J5, J7, J9, J11, J13 and J15, retaining the existing DIMM in J1",
     "fixed_at": "2026-10-17T04:39:29Z",
     "fixed_by": "operator"
   },
