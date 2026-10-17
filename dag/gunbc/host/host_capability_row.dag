@@ -34,7 +34,7 @@ import extdeps.bmc.access_profile {
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, BmcFirmwareReleaseCapabilityRow }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import std.types { Int, List }
+import std.types { Int }
 import gunbc.host.megarac_operation_standing {
   MegaRacOperationEvidence,
   MegaRacCurrentBuild,

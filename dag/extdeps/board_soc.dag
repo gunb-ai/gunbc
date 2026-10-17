@@ -13,7 +13,7 @@
 // unestablished — rather than "first wins" when the families disagree or one admits nothing.
 module extdeps.board_soc
 
-import std.types { Bool, List }
+import std.types { List }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.cpu.types { SoCFamily, soc_family_architecture }

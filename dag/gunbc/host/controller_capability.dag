@@ -18,7 +18,6 @@
 // the PXE boot device IS a boot-source override.
 module gunbc.host.controller_capability
 
-import std.types { List }
 import extdeps.bmc.capability {
   BmcCapability, BmcFirmwareReleaseCapabilityRow, release_row_has_capability,
   CapabilityBootSourceOverride, CapabilityNbdProxyVirtualMedia, CapabilityOemRemoteMedia,

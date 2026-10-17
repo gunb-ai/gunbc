@@ -14,7 +14,6 @@ import gunbc.host.bmc_control_binding {
   BmcControlStanding, BmcControlBound, BmcControlBoundRoute, BmcControlAccessUnobserved, BmcControlNotSecured,
   BmcControlEndpointMismatch, bmc_control_binding, bmc_control_endpoint,
 }
-import extdeps.bmc.access_profile { BmcAccessObservation }
 import gunbc.host.megarac_operation_standing {
   MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
   MegaRacOperationEvidence, MegaRacCurrentBuild, CurrentBuildRead, CurrentBuildKnownUnread, CurrentBuildUnobserved,
