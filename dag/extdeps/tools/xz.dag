@@ -1,0 +1,38 @@
+module extdeps.tools.xz
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+// xz(1), XZ Utils. `--decompress --keep FILE.xz` writes FILE beside it and keeps the compressed
+// input. Without --force it REFUSES when FILE already exists, so a stale decompressed copy can never
+// stand in for the archive just verified.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "tukaani.org/xz/xz.1.html"
+  }
+}
+
+// PATH-resolved, for the reason extdeps.exec.command program_spelling_is_an_observation_claim records.
+fn xz_program() -> ProgramIdentity = uncataloged_program(invocation: "xz")
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.xz",
+      decl_name: "xz_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+fn xz_decompress_keep_command(archive: String) -> ArgvCommand {
+  argv_command(program: xz_program(), arguments: ["--decompress", "--keep", archive])
+}
