@@ -150,7 +150,14 @@ fn managed_host_admission(
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_hold_decision_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_host_allocation_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_receipt_for_another_host_is_absent"),
-    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties"),    // THE X86 REQUIRED-RED CLAIM mints a VARIANT of the committed admission record: only its
+    // smpro arm differs from the committed one, and minting a variant is the whole point of the
+    // claim (an x86 platform with no SMpro interface must still be admitted). The alternative --
+    // reading the committed record and overriding one field -- is the bypass this seal exists to
+    // refuse, so the claim comes through the door with its name on it, as the six admission-
+    // witness claims above already do.
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_admission_admits_a_platform_that_carries_no_smpro_interface"),
+
   ]
 {
   ManagedHostAdmission {
