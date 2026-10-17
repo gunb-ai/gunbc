@@ -4,10 +4,10 @@ module extdeps.provisioning.ubuntu_arm64_network_origin
 // the release enum, the URL and casper layout, and the one digest Canonical itself publishes (the
 // ISO's). What a mirror served, and the kernel/initrd digests WE extracted, are in
 // gunbc.provisioning.ubuntu_arm64_network_origin_observation.
-import std.types { Int, NonEmptyStr }
+import std.types { NonEmptyStr, String }
 import std.measure { FiniteByteSize, finite_byte_size, positive_measure_count }
 import std.optional { Absent, Present }
-import std.content_hash { content_hash_validate_lower_hex_length, content_hash_validate_lower_hex_syntax }
+import std.content_hash { sha256_hex_digest }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -89,7 +89,7 @@ fn ubuntu_casper_initrd_member_path() -> NonEmptyStr {
 // A PIN IS A SHA-256 DIGEST AND A NON-ZERO SIZE, and the standing says where the digest came
 // from. The size is std.measure FiniteByteSize, so an empty artefact has no constructor rather
 // than a check. The constructor takes the hex, not a Digest, so a sha512 pin has no spelling, and
-// a hex that is not 64 lower-case digits returns absence.
+// a hex that std.content_hash sha256_hex_digest refuses returns absence (one validator, no local width).
 // A second algorithm is a second constructor when an upstream publishes one.
 type PinnedArtefact sole_constructor {
   digest: Digest
@@ -97,14 +97,10 @@ type PinnedArtefact sole_constructor {
   standing: CitedFigureStanding
 }
 
-data sha256_hex_width: Int = 64
-
 fn pinned_artefact(sha256_hex: NonEmptyStr, size: FiniteByteSize, standing: CitedFigureStanding) -> PinnedArtefact? {
-  if content_hash_validate_lower_hex_length(text: sha256_hex as String, expected_hex_digits: sha256_hex_width)
-    && content_hash_validate_lower_hex_syntax(text: sha256_hex as String) {
-    Present { value: PinnedArtefact { digest: sha256_digest(hex: sha256_hex), size: size, standing: standing } }
-  } else {
-    Absent
+  match sha256_hex_digest(hex: sha256_hex as String) {
+    Present { value: _ } => Present { value: PinnedArtefact { digest: sha256_digest(hex: sha256_hex), size: size, standing: standing } }
+    Absent => Absent
   }
 }
 
