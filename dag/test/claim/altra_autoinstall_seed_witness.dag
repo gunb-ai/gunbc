@@ -376,6 +376,18 @@ data unlocked_console: ConsoleEntryAuthorisation = ConsoleEntryUnlocked {
   reason: BmcSolConsoleUnlocked,
 }
 
+// THE SAME SECRET, IN A DIFFERENT STORE. A credential's version moving within one store and the store itself
+// moving are different operator events with different remedies, and a digest that could see only the first
+// would answer "the machine booted seed X" wrongly after a migration. Both fixtures differ in the LOCATOR only,
+// so this pair is what proves the locator is digested rather than decorative — a field no witness observes is a
+// field a refactor may drop.
+data relocated_handle: AdminCredentialPosture = PasswordHandle {
+  handle: admin_password_handle(
+    secret_locator: "vault://gunbc-alternate-store/provisioning/altra/admin" as NonEmptyStr,
+    secret_version: "v7" as NonEmptyStr,
+  ),
+}
+
 data locked_console: ConsoleEntryAuthorisation = ConsoleEntryLocked
 
 data seeded_handle: AdminCredentialPosture = PasswordHandle {
@@ -1221,6 +1233,28 @@ test fn the_seed_names_its_packages_and_modules_by_axis() -> Bool {
         && rendered.contains("mod:ahci_platform")
         && rendered.contains("mod:nvme")
         && rendered.contains("SATA_AHCI_PLATFORM")
+    Absent => false
+  }
+}
+
+// THE CREDENTIAL LOCATOR IS OBSERVED, NOT DECORATIVE. The handle's locator is a string because no module in
+// this repository owns secret-store addressing syntax (extdeps.cloud.gcp.secret_ref is GCP-specific and this
+// fleet is on-premises, so importing it would state a requirement the board does not have; and extdeps.uri has
+// no scheme for a vault, which I will not add to a file I do not own). That makes the string the honest type
+// today — which is precisely why it needs a witness: an unobserved string is where a placeholder survives.
+// Rotating a version is already covered (a_rotated_credential_moves_the_digest); this covers MOVING THE STORE.
+test fn a_relocated_credential_moves_the_digest() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: in_store } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: relocated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: relocated } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: in_store),
+            right: altra_autoinstall_seed_digest(seed: relocated),
+          )
+            && render_altra_autoinstall_seed(seed: relocated).contains("gunbc-alternate-store")
+        Absent => false
+      }
     Absent => false
   }
 }
