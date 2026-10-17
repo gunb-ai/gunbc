@@ -22,7 +22,7 @@ module gunbc.firmware_network_boot_standing
 // name what it covers, and no match in this module is ever on it.
 
 import std.types { Bool, EpochMs, List, NonEmptyStr }
-import std.algebra { length }
+import std.algebra { length, fold_list, list_append }
 import std.optional { Optional, Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
 import extdeps.uri { uri_https }
@@ -802,20 +802,31 @@ fn bios_gap(bios_version: BiosVersionObservation) -> List<UnansweredAxis> {
 // THE FIRST REFUSAL IS THE ONE AN EXECUTOR ACTS ON, so Refused keeps a single cause: a human
 // chasing four refusals at once does none of them. That is an executor convenience, not a report
 // limit -- `gaps` carries all of them, refusals included.
+// THE FIRST REFUSAL, DECIDED ONCE. `first` over the mapped option list: `refusal_of_gap` is the
+// only function that reads an axis and says whether it refused, and filter_map-style selection over
+// its Optional is the same question asked a second time. The earlier shape ran gap_is_refusal to
+// pick a gap and then refusal_of_gap to extract from the gap it had just picked -- two readings of
+// one fact, which is DESIGN 3's rule restated (review 81780).
 fn first_refusal(gaps: List<UnansweredAxis>) -> Optional<FirmwareReadRefusal> {
-  match (
-    gaps |> filter(g => gap_is_refusal(gap: g)) |> first
-  ) {
-    Present { value: g } => refusal_of_gap(gap: g)
-    Absent => Absent
-  }
+  refusals_in_order(gaps: gaps) |> first
 }
 
-fn gap_is_refusal(gap: UnansweredAxis) -> Bool {
-  match gap_absence(gap: gap) {
-    AxisRefused { refusal: _ } => true
-    AxisNotAsked { reason: _ } => false
-  }
+// THE REFUSALS, IN GAP ORDER, WITHOUT AN OPTIONAL-OF-OPTIONAL IN THE MIDDLE. Collecting into a
+// plain list and taking `first` is the same shape the catalog lookup uses; mapping to Optional and
+// filtering the Absents instead would produce List<Optional<_>>, which this resolver cannot type a
+// value out of -- an awkwardness of the toolchain, noted so nobody reintroduces the shape and reads
+// the failure as a modeling problem.
+fn refusals_in_order(gaps: List<UnansweredAxis>) -> List<FirmwareReadRefusal> {
+  fold_list(
+    xs: gaps,
+    empty: [] as List<FirmwareReadRefusal>,
+    cons: fn(acc, gap) {
+      match refusal_of_gap(gap: gap) {
+        Present { value: refusal } => list_append(left: acc, right: refusal)
+        Absent => acc
+      }
+    },
+  )
 }
 
 fn refusal_of_gap(gap: UnansweredAxis) -> Optional<FirmwareReadRefusal> {

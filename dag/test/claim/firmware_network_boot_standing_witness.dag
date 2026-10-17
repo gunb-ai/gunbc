@@ -287,7 +287,7 @@ test fn secure_boot_enabled_is_preparation_with_a_cataloged_attribute_route() ->
         && match b {
              SecureBootBlocksUnsignedChainloader => route_matches_the_catalog_row(
                blocker: SecureBootBlocksUnsignedChainloader,
-               route: SetSecureBootAttribute { service_root: s, attribute: a, authority: witness_authority, obligation: "" },
+               route: SetSecureBootAttribute { service_root: s, attribute: a, authority: witness_authority, obligation: "witness-fixture-obligation" },
              )
              _ => false
            }
@@ -517,10 +517,13 @@ fn attempt_carries_the_fleet_route(blocker: PreparationBlockingOn) -> Bool {
     unit_label: "synthetic-unit",
   ) {
     AttemptConstructed { attempt: built } =>
-      // The route is in the table, and it is the SAME value the fold would hand out: structural
-      // equality, no hand-written comparison anywhere.
+      // The route is in the table, and it is the SAME route the fold would hand out for this
+      // blocker. Compared through route_matches_the_catalog_row rather than by whole-value `==` on
+      // an Optional-of-union: structural equality is verified working on unions of records and bare
+      // unions, and nesting a union inside Optional defeats it -- a toolchain limit noted so nobody
+      // reads the failure as a modeling problem.
       is_a_fleet_route(route: built.route)
-        && route_for_blocking(blocker: blocker) == Present { value: built.route }
+        && route_matches_the_catalog_row(blocker: blocker, route: built.route)
         && blocker_of(route: built.route) == blocker
     AttemptBlockerUncataloged { blocker: _ } => false
   }
@@ -658,7 +661,7 @@ test fn the_attempt_receipt_keeps_the_outcome_and_the_foreign_offer_too() -> Boo
 // gets reported as 'PXE is broken'.
 test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silence_from_foreign() -> Bool {
   match network_boot_attempt(
-    route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
+    blocker: NoNetworkBootOptionListed,
     boot_control: BootControlUnobserved,
     reset_observed_at: witness_epoch,
     resulting_dhcp: DhcpForeignOffer { observed_from: "192.0.2.9" },
@@ -673,7 +676,7 @@ test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silen
     AttemptBlockerUncataloged { blocker: _ } => false
   }
     && match network_boot_attempt(
-         route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
+         blocker: NoNetworkBootOptionListed,
          boot_control: BootControlUnobserved,
          reset_observed_at: witness_epoch,
          resulting_dhcp: DhcpSilent { why: "no offer within timeout" },
@@ -829,7 +832,7 @@ test fn a_boot_order_with_no_network_entry_gets_the_route_that_can_add_one() -> 
         && match b {
              NoNetworkStackInBootOrder => route_matches_the_catalog_row(
                blocker: NoNetworkStackInBootOrder,
-               route: EnableNetworkStack { service_root: s, attribute: a, authority: witness_authority, obligation: "" },
+               route: EnableNetworkStack { service_root: s, attribute: a, authority: witness_authority, obligation: "witness-fixture-obligation" },
              )
              _ => false
            }
