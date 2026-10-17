@@ -11091,6 +11091,13 @@ fn std_optional_payload_member_name(scope: InferScope) -> String? {
   }
 }
 
+fn absent_adopts_expected(expected: Node?, scope: InferScope) -> Bool {
+  match expected {
+    Present { value: exp } => node_is_std_optional(n: exp, scope: scope) || exp.return_cardinality == CardOptional
+    Absent => false
+  }
+}
+
 fn name_is_std_optional_present_arm(scope: InferScope, name: String) -> Bool {
   match std_optional_present_arm_name(scope: scope) {
     Present { value: arm_name } => arm_name == name
@@ -11747,6 +11754,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           }
         Absent => payload_optional
       }
+    } else if parent_is_std_optional && absent_adopts_expected(expected: expected, scope: scope) {
+      // THE ABSENT ARM CARRIES NO PAYLOAD, SO THE EXPECTED OPTIONAL IS ITS ONLY TYPE. Without this the
+      // literal kept the kernel coproduct whose payload type is unbound, and an `if c { Absent } else
+      // { <T?> }` join compared that unbound payload against T? (v1.compiler.infer ExprIf).
+      match expected { Present { value: exp } => exp  Absent => raw_resolved }
     } else { raw_resolved }
     let type_diags = match effective_lookup {
       Present { value: _ } => []

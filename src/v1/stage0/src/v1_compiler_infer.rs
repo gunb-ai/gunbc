@@ -17786,6 +17786,16 @@ pub fn std_optional_payload_member_name(scope: Rc<InferScope>) -> Option<String>
     }
 }
 
+pub fn absent_adopts_expected(expected: Option<Rc<Node>>, scope: Rc<InferScope>) -> bool {
+    match expected.clone() {
+        Some(exp) => {
+            (node_is_std_optional(exp.clone(), scope.clone())
+                || (exp.return_cardinality.clone() == Cardinality::CardOptional))
+        }
+        std::option::Option::None => false,
+    }
+}
+
 pub fn name_is_std_optional_present_arm(scope: Rc<InferScope>, name: String) -> bool {
     match std_optional_present_arm_name(scope.clone()) {
         Some(arm_name) => (arm_name.clone() == name.clone()),
@@ -18905,7 +18915,16 @@ Rc::new(FieldInferResult {
                             }
                         }
                     } else {
-                        raw_resolved.clone()
+                        if (parent_is_std_optional.clone()
+                            && absent_adopts_expected(expected.clone(), scope.clone()))
+                        {
+                            match expected.clone() {
+                                Some(exp) => exp.clone(),
+                                std::option::Option::None => raw_resolved.clone(),
+                            }
+                        } else {
+                            raw_resolved.clone()
+                        }
                     }
                 };
                 let type_diags = match effective_lookup.clone() {
