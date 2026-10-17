@@ -84,6 +84,7 @@ type DeclaredDirectoryMode
   = DirectoryOwnerOnly
   | DirectoryOwnerAllGroupTraverse
   | DirectoryOwnerAllEveryoneTraverse
+  | DirectoryOwnerGroupWritableSetgid
 
 fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
   match m {
@@ -109,6 +110,20 @@ fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
       other: PermissionBits { read: true, write: false, execute: true },
       setuid: false,
       setgid: false,
+      sticky: false,
+    }
+    // THE WORKER-SHARED DIRECTORY (2770): the owner and one named group read, write and traverse, nobody
+    // else does, and a child inherits the group. It exists for a directory a dedicated worker account
+    // (gunbc.fleet.fleet_posix_accounts fleet_posix_worker_user) writes while the instance's service
+    // user keeps owning it. Group-writability is spelled here once, as a named arm, because the
+    // module's rule is that no consumer spells a group-writable directory. DISSOLUTION: with the
+    // ManagedDirectory route's owning-group capability named above, this arm becomes a derived mode.
+    DirectoryOwnerGroupWritableSetgid => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: true, write: true, execute: true },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: true,
       sticky: false,
     }
   }
