@@ -1,0 +1,59 @@
+module test.claim.live_deploy.object_source_serve_real_execution
+
+import std.logic { Bool }
+import std.types { FilePath, String }
+import extdeps.git
+import extdeps.git {
+  git_config_key_extensions_partial_clone,
+}
+import extdeps.shell
+import extdeps.git.partial_clone {
+  ObjectStoreComplete,
+  PartialClonePromisor,
+  PartialCloneUnreadable,
+  PartialCloneFilter,
+  ShallowClone,
+  observe_partial_clone_observations,
+  partial_clone_standing_of_observations,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_home_doc: String = "Inhabitance of partial_clone_standing_of_observations: a throwaway git repository observed through git.Inspect.ConfigGetInRepo / ConfigGetRegexpInRepo / IsShallowRepository. A complete init is ObjectStoreComplete; setting git's own extensions.partialClone and remote.origin.promisor is PartialClonePromisor. Excluded from hermetic discovery (those inspect operations have no mock_response) and enrolled on the local-repo wet lane."
+
+fn standing_tag_at(repo: FilePath) -> String {
+  match partial_clone_standing_of_observations(observations: observe_partial_clone_observations(repository_path: repo)) {
+    ObjectStoreComplete => "complete"
+    PartialClonePromisor { detail: _ } => "promisor"
+    PartialCloneFilter { detail: _ } => "filter"
+    ShallowClone => "shallow"
+    PartialCloneUnreadable { detail: _ } => "unreadable"
+  }
+}
+
+test fn a_complete_fixture_repository_yields_object_store_complete_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let seeded = git.Core.InitInRepo(repo: dir.path).success
+  let tag = standing_tag_at(repo: dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && seeded && tag == "complete" && cleaned.success
+}
+
+test fn a_promisor_fixture_repository_yields_partial_clone_promisor_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let seeded = git.Core.InitInRepo(repo: dir.path).success
+  let ext = git.Core.ConfigLocalSetInRepo(
+    repo: dir.path,
+    key: git_config_key_extensions_partial_clone,
+    value: "origin",
+  ).success
+  let promisor = git.Core.ConfigLocalSetInRepo(
+    repo: dir.path,
+    key: "remote.origin.promisor",
+    value: "true",
+  ).success
+  let tag = standing_tag_at(repo: dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && seeded && ext && promisor && tag == "promisor" && cleaned.success
+}

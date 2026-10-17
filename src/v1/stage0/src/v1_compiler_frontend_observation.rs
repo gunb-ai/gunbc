@@ -2,8 +2,7 @@
 // Source module: v1.compiler.frontend_observation
 
 pub use crate::std_occurrence_identity::OccurrenceTransport;
-pub use crate::v1_compiler_compile::front_end_sources;
-pub use crate::v1_compiler_compile::{FrontendResult, SourceFile};
+pub use crate::v1_compiler_compile::{front_end_sources, FrontendResult, SourceFile};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::ErrorNode;
