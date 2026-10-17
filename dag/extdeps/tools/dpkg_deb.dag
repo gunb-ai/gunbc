@@ -2,7 +2,7 @@ module extdeps.tools.dpkg_deb
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -37,4 +37,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 fn dpkg_deb_extract_command(archive: String, into_directory: String) -> ArgvCommand {
   argv_command(program: dpkg_deb_program(), arguments: ["-x", archive, into_directory])
+}
+
+// `-f <archive> <field>...` (--field) prints the named fields of the archive's control file, one
+// "Field: value" stanza line each, omitting a field the control file does not carry.
+fn dpkg_deb_control_fields_command(archive: String, fields: List<String>) -> ArgvCommand {
+  argv_command(program: dpkg_deb_program(), arguments: ["-f", archive] + fields)
 }

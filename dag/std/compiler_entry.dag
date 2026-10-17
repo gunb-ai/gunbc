@@ -203,7 +203,8 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
   route: NativeClaimDriver,
   ruling: decl_ref(module_path: "std.compiler_entry", decl_name: "NativeClaimDriver"),
   scope: NativeAdmitOnly { admitted: [
-    native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem")
+    native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
+    native_effect_declared(module_path: "std.realization_measurement", decl_name: "AllocationCounter")
   ] }
 }
 

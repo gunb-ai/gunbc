@@ -107,6 +107,11 @@ fn host_unit_slot_for(host: HostControlStanding, purpose: HostUnitSlotPurpose, w
   }
 }
 
+// ARCHITECTURE FRONTIER (DESIGN section 3c): the runner binary is selected for Aarch64 unconditionally,
+// which holds for every host that registers through this fold today (all Altra boards). Trigger: a
+// non-AArch64 service host's compute offer. It must be sufficient for deriving the runner binary's
+// architecture from gunbc.runner.runner_spec_from_offer (the same offer the registration labels read),
+// replacing the Aarch64 literal here and in provider_guest_slot_for.
 // THE FOLD, over the registration labels it is handed. host_unit_slot_for hands it the host's own
 // (runner_registration_labels); the labels are a boundary because the one production host's offer is
 // not yet in the fleet catalog, so the service arm's success path is reachable only by supplying them.
@@ -293,8 +298,29 @@ fn service_slot_population_over(host: HostControlStanding, width: RunnerWidthRes
   }
 }
 
+// THE UNITS OF THE CURRENT POPULATION, or nothing when the population is not derivable. A population
+// that cannot be derived -- width unresolved, host not controlled, or any slot refused (a host with no
+// offer refuses every slot's labels) -- yields no membership at all, never an empty one: an empty
+// member set would read every current-boot name as a stranger.
+// CONSUMER FRONTIER (DESIGN section 3c): consumed by lost_boot_sweep (gunbc.runner.runner_jit_deregistration),
+// whose own consumer is the fleet-converge mode waiting on operator answer Q3.
+fn service_slot_member_units(population: ServiceSlotPopulation) -> List<NonEmptyStr>? {
+  match population {
+    ServiceSlotsWidthUnresolved { cause: _ } => none
+    ServiceSlotsHostNotControlled { refusal: _ } => none
+    ServiceSlotsDerived { slots: slots } => {
+      let units = fold(slots, init: [], f: (acc, st) => match st { HostUnitSlotBound { slot: s } => concat([s.unit], acc) _ => acc })
+      if count(units) == count(slots) { Present { value: reverse(units) } } else { none }
+    }
+  }
+}
+
 fn service_slot_indices(from: Int, count: Int) -> List<Int> {
-  if from >= count { [] } else { concat([from], service_slot_indices(from: from + 1, count: count)) }
+  service_slot_indices_down(next: count - 1, floor: from, acc: [])
+}
+
+fn service_slot_indices_down(next: Int, floor: Int, acc: List<Int>) -> List<Int> {
+  if next < floor { acc } else { service_slot_indices_down(next: next - 1, floor: floor, acc: concat([next], acc)) }
 }
 
 // ── the provider guest's slot ───────────────────────────────────────────────────────────────────

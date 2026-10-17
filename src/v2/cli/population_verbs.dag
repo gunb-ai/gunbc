@@ -179,11 +179,11 @@ type ParseVerdictReuse {
 }
 
 fn parse_verdict_reuse_off() -> ParseVerdictReuse {
-  ParseVerdictReuse { base: Absent, counts: parse_verdict_reuse_counts_zero() }
+  ParseVerdictReuse { base: Absent, counts: parse_verdict_reuse_counts_zero(ancestor: Absent) }
 }
 
 fn parse_verdict_reuse_requested(base: ParseVerdictBase) -> ParseVerdictReuse {
-  ParseVerdictReuse { base: Present { value: base }, counts: parse_verdict_reuse_counts_zero() }
+  ParseVerdictReuse { base: Present { value: base }, counts: parse_verdict_reuse_counts_zero(ancestor: base.ancestor) }
 }
 
 type PopulationParse {
