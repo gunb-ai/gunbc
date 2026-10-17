@@ -158,7 +158,7 @@ fn hostname_allocation_admission(
 // spelling; their names were DRAWN by draw_human_name over the Gen Z naming scheme (gunbc.host_names.gen_z), with the entropy
 // recorded as the receipt of the draw.
 //
-// THE THIRD DRAWN ROW (operator, 2026-10-16, session royal-seal-46) is the recovered ASRock Altra
+// THE THIRD DRAWN ROW (operator, 2026-10-16, session royal-seal-46) is the ASRock Altra
 // ALTRAD8UD-1L2T-6 (opaque identity host-94c81d). The operator chose the Gen Z scheme for it, so the
 // name was DRAWN by draw_human_name over gunbc.host_names.gen_z: entropy 709187867323 indexes
 // host_name_first_parts to "owen", which no existing host answers to, so the shortest form (FirstOnly)
