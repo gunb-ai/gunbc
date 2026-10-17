@@ -165,3 +165,31 @@ fn an_application_refuses_the_expansion_of_another_instantiation_in_both_orders(
         "reverse operand order must refuse too"
     );
 }
+
+// gentle-carp-16's #14152 control shape: both operands hand-built, declaration None and inferred None,
+// the Disj side carrying its arguments positionally in children. Run as a PAIR: if both refuse, the arm
+// answers nothing and the refusal passes vacuously, which is a failure of the arm.
+fn disj_with_arguments(name: &str, args: Vec<Rc<Node>>) -> Rc<Node> {
+    Rc::new(named(name, Connective::Disj, args))
+}
+
+#[test]
+fn hand_built_box_pair_agrees_on_same_arguments_and_refuses_different_ones() {
+    let bound = applied("Box", vec![leaf("Int")]);
+    assert!(
+        equals(bound.clone(), disj_with_arguments("Box", vec![leaf("Int")])),
+        "accept twin: Box<Int> vs Disj Box<Int> (a refusal here makes the refusal below vacuous)"
+    );
+    assert!(
+        !equals(
+            bound.clone(),
+            disj_with_arguments("Box", vec![leaf("Bool")])
+        ),
+        "Box<Int> vs Disj Box<Bool> must refuse"
+    );
+    let actual = disj_with_arguments("Box", vec![leaf("Bool")]);
+    assert!(
+        !equals(actual, bound),
+        "reverse operand order must refuse too"
+    );
+}
