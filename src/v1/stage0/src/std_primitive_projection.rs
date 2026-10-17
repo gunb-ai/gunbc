@@ -272,6 +272,34 @@ pub fn primitive_to_string() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn never_type_declaration() -> Rc<DeclarationRef> {
+    thread_local! {
+        static CACHED: Rc<DeclarationRef> = {
+            crate::std_decl_ref::decl_ref("std.error_primitives".to_string(), "Never".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DeclarationRef>| c.clone())
+}
+
+pub fn never_eliminator_declaration() -> Rc<DeclarationRef> {
+    thread_local! {
+        static CACHED: Rc<DeclarationRef> = {
+            crate::std_decl_ref::decl_ref("std.error_primitives".to_string(), "absurd".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DeclarationRef>| c.clone())
+}
+
+pub fn never_type_qualified_path() -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            never_type_declaration().module_path.clone(),
+            ".".to_string(),
+        ),
+        never_type_declaration().decl_name.clone(),
+    )
+}
+
 pub fn primitive_string_contains() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
