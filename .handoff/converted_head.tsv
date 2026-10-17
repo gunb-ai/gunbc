@@ -1,0 +1,15 @@
+src/v2/compiler/fold_lowering.dag:1277|fold_collection_member_type
+src/v2/compiler/infer.dag:1198|infer_projection_receiver_of_type
+src/v2/compiler/infer.dag:2915|infer_match_coproduct_of_type
+src/v2/compiler/infer.dag:4317|infer_node_mention_contested
+src/v2/compiler/infer.dag:4329|infer_type_alias_unfolded_at
+src/v2/compiler/infer.dag:4417|infer_kernel_value_type_optional
+src/v2/compiler/infer.dag:4488|infer_type_declaration_ref
+src/v2/compiler/infer.dag:4578|infer_string_literal_at
+src/v2/compiler/infer.dag:4657|infer_produced_open_type_params
+src/v2/compiler/resolve.dag:4045|resolve_instantiation_argument_kinds
+src/v2/compiler/resolve.dag:4127|resolve_type_application_refusal_optional
+src/v2/compiler/resolve.dag:4193|resolve_kind_inhabitance
+src/v2/compiler/resolve.dag:5242|resolve_optional_application_contract_refusal_optional
+src/v2/std/inhabitance.dag:283|inhabitance_declaration_head
+src/v2/std/qualified_name.dag:626|declaration_denotation_of_type
