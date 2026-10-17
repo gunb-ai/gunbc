@@ -32,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data rust_cache_v2_9_1: ActionRelease = ActionRelease {
-  owner: "Swatinem", repo: "rust-cache", tag: "v2.9.1", commit: "c19371144df3bb44fab255c43d04cbc2ab54d1c4"
+  owner: "Swatinem", repo: "rust-cache", tag: "v2.9.1", commit: "c19371144df3bb44fab255c43d04cbc2ab54d1c4", subdirectory: none
 }
 
 // Each declaration below was read from the action.yml blob at the release's commit
