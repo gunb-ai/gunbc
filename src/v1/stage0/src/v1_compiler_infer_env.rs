@@ -3555,6 +3555,197 @@ pub fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) 
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SettledType {
+    pub head: Rc<DeclarationRef>,
+    pub args: Rc<Vec<Rc<Node>>>,
+}
+
+pub fn settled_type(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+    fuel: i64,
+) -> Option<Rc<SettledType>> {
+    {
+        let reading = match n.declaration.clone() {
+            Some(dn) => Rc::new(
+                TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                    declaration: dn.clone(),
+                },
+            ),
+            std::option::Option::None => {
+                type_reference_declaration_reading(n.clone(), source_indices.clone(), env.clone())
+            }
+        };
+        match (*reading.clone()).clone() {
+            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                declaration: d,
+                ..
+            } => match alias_rhs_of_declaration(d.clone(), env.clone()) {
+                std::option::Option::None => Some(Rc::new(SettledType {
+                    head: d.clone(),
+                    args: n.children.clone(),
+                })),
+                Some(rhs) => {
+                    if (fuel.clone() <= 0) {
+                        std::option::Option::None
+                    } else {
+                        match rhs.declaration.clone() {
+                            Some(rhs_head) => settled_rhs(
+                                rhs.clone(),
+                                rhs_head.clone(),
+                                source_indices.clone(),
+                                env.clone(),
+                                v1_rt::int_sub(fuel.clone(), 1),
+                            ),
+                            std::option::Option::None => std::option::Option::None,
+                        }
+                    }
+                }
+            },
+            _ => std::option::Option::None,
+        }
+    }
+}
+
+pub fn settled_rhs(
+    mut __tco_loop_rhs: Rc<Node>,
+    mut __tco_loop_head: Rc<DeclarationRef>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_fuel: i64,
+) -> Option<Rc<SettledType>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut rhs = __tco_loop_rhs;
+        #[allow(unused_mut)]
+        let mut head = __tco_loop_head;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut env = __tco_loop_env;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        match alias_rhs_of_declaration(head.clone(), env.clone()) {
+            std::option::Option::None => {
+                break Some(Rc::new(SettledType {
+                    head: head.clone(),
+                    args: rhs.children.clone(),
+                }));
+            }
+            Some(next) => match next.declaration.clone() {
+                Some(next_head) => {
+                    if (fuel.clone() <= 0) {
+                        break std::option::Option::None;
+                    } else {
+                        {
+                            let __tco_0 = next.clone();
+                            let __tco_1 = next_head.clone();
+                            let __tco_2 = source_indices;
+                            let __tco_3 = env;
+                            let __tco_4 = v1_rt::int_sub(fuel, 1);
+                            __tco_loop_rhs = __tco_0;
+                            __tco_loop_head = __tco_1;
+                            __tco_loop_source_indices = __tco_2;
+                            __tco_loop_env = __tco_3;
+                            __tco_loop_fuel = __tco_4;
+                            continue;
+                        }
+                    }
+                }
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+            },
+        }
+    }
+}
+
+pub fn alias_rhs_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    {
+        let declaring = if (env.module_path.clone() == item_ref.module_path.clone()) {
+            Some(env.clone())
+        } else {
+            Rc::new({
+                let mut __result = Vec::new();
+                for p in env.parents.clone().iter().cloned() {
+                    if (p.module_path.clone() == item_ref.module_path.clone()) {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned()
+        };
+        match declaring.clone() {
+            std::option::Option::None => std::option::Option::None,
+            Some(owner) => {
+                match v1_rt::map_get(&owner.str_bindings.clone(), item_ref.decl_name.clone()) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(binding) => binding.alias_rhs.clone(),
+                }
+            }
+        }
+    }
+}
+
+pub fn settled_args_agree(
+    left: Rc<Vec<Rc<Node>>>,
+    right: Rc<Vec<Rc<Node>>>,
+    agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
+) -> bool {
+    {
+        let mut __all = true;
+        for pair in Rc::new(
+            left.clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            if !(match right.clone().get((pair.0.clone()) as usize).cloned() {
+                Some(r) => agree(pair.1.clone(), r.clone()),
+                std::option::Option::None => false,
+            }) {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    }
+}
+
+pub fn alias_settled_agree(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+    agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
+) -> bool {
+    match settled_type(left.clone(), source_indices.clone(), env.clone(), 16) {
+        std::option::Option::None => false,
+        Some(l) => match settled_type(right.clone(), source_indices.clone(), env.clone(), 16) {
+            std::option::Option::None => false,
+            Some(r) => {
+                (crate::std_decl_ref::declaration_ref_eq(l.head.clone(), r.head.clone())
+                    && ((((l.args.clone().len() as i64) == 0)
+                        || ((r.args.clone().len() as i64) == 0))
+                        || (((l.args.clone().len() as i64) == (r.args.clone().len() as i64))
+                            && settled_args_agree(l.args.clone(), r.args.clone(), agree.clone()))))
+            }
+        },
+    }
+}
+
 pub fn type_reference_declaration_ref(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3592,6 +3783,140 @@ pub fn type_reference_declaration_ref(
                     }
                 },
             },
+        }
+    }
+}
+
+pub fn declaration_named_by_type_name(
+    name: String,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    match operand_declaration_from_qualified_name(name.clone(), env.clone()) {
+        Some(od) => Some(od.declaration.clone()),
+        std::option::Option::None => {
+            if (qualified_all_but_last(name.clone()) != "".to_string()) {
+                std::option::Option::None
+            } else {
+                match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+                    .as_deref()
+                    .cloned()
+                {
+                    Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                        module_path: mp,
+                        ..
+                    }) => Some(crate::std_decl_ref::decl_ref(mp.clone(), name.clone())),
+                    _ => std::option::Option::None,
+                }
+            }
+        }
+    }
+}
+
+pub fn bare_alias_settled_declaration(
+    mut __tco_loop_d: Rc<DeclarationRef>,
+    mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_fuel: i64,
+) -> Rc<DeclarationRef> {
+    loop {
+        #[allow(unused_mut)]
+        let mut d = __tco_loop_d;
+        #[allow(unused_mut)]
+        let mut env = __tco_loop_env;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        if (fuel.clone() <= 0) {
+            break d.clone();
+        } else {
+            match alias_rhs_of_declaration(d.clone(), env.clone()) {
+                std::option::Option::None => {
+                    break d.clone();
+                }
+                Some(rhs) => {
+                    if ((rhs.children.clone().len() as i64) > 0) {
+                        break d.clone();
+                    } else {
+                        match rhs.declaration.clone() {
+                            Some(next) => {
+                                let __tco_0 = next.clone();
+                                let __tco_1 = env;
+                                let __tco_2 = v1_rt::int_sub(fuel, 1);
+                                __tco_loop_d = __tco_0;
+                                __tco_loop_env = __tco_1;
+                                __tco_loop_fuel = __tco_2;
+                                continue;
+                            }
+                            std::option::Option::None => {
+                                break d.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn type_names_settle_to_one_declaration(left: String, right: String, env: Rc<TypeEnv>) -> bool {
+    match declaration_named_by_type_name(left.clone(), env.clone()) {
+        std::option::Option::None => false,
+        Some(l) => match declaration_named_by_type_name(right.clone(), env.clone()) {
+            std::option::Option::None => false,
+            Some(r) => crate::std_decl_ref::declaration_ref_eq(
+                bare_alias_settled_declaration(l.clone(), env.clone(), 16),
+                bare_alias_settled_declaration(r.clone(), env.clone(), 16),
+            ),
+        },
+    }
+}
+
+pub fn alias_rhs_head_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    match alias_rhs_of_declaration(item_ref.clone(), env.clone()) {
+        Some(rhs) => rhs.declaration.clone(),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn alias_head_reaches(
+    mut __tco_loop_head: Rc<DeclarationRef>,
+    mut __tco_loop_target: Rc<DeclarationRef>,
+    mut __tco_loop_type_env: Rc<TypeEnv>,
+    mut __tco_loop_fuel: i64,
+) -> bool {
+    loop {
+        #[allow(unused_mut)]
+        let mut head = __tco_loop_head;
+        #[allow(unused_mut)]
+        let mut target = __tco_loop_target;
+        #[allow(unused_mut)]
+        let mut type_env = __tco_loop_type_env;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        if crate::std_decl_ref::declaration_ref_eq(head.clone(), target.clone()) {
+            break true;
+        } else {
+            if (fuel.clone() <= 0) {
+                break false;
+            } else {
+                match alias_rhs_head_of_declaration(head.clone(), type_env.clone()) {
+                    Some(next) => {
+                        let __tco_0 = next.clone();
+                        let __tco_1 = target;
+                        let __tco_2 = type_env;
+                        let __tco_3 = v1_rt::int_sub(fuel, 1);
+                        __tco_loop_head = __tco_0;
+                        __tco_loop_target = __tco_1;
+                        __tco_loop_type_env = __tco_2;
+                        __tco_loop_fuel = __tco_3;
+                        continue;
+                    }
+                    std::option::Option::None => {
+                        break false;
+                    }
+                }
+            }
         }
     }
 }
