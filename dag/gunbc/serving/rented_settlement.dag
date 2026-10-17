@@ -3,6 +3,7 @@ module gunbc.serving.rented_settlement
 import std.types { String, NonEmptyStr, Bool, Int, List, EpochMs }
 import std.nat { Nat }
 import std.optional { Present, Absent }
+import std.algebra { list_head, list_tail }
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -223,10 +224,10 @@ fn rented_window_start_seconds(allocation: RentedServingAllocation, readings: Re
   }
 }
 
-fn rented_period_of(rows: List<VastAiCharge>) -> RentedSettlementPeriod {
+fn rented_period_of(first: VastAiCharge, rest: List<VastAiCharge>) -> RentedSettlementPeriod {
   fold(
-    rows,
-    init: RentedSettlementPeriod { first_start: 99999999999, last_end: 0 },
+    rest,
+    init: RentedSettlementPeriod { first_start: first.start, last_end: first.end },
     f: (acc, row) =>
       RentedSettlementPeriod {
         first_start: if row.start < acc.first_start { row.start } else { acc.first_start },
@@ -238,11 +239,13 @@ fn rented_period_of(rows: List<VastAiCharge>) -> RentedSettlementPeriod {
 fn rented_settle_attributed(
   allocation: RentedServingAllocation,
   readings: RentedSettlementReadings,
-  rows: List<VastAiCharge>,
+  first: VastAiCharge,
+  rest: List<VastAiCharge>,
   excluded: List<RentedExcludedCharge>,
 ) -> RentedSettlement {
   let id = rented_allocation_wire(id: allocation.identity)
-  let period = rented_period_of(rows: rows)
+  let rows = concat([first], rest)
+  let period = rented_period_of(first: first, rest: rest)
   if period.last_end < (readings.listed_through / 1000) {
     RentedSettlementPending { allocation: id, cause: RentedPendingChargesNotPostedPastGone { latest_end: period.last_end, listed_through: readings.listed_through / 1000 } }
   } else {
@@ -281,10 +284,13 @@ fn rented_settle_roster(
     RentedSettlementChargesUnread { allocation: id, cause: RentedChargesWindowDoesNotCover { window: window, needed_gte: needed_gte, needed_lte: needed_lte } }
   } else {
     let split = rented_attribute(allocation: allocation, rows: roster)
-    if count(split.ours) == 0 {
-      RentedSettlementPending { allocation: id, cause: RentedPendingNoAttributableCharge }
-    } else {
-      rented_settle_attributed(allocation: allocation, readings: readings, rows: split.ours, excluded: split.excluded)
+    match list_head(xs: split.ours) {
+      Absent => RentedSettlementPending { allocation: id, cause: RentedPendingNoAttributableCharge }
+      Present { value: first } =>
+        match list_tail(xs: split.ours) {
+          Absent => RentedSettlementPending { allocation: id, cause: RentedPendingNoAttributableCharge }
+          Present { value: rest } => rented_settle_attributed(allocation: allocation, readings: readings, first: first, rest: rest, excluded: split.excluded)
+        }
     }
   }
 }
