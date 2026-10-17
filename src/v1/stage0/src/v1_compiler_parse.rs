@@ -13,6 +13,7 @@ use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
+pub use crate::gunbc_structural_realization_bindings::optional_declaration_ref;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_import_statement::ImportStatementParseCause::{
     ImportParseInstrumentAnomaly, ImportStatementMalformed, ModuleDeclarationPathMalformed,
@@ -39,6 +40,7 @@ pub use crate::std_occurrence_identity::{
     OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry,
     OccurrenceProjection, OccurrenceTransport, ReferenceOccurrence,
 };
+pub use crate::std_optional::Optional;
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::BodyKind::{
@@ -233,8 +235,8 @@ pub struct ParseContext {
     pub intern_table: Rc<InternTable>,
     pub occurrence_allocator: OccurrenceIdAllocator,
     pub occurrence_index: Option<Rc<OccurrenceIndex>>,
-    pub declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
-    pub reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
+    pub declaration_occurrences: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    pub reference_occurrences: Rc<Vec<Rc<ReferenceOccurrence>>>,
     pub heads_only: bool,
     pub env: Rc<ParseEnvironment>,
     pub source_extents: Rc<ParseSourceExtentState>,
@@ -855,27 +857,21 @@ pub fn parse_context_occurrence_index(ctx: Rc<ParseContext>) -> Rc<OccurrenceInd
 pub fn parse_context_declaration_occurrences(
     ctx: Rc<ParseContext>,
 ) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
-    match ctx.declaration_occurrences.clone() {
-        Some(occurrences) => occurrences.clone(),
-        std::option::Option::None => Rc::new(vec![]),
-    }
+    ctx.declaration_occurrences.clone()
 }
 
 pub fn parse_context_reference_occurrences(
     ctx: Rc<ParseContext>,
 ) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
-    match ctx.reference_occurrences.clone() {
-        Some(occurrences) => occurrences.clone(),
-        std::option::Option::None => Rc::new(vec![]),
-    }
+    ctx.reference_occurrences.clone()
 }
 
 pub fn parse_context_with_occurrence_state(
     ctx: Rc<ParseContext>,
     occurrence_allocator: OccurrenceIdAllocator,
     occurrence_index: Option<Rc<OccurrenceIndex>>,
-    declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
-    reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
+    declaration_occurrences: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    reference_occurrences: Rc<Vec<Rc<ReferenceOccurrence>>>,
 ) -> Rc<ParseContext> {
     Rc::new(ParseContext {
         source_indices: ctx.source_indices.clone(),
@@ -3824,7 +3820,7 @@ pub fn parse_context_record_occurrence(
             ctx.clone(),
             ctx.occurrence_allocator.clone(),
             ctx.occurrence_index.clone(),
-            Some(v1_rt::rc_list_push(
+            v1_rt::rc_list_push(
                 parse_context_declaration_occurrences(ctx.clone()),
                 Rc::new(DeclarationOccurrence {
                     occurrence: occurrence.clone(),
@@ -3832,7 +3828,7 @@ pub fn parse_context_record_occurrence(
                     category: category.clone(),
                     diagnostic_span: diagnostic_span.clone(),
                 }),
-            )),
+            ),
             ctx.reference_occurrences.clone(),
         ),
         ParsedOccurrenceRole::ParsedOccurrenceReference {
@@ -3842,7 +3838,7 @@ pub fn parse_context_record_occurrence(
             ctx.occurrence_allocator.clone(),
             ctx.occurrence_index.clone(),
             ctx.declaration_occurrences.clone(),
-            Some(v1_rt::rc_list_push(
+            v1_rt::rc_list_push(
                 parse_context_reference_occurrences(ctx.clone()),
                 Rc::new(ReferenceOccurrence {
                     occurrence: occurrence.clone(),
@@ -3850,7 +3846,7 @@ pub fn parse_context_record_occurrence(
                     category: category.clone(),
                     diagnostic_span: diagnostic_span.clone(),
                 }),
-            )),
+            ),
         ),
         ParsedOccurrenceRole::ParsedOccurrenceUnclassified => ctx.clone(),
     }
@@ -4239,8 +4235,8 @@ pub fn parse_context_for_tokens(
         occurrence_index: Some(Rc::new(OccurrenceIndex {
             entries: Rc::new(vec![]),
         })),
-        declaration_occurrences: Some(Rc::new(vec![])),
-        reference_occurrences: Some(Rc::new(vec![])),
+        declaration_occurrences: Rc::new(vec![]),
+        reference_occurrences: Rc::new(vec![]),
         heads_only: heads_only.clone(),
         env: env.clone(),
         source_extents: parse_source_extent_state_empty(),
@@ -7968,6 +7964,41 @@ pub fn collect_type_args(
     }
 }
 
+pub fn optional_application_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
+    payload: Rc<Node>,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
+    {
+        let generated_name = optional_declaration_ref().decl_name.clone();
+        let generated_span = crate::v1_std_core::kernel_span(generated_name.clone());
+        Rc::new(Node {
+            occurrence_identity: occurrence_identity.clone(),
+            name: generated_name.clone(),
+            span: span.clone(),
+            ident_span: Some(generated_span.clone()),
+            children: Rc::new(vec![payload.clone()]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: Some(optional_declaration_ref()),
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
 pub fn maybe_optional(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -7976,36 +8007,24 @@ pub fn maybe_optional(
 ) -> Rc<TypeResult> {
     match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectQuestion))).clone() {
         EatResult::EatConsumed { tokens: __ec, .. } => {
-            let ctx = parse_context_record_node_from(
+            let inner_ctx = parse_context_record_node_from(
                 ctx.clone(),
                 te.clone(),
                 start_span.clone(),
                 __ec.clone(),
             );
-            let ote = Rc::new(Node {
-                occurrence_identity: te.occurrence_identity.clone(),
-                name: te.name.clone(),
-                span: te.span.clone(),
-                ident_span: te.ident_span.clone(),
-                children: te.children.clone(),
-                connective: te.connective.clone(),
-                params: te.params.clone(),
-                inferred: te.inferred.clone(),
-                return_cardinality: Cardinality::CardOptional,
-                uses: te.uses.clone(),
-                body: te.body.clone(),
-                transport: te.transport.clone(),
-                properties: te.properties.clone(),
-                type_annotation: te.type_annotation.clone(),
-                is_self_recursive: te.is_self_recursive.clone(),
-                has_non_tail_self_call: te.has_non_tail_self_call.clone(),
-                match_pattern: te.match_pattern.clone(),
-                module_item_kind: te.module_item_kind.clone(),
-                declaration_marker: te.declaration_marker.clone(),
-                declaration: te.declaration.clone(),
-                expr_data: te.expr_data.clone(),
-                ident: None,
-            });
+            let minted = mint_parsed_node_identity(
+                inner_ctx.clone(),
+                Rc::new(ParsedExtentAt::CompletedLater),
+            );
+            let ote =
+                optional_application_node(minted.identity.clone(), te.clone(), start_span.clone());
+            let ctx = parse_context_record_node_from(
+                minted.ctx.clone(),
+                ote.clone(),
+                start_span.clone(),
+                __ec.clone(),
+            );
             Rc::new(TypeResult {
                 type_expr: ote.clone(),
                 tokens: __ec.clone(),

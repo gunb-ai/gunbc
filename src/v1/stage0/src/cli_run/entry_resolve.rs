@@ -2977,6 +2977,11 @@ pub(crate) struct ParsedFileReferences {
     /// The names this module binds for itself (`module_self_bound_names`): a bare occurrence of
     /// one is bound by that declaration and is never a reference out.
     pub(crate) self_declared: BTreeSet<String>,
+    /// PARSE FACT: this file uses `T?` (a raw type node with `return_cardinality == CardOptional`)
+    /// or a bare `Present` / `Absent`. Those denote
+    /// `gunbc.structural_realization_bindings optional_declaration_ref` and introduce its module
+    /// as an acquisition dependency. Not a prelude: a missing module refuses at the closure walk.
+    pub(crate) demands_optional_declaration: bool,
 }
 
 /// The authored type positions of a RAW parse (see `ParsedFileReferences::authored_types`),
@@ -3105,6 +3110,11 @@ pub(crate) fn parsed_file_references(
         .map(|import| import.name.clone())
         .filter(|path| !path.is_empty())
         .collect();
+    let demands_optional_declaration = raw_parse_demands_optional_declaration(&tree)
+        || bare.iter().any(|n| n == "Present" || n == "Absent")
+        || authored_types
+            .iter()
+            .any(|n| n == "Present" || n == "Absent");
     Ok(ParsedFileReferences {
         bare,
         chains,
@@ -3112,7 +3122,47 @@ pub(crate) fn parsed_file_references(
         authored_types,
         imports,
         self_declared: module_self_bound_names(&tree),
+        demands_optional_declaration,
     })
+}
+
+/// `T?` is a parse fact on the raw type node (`return_cardinality == CardOptional`), not a
+/// spelling of `Optional`. Walk every slot the authored-type reader walks.
+fn raw_parse_demands_optional_declaration(node: &Rc<crate::v1_std_core::Node>) -> bool {
+    if node.return_cardinality == crate::v1_std_core::Cardinality::CardOptional {
+        return true;
+    }
+    if let Some(ty) = raw_declared_type(node) {
+        if raw_parse_demands_optional_declaration(&ty) {
+            return true;
+        }
+    }
+    if let Some(ty) = &node.type_annotation {
+        if raw_parse_demands_optional_declaration(ty) {
+            return true;
+        }
+    }
+    for binding in node.params.iter().chain(node.uses.iter()) {
+        for ty in binding.children.iter() {
+            if raw_parse_demands_optional_declaration(ty) {
+                return true;
+            }
+        }
+    }
+    for child in node
+        .children
+        .iter()
+        .chain(node.params.iter())
+        .chain(node.properties.iter())
+        .chain(node.uses.iter())
+        .chain(node.body.iter())
+        .chain(node.transport.iter())
+    {
+        if raw_parse_demands_optional_declaration(child) {
+            return true;
+        }
+    }
+    false
 }
 
 /// THE PER-FILE HALF: one file's reference edges, from that file's own full parse and the pool
