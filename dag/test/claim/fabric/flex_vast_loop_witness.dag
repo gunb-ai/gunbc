@@ -38,7 +38,7 @@ import product.fabric.flex_vast_loop {
   FlexRefusedBudgetCeiling, FlexRefusedKeyNotLive,
   FlexPassOutcome, FlexPassCreated, FlexPassReleased,
   flex_plan_pass, flex_created_outcome, flex_reconcile_ours, flex_reconciled_allocation,
-  flex_acquired_allocation, flex_release_card, flex_ours_roster, flex_provider_declaration,
+  flex_acquired_allocation, flex_release_card, flex_ours_roster, flex_provider_declaration, flex_vast_disk_gigabytes,
   flex_wet_gate_wall, flex_create_walls, flex_create_request,
 }
 import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
@@ -183,7 +183,7 @@ test fn a_pass_with_every_wall_cleared_plans_one_create_at_the_admitted_bid_unde
         && (r.machine_id == 42)
         && (r.price.units == w_bid_micros())
         && (r.price.fraction_digits == 6)
-        && (r.disk_gibibytes == 32)
+        && (flex_vast_disk_gigabytes(disk: r.disk) == 35) && (flex_vast_disk_gigabytes(disk: byte_size(count: 1000000001)) == 2)
         && ((r.template_hash_id as String) == "witness-template")
     Absent => false
   }
@@ -405,7 +405,7 @@ fn w_request() -> FlexCreateRequest {
     Present { value: r } => r
     Absent => FlexCreateRequest {
       offer_id: 7, machine_id: 42, price: ExactDecimal { units: 0, fraction_digits: 6 }, bid: usd_hour(amount: money_amount_micro(count: 0)),
-      disk_gibibytes: 32, template_hash_id: "x" as NonEmptyStr, label: "gunbc-flex" as NonEmptyStr, reservation: money_amount_micro(count: 0),
+      disk: byte_size(count: 34359738368), template_hash_id: "x" as NonEmptyStr, label: "gunbc-flex" as NonEmptyStr, reservation: money_amount_micro(count: 0),
     }
   }
 }

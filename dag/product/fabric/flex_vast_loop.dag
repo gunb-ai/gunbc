@@ -6,6 +6,7 @@ import std.resources { Network }
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.fleet.host_credential_custody_converge { CustodyStanding, CustodyHeld, CustodyNotHeld }
+import std.list { first_where }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.decimal { ExactDecimal }
 import std.integer { int_to_decimal_string }
@@ -105,15 +106,10 @@ type FlexTemplateHashRow {
 data flex_vast_template_hashes: List<FlexTemplateHashRow> = []
 
 fn flex_vast_template_hash(rows: List<FlexTemplateHashRow>, recipe: DeclarationRef) -> NonEmptyStr? {
-  fold(
-    rows,
-    init: none,
-    f: (acc, row) =>
-      match acc {
-        Present { value: found } => Present { value: found }
-        Absent => if (row.recipe.module_path == recipe.module_path) && (row.recipe.decl_name == recipe.decl_name) { Present { value: row.hash } } else { none }
-      },
-  )
+  match first_where(rows, row => (row.recipe.module_path == recipe.module_path) && (row.recipe.decl_name == recipe.decl_name)) {
+    Present { value: row } => Present { value: row.hash }
+    Absent => none
+  }
 }
 
 // ---- THE PASS INPUT.
@@ -175,7 +171,7 @@ type FlexCreateRequest {
   machine_id: Int
   price: ExactDecimal
   bid: MoneyPerHour
-  disk_gibibytes: Int
+  disk: ByteSize
   template_hash_id: NonEmptyStr
   label: NonEmptyStr
   reservation: MoneyAmountMicro
@@ -279,8 +275,11 @@ fn flex_bid_price(bid: MoneyPerHour) -> ExactDecimal {
   ExactDecimal { units: money_per_hour_micros(q: bid), fraction_digits: 6 }
 }
 
-fn flex_disk_gibibytes(disk: ByteSize) -> Int {
-  byte_size_count(b: disk) / 1073741824
+// Vast takes the disk as a bare integer of gigabytes (extdeps.cloud.vast_ai Asks.Create); the unit is
+// uncited there, so the request keeps ByteSize and this rounds UP to whole 10^9 bytes, which can only
+// over-ask under either reading of the unit, never undersize the recipe's disk.
+fn flex_vast_disk_gigabytes(disk: ByteSize) -> Int {
+  (byte_size_count(b: disk) + 999999999) / 1000000000
 }
 
 // Every wall the create meets, in a fixed order. WET refuses at the first; DRY reports them all beside
@@ -327,7 +326,7 @@ fn flex_create_request(policy: FlexPolicy, intent: FlexCreateIntent, hashes: Lis
                   machine_id: intent.offer.machine_id,
                   price: flex_bid_price(bid: bid),
                   bid: bid,
-                  disk_gibibytes: flex_disk_gibibytes(disk: t.disk),
+                  disk: t.disk,
                   template_hash_id: hash,
                   label: policy.owner as NonEmptyStr,
                   reservation: flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon),
@@ -347,7 +346,7 @@ fn flex_create_perform(api_key: Secret, request: FlexCreateRequest) -> FlexCreat
     api_key: api_key,
     offer_id: request.offer_id,
     price: request.price,
-    disk: request.disk_gibibytes,
+    disk: flex_vast_disk_gigabytes(disk: request.disk),
     template_hash_id: request.template_hash_id,
     label: request.label,
   )
@@ -436,43 +435,19 @@ type FlexPassPlan
   | FlexPlanDestroy { action: FlexCleanupAction, allocation: RentedServingAllocation }
 
 fn flex_first_destroy(plan: FlexReleasePlan) -> FlexCleanupAction? {
-  fold(
-    plan.actions,
-    init: none,
-    f: (acc, a) =>
-      match acc {
-        Present { value: found } => Present { value: found }
-        Absent =>
-          match a {
-            FlexDestroy { id: _, why: _ } => Present { value: a }
-            FlexKeep { id: _ } => none
-          }
-      },
-  )
+  first_where(plan.actions, a =>
+    match a {
+      FlexDestroy { id: _, why: _ } => true
+      FlexKeep { id: _ } => false
+    })
 }
 
 fn flex_allocation_for_card(allocations: List<RentedServingAllocation>, id: NonEmptyStr) -> RentedServingAllocation? {
-  fold(
-    allocations,
-    init: none,
-    f: (acc, a) =>
-      match acc {
-        Present { value: found } => Present { value: found }
-        Absent => if (rented_bound_instance_id(allocation: a) as String) == (id as String) { Present { value: a } } else { none }
-      },
-  )
+  first_where(allocations, a => (rented_bound_instance_id(allocation: a) as String) == (id as String))
 }
 
 fn flex_first_refusal(walls: List<FlexCreateRefusal>) -> FlexCreateRefusal? {
-  fold(
-    walls,
-    init: none,
-    f: (acc, w) =>
-      match acc {
-        Present { value: found } => Present { value: found }
-        Absent => Present { value: w }
-      },
-  )
+  first_where(walls, w => true)
 }
 
 fn flex_plan_destroy(input: FlexPassInput, action: FlexCleanupAction) -> FlexPassPlan {
