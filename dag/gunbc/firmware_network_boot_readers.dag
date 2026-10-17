@@ -1,6 +1,7 @@
 module gunbc.firmware_network_boot_readers
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { list_map, list_flat_map, string_concat_join }
 import std.optional { Present, Absent }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb, BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp, redfish_boot_target_wire }
@@ -55,9 +56,11 @@ type RedfishDocRead
   = RedfishDocParsed { doc: JsonValue }
   | RedfishDocRefused { refusal: FirmwareReadRefusal }
 
+// 401 is the only status that means credentials must be established. A 403 means credentials were
+// accepted and the account lacks the privilege, a different remedy (a role grant), and the standing
+// module has no arm for it, so it is VendorCommandRejected carrying the service's own detail.
 fn redfish_status_refusal(status: Int, detail: NonEmptyStr) -> FirmwareReadRefusal {
   if status == 401 { AuthenticationRequired { detail: detail } }
-  else if status == 403 { AuthenticationRequired { detail: detail } }
   else if status == 404 { ResourceNotFound { detail: detail } }
   else { VendorCommandRejected { detail: detail } }
 }
@@ -100,16 +103,22 @@ type BootEntriesRead
 fn classify_boot_entries(wires: List<String>, field: String) -> BootEntriesRead {
   if wires == [] { BootEntriesBad { cause: concat(field, " is empty; an empty list is not read as no boot entries") } }
   else {
-    let empty: List<BootEntry> = []
-    let initial: BootEntriesRead = BootEntriesOk { entries: empty }
-    fold(wires, init: initial, f: (acc, w) => match acc {
-      BootEntriesBad { cause: c } => acc
-      BootEntriesOk { entries: es } =>
-        match boot_target_of_wire(s: w) {
-          Present { value: t } => BootEntriesOk { entries: concat(es, [boot_entry(kind: t, label: w as NonEmptyStr)]) }
-          Absent => BootEntriesBad { cause: concat(field, concat(" holds an entry that is not a RedfishBootSourceOverrideTarget value: ", w)) }
-        }
+    let unrecognized = list_flat_map(xs: wires, f: fn(w) {
+      match boot_target_of_wire(s: w) {
+        Present { value: _ } => []
+        Absent => [w]
+      }
     })
+    if unrecognized == [] {
+      BootEntriesOk { entries: list_flat_map(xs: wires, f: fn(w) {
+        match boot_target_of_wire(s: w) {
+          Present { value: t } => [boot_entry(kind: t, label: w as NonEmptyStr)]
+          Absent => []
+        }
+      }) }
+    } else {
+      BootEntriesBad { cause: concat(field, concat(" holds entries that are not RedfishBootSourceOverrideTarget values: ", string_concat_join(fields: unrecognized, separator: ", "))) }
+    }
   }
 }
 
@@ -189,10 +198,7 @@ fn nics_reply(get: RedfishGet) -> AxisReply {
             Present { value: _ } => refused_axis(axis: NicsAxis, refusal: shape_refusal(detail: "the EthernetInterfaces collection continues on another page"))
             Absent =>
               if page.member_links == [] { refused_axis(axis: NicsAxis, refusal: shape_refusal(detail: "the EthernetInterfaces collection has no members; an empty list is not read as no NICs")) }
-              else {
-                let no_nics: List<NonEmptyStr> = []
-                ReplyNics { nics: fold(page.member_links, init: no_nics, f: (acc, l) => concat(acc, [l as NonEmptyStr])) }
-              }
+              else { ReplyNics { nics: list_map(xs: page.member_links, f: fn(l) { l as NonEmptyStr }) } }
           }
       }
   }

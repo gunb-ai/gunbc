@@ -2,6 +2,7 @@ module test.claim.firmware_network_boot_readers_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, list_length }
 import std.optional { Present, Absent }
+import std.algebra { list_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, BootTargetHdd, BootTargetUefiHttp, BootTargetNone, redfish_boot_target_wire }
 import extdeps.bmc.endpoint { OpenBmc }
@@ -35,12 +36,10 @@ fn reads(system: RedfishGet, secure: RedfishGet, nics: RedfishGet) -> RedfishBoo
 }
 
 fn kinds_of(es: List<BootEntry>) -> List<RedfishBootSourceOverrideTarget> {
-  let init: List<RedfishBootSourceOverrideTarget> = []
-  fold(es, init: init, f: (acc, e) => concat(acc, [e.kind]))
+  list_map(xs: es, f: fn(e) { e.kind })
 }
 fn labels_of(es: List<BootEntry>) -> List<NonEmptyStr> {
-  let init: List<NonEmptyStr> = []
-  fold(es, init: init, f: (acc, e) => concat(acc, [e.label]))
+  list_map(xs: es, f: fn(e) { e.label })
 }
 
 fn is_order_pxe_hdd(r: AxisReply) -> Bool {
@@ -157,7 +156,7 @@ test fn http_statuses_map_to_their_refusal_arms() -> Bool {
   let au = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 401, detail: "unauthorized" }, nics: nics_ok()))
   let fb = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 403, detail: "forbidden" }, nics: nics_ok()))
   let rj = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 500, detail: "oops" }, nics: nics_ok()))
-  any_is_not_found(rs: nf) && any_is_auth(rs: au) && any_is_auth(rs: fb) && any_is_rejected(rs: rj)
+  any_is_not_found(rs: nf) && any_is_auth(rs: au) && any_is_rejected(rs: fb) && any_is_rejected(rs: rj)
 }
 
 test fn an_unreadable_system_refuses_its_three_axes_and_nothing_else() -> Bool {
