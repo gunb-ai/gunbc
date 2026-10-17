@@ -29,7 +29,7 @@ import product.fabric.flex_vast_shadow {
   flex_serving_recipe,
 }
 import product.fabric.flex_vast_loop {
-  FlexWetGates, FlexPlacementSupplied, FlexPlacementUnread, FlexRefusedPlacementUnread, FlexRefusedReleaseReturnUnmodeled, flex_release_return_wall, FlexPassObservation, FlexAllocationPlacement, FlexCreateIntent, FlexRentCooldown,
+  FlexWetGates, FlexPlacementSupplied, FlexPlacementUnread, FlexRefusedPlacementUnread, FlexPassObservation, FlexAllocationPlacement, FlexCreateIntent, FlexRentCooldown,
   FlexPassInput, FlexCreateRequest, FlexTemplateHashRow, FlexPassPlan,
   FlexPlanRefused, FlexPlanIdle, FlexPlanDryCreate, FlexPlanDryDestroy, FlexPlanCreate, FlexPlanDestroy,
   FlexPassRefusal, FlexPassRosterNotComplete, FlexPassCreateRefused, FlexPassNoAllocationForCard, FlexPassCooldownActive,
@@ -310,13 +310,12 @@ fn w_quote_refusal() -> FlexPassRefusal? {
   w_refusal_of(p: flex_plan_pass(input: base))
 }
 
-// The wet gates start closed: the key custody and the release gate stop a create that cleared every wall.
+// The wet gates start closed: the key custody stops a create that cleared every wall.
 test fn the_wet_gates_start_closed_and_stop_a_create_that_cleared_every_wall() -> Bool {
   match w_wet_refusal(entry: w_established(), admitted: true, gates: w_closed, hashes: w_hashes) {
     Present { value: FlexPassCreateRefused { refusal: FlexRefusedKeyNotLive { custody: c, causes: cs } } } => ((c.host_path as String) == "/etc/gunbc-flex/vast-api-key") && ((cs |> length) == 1)
     _ => false
   } && ((flex_wet_gate_wall(gates: w_open) |> length) == 0)
-    && ((flex_release_return_wall() |> length) == 1)
     && match w_placement_refusal() {
       Present { value: FlexPassCreateRefused { refusal: FlexRefusedPlacementUnread { obligation: _ } } } => true
       _ => false
