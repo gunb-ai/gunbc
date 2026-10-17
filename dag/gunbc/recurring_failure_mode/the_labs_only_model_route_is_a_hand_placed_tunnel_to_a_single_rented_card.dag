@@ -18,7 +18,7 @@ data the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card: 
   ],
 
   evidence: [
-    DeclarationRef { module_path: "extdeps.pool.pool_front", decl_name: "pool_front_contract_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.pool.pool_front", decl_name: "pool_front_contract_standing", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.harness.harness_operator_route", decl_name: "harness_operator_route", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.harness.harness_turn", decl_name: "harness_post_json_once", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.operator_endpoint_witness", decl_name: "a_request_on_the_pool_route_carries_the_bearer_the_session_and_the_model", field: WholeDeclaration },

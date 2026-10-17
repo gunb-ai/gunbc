@@ -33,7 +33,7 @@ import std.decision {
   FleetObservedCoupling,
 }
 import gunbc.harness.harness_reasoning_wire {
-  HarnessServingUnit, Qwen3_8_27bOnNinfer, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
+  HarnessServingUnit, Qwen3_8_27bOnNinfer, Qwen38FlashNextOnPoolFront, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
   NemotronUltraFreeOnOpenRouter,
   harness_unit_placement, harness_serving_unit_compatibility, HarnessUnitsIdentical,
   HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
@@ -971,6 +971,7 @@ data flex_vllm_min_driver: FlexHostDriverMinimum = FlexHostDriverMinimum {
 fn flex_unit_min_host_driver(unit: HarnessServingUnit) -> Nat? {
   match unit {
     Qwen3_8_27bOnNinfer => Present { value: flex_ninfer_min_driver.major }
+    Qwen38FlashNextOnPoolFront => none
     DeepseekV4FlashOnVllm => Present { value: flex_vllm_min_driver.major }
     Glm53FlashOnVllm => Present { value: flex_vllm_min_driver.major }
     NemotronUltraFreeOnOpenRouter => none

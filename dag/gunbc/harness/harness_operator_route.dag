@@ -17,7 +17,7 @@ import extdeps.pool.pool_front {
   pool_front_certificate_is_pinned, pool_front_fingerprint_from_openssl_text, pool_front_status_meaning,
   PoolFrontNoTlsCardServing, PoolFrontAnswered, PoolFrontKeyRejected, PoolFrontRefused,
 }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_unit_model_id }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnPoolFront, harness_unit_model_id }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
 import std.list { list_member }
 
@@ -86,7 +86,7 @@ type HarnessOperatorRoute {
 }
 
 data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
-  unit: Qwen3_8_27bOnNinfer,
+  unit: Qwen38FlashNextOnPoolFront,
   group_wire: "operator:pool-front" as NonEmptyStr,
   credential_relative_path: ".config/gunbc-pool-front/api-key" as NonEmptyStr,
   certificate_relative_path: ".config/gunbc-pool-front/server.pem" as NonEmptyStr,

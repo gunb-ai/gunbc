@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.nat { Nat }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.http.header_dump { http_ascii_fold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -14,7 +14,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // not ninfer-serve and not a hosted vendor; it shares no path, header or error-body fact with either.
 //
 // THE UPSTREAM IS THE LIVE SERVICE; THE STATEMENT OF ITS CONTRACT IS ITS OPERATOR'S. Every figure below is
-// the pool operator's statement of 2026-10-17 (ctrl #2375, recorded as pool_front_contract_receipt), not an
+// the pool operator's statement of 2026-10-17 (ctrl #2375, typed as pool_front_contract_standing), not an
 // upstream-published page, so it is a transcription of a named party's word and not a deduction. The first
 // live reading of each figure is the lab qualification that follows this module's landing.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -35,7 +35,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [],
 }
 
-data pool_front_contract_receipt: NonEmptyStr = "fierce-swift-120 ctrl #2375 (2026-10-17): path, header, model ids, certificate, auth and 503 semantics of the pool front; ctrl #2376 is the TLS card whose absence makes 503 the live answer" as NonEmptyStr
+// The standing of every figure in this module, in type: the pool operator's word (ctrl #2375, 2026-10-17;
+// ctrl #2376 is the TLS card whose absence makes 503 the live answer), not an upstream-published page.
+data pool_front_contract_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read path, header, model ids, certificate, auth, 503 semantics, limits, reasoning field and end token from the live front at the lab qualification" as NonEmptyStr
+}
 
 // ── THE SURFACE ─────────────────────────────────────────────────────────────────────────────────
 data pool_front_origin: NonEmptyStr = "https://192.168.1.188:3737" as NonEmptyStr
@@ -54,8 +58,13 @@ data pool_front_session_header_name: NonEmptyStr = "x-pool-session" as NonEmptyS
 // Limits the front states: a request's context may be at most max_context_tokens, and a client budgets at most
 // max_output_tokens of output per request. There is no per-client concurrency cap; each card runs about
 // cards_concurrency_low..cards_concurrency_high requests at once.
-data pool_front_max_context_tokens: Int = 262144
+data pool_front_max_context_tokens: Nat = 262144
 data pool_front_max_output_tokens: Int = 32768
+// Where the front's reply carries reasoning and how it closes it: the statement names neither, so these are
+// the OpenAI-compatible spellings, an unread assumption (pool_front_contract_standing) the lab qualification reads first.
+data pool_front_message_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmptyStr
+data pool_front_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
+
 data pool_front_card_concurrency_low: Nat = 5
 data pool_front_card_concurrency_high: Nat = 7
 

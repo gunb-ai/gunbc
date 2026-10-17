@@ -19,12 +19,14 @@ import gunbc.harness.harness_hosted_route { BackendAdmittedByOperatorEndpoint, B
 import gunbc.harness.harness_turn { harness_backend_header_file }
 import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedModel }
 import gunbc.harness.harness_reasoning_wire {
-  Qwen3_8_27bOnNinfer, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
+  Qwen38FlashNextOnPoolFront, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
   harness_reasoning_kwargs_for, ReasoningOff, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
-  harness_unit_model_id, harness_unit_reasoning_field,
+  harness_unit_model_id, harness_unit_reasoning_field, harness_capped_max_tokens, harness_unit_declared_context_ceiling,
+  DeepseekV4FlashOnVllm,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
-import extdeps.pool.pool_front { pool_front_certificate, pool_front_model_id, pool_front_session_header_name }
+import std.measure { token_count_value }
+import extdeps.pool.pool_front { pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_certificate, pool_front_model_id, pool_front_session_header_name }
 import gunbc.harness.harness_turn { harness_post_is_retryable, HarnessPostOutcome, harness_outcome_label, TurnPoolNoCapacity, TurnBackendRefusedUnexplained }
 import gunbc.harness.harness_session_recovery { harness_unexplained_refusal }
 import extdeps.http.header_dump { HeaderDumpRead }
@@ -158,14 +160,14 @@ test fn the_route_urls_are_the_pool_fronts_origin_plus_its_declared_paths() -> B
 
 test fn the_route_carries_the_fronts_card_concurrency_and_the_served_model_id() -> Bool {
   harness_operator_route.concurrency_ceiling == 7
-    && (harness_unit_model_id(unit: Qwen3_8_27bOnNinfer) as String) == "Qwen3.8-Flash-Next"
+    && (harness_unit_model_id(unit: Qwen38FlashNextOnPoolFront) as String) == "Qwen3.8-Flash-Next"
 }
 
 test fn the_qwen_unit_refuses_reasoning_off_because_no_per_request_switch_was_read() -> Bool {
-  (match harness_reasoning_kwargs_for(unit: Qwen3_8_27bOnNinfer, level: ReasoningOff) {
+  (match harness_reasoning_kwargs_for(unit: Qwen38FlashNextOnPoolFront, level: ReasoningOff) {
     ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => true
     ReasoningKwargsAdmitted { kwargs: _ } => false
-  }) && (match harness_reasoning_kwargs_for(unit: Qwen3_8_27bOnNinfer, level: ReasoningMaximum) {
+  }) && (match harness_reasoning_kwargs_for(unit: Qwen38FlashNextOnPoolFront, level: ReasoningMaximum) {
     ReasoningKwargsAdmitted { kwargs: _ } => true
     ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
   })
@@ -189,7 +191,7 @@ test fn the_retired_cards_model_name_is_not_admitted_by_the_fronts_list() -> Boo
 }
 
 test fn the_cards_reasoning_is_read_from_the_member_ninfer_emits() -> Bool {
-  (harness_unit_reasoning_field(unit: Qwen3_8_27bOnNinfer) as String) == "reasoning_content"
+  (harness_unit_reasoning_field(unit: Qwen38FlashNextOnPoolFront) as String) == "reasoning_content"
 }
 
 // ═══ POOL-FRONT-ROUTE-1 CLAIMS (supplied values at each interface) ══════════════════════════════
@@ -210,7 +212,7 @@ test fn a_request_on_the_pool_route_carries_the_bearer_the_session_and_the_model
     Present { value: t } =>
       (t as String) == "Authorization: Bearer k-123\nx-pool-session: attempt-77\n"
     Absent => false
-  }) && (harness_unit_model_id(unit: Qwen3_8_27bOnNinfer) as String) == (pool_front_model_id as String)
+  }) && (harness_unit_model_id(unit: Qwen38FlashNextOnPoolFront) as String) == (pool_front_model_id as String)
     && (pool_front_session_header_name as String) == "x-pool-session"
 }
 
@@ -297,4 +299,20 @@ test fn the_real_client_argv_inhabits_the_pool_request_shape() -> Bool {
     && !string_contains(s: argv, pattern: "--insecure")
     && !string_contains(s: argv, pattern: " -k ")
     && !string_contains(s: argv, pattern: "Bearer")
+}
+
+// ── THE FRONT'S STATED LIMITS ARE ENFORCED, NOT ONLY DECLARED ───────────────────────────────────
+test fn an_output_budget_above_the_fronts_32k_is_capped_before_sending() -> Bool {
+  harness_capped_max_tokens(unit: Qwen38FlashNextOnPoolFront, asked: 40000) == pool_front_max_output_tokens
+    && harness_capped_max_tokens(unit: Qwen38FlashNextOnPoolFront, asked: 16384) == 16384
+}
+
+test fn a_unit_with_no_stated_output_cap_is_not_capped() -> Bool {
+  harness_capped_max_tokens(unit: DeepseekV4FlashOnVllm, asked: 40000) == 40000
+}
+
+// The turn refuses over config.context_budget = harness_context_budget_for(unit), which takes the unit's
+// declared ceiling; the ceiling is the front's stated maximum context.
+test fn the_pool_units_context_ceiling_is_the_fronts_max_context() -> Bool {
+  token_count_value(t: harness_unit_declared_context_ceiling(unit: Qwen38FlashNextOnPoolFront)) == pool_front_max_context_tokens
 }
