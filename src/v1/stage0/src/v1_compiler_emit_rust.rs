@@ -25555,17 +25555,19 @@ pub fn type_node_carries_applicationless_parametric_head(
         for c in n.children.clone().iter().cloned() {
             if {
                 let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
-                (rust_type_renders_bare_parametric_head(
-                    t.clone(),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                    emit_info.clone(),
-                ) || type_node_carries_applicationless_parametric_head(
-                    t.clone(),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                    emit_info.clone(),
-                ))
+                (((n.connective.clone() != Connective::Disj)
+                    && rust_type_renders_bare_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    || type_node_carries_applicationless_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
             } {
                 __found = true;
                 break;
