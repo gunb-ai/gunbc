@@ -18860,67 +18860,72 @@ Rc::new(FieldInferResult {
                         scope.clone(),
                     )
                 };
-                let resolved_node = if (applied_expected_owner.clone() != std::option::Option::None)
+                let resolved_node = if ((!is_present_ctor.clone()
+                    && parent_is_std_optional.clone())
+                    && absent_adopts_expected(expected.clone(), scope.clone()))
                 {
-                    applied_expected_owner.clone().unwrap()
+                    match expected.clone() {
+                        Some(exp) => exp.clone(),
+                        std::option::Option::None => raw_resolved.clone(),
+                    }
                 } else {
-                    if is_present_ctor.clone() {
-                        {
-                            let val_field = Rc::new({
-                                let mut __result = Vec::new();
-                                for fir in fi_infer_results.iter().cloned() {
-                                    if name_is_std_optional_payload_member(
-                                        scope.clone(),
-                                        crate::v1_std_core::field_init_node_name_at(
-                                            fir.typed_field.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ),
-                                    ) {
-                                        __result.push(fir);
-                                    }
-                                }
-                                __result
-                            })
-                            .first()
-                            .cloned();
-                            let payload_optional = match val_field.clone() {
-                                Some(val_fir) => crate::v1_std_core::with_optional_cardinality(
-                                    crate::v1_compiler_infer_types::resolved_type(
-                                        val_fir.infer_result.clone().typed.clone(),
-                                    ),
-                                ),
-                                std::option::Option::None => raw_resolved.clone(),
-                            };
-                            match expected.clone() {
-                                Some(exp) => {
-                                    if (node_is_std_optional(exp.clone(), scope.clone())
-                                        || (exp.return_cardinality.clone()
-                                            == Cardinality::CardOptional))
-                                    {
-                                        exp.clone()
-                                    } else {
-                                        match exp.inferred.clone().as_deref().cloned() {
-                                            Some(InferredNode::Resolved { node: rt, .. }) => {
-                                                if node_is_std_optional(rt.clone(), scope.clone()) {
-                                                    rt.clone()
-                                                } else {
-                                                    payload_optional.clone()
-                                                }
-                                            }
-                                            _ => payload_optional.clone(),
+                    if (applied_expected_owner.clone() != std::option::Option::None) {
+                        applied_expected_owner.clone().unwrap()
+                    } else {
+                        if is_present_ctor.clone() {
+                            {
+                                let val_field = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for fir in fi_infer_results.iter().cloned() {
+                                        if name_is_std_optional_payload_member(
+                                            scope.clone(),
+                                            crate::v1_std_core::field_init_node_name_at(
+                                                fir.typed_field.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
+                                        ) {
+                                            __result.push(fir);
                                         }
                                     }
+                                    __result
+                                })
+                                .first()
+                                .cloned();
+                                let payload_optional = match val_field.clone() {
+                                    Some(val_fir) => crate::v1_std_core::with_optional_cardinality(
+                                        crate::v1_compiler_infer_types::resolved_type(
+                                            val_fir.infer_result.clone().typed.clone(),
+                                        ),
+                                    ),
+                                    std::option::Option::None => raw_resolved.clone(),
+                                };
+                                match expected.clone() {
+                                    Some(exp) => {
+                                        if (node_is_std_optional(exp.clone(), scope.clone())
+                                            || (exp.return_cardinality.clone()
+                                                == Cardinality::CardOptional))
+                                        {
+                                            exp.clone()
+                                        } else {
+                                            match exp.inferred.clone().as_deref().cloned() {
+                                                Some(InferredNode::Resolved {
+                                                    node: rt, ..
+                                                }) => {
+                                                    if node_is_std_optional(
+                                                        rt.clone(),
+                                                        scope.clone(),
+                                                    ) {
+                                                        rt.clone()
+                                                    } else {
+                                                        payload_optional.clone()
+                                                    }
+                                                }
+                                                _ => payload_optional.clone(),
+                                            }
+                                        }
+                                    }
+                                    std::option::Option::None => payload_optional.clone(),
                                 }
-                                std::option::Option::None => payload_optional.clone(),
-                            }
-                        }
-                    } else {
-                        if (parent_is_std_optional.clone()
-                            && absent_adopts_expected(expected.clone(), scope.clone()))
-                        {
-                            match expected.clone() {
-                                Some(exp) => exp.clone(),
-                                std::option::Option::None => raw_resolved.clone(),
                             }
                         } else {
                             raw_resolved.clone()
