@@ -444,9 +444,12 @@ test fn w_the_operator_attestation_instant_is_coherent_with_its_own_origin() -> 
   // is carried as a fact rather than left to the nanosecond field to imply: a date-only reading
   // stored at nanosecond scale is an EARLIEST BOUND, and a consumer needing sub-day ordering has to
   // be told it does not have it.
-  let row_carries_it = match megarac_release_capability_catalog
+  // A pipeline cannot feed a match block directly (the parser wants `match <expr> {`), so the lookup
+  // is bound first -- same shape the rest of this file uses.
+  let release_entry = megarac_release_capability_catalog
     |> filter(e => bmc_firmware_release_identity_eq(a: e.row.firmware, b: megarac_firmware_0_45_3))
-    |> first() {
+    |> first()
+  let row_carries_it = match release_entry {
     Present { value: e } => match e.version {
       MegaRacVersionOperatorAttested { attested_on: on, detail: _, upgrade_read: _ } =>
         clock_domain_eq(a: on.domain, b: attested.domain)

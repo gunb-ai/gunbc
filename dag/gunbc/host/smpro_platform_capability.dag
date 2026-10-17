@@ -122,9 +122,20 @@ type SmproAdmittedCounts {
 // The access observation is the input because it is what binds a host to its board identity; the
 // board, not the controller, is the hardware authority.
 fn smpro_facility(access: BmcAccessObservationStanding) -> SmproFacilityStanding {
-  match host_board_soc_families(access: access) {
-    Absent => SmproFacilityUnestablished { cause: NoBoardRowBound { endpoint: unobserved_endpoint(access: access) } }
-    Present { value: fs } => smpro_facility_of_families(families: fs)
+  // THE ACCESS STANDING IS ASKED BEFORE THE BOARD, because host_board_soc_families returns none for
+  // TWO different facts (review 81322): an access that was never observed, and an observed controller
+  // whose board reaches no row. Collapsing them made an unobserved controller read as "no board row is
+  // bound", pointing an operator at a missing board row when the real gap is that nobody has ever
+  // looked at the controller -- a wrong located diagnostic, DESIGN.md Sec 5. The two arms are also not
+  // interchangeable downstream: AccessUnobserved is fixed by taking an observation, NoBoardRowBound by
+  // binding a board authority, and only the second is a board-authority defect.
+  match access {
+    BmcAccessUnobserved { endpoint: e } =>
+      SmproFacilityUnestablished { cause: AccessUnobserved { endpoint: e } }
+    BmcAccessObserved { observation: o } => match host_board_soc_families(access: access) {
+      Absent => SmproFacilityUnestablished { cause: NoBoardRowBound { endpoint: o.endpoint } }
+      Present { value: fs } => smpro_facility_of_families(families: fs)
+    }
   }
 }
 
@@ -344,14 +355,6 @@ fn smpro_unestablished_cause_text(cause: SmproUnestablishedCause) -> String {
     ControlEndpointMismatch { observed: o, secured: sec } =>
       join(["no control route is bound: the observed controller ", (o.host as String),
         " and the secured account ", (sec.host as String), " name different endpoints"], "")
-  }
-}
-
-// THE ENDPOINT AN OBSERVATION NAMES, so a cause can say which controller it could not resolve.
-fn unobserved_endpoint(access: BmcAccessObservationStanding) -> BmcControllerEndpoint {
-  match access {
-    BmcAccessObserved { observation: o } => o.endpoint
-    BmcAccessUnobserved { endpoint: e } => e
   }
 }
 
