@@ -58,7 +58,7 @@ import gunbc.machine_intake.subject {
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.auth.privileged_effect_census {
-  PrivilegedEffectSite, RealizedAuthorization, RealizedApprovalCapability, SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable, site_verdict, privileged_effect_census, ruling_discharge_interlock_defect, recovery_reset_operator_ruling,
+  PrivilegedEffectSite, RealizedAuthorization, RealizedApprovalCapability, SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable, site_verdict, privileged_effect_census, ruling_discharge_interlock_defect, recovery_reset_operator_ruling, recovery_manager_reset_to_defaults_effect,
 }
 import gunbc.auth.authorization_pattern_selection {
   AuthorizationPattern, PatternSelected, OperatorApprovedCapability, HumanOnlyStep, ManualStepRequired, PatternSelectionRefused, PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, NoAdmissiblePattern, StandingDestructiveAuthorization,
@@ -75,7 +75,8 @@ import gunbc.host.managed_host_unit_hold {
 // one. gunbc.machine_intake.bmc_rotation_route rotates FROM a working credential. So a board whose
 // Administrator password is unknown has no route at all: every existing arm asks, first, for the
 // thing that is missing. This module models the one route that starts without it -- reach the
-// machine's own host OS, drive the BMC from inside the chassis over the in-band system interface (SSIF), actuate a factory reset --
+// machine's own host OS, write an temporary Administrator password over the in-band system interface
+// (SSIF), then actuate a factory reset over the BMC's OUT-OF-BAND management interface --
 // and it terminates by handing the factory credential to the EXISTING bmc_secure / bmc_onboard
 // factory-login-then-rotate path.
 //
@@ -2532,6 +2533,35 @@ test fn the_reset_gate_refuses_by_naming_the_hold_mistake() -> Bool {
       HoldKeyNamesAnotherUnit { held_for: held_for, this_unit: this_unit } =>
         held_for == "altrad8ud-1l2t-7" && this_unit == "altrad8ud-1l2t-6"
     })
+}
+
+// THE CHANNEL EACH WRITE TRAVELS, CHECKED AGAINST WHAT THE CAPTURE RECORDED. The two writes do not
+// travel the same channel: the capture's own summary puts the temporary password on the in-band SSIF
+// interface and the reset at the BMC's LAN address over Redfish, so the in-band interface is how the
+// route READS and how the password is WRITTEN, and the management interface is where the wipe is issued.
+// That distinction is not decoration -- the ruling's text is what a per-effect operator approval is filed
+// against, so a ruling that scoped the reset to the in-band channel would have an operator approve a
+// different actuation from the one being admitted (§4d: "do not assert as deduced what is only inferred";
+// §3: a name may not silently change obligations). This asks the ruling and the effect row it governs to
+// agree, rather than trusting either sentence in isolation: two declarations that drift apart is how a
+// meaning fork starts.
+test fn the_reset_ruling_names_the_channel_the_capture_recorded_and_both_rows_agree() -> Bool {
+  let ruling = recovery_reset_operator_ruling
+  let governed = recovery_manager_reset_to_defaults_effect().subject
+  // the wipe goes out-of-band, in BOTH places that describe it
+  string_contains(s: ruling.ruling_text as String, pattern: "out-of-band management interface")
+    && string_contains(s: ruling.effect_subject as String, pattern: "out-of-band management interface")
+    // the in-band interface is named for ONE write, and the ruling has to say which rather than leave it
+    // to be inferred from the module's prose
+    && string_contains(
+      s: ruling.ruling_text as String,
+      pattern: "in-band system interface is used only to write the temporary Administrator password",
+    )
+    // and neither description may call the reset itself an in-band actuation
+    && string_contains(s: ruling.effect_subject as String, pattern: "in-band recovery reset") == false
+    && string_contains(s: governed as String, pattern: "in-band") == false
+    // the row the ruling governs still names the transport it actually uses
+    && string_contains(s: governed as String, pattern: "over Redfish")
 }
 
 // THE LEDGER, CALLED THROUGH -- BOTH WAYS ROUND, INCLUDING THE ARMS THE FIXTURES NEVER PRODUCE. The
