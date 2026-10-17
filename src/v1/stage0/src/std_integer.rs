@@ -6,6 +6,7 @@ use self::OverflowReturnValueRule::*;
 use self::QualifiedOctetsResult::*;
 use self::Signedness::*;
 use self::UInt8Result::*;
+pub use crate::std_algebra::collection_concat_shape;
 pub use crate::std_algebra::{AbelianGroup, GroupCompletion};
 pub use crate::std_induction::int_pow_bounded;
 pub use crate::std_machine_constraints::PointerWidth;

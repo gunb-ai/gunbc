@@ -8,7 +8,8 @@ use self::TopologyNodeKind::*;
 use self::WherePredicateMarker::*;
 pub use crate::std_algebra::{
     algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows,
-    carrier_container_arity_rows, carrier_container_roster_map, kernel_algebra_profile,
+    carrier_container_arity_rows, carrier_container_roster_map, collection_map_shape,
+    kernel_algebra_profile,
 };
 pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
 pub use crate::std_optional::Optional;

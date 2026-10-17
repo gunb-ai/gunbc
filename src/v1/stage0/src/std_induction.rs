@@ -7,6 +7,7 @@ use self::ParamGrowth::*;
 use self::PolynomialExponent::*;
 use self::RecursionShape::*;
 use self::SubValueRelation::*;
+pub use crate::std_algebra::collection_concat_shape;
 use crate::std_algebra::CostShape::{
     ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
 };

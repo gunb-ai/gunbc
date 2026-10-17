@@ -13,6 +13,9 @@ use self::TextRepresentation::*;
 use self::TypeDeclarationProvenance::*;
 use self::TypeRealizationDecision::*;
 use self::TypeReferenceIdentity::*;
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_count_shape, collection_map_shape,
+};
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
 use crate::std_literal_elaboration::LiteralSourceKind::*;

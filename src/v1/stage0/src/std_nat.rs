@@ -5,6 +5,7 @@ use self::DecimalDigit::*;
 use self::DecimalDigitSuccessor::*;
 use self::NatDivision::*;
 use self::NatSubtraction::*;
+pub use crate::std_algebra::collection_concat_shape;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_algebra::{CommutativeMonoid, CommutativeSemiring, Ordering};
 pub use crate::std_optional::Optional;
