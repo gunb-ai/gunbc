@@ -472,8 +472,7 @@ type IpmiCompletionCode {
 // failure: the command was accepted, understood, and refused on policy.
 data ipmi_completion_code_invalid_data_field: IpmiCompletionCode = IpmiCompletionCode { code: 204 }
 
-// NO `as NonEmptyStr` on the literal (review 81294/81308 asked which of the two sibling spellings was
-// wrong; review 81374 then caught this comment citing counts and a line number, both fixed here).
+// NO `as NonEmptyStr` ON THIS LITERAL, AND THE SIBLING ROW STATES THE SAME FACT WITHOUT ONE.
 //
 // NEITHER SPELLING IS A COMPILE ERROR: both forms sit in the tree today and both compile, so this is not
 // a broken-row fix but a choice between two spellings of the same row. The choice is §4c's -- "an
@@ -508,14 +507,12 @@ fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool
   a.code == b.code
 }
 
-// THE TWO WAYS TO STATE A COMPLETION CODE'S DESCRIPTION ARE DELIBERATELY REDUCED TO ONE. An earlier
-// revision had `ipmi_completion_code_text` mapping a code to its words with the 0xC7 string written
-// inline, while 0xCC's words lived in their own data row: two representations of one kind of fact, one of
-// which could be edited while the other kept vouching for it. There is now exactly one home for a code's
-// English -- the `<name>_text` data row beside the code -- and comparison goes through
-// ipmi_completion_code_eq alone. An equality wrapper per code (`..._is_invalid_data_field`) is also gone:
-// it existed for no caller but a test, and `ipmi_completion_code_eq(a: c, b: <constant>)` says the same
-// thing with the constant in plain sight.
+// ONE HOME FOR A COMPLETION CODE'S ENGLISH. A code's words live in exactly one place -- the
+// `<name>_text` data row beside the code -- and nothing else may restate them. A second home (a lookup
+// with the string inline, say) can be edited while the first keeps vouching for it, which is §2 spent
+// twice. Comparison goes through ipmi_completion_code_eq alone, with the named constant in plain sight; a
+// per-code equality wrapper would say the same thing with the constant hidden behind its name and would
+// exist for no caller but a test.
 //
 // Each code's description stays next to its byte so they cannot drift apart, and a caller that needs the
 // words for an operator reads the row for the code it has already matched -- not a lookup that quietly
@@ -549,12 +546,12 @@ fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool
 //
 // WHY THE ARMS ARE SPLIT IN TWO AND NOT TAGGED WITH A PREDICATE. "Is this a transport from a host to the
 // controller inside its own chassis?" is the question this route's most consequential decision rests on,
-// and it used to be answered by a function matching 12 arms and returning true/false. That shape put the
-// decision OUTSIDE the data: a value that was not an in-band path could still be carried around as one
-// undivided interface type, and every consumer had to remember to ask -- and a consumer that forgot to ask
-// failed OPEN. Two sums make the distinction part of the type (DESIGN §5: stronger than catching a
-// wrong state is making it unwritable), so an out-of-band transport cannot be handed to anything that
-// wants an in-band one, and the parse is the only place that decides which side a name falls on.
+// and it is not asked of the data anywhere. One undivided interface type plus a true/false function would
+// put the decision OUTSIDE the data: a value that was not an in-band path could still be carried around as
+// an in-band one, and every consumer had to remember to ask -- and a consumer that forgot to ask failed
+// OPEN. Two sums make the distinction part of the type (§5: stronger than catching a wrong state is making
+// it unwritable), so an out-of-band transport cannot be handed to anything that wants an in-band one, and
+// the parse is the only place that decides which side a name falls on.
 //
 // Out-of-band network transports are on the other side because they authenticate BY A SECRET -- admitting
 // "lanplus" would make this a route that assumes the very password it set out to recover. `dbus` lives on
@@ -610,8 +607,8 @@ fn ipmi_command_interface_from_wire(wire: String) -> IpmiCommandInterfaceParse {
   else { IpmiCommandInterfaceUnrecognized { wire: wire } }
 }
 
-// WHICH DEVICE A NAME ADDRESSES, AND THE ONLY SPELLING THAT MEANS IT (review 81285, DESIGN 2: "A
-// String leaf hiding named parts is anemic modeling"). The in-band plugins do not open a path someone
+// WHICH DEVICE A NAME ADDRESSES, AND THE ONLY SPELLING THAT MEANS IT. §2: "A String leaf hiding named
+// parts is anemic modeling." The in-band plugins do not open a path someone
 // chooses: src/plugins/open/open.c builds "/dev/ipmi%d" from the device NUMBER it was handed, and
 // src/plugins/imb/imb.c hardcodes IPMI_IMB_DEV "/dev/imb". So the addressable set is closed and belongs
 // here, beside the transports that open them, rather than as a NonEmptyStr in a gunbc route compared
