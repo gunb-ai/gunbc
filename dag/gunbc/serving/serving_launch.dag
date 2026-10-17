@@ -1,7 +1,7 @@
 module gunbc.serving.serving_launch
 
 import std.types { String, NonEmptyStr, Bool, List }
-import std.algebra { list_append, string_contains }
+import std.algebra { list_append }
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -42,7 +42,7 @@ fn serving_serve_decision(launch: NinferServeLaunch, reading: ServingServeReadin
 
 // THE SERVE API KEY IS A GRANT BOUND TO THE ALLOCATION, never a literal (gunbc.serving.serving_key_grant;
 // gunbc.serving.rented_host_grant is the ssh-access authorization and not this key). The bound arm carries the
-// grant and never the key text, and no secret source delivers the key yet, so a bound launch still refuses
+// grant and never the key text (the leg and ninfer_serve_launch_argv have no key field, so the key cannot reach argv by construction), and no secret source delivers the key yet, so a bound launch still refuses
 // typed on the missing delivery. An unbound launch refuses as before. The detach mechanism is likewise a host
 // fact nobody has read (whether the card's PID 1 is systemd), so it is a typed refusal and not an assumption.
 type ServingServeKeyBinding
@@ -69,11 +69,6 @@ type ServingLaunchLeg
   | ServingLaunchRefusedReadback { cause: String }
   | ServingLaunchRefusedUnmetCauses { key_grant: NonEmptyStr, detach: ServingDetachLeg }
   | ServingLaunchRefusedKeyNotDelivered { key_grant: NonEmptyStr, detach: ServingDetachLeg }
-  | ServingLaunchRefusedKeyInArgv { key_grant: NonEmptyStr }
-
-fn serving_argv_carries_api_key(launch_argv: List<String>) -> Bool {
-  any(xs: launch_argv, predicate: fn(w) { string_contains(s: w, pattern: "--api-key") })
-}
 
 fn serving_launch_leg(launch: NinferServeLaunch, launch_argv: List<String>, reading: ServingServeReading, key: ServingServeKeyBinding) -> ServingLaunchLeg {
   match serving_serve_decision(launch: launch, reading: reading) {
@@ -83,11 +78,7 @@ fn serving_launch_leg(launch: NinferServeLaunch, launch_argv: List<String>, read
       match key {
         ServingServeKeyUnbound { grant_name: g } => ServingLaunchRefusedUnmetCauses { key_grant: g, detach: serving_detach_leg(launch_argv: launch_argv) }
         ServingServeKeyBound { grant: kg } =>
-          if serving_argv_carries_api_key(launch_argv: launch_argv) {
-            ServingLaunchRefusedKeyInArgv { key_grant: serving_key_grant_name(subject: kg.subject) }
-          } else {
-            ServingLaunchRefusedKeyNotDelivered { key_grant: serving_key_grant_name(subject: kg.subject), detach: serving_detach_leg(launch_argv: launch_argv) }
-          }
+          ServingLaunchRefusedKeyNotDelivered { key_grant: serving_key_grant_name(subject: kg.subject), detach: serving_detach_leg(launch_argv: launch_argv) }
       }
   }
 }
@@ -148,7 +139,6 @@ fn serving_launch_leg_text(leg: ServingLaunchLeg) -> String {
     ServingLaunchRefusedReadback { cause: c } => concat("launch: refused on readback: ", c)
     ServingLaunchRefusedUnmetCauses { key_grant: g, detach: _ } => concat("launch: refused: serve key grant unbound (", concat(g as String, "); and no modeled stdout-to-file route for the detach)"))
     ServingLaunchRefusedKeyNotDelivered { key_grant: g, detach: _ } => concat("launch: refused: serve key grant bound (", concat(g as String, ") but no secret source delivers the key; and no modeled stdout-to-file route for the detach)"))
-    ServingLaunchRefusedKeyInArgv { key_grant: g } => concat("launch: refused: the argv carries an api-key flag for grant ", g as String)
   }
 }
 

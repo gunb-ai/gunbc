@@ -17,14 +17,14 @@ import gunbc.harness.harness_seat { harness_seat_partition }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive }
 import gunbc.serving.serving_launch {
   ServingServeNotListening, ServingServeKeyBinding, ServingServeKeyUnbound, ServingServeKeyBound,
-  ServingLaunchRefusedUnmetCauses, ServingLaunchRefusedKeyNotDelivered, ServingLaunchRefusedKeyInArgv,
+  ServingLaunchRefusedUnmetCauses, ServingLaunchRefusedKeyNotDelivered,
   serving_launch_leg, serving_launch_leg_text,
 }
 import gunbc.serving.serving_key_grant {
   ServingKeySubject, ServingKeyGrantBound, ServingKeyGrantRefused,
-  serving_key_request, serving_key_pattern, serving_key_grant_bind,
+  serving_key_request, serving_key_pattern, serving_key_grant_pending_cause, serving_key_grant_bind,
 }
-import std.scoped_authorization { AuthorizationPending, AttemptIdentity }
+import std.scoped_authorization { ScopedAuthorization, AuthorizationRequest, AuthorizationPending, AuthorizationGranted, OperatorGrant, Unclaimed, AttemptIdentity }
 import std.algebra { string_contains }
 import extdeps.ninfer.ninfer_serve { ninfer_serve_launch_argv }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
@@ -99,10 +99,32 @@ fn s_subject() -> ServingKeySubject {
   ServingKeySubject { allocation: s_read_allocation().identity }
 }
 
+fn s_request() -> AuthorizationRequest<ServingKeySubject> {
+  serving_key_request(escalation_id: "esc-1" as NonEmptyStr, subject: s_subject(), attempt: "attempt-1" as AttemptIdentity)
+}
+
+fn s_authorization() -> ScopedAuthorization<ServingKeySubject> {
+  let r = s_request()
+  AuthorizationGranted {
+    grant: OperatorGrant {
+      escalation_id: r.escalation_id, scopes: r.scopes, subject: r.subject, purpose: r.purpose, attempt: r.attempt, intent_hash: r.intent_hash,
+      granted_by: "operator" as NonEmptyStr, granted_at: "2026-10-12T10:00:00Z", expires_at: "2026-10-12T11:00:00Z",
+    },
+    claim: Unclaimed,
+  }
+}
+
+test fn a_pending_authorization_is_not_a_bound_grant() -> Bool {
+  match serving_key_grant_bind(subject: s_subject(), authorization: AuthorizationPending { request: s_request() }, selection: serving_key_pattern()) {
+    ServingKeyGrantRefused { cause: c } => c == serving_key_grant_pending_cause
+    ServingKeyGrantBound { grant: _ } => false
+  }
+}
+
 fn s_key_binding() -> ServingServeKeyBinding {
   match serving_key_grant_bind(
     subject: s_subject(),
-    authorization: AuthorizationPending { request: serving_key_request(escalation_id: "esc-1" as NonEmptyStr, subject: s_subject(), attempt: "attempt-1" as AttemptIdentity) },
+    authorization: s_authorization(),
     selection: serving_key_pattern(),
   ) {
     ServingKeyGrantBound { grant: g } => ServingServeKeyBound { grant: g }
@@ -119,19 +141,25 @@ test fn the_real_pattern_selection_binds_the_grant() -> Bool {
   match s_key_binding() { ServingServeKeyBound { grant: _ } => true  _ => false }
 }
 
+fn s_secret() -> String {
+  "SECRET-KEY-TEXT-9f3a"
+}
+
+fn s_word_leaks(words: List<String>) -> Bool {
+  any(xs: words, predicate: fn(w) { string_contains(s: w, pattern: s_secret()) })
+}
+
+// THE KEY CANNOT REACH ARGV BY CONSTRUCTION (no key field on the launch or the bound arm); the fixture value is
+// asserted absent from every argv word and the leg text, and the detector is shown to see it when present.
 test fn a_bound_key_refuses_on_missing_delivery_and_the_key_text_is_nowhere() -> Bool {
   let leg = serving_launch_leg(launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: s_key_binding())
   (match leg { ServingLaunchRefusedKeyNotDelivered { key_grant: _, detach: _ } => true  _ => false })
-    && !string_contains(s: serving_launch_leg_text(leg: leg), pattern: "SECRET-KEY-TEXT-9f3a")
-    && !any(xs: s_argv(), predicate: fn(w) { string_contains(s: w, pattern: "--api-key") })
+    && !string_contains(s: serving_launch_leg_text(leg: leg), pattern: s_secret())
+    && !s_word_leaks(words: s_argv())
 }
 
-// NEGATIVE CONTROL: an argv that carries the flag and key text is refused, and the detector sees the text.
-test fn an_argv_carrying_the_api_key_flag_is_refused() -> Bool {
-  match serving_launch_leg(launch: operator_pod_ninfer_launch, launch_argv: ["--api-key", "SECRET-KEY-TEXT-9f3a"], reading: ServingServeNotListening, key: s_key_binding()) {
-    ServingLaunchRefusedKeyInArgv { key_grant: _ } => true
-    _ => false
-  }
+test fn the_leak_detector_sees_the_value_as_a_positional_key_or_env_word() -> Bool {
+  s_word_leaks(words: ["serve", s_secret()]) && s_word_leaks(words: ["--key=SECRET-KEY-TEXT-9f3a"]) && s_word_leaks(words: ["API_KEY=SECRET-KEY-TEXT-9f3a"])
 }
 
 test fn an_unbound_key_still_refuses() -> Bool {

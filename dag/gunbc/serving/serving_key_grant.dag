@@ -1,7 +1,6 @@
 module gunbc.serving.serving_key_grant
 
 import std.types { String, Bool, NonEmptyStr }
-import std.optional { Present, Absent }
 import std.content_hash { content_hash_of_value }
 import std.human_intervention { EveryOperatorRequest }
 import std.effect_grant { NamespacePosition, ServiceOpTree, Execute }
@@ -71,17 +70,6 @@ fn serving_key_pattern() -> AuthorizationPatternSelection {
   select_authorization_pattern(e: serving_key_effect())
 }
 
-fn serving_key_pattern_is_scoped_grant(selection: AuthorizationPatternSelection) -> Bool {
-  match selection {
-    PatternSelected { pattern: p, receipt: _ } =>
-      match p {
-        OperatorApprovedCapability => true
-        _ => false
-      }
-    _ => false
-  }
-}
-
 type ServingKeyGrant {
   subject: ServingKeySubject
   authorization: ScopedAuthorization<ServingKeySubject>
@@ -91,30 +79,27 @@ type ServingKeyGrantBinding
   = ServingKeyGrantBound { grant: ServingKeyGrant }
   | ServingKeyGrantRefused { cause: NonEmptyStr }
 
-data serving_key_pattern_not_scoped_grant_cause: NonEmptyStr = "the authorization-pattern selection did not yield the operator-approved capability for the serving key delivery, so no scoped grant is bound" as NonEmptyStr
+data serving_key_pattern_not_scoped_grant_cause: NonEmptyStr = "the authorization-pattern selection did not select the operator-approved capability for the serving key delivery, so no scoped grant is bound" as NonEmptyStr
 
-data serving_key_grant_names_another_allocation_cause: NonEmptyStr = "the authorization names another allocation than the one the key is bound to" as NonEmptyStr
+data serving_key_grant_names_another_allocation_cause: NonEmptyStr = "the grant names another allocation than the one the key is bound to" as NonEmptyStr
 
-fn serving_key_authorization_subject(a: ScopedAuthorization<ServingKeySubject>) -> ServingKeySubject? {
-  match a {
-    AuthorizationPending { request: r } => Present { value: r.subject }
-    AuthorizationGranted { grant: g, claim: _ } => Present { value: g.subject }
-    AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => none
-  }
-}
+data serving_key_grant_pending_cause: NonEmptyStr = "the key delivery authorization is pending and unapproved, so no grant is bound" as NonEmptyStr
+
+data serving_key_grant_denied_cause: NonEmptyStr = "the operator denied the key delivery authorization, so no grant is bound" as NonEmptyStr
 
 fn serving_key_grant_bind(subject: ServingKeySubject, authorization: ScopedAuthorization<ServingKeySubject>, selection: AuthorizationPatternSelection) -> ServingKeyGrantBinding {
-  if !serving_key_pattern_is_scoped_grant(selection: selection) {
-    ServingKeyGrantRefused { cause: serving_key_pattern_not_scoped_grant_cause }
-  } else {
-    match serving_key_authorization_subject(a: authorization) {
-      Absent => ServingKeyGrantRefused { cause: serving_key_grant_names_another_allocation_cause }
-      Present { value: s } =>
-        if s == subject {
-          ServingKeyGrantBound { grant: ServingKeyGrant { subject: subject, authorization: authorization } }
-        } else {
-          ServingKeyGrantRefused { cause: serving_key_grant_names_another_allocation_cause }
-        }
-    }
+  match selection {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } =>
+      match authorization {
+        AuthorizationPending { request: _ } => ServingKeyGrantRefused { cause: serving_key_grant_pending_cause }
+        AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => ServingKeyGrantRefused { cause: serving_key_grant_denied_cause }
+        AuthorizationGranted { grant: g, claim: _ } =>
+          if g.subject == subject {
+            ServingKeyGrantBound { grant: ServingKeyGrant { subject: subject, authorization: authorization } }
+          } else {
+            ServingKeyGrantRefused { cause: serving_key_grant_names_another_allocation_cause }
+          }
+      }
+    _ => ServingKeyGrantRefused { cause: serving_key_pattern_not_scoped_grant_cause }
   }
 }
