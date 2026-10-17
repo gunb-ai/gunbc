@@ -273,7 +273,7 @@ test fn unavailable_virtual_media_is_refused_not_rerouted_to_pxe() -> Bool {
 }
 
 test fn the_refused_firmware_standing_is_terminal() -> Bool {
-  let e = evidence_with(firmware: Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: "fixture" as NonEmptyStr } } }, chainloader: pinned(), virtual_media: media_available())
+  let e = evidence_with(firmware: Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: "fixture" as NonEmptyStr } }, gaps: [] }, chainloader: pinned(), virtual_media: media_available())
   match derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
     ArmRefused { cause: _ } => true
     ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
