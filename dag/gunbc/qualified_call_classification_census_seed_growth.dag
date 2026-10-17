@@ -52,6 +52,6 @@ data qualified_call_classification_census_seed_growth_justification: SeedGrowthJ
   ],
   reason: "The census is the regression control for a behaviour-preserving consolidation: no RED exists on main (#14089 was reverted by #14147), so the evidence is that every arm resolves identically before and after the single declared_module_owner decision. It is Rust because it needs the in-memory compile_sources seam the seed exposes; it stays only until an enrolled .dag witness over the compile builtins covers the same arms.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
-  trigger: "Delete all seven when an enrolled .dag witness over compile_dag_diagnostic_census proves the same nine accept arms and the one must-refuse arm, with a fixture service module and two same-leaf provider modules.",
+  trigger: "Delete all seven when an enrolled .dag witness over compile_dag_diagnostic_census proves the same eight accept arms and the one must-refuse arm, with a fixture service module and two same-leaf provider modules.",
   current_boundary: "src/v1/04_env.dag declared_module_owner; src/v1/04_infer.dag call_target_for_direct_call; src/v1/04_lookup.dag func_env_declared_func_sig; src/v1/stage0/tests/qualified_call_classification_census.rs; dag/gunbc/qualified_call_classification_census_seed_growth.dag"
 }
