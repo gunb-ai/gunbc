@@ -42,10 +42,8 @@ import gunbc.runner.runner_claim_set_results {
 // The receipt then goes to gunbc.fabric.fabric_cell_grant settle_cell_grant, which admits it once
 // and releases the cell only after sanitation (FCI-4).
 //
-// DECLARED FRONTIER (DESIGN 3c): the controller calls claim_set_receipt_and_settle once a revision
-// job's guest has exited, which needs the ClaimSetWorkload arm and its guest program (S4b-2).
-// TRIGGER: S4b-2's inhabitance claim, in which the real guest program writes the drive this module
-// reads.
+// DECLARED FRONTIER (DESIGN 3c): the revision-job controller calls claim_set_receipt_and_settle once
+// a revision job's guest has exited. TRIGGER: S4b-3's stand-in inhabitance claim, in which the revision-job guest unit runs claim_set_guest_main over staged inputs and the controller settles the receipt.
 
 type UnitRuntimeReading
   = UnitRuntimeMeasured { billable: Second }

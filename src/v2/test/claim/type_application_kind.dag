@@ -106,7 +106,7 @@ test fn tak_kinded_parameter_refuses_a_variant_of_another_coproduct() -> Bool {
 }
 
 test fn tak_kinded_parameter_refuses_a_kernel_type() -> Bool {
-  tak_refuses_with(o: tak_kind_kernel_type(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
+  tak_refuses_with(o: tak_kind_kernel_type(), reason: ^resolve_reason_reference_category_mismatch)
 }
 
 test fn tak_arguments_pair_with_parameters_in_authored_order() -> Bool {
@@ -117,8 +117,32 @@ test fn tak_arguments_swapped_against_authored_order_refuse() -> Bool {
   tak_refuses_with(o: tak_order_swapped(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
 }
 
-test fn tak_unkinded_parameter_is_unchanged() -> Bool {
-  tak_accepts(o: tak_unkinded())
+// An UNKINDED parameter admits types only. The old claim here asserted `Plain<Foreign>` ACCEPTED, which
+// was wrong: Foreign is a variant (a constructor), and an unkinded position has no kind that admits one.
+// It refuses as the category mismatch it is -- the name exists, in the wrong category -- never as an
+// unbound name and never accepted. The control is the same position given a type.
+test fn tak_unkinded_parameter_refuses_a_variant_as_a_category_mismatch() -> Bool {
+  tak_refuses_with(o: tak_unkinded(), reason: ^resolve_reason_reference_category_mismatch)
+}
+
+test fn tak_unkinded_parameter_accepts_a_type() -> Bool {
+  tak_accepts(o: tak_assemble(src: concat(tak_prelude(), "type UsesPlainType = Plain<Other>\n")))
+}
+
+// A name with NO candidate at all stays unbound: category mismatch is the answer for a name that exists in
+// another category, not for a name that binds nothing.
+test fn tak_unkinded_parameter_with_an_undeclared_name_reads_unbound() -> Bool {
+  tak_refuses_with(o: tak_assemble(src: concat(tak_prelude(), "type UsesMissing = Plain<Nowhere>\n")), reason: ^resolve_reason_unbound_symbol)
+}
+
+// No current kind admits both a type and a variant: only a coproduct kind resolves, and it admits its
+// variants alone. A kind naming a record admits no variant and keeps type eligibility at its position, so
+// a type argument reaches the conformance verdict (kind_unresolved) instead of being excluded by category.
+test fn tak_record_kind_keeps_type_eligibility() -> Bool {
+  tak_refuses_with(
+    o: tak_assemble(src: concat(tak_prelude(), "type Rec {\n  field: Int\n}\n\ntype Wr<b: Rec>\n\ntype UsesRec = Wr<Other>\n")),
+    reason: ^resolve_reason_type_parameter_kind_unresolved
+  )
 }
 
 test fn tak_application_with_more_arguments_than_binders_refuses() -> Bool {

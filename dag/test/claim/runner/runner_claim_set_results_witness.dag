@@ -26,8 +26,8 @@ import gunbc.runner.runner_claim_set_results {
 // THE RESULTS DRIVE AT ITS INTERFACE: supplied bytes, framed by the one renderer the guest program
 // will use, decoded by the host's reader. The positive control round-trips a two-claim frame into an
 // admitted result set whose outputs digest is the host's own fold; every red changes one fact of
-// the frame or the job and must refuse by name. The real producer (the S4b-2 guest program) is this
-// module's declared frontier; its inhabitance claim is the trigger.
+// the frame or the job and must refuse by name. The frame writer's join to this reader is executed in
+// test.claim.runner.runner_claim_set_guest_wet_witness; the full guest run is S4b-3's stand-in.
 
 data commit_hex: String = "e9eaa579ed0b6585a48965842b43ee09af5671a1"
 data tree_hex: String = "c8983a3d8412a5e37a309b2d90ceafc698856619"

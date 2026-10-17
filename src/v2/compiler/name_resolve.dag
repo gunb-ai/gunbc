@@ -58,7 +58,8 @@ import v2.std.resolution_policy {
   default_name_resolution_policy
 }
 import v2.extdeps.languages.dag {
-  qualified_name_from_module_node
+  qualified_name_from_module_node,
+  namespace_graft_node_is_module_body
 }
 import v2.compiler.namespace_graft {
   namespace_graft_module_body_root
@@ -418,7 +419,9 @@ fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<Validated
 
 // Typed lookup result beside module_root_find diagnostics. ModuleRootMissing and
 // ModuleRootAmbiguous preserve the exact QualifiedName sought; diagnostics are projections of these
-// results for consumers that still read the Outcome directly.
+// results for consumers that still read the Outcome directly. FOR UNVALIDATED ROOTS ONLY: it derives
+// every root's module name on every call, so a consumer that holds ValidatedModuleRoots reads
+// validated_module_root_for_name instead (one map read).
 
 fn module_root_lookup(
   roots: FreeMonoid<NormalizedTree>,
@@ -644,12 +647,12 @@ fn admit_import_root_find(
 }
 
 fn admit_import_visible_entry(
-  roots: FreeMonoid<NormalizedTree>,
+  roots: ValidatedModuleRoots,
   import_edge: Import,
   state: AdmissionState
 ) -> AdmissionState {
   admit_import_root_find(
-    found: module_root_find(
+    found: validated_module_root_for_name(
       roots: roots,
       name: import_edge.target
     ),
@@ -700,7 +703,7 @@ fn admit_import_cross_tree_gate(
 }
 
 fn admit_import_entry(
-  roots: FreeMonoid<NormalizedTree>,
+  roots: ValidatedModuleRoots,
   import_edge: Import,
   state: AdmissionState,
   subject_qn: QualifiedName,
@@ -722,7 +725,7 @@ fn admit_import_entry(
 }
 
 fn admit_imports(
-  roots: FreeMonoid<NormalizedTree>,
+  roots: ValidatedModuleRoots,
   imports: FreeMonoid<Import>,
   state: AdmissionState,
   subject_qn: QualifiedName,
@@ -770,7 +773,7 @@ fn import_edge_from_binding_row(row: AliasBindingRow) -> Import {
 // (or whose block was empty) never reached module_root_find. Existence is judged here without
 // merging the imported module's exports (that merge is ImportScoped / admit_import_visible_entry).
 fn admit_imported_module_existence(
-  roots: FreeMonoid<NormalizedTree>,
+  roots: ValidatedModuleRoots,
   located: CapturedImportTarget,
   state: AdmissionState
 ) -> AdmissionState {
@@ -778,7 +781,7 @@ fn admit_imported_module_existence(
     AdmissionRejected { diagnostics: d } =>
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: _, origins: _ } =>
-      match module_root_find(roots: roots, name: located.target) {
+      match validated_module_root_for_name(roots: roots, name: located.target) {
         Rejected { diagnostics: d } =>
           AdmissionRejected {
             diagnostics: NonEmptyDiagnostics {
@@ -796,7 +799,7 @@ fn admit_imported_module_existence(
 }
 
 fn admit_imported_modules(
-  roots: FreeMonoid<NormalizedTree>,
+  roots: ValidatedModuleRoots,
   modules: FreeMonoid<CapturedImportTarget>,
   state: AdmissionState,
   subject_qn: QualifiedName,
@@ -854,9 +857,14 @@ fn admit_captured_import_rows(
   )
 }
 
-// The shared context consumes only the map emitted by successful validation. General
-// module_root_lookup still diagnoses ambiguity and projection errors before validation.
-fn subject_module_root_for_name(
+// THE ONE POST-VALIDATION READ OF A MODULE'S ROOT BY NAME. validate_module_roots derives every root's
+// module name exactly once and keeps the result as ValidatedModuleRoots.by_name, refusing a duplicate
+// name or a root whose name cannot be read for the whole context; so after validation a name names at
+// most one root and the lookup is one map read. Every consumer holding validated roots -- the
+// subject's own root and each import's target (admit_import_visible_entry,
+// admit_imported_module_existence) -- reads here. module_root_lookup's scan, which re-derives every
+// root's name per call, is only for roots nobody has validated.
+fn validated_module_root_for_name(
   roots: ValidatedModuleRoots,
   name: QualifiedName
 ) -> Outcome<NormalizedTree> {
@@ -988,7 +996,7 @@ fn namespace_for_subject_produced(
   validate_diag: Diagnostics,
   admission: Admission
 ) -> Outcome<AdmittedSubject> {
-  match subject_module_root_for_name(roots: shared.roots, name: admission.subject.name) {
+  match validated_module_root_for_name(roots: shared.roots, name: admission.subject.name) {
     Rejected { diagnostics: r } =>
       Rejected { diagnostics: rejected_with_pending(pending: validate_diag, rejected: r) }
     Accepted { value: subject_module_root, diagnostics: _ } =>
@@ -1032,7 +1040,7 @@ fn namespace_for_subject_root(
             }
           AdmissionAccepted { bindings: _, origins: _ } =>
             match admit_imported_modules(
-              roots: validated_roots.roots,
+              roots: validated_roots,
               modules: normalized_tree_imported_modules(tree: subject_module_root),
               state: initial,
               subject_qn: admission.subject.name,
@@ -1073,7 +1081,7 @@ fn namespace_for_subject_root(
         }
       ImportScoped =>
         match admit_imports(
-          roots: validated_roots.roots,
+          roots: validated_roots,
           imports: admission.imports,
           state: initial,
           subject_qn: admission.subject.name,
@@ -1150,8 +1158,24 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
       ContextResolved { resolved: Rejected { diagnostics: r }, context: context }
     Accepted { value: shared, diagnostics: d } =>
       let closure = closure_declarations_demand(shared: shared)
+      // THE CLOSURE'S NAMESPACES ARE ITS OWN KEYSPACE. closure_phase1_walk_module admits every module under
+      // imports: [], an admission that is no caller's; the provider keys a module by name alone, so
+      // merging those entries would refuse each subject's own admission (namespace provider admission
+      // conflict). The walk reads the caller's provider plus the closure index, and returns that context.
+      let walk_context = ResolutionContext {
+        lm: shared.lm,
+        roots: shared.roots,
+        symbol_index: shared.symbol_index,
+        index: shared.index,
+        active_roots: shared.active_roots,
+        policy: shared.policy,
+        namespaces: shared.namespaces,
+        namespaces_built: shared.namespaces_built,
+        closure_declarations: closure.context.closure_declarations,
+        type_declaration_modifiers: closure.context.type_declaration_modifiers
+      }
       let walked = resolve_walk_in_context(
-        context: Accepted { value: closure.context, diagnostics: d },
+        context: Accepted { value: walk_context, diagnostics: d },
         admission: admission
       )
       match walked.context {
@@ -1270,28 +1294,45 @@ fn closure_callee_blocking_refusal(
   }
 }
 
+// THE PUBLISHED ROOT KEEPS ITS MODULE SHELL AND SPINE WHOLE. Only the marked module body's members are
+// declarations: the shell's grammar_production_* edges and each spine segment are Authored edges too, but
+// they name the module, not a declaration, and dropping them leaves a root whose name
+// qualified_name_from_module_node cannot read -- the fill then indexes nothing for the module.
 fn closure_filter_root_published(root: Node, published: Map<Symbol, Node>) -> Node {
-  Node {
-    kind: root.kind,
-    children: fold(root.children, init: [], f: fn(acc, e) {
-      if module_binding_edge_is_namespace_body(e: e) {
+  if namespace_graft_node_is_module_body(node: root) {
+    Node {
+      kind: root.kind,
+      children: fold(root.children, init: [], f: fn(acc, e) {
+        if module_binding_edge_is_namespace_body(e: e) {
+          list_snoc_item(
+            xs: acc,
+            item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published) }
+          )
+        } else {
+          match try_edge_declared_binding(e: e) {
+            Present { value: b } =>
+              match map_lookup(m: published, key: b.name) {
+                Present { value: resolved } =>
+                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: resolved })
+                Absent => acc
+              }
+            Absent => list_snoc_item(xs: acc, item: e)
+          }
+        }
+      }),
+      occurrence_id: root.occurrence_id
+    }
+  } else {
+    Node {
+      kind: root.kind,
+      children: fold(root.children, init: [], f: fn(acc, e) {
         list_snoc_item(
           xs: acc,
           item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published) }
         )
-      } else {
-        match try_edge_declared_binding(e: e) {
-          Present { value: b } =>
-            match map_lookup(m: published, key: b.name) {
-              Present { value: resolved } =>
-                list_snoc_item(xs: acc, item: Edge { label: e.label, target: resolved })
-              Absent => acc
-            }
-          Absent => list_snoc_item(xs: acc, item: e)
-        }
-      }
-    }),
-    occurrence_id: root.occurrence_id
+      }),
+      occurrence_id: root.occurrence_id
+    }
   }
 }
 
@@ -1521,7 +1562,7 @@ fn closure_phase1_walk_module(
           list_snoc_item(
             xs: racc,
             item: match walk {
-              ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
+              ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: _ } =>
                 DeclPhase1Row {
                   module: module_qn,
                   name: binding.name,

@@ -17,6 +17,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
 import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry }
+import gunbc.compute.attempt_lifecycle { DirectInvocation }
 import gunbc.compute.work_provider_local {
   ProvideResult, ProvideFresh, ProvideAttached, compute_provide, provide_result_succeeded, provide_result_ending, provide_result_identity, provide_result_document,
   HostRecordStatus, HostRecordWritten, HostRecordLost, provide_result_host_record, host_record_wire, host_record_was_written, compute_write_host_record_note,
@@ -102,7 +103,7 @@ fn run_selected_module(instance: HostDashboardInstance, worktree: String, commit
           if count(planned) == 0 {
             ModuleAllDeclined { label: render_label(l: label), module_path: module_path, declined: declined }
           } else {
-            let result = compute_provide(instance: instance, commit: commit, op: RunClaims { entry: file.path as FilePath, functions: join(planned, ",") as NonEmptyStr, hermetic: true, window: none })
+            let result = compute_provide(instance: instance, owner: DirectInvocation { why: "test_run: a local claim or compile run invoked the provider directly" }, commit: commit, op: RunClaims { entry: file.path as FilePath, functions: join(planned, ",") as NonEmptyStr, hermetic: true, window: none })
             ModuleRan {
               label: render_label(l: label), module_path: module_path, planned: planned, declined: declined,
               ending: provide_result_ending(r: result), identity: provide_result_identity(r: result), document: provide_result_document(r: result),
@@ -272,7 +273,7 @@ fn compile_entry_cli(repo_root: String, worktree: String, entry: String, receipt
         match snapshot_worktree(instance: instance, worktree: worktree) {
           SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc compile: snapshot refused at ", step, ": ", detail], "") }
           SnapshotResolved { commit } => {
-            let result = compute_provide(instance: instance, commit: commit, op: CompileEntry { entry: entry as FilePath })
+            let result = compute_provide(instance: instance, owner: DirectInvocation { why: "test_run: a local claim or compile run invoked the provider directly" }, commit: commit, op: CompileEntry { entry: entry as FilePath })
             let record = provide_result_host_record(r: result)
             let receipt = Filesystem.Write(path: receipt_path, content: provide_result_document(r: result))
             let record_note = compute_write_host_record_note(receipt_path: receipt_path, record: record)

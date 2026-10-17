@@ -365,6 +365,37 @@ fn attempt_exit_refused_dir(instance_root: String) -> String {
   join([attempt_exit_spool_root(instance_root: instance_root), "/refused"], "")
 }
 
+// THE ATTEMPT-SYSTEM-UNIT REQUEST SPOOL. The launcher argv is pinned to instance_root only, so the
+// request cannot travel on argv. The channel is this spool, not one instance-global file: a second
+// concurrent start must not share a body (DESIGN §5). Shape reused from two existing homes, not a
+// third: dispatch/publication staging-then-rename into `requests/` with per-entry `answers/<entry>`
+// (gunbc.roadmap.roadmap_dispatch_spool / publication_spool_* here); claim-by-rename of a directory
+// entry into a requester-unwritable stage, the exit spool's queued -> running move
+// (`mv -T` / shell.Move.NoReplaceDirectory — dest that already exists as a directory refuses).
+fn attempt_unit_spool_root(instance_root: String) -> String {
+  join([instance_root, "/attempt-unit-spool"], "")
+}
+
+fn attempt_unit_spool_staging_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/requests-staging"], "")
+}
+
+fn attempt_unit_spool_request_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/requests"], "")
+}
+
+fn attempt_unit_spool_claimed_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/claimed"], "")
+}
+
+fn attempt_unit_spool_answer_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/answers"], "")
+}
+
+fn attempt_unit_spool_drain_lock_path(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/drain.lock"], "")
+}
+
 // THE PUBLICATION SPOOL, HOMED HERE FOR THE REASON THE TWO ROWS ABOVE ARE: it has two consumers on
 // opposite sides of a PRIVILEGE boundary, so neither may own the name. gunbc.roadmap.roadmap_belt_actuate
 // writes a request into it as the service principal; the publication helper reads that request and

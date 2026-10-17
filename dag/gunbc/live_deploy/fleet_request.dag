@@ -46,6 +46,7 @@ import gunbc.live_deploy.member_identity {
   OidcConfigFile,
   OidcConfigAt,
   member_identity_member,
+  InstalledReleasePosition, InstalledReleaseAt, InstalledReleaseUnobserved, installed_release_position,
   decide_release_members,
   decision_label,
   ObservedMember,
@@ -179,12 +180,19 @@ fn live_deploy_observe_supplied(
   }
 }
 
+// THE INSTALLED RELEASE POSITION IS AN INPUT HERE BECAUSE A ONE-MEMBER ASSESSMENT CANNOT SEE IT.
+// Whether an observed-unhealthy process is something this deploy can repair turns on the release
+// installed on the host, which is a fact about the TREE member (gunbc.live_deploy.member_identity
+// installed_release_position reads it from there). A decision over one member in isolation therefore
+// has to be told, not left to guess -- passing InstalledReleaseUnobserved refuses any replacement
+// over an unhealthy process rather than inventing a position.
 fn live_deploy_assess_member(
   goal: MemberIdentity,
   observed: ObservedMember,
+  installed: InstalledReleasePosition,
 ) -> GoalAssessment<MemberDecision, MemberDecision, String, String> {
   let member = member_identity_member(i: goal)
-  let d = decide_member(member: member, desired: goal, observed: observed)
+  let d = decide_member(member: member, desired: goal, observed: observed, installed: installed)
   match d {
     MemberRefused { member: _, cause: _ } =>
       GoalAssessmentRefused { cause: decision_label(d: d) }
@@ -210,10 +218,17 @@ fn live_deploy_decide_plan(
   }
 }
 
-fn live_deploy_member_projection() -> HostEffectDomainProjection<ConvergedMember, MemberIdentity, List<ObservedMember>, ObservedMember, MemberDecision, MemberDecision, String, String, String, MemberDecision> {
+// THE ONE-MEMBER PROJECTION, now needing the installed release position as an input: an assessment
+// of a single member cannot see the tree member's observation, and the assessment of an
+// observed-unhealthy process is not decidable without it. Callers that hold a full observation
+// population take it from installed_release_position; InstalledReleaseUnobserved is the honest
+// argument when nobody has read the tree, and it refuses a replacement rather than inventing one.
+fn live_deploy_member_projection(
+  installed: InstalledReleasePosition,
+) -> HostEffectDomainProjection<ConvergedMember, MemberIdentity, List<ObservedMember>, ObservedMember, MemberDecision, MemberDecision, String, String, String, MemberDecision> {
   HostEffectDomainProjection {
     observe: live_deploy_observe_supplied,
-    assess: live_deploy_assess_member,
+    assess: fn(goal, observed) { live_deploy_assess_member(goal: goal, observed: observed, installed: installed) },
     decide: live_deploy_decide_plan,
   }
 }
@@ -227,7 +242,10 @@ fn live_deploy_inspect_member(
     subject: member,
     goal: desired,
     request: observed,
-    projection: live_deploy_member_projection(),
+    projection: live_deploy_member_projection(installed: installed_release_position(observed: fn(m) { match observed_of_member(observed: observed, member: m) {
+      Present { value: v } => v
+      Absent => MemberUnobservable { member: m, cause: "the member was not in the observed population" }
+    } })),
   )
 }
 

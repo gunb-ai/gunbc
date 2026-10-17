@@ -1,0 +1,93 @@
+module test.claim.runner.runner_claim_set_guest_wet_witness
+
+import gunbc.target_invocation { ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold }
+import extdeps.shell
+import std.measure { ByteSize, byte_size }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, Cons, Empty }
+import extdeps.bazel.label { Label, render_label }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
+import gunbc.runner.runner_claim_set_results {
+  ClaimSetResultsAdmitted, ClaimSetResultsNotDecoded, ResultsDriveUnwritten, admit_claim_set_results,
+}
+import gunbc.runner.runner_claim_set_receipt { read_results_drive }
+import gunbc.runner.runner_claim_set_guest {
+  ClaimSetGuestWrite, ClaimSetGuestWritten, ClaimSetGuestNoClaims, write_claim_set_frame, claim_set_spec_labels,
+}
+import gunbc.runner.runner_claim_set_results { ClaimSetResult }
+import std.optional { Present, Absent }
+import test.claim.runner.runner_claim_set_results_witness { revision, commit_hex, tree_hex }
+
+// THE GUEST WRITER AND THE HOST READER, JOINED BY REAL EXECUTION OVER A FILE STANDING IN FOR THE
+// RAW RESULTS DEVICE. The host stages the device zeroed at a fixed size; the guest entry frames the
+// claim exits onto it; the host stats, reads and decodes it exactly as after a VMM exit. This is the
+// writer's inhabitance claim at the device interface: the frame the guest writes is the frame the
+// host admits. The full guest program (fetch-free tree, offline build, claim runs) over the same
+// staged inputs is S4b-3's stand-in.
+
+// 2^12 NULs: twelve doublings of one, so the staged size is stated once (device_bytes) and the
+// zeroed text is built to it rather than spelled.
+data device_doublings: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+fn zeroed() -> String {
+  fold(device_doublings, init: "\u{0}", f: (acc, _) => concat(acc, acc))
+}
+
+fn device_bytes() -> ByteSize {
+  byte_size(count: 4096)
+}
+
+fn claims() -> FreeSemigroup<Label> {
+  FreeSemigroup { head: self_host_label(), tail: [v2_native_cli_label()] }
+}
+
+fn stage(root: String) -> Bool {
+  Filesystem.Write(path: concat(root, "/device"), content: zeroed()).success
+}
+
+fn record(label: Label, verdict: ClaimRouteVerdict) -> ClaimSetResult {
+  ClaimSetResult { label: render_label(l: label) as NonEmptyStr, verdict: verdict, commit: commit_hex as NonEmptyStr, tree: tree_hex as NonEmptyStr }
+}
+
+fn admitted(root: String) -> String {
+  match revision() {
+    Empty {} => "no-revision"
+    Cons { head: rev, tail: _ } => match admit_claim_set_results(decode: read_results_drive(path: concat(root, "/device"), staged_bytes: device_bytes()), claims: claims(), revision: rev) {
+      ClaimSetResultsAdmitted { results: rs, outputs: _ } => concat("admitted:", to_string(count(rs)))
+      ClaimSetResultsNotDecoded { cause: ResultsDriveUnwritten } => "unwritten"
+      _ => "refused"
+    }
+  }
+}
+
+test fn the_guest_frame_on_a_zeroed_device_is_admitted_by_the_host_reader_by_real_execution() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_claimset.XXXXXX").path
+  let staged = stage(root: root)
+  let wrote = match write_claim_set_frame(records: [record(label: self_host_label(), verdict: ClaimHeld), record(label: v2_native_cli_label(), verdict: ClaimDidNotHold)], device: concat(root, "/device"), device_bytes: device_bytes()) {
+    ClaimSetGuestWritten { records: n } => n == 2
+    _ => false
+  }
+  let verdict = admitted(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  staged && wrote && verdict == "admitted:2" && removed.success
+}
+
+test fn no_claims_writes_nothing_and_the_host_reads_unwritten_by_real_execution() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_claimset.XXXXXX").path
+  let staged = stage(root: root)
+  let refused = match write_claim_set_frame(records: [], device: concat(root, "/device"), device_bytes: device_bytes()) {
+    ClaimSetGuestNoClaims => true
+    _ => false
+  }
+  let verdict = admitted(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  staged && refused && verdict == "unwritten" && removed.success
+}
+
+test fn the_claims_value_is_the_labels_in_order_or_nothing() -> Bool {
+  let good = claim_set_spec_labels(text: "//gunbc/instruments:self-host //gunbc/instruments:v2-native-cli")
+  let empty = claim_set_spec_labels(text: "   ")
+  (match good { Present { value: ls } => count(ls) == 2 && (match ls.first() { Present { value: f } => f == "//gunbc/instruments:self-host"  Absent => false })  Absent => false })
+    && (match empty { Present { value: _ } => false  Absent => true })
+}

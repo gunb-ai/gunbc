@@ -1,7 +1,7 @@
 module extdeps.posix.shell_command_language
 
 import std.types { String, NonEmptyStr, Bool, Char }
-import std.algebra { Cons, Empty, FreeMonoid, contains, for_all }
+import std.algebra { Cons, Empty, FreeMonoid, contains, for_all, string_contains }
 import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -195,3 +195,61 @@ fn admit_posix_shell_name(spelling: String) -> PosixShellNameAdmission {
     PosixShellNameRefused { spelling: spelling }
   }
 }
+
+// IEEE 1003.1-2017 XCU 2.7 (Redirection): a redirection `word` names a pathname. Admission is the
+// pathname wall (XBD Pathname / execve), not a transport. Empty: not a pathname. NUL: cannot inhabit
+// a pathname. Newline is a legal pathname and a legal quoted XCU word, and it is admitted: RFC 4254
+// section 6.5 carries the exec command as an arbitrary string with no line discipline, and a newline
+// inside single quotes is literal (XCU 2.2.2), so no transport refuses it (DESIGN section 4d).
+
+type PosixRedirectPathRefusal
+  = RedirectPathEmpty
+  | RedirectPathContainsNul
+
+type PosixRedirectPathname sole_constructor {
+  spelling: NonEmptyStr
+}
+
+type PosixRedirectPathAdmission
+  = PosixRedirectPathAdmitted { path: PosixRedirectPathname }
+  | PosixRedirectPathRefused { cause: PosixRedirectPathRefusal }
+
+fn posix_redirect_pathname_spelling(path: PosixRedirectPathname) -> NonEmptyStr {
+  path.spelling
+}
+
+fn admit_posix_redirect_pathname(path: String) -> PosixRedirectPathAdmission {
+  if path == "" {
+    PosixRedirectPathRefused { cause: RedirectPathEmpty }
+  } else if string_contains(s: path, pattern: "\u{0}") {
+    PosixRedirectPathRefused { cause: RedirectPathContainsNul }
+  } else {
+    PosixRedirectPathAdmitted { path: PosixRedirectPathname { spelling: path as NonEmptyStr } }
+  }
+}
+
+// XCU 2.7 operators as a tree, not a suffix string. emit_posix_redirection is the one serializer
+// (DESIGN §4: emit selects from the same rows). 2.7.2 `>|word` ignores noclobber; 2.7.3 is `>>word`;
+// 2.7.5 is `[n]>&word`. The word is posix_single_quote-wrapped.
+
+type PosixRedirection
+  = PosixRedirectStdoutClobber { word: PosixRedirectPathname }
+  | PosixRedirectStdoutAppend { word: PosixRedirectPathname }
+  | PosixRedirectStderrClobber { word: PosixRedirectPathname }
+  | PosixRedirectStderrAppend { word: PosixRedirectPathname }
+  | PosixRedirectStderrDupStdout
+
+fn emit_posix_redirection(redir: PosixRedirection) -> String {
+  match redir {
+    PosixRedirectStdoutClobber { word: w } =>
+      concat(" >|", posix_single_quote(spelling: posix_redirect_pathname_spelling(path: w) as String))
+    PosixRedirectStdoutAppend { word: w } =>
+      concat(" >>", posix_single_quote(spelling: posix_redirect_pathname_spelling(path: w) as String))
+    PosixRedirectStderrClobber { word: w } =>
+      concat(" 2>|", posix_single_quote(spelling: posix_redirect_pathname_spelling(path: w) as String))
+    PosixRedirectStderrAppend { word: w } =>
+      concat(" 2>>", posix_single_quote(spelling: posix_redirect_pathname_spelling(path: w) as String))
+    PosixRedirectStderrDupStdout => " 2>&1"
+  }
+}
+

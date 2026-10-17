@@ -206,10 +206,22 @@ import gunbc.guarantee_rung {
 // the subject, the DECISION RECORD that admitted it, and the LOSS HOLDER -- the standing drop that
 // now carries whatever the superseded row's trigger would have restored, so the loss is not
 // dropped with the row.
+// DISSOLVED IS THE FOURTH STANDING, AND IT IS NOT AN EXIT FOR A DROP WHOSE TRIGGER IS INCONVENIENT.
+// Use it ONLY when the population the drop covered NO LONGER EXISTS IN THE TREE: every member the
+// row's population named is deleted, so nobody holds a loss and no trigger is left to restore. A
+// class that still has members stays Standing, or Superseded when its loss moved to a standing
+// drop. Like Superseded it is not a kind of Retired: the trigger did not fire. It carries no loss
+// holder because there is none; `population_gone` says what was deleted. All three fields are
+// NonEmptyStr because no typed home exists for them yet: the ruling and decision record are
+// operator relays and dashboard message ids rather than gunbc.design_ruling symbols, and
+// `population_gone` is prose (section 4c: a String only where nothing typed exists, and never
+// evidence that the population is gone). Admission is mechanical: gunbc.rung_drop.standing
+// dissolved_populations_empty admits a Dissolved row only over an empty TypedDeclaration population.
 type RungDropStanding
   = Standing
   | Retired { trigger_fired: NonEmptyStr }
   | Superseded { ruling: NonEmptyStr, decision_record: NonEmptyStr, loss_holder: NonEmptyStr }
+  | Dissolved { ruling: NonEmptyStr, decision_record: NonEmptyStr, population_gone: NonEmptyStr }
 
 // THE REASON A RUNG FELL, A CLOSED COPRODUCT BECAUSE THE REASONS ARE A SMALL NAMED SET AND NAMING
 // THEM IS WHAT LETS THE SAME CLASS BE RECOGNISED TWICE.
@@ -499,4 +511,21 @@ fn every_consolidated_typed_drop_is_rostered_once(ds: List<RungDrop>) -> Bool {
   fold(consolidated_typed_drop_identities, init: true, f: fn(acc, want) {
     acc && length(xs: filter(ids, i => i == want)) == 1
   })
+}
+
+// THE ONE VALIDITY FUNCTION FOR DISSOLVED. A Dissolved row erases a drop from live accounting, so every
+// consumer that would drop its loss asks this first and treats an invalid one as STILL STANDING:
+// counted live and outstanding, never erased (fail closed). Admitted only over an empty
+// TypedDeclaration population; a non-empty typed population or an AuthoredProse declaration is
+// invalid. A row that is not Dissolved has nothing to refuse.
+fn dissolved_is_admissible(drop: RungDrop) -> Bool {
+  match drop.standing {
+    Standing => true
+    Retired { trigger_fired: _ } => true
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => match drop.declaration {
+      TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => length(xs: p) == 0
+      AuthoredProse { legacy: _, authored: _ } => false
+    }
+  }
 }

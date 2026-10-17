@@ -1,7 +1,8 @@
 module gunbc.live_deploy.lab_host_plan
 
 import std.types { Int, NonEmptyStr, String, FilePath }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.decl_ref { decl_ref }
 import std.optional { Absent, Present }
 import std.os.types { OsPackageManager }
 import gunbc.host.host_software_surface {
@@ -33,8 +34,7 @@ import extdeps.tailscale.serve { TailscaleServeCapability }
 // plan that claims user-manager confinement (sysctl 1 → system-manager launcher). Sysctl 0 is a
 // bet that the user manager would enforce, not an observation of confinement, so the plan refuses
 // rather than minting ProtectHome (DESIGN 4d). The selected identity is SystemManagerLauncherSelected.
-// Wiring that identity into the launcher / apply path is a declared frontier
-// (system_manager_launcher_wiring_frontier), not a comment.
+// live_deploy.emit apply_selected_worker_sandbox_steps is that realization on the applying path.
 
 type WorkerSandboxChoice
   = | SystemManagerLauncherSelected
@@ -122,8 +122,8 @@ fn srv1_lab_deploy_plan() -> LabDeployPlan {
   lab_deploy_plan_from_software(surface: srv1_software_surface())
 }
 
-data system_manager_launcher_wiring_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: gunbc#13942 (session/bold-dove-819) lands a consumed system-manager launcher identity, and live_deploy emit / host_effect realize bind LabPlanReady.worker_sandbox SystemManagerLauncherSelected to that identity on the applying path. NOT satisfied by this module importing those types while apply still launches without them. Trigger: the apply emitter takes WorkerSandboxChoice from the Ready plan and emits that launcher." as NonEmptyStr,
+data system_manager_launcher_wiring_frontier: DissolutionCondition = bound_dissolution(
+  ref: decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "apply_selected_worker_sandbox_steps"),
 )
 
 fn lab_plan_refusal_reason(cause: LabDeployPlanRefusal) -> NonEmptyStr {

@@ -43,10 +43,11 @@ import gunbc.target_invocation { ClaimRouteVerdict, claim_route_verdict_exit, cl
 // ran anything, and admission refuses a record whose commit or tree is not the job's admitted
 // revision: a result about another tree is not a result about this job.
 //
-// DECLARED FRONTIER (DESIGN 3c). The decoder's real producer is the revision-job guest program
-// (S4b-2: the ClaimSetWorkload arm and its guest unit). Until then the decode claims run on supplied
-// bytes at the drive interface (test.claim.runner.runner_claim_set_results_witness). TRIGGER: S4b-2's
-// inhabitance claim, in which the real guest program writes the drive and this decoder reads it.
+// CONSUMED, AND WHAT REMAINS (DESIGN 3c). The writer-to-reader join is executed: the guest's frame
+// writer (gunbc.runner.runner_claim_set_guest write_claim_set_frame) writes a zeroed device and this
+// decoder admits it by real execution (test.claim.runner.runner_claim_set_guest_wet_witness). What
+// remains is the full guest run -- the unit installed in an image, launched, running the claims --
+// whose TRIGGER is S4b-3's stand-in inhabitance claim, in which the revision-job guest unit runs claim_set_guest_main over staged inputs and the controller settles the receipt.
 
 data claim_set_results_magic_line: String = "GUNBC-CLAIMSET-RESULTS 1"
 
@@ -97,8 +98,9 @@ fn claim_set_outputs_digest(results: List<ClaimSetResult>) -> ContentHash {
   as_content_hash_structural(structural: content_hash_tagged_structural(tag: claim_set_results_digest_tag, payload: folded))
 }
 
-// THE FRAME, AS THE GUEST PROGRAM WRITES IT. One authority for the spelling: the guest unit (S4b-2)
-// renders the drive through this function, and the witness frames its supplied bytes with it.
+// THE FRAME, AS THE GUEST PROGRAM WRITES IT. One authority for the spelling: the guest's frame writer
+// (gunbc.runner.runner_claim_set_guest) renders the drive through this function, and the witnesses
+// frame their supplied bytes with it.
 fn claim_set_results_frame(results: List<ClaimSetResult>) -> String {
   join([
     claim_set_results_magic_line, "\n",

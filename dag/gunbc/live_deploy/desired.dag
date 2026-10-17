@@ -31,6 +31,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   srv2_deploy_dashboard_instance,
+  dispatch_base_branch,
 }
 import std.optional { Present, Absent }
 import gunbc.deployment_risk { ProdRoleSelection }
@@ -63,11 +64,16 @@ import gunbc.host.host_software_surface {
 // selected_identity IS THE SELECTION RECEIPT FIELD (std.decision SelectionReceipt), carried
 // on the row it admits against. Convergence does not re-derive which declaration was
 // selected. The LiveDeploy FleetConvergeRequest arm binds admission to this field.
+// admitted_branch is a fact of the row. NonEmptyStr makes an undeclared branch unwritable;
+// there is no class default and no empty-string stand-in.
+data production_admitted_branch: NonEmptyStr = "main"
+
 type DesiredDeployment {
   instance: HostDashboardInstance
   target: DeploymentHostTarget
   names: DeploymentNames
   selected_identity: DeclarationRef
+  admitted_branch: NonEmptyStr
 }
 
 fn desired_module_path() -> String {
@@ -102,9 +108,12 @@ fn srv1_production_desired_deployment() -> DesiredDeployment {
     target: deployment_srv1_target(),
     names: srv1_live_deployment_names(instance: instance),
     selected_identity: srv1_production_selected_identity(),
+    admitted_branch: production_admitted_branch,
   }
 }
 
+// THE LAB ADMITS ITS OWN INTEGRATION BRANCH, read from the instance rather than restated. The lab
+// publishes into that branch and deploys builds of it, so the branch is one fact of the instance.
 fn srv1_lab_desired_deployment() -> DesiredDeployment {
   let instance = srv1_lab_dashboard_instance()
   DesiredDeployment {
@@ -112,6 +121,7 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
     target: deployment_srv1_target(),
     names: srv1_lab_deployment_names(instance: instance),
     selected_identity: srv1_lab_selected_identity(),
+    admitted_branch: dispatch_base_branch(instance: instance),
   }
 }
 
@@ -140,6 +150,7 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
     target: deployment_srv2_target(),
     names: derived_deployment_names(instance: instance),
     selected_identity: srv2_deploy_selected_identity(),
+    admitted_branch: production_admitted_branch,
   }
 }
 

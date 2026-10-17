@@ -40,11 +40,14 @@ const SCOPE_UNIT_SUFFIX: &str = ".scope";
 const RECOGNIZED_SYSTEM_SLICES: &[&str] = &[
     "gunbc-repository-convergence.slice",
     "gunbc-approval-broker.slice",
+    "gunbc-attempt-worker.slice",
+    "gunbc-fci1-controls.slice",
     "sessions.slice",
 ];
 
 pub(crate) enum UserWorkScopeStanding {
     AlreadyInSlice,
+    BoundedByObservedCgroup,
     RunnerSlotExempt,
     CiExempt,
     UnitTestExempt,
@@ -116,6 +119,7 @@ pub fn reexec_into_user_work_slice_if_owed() {
 pub(crate) fn standing_wire(s: &UserWorkScopeStanding) -> String {
     match s {
         UserWorkScopeStanding::AlreadyInSlice => "AlreadyInSlice".to_string(),
+        UserWorkScopeStanding::BoundedByObservedCgroup => "BoundedByObservedCgroup".to_string(),
         UserWorkScopeStanding::RunnerSlotExempt => "RunnerSlotExempt".to_string(),
         UserWorkScopeStanding::CiExempt => "CiExempt".to_string(),
         UserWorkScopeStanding::UnitTestExempt => "UnitTestExempt".to_string(),
@@ -450,6 +454,7 @@ fn standing_from_supplied(
     root_memory: RootMemoryRead,
     slice_memory: RootMemoryRead,
     buildbuddy_run_id: Option<&str>,
+    bound: CgroupBound,
 ) -> UserWorkScopeStanding {
     if cgroup.is_some_and(cgroup_text_is_root) && !systemd_manager_present {
         return namespaced_root_standing(root_memory, buildbuddy_run_id);
@@ -472,6 +477,13 @@ fn standing_from_supplied(
             .unwrap_or_default();
         return live_modeled_slice_standing(unit, slice, slice_memory);
     }
+    match bound {
+        CgroupBound::Bounded => return UserWorkScopeStanding::BoundedByObservedCgroup,
+        fallthrough => eprintln!(
+            "user_work_scope: observed-bound arm did not admit ({})",
+            cgroup_bound_fallthrough_wire(fallthrough)
+        ),
+    }
     if let Some((unit, slice)) = system_service_unit_from_cgroup(cg) {
         if RECOGNIZED_SYSTEM_SLICES.contains(&slice.as_str()) {
             return live_modeled_slice_standing(unit, slice, slice_memory);
@@ -484,6 +496,175 @@ fn standing_from_supplied(
         UserWorkScopeStanding::UserManagerProbeFailed
     } else {
         UserWorkScopeStanding::UserSessionAbsent
+    }
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds observed_cgroup_bound`, which reads the chain through
+// `extdeps.linux.cgroup_v2_memory`: the process's unified-hierarchy cgroup (`0::<path>`) and every
+// ancestor below the hierarchy root. Bounded when some level carries a finite memory.max (decimal,
+// within u64 -- `parse_cgroup_memory_limit`'s "Limited") AND some level sets memory.swap.max to 0:
+// any ancestor's limit binds and a swap ceiling of 0 anywhere forbids swap below it. A chain with
+// neither file readable is unread; anything else is unbounded.
+// RETAINED, with this file: the reason is that the trampoline must decide before the corpus is
+// resolved, so it cannot evaluate the `.dag` fold; the migration trigger is the file's own (Test/Run
+// wrap emitted natively, this file deletes). Executed by the unit tests below over fixture trees, not
+// only by the `.dag` witness's text join.
+#[derive(Clone, Copy)]
+enum CgroupBound {
+    Bounded,
+    Unbounded,
+    Unread,
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds cgroup_bound_fallthrough_wire`
+fn cgroup_bound_fallthrough_wire(b: CgroupBound) -> &'static str {
+    match b {
+        CgroupBound::Bounded => "chain-bounded",
+        CgroupBound::Unbounded => "chain-unbounded",
+        CgroupBound::Unread => "chain-unread",
+    }
+}
+
+fn observed_cgroup_bound(proc_self_cgroup: &str) -> CgroupBound {
+    observed_cgroup_bound_in(proc_self_cgroup, std::path::Path::new("/sys/fs/cgroup"))
+}
+
+fn observed_cgroup_bound_in(proc_self_cgroup: &str, sysfs_root: &std::path::Path) -> CgroupBound {
+    let Some(path) = proc_self_cgroup.lines().find_map(|l| l.strip_prefix("0::")) else {
+        return CgroupBound::Unread;
+    };
+    let mut any_read = false;
+    let mut binding_limit = false;
+    let mut zero_limit = false;
+    let mut swap_forbidden = false;
+    let mut current = path.trim().trim_end_matches('/').to_string();
+    while !current.is_empty() {
+        let dir = format!("{}{current}", sysfs_root.display());
+        if let Ok(max) = std::fs::read_to_string(format!("{dir}/memory.max")) {
+            any_read = true;
+            match max.trim().parse::<u64>() {
+                Ok(0) => zero_limit = true,
+                Ok(_) => binding_limit = true,
+                Err(_) => {}
+            }
+        }
+        if let Ok(swap) = std::fs::read_to_string(format!("{dir}/memory.swap.max")) {
+            any_read = true;
+            if swap.trim().parse::<u64>() == Ok(0) {
+                swap_forbidden = true;
+            }
+        }
+        match current.rfind('/') {
+            Some(i) => current.truncate(i),
+            None => current.clear(),
+        }
+    }
+    if binding_limit && !zero_limit && swap_forbidden {
+        CgroupBound::Bounded
+    } else if any_read {
+        CgroupBound::Unbounded
+    } else {
+        CgroupBound::Unread
+    }
+}
+
+#[cfg(test)]
+mod observed_cgroup_bound_tests {
+    use super::{observed_cgroup_bound_in, CgroupBound};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+    // Plain functions rather than a struct with impls: an impl method is not citable as a
+    // DeclarationRef, and this module's items are enumerated in
+    // gunbc.user_work_observed_bound_seed_growth.
+    fn fixture_root() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-cgroup-bound-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&dir).expect("fixture root");
+        dir
+    }
+
+    fn tree(levels: &[(&str, &str, &str)]) -> PathBuf {
+        let root = fixture_root();
+        for (path, max, swap) in levels {
+            let dir = root.join(path.trim_start_matches('/'));
+            std::fs::create_dir_all(&dir).expect("mkdir");
+            std::fs::write(dir.join("memory.max"), format!("{max}\n")).expect("max");
+            std::fs::write(dir.join("memory.swap.max"), format!("{swap}\n")).expect("swap");
+        }
+        root
+    }
+
+    // Reads the verdict and removes the fixture, so each tree is read exactly once.
+    fn verdict(root: PathBuf, leaf: &str) -> &'static str {
+        let v = match observed_cgroup_bound_in(&format!("0::{leaf}\n"), &root) {
+            CgroupBound::Bounded => "bounded",
+            CgroupBound::Unbounded => "unbounded",
+            CgroupBound::Unread => "unread",
+        };
+        let _ = std::fs::remove_dir_all(&root);
+        v
+    }
+    #[test]
+    fn a_finite_max_with_no_swap_on_the_unit_bounds_it() {
+        let t = tree(&[
+            ("/system.slice/job.service", "21474836480", "0"),
+            ("/system.slice", "max", "max"),
+        ]);
+        assert_eq!(verdict(t, "/system.slice/job.service"), "bounded");
+    }
+
+    #[test]
+    fn a_limit_on_one_level_and_no_swap_on_another_bounds_the_leaf() {
+        let t = tree(&[
+            ("/system.slice/job.service", "max", "0"),
+            ("/system.slice", "8589934592", "max"),
+        ]);
+        assert_eq!(verdict(t, "/system.slice/job.service"), "bounded");
+    }
+
+    #[test]
+    fn a_bound_on_an_ancestor_bounds_the_leaf() {
+        let t = tree(&[
+            ("/system.slice/job.service", "max", "max"),
+            ("/system.slice", "8589934592", "0"),
+        ]);
+        assert_eq!(verdict(t, "/system.slice/job.service"), "bounded");
+    }
+
+    #[test]
+    fn unlimited_max_or_allowed_swap_or_out_of_range_never_bounds() {
+        let unlimited = tree(&[("/system.slice/job.service", "max", "0")]);
+        assert_eq!(verdict(unlimited, "/system.slice/job.service"), "unbounded");
+        let swap = tree(&[("/system.slice/job.service", "21474836480", "max")]);
+        assert_eq!(verdict(swap, "/system.slice/job.service"), "unbounded");
+        let huge = tree(&[("/system.slice/job.service", "99999999999999999999999", "0")]);
+        assert_eq!(verdict(huge, "/system.slice/job.service"), "unbounded");
+        let zero = tree(&[("/system.slice/job.service", "0", "0")]);
+        assert_eq!(verdict(zero, "/system.slice/job.service"), "unbounded");
+        let zero_ancestor = tree(&[
+            ("/system.slice/job.service", "21474836480", "0"),
+            ("/system.slice", "0", "max"),
+        ]);
+        assert_eq!(
+            verdict(zero_ancestor, "/system.slice/job.service"),
+            "unbounded"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_chain_or_missing_line_is_unread_not_bounded() {
+        let empty = fixture_root();
+        assert!(matches!(
+            observed_cgroup_bound_in("1:name=systemd:/x\n", &empty),
+            CgroupBound::Unread
+        ));
+        assert_eq!(verdict(empty, "/system.slice/job.service"), "unread");
     }
 }
 
@@ -549,12 +730,42 @@ pub(crate) fn user_work_scope_standing() -> UserWorkScopeStanding {
         root_memory,
         slice_memory,
         buildbuddy_run_id.as_deref(),
+        cg.map(observed_cgroup_bound).unwrap_or(CgroupBound::Unread),
     )
 }
 
 #[cfg(test)]
 mod standing_fixture_tests {
     use super::*;
+
+    // The observed-bound arm sits after the modeled-slice arm and BEFORE the system-unit refusal:
+    // a guest's job unit under an unmodeled system.slice is admitted only by its observed chain.
+    #[test]
+    fn a_system_service_with_an_observed_bound_chain_admits_and_without_one_refuses() {
+        let cg = "0::/system.slice/gunbc-revision-job.service";
+        let run = |bound| {
+            standing_wire(&standing_from_supplied(
+                false,
+                Some(cg),
+                true,
+                false,
+                false,
+                RootMemoryRead::Unreadable,
+                RootMemoryRead::Unreadable,
+                None,
+                bound,
+            ))
+        };
+        assert_eq!(run(CgroupBound::Bounded), "BoundedByObservedCgroup");
+        assert_eq!(
+            run(CgroupBound::Unbounded),
+            "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+        );
+        assert_eq!(
+            run(CgroupBound::Unread),
+            "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+        );
+    }
 
     fn wire(
         github_actions: bool,
@@ -575,11 +786,12 @@ mod standing_fixture_tests {
             root_memory,
             slice_memory,
             buildbuddy_run_id,
+            CgroupBound::Unread,
         ))
     }
 
     #[test]
-    fn sessions_slice_scope_refuses_as_user_session_absent() {
+    fn sessions_slice_scope_refuses_as_uncapped_system_slice() {
         let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
         let got = wire(
             false,
@@ -591,7 +803,10 @@ mod standing_fixture_tests {
             RootMemoryRead::Unreadable,
             None,
         );
-        assert_eq!(got, "UserSessionAbsent");
+        assert_eq!(
+            got,
+            "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope"
+        );
     }
 
     #[test]
