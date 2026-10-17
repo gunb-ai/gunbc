@@ -2781,7 +2781,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         // taken from the state it answers with, so this call site and the run record cannot pair the two
         // facts differently. Everything else (powered on, read did not answer, read never made) reads.
         smpro: match power_after_attempt(power: power_after, terminal: mtcollins1_boot_terminal_of_stage(stage: attempt.stage)) {
-          PoweredOffAfterTerminal { marker: _ } => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
+          PoweredOffAfterTerminal => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
           _ => mtcollins1_boot_smpro_read(username: user, password_file: pf)
         },
         inventory: megarac_boot_inventory(row: mtcollins1_boot_row_value, username: user, password: pw),
