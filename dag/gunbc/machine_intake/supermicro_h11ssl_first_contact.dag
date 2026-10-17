@@ -1,6 +1,8 @@
 module gunbc.machine_intake.supermicro_h11ssl_first_contact
 
 import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.optional { Present, Absent }
 import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyUnobserved }
 import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_authority }
@@ -14,6 +16,18 @@ import extdeps.board_authority { BoardAuthorityRef }
 // Consumer: arrival intake for this board, via supermicro_h11ssl_first_contact_family_standing,
 // which selects the family-neutral first-contact path (bmc_first_contact_standing) and so refuses
 // to run the OpenBMC factory-login producer against this controller.
+// The board revision printed on the unit (REV 2.0 as the operator reports it); the manual
+// conditions EPYC 7002 support on revision 2.x (p.15).
+type H11sslUnitBoardRevision { major: Nat, minor: Nat }
+data supermicro_h11ssl_unit_board_revision: H11sslUnitBoardRevision = H11sslUnitBoardRevision { major: 2, minor: 0 }
+
+type H11sslVariant = VariantI | VariantC | VariantNc
+
+// Which of -i/-C/-NC the units are is unestablished; the JPS1 silkscreen suggests -C or -NC.
+data supermicro_h11ssl_unit_variant_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read the IPMI FRU Board Part Number (and lspci for a SAS3008) before using any *_i_variant row of extdeps.boards.supermicro_h11ssl for these units.",
+}
+
 type H11sslCredentialTried = FactoryDefaultAdminAdmin | BoardLabelCredential
 
 type H11sslObservationInstrument = WebLoginCgi | RedfishServiceRoot

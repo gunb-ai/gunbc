@@ -16,6 +16,7 @@ import extdeps.external_authority {
   CitedFigureStanding, TranscribedUncited,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
 import extdeps.uri { Uri, Https }
 
 // AUTHORITY. "H11SSL-I/C/NC USER'S MANUAL", Revision 1.1, released November 18, 2019, copyright
@@ -25,11 +26,9 @@ import extdeps.uri { Uri, Https }
 // notice forbids copying any part without written permission, so it is cited by hash and URL.
 // CITATION SCHEME: every 'p.N' in this module is the 1-based PDF page index (130 pages). From page
 // 12 on it equals the printed page number (footer); every page cited here is 3 or 13+.
-// VARIANT: the manual covers H11SSL-i, -C and -NC. Rows named *_i_variant or described as '-i'
-// are the manual's -i column and are the unit's only if its IPMI FRU says so; see
-// supermicro_h11ssl_unit_variant_standing. The unit's JPS1 silkscreen (SAS3008 enable) is a
-// -C/-NC feature in this manual (p.13), so the -i assumption is NOT established.
-// Our unit is REV 2.0, which the manual conditions EPYC 7002 support on (p.15).
+// VARIANT: the manual covers H11SSL-i, -C and -NC. Rows named *_i_variant are the manual's -i
+// column. Which variant or board revision a held unit is, is an observation of ours and lives in
+// the receipt, not here.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -49,16 +48,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-type H11sslBoardRevision { major: Nat, minor: Nat }
-
 // What a CPU-support row is conditioned on; p.15 conditions 7002 on revision 2.x.
 type H11sslRevisionCondition = NoRevisionConditionStated | BoardMajorRevisionAtLeast { major: Nat }
-
-type H11sslVariant = VariantI | VariantC | VariantNc
-
-data supermicro_h11ssl_unit_variant_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Which of -i/-C/-NC the held units are is unestablished: read the IPMI FRU Board Part Number (and lspci for a SAS3008) before using any *_i_variant row for them. JPS1/SAS3008 silkscreen suggests -C or -NC.",
-}
 
 type HeldManual {
   title: NonEmptyStr
@@ -344,7 +335,8 @@ data supermicro_h11ssl_leds_i_variant: List<H11sslLed> = [UidLed, Ledm1BmcHeartb
 type H11sslBmcInterface = IpmiV2 | IpmiWebInterface | Ipmb | NcSi
 data supermicro_h11ssl_bmc_named_interfaces: List<H11sslBmcInterface> = [IpmiV2, IpmiWebInterface, Ipmb, NcSi]
 
-data supermicro_h11ssl_bmc_chip_label: NonEmptyStr = "ASPEED AST2500 (p.15)"
+// p.15: the BMC is an ASPEED AST2500.
+data supermicro_h11ssl_bmc_chip: AspeedAst2500CatalogRow = aspeed_ast2500_catalog
 
 data supermicro_h11ssl_redfish_kvm_virtual_media_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "The manual never mentions Redfish, remote console/KVM or virtual media. Absence from the manual is not absence from the firmware; ground against Supermicro's BMC firmware documentation.",
@@ -372,16 +364,14 @@ fn supermicro_h11ssl_lan_option_rom_choices(lan: H11sslLanPort) -> List<H11sslLa
 type SupermicroH11sslMechanical {
   board_label: NonEmptyStr
   vendor: Vendor<Hardware>
-  revision: H11sslBoardRevision
   dimm_slots: Nat
   dimms_per_channel: Nat
   lan_ports: List<H11sslLanPort>
 }
 
 data supermicro_h11ssl_i_mechanical: SupermicroH11sslMechanical = SupermicroH11sslMechanical {
-  board_label: "Supermicro H11SSL (manual -i column; unit variant unread)",
+  board_label: "Supermicro H11SSL (manual -i column)",
   vendor: supermicro,
-  revision: H11sslBoardRevision { major: 2, minor: 0 },
   dimm_slots: 8,
   dimms_per_channel: 1,
   lan_ports: [Lan1, Lan2],
