@@ -1,13 +1,14 @@
 module gunbc.site.gunb_ai_layout
 
 import std.types { Bool, Int, List, String }
+import std.integer { PositiveInt }
 import std.algebra { string_contains }
 import std.markup { Fragment, Element, Attribute, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import extdeps.languages.css.values { CssLength, Px, css_length_wire, CssVarRef }
 import extdeps.languages.css.grid_values {
   CssTrackList, TrackList, RepeatCount, RepeatAutoFill,
-  TrackBreadth, TrackMinMax, FlexTracks, LengthTrack, VarTrack, css_track_list_wire,
+  TrackBreadth, TrackMinMax, FlexTracks, InflexLength, InflexVar, one_track, css_track_list_wire,
 }
 import extdeps.languages.css.properties {
   Background, Border, BorderBottom, Color, Display, FontFamily, FontSize, Gap,
@@ -53,13 +54,26 @@ import gunbc.design.gunb_ai_hues {
 
 // ------------------------------------------------------------------ axis 1: the grid
 
+// FixedColumns carries std.integer.PositiveInt, not Int: §7.1 of CSS Grid L2 types repeat()'s
+// count as <integer [1,∞]>, and this axis is where that number enters the system — typing it
+// Int here and PositiveInt only at the grammar would leave the axis able to carry a zero the
+// grammar cannot render. The upper bound stays a policy check in grid_choice_admissible,
+// because "at most column_count_max columns" is a design decision of this site, not a spec
+// rule; the spec bound is the type's job, the policy bound is the admissibility check's.
 type GridChoice
   = FlowStack
-  | FixedColumns { count: Int }
+  | FixedColumns { count: PositiveInt }
   | AutoFillTracks { min: ScaleToken }
 
 data grid_flow: GridChoice = FlowStack
 data grid_fixed_3: GridChoice = FixedColumns { count: 3 }
+
+// Policy-inadmissible on purpose: 5 columns exceeds column_count_max. Named as a row rather
+// than computed (column_count_max + 1 at each call site) so the witness and the refusal path
+// share one source for the number, and so the value stays a literal — the point of PositiveInt
+// at the axis is that a literal is checked (std/page_fold.dag measures this), an arithmetic
+// expression routed through a variable is not.
+data grid_over_policy_columns: GridChoice = FixedColumns { count: 5 }
 data grid_autofill: GridChoice = AutoFillTracks { min: card_min }
 
 // The floor an auto-filled card track may not fall below. named_length_token: the
@@ -75,28 +89,28 @@ data column_count_max: Int = 4
 // which tracks it wants.
 // The zero in minmax(0, 1fr) is a CssLength, not a literal "0": the wire renders a zero
 // length unitless per §6.2 css-values-4, which is what the pages already carried.
-fn tracks_fixed(count: Int) -> String {
+fn tracks_fixed(count: PositiveInt) -> String {
   css_track_list_wire(l: RepeatCount {
     count: count,
-    tracks: [TrackMinMax {
-      min: LengthTrack { length: CssLength { n: 0, unit: Px } },
+    tracks: one_track(t: TrackMinMax {
+      min: InflexLength { length: CssLength { n: 0, unit: Px } },
       max: FlexTracks { factor: 1 },
-    }],
+    }),
   })
 }
 
 fn tracks_autofill(min: ScaleToken) -> String {
   css_track_list_wire(l: RepeatAutoFill {
-    tracks: [TrackMinMax {
-      min: VarTrack { reference: CssVarRef { name: min.name } },
+    tracks: one_track(t: TrackMinMax {
+      min: InflexVar { reference: CssVarRef { name: min.name } },
       max: FlexTracks { factor: 1 },
-    }],
+    }),
   })
 }
 
 fn tracks_single() -> String {
   css_track_list_wire(l: TrackList {
-    tracks: [TrackBreadth { breadth: FlexTracks { factor: 1 } }]
+    tracks: one_track(t: TrackBreadth { breadth: FlexTracks { factor: 1 } })
   })
 }
 
@@ -113,6 +127,11 @@ fn grid_tracks(choice: GridChoice) -> String {
 fn grid_choice_admissible(choice: GridChoice) -> Bool {
   match choice {
     FlowStack => true
+    // The upper bound is site policy. The lower bound is belt-and-braces for the ONE gap the
+    // type leaves: std/page_fold.dag measures that PositiveInt refuses a bad LITERAL but admits
+    // an Int-typed reference, so a caller routing a computed Int in is not stopped by the type.
+    // It is not the primary wall — the axis type is — and it is kept precisely because the
+    // measurement says the wall is partial.
     FixedColumns { count: c } => c >= 1 && c <= column_count_max
     AutoFillTracks { min: m } => token_name_is_wellformed(name: m.name)
   }
