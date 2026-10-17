@@ -36,6 +36,10 @@ import extdeps.provisioning.network_boot {
 // entry as network-or-not is a question about THAT enum, so it is asked against it.
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget,
+  RedfishBootTargetNetworkStanding,
+  NetworkBootTarget,
+  NotNetworkBootTarget,
+  redfish_boot_target_network_standing,
   BootTargetNone,
   BootTargetPxe,
   BootTargetHdd,
@@ -647,10 +651,13 @@ fn firmware_network_boot_standing(
   // the report has to say which one has to change. Gaps still ride along, because the unit may
   // ALSO be unanswered on other axes and that is worth knowing before someone drives over with a
   // console.
-  if legacy_bios_is_unserviceable(boot_mode: boot_mode) {
+  if match edge_serviceable_for_mode(boot_mode: boot_mode) {
+    EdgeCannotServe { why: _ } => true
+    EdgeCanServe { mode: _ } => false
+  } {
     Refused {
       cause: FirmwareModeUnsupportedByEdge {
-        why: "the site PXE edge of cut 6 serves UEFI only; a PXE BIOS unit has no boot target here",
+        why: edge_refusal_reason(boot_mode: boot_mode),
       },
       gaps: axis_gaps(observation: observation),
     }
@@ -936,38 +943,58 @@ fn decide(
 }
 
 // NETWORK-NESS IS A KIND, TESTED AGAINST THE SCHEMA'S OWN VALUE SET -- never a substring of a
-// label. Exactly the targets Redfish means by 'boot from the network'; BootTargetNone / Hdd / Cd /
-// Usb / BiosSetup / Diags are not network whatever their labels claim. Every arm of the upstream
-// enum is written out rather than defaulted, so a new target added upstream makes THIS match
-// non-exhaustive -- a compile error that forces someone to decide, which is the durable version of
-// the rule and the thing a spelling list could never do.
-fn is_network_target(kind: RedfishBootSourceOverrideTarget) -> Bool {
-  match kind {
-    BootTargetPxe => true
-    BootTargetUefiHttp => true
-    BootTargetNone => false
-    BootTargetHdd => false
-    BootTargetCd => false
-    BootTargetUsb => false
-    BootTargetBiosSetup => false
-    BootTargetDiags => false
+// label. The classification itself now lives in extdeps.bmc.types beside the enum it describes
+// (review 81789: whether a Redfish target MEANS network boot is an interface fact about Redfish,
+// not a fleet policy, so extdeps owns it). It answers with a union rather than a Bool, and what
+// this seam keeps is exactly the one line that turns that union into a decision -- no local
+// re-derivation, and no Bool whose arms could be thrown away.
+fn has_network_entry(entries: List<BootEntry>) -> Bool {
+  length(xs: entries |> filter(entry =>
+    match redfish_boot_target_network_standing(t: entry.kind) {
+      NetworkBootTarget { via: _ } => true
+      NotNetworkBootTarget { why: _ } => false
+    }
+  )) > 0
+}
+
+// THE REFUSAL TEXT COMES OUT OF THE UNION, not from a literal restated at the call site -- the
+// 'why' a human reads is produced by the same arm that decided to refuse, so the two cannot drift.
+fn edge_refusal_reason(boot_mode: ClientNetworkBootMode) -> NonEmptyStr {
+  match edge_serviceable_for_mode(boot_mode: boot_mode) {
+    EdgeCannotServe { why: why } => why
+    // Not reachable at the only call site, which refuses only when the arm says so. Reporting
+    // rather than defaulting: if someone reorders the guard, this surfaces as a wrong-sounding
+    // string, not as a silent Ready.
+    EdgeCanServe { mode: mode } => concat("edge can serve this mode, refusal is a modeling bug: ", mode)
   }
 }
 
-fn has_network_entry(entries: List<BootEntry>) -> Bool {
-  length(xs: entries |> filter(entry => is_network_target(kind: entry.kind))) > 0
-}
+// WHICH CLIENT MODES THIS EDGE CAN SERVE, answered per arm rather than by a catch-all.
+// (review 81789) The first version of this fn was `LegacyBiosPxe { .. } => true, _ => false`, and
+// the `_ => false` was the bug: a fourth ClientNetworkBootMode added upstream would have counted as
+// serviceable with no compile error, walking straight toward a Ready -- the exact silent widen the
+// comment above `has_network_entry` claims to prevent. Each mode now says WHY the edge
+// can or cannot serve it, so adding a mode is a compile error that forces the question 'can our
+// dnsmasq ProxyDHCP edge boot this?' instead of an assumed answer.
+//
+// Legacy BIOS is refused rather than Unobserved because the finding is real and belongs in the
+// report: the unit's firmware is fine, OUR edge (gunbc.site_uefi_arm64_pxe_edge, cut 6) serves UEFI
+// only, so the thing that has to change is not the unit. A future legacy-capable edge adds the arm
+// together with the evidence that it exists.
+type EdgeServiceableByMode
+  = EdgeCanServe { mode: NonEmptyStr }
+  | EdgeCannotServe { why: NonEmptyStr }
 
-// A legacy-BIOS unit is not Ready for THIS fleet, and the reason is a refusal, not a silence: the
-// cut-6 edge (gunbc.site_uefi_arm64_pxe_edge) serves UEFI only, so a unit that can only do PXE
-// BIOS has nowhere to boot from. Naming it a refusal rather than Unobserved keeps the finding --
-// 'the unit is fine, our edge is not' -- visible to whoever reads the standing next. A future
-// legacy-capable edge adds the arm together with the evidence that it exists; it does not add a
-// silent pass.
-fn legacy_bios_is_unserviceable(boot_mode: ClientNetworkBootMode) -> Bool {
+fn edge_serviceable_for_mode(boot_mode: ClientNetworkBootMode) -> EdgeServiceableByMode {
   match boot_mode {
-    LegacyBiosPxe { tftp_root: _ } => true
-    _ => false
+    LegacyBiosPxe { tftp_root: _ } =>
+      EdgeCannotServe {
+        why: "the site PXE edge of cut 6 serves UEFI only; a PXE BIOS unit has no boot target here",
+      }
+    UefiPxe { tftp_root: _ } =>
+      EdgeCanServe { mode: "UEFI PXE via the site edge's dnsmasq ProxyDHCP offer" }
+    UefiHttpBoot =>
+      EdgeCanServe { mode: "UEFI HTTP boot, the cut-6 preferred mode" }
   }
 }
 
@@ -975,14 +1002,20 @@ fn legacy_bios_is_unserviceable(boot_mode: ClientNetworkBootMode) -> Bool {
 // THE DECLARED FRONTIER (DESIGN 3c: name the consumer and the executing route, or classify it).
 //
 // WHY THIS IS HERE RATHER THAN IN A COMMENT. This seam is the readiness contract that cut 6 of
-// gunbc.plans.physical_machine_boot_program needs, and the two modules that consume it are landing
-// as separate PRs: the probe that must EMIT FirmwareBootObservation, and the provisioning arm that
-// must READ FirmwareNetworkBootStanding to derive a delivery strategy. Neither is on main yet, so a
-// reader (or a reviewer, as happened) cannot tell 'frontier' from 'dangling' by looking. The
-// repository already has the right carrier for exactly that distinction -- a bound dissolution
-// trigger over a DeclarationRef, whose status is computed from a real declaration population -- so
-// the frontier is stated in it and the witness pins the status. When the probe lands, the status
-// moves from Pending to Fired by itself and the witness is the thing that notices.
+// gunbc.plans.physical_machine_boot_program needs, and the two modules at its boundaries are landing
+// as separate PRs: the probe that EMITS FirmwareBootObservation (gunbc.firmware_network_boot_probe,
+// #14275) and the provisioning arm that READS this standing to derive a delivery strategy
+// (gunbc.provisioning.provisioning_arm, #14284). Neither is on main yet, so a reader -- or a
+// reviewer, as happened -- cannot tell 'frontier' from 'dangling' by looking. The repository already
+// has the right carrier for exactly that distinction: a bound dissolution trigger over a
+// DeclarationRef, whose status is COMPUTED from a declaration population rather than asserted.
+//
+// THAT LAST WORD IS WHAT KEEPS THIS COMMENT FROM GOING STALE (review 81792 called an earlier draft
+// of it stale within a day, and it was right -- prose that describes who-has-landed is a snapshot).
+// Nothing here says whether the probe exists; `frontier_status` answers that against the population
+// it is handed. On main today it is DissolutionPending. On a merge ref that contains #14275 it is
+// DissolutionFired, with no edit to this file, and the witness asserts both of those outcomes
+// rather than the state of the world this week.
 // ---------------------------------------------------------------------------
 
 // THE PRODUCER THAT MUST EXIST. The probe is the only module permitted to construct
@@ -1043,11 +1076,3 @@ data firmware_network_boot_observation_inhabitation: BoundaryInhabitation = Unin
   falsified_by: "a probe that defaults an axis to Ready, invents a boot-entry kind from a label, or reports a refusal as an empty list -- any of which would let this seam read Ready on a unit whose firmware was never asked",
 }
 
-// THE INHABITATION CLAIM IS NOT SATISFIED YET, and the module says so as a value rather than
-// leaving it to a comment. Anyone wiring the probe reads this before they believe a Ready.
-fn inhabitation_is_claimed(claim: BoundaryInhabitation) -> Bool {
-  match claim {
-    Uninhabited { owed_by: _, over: _, falsified_by: _ } => false
-    InhabitedByProducer { evidence: _, observed: _ } => true
-  }
-}

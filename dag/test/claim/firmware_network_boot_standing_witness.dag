@@ -17,6 +17,9 @@ import extdeps.provisioning.network_boot { LegacyBiosPxe, UefiPxe, UefiHttpBoot 
 // THE SAME ENUM THE SEAM CLASSIFIES AGAINST, imported by the witness so a fixture states a KIND
 // rather than a label the seam would have to guess about.
 import extdeps.bmc.types {
+  NetworkBootTarget,
+  NotNetworkBootTarget,
+  redfish_boot_target_network_standing,
   BootTargetNone,
   BootTargetPxe,
   BootTargetHdd,
@@ -82,10 +85,8 @@ import gunbc.firmware_network_boot_standing {
   firmware_network_boot_standing_consumer_ref,
   frontier_status,
   firmware_network_boot_observation_inhabitation,
-  inhabitation_is_claimed,
   BoundaryInhabitation,
   Uninhabited,
-  is_network_target,
   route_for_blocking,
   blocker_of,
   authority_of,
@@ -863,8 +864,14 @@ test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
   length(xs: misleadingly_network_labels) == 6
     && !has_network_entry(entries: misleadingly_network_labels)
     && has_network_entry(entries: [honestly_network_label])
-    && is_network_target(kind: BootTargetUefiHttp)
-    && !is_network_target(kind: BootTargetHdd)
+    && match redfish_boot_target_network_standing(t: BootTargetUefiHttp) {
+         NetworkBootTarget { via: _ } => true
+         NotNetworkBootTarget { why: _ } => false
+       }
+    && match redfish_boot_target_network_standing(t: BootTargetHdd) {
+         NetworkBootTarget { via: _ } => false
+         NotNetworkBootTarget { why: _ } => true
+       }
 }
 
 // THE UNIT THAT LOOKS BOOTABLE AND ISN'T: a board whose entire boot order is 'IPv4'-named disks must
@@ -1081,8 +1088,10 @@ test fn a_frontier_fires_only_for_the_declaration_it_names() -> Bool {
 // itself uninhabited. A version of this module that claimed InhabitedByProducer today would be
 // fabricating a receipt, and that is what this witness refuses.
 test fn the_inhabitation_claim_reports_uninhabited_until_a_producer_emits_it() -> Bool {
-  !inhabitation_is_claimed(claim: firmware_network_boot_observation_inhabitation)
-    && match firmware_network_boot_observation_inhabitation {
+  // THE ARM, MATCHED DIRECTLY -- there is no inhabitation_is_claimed(claim) Bool to ask, because a
+  // Bool over that union would throw away the owed_by / over / falsified_by that make the claim
+  // auditable (review 81789). Matching is the only way to read it.
+  match firmware_network_boot_observation_inhabitation {
          Uninhabited { owed_by: owed, over: boundary, falsified_by: falsifier } =>
            // It names WHO owes it (the probe), WHAT is owed (the observation shape), and WHAT would
            // falsify it. An empty or generic filler in any of the three is the defect.
