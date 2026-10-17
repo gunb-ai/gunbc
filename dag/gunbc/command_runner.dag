@@ -18,7 +18,6 @@ import gunbc.remote_shell_command {
   RemoteExecCommandRefusalCause,
   RemoteExecInterpretationUnknown,
   SimpleCommandArgvRefused,
-  RedirectNewlineInRemoteCommandString,
 }
 import extdeps.shell
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
@@ -89,8 +88,6 @@ fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -
       "the SSH target's RemoteExecCommandInterpretation is Unknown -- refusing rather than assuming a POSIX shell on the far side"
     SimpleCommandArgvRefused { cause: _ } =>
       "the inner command's argv was empty"
-    RedirectNewlineInRemoteCommandString =>
-      "a redirection pathname carried a newline, which cannot inhabit the RFC 4254 remote command string"
   }
 }
 

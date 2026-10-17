@@ -5,7 +5,6 @@ import std.algebra { list_map, for_all }
 import extdeps.posix.shell_command_language {
   posix_single_quote,
   emit_posix_redirection,
-  posix_redirection_carries_newline,
   PosixRedirection,
   PosixRedirectStdoutClobber,
   PosixRedirectStdoutAppend,
@@ -150,7 +149,6 @@ type RemoteExecCommand sole_constructor {
 type RemoteExecCommandRefusalCause
   = SimpleCommandArgvRefused { cause: SimpleCommandRefusalCause }
   | RemoteExecInterpretationUnknown
-  | RedirectNewlineInRemoteCommandString
 
 type RemoteExecCommandOutcome
   = RemoteExecCommandBuilt { command: RemoteExecCommand }
@@ -170,12 +168,8 @@ fn remote_exec_command_rendered(command: RemoteExecCommand) -> NonEmptyStr { com
 // ssh/sshpass argv, inner serialized shell program), never a concatenation of one into the other.
 
 fn remote_exec_from_simple_command(cmd: ShellSimpleCommand) -> RemoteExecCommandOutcome {
-  if for_all(xs: cmd.redirections, predicate: fn(r) { !posix_redirection_carries_newline(redir: r) }) {
-    RemoteExecCommandBuilt {
-      command: RemoteExecCommand { rendered: emit_remote_shell(command: cmd) }
-    }
-  } else {
-    RemoteExecCommandRefused { cause: RedirectNewlineInRemoteCommandString }
+  RemoteExecCommandBuilt {
+    command: RemoteExecCommand { rendered: emit_remote_shell(command: cmd) }
   }
 }
 

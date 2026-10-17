@@ -199,9 +199,9 @@ fn admit_posix_shell_name(spelling: String) -> PosixShellNameAdmission {
 
 // IEEE 1003.1-2017 XCU 2.7 (Redirection): a redirection `word` names a pathname. Admission is the
 // pathname wall (XBD Pathname / execve), not a transport. Empty: not a pathname. NUL: cannot inhabit
-// a pathname. Newline is a legal pathname and a legal quoted XCU word; RFC 4254 command-string line
-// discipline refuses at RemoteExecCommand construction (gunbc.remote_shell_command), not here
-// (DESIGN §3 interface vs transport; §4d do not over-generalize a prohibition).
+// a pathname. Newline is a legal pathname and a legal quoted XCU word, and it is admitted: RFC 4254
+// section 6.5 carries the exec command as an arbitrary string with no line discipline, and a newline
+// inside single quotes is literal (XCU 2.2.2), so no transport refuses it (DESIGN section 4d).
 
 type PosixRedirectPathRefusal
   = RedirectPathEmpty
@@ -264,10 +264,3 @@ fn posix_redirection_word(redir: PosixRedirection) -> Optional<PosixRedirectPath
   }
 }
 
-fn posix_redirection_carries_newline(redir: PosixRedirection) -> Bool {
-  match posix_redirection_word(redir: redir) {
-    Absent => false
-    Present { value: w } =>
-      string_contains(s: posix_redirect_pathname_spelling(path: w) as String, pattern: "\n")
-  }
-}
