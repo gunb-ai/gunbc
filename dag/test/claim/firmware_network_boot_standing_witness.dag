@@ -10,7 +10,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ObservedByReceipt, TranscribedUncited }
 import extdeps.uri { uri_https }
 import extdeps.provisioning.network_boot { UefiPxe, UefiHttpBoot }
-import gunbc.network_boot_delivery { BootControlUnobserved }
+import gunbc.network_boot_delivery { BootControlObserved, BootControlPredecessor, BootControlReceiptStanding, BootControlUnobserved }
 import gunbc.firmware_network_boot_standing {
   BootOptionsObserved,
   BootOptionsObservation,
@@ -24,7 +24,10 @@ import gunbc.firmware_network_boot_standing {
   BiosVersionObservation,
   BiosVersionRefused,
   BiosVersionUnobserved,
+  AttemptConstructed,
   AttemptDhcpStanding,
+  AttemptRouteUncataloged,
+  NetworkBootAttemptConstruction,
   DhcpOfferObserved,
   DhcpForeignOffer,
   DhcpSilent,
@@ -371,21 +374,39 @@ fn route_has_authority(row: RouteAuthority) -> Bool {
 // refused at construction (Absent), and a cataloged one keeps its BootControlReceiptStanding —
 // the type delivery owns — rather than this seam minting a rival receipt.
 test fn an_attempt_on_an_uncataloged_route_cannot_be_constructed() -> Bool {
-  match synthetic_attempt(route: UefiShellOverSol { sol_channel: "sol:0", script: "made-up.efi" }) {
-    Absent => true
-    _ => false
-  }
-    && match synthetic_attempt(route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" }) {
-         Present { value: attempt } =>
-           match attempt.boot_control {
-             BootControlUnobserved => true
-             _ => false
-           }
-         Absent => false
-       }
+  let uncataloged_refused =
+    match synthetic_attempt(route: UefiShellOverSol { sol_channel: "sol:0", script: "made-up.efi" }) {
+      AttemptRouteUncataloged { route: _ } => true
+      AttemptConstructed { attempt: _ } => false
+    }
+  let cataloged_constructs =
+    match synthetic_attempt(route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" }) {
+      AttemptConstructed { attempt: _ } => true
+      AttemptRouteUncataloged { route: _ } => false
+    }
+  uncataloged_refused && cataloged_constructs
 }
 
-fn synthetic_attempt(route: FirmwareNetworkBootPreparationRoute) -> Optional<NetworkBootAttempt> {
+// The boot-control ABSORPTION is enforced at load time, not asserted here: NetworkBootAttempt's
+// boot_control field is typed as gunbc.network_boot_delivery's BootControlReceiptStanding, so a
+// rival spelling in this seam would not load. What this witness can say is which standing the
+// synthetic attempt carries — and that the seam's own receipt cannot be minted without one.
+fn boot_control_is_the_imported_standing(control: BootControlReceiptStanding) -> Bool {
+  match control {
+    BootControlUnobserved => true
+    BootControlObserved { receipt: _ } => false
+    BootControlPredecessor { observation: _ } => false
+  }
+}
+
+test fn the_attempt_receipt_cannot_be_minted_without_its_attempt_and_control_receipt() -> Bool {
+  match synthetic_attempt(route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" }) {
+    AttemptConstructed { attempt: built } => boot_control_is_the_imported_standing(control: built.boot_control)
+    AttemptRouteUncataloged { route: _ } => false
+  }
+}
+
+fn synthetic_attempt(route: FirmwareNetworkBootPreparationRoute) -> NetworkBootAttemptConstruction {
   network_boot_attempt(
     route: route,
     boot_control: BootControlUnobserved,
