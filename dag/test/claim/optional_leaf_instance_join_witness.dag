@@ -27,13 +27,16 @@ test fn an_optional_leaf_joins_the_optional_instance_at_the_same_payload_and_onl
   total_blocking_count_for(source: optional_join_refuse_source) - total_blocking_count_for(source: optional_join_accept_source) == 1
 }
 
-// THE OPTIONAL'S OWN NULLARY ARM ONLY. Under an Optional expectation `Absent` is the expected optional
-// (expected_decided_variant_type), but a no-payload arm of a USER coproduct is not: `let c: Color? = Red`
-// is the coercion the emitter owes a wrap for, and variant_reference_inferred_node refuses it. The
-// pair differs only in the elected owner (std.optional versus a user coproduct), so the difference of
-// blocking totals is the one refusal the owner gate preserves.
-data optional_nullary_accept_source: String = "module probe_nullary_optional_arm\nfn pick() -> Int? {\n  let c: Int? = Absent\n  c\n}\n"
-data optional_nullary_refuse_source: String = "module probe_nullary_user_arm\ntype Color = Red | Green\nfn pick() -> Color? {\n  let c: Color? = Red\n  c\n}\n"
+// A USER COPRODUCT'S NULLARY ARM KEEPS ITS REFUSAL AT AN OPTIONAL POSITION. `Red` at a declared `Color?`
+// return is a Required value at an Optional position, refused by variant_reference_inferred_node
+// ("does not inhabit its declared type"); `Absent` at `Int?` is the Optional's own nullary arm and
+// is accepted. This is a regression control for the route, not a discriminator of the owner gate in
+// optional_nullary_arm_of: expected_deciding_variant_owner elects only the kernel Optional under an
+// Optional expectation (kernel_optional_owner_declaring), so a user coproduct never reaches the
+// shortcut and the identity check there is defensive. Its RED is not authorable while that election
+// holds (DESIGN.md 4b); if the election ever widens, this pair is the control that goes red.
+data optional_nullary_accept_source: String = "module probe_nullary_optional_arm\nfn pick() -> Int? {\n  Absent\n}\n"
+data optional_nullary_refuse_source: String = "module probe_nullary_user_arm\ntype Color = Red | Green\nfn pick() -> Color? {\n  Red\n}\n"
 
 test fn only_the_optionals_own_nullary_arm_adopts_an_optional_expectation() -> Bool {
   total_blocking_count_for(source: optional_nullary_refuse_source) - total_blocking_count_for(source: optional_nullary_accept_source) == 1
