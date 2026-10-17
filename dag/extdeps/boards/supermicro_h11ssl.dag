@@ -40,7 +40,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.boards.supermicro_h11ssl",
-      decl_name: "supermicro_h11ssl_i_mechanical",
+      decl_name: "supermicro_h11ssl_family_mechanical",
       field: WholeDeclaration
     }
   },
@@ -73,7 +73,7 @@ data supermicro_h11ssl_manual_held: HeldManual = HeldManual {
 data supermicro_h11ssl_board_authority: BoardAuthorityRef = BoardAuthorityRef {
   subject: DeclarationRef {
     module_path: "extdeps.boards.supermicro_h11ssl",
-    decl_name: "supermicro_h11ssl_i_mechanical",
+    decl_name: "supermicro_h11ssl_family_mechanical",
     field: WholeDeclaration
   }
 }
@@ -348,15 +348,24 @@ type H11sslOobLicenceGatedOperation
   = BiosFlashViaBmcWebGuiOrSum | BmcFeatureGateUnstated
 data supermicro_h11ssl_oob_licence_gated_operations: List<H11sslOobLicenceGatedOperation> = [BiosFlashViaBmcWebGuiOrSum]
 
-// ---- Boot (pp.75,86-87,105,119-120): boot mode LEGACY/UEFI/DUAL (default DUAL); LAN1 option ROM
-// Disabled/PXE/EFI; LAN2 Disabled/PXE; IPv4/IPv6 PXE and HTTP network stack.
+// ---- Boot (pp.75,86-87,105,119-120): boot mode LEGACY/UEFI/DUAL (default DUAL); LAN option ROM
+// choices are a BIOS surface that differs by CPU family (p.75 EPYC 7001, p.105 EPYC 7002);
+// IPv4/IPv6 PXE and HTTP network stack.
 type H11sslBootMode = BootLegacy | BootUefi | BootDual
 data supermicro_h11ssl_boot_mode_default: H11sslBootMode = BootDual
-type H11sslLanOptionRom = OptionRomDisabled | OptionRomPxe | OptionRomEfi
-fn supermicro_h11ssl_lan_option_rom_choices(lan: H11sslLanPort) -> List<H11sslLanOptionRom> {
-  match lan {
-    Lan1 => [OptionRomDisabled, OptionRomPxe, OptionRomEfi]
-    Lan2 => [OptionRomDisabled, OptionRomPxe]
+type H11sslLanOptionRom = OptionRomDisabled | OptionRomPxe | OptionRomIscsi | OptionRomLegacy | OptionRomEfi
+// EPYC 7001 (p.75): LAN1 Disabled/PXE/iSCSI/Legacy/EFI, LAN2 Disabled/PXE/iSCSI.
+// EPYC 7002 (p.105): LAN1 Disabled/PXE/EFI, LAN2 Disabled/PXE.
+fn supermicro_h11ssl_lan_option_rom_choices(family: H11sslCpuFamily, lan: H11sslLanPort) -> List<H11sslLanOptionRom> {
+  match family {
+    Epyc7001 => match lan {
+      Lan1 => [OptionRomDisabled, OptionRomPxe, OptionRomIscsi, OptionRomLegacy, OptionRomEfi]
+      Lan2 => [OptionRomDisabled, OptionRomPxe, OptionRomIscsi]
+    }
+    Epyc7002 => match lan {
+      Lan1 => [OptionRomDisabled, OptionRomPxe, OptionRomEfi]
+      Lan2 => [OptionRomDisabled, OptionRomPxe]
+    }
   }
 }
 
@@ -369,8 +378,8 @@ type SupermicroH11sslMechanical {
   lan_ports: List<H11sslLanPort>
 }
 
-data supermicro_h11ssl_i_mechanical: SupermicroH11sslMechanical = SupermicroH11sslMechanical {
-  board_label: "Supermicro H11SSL (manual -i column)",
+data supermicro_h11ssl_family_mechanical: SupermicroH11sslMechanical = SupermicroH11sslMechanical {
+  board_label: "Supermicro H11SSL family (manual covers -I, -C, -NC)",
   vendor: supermicro,
   dimm_slots: 8,
   dimms_per_channel: 1,

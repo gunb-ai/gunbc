@@ -2,9 +2,10 @@ module test.claim.supermicro_h11ssl_witness
 
 import std.types { Bool }
 import gunbc.machine_intake.bmc_operator_credential_inventory {
-  OperatorHeldInventoryEntries, operator_held_bmc_credential_inventory, operator_inventory_holds,
-  FactoryLoginCredential, OobLicenceKey,
+  OperatorHeldSecretRef, operator_held_bmc_credential_inventory, operator_attested_bmc_inventory_roster,
+  operator_inventory_attests, FactoryLoginCredential,
 }
+import extdeps.network.mac { mac_address }
 import std.optional { Present, Absent }
 import std.measure { megatransfers_per_second, gigabyte }
 import extdeps.boards.types { PopulationSupported, PopulationUnsupported }
@@ -16,11 +17,13 @@ import extdeps.boards.supermicro_h11ssl {
   supermicro_h11ssl_jpwr2_pin, supermicro_h11ssl_jpwr1_pin, AtxGround, Atx12V, Atx5Vsb,
   supermicro_h11ssl_jumper_resets_bmc_accounts,
   supermicro_h11ssl_lan_option_rom_choices, Lan1, Lan2,
+  OptionRomDisabled, OptionRomPxe, OptionRomIscsi, OptionRomLegacy, OptionRomEfi,
   supermicro_h11ssl_fan_pin, FanPwm,
 }
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   supermicro_h11ssl_first_contact_receipt, supermicro_h11ssl_factory_login_producer_admitted,
-  supermicro_h11ssl_redfish_root_answered, H11sslFirstContactReceipt, ServiceRootRefused,
+  supermicro_h11ssl_redfish_root_answered_after_activation, H11sslFirstContactReceipt,
+  LicenceActivated, ServiceRootRefused, SessionIssued, LoginRejected, ServiceRootAnswered, OperatorHeldCertificate,
 }
 
 // The 4-DIMM guides differ by CPU family: the 7001 guide is C1,A1,E1,H1 and the 7002 guide is
@@ -65,30 +68,50 @@ test fn w_manual_states_no_jumper_bmc_account_reset() -> Bool {
     && match supermicro_h11ssl_jumper_resets_bmc_accounts(j: Jpb1BmcEnable) { BmcAccountResetNotStated => true  _ => false }
 }
 
-test fn w_lan2_has_no_efi_option_rom() -> Bool {
-  count(supermicro_h11ssl_lan_option_rom_choices(lan: Lan1)) == 3
-    && count(supermicro_h11ssl_lan_option_rom_choices(lan: Lan2)) == 2
+// Both BIOS surfaces, cell by cell: EPYC 7001 (p.75) and EPYC 7002 (p.105) differ, and a family
+// that collapsed to one vocabulary would drop iSCSI/Legacy.
+test fn w_lan_option_rom_matrices_by_cpu_family() -> Bool {
+  supermicro_h11ssl_lan_option_rom_choices(family: Epyc7001, lan: Lan1) == [OptionRomDisabled, OptionRomPxe, OptionRomIscsi, OptionRomLegacy, OptionRomEfi]
+    && supermicro_h11ssl_lan_option_rom_choices(family: Epyc7001, lan: Lan2) == [OptionRomDisabled, OptionRomPxe, OptionRomIscsi]
+    && supermicro_h11ssl_lan_option_rom_choices(family: Epyc7002, lan: Lan1) == [OptionRomDisabled, OptionRomPxe, OptionRomEfi]
+    && supermicro_h11ssl_lan_option_rom_choices(family: Epyc7002, lan: Lan2) == [OptionRomDisabled, OptionRomPxe]
 }
 
 test fn w_rejected_default_login_does_not_admit_factory_producer() -> Bool {
   !supermicro_h11ssl_factory_login_producer_admitted(r: supermicro_h11ssl_first_contact_receipt)
 }
 
-// The pre-activation receipt (refusal only) is not an answered root; the full receipt is.
-test fn w_redfish_root_answered_only_after_activation() -> Bool {
-  let r = supermicro_h11ssl_first_contact_receipt
-  let before = H11sslFirstContactReceipt {
+fn without_outcome(r: H11sslFirstContactReceipt, drop_activation: Bool) -> H11sslFirstContactReceipt {
+  H11sslFirstContactReceipt {
     board: r.board, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac,
-    observations: filter(r.observations, o => match o.outcome { ServiceRootRefused { message_id: _ } => true  _ => false }), licences: [], label: r.label,
+    observations: filter(r.observations, o => match o.outcome {
+      LicenceActivated { check_attribute: _ } => !drop_activation
+      ServiceRootRefused { message_id: _ } => drop_activation
+      SessionIssued => true
+      LoginRejected => true
+      ServiceRootAnswered { redfish_version: _, root_schema: _, uuid: _, members: _ } => true
+    }),
+    licences: r.licences, label: r.label,
   }
-  supermicro_h11ssl_redfish_root_answered(r: r) && !supermicro_h11ssl_redfish_root_answered(r: before)
 }
 
-// The inventory lookup is keyed by MAC and secret kind: the receipt's row is held, another MAC is not.
-test fn w_operator_inventory_row_is_keyed_by_mac_and_kind() -> Bool {
+// The ordered transition (refusal, then activation, then answer) holds on the receipt and is
+// false once the activation or the refusal is deleted.
+test fn w_redfish_root_answered_only_after_ordered_activation() -> Bool {
   let r = supermicro_h11ssl_first_contact_receipt
-  let held = OperatorHeldInventoryEntries { inventory: operator_held_bmc_credential_inventory, rows: [r.label.bmc_factory_credential] }
-  operator_inventory_holds(entries: held, bmc_mac: r.bmc_mac, secret: FactoryLoginCredential)
-    && !operator_inventory_holds(entries: held, bmc_mac: "AC:1F:6B:00:00:00", secret: FactoryLoginCredential)
-    && !operator_inventory_holds(entries: held, bmc_mac: r.bmc_mac, secret: OobLicenceKey)
+  supermicro_h11ssl_redfish_root_answered_after_activation(r: r)
+    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: without_outcome(r: r, drop_activation: true))
+    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: without_outcome(r: r, drop_activation: false))
+}
+
+// The receipt's secret references are attested by the declared roster for the declared inventory,
+// keyed by BMC MAC and kind; another MAC is not attested.
+test fn w_receipt_secret_refs_are_attested_by_the_declared_roster() -> Bool {
+  let r = supermicro_h11ssl_first_contact_receipt
+  let other = OperatorHeldSecretRef { bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 0, octet5: 0, octet6: 0), secret: FactoryLoginCredential }
+  operator_inventory_attests(roster: operator_attested_bmc_inventory_roster, inventory: operator_held_bmc_credential_inventory, ref: r.label.bmc_factory_credential)
+    && !operator_inventory_attests(roster: operator_attested_bmc_inventory_roster, inventory: operator_held_bmc_credential_inventory, ref: other)
+    && any(r.licences, l => match l.source {
+      OperatorHeldCertificate { certificate_number: _, inventory_row: ref } => operator_inventory_attests(roster: operator_attested_bmc_inventory_roster, inventory: operator_held_bmc_credential_inventory, ref: ref)
+    })
 }
