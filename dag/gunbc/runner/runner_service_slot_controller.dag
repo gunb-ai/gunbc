@@ -22,7 +22,7 @@ import gunbc.github_effect_perform {
   JitMintPerformance, JitMintReceived, service_slot_app_key,
 }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlot, HostUnitSlotPurpose, ServiceSlot, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
+  HostUnitSlot, HostUnitSlotPurpose, RecoveredServiceSlot, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
   host_unit_slot_for, host_unit_slot_listener_argv, service_slot_name_parse, service_slot_selected_workflow,
 }
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
@@ -76,12 +76,14 @@ type ServiceSlotRebuild
 // THE UNIT NAME IS A CANDIDATE, NOT AN AUTHORITY: it is parsed through the service-slot grammar, the
 // slot is rebuilt by the same fold that names it, and it is admitted only when the rebuilt name equals
 // the unit this process runs as exactly -- so the boot id and index minted into the registration are
-// the ones the unit was created with.
+// the ones the unit was created with. The parsed name is an untrusted candidate, so it enters only as a
+// RecoveredServiceSlot (never as a ServiceBootId, which only service_boot_id_of mints from KernelBootId);
+// that the unit's boot is the admitted one is the boot leg's check (frontier (d)).
 fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, unit: String) -> ServiceSlotRebuild {
   match service_slot_name_parse(host: identity, name: unit) {
     Absent => ServiceSlotUnitUnparsed { unit: unit }
     Present { value: parsed } =>
-      match host_unit_slot_for(host: host, purpose: ServiceSlot { boot_id: parsed.boot_id, index: parsed.index }, workflow: service_slot_selected_workflow()) {
+      match host_unit_slot_for(host: host, purpose: RecoveredServiceSlot { name: parsed }, workflow: service_slot_selected_workflow()) {
         HostUnitSlotRefused { refusal: r } => ServiceSlotNotBound { refusal: r }
         HostUnitSlotBound { slot: s } =>
           if (s.unit as String) == unit {
