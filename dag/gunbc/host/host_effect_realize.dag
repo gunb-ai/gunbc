@@ -104,7 +104,7 @@ import gunbc.live_deploy.emit {
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.tools.findutils { find_regular_files_sha256_command }
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_releases_dir, approval_broker_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
+import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_releases_dir, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
@@ -4853,8 +4853,8 @@ fn approval_broker_tree_install(
 ) -> ApprovalBrokerTreeInstallVerdict {
   approval_broker_tree_install_at(
     owner: owner,
-    spine: [base_root, approval_broker_releases_dir(root: base_root)],
-    locus: approval_broker_release_dir(root: base_root, revision: revision),
+    spine: [base_root, release_locus_releases_dir(root: base_root)],
+    locus: release_locus_dir(root: base_root, revision: revision),
     source_root: source_root,
     revision: revision,
     transport: transport,
@@ -4875,11 +4875,11 @@ fn approval_broker_tree_install_at(
     RevisionNotInstalled =>
       TreeInstallRefused { step: TreeStepRevision, reason: "the tree install was asked for RevisionNotInstalled; a release directory is named by the candidate sha" }
     RevisionBoundAtEmission { revision: r } => {
-      match observe_tree_hashes(root: source_root, subs: approval_broker_tree_subdirs, transport: transport) {
+      match observe_tree_hashes(root: source_root, subs: release_locus_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepSourceObserve, reason: why }
         TreeObserved { entries: source } =>
           if count(source) == 0 {
-            TreeInstallRefused { step: TreeStepSourceObserve, reason: join(["no regular file under ", source_root, " in ", join(approval_broker_tree_subdirs, ", ")], "") }
+            TreeInstallRefused { step: TreeStepSourceObserve, reason: join(["no regular file under ", source_root, " in ", join(release_locus_tree_subdirs, ", ")], "") }
           } else {
             approval_broker_tree_install_observed(
               owner: owner, spine: spine, source_root: source_root, locus: locus,
@@ -4939,7 +4939,7 @@ fn approval_broker_tree_install_observed(
   match after_binary {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
-      match observe_tree_hashes(root: locus, subs: approval_broker_tree_subdirs, transport: transport) {
+      match observe_tree_hashes(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepReadback, reason: why }
         TreeObserved { entries: installed } =>
           if !tree_binary_agrees(source_path: join([source_root, "/target/release/", gunbc_release_bin_name], ""), installed_path: join([locus, "/", gunbc_release_bin_name], ""), transport: transport) {
