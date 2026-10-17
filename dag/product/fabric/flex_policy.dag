@@ -816,4 +816,7 @@ fn flex_admit_revocable_target(
 // site. Plan until the operator changes this row. The release realization (gunbc.serving.rented_release)
 // never reads it: its caller passes this row as the mode, and the first executing consumer is
 // test.claim.serving.rented_release_witness, which does exactly that.
+// It overlaps FlexPolicy.actuation: FlexActuationMode (Dry | Wet), which gates the whole flex lane; this row gates only
+// the Vast destroy and is typed ApplyMode because the release realization cannot import flex_policy. Consolidation
+// trigger: flex wet create lands and one of the two is derived from the other.
 data flex_vast_actuation_mode: ApplyMode = Plan
