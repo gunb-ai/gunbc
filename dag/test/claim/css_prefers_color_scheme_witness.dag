@@ -118,7 +118,36 @@ test fn the_feature_name_is_emitted_by_its_own_arm_only() -> Bool {
     !string_contains(s: media_condition_wire(c: c), pattern: "prefers-color-scheme"))
 }
 
-// 5. The value set has no duplicates. Cheap, and it is the property that makes claim 1 a
+// 5. BYTE-PRESERVATION of the consolidation. The three sites that used to join this text by
+//    hand (gunbc.design.theme, gunbc.design.theme_transition, gunbc.roadmap.roadmap_style) now
+//    call css_media_rule_wire. The risk of that move is a whitespace or punctuation change in
+//    the stylesheet production ships — invisible in a review diff, visible to every browser.
+//    The right-hand side here is the OLD expression, spelled from the deleted literal and the
+//    value token, NOT from the wire under test: comparing the wire to its own body would be a
+//    tautology that can never go red. Pinned for any body, with a body chosen to contain the
+//    characters a naive join mangles: colon, braces, comma.
+//    Measured where measurement was possible: gunbc.design.theme's emission was captured at
+//    1170 bytes before and after the routing and compared byte for byte. The roadmap site's
+//    module cannot be probed at all — its import closure hits the pre-existing v2.std.*
+//    failures — which is precisely why this property is claimed rather than sampled.
+data legacy_wrapper_body: String = "BODY:ANY\{css,with\}braces"
+
+fn legacy_wrapper(v: ColorSchemePreference) -> String {
+  join([
+    "@media (prefers-color-scheme: ", color_scheme_preference_token(p: v), ") { ",
+    legacy_wrapper_body,
+    " }",
+  ], "")
+}
+
+test fn the_wire_reproduces_the_hand_joined_wrapper_exactly() -> Bool {
+  all(color_scheme_values, v =>
+    css_media_rule_wire(
+      condition: MediaPrefersColorScheme { preference: v }, body: legacy_wrapper_body)
+    == legacy_wrapper(v))
+}
+
+// 6. The value set has no duplicates. Cheap, and it is the property that makes claim 1 a
 //    join rather than a pass over a padded list.
 test fn the_value_set_has_no_duplicates() -> Bool {
   duplicated_by_key(xs: color_scheme_values,
