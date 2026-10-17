@@ -1,9 +1,11 @@
 module test.claim.firmware_network_boot_probe_witness
 
 import std.types { Bool, List }
-import gunbc.firmware_network_boot_probe {
+import gunbc.firmware_network_boot_standing {
   FirmwareBootObservation, SecureBootUnobserved, SecureBootEnabled, SecureBootDisabled, SecureBootRefused,
-  BootOrderObserved, BootOrderRefused, BootOrderUnobserved,
+  BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
+}
+import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
 }
 import std.optional { Present, Absent }
@@ -133,10 +135,11 @@ test fn bmc_refusal_is_preserved_as_refused() -> Bool {
   match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
     Absent => false
     Present { value: r } =>
-      match probe(row: r, subject: subject(), contact: BmcResponded { replies: [ReplyRefusedByBmc { axis: BootOrderAxis, refusal: "403 PasswordChangeRequired" }] }) {
+      match probe(row: r, subject: subject(), contact: BmcResponded { replies: [ReplyRefusedByBmc { axis: BootOrderAxis, refusal: AuthenticationRequired { detail: "403 PasswordChangeRequired" } }] }) {
         BmcObserved { subject: _, observation: o } =>
           match o.boot_order {
-            BootOrderRefused { refusal: f } => f == "403 PasswordChangeRequired"
+            BootOrderRefused { refusal: AuthenticationRequired { detail: d } } => d == "403 PasswordChangeRequired"
+            BootOrderRefused { refusal: _ } => false
             BootOrderObserved { devices: _ } => false
             BootOrderUnobserved { reason: _ } => false
           }

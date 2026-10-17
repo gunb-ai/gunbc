@@ -5,49 +5,16 @@ import std.optional { Present, Absent }
 import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac, OpenBmc }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
-// S0 SEAM, ONE MARKED BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing
-// (S0). Until S0 merges, this module carries the five-axis stand-in below so it is witnessed on its
-// own; at integration the stand-in is deleted and the import below is switched on, with the S0 names
-// substituted for the ones here (BootOrderStanding, NetworkInterfaceStanding, SecureBootStanding,
-// BiosStanding). Nothing outside this block names where these types live.
-//
-// import gunbc.firmware_network_boot_standing { FirmwareBootObservation, BootOrderStanding, BootOptionsStanding, NetworkInterfaceStanding, SecureBootStanding, BiosStanding }
-
-type BootOrderObservation
-  = BootOrderObserved { devices: List<NonEmptyStr> }
-  | BootOrderUnobserved { reason: NonEmptyStr }
-  | BootOrderRefused { refusal: NonEmptyStr }
-
-type BootOptionsObservation
-  = BootOptionsObserved { options: List<NonEmptyStr> }
-  | BootOptionsUnobserved { reason: NonEmptyStr }
-  | BootOptionsRefused { refusal: NonEmptyStr }
-
-type NicsObservation
-  = NicsObserved { nics: List<NonEmptyStr> }
-  | NicsUnobserved { reason: NonEmptyStr }
-  | NicsRefused { refusal: NonEmptyStr }
-
-// THE SECURE BOOT STATE AND ITS STANDING ARE ONE UNION. A bool-ish state wrapped in an
-// Observed/Unobserved/Refused envelope lets the envelope and the value disagree; here "on", "off",
-// "not asked" and "BMC refused" are four arms of one type.
-type SecureBootObservation
-  = SecureBootEnabled
-  | SecureBootDisabled
-  | SecureBootUnobserved { reason: NonEmptyStr }
-  | SecureBootRefused { refusal: NonEmptyStr }
-
-type BiosVersionObservation
-  = BiosVersionObserved { version: NonEmptyStr }
-  | BiosVersionUnobserved { reason: NonEmptyStr }
-  | BiosVersionRefused { refusal: NonEmptyStr }
-
-type FirmwareBootObservation {
-  boot_order: BootOrderObservation
-  boot_options: BootOptionsObservation
-  nics: NicsObservation
-  secure_boot: SecureBootObservation
-  bios_version: BiosVersionObservation
+// S0 IMPORT, ONE MARKED BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing
+// (S0); this module emits it and defines none of it. Nothing outside this block names where these
+// types live.
+import gunbc.firmware_network_boot_standing {
+  FirmwareBootObservation, FirmwareReadRefusal, firmware_boot_observation,
+  BootOrderObserved, BootOrderUnobserved, BootOrderRefused,
+  BootOptionsObserved, BootOptionsUnobserved, BootOptionsRefused,
+  NicsObserved, NicsUnobserved, NicsRefused,
+  SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused,
+  BiosVersionObserved, BiosVersionUnobserved, BiosVersionRefused,
 }
 
 // ONE INSTRUMENT, MANY ROWS. A BMC family is a FirmwareBootFamilyRow in firmware_boot_family_rows;
@@ -156,7 +123,7 @@ type AxisReply
   | ReplySecureBootEnabled
   | ReplySecureBootDisabled
   | ReplyBiosVersion { version: NonEmptyStr }
-  | ReplyRefusedByBmc { axis: ObservationAxis, refusal: NonEmptyStr }
+  | ReplyRefusedByBmc { axis: ObservationAxis, refusal: FirmwareReadRefusal }
 
 // UNREACHABLE IS A FACT ABOUT THE BMC, NOT AN EMPTY ANSWER. BmcResponded { replies: [] } means the
 // BMC answered and had nothing for the axes asked; BmcSilent means nothing answered at all (a
