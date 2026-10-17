@@ -7,6 +7,9 @@ import gunbc.host.host_standup { HostStandupStep, HostStandupAssimilationPhase, 
 import gunbc.host.host_assimilation_program { assimilation_program_for }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, inference_serving_enrollment_participation }
 import std.optional { Present, Absent }
+import std.integer { int_to_decimal_string }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.supply { SupplierOffer }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { byte_size_count, hardware_thread_count_value }
 import std.decimal { ExactDecimal }
@@ -47,10 +50,20 @@ import test.claim.serving.rented_instance_offer_witness { i_instance }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+fn s_offer() -> SupplierOffer<NonEmptyStr> {
+  let o = i_instance(gpus: 1)
+  SupplierOffer {
+    id: FabricIdentity { principal: o.id.principal, key: int_to_decimal_string(value: 4242) as OfferKey },
+    executor: o.executor, route: o.route, shape: o.shape, capabilities: o.capabilities, trust_domain: o.trust_domain,
+    isolation: o.isolation, quantity_bound: o.quantity_bound, ready_at: o.ready_at, quote: o.quote,
+    billing_quantum: o.billing_quantum, evidence: o.evidence,
+  }
+}
+
 fn s_read_allocation() -> RentedServingAllocation {
   let base = a_allocation(route: a_tunnel(target_port: 8000))
   RentedServingAllocation {
-    identity: base.identity, origin: base.origin, contract: RentedContractRead { offer: i_instance(gpus: 1) },
+    identity: base.identity, origin: base.origin, contract: RentedContractRead { offer: s_offer() },
     card: base.card, end: base.end, engine: base.engine, artifact: base.artifact, host: base.host, route: base.route,
   }
 }
@@ -59,7 +72,7 @@ fn s_read_allocation() -> RentedServingAllocation {
 // 65536, disk_space 2048.5). No account data. THE DOCUMENTED STANDINGS BELOW ARE FIXTURE-ONLY: they witness
 // the derivation arm and are not Vast's statement of anything; the real path is s_real_standings.
 fn s_host(arch: String) -> VastAiOfferHostResources {
-  VastAiOfferHostResources { cpu_arch: arch, cpu_cores: 64, cpu_ram: 65536, disk_space: ExactDecimal { units: 20485, fraction_digits: 1 } }
+  VastAiOfferHostResources { id: 4242, cpu_arch: arch, cpu_cores: 64, cpu_ram: 65536, disk_space: ExactDecimal { units: 20485, fraction_digits: 1 } }
 }
 
 fn s_host_decl() -> DeclarationRef {
@@ -159,10 +172,11 @@ test fn a_non_amd64_offer_refuses_on_architecture() -> Bool {
     == (vast_ai_guest_architecture_obligation as String)
 }
 
-// THE HOST RESOURCES ARE TIED TO THE CONTRACT OFFER: i_instance states 64 hard threads, s_host states 64 cpu_cores,
-// so the fixture agrees (this is the pairing for the shared field), and a host of another machine refuses.
+// THE HOST RESOURCES ARE BOUND BY OFFER IDENTITY: the contract offer's key is the decimal offer id the host row
+// carries (4242), and a host read from offer 4243 with identical figures refuses. s_offer is the pairing for the
+// route: its key is built the way flex_vast_offer_key builds one.
 test fn host_resources_of_another_machine_refuse() -> Bool {
-  let other = VastAiOfferHostResources { cpu_arch: "amd64", cpu_cores: 32, cpu_ram: 65536, disk_space: ExactDecimal { units: 20485, fraction_digits: 1 } }
+  let other = VastAiOfferHostResources { id: 4243, cpu_arch: "amd64", cpu_cores: 64, cpu_ram: 65536, disk_space: ExactDecimal { units: 20485, fraction_digits: 1 } }
   s_refusal_text(r: rented_allocation_host_enrollment(a: s_read_allocation(), host: other, host_decl: s_host_decl(), standings: s_documented_standings(), acquisition: Absent))
     == (rented_host_resources_mismatch_obligation as String)
 }

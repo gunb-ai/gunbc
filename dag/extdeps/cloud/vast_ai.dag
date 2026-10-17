@@ -128,8 +128,10 @@ type VastAiOffer {
 // separate standing at the consumer. show-instances (docs.vast.ai/api-reference/instances/show-instances)
 // lists the same names with NO units, so it is deliberately not a source for cpu_ram or disk_space.
 // This is a separate type from VastAiOffer, not extra fields on it, because it is the same wire object read
-// for a different question (what a rented guest is entitled to), and no VastAiOffer constructor owes it.
+// for a different question (what a rented guest is entitled to). id is the offer (ask) id of that row, the
+// same id VastAiOffer.id carries, and no VastAiOffer constructor owes it.
 type VastAiOfferHostResources {
+  id: Int
   cpu_arch: String
   cpu_cores: Int
   cpu_ram: Int

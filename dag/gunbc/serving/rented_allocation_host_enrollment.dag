@@ -4,8 +4,7 @@ import std.types { String, Bool, NonEmptyStr, List }
 import product.fabric.supply { SupplierOffer }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.checked_arithmetic { checked_int_to_nat }
-import std.measure { hardware_thread_count }
+import std.integer { int_to_decimal_string }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import product.host_identity { HostIdentity }
@@ -51,16 +50,16 @@ fn rented_resource_awaited_obligation(id: RentedAllocationIdentity) -> NonEmptyS
 
 data rented_acquisition_names_another_resource_obligation: NonEmptyStr = "the supplied provider acquisition names a resource id other than the allocation's contract id, so it is another rental's binding" as NonEmptyStr
 
-data rented_host_resources_mismatch_obligation: NonEmptyStr = "the supplied Vast host resources do not agree with the allocation's accepted contract offer (cpu_cores differs from the offer's hard thread requirement), so they describe another machine" as NonEmptyStr
+data rented_host_resources_mismatch_obligation: NonEmptyStr = "the supplied Vast host resources are read from another offer than the allocation's accepted contract offer (offer id differs, or the contract offer's key is not a Vast offer id), so they describe another machine" as NonEmptyStr
 
-// THE ONE FIELD THE CONTRACT OFFER SHARES WITH THE HOST RESOURCES is the thread count (the offer's hard
-// threads, bound from the same machine); memory and disk are not on a SupplierOffer, so they cannot be
-// cross-checked and the host resources are otherwise a supplied reading.
+// THE BINDING IS OFFER IDENTITY. A Vast offer is keyed by its decimal id exactly as
+// product.fabric.flex_vast_shadow flex_vast_offer_key keys it (int_to_decimal_string of VastAiOffer.id), so the
+// contract offer's key equals the row's id rendered the same way; a key that is not that rendering is not a
+// Vast offer id and refuses. STATED DIVERGENCE: that rule is restated here as one comparison because
+// flex_vast_offer_key takes the whole VastAiOffer, which the allocation does not carry; hoisting it to take the Int
+// is the follow-up that removes the restatement.
 fn rented_host_matches_contract(offer: SupplierOffer<NonEmptyStr>, host: VastAiOfferHostResources) -> Bool {
-  match checked_int_to_nat(n: host.cpu_cores) {
-    Absent => false
-    Present { value: n } => offer.shape.hard.threads == hardware_thread_count(count: n)
-  }
+  int_to_decimal_string(value: host.id) == (offer.id.key as String)
 }
 
 fn rented_resource_binding(a: RentedServingAllocation, acquisition: ProviderResourceAcquisition?) -> ProviderResourceBinding? {
