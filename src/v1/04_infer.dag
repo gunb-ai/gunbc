@@ -99,7 +99,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
-  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
+  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, collection_carrier_node, is_fully_resolved,
   kernel_profile_lookup,
@@ -1580,7 +1580,7 @@ fn declared_type_kernel_inhabitance_mismatch_at_element(
 // arrow kept, neither side is ground and the pair fell to the unjudged arm. The judgment is
 // callable_signature_mismatch, the same relation the top-level arrow arm consults, so a parameter
 // or arity difference now refuses too, where before it was accepted under the erasure.
-fn callable_element_signature_mismatch(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn callable_element_signature_mismatch(declared: Node, produced: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let both_element_collections = node_is_element_collection(n: declared, source_indices: source_indices)
     && node_is_element_collection(n: produced, source_indices: source_indices)
     && node_is_keyed_collection(n: declared, source_indices: source_indices) == false
@@ -1599,7 +1599,7 @@ fn callable_element_signature_mismatch(declared: Node, produced: Node, source_in
             let declared_element = child_type_node(ch: dl)
             let produced_element = child_type_node(ch: pr)
             type_node_is_arrow(n: declared_element) && type_node_is_arrow(n: produced_element)
-              && callable_signature_mismatch(formal: declared_element, actual: produced_element, source_indices: source_indices)
+              && callable_signature_mismatch(formal: declared_element, actual: produced_element, env: env, source_indices: source_indices)
         }
     }
   }
@@ -1697,7 +1697,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
     )]
   }
   else if type_node_is_arrow(n: declared) && type_node_is_arrow(n: produced)
-      && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si) {
+      && callable_signature_mismatch(formal: declared, actual: produced, env: scope.type_env, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -1713,7 +1713,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
-  else if callable_element_signature_mismatch(declared: declared, produced: produced, source_indices: si) {
+  else if callable_element_signature_mismatch(declared: declared, produced: produced, env: scope.type_env, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -6275,10 +6275,11 @@ fn callable_component_ground_mismatch(
   formal_part: Node,
   actual_part: Node,
   subst: Map<String, Node>,
+  env: TypeEnv,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   if (formal_part.connective == Arrow) && (actual_part.connective == Arrow) {
-    callable_arrow_mismatch(formal: formal_part, actual: actual_part, subst: subst, source_indices: source_indices)
+    callable_arrow_mismatch(formal: formal_part, actual: actual_part, subst: subst, env: env, source_indices: source_indices)
   } else {
     let instantiated = substitute_generics(n: actual_part, subst: subst, source_indices: source_indices)
     if (formal_part.connective == Arrow) || (instantiated.connective == Arrow) {
@@ -6286,12 +6287,12 @@ fn callable_component_ground_mismatch(
         || conformance_ground_type(n: instantiated, source_indices: source_indices)
     } else if conformance_ground_type(n: formal_part, source_indices: source_indices)
         && conformance_ground_type(n: instantiated, source_indices: source_indices) {
-      !node_type_compatible(left: formal_part, right: instantiated, source_indices: source_indices, text: TextNotAsked { reason: TextNotAskedForCallableComponentResidue })
+      !node_type_compatible(left: formal_part, right: instantiated, source_indices: source_indices, text: TextJudgedIn { env: env })
     } else { false }
   }
 }
 
-fn callable_arrow_mismatch(formal: Node, actual: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn callable_arrow_mismatch(formal: Node, actual: Node, subst: Map<String, Node>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let f_params = callable_value_params(arrow: formal, source_indices: source_indices)
   let a_params = callable_value_params(arrow: actual, source_indices: source_indices)
   if (f_params |> count) != (a_params |> count) { true }
@@ -6300,16 +6301,16 @@ fn callable_arrow_mismatch(formal: Node, actual: Node, subst: Map<String, Node>,
       match a_params |> skip(pair.first) |> first {
         Present { value: ap } => callable_component_ground_mismatch(
           formal_part: callable_param_type(p: pair.second), actual_part: callable_param_type(p: ap),
-          subst: subst, source_indices: source_indices)
+          subst: subst, env: env, source_indices: source_indices)
         Absent => true
       })
     params_mismatch || callable_component_ground_mismatch(
       formal_part: resolved_type(n: formal), actual_part: resolved_type(n: actual),
-      subst: subst, source_indices: source_indices)
+      subst: subst, env: env, source_indices: source_indices)
   }
 }
 
-fn callable_signature_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn callable_signature_mismatch(formal: Node, actual: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let f = callable_signature_view(n: formal)
   let a = callable_signature_view(n: actual)
   if (f.connective != Arrow) || (a.connective != Arrow) { false }
@@ -6317,7 +6318,7 @@ fn callable_signature_mismatch(formal: Node, actual: Node, source_indices: Map<S
     let generic_names = callable_generic_names(arrow: a, source_indices: source_indices)
     let subst = callable_signature_substitution(formal: f, actual: a, generic_names: generic_names,
       source_indices: source_indices, acc: empty_map())
-    callable_arrow_mismatch(formal: f, actual: a, subst: subst, source_indices: source_indices)
+    callable_arrow_mismatch(formal: f, actual: a, subst: subst, env: env, source_indices: source_indices)
   }
 }
 
@@ -6430,7 +6431,7 @@ fn direct_call_arg_type_mismatch(
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: substitution_basis)) == "Optional"
   if substitution_is_optional { false }
   else if type_node_is_arrow(n: formal) && type_node_is_arrow(n: actual) {
-    callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+    callable_signature_mismatch(formal: formal, actual: actual, env: type_env, source_indices: source_indices)
   }
   else if type_node_is_arrow(n: formal) || type_node_is_arrow(n: actual) {
     !one_sided_non_arrow_side_is_open(

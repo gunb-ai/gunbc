@@ -954,7 +954,6 @@ type TextJudgment
 
 type TextNotAskedReason
   = TextNotAskedInVariantFieldSummary
-  | TextNotAskedForCallableComponentResidue
   | TextNotAskedForSyntheticWitnessNodes
 
 fn text_crossing_in_judgment(left: Node, right: Node, text: TextJudgment) -> Bool {
