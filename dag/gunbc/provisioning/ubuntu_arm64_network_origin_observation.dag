@@ -36,7 +36,7 @@ type PinnedArtefact sole_constructor {
 
 fn pinned_artefact(sha256_hex: NonEmptyStr, size: FiniteByteSize, standing: CitedFigureStanding) -> PinnedArtefact? {
   match sha256_hex_digest(hex: sha256_hex as String) {
-    Present { value: _ } => Present { value: PinnedArtefact { digest: sha256_digest(hex: sha256_hex), size: size, standing: standing } }
+    Present { value: validated } => Present { value: PinnedArtefact { digest: sha256_digest(hex: validated.hex as NonEmptyStr), size: size, standing: standing } }
     Absent => Absent
   }
 }
