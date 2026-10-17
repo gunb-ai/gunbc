@@ -71,3 +71,19 @@ test fn a_stop_whose_repeat_did_not_read_off_reports_power_off_unconfirmed() -> 
   let t = boot_fan_gate_stop_text(cause: "c" as NonEmptyStr, first_off: false, repeated: true, second_off: false, last_readback: "unreadable")
   string_contains(s: t, pattern: "power-off unconfirmed") && string_contains(s: t, pattern: "cooling manager standing unread")
 }
+
+// Round 0 of the REAL fan receipt of the last good boot (run 39010930690, 2026-10-17T06:50:59Z, chassis on),
+// every sensor row as observed; fan4_0 is the one variable so the same rows serve the positive control and its RED.
+fn receipt_39010930690_round0(fan4_0: NonEmptyStr) -> List<SdrTypeLine> {
+  let nr = "No Reading" as NonEmptyStr
+  [row(name: "FAN0_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN0_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN1_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN1_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN2_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN2_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN3_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN3_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN4_0_Speed" as NonEmptyStr, reading: fan4_0), row(name: "FAN4_1_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_0_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_1_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN0_Presence" as NonEmptyStr, reading: nr), row(name: "FAN1_Presence" as NonEmptyStr, reading: nr), row(name: "FAN2_Presence" as NonEmptyStr, reading: nr), row(name: "FAN3_Presence" as NonEmptyStr, reading: nr), row(name: "FAN4_Presence" as NonEmptyStr, reading: "Device Present" as NonEmptyStr), row(name: "FAN5_Presence" as NonEmptyStr, reading: "Device Present" as NonEmptyStr), row(name: "PSU1_FAN_SPEED" as NonEmptyStr, reading: "5000 RPM" as NonEmptyStr), row(name: "PSU2_FAN_SPEED" as NonEmptyStr, reading: nr)]
+}
+
+// The gate must not stop a healthy mtcollins1: the last good boot's own reading is Established.
+test fn the_last_good_boots_real_receipt_is_established_and_admits_the_boot() -> Bool {
+  refused(v: boot_fan_gate_verdict(fitted: mtcollins1_fitted_fan_set, round: round(on: true, lines: receipt_39010930690_round0(fan4_0: "5600 RPM" as NonEmptyStr)))) == false
+}
+
+test fn the_last_good_boots_real_receipt_with_fan4_0_unread_refuses() -> Bool {
+  refused(v: boot_fan_gate_verdict(fitted: mtcollins1_fitted_fan_set, round: round(on: true, lines: receipt_39010930690_round0(fan4_0: "No Reading" as NonEmptyStr))))
+}
