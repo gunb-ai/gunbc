@@ -1,0 +1,7 @@
+module test.fixture.imported_arms.provider
+
+import std.types { Int }
+
+type ArmT = ArmX | ArmY
+
+data arm_plain_data: Int = 7

@@ -1069,15 +1069,21 @@ fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
 }
 
 fn applied_arguments_identical(left_args: List<Node>, right_args: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  arguments_agree_in_lockstep(left_args: left_args, right_args: right_args, agree: (l, r) => applied_argument_types_identical(left: l, right: r, source_indices: source_indices))
+}
+
+// ONE LOCKSTEP WALK for every pairwise relation over two argument lists (identity here, equality in
+// applied_spelling_arguments_agree): each list is peeled once, so the cost is linear in the arity.
+fn arguments_agree_in_lockstep(left_args: List<Node>, right_args: List<Node>, agree: fn(Node, Node) -> Bool) -> Bool {
   match left_args |> first {
     Present { value: l } =>
       match right_args |> first {
         Present { value: r } =>
-          applied_argument_types_identical(left: child_type_node(ch: l), right: child_type_node(ch: r), source_indices: source_indices)
-            && applied_arguments_identical(left_args: left_args |> skip(1), right_args: right_args |> skip(1), source_indices: source_indices)
+          agree(child_type_node(ch: l), child_type_node(ch: r))
+            && arguments_agree_in_lockstep(left_args: left_args |> skip(1), right_args: right_args |> skip(1), agree: agree)
         Absent => false
       }
-    Absent => true
+    Absent => right_args |> count == 0
   }
 }
 
@@ -1374,6 +1380,34 @@ fn callable_signatures_agree(left: Node, right: Node, agree: fn(Node, Node) -> B
   }
 }
 
+// ONE TYPE, SEVERAL PRINTINGS (gunbc.recurring_failure_mode optional_equality_answers_by_representation).
+// A declaration's unapplied spelling (a leaf, or a Disj coproduct that prints its name) and its
+// applied spelling (a NoConnective node carrying the arguments) name one type; only the applied side
+// carries arguments, so there is nothing to descend into and the head DECLARATION identity decides (applied_argument_heads_identical: the
+// carried declaration ref, else the reference identity key), never the printed name. Two APPLIED spellings still descend element-wise below,
+// so FreeMonoid<Int> against FreeMonoid<Bool> keeps refusing.
+// TWO APPLICATIONS OF ONE DECLARATION ARE NOT ONE TYPE (Box<Int> against a Disj Box<Bool>): head identity
+// separates declarations, never the arguments applied to one. The unapplied side is admitted only when it
+// has no arguments to disagree: a leaf, a childless node, or a generic declaration still carrying its
+// declared parameter list (params holds the declared list, never applied arguments). Otherwise the
+// applied side's arguments meet the other side's: through the applied side's resolved expansion when it
+// is a coproduct (variants with the arguments substituted), else child against child.
+fn applied_spelling_arguments_agree(applied: Node, other: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  if (other.children |> count) == 0 || (other.params |> count) > 0 {
+    true
+  } else {
+    match applied.inferred {
+      Present { value: Resolved { node: expansion } } =>
+        if is_coproduct_type(n: expansion) {
+          node_type_equals(left: expansion, right: other, source_indices: source_indices, text: text)
+        } else {
+          arguments_agree_in_lockstep(left_args: applied.children, right_args: other.children, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices, text: text))
+        }
+      _ => arguments_agree_in_lockstep(left_args: applied.children, right_args: other.children, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices, text: text))
+    }
+  }
+}
+
 fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   if text_crossing_in_judgment(left: left, right: right, text: text) {
     false
@@ -1385,6 +1419,8 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
   let left_struct = left.connective != NoConnective
   let right_struct = right.connective != NoConnective
+  let left_applied = left.connective == NoConnective && !left_leaf
+  let right_applied = right.connective == NoConnective && !right_leaf
   let left_name = authored_name_at(source_indices: source_indices, node: left)
   let right_name = authored_name_at(source_indices: source_indices, node: right)
   if left_leaf && right_leaf {
@@ -1408,6 +1444,14 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
   }
   else if left_struct && right_leaf {
     type_name_compatible(a: left_name, b: right_name)
+  }
+  else if (left_applied && (right_leaf || right_struct)) || (right_applied && (left_leaf || left_struct)) {
+    applied_argument_heads_identical(left: left, right: right, source_indices: source_indices)
+      && (if left_applied {
+        applied_spelling_arguments_agree(applied: left, other: right, source_indices: source_indices, text: text)
+      } else {
+        applied_spelling_arguments_agree(applied: right, other: left, source_indices: source_indices, text: text)
+      })
   }
   else {
     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)

@@ -1,6 +1,7 @@
 module std.temporal_effect
 
 import std.types { String, NonEmptyStr, Int, Bool, Timestamp, List }
+import std.durable_compare_and_set { CasGeneration }
 import std.content_hash { ContentHash }
 import std.scoped_authorization {
   AttemptIdentity,
@@ -46,10 +47,13 @@ type EffectStepReceipt {
   recorded_at: Timestamp
 }
 
+// LeaseRunningPastExpiry is expiry of the declared term, NOT a fingerprint mismatch.
+// gunbc.session_lease PortObservedStaleExpected is the fingerprint-mismatch arm; the two
+// must not share the name Stale (DESIGN section 3: one name, one meaning).
 type HeldLeaseObservedState
   = LeaseAbsent
   | LeaseRunningExpected
-  | LeaseRunningStale
+  | LeaseRunningPastExpiry
   | LeasePortForeign
   | LeaseInaccessible
 
@@ -57,7 +61,7 @@ type LeaseEpoch {
   lease_key: NonEmptyStr
   resource_fingerprint: ContentHash
   owner_fingerprint: ContentHash
-  generation: Int
+  generation: CasGeneration
 }
 
 type HeldLease {
@@ -150,7 +154,7 @@ fn held_lease_observed_verdict(observed: HeldLeaseObservedState) -> ObservationV
   match observed {
     LeaseAbsent => Absent
     LeaseRunningExpected => Converged
-    LeaseRunningStale => Drifted
+    LeaseRunningPastExpiry => Drifted
     LeasePortForeign => Conflict
     LeaseInaccessible => Inaccessible
   }

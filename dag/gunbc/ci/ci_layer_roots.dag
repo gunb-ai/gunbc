@@ -1137,6 +1137,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "session_activation_ensure_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "dispatch_worker_writable_sandbox_wet_witness.dag",
     classification: OfflineLocalRecipe,
     reason: excl_attempt_launcher_grant_on_runner_host_reason,

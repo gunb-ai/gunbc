@@ -136,9 +136,10 @@ fn codex_trip_installation(exit_code: Int, stderr: String) -> ProviderInstallati
 
 // THE CURSOR STANDING JOINS THREE FACTS, and the offer is selectable only when all three hold: Cursor
 // accepts the custody key, this host can build the sandbox the worker turn declares, and the
-// account's entitlement and quota are observed. cursor-agent status runs under the custody key,
-// exported inside the child as the spawn does it, and answers only the first; a rejected key refuses
-// first, naming the rejection. The sandbox preflight answers the second without a provider call
+// account's entitlement and quota are observed. TODAY the first is NOT yet observed: cursor-agent status
+// reads the STORED auth under the config root it runs with, not CURSOR_API_KEY (extdeps.llm.cursor_cli,
+// observed 2026-10-17), so its answer is about the config root and the reasons below say so. The key
+// is judged by CursorKeyProbeReading, which the standing consumes in the runtime-root wiring change. The sandbox preflight answers the second without a provider call
 // (gunbc.cursor_harness_credential CursorSandboxPreflightReading): gunbc.cursor_harness_credential
 // cursor_worker_turn_run declares CursorSandboxEnabled so that --force is not unconfined, and a host
 // that cannot build that sandbox fails the turn before the provider -- observed on srv2, 2026-10-16
@@ -148,15 +149,15 @@ fn codex_trip_installation(exit_code: Int, stderr: String) -> ProviderInstallati
 // third is observed by a one-word turn (operator ruling D2, 2026-10-05), whose result shape is
 // modeled from its first live call, so until then the standing is unobserved and the draw refuses --
 // never a fabricated "available".
-data cursor_entitlement_trip_pending_reason: NonEmptyStr = "cursor accepts the custody key, but entitlement and quota are read by a one-word turn whose result shape is modeled from its first live call (operator ruling D2, 2026-10-05); until then the cursor draw refuses" as NonEmptyStr
+data cursor_entitlement_trip_pending_reason: NonEmptyStr = "the Cursor config root's stored auth reads authenticated (status does not judge the custody key), but entitlement and quota are read by a one-word turn whose result shape is modeled from its first live call (operator ruling D2, 2026-10-05); until then the cursor draw refuses" as NonEmptyStr
 
-data cursor_sandbox_unavailable_reason_prefix: String = "cursor accepts the custody key, but this host cannot build the sandbox the worker turn declares, so a turn would fail before the provider: "
+data cursor_sandbox_unavailable_reason_prefix: String = "the Cursor config root's stored auth reads authenticated (status does not judge the custody key), but this host cannot build the sandbox the worker turn declares, so a turn would fail before the provider: "
 
 fn cursor_standing_from_readings(status: CursorStatusReading, sandbox: CursorSandboxPreflightReading) -> ProviderStanding {
   match status {
     CursorStatusAuthenticated => cursor_standing_with_accepted_key(sandbox: sandbox)
     CursorStatusUnauthenticated { status } =>
-      ProviderStandingUnobserved { reason: join(["cursor rejects the custody key (status ", status, ")"], "") as NonEmptyStr }
+      ProviderStandingUnobserved { reason: join(["the Cursor config root holds no stored auth (status ", status, ")"], "") as NonEmptyStr }
     CursorStatusUnreadable { detail } =>
       ProviderStandingUnobserved { reason: join(["cursor-agent status output unreadable: ", detail], "") as NonEmptyStr }
   }

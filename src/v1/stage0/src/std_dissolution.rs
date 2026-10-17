@@ -4,8 +4,9 @@
 use self::DissolutionCondition::*;
 use self::DissolutionStatus::*;
 use self::DissolutionTrigger::*;
-pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_decl_ref::{declaration_ref_display_key, declaration_ref_in_list};
+pub use crate::std_decl_ref::{
+    declaration_ref_display_key, declaration_ref_in_list, DeclarationRef,
+};
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
