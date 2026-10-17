@@ -55,7 +55,7 @@ import gunbc.fabric.fabric_quota {
   fabric_quota_observe_upstream, QuotaUpstreamRecorded, QuotaObservationRefused,
 }
 import gunbc.harness.harness_reasoning_wire {
-  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter, Qwen3_8_27bOnNinfer,
+  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter, Qwen3_8_27bOnNinfer, Qwen38FlashNextOnPoolFront,
   HarnessReasoningLevel, ReasoningOff, ReasoningStandard, ReasoningMaximum, harness_reasoning_level_wire,
   harness_openrouter_level_effort, harness_reasoning_kwargs_for, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
   harness_unit_model_id, harness_serving_unit_wire,
@@ -93,6 +93,7 @@ fn harness_hosted_route_for(unit: HarnessServingUnit) -> HarnessHostedRoute? {
     DeepseekV4FlashOnVllm => none
     Glm53FlashOnVllm => none
     Qwen3_8_27bOnNinfer => none
+    Qwen38FlashNextOnPoolFront => none
     NemotronUltraFreeOnOpenRouter => Present { value: HarnessHostedRoute {
       unit: unit,
       url: openrouter_chat_completions_url,

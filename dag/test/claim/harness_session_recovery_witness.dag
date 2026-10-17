@@ -6,13 +6,15 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.http.header_dump { HeaderDumpRead }
 import gunbc.harness.harness_turn { HarnessPostOutcome, harness_post_drew_no_response, harness_route_is_fleet_engine }
 import gunbc.harness.harness_session_recovery {
-  UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionUnresumable, SessionRecoveryMalformed, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending,
+  UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionUnresumable, SessionRecoveryMalformed, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryAwaitingCapacity,
+  PoolCapacityObservation, CapacityNotAsked, CapacityServing, CapacityNotServing, CapacityUnobserved,
+  session_event_capacity_wait, session_event_capacity_resumed, session_capacity_wait_since_for, session_capacity_wait_budget_seconds,
   harness_unexplained_refusal, session_messages_validation, session_conversation_from_request, session_conversation_messages,
   session_event_recovery_needed, session_event_resumed, session_recovery_of_events, session_resume_bound,
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationRefused, continuation_decision,
+  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationRefused, ContinuationCapacityExpired, continuation_decision,
 }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
@@ -57,9 +59,13 @@ fn recovery_lines(request: String, rounds: Int) -> List<String> {
 }
 
 fn prior_with(recovery: SessionRecovery) -> PriorAttemptFacts {
+  prior_observing(recovery: recovery, capacity: CapacityNotAsked)
+}
+
+fn prior_observing(recovery: SessionRecovery, capacity: PoolCapacityObservation) -> PriorAttemptFacts {
   PriorAttemptFacts {
     node_id: "n1", attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
-    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery, verification_retry: RefusedRetryOperatorOnly,
+    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery, capacity: capacity, verification_retry: RefusedRetryOperatorOnly,
   }
 }
 
@@ -76,6 +82,7 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
             resumes_made == 0 && resume_round == 38 && list_length(items: interrupted_calls) == 0
               && any(causes, c => c.contains("req_2ae5021ab9c56e6eb7fe1707af067e27"))
           SessionRecoveryNone => false
+          SessionRecoveryAwaitingCapacity { cause: _, since: _, budget_seconds: _, resumes_made: _, capacity_resumes: _, interrupted_calls: _, resume_round: _ } => false
           SessionRecoveryMalformed { mismatch: _ } => false
         })
   }
@@ -176,4 +183,119 @@ test fn s3_claim_10_a_recovery_needed_line_without_a_cause_refuses_typed() -> Bo
       ContinuationRefused { reason } => reason.contains("cause")
       _ => false
     })
+}
+
+// POOL-FRONT-ROUTE-1. A turn held by the front's 503 is a CAPACITY WAIT: its own event kind, its own tally, its own
+// recorded budget, woken by a capacity observation. It never spends session_resume_bound, which counts unexplained
+// engine refusals only.
+fn wait_lines(request: String, round: Int, since: Int) -> List<String> {
+  [session_event_capacity_wait(round: round, held: 3, since: since, validation: validation_of(request: request))]
+}
+
+fn waiting_recovery(lines: List<String>) -> SessionRecovery {
+  session_recovery_of_events(lines: lines)
+}
+
+fn decision_observing(lines: List<String>, capacity: PoolCapacityObservation) -> ContinuationDecision {
+  continuation_decision(prior: Present { value: prior_observing(recovery: waiting_recovery(lines: lines), capacity: capacity) })
+}
+
+test fn pool_claim_a_503_held_turn_is_a_capacity_wait_that_holds_without_spending_a_resume() -> Bool {
+  let lines = wait_lines(request: validated_request(), round: 12, since: 1000)
+  (match waiting_recovery(lines: lines) {
+    SessionRecoveryAwaitingCapacity { cause, since, budget_seconds, resumes_made, capacity_resumes, interrupted_calls: _, resume_round } =>
+      resumes_made == 0 && capacity_resumes == 0 && resume_round == 12 && since == 1000 && budget_seconds == session_capacity_wait_budget_seconds
+        && cause.contains("503") && cause.contains("no TLS card")
+    _ => false
+  }) && (match decision_observing(lines: lines, capacity: CapacityNotServing { at: 1060 }) {
+    ContinuationHold { reason } => reason.contains("no resume is spent")
+    _ => false
+  })
+}
+
+// RED on e9ed7e4de1: there the fourth 503 hold read Ended with every cause, the lineage lost to a TLS-card outage.
+// Here N consecutive holds (N = 5, past session_resume_bound = 3), each woken and held again at the same round, leave
+// the S3 tally at zero and the lineage waiting.
+test fn pool_claim_consecutive_503_holds_past_the_resume_bound_do_not_end_the_lineage() -> Bool {
+  let wait = wait_lines(request: validated_request(), round: 12, since: 1000)
+  let woken = [session_event_capacity_resumed(ordinal: 1, round: 12)]
+  let lines = concat(concat(concat(wait, woken), concat(concat(wait, woken), concat(wait, woken))), concat(concat(wait, woken), wait))
+  session_resume_bound == 3
+    && (match waiting_recovery(lines: lines) {
+      SessionRecoveryAwaitingCapacity { cause: _, since: _, budget_seconds: _, resumes_made, capacity_resumes, interrupted_calls: _, resume_round: _ } => resumes_made == 0 && capacity_resumes == 4
+      _ => false
+    })
+    && (match decision_observing(lines: lines, capacity: CapacityNotServing { at: 1100 }) {
+      ContinuationHold { reason } => reason.contains("waiting for capacity")
+      _ => false
+    })
+}
+
+// A capacity observation wakes the resume of the SAME attempt (so the same conversation and x-pool-session), numbered
+// after every earlier resume of either kind, and the S3 bound is untouched by it.
+test fn pool_claim_a_capacity_observation_wakes_the_same_session() -> Bool {
+  let wait = wait_lines(request: validated_request(), round: 12, since: 1000)
+  let woken = [session_event_capacity_resumed(ordinal: 1, round: 12)]
+  let lines = concat(concat(wait, woken), wait)
+  (match decision_observing(lines: lines, capacity: CapacityServing { at: 1500 }) {
+    ContinuationResume { reason, attempt_key, ordinal, causes: _ } => attempt_key == "a1" && ordinal == 2 && reason.contains("is not spent")
+    _ => false
+  }) && (match waiting_recovery(lines: concat(lines, [session_event_capacity_resumed(ordinal: 2, round: 12)])) {
+    SessionRecoveryNone => true
+    _ => false
+  })
+}
+
+// A capacity that is serving resumes however long the wait lasted; only continued absence past the recorded budget
+// reaches the wait's own terminal, which is not Ended and not Refused. An observation that could not be made, or was
+// not asked, refuses rather than guessing either answer.
+test fn pool_claim_a_wait_past_its_budget_reaches_its_own_typed_terminal() -> Bool {
+  let lines = wait_lines(request: validated_request(), round: 12, since: 1000)
+  let past = 1000 + session_capacity_wait_budget_seconds + 1
+  (match decision_observing(lines: lines, capacity: CapacityNotServing { at: past }) {
+    ContinuationCapacityExpired { reason, waited_seconds, budget_seconds } =>
+      waited_seconds == session_capacity_wait_budget_seconds + 1 && budget_seconds == session_capacity_wait_budget_seconds && reason.contains("the session was not refused by the engine")
+    _ => false
+  }) && (match decision_observing(lines: lines, capacity: CapacityNotServing { at: 1000 + session_capacity_wait_budget_seconds }) {
+    ContinuationHold { reason: _ } => true
+    _ => false
+  }) && (match decision_observing(lines: lines, capacity: CapacityServing { at: past }) {
+    ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true
+    _ => false
+  }) && (match decision_observing(lines: lines, capacity: CapacityUnobserved { reason: "key rejected" }) {
+    ContinuationRefused { reason } => reason.contains("key rejected")
+    _ => false
+  }) && (match decision_observing(lines: lines, capacity: CapacityNotAsked) {
+    ContinuationRefused { reason: _ } => true
+    _ => false
+  })
+}
+
+// Re-holding the same round does not restart the budget; a later round opens a window of its own. A wait with an
+// interrupted tool effect holds as not resumable whatever the front says.
+test fn pool_claim_a_rehold_keeps_the_window_and_an_interrupted_effect_still_holds() -> Bool {
+  let first = wait_lines(request: validated_request(), round: 12, since: 1000)
+  let lines = concat(concat(first, [session_event_capacity_resumed(ordinal: 1, round: 12)]), wait_lines(request: validated_request(), round: 12, since: 5000))
+  session_capacity_wait_since_for(lines: first, round: 12, now: 5000) == 1000
+    && session_capacity_wait_since_for(lines: first, round: 13, now: 5000) == 5000
+    && (match waiting_recovery(lines: lines) {
+      SessionRecoveryAwaitingCapacity { cause: _, since, budget_seconds: _, resumes_made: _, capacity_resumes: _, interrupted_calls: _, resume_round: _ } => since == 1000
+      _ => false
+    })
+    && (match decision_observing(lines: wait_lines(request: interrupted_request(), round: 7, since: 1000), capacity: CapacityServing { at: 2000 }) {
+      ContinuationHold { reason } => reason.contains("c2") && reason.contains("not resumable")
+      _ => false
+    })
+}
+
+// The S3 count bound is unchanged for unexplained refusals, even interleaved with capacity waits.
+test fn pool_claim_capacity_waits_do_not_move_the_s3_bound() -> Bool {
+  let needed = recovery_lines(request: validated_request(), rounds: 38)
+  let resumed = [session_event_resumed(ordinal: 1, round: 38, cause: "c")]
+  let waited = concat(wait_lines(request: validated_request(), round: 40, since: 1), [session_event_capacity_resumed(ordinal: 1, round: 40)])
+  let lines = concat(concat(concat(needed, resumed), waited), concat(concat(concat(needed, resumed), waited), concat(concat(needed, resumed), concat(waited, needed))))
+  match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
+    ContinuationEnded { reason } => reason.contains("every recorded cause") && reason.contains("bound of 3")
+    _ => false
+  }
 }

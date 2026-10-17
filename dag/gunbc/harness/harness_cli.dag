@@ -30,7 +30,7 @@ import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, rev
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_context_budget_for }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, NemotronUltraFreeOnOpenRouter }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, NemotronUltraFreeOnOpenRouter, harness_capped_max_tokens }
 import gunbc.harness.harness_hosted_route { HarnessBackendAccess, BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint, harness_hosted_backend_access, harness_hosted_access_wire }
 import gunbc.serving.turn_admission {
   ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire,
@@ -248,7 +248,7 @@ fn harness_macbook_config(backend: HarnessBoundBackend) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend.url,
     model: backend.model as String,
-    max_tokens: harness_default_max_tokens,
+    max_tokens: harness_capped_max_tokens(unit: backend.unit, asked: harness_default_max_tokens),
     serving_unit: backend.unit,
     reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
@@ -293,6 +293,11 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
       ExitSuccess
     TurnCompletedByArtifact { path: _, steps_taken: _ } => ExitSuccess
     TurnStepBudgetExhausted { steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    // A 503-HELD TURN IS NOT A PROVIDER TERMINAL AND NOT A REFUSAL OF THE REQUEST: it exits 1 with the pool-no-capacity
+    // label (the exit record's reason), and the stream it wrote carries turn.capacity_wait, so the belt's continuation
+    // decision reads AwaitingCapacity, HOLDS while the front reports no TLS card, and RESUMES the same session when it
+    // does -- without spending session_resume_bound, which counts unexplained engine refusals only.
+    TurnPoolNoCapacity { retries: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnTransportRefused { detail: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnResponseUnreadable { cause: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnBackendRefusedUnexplained { cause: _, resumable: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)

@@ -26,10 +26,11 @@ import gunbc.harness.harness_hosted_route {
 import extdeps.openrouter.openrouter {
   openrouter_decode_rate_limited, openrouter_rate_limit_wire,
 }
-import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread }
+import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread, http_header_dump_status }
+import gunbc.harness.harness_operator_route { OperatorRoundFault, OperatorNoCapacity, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost, operator_round_fault, operator_pinned_post_request }
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, harness_unexplained_refusal, session_messages_validation,
-  session_validation_resumable, session_event_recovery_needed, session_cause_text,
+  session_validation_resumable, session_event_recovery_needed, session_cause_text, session_event_capacity_wait, session_event_capacity_resumed, session_capacity_wait_since_for, SessionRecoveryAwaitingCapacity,
   SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events, session_conversation_from_request,
   session_conversation_messages, session_validation_interrupted_ids, session_event_resumed, session_resume_bound,
 }
@@ -629,6 +630,7 @@ type HarnessTurnOutcome
   | TurnHostedQuotaFull { wire: String, steps_taken: Int }
   | TurnHostedQuotaUnleasable { detail: String, steps_taken: Int }
   | TurnHostedFailure { failure: HostedHttpFailure, steps_taken: Int }
+  | TurnPoolNoCapacity { retries: Int, steps_taken: Int }
 
 fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
   match outcome {
@@ -654,6 +656,7 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnHostedQuotaFull { wire: _, steps_taken: _ } => "hosted-quota-full"
     TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => "hosted-quota-unleasable"
     TurnHostedFailure { failure: f, steps_taken: _ } => hosted_http_failure_label(f: f)
+    TurnPoolNoCapacity { retries: _, steps_taken: _ } => "pool-no-capacity"
   }
 }
 
@@ -723,6 +726,14 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
       join([
         "after ", to_string(value: k), " tool rounds ", hosted_http_failure_wire(f: f),
         "; the turn stopped rather than retrying, and a caller that waits owns when it asks again",
+      ], "")
+    TurnPoolNoCapacity { retries: r, steps_taken: n } =>
+      join([
+        "after ", to_string(value: n), " tool rounds the pool front answered 503 for ", to_string(value: r + 1),
+        " attempts: no TLS card is serving, so nothing was forwarded and the request had no effect. The session",
+        " held for the transport retry policy's whole budget (each wait recorded) and is recorded as a CAPACITY WAIT, not",
+        " an ended session and not an engine refusal: its conversation is intact and it resumes, in the same session,",
+        " when the front reports a TLS card serving",
       ], "")
     TurnTransportRefused { detail: d } => d
     TurnResponseUnreadable { cause: c } => c
@@ -811,25 +822,34 @@ fn harness_tool_contract_wire(shape: HarnessWireShape) -> String {
 // format; that rule was this harness's invention, and it stopped a sixteen-round Think Max run that
 // had done nothing wrong. The encoder's one assertion, a MISSING closer under thinking, stands.
 fn harness_split_text_block(unit: HarnessServingUnit, text: String) -> List<HarnessWireBlock> {
-  let parts = split(s: text, delimiter: harness_unit_thinking_end_token(unit: unit) as String)
-  match parts.first() {
+  match harness_unit_thinking_end_token(unit: unit) {
     Absent => [WireTextBlock { text: text }]
-    Present { value: reasoning } =>
-      if list_length(items: parts) < 2 {
-        [WireTextBlock { text: text }]
-      } else {
-        let speech = join(parts.skip(n: 1), harness_unit_thinking_end_token(unit: unit) as String)
-        concat(
-          if reasoning == "" { [] } else { [WireThinkingBlock { thinking: reasoning }] },
-          if speech == "" { [] } else { [WireTextBlock { text: speech }] },
-        )
+    Present { value: token } => {
+      let parts = split(s: text, delimiter: token as String)
+      match parts.first() {
+        Absent => [WireTextBlock { text: text }]
+        Present { value: reasoning } =>
+          if list_length(items: parts) < 2 {
+            [WireTextBlock { text: text }]
+          } else {
+            let speech = join(parts.skip(n: 1), token as String)
+            concat(
+              if reasoning == "" { [] } else { [WireThinkingBlock { thinking: reasoning }] },
+              if speech == "" { [] } else { [WireTextBlock { text: speech }] },
+            )
+          }
       }
+    }
   }
 }
 
 fn harness_split_inline_reasoning(unit: HarnessServingUnit, blocks: List<HarnessWireBlock>) -> List<HarnessWireBlock> {
   flat_map(blocks, b => match b {
-    WireTextBlock { text } => if text.contains(harness_unit_thinking_end_token(unit: unit) as String) { harness_split_text_block(unit: unit, text: text) } else { [b] }
+    WireTextBlock { text } =>
+      match harness_unit_thinking_end_token(unit: unit) {
+        Absent => [b]
+        Present { value: token } => if text.contains(token as String) { harness_split_text_block(unit: unit, text: text) } else { [b] }
+      }
     WireThinkingBlock { thinking: _ } => [b]
     WireToolUseBlock { id: _, name: _, input: _ } => [b]
   })
@@ -875,7 +895,10 @@ fn harness_chat_assistant_message_json(unit: HarnessServingUnit, blocks: List<Ha
   json_object(concat(concat(
     [json_kv(key: "role", value: json_string(s: "assistant")),
      json_kv(key: "content", value: json_string(s: speech))],
-    if reasoning == "" { [] } else { [json_kv(key: harness_unit_reasoning_field(unit: unit) as String, value: json_string(s: reasoning))] }),
+    match harness_unit_reasoning_field(unit: unit) {
+      Absent => []
+      Present { value: field } => if reasoning == "" { [] } else { [json_kv(key: field as String, value: json_string(s: reasoning))] }
+    }),
     if list_length(items: calls) == 0 { [] } else { [json_kv(key: "tool_calls", value: json_array(elements: calls))] }))
 }
 
@@ -1159,6 +1182,7 @@ type HarnessPostedRound {
   inflight_release_detail: String?
   hosted_failure: HostedHttpFailure?
   unexplained: UnexplainedEngineRefusal?
+  pool_fault: OperatorRoundFault?
   transport_retries: List<String>
 }
 
@@ -1207,6 +1231,7 @@ fn harness_post_round(
         inflight_release_detail: none,
         hosted_failure: none,
         unexplained: none,
+        pool_fault: none,
         transport_retries: [] as List<String>,
       } }
     ReasoningKwargsAdmitted { kwargs } =>
@@ -1275,7 +1300,7 @@ fn harness_hosted_round_charged_post(config: HarnessTurnConfig, round: Int, head
           let hold = HostedInflightHeld { reference: r, store: st }
           let posted = harness_send_round(config: config, round: round, header_file: Present { value: header_file }, wire_request_detail: wire_request_detail)
           let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the transport returned" as NonEmptyStr)
-          RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released, hosted_failure: posted.hosted_failure, unexplained: posted.unexplained, transport_retries: posted.transport_retries } }
+          RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released, hosted_failure: posted.hosted_failure, unexplained: posted.unexplained, pool_fault: posted.pool_fault, transport_retries: posted.transport_retries } }
         }
       }
   }
@@ -1305,6 +1330,7 @@ fn harness_prepare_round(
       inflight_release_detail: none,
       hosted_failure: none,
       unexplained: none,
+      pool_fault: none,
       transport_retries: [] as List<String>,
     } }
   } else {
@@ -1357,6 +1383,7 @@ fn harness_send_round(
           inflight_release_detail: none,
           hosted_failure: Present { value: f },
           unexplained: none,
+          pool_fault: none,
           transport_retries: posted.retries,
         }
       Absent =>
@@ -1370,13 +1397,20 @@ fn harness_send_round(
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
         hosted_failure: none,
-        unexplained: harness_unexplained_refusal(
-          route_qualifies: harness_route_is_fleet_engine(access: config.backend_access),
-          success: posted.success,
-          body: posted.body,
-          headers: posted.headers,
-          request_body: Filesystem.Read(path: config.request_scratch_path as String).content,
-        ),
+        // A POOL FRONT'S OWN TYPED ANSWER (503 no TLS card, a certificate that is not the pinned one) IS EXPLAINED:
+        // it is the front speaking or the handshake refusing, so it is never classified as an engine that refused
+        // for no reason (the S3 recovery would otherwise resume a session against a front that has no card).
+        unexplained: match posted.fault {
+          Present { value: _ } => none
+          Absent => harness_unexplained_refusal(
+            route_qualifies: harness_route_is_fleet_engine(access: config.backend_access),
+            success: posted.success,
+            body: posted.body,
+            headers: posted.headers,
+            request_body: Filesystem.Read(path: config.request_scratch_path as String).content,
+          )
+        },
+        pool_fault: posted.fault,
         transport_retries: posted.retries,
       }
     } else if !kept.success {
@@ -1388,6 +1422,7 @@ fn harness_send_round(
         inflight_release_detail: none,
         hosted_failure: none,
         unexplained: none,
+        pool_fault: none,
         transport_retries: posted.retries,
       }
     } else {
@@ -1397,6 +1432,7 @@ fn harness_send_round(
         inflight_release_detail: none,
         hosted_failure: none,
         unexplained: none,
+        pool_fault: none,
         transport_retries: posted.retries,
       }
     }
@@ -1409,6 +1445,7 @@ type HarnessPostOutcome {
   body: String
   success: Bool
   headers: HttpHeaderDump?
+  fault: OperatorRoundFault?
   retries: List<String>
 }
 
@@ -1457,6 +1494,28 @@ fn harness_post_drew_no_response(posted: HarnessPostOutcome) -> Bool {
   })
 }
 
+// THE POOL FRONT'S 503 IS A HOLD, NOT A FAILURE: no TLS card serving means nothing was forwarded, so the request had
+// no effect and the front is the one party that knows capacity will return. It waits on the same bounded,
+// recorded policy as a request that drew no response, and when that budget ends the turn is TurnPoolNoCapacity --
+// typed, resumable, not ended. A refused certificate is never retried: the same certificate fails the same way.
+fn harness_post_is_retryable(posted: HarnessPostOutcome) -> Bool {
+  match posted.fault {
+    Present { value: OperatorNoCapacity } => true
+    Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
+    Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
+    Absent => harness_post_drew_no_response(posted: posted)
+  }
+}
+
+fn harness_post_retry_reason(posted: HarnessPostOutcome) -> String {
+  match posted.fault {
+    Present { value: OperatorNoCapacity } => "pool front answered 503 (no TLS card serving)"
+    Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => "certificate not pinned"
+    Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => "certificate not verified for the front's host"
+    Absent => "no response"
+  }
+}
+
 fn harness_post_may_retry(config: HarnessTurnConfig) -> Bool {
   match config.backend_access {
     BackendAdmittedBySeat => true
@@ -1474,18 +1533,35 @@ fn harness_post_json_retrying(config: HarnessTurnConfig, header_file: NonEmptySt
   let policy = harness_transport_retry_policy_now
   let offset = transport_retry_offset_seconds(policy: policy, session_key: config.request_scratch_path as String)
   let n = list_length(items: retried)
-  if harness_post_may_retry(config: config) && harness_post_drew_no_response(posted: posted) && transport_retry_fits(policy: policy, waited_seconds: waited, retries_so_far: n, offset_seconds: offset) {
+  if harness_post_may_retry(config: config) && harness_post_is_retryable(posted: posted) && transport_retry_fits(policy: policy, waited_seconds: waited, retries_so_far: n, offset_seconds: offset) {
     let delay = transport_retry_delay_seconds(policy: policy, retries_so_far: n) + offset
     let slept = sleep_delay_seconds_second_carrier_projection(duration: second(count: delay))
     harness_post_json_retrying(
       config: config,
       header_file: header_file,
-      retried: concat(retried, [join(["no response to attempt ", to_string(value: n + 1), "; retried after ", to_string(value: delay), " s", if slept { "" } else { " (the delay refused)" }], "")]),
+      retried: concat(retried, [join([harness_post_retry_reason(posted: posted), " to attempt ", to_string(value: n + 1), "; retried after ", to_string(value: delay), " s", if slept { "" } else { " (the delay refused)" }], "")]),
       waited: waited + delay,
     )
   } else {
-    HarnessPostOutcome { body: posted.body, success: posted.success, headers: posted.headers, retries: retried }
+    HarnessPostOutcome { body: posted.body, success: posted.success, headers: posted.headers, fault: posted.fault, retries: retried }
   }
+}
+
+type HarnessRawPost {
+  body: String
+  success: Bool
+  curl_exit: Int?
+}
+
+fn harness_post_unpinned(config: HarnessTurnConfig, hf: NonEmptyStr, max_seconds: NonEmptyStr) -> HarnessRawPost {
+  let posted = http.Client.PostJsonFromFileWithHeaderFile(
+    url: config.backend_url as NonEmptyStr,
+    request_body_file: config.request_scratch_path as String as NonEmptyStr,
+    header_file: hf,
+    response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
+    max_seconds: max_seconds,
+  )
+  HarnessRawPost { body: posted.body, success: posted.success, curl_exit: none }
 }
 
 fn harness_post_json_once(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> HarnessPostOutcome {
@@ -1496,21 +1572,47 @@ fn harness_post_json_once(config: HarnessTurnConfig, header_file: NonEmptyStr?) 
         request_body_file: config.request_scratch_path as String as NonEmptyStr,
         max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
       )
-      HarnessPostOutcome { body: posted.body, success: posted.success, headers: none, retries: [] as List<String> }
+      HarnessPostOutcome { body: posted.body, success: posted.success, headers: none, fault: none, retries: [] as List<String> }
     }
     Present { value: hf } => {
-      let posted = http.Client.PostJsonFromFileWithHeaderFile(
-        url: config.backend_url as NonEmptyStr,
-        request_body_file: config.request_scratch_path as String as NonEmptyStr,
-        header_file: hf,
-        response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
-        max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
-      )
+      let max_seconds = to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr
+      // ONE POST, WHICHEVER BACKEND: only the transport arguments differ. The operator endpoint is the pool's TLS
+      // front, so its post pins the certificate (the same operation shape plus the pinned files); a refused pin
+      // fails in the handshake, before the request body is sent.
+      let posted = match config.backend_access {
+        BackendAdmittedByOperatorEndpoint { header_file: _ } => {
+          let req = operator_pinned_post_request(url: config.backend_url as NonEmptyStr, request_body_file: config.request_scratch_path as String as NonEmptyStr, response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr, max_seconds: max_seconds, hf: hf)
+          // RESIDUAL, REVIEW-GUARDED: an operation takes fields, not a record, so each field is copied from req here by
+          // hand; the claims render the argv from req and cannot see this copy. A repointed field is the seam.
+          let pinned = http.Client.PostJsonFromFileWithHeaderFilePinned(
+            url: req.url,
+            request_body_file: req.request_body_file,
+            header_file: req.header_file,
+            response_headers_file: req.response_headers_file,
+            ca_file: req.ca_file,
+            pinned_pubkey_file: req.pinned_pubkey_file,
+            max_seconds: req.max_seconds,
+          )
+          HarnessRawPost { body: pinned.body, success: pinned.success, curl_exit: Present { value: pinned.exit_code } }
+        }
+        BackendAdmittedBySeat => harness_post_unpinned(config: config, hf: hf, max_seconds: max_seconds)
+        BackendAdmittedByHostedQuota { header_file: _, quota: _ } => harness_post_unpinned(config: config, hf: hf, max_seconds: max_seconds)
+      }
       let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
+      let header_dump = if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } }
       HarnessPostOutcome {
         body: posted.body,
         success: posted.success,
-        headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+        headers: Present { value: header_dump },
+        fault: match config.backend_access {
+          BackendAdmittedByOperatorEndpoint { header_file: _ } =>
+            match posted.curl_exit {
+              Present { value: x } => operator_round_fault(success: posted.success, curl_exit: x, status: http_header_dump_status(dump: header_dump))
+              Absent => none
+            }
+          BackendAdmittedBySeat => none
+          BackendAdmittedByHostedQuota { header_file: _, quota: _ } => none
+        },
         retries: [] as List<String>,
       }
     }
@@ -1700,6 +1802,39 @@ fn harness_turn_after_post(
             }
           }
           Absent =>
+            match posted_round.pool_fault {
+              Present { value: OperatorNoCapacity } => {
+                let held = list_length(items: posted_round.transport_retries)
+                match now_epoch_seconds() {
+                  Absent => TurnTransportRefused { detail: "the pool front answered 503 and the clock could not be read as epoch seconds, so the capacity wait cannot record when it began; the session stops visibly rather than waiting with no budget" }
+                  Present { value: now } => {
+                    let since = session_capacity_wait_since_for(lines: events_after_wire, round: steps_taken + 1, now: now)
+                    let failed = concat(events_after_wire, [
+                      harness_event_turn_failed(message: c),
+                      session_event_capacity_wait(round: steps_taken + 1, held: held, since: since, validation: session_messages_validation(messages: messages)),
+                    ])
+                    match harness_write_events(config: config, events: failed) {
+                      HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                      HarnessEventsWritten => TurnPoolNoCapacity { retries: held, steps_taken: steps_taken }
+                    }
+                  }
+                }
+              }
+              Present { value: OperatorCertificateNotPinned { curl_exit: x } } => {
+                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
+                match harness_write_events(config: config, events: failed) {
+                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the pool front's certificate is not the pinned one (curl exit ", to_string(value: x), "); the request was refused in the handshake and no byte of it was sent"], "") }
+                }
+              }
+              Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: x } } => {
+                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
+                match harness_write_events(config: config, events: failed) {
+                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the pool front's certificate did not verify for its host (curl exit ", to_string(value: x), "; the chain or a missing IP SAN, not a different certificate); the request was refused in the handshake and no byte of it was sent"], "") }
+                }
+              }
+              Absent =>
             match posted_round.unexplained {
               Present { value: refusal } => {
                 // THE SESSION STOPPED AT THE STATE `messages` HOLDS: every call of the last answered
@@ -1724,6 +1859,7 @@ fn harness_turn_after_post(
                   HarnessEventsWritten => TurnResponseUnreadable { cause: c }
                 }
               }
+            }
             }
         }
       HarnessResponseParsed { blocks: raw_blocks, stop_reason, usage: usage_read } =>
@@ -2100,43 +2236,55 @@ fn harness_resume_turn(config: HarnessTurnConfig, step_budget: Int) -> HarnessTu
     match session_recovery_of_events(lines: lines) {
       SessionRecoveryNone => TurnResumeRefused { cause: "the session's stream records no recovery-needed refusal that is still unanswered, so there is nothing to resume" }
       SessionRecoveryMalformed { mismatch: mismatch } => TurnResumeRefused { cause: join(["the session's recovery record is unreadable, so it is not resumable: ", mismatch], "") }
+      SessionRecoveryAwaitingCapacity { cause: _, since: _, budget_seconds: _, resumes_made: made, capacity_resumes: woken, interrupted_calls: interrupted, resume_round: round } =>
+        harness_resume_from_round(config: config, step_budget: step_budget, prior_content: prior.content, round: round, interrupted: interrupted, resumed_event: session_event_capacity_resumed(ordinal: made + woken + 1, round: round))
       SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: round } =>
         if made >= session_resume_bound {
           TurnResumeRefused { cause: join(["the session has already been resumed ", to_string(value: made), " times, the bound; causes: ", join(causes, " | ")], "") }
-        } else if list_length(items: interrupted) > 0 {
-          TurnResumeRefused { cause: join(["the session stopped with tool calls that have no recorded result (", join(interrupted, ", "), "); their effects are not established, so it is not resumable"], "") }
         } else {
-          let request = Filesystem.Read(path: harness_wire_log_path(config: config, round: round, kind: ".request.json"))
-          if !request.success {
-            TurnResumeRefused { cause: join(["the refused round's request ", harness_wire_log_path(config: config, round: round, kind: ".request.json"), " could not be read: ", request.error], "") }
+          harness_resume_from_round(config: config, step_budget: step_budget, prior_content: prior.content, round: round, interrupted: interrupted, resumed_event: session_event_resumed(ordinal: made + 1, round: round, cause: join(causes, " | ")))
+        }
+    }
+  }
+}
+
+// THE SHARED RESUME: the refused round's request is the state, the conversation is validated, the resumed event
+// (S3's turn.resumed or a capacity wake's turn.capacity_resumed, each counted apart) is appended, and the loop
+// picks up at that round with the steps already taken. The same conversation, the same events file, the same
+// x-pool-session: only what is recorded as answering the stop differs.
+fn harness_resume_from_round(config: HarnessTurnConfig, step_budget: Int, prior_content: String, round: Int, interrupted: List<String>, resumed_event: String) -> HarnessTurnOutcome {
+  if list_length(items: interrupted) > 0 {
+    TurnResumeRefused { cause: join(["the session stopped with tool calls that have no recorded result (", join(interrupted, ", "), "); their effects are not established, so it is not resumable"], "") }
+  } else {
+    let request = Filesystem.Read(path: harness_wire_log_path(config: config, round: round, kind: ".request.json"))
+    if !request.success {
+      TurnResumeRefused { cause: join(["the refused round's request ", harness_wire_log_path(config: config, round: round, kind: ".request.json"), " could not be read: ", request.error], "") }
+    } else {
+      let leading_system = match config.wire_shape { OpenAiChatCompletionsShape => true AnthropicMessagesShape => false }
+      match session_conversation_from_request(request_body: request.content, leading_system: leading_system) {
+        Absent => TurnResumeRefused { cause: "the refused round's request does not decode into a conversation" }
+        Present { value: conversation } => {
+          let messages = session_conversation_messages(conversation: conversation)
+          let validation = session_messages_validation(messages: messages)
+          if !session_validation_resumable(v: validation) {
+            TurnResumeRefused { cause: join(["the refused round's conversation is not a validated state (unrecorded calls: ", join(session_validation_interrupted_ids(v: validation), ", "), ")"], "") }
           } else {
-            let leading_system = match config.wire_shape { OpenAiChatCompletionsShape => true AnthropicMessagesShape => false }
-            match session_conversation_from_request(request_body: request.content, leading_system: leading_system) {
-              Absent => TurnResumeRefused { cause: "the refused round's request does not decode into a conversation" }
-              Present { value: conversation } => {
-                let messages = session_conversation_messages(conversation: conversation)
-                let validation = session_messages_validation(messages: messages)
-                if !session_validation_resumable(v: validation) {
-                  TurnResumeRefused { cause: join(["the refused round's conversation is not a validated state (unrecorded calls: ", join(session_validation_interrupted_ids(v: validation), ", "), ")"], "") }
-                } else {
-                  let resumed = concat(split(s: prior.content, delimiter: "\n") |> filter(l => trim(l) != ""), [session_event_resumed(ordinal: made + 1, round: round, cause: join(causes, " | "))])
-                  match harness_write_events(config: config, events: resumed) {
-                    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-                    HarnessEventsWritten =>
-                      harness_turn_loop(
-                        config: config,
-                        messages: messages,
-                        steps_remaining: step_budget - (round - 1),
-                        steps_taken: round - 1,
-                        events: resumed,
-                        repairs_used: 0,
-                      )
-                  }
-                }
-              }
+            let resumed = concat(split(s: prior_content, delimiter: "\n") |> filter(l => trim(l) != ""), [resumed_event])
+            match harness_write_events(config: config, events: resumed) {
+              HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+              HarnessEventsWritten =>
+                harness_turn_loop(
+                  config: config,
+                  messages: messages,
+                  steps_remaining: step_budget - (round - 1),
+                  steps_taken: round - 1,
+                  events: resumed,
+                  repairs_used: 0,
+                )
             }
           }
         }
+      }
     }
   }
 }
@@ -2321,6 +2469,7 @@ fn harness_outcome_artifact_path(outcome: HarnessTurnOutcome) -> String? {
     TurnHostedQuotaFull { wire: _, steps_taken: _ } => none
     TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => none
     TurnHostedFailure { failure: _, steps_taken: _ } => none
+    TurnPoolNoCapacity { retries: _, steps_taken: _ } => none
   }
 }
 
@@ -2895,6 +3044,7 @@ fn harness_outcome_steps_taken(outcome: HarnessTurnOutcome) -> Int {
     TurnHostedQuotaFull { wire: _, steps_taken: n } => n
     TurnHostedQuotaUnleasable { detail: _, steps_taken: n } => n
     TurnHostedFailure { failure: _, steps_taken: n } => n
+    TurnPoolNoCapacity { retries: _, steps_taken: n } => n
   }
 }
 

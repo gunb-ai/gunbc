@@ -40,11 +40,14 @@ import gunbc.spark.vllm_observed {
 }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_serving_unit_wire }
 import extdeps.http.client
+import extdeps.http.header_dump { HeaderDumpRead, http_header_dump_status }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.harness.harness_operator_route {
-  harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorHealthUnanswered, OperatorHealthUnhealthy, OperatorModelsRefused, OperatorModelsAnswered,
+  harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorProbeNotSent, OperatorModelsRefused, OperatorModelsAnswered,
+  OperatorRoundFault, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost, OperatorNoCapacity, operator_round_fault, operator_pinned_probe_request,
   OperatorRouteStanding, OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
   operator_route_standing, operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header,
-  operator_models_url, operator_health_url, operator_endpoint_origin,
+  operator_models_url, operator_endpoint_origin,
 }
 import extdeps.tools.curl { curl_exit_outcome, CurlCouldNotConnect, CurlOperationTimedOut }
 import extdeps.languages.json.parse {
@@ -107,6 +110,8 @@ fn harness_bounded_presence(url: String) -> HarnessBoundedPresence {
       CurlTransferCompleted => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
       CurlCouldNotResolveHost => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
       CurlTlsHandshakeFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlPeerFailedVerification => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlPinnedPubkeyMismatch => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
       CurlEmptyReply => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
       CurlReceiveFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
       CurlExitUnnamed { code: _ } => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
@@ -314,38 +319,49 @@ fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> Harness
 
 // THE OPERATOR ENDPOINT IS A ROUTE THE FLEET'S ENROLLMENT DOES NOT NAME, so it is observed beside the enrolled
 // routes and folded into the same roster (operator ruling: gunbc.design_ruling
-// harness_default_requirement_places_on_operator_endpoint). Two GETs, because one cannot tell a dead tunnel from
-// a rejected key: /health needs no authorization, so its absence is the tunnel or the server; /v1/models is read
-// with the Bearer header file, so its refusal is the key. A dead tunnel is HarnessBackendUnreachable, never an
-// empty roster entry.
+// harness_default_requirement_places_on_operator_endpoint). It is the inference pool's TLS front now, read by one
+// authorised GET of /pool/v1/models over the pinned certificate: the front answers 401 to a rejected key and the
+// pin refuses a different certificate before a byte is sent, so those are separate readings from a front that did
+// not answer. The probe is not a conversation, so its session identity is the probe's own fixed name.
+data harness_operator_probe_session: NonEmptyStr = "roster-probe" as NonEmptyStr
+
 fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorModelsReading {
-  match operator_health_url() {
-    Absent => OperatorHealthUnanswered { url: "the operator endpoint URL could not be composed" }
-    Present { value: health } =>
-      match harness_bounded_presence(url: health as String) {
-        HarnessConnectFailed { url: u, curl_exit: _ } => OperatorHealthUnanswered { url: u }
-        HarnessDeadline { url: u } => OperatorHealthUnanswered { url: u }
-        HarnessTransportUnread { url: u, curl_exit: _ } => OperatorHealthUnanswered { url: u }
-        HarnessResponded { status: st } =>
-          if st != "200" { OperatorHealthUnhealthy { url: health as String, status: st } } else {
-          match operator_models_url() {
-            Absent => OperatorModelsRefused { url: "the operator endpoint URL could not be composed" }
-            Present { value: models } =>
-              match operator_open_header(route: route) {
-                OperatorHeaderRefused { detail: d } => OperatorModelsRefused { url: join([models as String, " (", d, ")"], "") }
-                OperatorHeaderOpened { header_dir: dir, header_file: hf } => {
-                  let read = http.Client.GetFollowRedirectsBoundedWithHeaderFile(
-                    url: models,
-                    max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr,
-                    accept: "Accept: application/json" as NonEmptyStr,
-                    header_file: hf,
-                  )
-                  let closed = operator_close_header(header_dir: dir)
-                  if read.success { OperatorModelsAnswered { body: read.body } } else { OperatorModelsRefused { url: models as String } }
+  match operator_models_url() {
+    Absent => OperatorFrontUnanswered { url: "the operator endpoint URL could not be composed" }
+    Present { value: models } =>
+      match operator_open_header(route: route, session: harness_operator_probe_session) {
+        OperatorHeaderRefused { detail: d } => OperatorProbeNotSent { url: models as String, detail: d }
+        OperatorHeaderOpened { header_dir: dir, header_file: hf } => {
+          let req = operator_pinned_probe_request(url: models, dir: dir, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr, hf: hf)
+          // RESIDUAL, REVIEW-GUARDED: fields are copied from req by hand (an operation takes fields, not a record).
+          let read = http.Client.GetBoundedWithHeaderFilePinned(
+            url: req.url,
+            header_file: req.header_file,
+            response_headers_file: req.response_headers_file,
+            ca_file: req.ca_file,
+            pinned_pubkey_file: req.pinned_pubkey_file,
+            max_seconds: req.max_seconds,
+          )
+          let dump = Filesystem.Read(path: req.response_headers_file as String)
+          let status = if dump.success { http_header_dump_status(dump: HeaderDumpRead { text: dump.content }) } else { none }
+          let closed = operator_close_header(header_dir: dir)
+          if read.success {
+            OperatorModelsAnswered { body: read.body }
+          } else {
+            match operator_round_fault(success: read.success, curl_exit: read.exit_code, status: status) {
+              Present { value: OperatorCertificateNotPinned { curl_exit: x } } =>
+                OperatorFrontCertificateRefused { url: models as String, detail: join(["curl exit ", to_string(value: x), ": peer verification failed"], "") }
+              Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: x } } =>
+                OperatorFrontCertificateRefused { url: models as String, detail: join(["curl exit ", to_string(value: x), ": the certificate did not verify for the front's host (chain or missing IP SAN)"], "") }
+              Present { value: OperatorNoCapacity } => OperatorModelsRefused { url: models as String, status: "503" }
+              Absent =>
+                match status {
+                  Present { value: st } => OperatorModelsRefused { url: models as String, status: to_string(value: st) }
+                  Absent => OperatorFrontUnanswered { url: models as String }
                 }
-              }
+            }
           }
-          }
+        }
       }
   }
 }

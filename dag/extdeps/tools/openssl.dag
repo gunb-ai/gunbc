@@ -138,3 +138,45 @@ service openssl.Enc {
     }
   }
 }
+
+// `openssl x509 -noout -fingerprint -sha256` PRINTS THE SHA-256 OF A CERTIFICATE'S DER ENCODING as
+// colon-separated hex (docs.openssl.org/3.0/man1/openssl-x509/), the form a certificate is pinned by.
+// `openssl x509 -noout -pubkey` WRITES ITS PUBLIC KEY as PEM, the form curl --pinnedpubkey reads. Both
+// read a certificate FILE and carry no secret; the certificate is public.
+service openssl.X509 {
+  operation Sha256Fingerprint {
+    requires none
+    input { cert_file: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [openssl_program().invocation, "x509", "-in", "{cert_file}", "-noout", "-fingerprint", "-sha256"]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
+
+  operation PublicKeyPem {
+    requires none
+    input { cert_file: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [openssl_program().invocation, "x509", "-in", "{cert_file}", "-noout", "-pubkey"]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
+}

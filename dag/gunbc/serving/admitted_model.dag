@@ -2,7 +2,7 @@ module gunbc.serving.admitted_model
 
 import std.types { String, NonEmptyStr, List }
 import gunbc.harness.harness_reasoning_wire {
-  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter, Qwen3_8_27bOnNinfer,
+  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter, Qwen3_8_27bOnNinfer, Qwen38FlashNextOnPoolFront,
   harness_unit_model_id, harness_serving_unit_wire,
 }
 
@@ -54,6 +54,7 @@ fn serving_admitted_ids(unit: HarnessServingUnit) -> List<NonEmptyStr> {
     Glm53FlashOnVllm => [harness_unit_model_id(unit: Glm53FlashOnVllm), group_b_restoration_served_alias]
     NemotronUltraFreeOnOpenRouter => [] as List<NonEmptyStr>
     Qwen3_8_27bOnNinfer => [harness_unit_model_id(unit: Qwen3_8_27bOnNinfer)]
+    Qwen38FlashNextOnPoolFront => [harness_unit_model_id(unit: Qwen38FlashNextOnPoolFront)]
   }
 }
 

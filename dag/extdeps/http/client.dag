@@ -120,6 +120,12 @@ fn http_client_get_with_status_argv(url: NonEmptyStr, max_time: Second) -> List<
 // error status's body, which is where a hosted API's typed refusal lives. The response headers are dumped
 // to a caller-owned file (curl -D) because a refusal's retry hints (Retry-After, X-RateLimit-*) are headers
 // and --fail-with-body returns only the body.
+// PostJsonFromFileWithHeaderFilePinned AND GetBoundedWithHeaderFilePinned ARE THE SAME TWO REQUESTS TO AN
+// ENDPOINT WHOSE CERTIFICATE IS PINNED. Trust is the one certificate in ca_file (--cacert) AND the public key in
+// pinned_pubkey_file (--pinnedpubkey, which curl checks in addition to the chain, so a certificate some other
+// authority signed still fails); verification is never turned off. A mismatch is curl exit 51, 60 or 90
+// (extdeps.tools.curl CurlPeerFailedVerification, CurlPinnedPubkeyMismatch) and happens in the handshake, before any request byte is sent. The
+// exit code is an output because the caller must tell a refused certificate from an unreachable server.
 // PostStdinWithinUnixSocket, THE SAME BOUNDED POST OVER A UNIX SOCKET (curl --unix-socket, curl(1)):
 // the URL still names the scheme, authority and path the server routes on, but the connection is
 // made to the socket file and the kernel attests the caller to the server. The exit codes are
@@ -431,6 +437,62 @@ service http.Client {
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live endpoint; a transport that never connects, so the caller answers unreachable rather than fabricating a completion"
+    }
+  }
+
+  operation PostJsonFromFileWithHeaderFilePinned {
+    requires Network
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, header_file: NonEmptyStr, response_headers_file: NonEmptyStr, ca_file: NonEmptyStr, pinned_pubkey_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success", exit_code: Int from "exit_code" }
+    transport shell {
+      argv: [
+        "curl",
+        "--fail-with-body",
+        "-sS",
+        "--max-time", "{max_seconds}",
+        "--cacert", "{ca_file}",
+        "--pinnedpubkey", "{pinned_pubkey_file}",
+        "-D", "{response_headers_file}",
+        "-X", "POST",
+        "{url}",
+        "-H", "Content-Type: application/json",
+        "-H", "@{header_file}",
+        "--data", "@{request_body_file}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+    mock_response {
+      0 => { body: "", success: false, exit_code: 7 } "hermetic: no live endpoint; a transport that never connects, so the caller answers unreachable rather than fabricating a completion"
+    }
+  }
+
+  operation GetBoundedWithHeaderFilePinned {
+    requires Network
+    input { url: NonEmptyStr, header_file: NonEmptyStr, response_headers_file: NonEmptyStr, ca_file: NonEmptyStr, pinned_pubkey_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success", exit_code: Int from "exit_code" }
+    readonly
+    transport shell {
+      argv: [
+        "curl",
+        "--fail-with-body",
+        "-sS",
+        "--max-time", "{max_seconds}",
+        "--cacert", "{ca_file}",
+        "--pinnedpubkey", "{pinned_pubkey_file}",
+        "-D", "{response_headers_file}",
+        "-H", "@{header_file}",
+        "{url}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+    mock_response {
+      0 => { body: "", success: false, exit_code: 7 } "hermetic: no live front; the observation refuses rather than fabricate a model list"
     }
   }
 

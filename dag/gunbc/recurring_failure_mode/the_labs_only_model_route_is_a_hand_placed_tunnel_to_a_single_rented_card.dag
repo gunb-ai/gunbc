@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card: RecurringFailureMode = RecurringFailureMode {
+  identity: "the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: every harness worker of the dev lab had one model route, an ssh -L tunnel started by a hand-placed systemd --user unit on srv1 (127.0.0.1:18090) to one card the operator rented (ssh1.vast.ai:32062, ninfer-serve, model id qwen). When the operator's rental ended (2026-10-17 03:28Z) the tunnel failed and the route was an unreachable address no model declared: the lab had no inference at all, and nothing in the repository said what replaced it. A route that is an address, a unit and a rental none of which the repository models is a single point of failure that is invisible until it fails.",
+
+    "RECOGNITION RULE: a consumer whose only path to a model is a literal host:port plus a process the repository does not start. Ask what happens to the consumer when that one party stops, and who is told. The tell in the code is a route fact derived from a tunnel's LISTENER (harness_operator_route operator_endpoint_origin read operator_endpoint_tunnel.listener) rather than from a modeled upstream: the address a request is sent to cannot disagree with a forward nobody observed.",
+
+    "REPAIRED at the interface/realization/policy split (DESIGN section 3): the pool front is its own upstream interface (extdeps.pool.pool_front, cited to the pool operator's ctrl #2375/#2376), the lab's choice to use it is policy (harness_operator_route harness_operator_route), and the pinned HTTPS client is the realization (http.Client PostJsonFromFileWithHeaderFilePinned). The tunnel row, the /health probe and the old card's model id are DELETED, not left as a second path. A front with no TLS card serving answers 503, which is a typed capacity wait (TurnPoolNoCapacity): the session stays alive, never spends session_resume_bound, is woken by a pinned models probe of the SAME session, and past its own recorded budget (session_capacity_wait_budget_seconds) reaches its own terminal ContinuationCapacityExpired; it is not an unexplained engine refusal and not an ended session. The discriminating claims are test.claim.operator_endpoint_witness: request shape (bearer, x-pool-session, model id), a different certificate refused before any request, 503 typed, resume keeps the session, and the real client's argv inhabiting the supplied shape.",
+
+    "HARM: DESIGN section 5 externalized availability, silent until the card went. A lab with one hand-placed route cannot be qualified, resumed or moved, and the first signal was every worker failing at once. RUNG FOUND AT: mitigatable (the roster probe declined the route as unreachable). ATTAINABLE CEILING: structurally guaranteed for the route fact (it derives from a modeled upstream); the front's own availability is outside the modeled guarantee and is observed at the boundary. NEXT-RUNG TRIGGER: the pool front's TLS card landing (fierce-swift-120 ctrl #2376) changes the live answer from 503 to a served turn; the lab qualification on srv1 is the first live reading of every figure in the extdeps module."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.pool.pool_front", decl_name: "pool_front_contract_standing", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.harness.harness_operator_route", decl_name: "harness_operator_route", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.harness.harness_turn", decl_name: "harness_post_json_once", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.operator_endpoint_witness", decl_name: "a_request_on_the_pool_route_carries_the_bearer_the_session_and_the_model", field: WholeDeclaration },
+  ],
+}

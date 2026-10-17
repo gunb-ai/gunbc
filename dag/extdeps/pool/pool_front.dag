@@ -1,0 +1,173 @@
+module extdeps.pool.pool_front
+
+import std.types { NonEmptyStr, String, Bool, Int, HttpStatus }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.nat { Nat }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedFigure, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import extdeps.http.header_dump { http_ascii_fold }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE INFERENCE POOL'S TLS FRONT, as its own extdeps authority: an independently operated service (the pool
+// run by session fierce-swift-120) that fronts a set of GPU cards behind one OpenAI-compatible surface. It is
+// not ninfer-serve and not a hosted vendor; it shares no path, header or error-body fact with either.
+//
+// THE UPSTREAM IS THE LIVE SERVICE; THE STATEMENT OF ITS CONTRACT IS ITS OPERATOR'S. Every figure below is
+// the pool operator's statement of 2026-10-17 (ctrl #2375, typed as pool_front_contract_standing), not an
+// upstream-published page, so it is a transcription of a named party's word and not a deduction. The first
+// live reading of each figure is the lab qualification that follows this module's landing.
+// The anchor is the pool operator's statement (ctrl #2375), not the lab's deployment address.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/gunb-ai/ctrl/issues/2375" as NonEmptyStr }
+}
+
+data pool_front_program: NonEmptyStr = "pool-front" as NonEmptyStr
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.pool.pool_front",
+      decl_name: "pool_front_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// THE STANDING OF THE FRONT'S STATED CONTRACT (path, header, model ids, certificate, auth, 503 semantics and the
+// limits below): the pool operator's own statement of 2026-10-17 (ctrl #2375; ctrl #2376 is the TLS card whose
+// absence makes 503 the live answer), passed on by that operator's session. Nothing at the service has been read
+// yet, so this is a bet typed as a bet (DESIGN 4d), TranscribedUncited, naming what would ground it; the lab
+// qualification's first live replies promote each figure to ObservedByReceipt. EVERYTHING in this module under
+// this standing is a consumed bet discharged at that qualification; CitedFigure gates only the figures for which
+// the lab has a policy fallback (the limits) or a refusal to project (the reasoning spellings), because only those
+// have a consumer that can act differently before the read. The two reasoning figures below
+// carry their own standing and are read only through cited_figure_read.
+data pool_front_contract_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read the path, model ids, limits and 503 semantics from live replies of the front (GET /pool/v1/models, a chat completion, a 503)" as NonEmptyStr
+}
+
+// ── THE SURFACE ─────────────────────────────────────────────────────────────────────────────────
+// The ORIGIN and the pinned CERTIFICATE are this lab's deployment of the front, not the interface: they are
+// parameters of the route binding (gunbc.harness.harness_operator_route operator_pool_front_origin,
+// operator_pinned_certificate), so a moved host or a reissued certificate edits no upstream module.
+data pool_front_chat_completions_path: NonEmptyStr = "/pool/v1/chat/completions" as NonEmptyStr
+data pool_front_models_path: NonEmptyStr = "/pool/v1/models" as NonEmptyStr
+
+// The model id a request names. "slop" is the front's alias for any card; this module declares both because
+// the front accepts both, and which one a consumer sends is that consumer's policy.
+data pool_front_model_id: NonEmptyStr = "Qwen3.8-Flash-Next" as NonEmptyStr
+data pool_front_any_card_model_id: NonEmptyStr = "slop" as NonEmptyStr
+
+// The header that keeps one conversation on the card holding its cache. Its value is the caller's
+// conversation identity; the front reads it as an opaque string.
+data pool_front_session_header_name: NonEmptyStr = "x-pool-session" as NonEmptyStr
+
+// Limits the front states: a request's context may be at most max_context_tokens, and a client budgets at most
+// max_output_tokens of output per request. There is no per-client concurrency cap; each card runs about
+// cards_concurrency_low..cards_concurrency_high requests at once.
+// A STATED LIMIT CARRIES ITS OWN STANDING (DESIGN 4d). The operator's figures are its word, not a reading, so
+// each is a bet typed as a bet with the read that would ground it. A consumer takes the number only through
+// cited_figure_read, which answers for a limit that was cited or observed; what a client enforces before
+// then is its own policy (see gunbc.harness.harness_reasoning_wire PoolBudgetPolicy), never this figure.
+data pool_front_max_context_tokens: CitedFigure<Nat> = CitedFigure {
+  value: 262144,
+  standing: TranscribedUncited { read_obligation: "read the maximum context from a live reply (GET /pool/v1/models, or the refusal of an oversized request)" as NonEmptyStr },
+}
+data pool_front_max_output_tokens: CitedFigure<Nat> = CitedFigure {
+  value: 32768,
+  standing: TranscribedUncited { read_obligation: "read the per-request output maximum from a live reply (GET /pool/v1/models, or the refusal of an over-budget request)" as NonEmptyStr },
+}
+// A FIGURE CARRIES ITS OWN STANDING (DESIGN 4d). The front's statement names neither where a reply carries
+// reasoning nor how it closes it; these are the OpenAI-compatible spellings, a bet typed as a bet. A consumer
+// takes the value through cited_figure_read, which answers only for a figure that was cited or observed.
+data pool_front_message_reasoning_field: CitedFigure<NonEmptyStr> = CitedFigure {
+  value: "reasoning_content" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the member a pool card's reply carries reasoning in, from a live reply" as NonEmptyStr },
+}
+data pool_front_thinking_end_token: CitedFigure<NonEmptyStr> = CitedFigure {
+  value: "</think>" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the token a pool card closes inline thinking with, from a live reply" as NonEmptyStr },
+}
+
+data pool_front_card_concurrency_low: CitedFigure<Nat> = CitedFigure {
+  value: 5,
+  standing: TranscribedUncited { read_obligation: "read how many concurrent requests a card runs from the pool dashboard or a measured burst" as NonEmptyStr },
+}
+data pool_front_card_concurrency_high: CitedFigure<Nat> = CitedFigure {
+  value: 7,
+  standing: TranscribedUncited { read_obligation: "read how many concurrent requests a card runs from the pool dashboard or a measured burst" as NonEmptyStr },
+}
+
+// ── AUTHENTICATION ──────────────────────────────────────────────────────────────────────────────
+// A pool-front client key, not the pool's own key. The pool operator creates it with
+// POST /api/settings/pool-front {"name": <client>, "requireTls": true}; the reply carries the key exactly once;
+// DELETE /api/settings/pool-front/<client> revokes it. An unauthenticated request answers 401.
+fn pool_front_authorization_header_line(key: NonEmptyStr) -> String {
+  join(["Authorization: Bearer ", key as String, "\n"], "")
+}
+
+// THE SESSION HEADER LINE REFUSES A VALUE THAT COULD BREAK ITS LINE. A conversation identity carrying a
+// carriage return or a line feed would end the header and begin another one, so it is absent here and the
+// caller refuses to send rather than the front reading a header nobody wrote.
+fn pool_front_session_header_line(session: NonEmptyStr) -> NonEmptyStr? {
+  let s = session as String
+  if string_contains(s: s, pattern: "\n") || string_contains(s: s, pattern: "\r") {
+    none
+  } else {
+    Present { value: join([pool_front_session_header_name as String, ": ", s, "\n"], "") as NonEmptyStr }
+  }
+}
+
+// ── THE CERTIFICATE THE CLIENT PINS ─────────────────────────────────────────────────────────────
+// The shape of the certificate a client pins (the value is the deployment's, see above). A client trusts exactly it: it never turns
+// verification off and never trusts a certificate it has not matched against this fingerprint.
+type PoolFrontCertificate {
+  sha256_fingerprint: NonEmptyStr
+  not_after: NonEmptyStr
+}
+
+fn pool_front_fingerprint_canonical(text: String) -> String {
+  http_ascii_fold(s: trim(s: text))
+}
+
+// WHETHER THE CERTIFICATE A HOST PRESENTED IS THE PINNED ONE. Total on any text: an unreadable or empty
+// fingerprint is a different certificate, never a pass.
+fn pool_front_certificate_is_pinned(pinned: PoolFrontCertificate, presented: String) -> Bool {
+  let p = pool_front_fingerprint_canonical(text: presented)
+  p != "" && p == pool_front_fingerprint_canonical(text: pinned.sha256_fingerprint as String)
+}
+
+// `openssl x509 -noout -fingerprint -sha256` prints `<label> Fingerprint=<AA:BB:...>` (label `sha256` in 3.x,
+// `SHA256` in 1.1). The text after the LAST `=` is the fingerprint; no `=` is no reading.
+fn pool_front_fingerprint_from_openssl_text(stdout: String) -> String? {
+  let line = trim(s: stdout)
+  match split(s: line, delimiter: "=").last() {
+    Absent => none
+    Present { value: f } => if trim(s: f) == "" || trim(s: f) == line { none } else { Present { value: trim(s: f) } }
+  }
+}
+
+// ── WHAT THE FRONT'S STATUS MEANS ───────────────────────────────────────────────────────────────
+// A requireTls client is only ever sent to a TLS card. With none serving, the front answers 503 and forwards
+// nothing, so a 503 is a statement about CAPACITY and carries no model output; the request had no effect and
+// may be sent again. 401 is the key. Anything else the front says is its own and stays what it was.
+type PoolFrontStatusMeaning
+  = PoolFrontAnswered
+  | PoolFrontNoTlsCardServing
+  | PoolFrontKeyRejected
+  | PoolFrontRefused { status: HttpStatus }
+
+fn pool_front_status_meaning(status: HttpStatus) -> PoolFrontStatusMeaning {
+  if status >= 200 && status < 300 {
+    PoolFrontAnswered
+  } else if status == 503 {
+    PoolFrontNoTlsCardServing
+  } else if status == 401 {
+    PoolFrontKeyRejected
+  } else {
+    PoolFrontRefused { status: status }
+  }
+}
