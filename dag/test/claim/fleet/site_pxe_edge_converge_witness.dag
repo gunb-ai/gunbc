@@ -66,6 +66,13 @@ import gunbc.fleet.site_pxe_edge_converge {
   AdministratorPrivilegeUnobservable,
   AdministratorPrivilegeRefused,
   site_pxe_edge_digest_observation,
+  site_pxe_edge_embedded_revision,
+  site_pxe_edge_revision_abbreviates,
+  SitePxeEdgeEmbeddedRevision,
+  EmbeddedRevisionRead,
+  EmbeddedRevisionUnobservable,
+  ChainloaderEmbeddedRevisionMismatch,
+  ChainloaderEmbeddedRevisionUnobservable,
   site_pxe_edge_desired_files,
   site_pxe_edge_roster,
   site_pxe_edge_unit_file,
@@ -80,6 +87,14 @@ data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: hex_a })
 
 data digest_b: ContentHash = Sha256Hash(Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" })
 
+// What `grep -a -o -E "[(]g[0-9a-f]+[)]"` printed over the committed image: the embedded revision enters the
+// witness as that raw output, through the same fn production parses it with, never as a ready-made value.
+data landed_revision_output: String = "(gc51ca)\n"
+
+fn landed_embedded() -> SitePxeEdgeEmbeddedRevision {
+  site_pxe_edge_embedded_revision(success: true, output: landed_revision_output)
+}
+
 fn booted() -> SitePxeEdgeSecureBootStanding {
   SecureBootObserved { verdict: SecureBootVerdictBooted, evidence: "fixture: firmware booted the image" }
 }
@@ -90,7 +105,7 @@ fn build(filename: NonEmptyStr, target: IpxeBuildTarget, architecture: Architect
 
 fn build_with(filename: NonEmptyStr, target: IpxeBuildTarget, architecture: Architecture, digest: ContentHash, secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainloaderBuildReceipt {
   site_pxe_edge_chainloader_build_receipt(
-    upstream_revision: "ipxe-fixture-revision",
+    upstream_revision: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394",
     build_target: target,
     architecture: architecture,
     digest: digest,
@@ -110,6 +125,7 @@ fn secure_boot_causes(secure_boot: SitePxeEdgeSecureBootStanding) -> List<SitePx
     roster: first_onboarding_known_client_mac,
     pin: with_secure_boot(secure_boot: secure_boot),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   )
@@ -144,6 +160,7 @@ test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
     roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   )) == 0
@@ -159,6 +176,7 @@ test fn the_landed_pin_is_pinned_and_closes_the_gate_only_on_secure_boot() -> Bo
     roster: first_onboarding_known_client_mac,
     pin: site_pxe_edge_chainloader_pin,
     chainloader: ChainloaderDigestObserved { digest: landed_digest() },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   )
@@ -171,6 +189,8 @@ test fn the_landed_pin_is_pinned_and_closes_the_gate_only_on_secure_boot() -> Bo
       ChainloaderUnpinned { obligation: _ } => false
       ChainloaderUnobservable { reason: _ } => false
       ChainloaderDigestMismatch { observed: _, pinned: _ } => false
+      ChainloaderEmbeddedRevisionMismatch { embedded: _, pinned: _ } => false
+      ChainloaderEmbeddedRevisionUnobservable { reason: _ } => false
       ChainloaderNotTheIpxeArm64Build { pinned: _, expected: _ } => false
       ChainloaderBuildTargetNotIpxeArm64 { pinned: _, expected: _ } => false
       ChainloaderArchitectureNotAarch64 { architecture: _ } => false
@@ -198,6 +218,7 @@ test fn the_landed_pin_leaves_exactly_the_four_unanswered_causes() -> Bool {
     roster: first_onboarding_known_client_mac,
     pin: site_pxe_edge_chainloader_pin,
     chainloader: ChainloaderDigestUnobservable { reason: "file not placed on srv4" },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeUnobservable { reason: "not probed" },
     privilege: SitePxeEdgeProbeUnobservable { reason: "not probed" },
   ), c => site_pxe_edge_gate_cause_text(cause: c))
@@ -222,6 +243,7 @@ test fn mismatched_digest_closes_the_gate() -> Bool {
     roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_b },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [ChainloaderDigestMismatch { observed: digest_b, pinned: digest_a }]
@@ -234,6 +256,7 @@ test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool
     roster: first_onboarding_known_client_mac,
     pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [ChainloaderNotTheIpxeArm64Build { pinned: "grubnetaa64.efi", expected: "snponly.efi" }]
@@ -246,6 +269,7 @@ test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
     roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestUnobservable { reason: "no such file" },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeObservedNegative { reason: "absent" },
     privilege: SitePxeEdgeProbeHeld,
   ) == [ChainloaderUnobservable { reason: "no such file" }, DnsmasqBinaryAbsent { reason: "absent" }]
@@ -304,6 +328,7 @@ test fn an_unparseable_roster_closes_the_gate() -> Bool {
     roster: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } },
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [KnownClientMacUnparseable { error: MacWrongOctetCount { observed_count: 5 } }]
@@ -318,6 +343,7 @@ test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
     roster: first_onboarding_known_client_mac,
     pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   )
@@ -332,6 +358,7 @@ test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
             roster: first_onboarding_known_client_mac,
             pin: pinned_as(filename: e, digest: digest_a),
             chainloader: ChainloaderDigestObserved { digest: digest_a },
+            embedded: landed_embedded(),
             dnsmasq_binary: SitePxeEdgeProbeHeld,
             privilege: SitePxeEdgeProbeHeld,
           )) == 0
@@ -341,6 +368,8 @@ test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
         ChainloaderUnpinned { obligation: _ } => false
         ChainloaderUnobservable { reason: _ } => false
         ChainloaderDigestMismatch { observed: _, pinned: _ } => false
+        ChainloaderEmbeddedRevisionMismatch { embedded: _, pinned: _ } => false
+        ChainloaderEmbeddedRevisionUnobservable { reason: _ } => false
         ChainloaderBuildTargetNotIpxeArm64 { pinned: _, expected: _ } => false
         ChainloaderArchitectureNotAarch64 { architecture: _ } => false
         ChainloaderSecureBootUnobserved { why: _ } => false
@@ -415,6 +444,7 @@ test fn an_unparseable_tftp_server_address_closes_the_gate() -> Bool {
     roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [TftpServerAddressUnparseable { error: Ipv4WrongOctetCount { observed_count: 3 } }]
@@ -428,6 +458,7 @@ test fn an_unparseable_segment_network_closes_the_gate() -> Bool {
     roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [SegmentNetworkUnparseable { error: Ipv4WrongOctetCount { observed_count: 1 } }]
@@ -442,6 +473,7 @@ test fn a_non_arm64_build_with_the_expected_name_and_digest_is_refused() -> Bool
     roster: first_onboarding_known_client_mac,
     pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: ipxe_arm64_efi_snponly, architecture: X86_64, digest: digest_a) },
     chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [ChainloaderArchitectureNotAarch64 { architecture: X86_64 }]
@@ -457,6 +489,7 @@ test fn a_different_ipxe_build_target_is_refused() -> Bool {
     roster: first_onboarding_known_client_mac,
     pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: x86_target, architecture: Aarch64, digest: digest_a) },
     chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [ChainloaderBuildTargetNotIpxeArm64 { pinned: x86_target, expected: ipxe_arm64_efi_snponly }]
@@ -499,6 +532,7 @@ test fn an_open_gate_implies_the_desired_config_inputs_exist() -> Bool {
     roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   )
@@ -509,4 +543,55 @@ test fn an_open_gate_implies_the_desired_config_inputs_exist() -> Bool {
     && (match open_inputs { Present { value: _ } => true  Absent => false })
     && (match unpinned_inputs { Present { value: _ } => false  Absent => true })
     && (match unparsed_inputs { Present { value: _ } => false  Absent => true })
+}
+
+fn embedded_causes(embedded: SitePxeEdgeEmbeddedRevision) -> List<SitePxeEdgeGateCause> {
+  site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
+    roster: first_onboarding_known_client_mac,
+    pin: pinned(digest: digest_a),
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: embedded,
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  )
+}
+
+// The revision is parsed from raw grep output by the one production fn; an unreadable or absent group is
+// Unobservable (a failure to read), and only a readable revision can mismatch.
+test fn embedded_revision_is_parsed_from_grep_output_and_unreadable_output_is_unobservable() -> Bool {
+  (match landed_embedded() {
+    EmbeddedRevisionRead { abbreviated: a } => (a as String) == "c51ca"
+    EmbeddedRevisionUnobservable { reason: _ } => false
+  }) && (match site_pxe_edge_embedded_revision(success: true, output: "(gc51ca)\n(gdeadbe)\n") {
+    EmbeddedRevisionRead { abbreviated: a } => (a as String) == "c51ca"
+    EmbeddedRevisionUnobservable { reason: _ } => false
+  }) && (match site_pxe_edge_embedded_revision(success: false, output: "") {
+    EmbeddedRevisionRead { abbreviated: _ } => false
+    EmbeddedRevisionUnobservable { reason: _ } => true
+  }) && (match site_pxe_edge_embedded_revision(success: true, output: "no revision here") {
+    EmbeddedRevisionRead { abbreviated: _ } => false
+    EmbeddedRevisionUnobservable { reason: _ } => true
+  }) && (match site_pxe_edge_embedded_revision(success: true, output: "(g)") {
+    EmbeddedRevisionRead { abbreviated: _ } => false
+    EmbeddedRevisionUnobservable { reason: _ } => true
+  })
+}
+
+// An abbreviation is a PREFIX of the pinned SHA: a substring from the middle, or a different SHA, is not.
+test fn an_abbreviation_matches_only_a_prefix_of_the_pinned_revision() -> Bool {
+  site_pxe_edge_revision_abbreviates(abbreviated: "c51ca", full: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394")
+    && !site_pxe_edge_revision_abbreviates(abbreviated: "51ca7", full: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394")
+    && !site_pxe_edge_revision_abbreviates(abbreviated: "deadbe", full: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394")
+}
+
+// RED: an image whose embedded revision differs from the pinned one closes the gate with a typed mismatch
+// carrying both values; the matching image adds no revision cause; an unreadable one closes as its own cause.
+test fn an_embedded_revision_that_differs_from_the_pin_is_a_typed_refusal() -> Bool {
+  (embedded_causes(embedded: landed_embedded()) == [])
+    && (embedded_causes(embedded: site_pxe_edge_embedded_revision(success: true, output: "(gdeadbe)\n"))
+        == [ChainloaderEmbeddedRevisionMismatch { embedded: "deadbe", pinned: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394" }])
+    && (embedded_causes(embedded: site_pxe_edge_embedded_revision(success: false, output: ""))
+        == [ChainloaderEmbeddedRevisionUnobservable { reason: "grep found no embedded iPXE revision in the image" }])
 }
