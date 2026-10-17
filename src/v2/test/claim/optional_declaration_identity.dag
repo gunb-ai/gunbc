@@ -22,8 +22,7 @@ import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
 // SUBJECT: THE ONE OPTIONAL DECLARATION IDENTITY (ruling gunbc.design_ruling
 // optional_sugar_is_declaration_bound). v2.std.qualified_name.optional_declaration_identity is the single
 // QualifiedName that every v2 type reader answers with when it asks which declaration an optional type
-// denotes. It replaces the hand-built spelling that production used to call, so the rows below are
-// production's own answers and not a parallel spelling.
+// denotes. The rows below are production's own answers, not a parallel spelling of the path.
 // BOUNDARY: the path is checked against the corpus, not against a string. The claim assembles a real
 // std.optional over the production route (assemble_program_from_ingest) and looks the identity up in the
 // tree resolve produced. An identity that names no declaration, or names one that is not the coproduct,
@@ -32,9 +31,7 @@ import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
 // THE ROUTE ROWS are the non-tautological pair: an authored `left: T?` and the same subject with `left: T`
 // drive the route's own functions (collect_module_reference_sites, then acquisition_sugar_member_texts) over
 // a subject that imports only Absent/Present, never Optional, so the path can reach the collected sites only
-// through the repointed Occupancy arm. Flipping `?` flips the verdict.
-// NOT HERE: the shared reader that consumes this identity, and the match rows that depend on it — those are
-// the reader PR. This claim is the identity's own standing, so it can be imported before that PR lands.
+// through the route's reading of the sugar. Flipping `?` flips the verdict.
 // RETIREMENT DIRECTION: the Occupancy wrapper is to dissolve into the declaration. This claim pins the
 // declaration as what the sugar denotes, which is the direction that retirement walks; it adds no field to
 // the wrapper and no new consumer of it.
@@ -118,12 +115,11 @@ test fn odi_a_local_homonym_is_not_reached_through_the_identity() -> Bool {
   }
 }
 
-// THE ROUTE'S OWN DEMAND, THROUGH THE REWIRED CALL SITES — not a parallel spelling. The duplicate this PR
-// removes (v2.std.optional_layers occupancy_declaration_spelling) was LIVE: an authored `T?` param reached
-// the reference collector's Occupancy arm, which spelled the declaration there, and module acquisition's
-// sugar-member demand turned that into the member the source root OWES. Both now answer with this identity.
-// The subject's only reference to the three segments is the sugar: it imports Absent and Present, never
-// Optional. So `std.optional.Optional` can reach the collected sites only through that Occupancy arm.
+// THE ROUTE'S OWN DEMAND, not a parallel spelling. The subject's only reference to the three segments is
+// the sugar: it imports Absent and Present, never Optional. So `std.optional.Optional` can reach the
+// collected reference sites only through the route's own reading of the sugar — an authored `T?` param
+// reaches the reference collector's Occupancy arm, and module acquisition's sugar-member demand turns
+// that into the member the source root OWES.
 // THE DISCRIMINATING INPUT IS odi_the_route_owes_nothing_without_the_sugar below: same subject, `left: T`
 // instead of `left: T?`, and the demand must come back empty. A row that could not go red would not be a
 // claim (DESIGN 5).

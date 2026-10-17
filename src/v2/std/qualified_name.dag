@@ -587,10 +587,10 @@ fn declaration_reference_path_optional(node: Node) -> Optional<QualifiedName> {
 // KEYED ON A QUALIFIEDNAME, NOT A BARE SPELLING: type readers already carry a QualifiedName, so a
 // String key would add a spelling-to-path conversion at each of them, and a conversion per consumer is
 // exactly where the two can disagree.
-// ONE AUTHORITY MEANS NO SECOND COPY. v2.std.optional_layers' hand-built spelling of this path is
-// deleted and repointed here. gunbc.structural_realization_bindings' optional_declaration_ref row
-// carries the same path a second way today, as decl_ref(module_path: "std.optional", decl_name:
-// "Optional"), and is repointed here by #14087 (lively-fox-74).
+// ONE AUTHORITY, SO NOTHING ELSE MAY SPELL IT. Any other place that must name this declaration — a
+// mint row, a realization binding, a consumer of the sugar — reads it from here rather than writing
+// the three segments again, because a copy can only be checked by hand and this path has to hold
+// across every module that touches optional-ness.
 // WHY THE READING BOUNDARY AND NOT THE WRAPPER: the Occupancy wrapper is itself on the retirement list
 // — the sugar is to denote the declaration and the wrapper is to dissolve into it. So nothing adds a
 // field to the wrapper or stores a declaration on it; the link lives where consumers ask, and shrinks
