@@ -8301,8 +8301,8 @@ fn belt_scm_persist_capture(mint: BeltScmMint) -> BeltScmCapture {
 // head still at the recorded base means the commit has not happened (resume: reuse the persisted SCM commit if
 // the envelope already advanced past the intent's ordinal, else persist it); head moved means the commit
 // happened and the capture record is owed (complete it at the new head). The intent is cleared after the
-// capture record is written. Retirement: when the capture record, the SCM save and the git commit are one
-// settled transition in the substrate (the attempt-resources slice-4 settlement), this file goes.
+// capture record is written. This is part of the capture protocol, not a scaffold: it is the durable record
+// that makes the three-step capture resumable.
 type BeltCaptureIntent
   = IntentAbsent
   | IntentRead { capture: SubmissionCapture }
