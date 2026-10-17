@@ -86,6 +86,8 @@ import extdeps.filesystem.filesystem_io {
   FilesystemListingObservation,
   FilesystemDirectoryListed,
   FilesystemDirectoryListingRefused,
+  FilesystemDirectorySubjectRefused,
+  filesystem_listing_entry_names,
   filesystem_listing_observation,
   FilesystemEntryPresence,
   FilesystemEntryAbsent,
@@ -747,32 +749,148 @@ fn belt_verification_resume_decision(
   }
 }
 
-// A RECORDED REFUSAL AT THE EXACT SUBJECT IS ITSELF EVIDENCE THE WORKER WAS TERMINAL. The belt only ever
-// verifies a terminal worker, so a refused receipt for this very head and window was written after the
-// worker ended; an operator resume may rely on that instead of re-reading terminality from a provider
-// ledger that a legacy attempt never wrote. It holds ONLY for a V2 receipt whose subject matches and whose
-// verdict is Refused: an absent, unreadable, other-subject or judged receipt establishes nothing.
-fn belt_verification_recorded_refusal_matches(expected: VerificationSubject, source: ExactVerificationReceiptSource) -> Bool {
+// TERMINALITY IS A FACT ABOUT THE ATTEMPT AND ITS HEAD, NOT ABOUT A CHANGE WINDOW. The guard on a legacy
+// attempt (no provider events file) needs evidence that the worker ended. A recorded verification
+// receipt for the same node identity, attempt key, branch and head is that evidence: the belt only ever
+// verifies a terminal worker, so a verification that ran on this hand-in was written after the worker
+// ended, and a worker terminal at head H stays terminal at H (the head is the committed hand-in;
+// a later commit is a different head and a different question). The criteria digest and the change-window
+// identity are deliberately NOT read: they name WHAT was asked, and they move with a criteria revision or
+// a deploy (target_generation) while the attempt does not. The verdict is not answered from this
+// evidence: the exact subject still decides whether a verdict stands (belt_verification_decision).
+// A receipt that never ran (not_run) establishes nothing. A receipt that cannot be read or decoded is
+// neither "no receipt" nor "a receipt": it yields AttemptTerminalityEvidenceUnreadable, which the guard
+// refuses to run on.
+type AttemptTerminalityEvidence
+  = AttemptTerminalityEstablished
+  | AttemptTerminalityNotEstablished
+  | AttemptTerminalityEvidenceUnreadable { detail: String }
+
+type AttemptHeadReceiptsSource
+  = AttemptHeadReceiptsListed { sources: List<ExactVerificationReceiptSource> }
+  | AttemptHeadReceiptsUnreadable { detail: String }
+
+data attempt_receipt_stands_for_terminality: Int = 2
+data attempt_receipt_unreadable: Int = 1
+data attempt_receipt_irrelevant: Int = 0
+
+fn attempt_receipt_subject_names_same_hand_in(expected: VerificationSubject, found: VerificationSubject) -> Bool {
+  (found.node_identity as String) == (expected.node_identity as String)
+    && found.attempt_key == expected.attempt_key
+    && (found.branch as String) == (expected.branch as String)
+    && (found.head_sha as String) == (expected.head_sha as String)
+}
+
+fn attempt_receipt_terminality_class(expected: VerificationSubject, source: ExactVerificationReceiptSource) -> Int {
   match source {
+    ExactVerificationReceiptAbsent => attempt_receipt_irrelevant
+    ExactVerificationReceiptUnreadable { detail: _ } => attempt_receipt_unreadable
     ExactVerificationReceiptPresent { text } =>
       match verification_receipt_text_classify(receipt: text) {
         VerificationReceiptTextV2 { receipt } =>
-          match verification_subject_match(expected: expected, found: receipt.subject) {
-            VerificationSubjectMatches =>
-              match receipt.verdict {
-                ValidationRefused { cause: _ } => true
-                ValidationNotRun => false
-                ValidationPassed { command: _, oracle_identity: _ } => false
-                ValidationFailed { command: _, exit_code: _, detail: _ } => false
-              }
-            VerificationSubjectDiffers { field: _, expected: _, found: _ } => false
+          if attempt_receipt_subject_names_same_hand_in(expected: expected, found: receipt.subject) {
+            match receipt.verdict {
+              ValidationRefused { cause: _ } => attempt_receipt_stands_for_terminality
+              ValidationNotRun => attempt_receipt_irrelevant
+              ValidationPassed { command: _, oracle_identity: _ } => attempt_receipt_stands_for_terminality
+              ValidationFailed { command: _, exit_code: _, detail: _ } => attempt_receipt_stands_for_terminality
+            }
+          } else {
+            attempt_receipt_irrelevant
           }
-        VerificationReceiptTextUndecodable { reason: _ } => false
-        VerificationReceiptTextLegacyAttempt { verdict_key: _ } => false
-        VerificationReceiptTextV1ExactHead { legacy: _ } => false
+        VerificationReceiptTextV1ExactHead { legacy } =>
+          if attempt_receipt_subject_names_same_hand_in(expected: expected, found: legacy.subject) {
+            match legacy.verdict {
+              ValidationRefused { cause: _ } => attempt_receipt_stands_for_terminality
+              ValidationNotRun => attempt_receipt_irrelevant
+              ValidationPassed { command: _, oracle_identity: _ } => attempt_receipt_stands_for_terminality
+              ValidationFailed { command: _, exit_code: _, detail: _ } => attempt_receipt_stands_for_terminality
+            }
+          } else {
+            attempt_receipt_irrelevant
+          }
+        VerificationReceiptTextUndecodable { reason: _ } => attempt_receipt_unreadable
+        VerificationReceiptTextLegacyAttempt { verdict_key: _ } => attempt_receipt_unreadable
       }
-    ExactVerificationReceiptAbsent => false
-    ExactVerificationReceiptUnreadable { detail: _ } => false
+  }
+}
+
+fn belt_attempt_terminality_evidence(expected: VerificationSubject, source: AttemptHeadReceiptsSource) -> AttemptTerminalityEvidence {
+  match source {
+    AttemptHeadReceiptsUnreadable { detail } => AttemptTerminalityEvidenceUnreadable { detail: detail }
+    AttemptHeadReceiptsListed { sources } =>
+      if sources.any(s => attempt_receipt_terminality_class(expected: expected, source: s) == attempt_receipt_stands_for_terminality) {
+        AttemptTerminalityEstablished
+      } else if sources.any(s => attempt_receipt_terminality_class(expected: expected, source: s) == attempt_receipt_unreadable) {
+        AttemptTerminalityEvidenceUnreadable {
+          detail: "a verification receipt for this head could not be read or decoded, so whether the worker ended is not established",
+        }
+      } else {
+        AttemptTerminalityNotEstablished
+      }
+  }
+}
+
+fn attempt_head_receipt_name_is_a_receipt(name: String, head_sha: String) -> Bool {
+  name.starts_with(prefix: join([head_sha, "."], ""))
+    && name.ends_with(suffix: ".json")
+    && name != current_verification_selection_basename(head_sha: head_sha)
+}
+
+fn attempt_head_receipts_read_names(verification_dir: String, names: List<String>, index: Int) -> List<ExactVerificationReceiptSource> {
+  match names.get(index) {
+    Absent => []
+    Present { value: name } => {
+      let path = join([verification_dir, "/", name], "")
+      let read = Filesystem.Read(path: path)
+      let this = match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadSucceeded { content: text } => ExactVerificationReceiptPresent { text: text }
+        FilesystemReadRefused { error: e } => ExactVerificationReceiptUnreadable { detail: e }
+      }
+      [this].concat(attempt_head_receipts_read_names(verification_dir: verification_dir, names: names, index: index + 1))
+    }
+  }
+}
+
+// Every receipt the attempt's verification directory holds for this head, whatever its window. A failed
+// listing is Unreadable, and a missing verification directory is a positively listed empty set.
+fn attempt_head_receipts_read(attempt_dir: String, verification_dir: String, head_sha: String) -> AttemptHeadReceiptsSource {
+  let attempt_listing = Filesystem.List(path: attempt_dir)
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(
+      directory: attempt_dir,
+      success: attempt_listing.success,
+      entries: attempt_listing.entries,
+      error: attempt_listing.error,
+    ),
+    name: verification_directory_segment,
+  ) {
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+      AttemptHeadReceiptsUnreadable { detail: join([d, " is not a directory subject, so ", n, " is established by nothing the fold received: ", c], "") }
+    FilesystemEntryPresenceIndeterminate { cause: c } => AttemptHeadReceiptsUnreadable { detail: c }
+    FilesystemEntryAbsent(_) => AttemptHeadReceiptsListed { sources: [] }
+    FilesystemEntryListed { directory: _, name: _ } => {
+      let listed = Filesystem.List(path: verification_dir)
+      match filesystem_listing_observation(
+        directory: verification_dir,
+        success: listed.success,
+        entries: listed.entries,
+        error: listed.error,
+      ) {
+        FilesystemDirectorySubjectRefused { directory: d, cause: c } =>
+          AttemptHeadReceiptsUnreadable { detail: join([d, " is not a directory subject: ", c], "") }
+        FilesystemDirectoryListingRefused { directory: d, error: e } =>
+          AttemptHeadReceiptsUnreadable { detail: join([d as String, " could not be listed: ", e], "") }
+        FilesystemDirectoryListed(l) =>
+          AttemptHeadReceiptsListed {
+            sources: attempt_head_receipts_read_names(
+              verification_dir: verification_dir,
+              names: filesystem_listing_entry_names(listing: l).filter(n => attempt_head_receipt_name_is_a_receipt(name: n, head_sha: head_sha)),
+              index: 0,
+            ),
+          }
+      }
+    }
   }
 }
 
