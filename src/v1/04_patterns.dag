@@ -3,6 +3,8 @@ module v1.compiler.infer_patterns
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan }
+import std.primitive_projection { never_type_declaration, never_type_qualified_path }
+import std.decl_ref { declaration_ref_eq }
 
 import std.syntax { LiteralValue }
 
@@ -34,7 +36,8 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv,
   lookup_type, lookup_type_by_name, lookup_type_for,
-  symbol_index_lookup
+  symbol_index_lookup,
+  declaration_ref_of_type_node, declaration_ref_of_declaration_node
 }
 
 import v1.compiler.infer_resolve {
@@ -544,8 +547,77 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
     ConstructorsClosed { names: ["Holds", "Violates"] }
   } else if is_coproduct {
     ConstructorsClosed { names: resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c)) }
+  } else if is_uninhabited_sum(resolved: resolved, env: env) {
+    ConstructorsClosed { names: [] }
   } else {
     ConstructorsOpen
+  }
+}
+
+// An uninhabited SUM: a coproduct with zero arms, or Never keyed by DeclarationRef.
+// Never is recognised only when its canonical declaration is present in the symbol index,
+// keyed by DeclarationRef identity, never by spelling. Absence is not uninhabited: no index
+// row means no Never, and no local binding stands in for it. A different module's `type Never`
+// is not this ref.
+fn peel_never_identity_candidate(n: Node, env: TypeEnv) -> Node {
+  match lookup_type_for(env: env, node: n) {
+    Present { value: def } => def
+    Absent =>
+      match n.inferred {
+        Present { value: Resolved { node: target } } => target
+        _ => n
+      }
+  }
+}
+
+fn never_identity_node(env: TypeEnv) -> Optional<Node> {
+  symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path())
+}
+
+// IDENTITY, NOT SPELLING: Node.ident is the parser's interned NAME, so joining on it would admit
+// any local `type Never` whenever the index row exists. Only the indexed node's own occurrence
+// identity joins here; every other route goes through declaration_ref_eq.
+fn candidate_joins_never_identity(n: Node, identity: Node) -> Bool {
+  // A synthetic node means "no authored occurrence", so two of them are not the same declaration.
+  match identity.occurrence_identity {
+    OccurrenceSynthetic => false
+    _ => n.occurrence_identity == identity.occurrence_identity
+  }
+}
+
+fn node_names_never_declaration(n: Node, env: TypeEnv) -> Bool {
+  match declaration_ref_of_type_node(rt: n, source_indices: env.source_indices, env: env) {
+    Present { value: d } => declaration_ref_eq(a: d, b: never_type_declaration)
+    Absent =>
+      match declaration_ref_of_declaration_node(decl: n, source_indices: env.source_indices, env: env) {
+        Present { value: d } => declaration_ref_eq(a: d, b: never_type_declaration)
+        Absent => false
+      }
+  }
+}
+
+fn node_is_never_declaration(resolved: Node, env: TypeEnv) -> Bool {
+  match never_identity_node(env: env) {
+    Absent => false
+    Present { value: identity } =>
+      let peeled = peel_never_identity_candidate(n: resolved, env: env)
+      let peeled2 = peel_never_identity_candidate(n: peeled, env: env)
+      candidate_joins_never_identity(n: resolved, identity: identity)
+        || candidate_joins_never_identity(n: peeled, identity: identity)
+        || candidate_joins_never_identity(n: peeled2, identity: identity)
+        || node_names_never_declaration(n: resolved, env: env)
+        || node_names_never_declaration(n: peeled, env: env)
+        || node_names_never_declaration(n: peeled2, env: env)
+  }
+}
+
+fn is_uninhabited_sum(resolved: Node, env: TypeEnv) -> Bool {
+  if resolved.connective == Disj {
+    (resolved.children |> count) == 0
+  } else if resolved.connective != NoConnective || (resolved.children |> count) != 0 {
+    false
+  } else {
+    node_is_never_declaration(resolved: resolved, env: env)
   }
 }
 
