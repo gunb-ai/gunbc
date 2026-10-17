@@ -1003,9 +1003,13 @@ test fn an_unclassified_package_refuses_the_seed_without_inventing_a_question() 
   match build_seed_fixture( network: network_posture, packages: unclassified_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
     Present { value: _ } => false
     Absent =>
-      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: admitted_entry, strategy: virtual_media_strategy, ) {
-        SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
-        _ => false
+      match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+        Present { value: entry } =>
+          match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+            SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
+            _ => false
+          }
+        Absent => false
       }
   }
 }
@@ -1014,9 +1018,13 @@ test fn an_unclassified_package_refuses_the_seed_without_inventing_a_question() 
 // launder it into the green arm by stuffing a string into the seed field: what is missing is knowledge, not a
 // value. This is the difference between this audit and a flag.
 test fn a_debconf_seed_cannot_classify_an_unchecked_package() -> Bool {
-  match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_but_seeded_packages, late_packages: [], locale: EnUsUtf8, entry: admitted_entry, strategy: virtual_media_strategy, ) {
-    SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
-    _ => false
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_but_seeded_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+        SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
+        _ => false
+      }
+    Absent => false
   }
 }
 
@@ -1029,6 +1037,32 @@ test fn every_known_prompting_package_names_its_question() -> Bool {
     .first() {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// THE CONSOLE STANZA IS DERIVED FROM THE TRANSPORT ARM BY ARM. Each of the four transports states which of the
+// two console stories it gets, so a collapsed arm (the mutation this row exists for) shows up here rather than
+// being inferred from a digest. Asserting the mapping directly is the honest test: two transports that share a
+// console story can still differ in the digest via the transport token, so digest equality would prove nothing
+// about this function, and digest inequality would prove the wrong thing.
+test fn each_transport_states_its_own_console_story() -> Bool {
+  console_stanza_is_suppressed(stanza: console_stanza_for(strategy: legacy_bios_strategy))
+    && console_stanza_is_suppressed(stanza: console_stanza_for(strategy: virtual_media_strategy))
+    && console_stanza_is_answered(stanza: console_stanza_for(strategy: pxe_strategy))
+    && console_stanza_is_answered(stanza: console_stanza_for(strategy: http_boot_strategy))
+}
+
+fn console_stanza_is_suppressed(stanza: NonInteractiveConsoleStanza) -> Bool {
+  match stanza {
+    ConsoleSuppressed => true
+    ConsoleAnsweredByUnattended { reason: _ } => false
+  }
+}
+
+fn console_stanza_is_answered(stanza: NonInteractiveConsoleStanza) -> Bool {
+  match stanza {
+    ConsoleSuppressed => false
+    ConsoleAnsweredByUnattended { reason: _ } => true
   }
 }
 
