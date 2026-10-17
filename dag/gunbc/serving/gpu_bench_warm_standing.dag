@@ -3,7 +3,7 @@ module gunbc.serving.gpu_bench_warm_standing
 import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
 import std.nat { Nat, nat_to_decimal_string }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure { TokenCount, token_count, measure_add, measure_le }
 import std.algebra { Cons, Empty }
 import std.list { list_member }
 import extdeps.gpu_bench.request_v2 {
@@ -134,21 +134,17 @@ fn gpu_bench_prime_count(records: List<GpuBenchRequestV2>) -> Nat {
 // The working set is the RETAINED PREFIXES a warm run re-reads, so it is the sum of the prime prompts.
 // Completion tokens are a separate quantity: they are what the warm response generates, not what it
 // restores. This arithmetic was reviewed and kept deliberately (see the P1 ruling on #13774).
-fn gpu_bench_prime_working_set_tokens(records: List<GpuBenchRequestV2>) -> Nat {
-  fold(records, init: 0, f: fn(acc, r) {
+fn gpu_bench_prime_working_set_tokens(records: List<GpuBenchRequestV2>) -> TokenCount {
+  fold(records, init: token_count(count: 0), f: fn(acc, r) {
     match r.phase {
       GpuBenchPhasePrime => match r.prompt_tokens {
         Absent => acc
-        Present { value: t } => acc + token_count_value(t: t)
+        Present { value: t } => measure_add(a: acc, b: t)
       }
       GpuBenchPhaseWarm => acc
       GpuBenchPhaseShort => acc
     }
   })
-}
-
-fn nat_eq(a: Nat, b: Nat) -> Bool {
-  a == b
 }
 
 // THE SESSIONS THAT WERE ACTUALLY PRIMED. A warm row is only evidence about a session that was primed
@@ -157,7 +153,7 @@ fn gpu_bench_prime_sessions(records: List<GpuBenchRequestV2>) -> List<Nat> {
   fold(records, init: [] as List<Nat>, f: fn(acc, r) {
     match r.phase {
       GpuBenchPhasePrime =>
-        if list_member(xs: acc, x: r.session, eq: nat_eq) {
+        if list_member(xs: acc, x: r.session, eq: (a, b) => a == b) {
           acc
         } else {
           acc |> list_push(r.session)
@@ -173,7 +169,7 @@ fn gpu_bench_warm_session_outside_prime_cohort(
   primed: List<Nat>,
 ) -> Bool {
   any(records, r => match r.phase {
-    GpuBenchPhaseWarm => !list_member(xs: primed, x: r.session, eq: nat_eq)
+    GpuBenchPhaseWarm => !list_member(xs: primed, x: r.session, eq: (a, b) => a == b)
     GpuBenchPhasePrime => false
     GpuBenchPhaseShort => false
   })
@@ -263,9 +259,7 @@ fn gpu_bench_admit_cohort(records: List<GpuBenchRequestV2>, retained: Nat) -> Gp
       gpu_bench_refuse("a warm request targets a session that was not primed in this run")
     } else {
       WarmRunAdmitted {
-        working_set_tokens: token_count(
-          count: gpu_bench_prime_working_set_tokens(records: records),
-        ),
+        working_set_tokens: gpu_bench_prime_working_set_tokens(records: records),
       }
     }
   }
@@ -295,7 +289,9 @@ fn gpu_bench_warm_capacity_check(
     WarmRunAdmitted { working_set_tokens: w } => match measured_kv {
       Absent => CapacityUnread { cause: "measured KV capacity was not supplied" as NonEmptyStr }
       Present { value: kv } =>
-        if token_count_value(t: w) > token_count_value(t: kv) {
+        // Strictly over: a working set exactly equal to the measured capacity still
+        // fits, which is the behaviour before the carrier was restored.
+        if !measure_le(a: w, b: kv) {
           CapacityOver { working_set_tokens: w, measured_kv_tokens: kv }
         } else {
           CapacityFits { working_set_tokens: w, measured_kv_tokens: kv }
@@ -350,7 +346,7 @@ fn gpu_bench_warm_against_cited_counter(
       cause: "ninfer_replayed_tokens_total was not observed" as NonEmptyStr
     }
     NinferReplayedTokensRead { tokens: n } =>
-      if token_count_value(t: n) > 0 {
+      if !measure_le(a: n, b: token_count(count: 0)) {
         WarmRejected { cause: "ninfer replayed tokens; prefix restore was not a snapshot hit" as NonEmptyStr }
       } else {
         WarmValid { working_set_tokens: w, measured_kv_tokens: k }
