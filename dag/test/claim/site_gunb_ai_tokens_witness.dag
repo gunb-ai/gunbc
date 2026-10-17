@@ -4,9 +4,9 @@ import std.types { Bool }
 import std.algebra { string_contains }
 import gunbc.design.material { CssDecl }
 import extdeps.languages.css.properties { CustomProperty }
-import gunbc.design.gunb_ai_hues { gunb_ai_hues_admissible, gunb_ai_hue_count }
+import gunbc.design.gunb_ai_hues { gunb_ai_hues_admissible }
 import gunbc.site.gunb_ai_tokens {
-  token_binding_complete, token_contrast_floors_hold, token_swatches, token_root_decls,
+  token_binding_complete, token_contrast_floors_hold, token_root_decls,
   review_render, ReviewHtml, ReviewEmitRefused, type_scale_wires,
 }
 
@@ -15,26 +15,40 @@ import gunbc.site.gunb_ai_tokens {
 // Consumer: claim-run — `gunbc run --source-root dag --entry
 // dag/test/claim/site_gunb_ai_tokens_witness.dag --claim-run`, alongside the other
 // site witnesses on the compiler gate.
+//
+// No count is copied from the tree (§5: a count equality is a change detector, not
+// completeness — completeness is the identity join in token_binding_complete). The
+// claims below are all properties of what actually renders.
 
 // 1. The hue set enters palette the way every other set must.
 test fn witness_hue_set_admissible() -> Bool {
   gunb_ai_hues_admissible()
-    && gunb_ai_hue_count() == 14
 }
 
-// 2. The binding is total: every hue-set swatch is claimed by a site role and the
-//    role table has the pinned width — a dropped role or swatch goes red, not silent.
+// 2. The binding is total as an identity join (every hue claimed, every bound swatch
+//    in the set, roles well-formed and distinct) — no pinned width.
 test fn witness_binding_total() -> Bool {
   token_binding_complete()
 }
 
-// 3. The rendered page carries every token as `--role: <swatch paint>`: the emitted
-//    text is compared against what palette/scale themselves emit, so a hand-copied
-//    literal in the site layer cannot pass (it would differ from upstream's wire).
+// 3. The rendered page carries every token as a :root declaration, compared against
+//    what palette/scale themselves emit, so a hand-copied literal in the site layer
+//    cannot pass (it would differ from upstream's wire).
+//
+//    RED control that earns this claim's keep: an earlier draft emitted the
+//    declarations BARE inside <style> — no selector at all — and every declaration
+//    still appeared in the text, so a "the string is present" check alone went GREEN
+//    on a page that rendered with no theme. A property of CSS is checked here, not
+//    mere presence: the declarations must sit INSIDE a :root block.
 test fn witness_rendered_root_is_bound_output() -> Bool {
   match review_render() {
-    ReviewHtml { html: h } => all(token_root_decls(), d => string_contains(s: h, pattern: decl_wire(d: d)))
-      && token_swatches.length() == 15
+    ReviewHtml { html: h } =>
+      string_contains(s: h, pattern: ":root { ")
+        && all(token_root_decls(), d => string_contains(s: h, pattern: decl_wire(d: d)))
+        // A modelled rule (not a string block): the body rule reads the tokens by
+        // reference, so a literal colour in the site layer goes red against upstream.
+        && string_contains(s: h, pattern: "body { ")
+        && string_contains(s: h, pattern: "background: var(--canvas)")
     ReviewEmitRefused { reason: r } => false
   }
 }
@@ -55,7 +69,8 @@ test fn witness_contrast_floors() -> Bool {
 //    is its own arm, so there is no page content a refused render could hide in.
 //    The landed type scale (operator pick B, compact) must reach the page through
 //    the upstream wire — display=40px comes from gunbc.design.scale.scale_value_wire
-//    over the ScaleToken rows, never from a second literal list.
+//    over the ScaleToken rows, never from a second literal list. The negative arm
+//    holds the option-A magnitude (52px) out of the artifact.
 test fn witness_render_and_landed_scale() -> Bool {
   match review_render() {
     ReviewHtml { html: h } =>

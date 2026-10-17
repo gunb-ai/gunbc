@@ -62,10 +62,6 @@ data gunb_ai_hues: SwatchSet = SwatchSet {
   members: gunb_ai_hue_members,
 }
 
-fn gunb_ai_hue_count() -> Int {
-  swatches_of(s: gunb_ai_hues).length()
-}
-
 fn gunb_ai_hues_admissible() -> Bool {
   swatch_set_admissible(s: gunb_ai_hues)
 }

@@ -14,9 +14,11 @@ import gunbc.site.gunb_ai_tokens { review_render, ReviewHtml, ReviewEmitRefused 
 // never reaches the filesystem at all, and an unwritable path reports its cause.
 // There is no path where a refused render is written or exits success.
 //
-// Invocation (NativeCliDriver — a positional argv, not --arg):
+// Invocation (either entry renders identical bytes from the same call):
 //   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_tokens_review.dag \
-//     --function v2_cli_main <out-dir>
+//     --function v2_cli_main <out-dir>          (NativeCliDriver positional argv)
+//   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_tokens_review.dag \
+//     --function review_write_arg --arg dir=<out-dir>
 //
 data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
 
