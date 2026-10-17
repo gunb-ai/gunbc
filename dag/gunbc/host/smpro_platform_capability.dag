@@ -183,25 +183,6 @@ fn smpro_admitted_counts(families: List<SoCFamily>) -> SmproAdmittedCounts {
   SmproAdmittedCounts { total: count(families), carrying: count(carrying) }
 }
 
-// THE ONE ROSTERED FAMILY THAT CARRIES, when the roster is unanimous about it. Returns the family only
-// when EVERY admitted family carries the facility -- unanimous rosters are the only case where the
-// compatibility roster settles the question without an installed-silicon observation.
-fn smpro_carrying_family(families: List<SoCFamily>) -> SoCFamily? {
-  match families |> first() {
-    Present { value: lead } =>
-      if smpro_roster_is_unanimous(families: families) { Present { value: lead } } else { none }
-    Absent => none
-  }
-}
-
-// UNANIMOUS MEANS EVERY ADMITTED FAMILY CARRIES, or the roster is empty (and the caller answers the
-// empty case as Unestablished before it asks). Comparing counts rather than folding a boolean because
-// the MIXED case has to be distinguishable from the all-absent case, and a single Bool erases it.
-fn smpro_roster_is_unanimous(families: List<SoCFamily>) -> Bool {
-  let c = smpro_admitted_counts(families: families)
-  c.total > 0 && c.carrying == c.total
-}
-
 fn first_soc_family(families: List<SoCFamily>) -> SoCFamily? {
   families |> first()
 }
