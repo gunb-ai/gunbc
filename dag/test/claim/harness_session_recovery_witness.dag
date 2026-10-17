@@ -6,15 +6,16 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.http.header_dump { HeaderDumpRead }
 import gunbc.harness.harness_turn { HarnessPostOutcome, harness_post_drew_no_response, harness_route_is_fleet_engine }
 import gunbc.harness.harness_session_recovery {
-  UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending,
+  UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionUnresumable, SessionRecoveryMalformed, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending,
   harness_unexplained_refusal, session_messages_validation, session_conversation_from_request, session_conversation_messages,
   session_event_recovery_needed, session_event_resumed, session_recovery_of_events, session_resume_bound,
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, continuation_decision,
+  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationRefused, continuation_decision,
 }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -58,7 +59,7 @@ fn recovery_lines(request: String, rounds: Int) -> List<String> {
 fn prior_with(recovery: SessionRecovery) -> PriorAttemptFacts {
   PriorAttemptFacts {
     node_id: "n1", attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
-    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery,
+    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery, verification_retry: RefusedRetryOperatorOnly,
   }
 }
 
@@ -75,6 +76,7 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
             resumes_made == 0 && resume_round == 38 && list_length(items: interrupted_calls) == 0
               && any(causes, c => c.contains("req_2ae5021ab9c56e6eb7fe1707af067e27"))
           SessionRecoveryNone => false
+          SessionRecoveryMalformed { mismatch: _ } => false
         })
   }
 }
@@ -137,4 +139,41 @@ test fn s3_claim_6_the_real_post_path_shape_for_the_empty_400_is_classified_not_
     })
     && harness_route_is_fleet_engine(access: BackendAdmittedBySeat)
     && harness_route_is_fleet_engine(access: BackendAdmittedByOperatorEndpoint { header_file: "h" as NonEmptyStr })
+}
+
+fn is_unresumable(v: SessionValidation) -> Bool {
+  match v { SessionUnresumable { cause: _ } => true SessionValidated => false SessionInterrupted { unrecorded_call_ids: _ } => false }
+}
+
+fn request_of(messages: String) -> String {
+  concat(concat("\{\"model\":\"qwen\",\"messages\":[\{\"role\":\"system\",\"content\":\"s\"},", messages), "]}")
+}
+
+// CLAIM 7 (review 81292). A duplicated member is MALFORMED, not absent: a duplicated tool_calls or
+// a duplicated call id cannot be read as "the assistant called nothing", so the state is unresumable.
+test fn s3_claim_7_a_duplicated_member_is_unresumable_not_validated() -> Bool {
+  let dup_calls = request_of(messages: "\{\"role\":\"user\",\"content\":\"u\"},\{\"role\":\"assistant\",\"tool_calls\":[\{\"id\":\"c1\"}],\"tool_calls\":[\{\"id\":\"c2\"}]},\{\"role\":\"tool\",\"tool_call_id\":\"c1\"}")
+  let dup_id = request_of(messages: "\{\"role\":\"user\",\"content\":\"u\"},\{\"role\":\"assistant\",\"tool_calls\":[\{\"id\":\"c1\",\"id\":\"c2\"}]},\{\"role\":\"tool\",\"tool_call_id\":\"c1\"}")
+  is_unresumable(v: validation_of(request: dup_calls)) && is_unresumable(v: validation_of(request: dup_id))
+}
+
+// CLAIM 8 (review 81292). A non-string call id is malformed, not dropped.
+test fn s3_claim_8_a_non_string_call_id_is_unresumable_not_dropped() -> Bool {
+  is_unresumable(v: validation_of(request: request_of(messages: "\{\"role\":\"user\",\"content\":\"u\"},\{\"role\":\"assistant\",\"tool_calls\":[\{\"id\":7}]},\{\"role\":\"user\",\"content\":\"x\"}")))
+}
+
+// CLAIM 9 (review 81292). Messages present but no assistant message is unresumable, not validated.
+test fn s3_claim_9_no_assistant_message_is_unresumable_not_validated() -> Bool {
+  is_unresumable(v: validation_of(request: request_of(messages: "\{\"role\":\"user\",\"content\":\"u\"}")))
+}
+
+// CLAIM 10 (review 81292). A turn.recovery_needed line without a cause member refuses typed -- the
+// stream reads Malformed and the decision refuses -- and never fabricates a cause.
+test fn s3_claim_10_a_recovery_needed_line_without_a_cause_refuses_typed() -> Bool {
+  let line = "\{\"type\":\"turn.recovery_needed\",\"round\":4,\"interrupted_calls\":[]}"
+  (match session_recovery_of_events(lines: [line]) { SessionRecoveryMalformed { mismatch } => mismatch.contains("cause") _ => false })
+    && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: [line])) }) {
+      ContinuationRefused { reason } => reason.contains("cause")
+      _ => false
+    })
 }
