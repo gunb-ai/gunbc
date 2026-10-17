@@ -8,6 +8,7 @@ import extdeps.time.rfc3339 { Rfc3339Timestamp, rfc3339_compare, Rfc3339Precedes
 import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyUnobserved }
 import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_authority, H11sslVariant, H11sslStorageSupport, supermicro_h11ssl_storage_support }
 import extdeps.board_authority { BoardAuthorityRef }
+import std.measure { Mebibyte, mebibyte }
 
 // RECEIPT, NOT UPSTREAM FACT (DESIGN section 3, external upstream decomposition). What THIS
 // repository observed of ONE H11SSL REV 2.0 unit (serial barcode below). Two boards were
@@ -230,4 +231,102 @@ fn is_root_answered(o: H11sslObservation) -> Bool {
 // Redfish path is the same declared frontier as the module header.
 fn supermicro_h11ssl_redfish_root_answered_after_activation(r: H11sslFirstContactReceipt) -> Bool {
   any(r.observations, refused => is_root_refused(o: refused) && any(r.observations, act => is_activation(o: act) && instant_precedes(a: observed_instant(o: refused).at, b: observed_instant(o: act).at) && any(r.observations, ans => is_root_answered(o: ans) && instant_precedes(a: observed_instant(o: act).at, b: observed_instant(o: ans).at))))
+}
+
+// ---- Authenticated read-only Redfish GETs, by merry-fox-82, 2026-10-17 at about 05:34Z, host Off,
+// nothing written. The instant is the observer's report ("about"), not a recorded transcript
+// instant, so it is a label and carries no basis. Raw JSON is held in the observer's scratchpad.
+
+// The BMC clock read 2019-11-18T05:37:00+00:00, which is wrong; a BMC clock is never a time basis.
+type H11sslBmcClockStanding = BmcClockUnsynchronized { read_value: NonEmptyStr }
+
+data supermicro_h11ssl_bmc_clock_standing: H11sslBmcClockStanding = BmcClockUnsynchronized {
+  read_value: "2019-11-18T05:37:00+00:00",
+}
+
+// Virtual CD: the standard Redfish VirtualMedia collection (Managers/1/VM1) has 0 members and a
+// Supermicro OEM VirtualMediaConfig sits at Managers/1/VM1/CfgCD. Offered, not exercised.
+type H11sslVirtualMediaSurface
+  = StandardVirtualMediaCollection { members: Nat }
+  | OemVirtualMediaConfigOffered { path: NonEmptyStr, exercised: Bool }
+
+data supermicro_h11ssl_virtual_media_surfaces: List<H11sslVirtualMediaSurface> = [
+  StandardVirtualMediaCollection { members: 0 },
+  OemVirtualMediaConfigOffered { path: "Managers/1/VM1/CfgCD", exercised: false },
+]
+
+type H11sslReportedDimm { slot: NonEmptyStr, size: Mebibyte, part_number: NonEmptyStr }
+
+type H11sslReportedInventoryStanding
+  = StaleFromPriorLife { contradicted_by: NonEmptyStr, refreshed_by: NonEmptyStr }
+  | ConfirmedPresent { confirmed_by: NonEmptyStr }
+
+// What the BMC REPORTS, not what is installed. The operator attests (2026-10-17) an EPYC 7702P
+// physically installed (package marking) and no DIMMs; the BMC lists an EPYC 7532 (VendorId
+// decoding as GenuineIntel) and eight DIMMs. The BMC refreshes host inventory only at host POST,
+// so this is the previous owner's inventory cached from the last POST (a prior-life reading in
+// the sense of gunbc.machine_intake.prior_life_boundary, which governs archiving such carriers;
+// this standing only types the reading). The unit's CPU and memory come from the attestation
+// until a POST under our ownership re-reads them.
+type H11sslBmcReportedInventory {
+  processor_model: NonEmptyStr
+  processor_vendor_id: NonEmptyStr
+  total_cores: Nat
+  dimms_listed: Nat
+  example_dimm: H11sslReportedDimm
+  standing: H11sslReportedInventoryStanding
+}
+
+data supermicro_h11ssl_bmc_reported_inventory: H11sslBmcReportedInventory = H11sslBmcReportedInventory {
+  processor_model: "AMD EPYC 7532 32-Core Processor",
+  processor_vendor_id: "GenuineIntel",
+  total_cores: 32,
+  dimms_listed: 8,
+  example_dimm: H11sslReportedDimm { slot: "DIMMA1", size: mebibyte(count: 8192), part_number: "18ASF1G72PDZ-2G3B1" },
+  standing: StaleFromPriorLife {
+    contradicted_by: "operator attestation 2026-10-17: AMD EPYC 7702P installed, no DIMMs installed",
+    refreshed_by: "the next host POST under our ownership",
+  },
+}
+
+// Operator-attested hardware state of the unit (not read from the BMC).
+type H11sslAttestedHardware { cpu_installed: NonEmptyStr, dimm_count: Nat, heatsink_installed: Bool }
+
+data supermicro_h11ssl_attested_hardware: H11sslAttestedHardware = H11sslAttestedHardware {
+  cpu_installed: "AMD EPYC 7702P",
+  dimm_count: 0,
+  heatsink_installed: false,
+}
+
+// The corpus has no unit power-on hold vocabulary (searched for hold/embargo/heatsink types), so
+// the hazard is a typed refusal reason on the unit, derived from the attestation.
+type H11sslPowerOnRefusal = PowerOnRefusedCpuWithoutHeatsink { cpu: NonEmptyStr } | PowerOnNotRefused
+
+fn supermicro_h11ssl_power_on_refusal(h: H11sslAttestedHardware) -> H11sslPowerOnRefusal {
+  if !h.heatsink_installed { PowerOnRefusedCpuWithoutHeatsink { cpu: h.cpu_installed } } else { PowerOnNotRefused }
+}
+
+// Identity the BMC reported; BoardID and the variant are not resolved by this read (FRU owed).
+type H11sslBmcReportedIdentity {
+  manager_model: NonEmptyStr
+  manager_firmware_version: NonEmptyStr
+  bios_version: NonEmptyStr
+  board_id: NonEmptyStr
+  graphical_console: NonEmptyStr
+}
+
+data supermicro_h11ssl_bmc_reported_identity: H11sslBmcReportedIdentity = H11sslBmcReportedIdentity {
+  manager_model: "ASPEED",
+  manager_firmware_version: "1.52.00",
+  bios_version: "2.6a",
+  board_id: "0x1a03",
+  graphical_console: "KVMIP",
+}
+
+// Only a confirmed standing may be read as the unit's hardware.
+fn supermicro_h11ssl_reported_inventory_is_hardware(i: H11sslBmcReportedInventory) -> Bool {
+  match i.standing {
+    ConfirmedPresent { confirmed_by: _ } => true
+    StaleFromPriorLife { contradicted_by: _, refreshed_by: _ } => false
+  }
 }

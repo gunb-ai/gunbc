@@ -25,6 +25,7 @@ import extdeps.boards.supermicro_h11ssl {
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   supermicro_h11ssl_first_contact_receipt, supermicro_h11ssl_factory_login_producer_admitted,
   supermicro_h11ssl_redfish_root_answered_after_activation, H11sslFirstContactReceipt,
+  supermicro_h11ssl_bmc_reported_inventory, supermicro_h11ssl_reported_inventory_is_hardware, H11sslBmcReportedInventory, ConfirmedPresent, supermicro_h11ssl_attested_hardware, supermicro_h11ssl_power_on_refusal, H11sslAttestedHardware, PowerOnRefusedCpuWithoutHeatsink, PowerOnNotRefused,
   OperatorHeldCertificate, H11sslObservation, H11sslObservedInstant, BmcClockReading,
   WebLoginObservation, RedfishRootObservation, LicenceActivationObservation,
   ServiceRootRefused, ServiceRootAnswered,
@@ -193,4 +194,29 @@ test fn w_receipt_secret_refs_are_attested_by_the_declared_roster() -> Bool {
     && any(r.licences, l => match l.source {
       OperatorHeldCertificate { certificate_number: _, inventory_row: ref } => operator_inventory_attests(roster: operator_attested_bmc_inventory_roster, inventory: operator_held_bmc_credential_inventory, ref: ref)
     })
+}
+
+fn power_on_is_refused(h: H11sslAttestedHardware) -> Bool {
+  match supermicro_h11ssl_power_on_refusal(h: h) {
+    PowerOnRefusedCpuWithoutHeatsink { cpu: _ } => true
+    PowerOnNotRefused => false
+  }
+}
+
+test fn w_power_on_is_refused_while_a_cpu_is_installed_without_heatsink() -> Bool {
+  let h = supermicro_h11ssl_attested_hardware
+  let cooled = H11sslAttestedHardware { cpu_installed: h.cpu_installed, dimm_count: h.dimm_count, heatsink_installed: true }
+  power_on_is_refused(h: h) && !power_on_is_refused(h: cooled)
+}
+
+// The BMC-reported inventory is not the unit's hardware while it is unconfirmed; the same rows
+// with a confirmed standing are.
+test fn w_bmc_reported_inventory_is_not_hardware_until_confirmed() -> Bool {
+  let i = supermicro_h11ssl_bmc_reported_inventory
+  let confirmed = H11sslBmcReportedInventory {
+    processor_model: i.processor_model, processor_vendor_id: i.processor_vendor_id, total_cores: i.total_cores,
+    dimms_listed: i.dimms_listed, example_dimm: i.example_dimm,
+    standing: ConfirmedPresent { confirmed_by: "physical inspection" },
+  }
+  !supermicro_h11ssl_reported_inventory_is_hardware(i: i) && supermicro_h11ssl_reported_inventory_is_hardware(i: confirmed)
 }
