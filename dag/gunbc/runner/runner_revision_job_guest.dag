@@ -59,6 +59,9 @@ import gunbc.runner.runner_guest_image {
 // the jailer unit asks for the VM's RAM plus the realization allowance, so the VM's RAM is the row
 // LESS that allowance, and the claims' envelope is the VM's RAM less the guest OS allowance. Sized the
 // other way (the row plus allowances) the VM asked for more than its own cell grants.
+// The row is the FLEET constant, not gunbc_runner_slot_desired_for(slot), because the guest unit's
+// MemoryMax= is baked into the image (runner_revision_job_image) and one image serves every slot. A slot
+// whose row differs from the fleet row needs its own image or a refusal; nothing checks that yet (PR B).
 data revision_job_guest_os_allowance: Mebibyte = mebibyte(count: 1024)
 
 fn revision_job_guest_memory() -> Mebibyte {

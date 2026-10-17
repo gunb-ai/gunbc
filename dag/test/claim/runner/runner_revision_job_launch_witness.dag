@@ -7,7 +7,7 @@ import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_a
 import extdeps.virtualization.firecracker { FirecrackerDrive, firecracker_block_sector_size }
 import gunbc.runner.runner_microvm { jit_drive_utf8_size }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
-import gunbc.runner.runner_revision_job_launch { revision_job_vm_config }
+import gunbc.runner.runner_revision_job_launch { revision_job_vm_config, revision_job_jailer_memory_property }
 import gunbc.runner.runner_revision_job_guest { revision_job_guest_memory, revision_job_claim_envelope, revision_job_guest_os_allowance }
 import gunbc.runner.runner_revision_job_stage { revision_job_spec_device_content }
 
@@ -37,9 +37,8 @@ test fn the_vm_ram_exceeds_the_claim_envelope_and_the_spec_fills_whole_sectors()
 // THE VM FITS ITS OWN CELL: the jailer unit asks for the VM's RAM plus the realization allowance, and
 // that is exactly the CI slot's row, no more -- the claims' envelope sits below the VM's RAM by the
 // guest OS allowance. (Before, the VM asked for the row plus both allowances inside a cell of the row.)
-test fn the_vm_and_its_realization_allowance_ask_no_more_than_the_slot_row() -> Bool {
-  byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))
-    == byte_size_count(b: gunbc_runner_slot_memory_max)
+test fn the_jailer_unit_memory_the_plan_emits_is_exactly_the_slot_row() -> Bool {
+  (revision_job_jailer_memory_property().value as String) == to_string(byte_size_count(b: gunbc_runner_slot_memory_max))
     && byte_size_count(b: revision_job_claim_envelope()) + byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_os_allowance))
       == byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory()))
 }

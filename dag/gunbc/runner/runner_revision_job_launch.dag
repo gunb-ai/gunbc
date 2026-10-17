@@ -80,6 +80,12 @@ fn revision_job_vm_config(vcpus: HardwareThreadCount) -> FirecrackerVmConfig {
   }
 }
 
+// The jailer unit'"'"'s MemoryMax=: the VM'"'"'s RAM plus the realization allowance. One function, read by the
+// plan and claimed against the slot row, so the property the plan emits is the one claimed.
+fn revision_job_jailer_memory_property() -> SystemdRunProperty {
+  SystemdRunProperty { property: MemoryMax, value: to_string(byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr }
+}
+
 fn revision_job_launch_plan(
   snapshot: RequiredBuildCellSnapshot,
   work: Work<NonEmptyStr>,
@@ -115,7 +121,7 @@ fn revision_job_launch_plan(
           workspace_grant: mebibyte_to_byte_size(m: revision_job_work_disk),
           lease_expires_unix: none,
           runtime_properties: [
-            SystemdRunProperty { property: MemoryMax, value: to_string(byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr },
+            revision_job_jailer_memory_property(),
             SystemdRunProperty { property: MemorySwapMax, value: "0" },
             SystemdRunProperty { property: CPUQuota, value: concat(to_string(hardware_thread_count_value(t: admitted) * 100), "%") as NonEmptyStr },
           ],
