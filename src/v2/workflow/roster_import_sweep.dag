@@ -20,7 +20,9 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.types { List, Bool }
+import std.types { List, Bool, GitRef }
+import extdeps.git
+import extdeps.git.inspect
 import std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.grammar { parse_production_emitted_identity_optional }
@@ -125,8 +127,8 @@ fn roster_import_sweep_apply_exit(root_dir: String, paths_csv: String) -> Proces
 // the same file. Every target is a relative path confined under that root (no leading `/`, no `.`, `..` or empty segment);
 // a target that is not is refused before any read. The effectful steps take a RosterHeldLock, whose only constructor is
 // roster_lock_acquire, and roster_apply_edit re-checks that the lock file still exists before it writes, so an entry
-// that never acquired the lock refuses `lock-not-held` and writes nothing. Symlinks inside the root are not resolved
-// (the root is exclusively owned for the run, per the contract above).
+// that never acquired the lock refuses `lock-not-held` and writes nothing. The root and every target are then checked
+// against git itself (roster_root_is_toplevel, roster_target_refusal), which also covers symlinks.
 // WHY NOT std.durable_exclusive_hold / std.temporal_effect::HeldLease (DESIGN §3b leasing home): durable_hold_*_assess
 // and held_lease are pure assessments over a caller-supplied observation; none of them takes or releases anything, and no
 // durable store for a source tree exists to observe. Using them first needs that store plus holder-liveness reporting,
@@ -171,14 +173,63 @@ fn roster_lock_body(nonce: String) -> String {
   "roster_import_sweep_apply nonce=" + nonce + "\n"
 }
 
-// The root must be the worktree's git toplevel: its listing carries a `.git` entry (a directory in a primary checkout, a
-// file in a linked worktree). A subdirectory of the tree has none, so `/work/repo` + `src/f.dag` and `/work/repo/src` +
-// `f.dag` cannot take two locks for one file: the second root is refused. No realpath or lstat operation is reachable
-// from a .dag effect, so a symlinked spelling of the toplevel and a symlink inside the tree that escapes it are NOT
-// resolved; they stay inside the exclusively-owned, symlink-free worktree contract.
+// THE ROOT IS WHAT GIT SAYS IT IS. `git rev-parse --show-toplevel` (git.Inspect.Toplevel, the declared git tool) answers the
+// real toplevel of the working directory, symlinks resolved; the root must equal it, so a symlinked or subdirectory
+// spelling of the same worktree is refused and one worktree has one lock identity. Toplevel takes no input: the
+// observation is of the CLI's working directory, which is why the target checks below also require the root to be it.
 fn roster_root_is_toplevel(root_dir: String) -> Bool {
-  let listed = Filesystem.List(path: root_dir)
-  listed.success && filesystem_listing_names_entry(listing: listed.entries, name: ".git")
+  let top = git.Inspect.Toplevel().path as String
+  top == root_dir
+}
+
+// A TARGET IS WRITTEN ONLY IF GIT TRACKS IT AS A REGULAR UNMODIFIED FILE. `git ls-tree HEAD -- <path>` names the entry's mode
+// (100644 regular; 120000 a symlink; nothing for an untracked path or one behind a symlinked directory, which git does not
+// track through), and `git status --porcelain` must not name the path (unmodified, so the sweep never lands on someone's
+// uncommitted work). Both are git's own observation; nothing here resolves a path itself. Returns "" when admitted, else the cause.
+fn roster_target_refusal(root: String, path: String) -> String {
+  if !roster_root_is_toplevel(root_dir: root) {
+    "root-not-git-toplevel"
+  } else {
+    let tree = git.Inspect.ListTreeEntryAtPath(ref: "HEAD" as GitRef, path: path)
+    let status = git.Inspect.WorkingTreeStatus(repository_path: root)
+    if !tree.success || !status.success {
+      "git-unobservable"
+    } else if string_length(s: tree.entries_nul) < 12 || substring(s: tree.entries_nul, start: 0, end: 12) != "100644 blob " {
+      "target-not-tracked-regular"
+    } else if roster_status_names_path(entries_nul: status.entries_nul, path: path) {
+      "target-modified"
+    } else {
+      ""
+    }
+  }
+}
+
+fn roster_ends_with_space_path(field: String, path: String) -> Bool {
+  let n = string_length(s: field)
+  let m = string_length(s: path)
+  n > m && substring(s: field, start: n - m - 1, end: n) == " " + path
+}
+
+// porcelain v1 -z fields are "XY path", and a rename source is the bare path: either spelling names the path.
+fn roster_status_names_path(entries_nul: String, path: String) -> Bool {
+  fold_list(xs: split(s: entries_nul, delimiter: "\u{0}"), empty: false, cons: fn(hit, f) { hit || f == path || roster_ends_with_space_path(field: f, path: path) })
+}
+
+// The generation history is either established or it is not: an ABSENT file is the first use of this root; any other read
+// failure leaves the history unestablished, and acquisition refuses rather than restarting the count (which would let an
+// old token's nonce match again).
+type RosterGenerationHistory
+  = RosterHistoryKnown { content: String }
+  | RosterHistoryUnestablished
+
+fn roster_generation_history(success: Bool, content: String, error_kind: String) -> RosterGenerationHistory {
+  if success {
+    RosterHistoryKnown { content: content }
+  } else if error_kind == "not_found" {
+    RosterHistoryKnown { content: "" }
+  } else {
+    RosterHistoryUnestablished
+  }
 }
 
 // ONE NONCE PER ACQUISITION. The generation file is written only while the lock is held, one more character per
@@ -189,17 +240,32 @@ fn roster_lock_acquire(root_dir: String) -> RosterLockAcquisition {
     RosterLockRefused { cause: "root-not-absolute-canonical" }
   } else if !roster_root_is_toplevel(root_dir: root_dir) {
     RosterLockRefused { cause: "root-not-git-toplevel" }
-  } else if !Filesystem.WriteCreateNew(path: roster_lock_file(root: root_dir), content: "roster_import_sweep_apply pending\n").success {
+  } else {
+    roster_lock_take(root_dir: root_dir)
+  }
+}
+
+// The lock-file mechanics alone, with no claim about the root: acquire is the only caller that admits a root; the controls
+// call this on a scratch directory that is not a git toplevel.
+fn roster_lock_take(root_dir: String) -> RosterLockAcquisition {
+  if !Filesystem.WriteCreateNew(path: roster_lock_file(root: root_dir), content: "roster_import_sweep_apply pending\n").success {
     RosterLockRefused { cause: "apply-lock-unavailable" }
   } else {
     let prior = Filesystem.Read(path: roster_generation_file(root: root_dir))
-    let before = if prior.success { prior.content } else { "" }
-    let nonce = int_to_decimal_string(value: string_length(s: before) + 1)
-    if Filesystem.Write(path: roster_generation_file(root: root_dir), content: before + "x").success && Filesystem.Write(path: roster_lock_file(root: root_dir), content: roster_lock_body(nonce: nonce)).success {
-      RosterLockAcquired { held: RosterHeldLock { root: root_dir, nonce: nonce } }
-    } else {
-      let undone = Filesystem.Delete(path: roster_lock_file(root: root_dir))
-      RosterLockRefused { cause: "lock-write-failed" }
+    match roster_generation_history(success: prior.success, content: prior.content, error_kind: prior.error_kind) {
+      RosterHistoryUnestablished => {
+        let undone = Filesystem.Delete(path: roster_lock_file(root: root_dir))
+        RosterLockRefused { cause: "generation-history-unestablished" }
+      }
+      RosterHistoryKnown { content: before } => {
+        let nonce = int_to_decimal_string(value: string_length(s: before) + 1)
+        if Filesystem.Write(path: roster_generation_file(root: root_dir), content: before + "x").success && Filesystem.Write(path: roster_lock_file(root: root_dir), content: roster_lock_body(nonce: nonce)).success {
+          RosterLockAcquired { held: RosterHeldLock { root: root_dir, nonce: nonce } }
+        } else {
+          let undone = Filesystem.Delete(path: roster_lock_file(root: root_dir))
+          RosterLockRefused { cause: "lock-write-failed" }
+        }
+      }
     }
   }
 }
@@ -255,12 +321,13 @@ fn roster_apply_path(held: RosterHeldLock, path: String, prepared: PreparedGramm
 }
 
 fn roster_apply_edit(held: RosterHeldLock, path: String, before: String, outcome: RosterOutcome) -> String {
-  let now = Filesystem.Read(path: held.root + "/" + path)
   if !roster_path_admitted(path: path) {
     "REFUSE " + path + " path-outside-root\n"
   } else if !roster_lock_still_held(held: held) {
     "REFUSE " + path + " lock-not-held\n"
-  } else if !now.success || now.content != before {
+  } else if roster_target_refusal(root: held.root, path: path) != "" {
+    "REFUSE " + path + " " + roster_target_refusal(root: held.root, path: path) + "\n"
+  } else if !roster_target_unchanged(root: held.root, path: path, before: before) {
     "REFUSE " + path + " stale-read\n"
   } else {
     match roster_applied(before: before, outcome: outcome) {
@@ -275,6 +342,11 @@ fn roster_apply_edit(held: RosterHeldLock, path: String, before: String, outcome
         }
     }
   }
+}
+
+fn roster_target_unchanged(root: String, path: String, before: String) -> Bool {
+  let now = Filesystem.Read(path: root + "/" + path)
+  now.success && now.content == before
 }
 
 type RosterApplied
@@ -625,6 +697,8 @@ fn roster_controls_report() -> String {
         + roster_control_present(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_multibyte(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_annotation(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_generation()
+        + roster_control_status_names()
   }
 }
 
@@ -653,6 +727,40 @@ fn roster_control_multibyte(prepared: PreparedGrammar, lex: PreparedLexRules) ->
   }
 }
 
+// An unreadable generation file leaves the history unestablished (no restart of the nonce count); only an absent one is first use.
+fn roster_control_generation() -> String {
+  let first = roster_generation_history(success: false, content: "", error_kind: "not_found")
+  let denied = roster_generation_history(success: false, content: "", error_kind: "permission_denied")
+  let other = roster_generation_history(success: false, content: "", error_kind: "other")
+  let known = roster_generation_history(success: true, content: "xx", error_kind: "")
+  let first_ok = match first {
+    RosterHistoryKnown { content: c } => c == ""
+    RosterHistoryUnestablished => false
+  }
+  let denied_bad = match denied {
+    RosterHistoryKnown { content: c } => false
+    RosterHistoryUnestablished => true
+  }
+  let other_bad = match other {
+    RosterHistoryKnown { content: c } => false
+    RosterHistoryUnestablished => true
+  }
+  let known_ok = match known {
+    RosterHistoryKnown { content: c } => c == "xx"
+    RosterHistoryUnestablished => false
+  }
+  if first_ok && denied_bad && other_bad && known_ok { "" } else { "CONTROL-FAIL generation: an unreadable history was read as empty\n" }
+}
+
+fn roster_control_status_names() -> String {
+  let entries = " M src/a.dag\u{0}?? src/b.dag\u{0}R  new.dag\u{0}old.dag\u{0}"
+  if roster_status_names_path(entries_nul: entries, path: "src/a.dag") && roster_status_names_path(entries_nul: entries, path: "old.dag") && !roster_status_names_path(entries_nul: entries, path: "src/c.dag") && !roster_status_names_path(entries_nul: entries, path: "a.dag") {
+    ""
+  } else {
+    "CONTROL-FAIL status: porcelain fields misread\n"
+  }
+}
+
 fn roster_control_annotation(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.annotation\n\nimport std.algebra {\n  // 😀 kept\n  Cons\n}\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
   match roster_applied(before: before, outcome: roster_sweep_text(path: "control/annotation.dag", text: before, prepared: prepared, lex: lex)) {
@@ -662,19 +770,29 @@ fn roster_control_annotation(prepared: PreparedGrammar, lex: PreparedLexRules) -
   }
 }
 
-// THE LOCK CONTROLS (effectful), run as `gunbc run … --function roster_import_sweep_lock_controls_exit --arg root_dir=<absolute scratch root>`.
-// The root must be an exclusively owned scratch directory; the controls create and delete only `.roster_control_*`,
-// the lock, generation and a `.git` marker file in it.
+// THE LOCK CONTROLS (effectful), run as `gunbc run … --function roster_import_sweep_lock_controls_exit --arg root_dir=<absolute scratch dir>`.
+// The scratch dir must be one the caller just created EMPTY (no mkdir operation is reachable from a .dag effect, so the controls
+// cannot create it themselves): a non-empty dir, or one with a `.git` entry, is refused before anything is touched. The controls
+// create and delete only the files they created in it (`.roster_control_*`, the lock and the generation file), never a `.git`,
+// and never touch the real worktree: they take the lock with roster_lock_take, which makes no claim about the root.
 //   unheld:   a token built without roster_lock_acquire (no lock file) refuses `lock-not-held`; the target keeps its bytes.
 //   stale:    a token from an earlier acquisition refuses `lock-not-held` while another acquisition holds the lock.
-//   contend:  with the lock held, a second acquire on the same root is refused.
+//   contend:  with the lock held, a second take on the same root is refused.
 //   traversal: roster_apply_edit itself (the write boundary) refuses `../outside.dag` under a held lock and creates nothing.
-//   spellings: a subdirectory spelling of the root is not the toplevel and takes no lock; a relative or non-canonical root is refused.
+//   spellings: the scratch dir and a subdirectory of the real toplevel are not the git toplevel, so acquire refuses `root-not-git-toplevel`
+//             and creates no lock; a relative or non-canonical root is refused.
+//   (the pure controls cover an unreadable generation history and the porcelain reader; the git admission of a target
+//   (symlink 120000, untracked, modified) is exercised by the real apply run, not by a planted observation.)
 fn roster_import_sweep_lock_controls_exit(root_dir: String) -> ProcessExit {
-  let marker = Filesystem.WriteCreateNew(path: root_dir + "/.git", content: "gitdir: scratch\n")
-  let report = roster_lock_controls_report(root_dir: root_dir)
-  let cleaned = Filesystem.Delete(path: root_dir + "/.git")
-  if (report == "" && cleaned.success) { ExitSuccess } else { exit_failure(reason: report) }
+  let listed = Filesystem.List(path: root_dir)
+  if !roster_root_admitted(root_dir: root_dir) || !listed.success || listed.entries != "" {
+    exit_failure(reason: "CONTROL-FAIL scratch dir must be an absolute, existing, EMPTY directory the caller just created\n")
+  } else {
+    let report = roster_lock_controls_report(root_dir: root_dir)
+    let cleaned = Filesystem.Delete(path: roster_generation_file(root: root_dir))
+    let left = Filesystem.List(path: root_dir)
+    if report == "" && cleaned.success && left.success && left.entries == "" { ExitSuccess } else { exit_failure(reason: report + "CONTROL-FAIL scratch dir not left empty\n") }
+  }
 }
 
 fn roster_lock_controls_report(root_dir: String) -> String {
@@ -712,13 +830,13 @@ fn roster_control_unheld(root_dir: String) -> String {
 fn roster_control_stale(root_dir: String) -> String {
   let before = "module c.stale\n\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
   let target = ".roster_control_stale.dag"
-  match roster_lock_acquire(root_dir: root_dir) {
+  match roster_lock_take(root_dir: root_dir) {
     RosterLockRefused { cause: cause } => "CONTROL-FAIL stale: first acquire refused " + cause + "\n"
     RosterLockAcquired { held: first } =>
       if !roster_lock_release(held: first) {
         "CONTROL-FAIL stale: first release failed\n"
       } else {
-        match roster_lock_acquire(root_dir: root_dir) {
+        match roster_lock_take(root_dir: root_dir) {
           RosterLockRefused { cause: cause } => "CONTROL-FAIL stale: second acquire refused " + cause + "\n"
           RosterLockAcquired { held: second } =>
             if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
@@ -752,10 +870,10 @@ fn roster_control_stale(root_dir: String) -> String {
 }
 
 fn roster_control_contend(root_dir: String) -> String {
-  match roster_lock_acquire(root_dir: root_dir) {
+  match roster_lock_take(root_dir: root_dir) {
     RosterLockRefused { cause: cause } => "CONTROL-FAIL contend: first acquire refused " + cause + "\n"
     RosterLockAcquired { held: held } => {
-      let second = match roster_lock_acquire(root_dir: root_dir) {
+      let second = match roster_lock_take(root_dir: root_dir) {
         RosterLockRefused { cause: cause } => cause
         RosterLockAcquired { held: _ } => "acquired"
       }
@@ -766,7 +884,7 @@ fn roster_control_contend(root_dir: String) -> String {
 }
 
 fn roster_control_traversal(root_dir: String) -> String {
-  match roster_lock_acquire(root_dir: root_dir) {
+  match roster_lock_take(root_dir: root_dir) {
     RosterLockRefused { cause: cause } => "CONTROL-FAIL traversal: acquire refused " + cause + "\n"
     RosterLockAcquired { held: held } => {
       let edit = RosterEdit { start: 0, end: 0, text: "x", own_line: false }
@@ -784,13 +902,19 @@ fn roster_control_traversal(root_dir: String) -> String {
 }
 
 fn roster_control_spellings(root_dir: String) -> String {
-  let sub = match roster_lock_acquire(root_dir: root_dir + "/src") {
+  let top = git.Inspect.Toplevel().path as String
+  let scratch = match roster_lock_acquire(root_dir: root_dir) {
     RosterLockRefused { cause: cause } => cause
     RosterLockAcquired { held: _ } => "acquired"
   }
-  if sub == "root-not-git-toplevel" && !roster_root_admitted(root_dir: "relative/dir") && !roster_root_admitted(root_dir: "/a/../b") && !roster_root_admitted(root_dir: "/a//b") && roster_root_admitted(root_dir: "/a/b") {
+  let sub = match roster_lock_acquire(root_dir: top + "/src") {
+    RosterLockRefused { cause: cause } => cause
+    RosterLockAcquired { held: _ } => "acquired"
+  }
+  let lock_made = Filesystem.Read(path: roster_lock_file(root: root_dir))
+  if scratch == "root-not-git-toplevel" && sub == "root-not-git-toplevel" && !lock_made.success && !roster_root_admitted(root_dir: "relative/dir") && !roster_root_admitted(root_dir: "/a/../b") && !roster_root_admitted(root_dir: "/a//b") && roster_root_admitted(root_dir: "/a/b") {
     ""
   } else {
-    "CONTROL-FAIL spellings: subdirectory root answered " + sub + "\n"
+    "CONTROL-FAIL spellings: scratch answered " + scratch + ", subdirectory answered " + sub + "\n"
   }
 }
