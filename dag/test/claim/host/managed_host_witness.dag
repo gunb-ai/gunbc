@@ -20,7 +20,7 @@ import gunbc.host.managed_host {
 }
 import extdeps.bmc.ipmi_master_write_read { MasterWriteReadBus, PrivateBus }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_observation }
-import extdeps.board_authority { BoardFruObservation, BoardFruRead, BoardFruIdentity }
+import extdeps.board_authority { BoardFruRead, BoardFruIdentity }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.machine_intake.ampere_smpro_observation {
   SmproTarget, SiteFromOperatorBrief, smpro_site_admit, SmproSiteRefused, SiteHasNoTargets, SmproSiteAdmitted,
