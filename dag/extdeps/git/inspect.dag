@@ -1,6 +1,6 @@
 module extdeps.git.inspect
 
-import std.types { Bool, CommitSha, FilePath, GitRef, Int, Unit }
+import std.types { Bool, CommitSha, FilePath, GitRef, Int, List, String, Unit }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -463,6 +463,56 @@ service git.Inspect {
     }
   }
 
+  operation ConfigGetInRepo {
+    requires none
+    input { repository_path: FilePath, key: String }
+    output {
+      value: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "config", "--local", "--get", "{key}"] }
+    exit {
+      0 => Unit
+      1 => String "Key is not set"
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation ConfigGetRegexpInRepo {
+    requires none
+    input { repository_path: FilePath, pattern: String }
+    output {
+      value: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "config", "--local", "--get-regexp", "{pattern}"] }
+    exit {
+      0 => Unit
+      1 => String "No matching keys"
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation IsShallowRepository {
+    requires none
+    input { repository_path: FilePath }
+    output {
+      answer: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "rev-parse", "--is-shallow-repository"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
   operation MergeTreeWriteTree {
     requires opaque
     input { left: GitRef, right: GitRef }
@@ -630,4 +680,18 @@ fn config_reading(exit_code: Int, stdout: String, stderr: String) -> ConfigReadi
       ConfigUnreadable { exit_code: exit_code, stderr: stderr }
     }
   }
+}
+
+data git_config_local_flag: String = "--local"
+
+fn git_config_get_in_repo_tail(key: String) -> List<String> {
+  ["config", git_config_local_flag, "--get", key]
+}
+
+fn git_config_get_regexp_in_repo_tail(pattern: String) -> List<String> {
+  ["config", git_config_local_flag, "--get-regexp", pattern]
+}
+
+fn git_rev_parse_is_shallow_in_repo_tail() -> List<String> {
+  ["rev-parse", "--is-shallow-repository"]
 }
