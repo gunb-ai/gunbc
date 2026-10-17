@@ -517,8 +517,19 @@ mod probe {
         // That is the measurement the corpus's own probes make, so the numbers here are the numbers
         // those probes see; the cost is one compile per file, with imports read from disk.
         if mode.trim() == "PERFILE" || mode.trim().starts_with("PERFILE:") {
+            // `zz-files=PERFILE` takes the scan's own candidates; `zz-files=PERFILE-FILE=<path>`
+            // takes a newline/comma list from a file, which is how the MEASURED candidate list is
+            // handed to a run -- 7 KB of paths cannot travel through a shell argument, and a list the
+            // measurement carries itself is auditable.
             let list: Vec<String> = if mode.trim() == "PERFILE" {
                 candidate_paths.iter().cloned().collect()
+            } else if let Some(rest) = mode.trim().strip_prefix("PERFILE-FILE=") {
+                let text = std::fs::read_to_string(rest)
+                    .unwrap_or_else(|e| panic!("probe list {rest}: {e}"));
+                text.split([',', '\n'])
+                    .map(|p| p.trim().to_string())
+                    .filter(|p| !p.is_empty())
+                    .collect()
             } else {
                 mode.split_once(':')
                     .map(|(_, rest)| {
