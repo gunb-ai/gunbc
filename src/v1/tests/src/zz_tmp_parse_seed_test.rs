@@ -4,17 +4,12 @@ use std::rc::Rc;
 
 fn report(label: &str, source: &str) {
     let r = parse_source_named("snippet.dag", source);
-    let diags: Vec<String> = r
-        .diagnostics
-        .iter()
-        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .collect();
-    if diags.is_empty() {
-        println!("PARSE_OK\t{label}");
-    } else {
-        for d in diags.iter().take(4) {
-            println!("PARSE_FAIL\t{label}\t{d}");
+    match &*r.error.clone() {
+        Some(e) => {
+            let msg = v1_compiler::v1_std_core::diagnostic_to_message(e.diagnostic.clone());
+            println!("PARSE_FAIL\t{label}\t{msg}");
         }
+        std::option::Option::None => println!("PARSE_OK\t{label}"),
     }
 }
 
