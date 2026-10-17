@@ -17210,14 +17210,14 @@ pub fn record_lit_name_declares_union(
         scope.type_env.clone(),
         type_name.clone(),
     ) {
+        std::option::Option::None => std::option::Option::None,
         Some(decl) => {
-            if decl.connective.clone() == Connective::Disj {
+            if (decl.connective.clone() == Connective::Disj) {
                 Some(decl.clone())
             } else {
                 record_lit_expansion_declares_union(decl.clone(), scope.clone())
             }
         }
-        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -17225,16 +17225,18 @@ pub fn record_lit_expansion_declares_union(
     decl: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> Option<Rc<Node>> {
-    let expanded_result = expand_type_for_field_access(
-        decl.clone(),
-        scope.type_env.clone(),
-        scope.module_name.clone(),
-    );
-    let expanded = expanded_result.resolved.clone();
-    if expanded.connective.clone() == Connective::Disj {
-        Some(expanded)
-    } else {
-        std::option::Option::None
+    {
+        let expanded_result = expand_type_for_field_access(
+            decl.clone(),
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+        );
+        let expanded = expanded_result.resolved.clone();
+        if (expanded.connective.clone() == Connective::Disj) {
+            Some(expanded.clone())
+        } else {
+            std::option::Option::None
+        }
     }
 }
 
@@ -18263,35 +18265,34 @@ pub fn infer_record_lit_structural(
         } else {
             Rc::new(vec![])
         };
-        // DESIGN §4b (the floor first): a value inhabits its DECLARED type, and the values a type
-        // name admits are fixed by the shape it declares. A name that declares a coproduct carries
-        // NO record constructor at all, so `Union { ... }` -- in any position, with any fields --
-        // builds a value no type inhabits: unrepresentable downstream, and it reached an EVAL
-        // non-exhaustive match instead of a located refusal at authoring (extdeps.systemd
-        // SystemdRunProperty: #13942 turned it from a record into a union, #14149 wrote the old
-        // record shape, and main refused only at run 38905139153). The defect is the NAME, so it is
-        // read off the resolved declaration BEFORE the field walk and fires whatever the fields
-        // happen to be: a union's child variants make record_lit_expected_fields accept any field
-        // set the union of their fields admits, which made the field walk the wrong place to ask.
-        // Located at name_span (the name is the defect), it lists the variants the author could
-        // have meant, and it is PREPENDED into the diagnostic concat instead of returned early --
-        // an early return absorbed the later TypeMismatch that the stop-observation witness claims,
-        // which is the fail-open this repo refuses.
-        //
-        // It fires only where no other fact has already answered the construction question, so it
-        // widens on nothing: an owned presence variant (presence_variant_owner), an
-        // expected-coproduct arm (expected_variant_node), an instantiated generic
-        // (instantiated_struct_fields) or a field set read from the expected position
-        // (expected_struct_fields) each already resolve the constructor by a route that does not
-        // read a union as a record; an ambiguous bare name belongs to the AmbiguousReference
-        // refusal; and a name whose expansion resolves to a conjunction (a record, or a variant of
-        // a union -- the `Present { value: ... }` spelling) is a constructor this literal is
-        // entitled to use.
-        let union_name_decl = if ((tn_str.clone() != "".to_string())
-            && (presence_variant_owner.clone() == std::option::Option::None)
-            && (expected_variant_node.clone() == std::option::Option::None)
-            && (instantiated_struct_fields.clone() == std::option::Option::None)
-            && (expected_struct_fields.clone() == std::option::Option::None)
+        let construction_field_names =
+            if ((tn_str.clone() == "".to_string()) || presence_name_is_ambiguous.clone()) {
+                std::option::Option::None
+            } else {
+                if ((presence_fields.clone().len() as i64) > 0) {
+                    Some(Rc::new({
+                        let mut __result = Vec::new();
+                        for sf in presence_fields.iter().cloned() {
+                            __result.push(crate::v1_std_core::authored_name_at(
+                                si_presence.clone(),
+                                sf.clone(),
+                            ));
+                        }
+                        __result
+                    }))
+                } else {
+                    if (presence_variant_owner.clone() != std::option::Option::None) {
+                        Some(Rc::new(vec![]))
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+            };
+        let union_name_decl = if ((((((tn_str.clone() != "".to_string())
+            && (presence_variant_owner.clone() == std::option::Option::None))
+            && (expected_variant_node.clone() == std::option::Option::None))
+            && (instantiated_struct_fields.clone() == std::option::Option::None))
+            && (expected_struct_fields.clone() == std::option::Option::None))
             && (presence_name_is_ambiguous.clone() == false))
         {
             match alias_struct_expansion.clone() {
@@ -18317,7 +18318,7 @@ pub fn infer_record_lit_structural(
                         let mut __result = Vec::new();
                         for v in decl.children.clone().iter().cloned() {
                             __result.push(crate::v1_std_core::authored_name_at(
-                                scope.type_env.clone().source_indices.clone(),
+                                si_presence.clone(),
                                 v.clone(),
                             ));
                         }
@@ -18329,29 +18330,6 @@ pub fn infer_record_lit_structural(
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
-        let construction_field_names =
-            if ((tn_str.clone() == "".to_string()) || presence_name_is_ambiguous.clone()) {
-                std::option::Option::None
-            } else {
-                if ((presence_fields.clone().len() as i64) > 0) {
-                    Some(Rc::new({
-                        let mut __result = Vec::new();
-                        for sf in presence_fields.iter().cloned() {
-                            __result.push(crate::v1_std_core::authored_name_at(
-                                si_presence.clone(),
-                                sf.clone(),
-                            ));
-                        }
-                        __result
-                    }))
-                } else {
-                    if (presence_variant_owner.clone() != std::option::Option::None) {
-                        Some(Rc::new(vec![]))
-                    } else {
-                        std::option::Option::None
-                    }
-                }
-            };
         let missing_field_diags = if (((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
             || presence_name_is_ambiguous.clone())
