@@ -794,7 +794,7 @@ pub(crate) mod observed_cgroup_bound_tests {
         let unlimited = tree(&[("/system.slice/job.service", "max", "0")]);
         assert_eq!(
             verdict(unlimited, "/system.slice/job.service"),
-            "no-finite-max@/system.slice/job.service"
+            "no-finite-max@0::/system.slice/job.service"
         );
         let swap = tree(&[("/system.slice/job.service", "21474836480", "max")]);
         assert_eq!(
@@ -804,7 +804,7 @@ pub(crate) mod observed_cgroup_bound_tests {
         let huge = tree(&[("/system.slice/job.service", "99999999999999999999999", "0")]);
         assert_eq!(
             verdict(huge, "/system.slice/job.service"),
-            "no-finite-max@/system.slice/job.service"
+            "no-finite-max@0::/system.slice/job.service"
         );
         let zero = tree(&[("/system.slice/job.service", "0", "0")]);
         assert_eq!(
@@ -834,7 +834,7 @@ pub(crate) mod observed_cgroup_bound_tests {
         let _ = std::fs::remove_dir_all(&empty);
         assert_eq!(
             verdict(fixture_root(), "/system.slice/job.service"),
-            "unread@/system.slice/job.service"
+            "unread@0::/system.slice/job.service"
         );
     }
 }
@@ -901,6 +901,15 @@ mod standing_fixture_tests {
     use super::*;
     use std::path::PathBuf;
 
+    // A runner slot as CI actually lays it out on srv1: an `actions-runner@<host>.service` unit under
+    // system.slice, which is what the declared needle (`runner_unit_prefix`) matches. A name invented
+    // for the test would exercise the classifier against a path no host produces -- and quietly pass
+    // through the unmodeled-system-unit premise instead.
+    const SLOT: &str =
+        "0::/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-03.service";
+    const SLOT_LEAF: &str =
+        "/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-03.service";
+
     // THE ONE CHECK, as the fold sees it: the observation is supplied to `standing_from_supplied`, so
     // each row says what the chain reading answered and what the fold made of it. The chain reader's
     // own verdicts (fixture trees on disk) are covered in `observed_cgroup_bound_tests` above; the
@@ -957,14 +966,14 @@ mod standing_fixture_tests {
     // THE RUNNER SLOT ARM, same pair. A slot path is not a bound; an observed finite one is.
     #[test]
     fn runner_slot_without_a_live_bound_refuses_and_with_one_skips() {
-        let cg = "0::/system.slice/actions-runner-slot-7.service";
+        let cg = SLOT;
         assert_eq!(
             wire_with_bound(false, Some(cg), no_finite_max(cg)),
-            "UncappedEnclosingCgroup:runner-slot-cgroup @ 0::/system.slice/actions-runner-slot-7.service: no finite memory.max: every memory.max on the chain reads max"
+            format!("UncappedEnclosingCgroup:runner-slot-cgroup @ {cg}: no finite memory.max: every memory.max on the chain reads max")
         );
         assert_eq!(
             wire_with_bound(false, Some(cg), live(cg, 21474836480)),
-            "ExemptUnderObservedBound:runner-slot-cgroup:0::/system.slice/actions-runner-slot-7.service:21474836480"
+            format!("ExemptUnderObservedBound:runner-slot-cgroup:{cg}:21474836480")
         );
     }
 
@@ -1246,11 +1255,10 @@ mod standing_fixture_tests {
     // slot tree with a finite memory.max -- skips.
     #[test]
     fn a_runner_slot_without_a_finite_memory_max_refuses_and_with_one_skips() {
-        let leaf = "/system.slice/actions-runner-slot-3.service";
-        let (root, obs) = chain_verdict(leaf, "max", "max");
+        let (root, obs) = chain_verdict(SLOT_LEAF, "max", "max");
         let got = standing_wire(&standing_from_supplied(
             false,
-            Some(&format!("0::{leaf}")),
+            Some(SLOT),
             true,
             false,
             false,
@@ -1259,15 +1267,18 @@ mod standing_fixture_tests {
             obs,
         ));
         assert!(
-            got.starts_with("UncappedEnclosingCgroup:runner-slot-cgroup @ 0::/system.slice/actions-runner-slot-3.service:"),
+            got.starts_with(&format!(
+                "UncappedEnclosingCgroup:runner-slot-cgroup @ {SLOT}:"
+            )),
             "{got}"
         );
+        assert!(got.contains(SLOT_LEAF), "{got}");
         let _ = std::fs::remove_dir_all(&root);
 
-        let (root, obs) = chain_verdict(leaf, "21474836480", "0");
+        let (root, obs) = chain_verdict(SLOT_LEAF, "21474836480", "0");
         let got = standing_wire(&standing_from_supplied(
             false,
-            Some(&format!("0::{leaf}")),
+            Some(SLOT),
             true,
             false,
             false,
@@ -1279,6 +1290,9 @@ mod standing_fixture_tests {
             got.starts_with("ExemptUnderObservedBound:runner-slot-cgroup:"),
             "{got}"
         );
+        // The bounded cgroup named is the deepest finite level of the fixture tree, i.e. the slot
+        // directory itself (prefixed by the fixture root the walk was read from).
+        assert!(got.contains(SLOT_LEAF.trim_start_matches('/')), "{got}");
         assert!(got.ends_with(":21474836480"), "{got}");
         let _ = std::fs::remove_dir_all(&root);
     }

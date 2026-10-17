@@ -281,7 +281,7 @@ test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
               // Every bound-premised path refuses, located, when the check observes no finite bound...
               match standing_at(text: user_work_slice_unit_name as String, bound: unbounded) {
                 UncappedEnclosingCgroup { premise: AlreadyInDeclaredUserWorkSlice, cgroup: _, cause: _ } =>
-                  match standing_at(text: runner_unit_prefix, bound: unbounded) {
+                  match standing_at(text: runner_slot_fixture_cgroup(), bound: unbounded) {
                     UncappedEnclosingCgroup { premise: InRunnerSlotCgroup, cgroup: _, cause: _ } =>
                       match user_work_scope_standing(unit_test: false, github_actions: true, cgroup: CgroupText { text: "0::/system.slice/gunbc-cap-deploy.service" }, bound: unbounded, user_manager_reachable: true, xdg_runtime_dir: true) {
                         UncappedEnclosingCgroup { premise: InCiRunnerEnvironment, cgroup: _, cause: _ } =>
@@ -289,7 +289,7 @@ test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
                           match standing_at(text: user_work_slice_unit_name as String, bound: bounded) {
                             ExemptUnderObservedBound { premise: Present { value: AlreadyInDeclaredUserWorkSlice }, memory_max: m } =>
                               byte_size_count(b: m) == 21474836480
-                                && match standing_at(text: runner_unit_prefix, bound: bounded) {
+                                && match standing_at(text: runner_slot_fixture_cgroup(), bound: bounded) {
                                   ExemptUnderObservedBound { premise: Present { value: InRunnerSlotCgroup }, memory_max: s } =>
                                     byte_size_count(b: s) == 21474836480
                                       && match user_work_scope_standing(unit_test: false, github_actions: true, cgroup: CgroupText { text: "0::/system.slice/gunbc-cap-deploy.service" }, bound: bounded, user_manager_reachable: true, xdg_runtime_dir: true) {
@@ -338,7 +338,7 @@ test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
 // did it read" (the srv1 receipt said neither).
 test fn every_bound_premised_arm_refuses_without_a_live_bound_and_skips_with_one() -> Bool {
   let ci = "0::/system.slice/gunbc-cap-deploy.service"
-  let slot = "0::/system.slice/actions-runner-slot-7.service"
+  let slot = runner_slot_fixture_cgroup()
   let slice = join(["0::/", gunbc_repository_convergence_slice_unit_name as String, "/", gunbc_tree_sync_unit_name as String], "")
   let bounded = chain(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480")], swap: ["0"])
   let unbounded = unread_chain(detail: "fixture")
@@ -366,9 +366,9 @@ test fn ci_environment_with_memory_max_at_max_refuses_and_a_slot_with_a_finite_m
   string_contains(s: refused, pattern: "UncappedEnclosingCgroup:ci-runner-environment")
     && string_contains(s: refused, pattern: ci)
     && string_contains(s: refused, pattern: "no finite memory.max: every memory.max on the chain reads max")
-    && (match standing_at(text: "0::/system.slice/actions-runner-slot-7.service", bound: chain(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/actions-runner-slot-7.service", max: "21474836480")], swap: ["0"])) {
+    && (match standing_at(text: runner_slot_fixture_cgroup(), bound: chain(levels: [level_at(dir: runner_slot_fixture_dir(), max: "21474836480")], swap: ["0"])) {
       ExemptUnderObservedBound { premise: Present { value: InRunnerSlotCgroup }, cgroup: g, memory_max: m } =>
-        string_contains(s: g, pattern: "actions-runner-slot-7.service")
+        string_contains(s: g, pattern: "actions-runner@srv1-03.service")
           && byte_size_count(b: m) == 21474836480
       _ => false
     })
@@ -377,10 +377,10 @@ test fn ci_environment_with_memory_max_at_max_refuses_and_a_slot_with_a_finite_m
 // The same pair for the slot arm read as the RED (no finite max) and its positive control (finite
 // max), and for the already-in-slice arm.
 test fn a_runner_slot_or_in_slice_path_refuses_without_a_finite_max_and_skips_with_one() -> Bool {
-  let slot = "0::/system.slice/actions-runner-slot-7.service"
+  let slot = runner_slot_fixture_cgroup()
   let in_slice = join(["0::/", user_work_slice_unit_name as String, "/gunbc-run.scope"], "")
-  let max_only = chain(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/actions-runner-slot-7.service", max: "max")], swap: ["max"])
-  let finite = chain(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/actions-runner-slot-7.service", max: "8589934592")], swap: ["0"])
+  let max_only = chain(levels: [level_at(dir: runner_slot_fixture_dir(), max: "max")], swap: ["max"])
+  let finite = chain(levels: [level_at(dir: runner_slot_fixture_dir(), max: "8589934592")], swap: ["0"])
   (match standing_at(text: slot, bound: max_only) {
     UncappedEnclosingCgroup { premise: InRunnerSlotCgroup, cgroup: _, cause: NoFiniteMemoryMax } => true
     _ => false
@@ -402,7 +402,7 @@ test fn a_runner_slot_or_in_slice_path_refuses_without_a_finite_max_and_skips_wi
 // Unreadable, zero and max are three shapes of the same refusal, each naming the cgroup that answered;
 // none of them skips.
 test fn unreadable_zero_and_max_all_refuse_the_same_way_with_their_own_cause() -> Bool {
-  let slot = "0::/system.slice/actions-runner-slot-7.service"
+  let slot = runner_slot_fixture_cgroup()
   (match standing_at(text: slot, bound: unread_chain(detail: "EACCES")) {
     UncappedEnclosingCgroup { premise: _, cgroup: _, cause: ChainUnreadable { detail: d } } => d == "EACCES"
     _ => false
@@ -555,8 +555,17 @@ fn ci_fixture_cgroup() -> String {
   "0::/system.slice/gunbc-cap-deploy.service"
 }
 
+// A runner slot as CI actually creates it on srv1: an `actions-runner@<host>.service` unit under
+// system.slice (the declared needle is gunbc.runner.runner_unit runner_unit_prefix, `actions-runner@`;
+// the recorded floor log fixture shows this shape, with systemd's \x2d escape for the hyphen). The
+// premise has to come from that needle, not from a name no host produces -- a made-up path is
+// classified as an unmodeled system unit, and the row would pass without testing the slot arm at all.
 fn runner_slot_fixture_cgroup() -> String {
-  "0::/system.slice/actions-runner-slot-7.service"
+  join(["0::/system.slice/system-actions", "\\x2d", "runner.slice/", runner_unit_prefix, "srv1-03.service"], "")
+}
+
+fn runner_slot_fixture_dir() -> String {
+  join(["/sys/fs/cgroup/system.slice/system-actions", "\\x2d", "runner.slice/", runner_unit_prefix, "srv1-03.service"], "")
 }
 
 fn live_fixture() -> CgroupBoundObservation {
