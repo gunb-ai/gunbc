@@ -39,8 +39,8 @@ import v2.std.qualified_name { QualifiedName }
 //   EDIT <path> <start> <end> <replacement>     replacement has newlines escaped as \n
 //   REFUSE <path> <cause>
 // roster_import_sweep_apply_exit is the committed apply step (compare-and-set, then Filesystem.Write).
-// DISSOLVES when the row-driven generator over the ruled home table (N4/N5) replaces this fixed
-// four-row table; consumed until then by the sweep PRs. Driven as
+// This generator plus its apply step is the wave tool of the NAMESPACE-XL sweeps; the N4/N5 work
+// makes its four-row table row-driven (the HOME TABLE rows) and keeps the tool. Driven as
 //   gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/roster_import_sweep.dag
 //     --function roster_import_sweep_for_paths --arg paths_csv=<comma-separated paths>
 //
