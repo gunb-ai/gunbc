@@ -1,0 +1,170 @@
+module test.claim.machine_intake.mtcollins1_dimm_admission_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.algebra { string_contains }
+import std.measure { megatransfers_per_second }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.memory.types { Registered, LoadReduced, MonolithicDie, ThreeDimensionalStacked }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+import gunbc.machine_intake.ampere_dram_console_observation {
+  AmpereDramBlockNotPrinted, AmpereDramBlockObserved, AmpereDramBlock, RosterClosed, ampere_dram_console_observation,
+}
+import gunbc.machine_intake.mtcollins1_dimm_admission {
+  ObservedDimm, DimmAdmissionReading, PolicyVerdict, PolicyPermitsAttempt, PolicyEmptyPopulationRefused,
+  PolicyDefaultDoesNotCover, PolicyBasis, OperatorDefaultSameRankSameType, WidenedByObservedPopulation,
+  PlatformPrediction, PlatformTrainsObserved, PlatformRefusesObserved, PlatformUnestablished,
+  micron_nv_rdimm_1r_2666, micron_rdimm_2r_2133, hynix_rdimm_1r_2666,
+  mtcollins1_dimm_population_admission, mtcollins1_run_39005709187_population, mtcollins1_run_39010930690_population,
+}
+
+// The runs are spelled independently of the module's own run rows, so a swapped basis reds.
+fn refused_exact(r: DimmAdmissionReading) -> Bool {
+  match r.platform {
+    PlatformRefusesObserved { run: run } => run == "39005709187"
+    _ => false
+  } && match r.policy {
+    PolicyDefaultDoesNotCover => true
+    _ => false
+  }
+}
+
+fn trains_exact(r: DimmAdmissionReading) -> Bool {
+  match r.platform {
+    PlatformTrainsObserved { run: run } => run == "39010930690"
+    _ => false
+  } && match r.policy {
+    PolicyPermitsAttempt { basis: WidenedByObservedPopulation { run: run } } => run == "39010930690"
+    _ => false
+  }
+}
+
+fn unestablished_platform(r: DimmAdmissionReading) -> Bool {
+  match r.platform {
+    PlatformUnestablished => true
+    _ => false
+  }
+}
+
+fn not_covered_and_unestablished(modules: List<ObservedDimm>) -> Bool {
+  let r = mtcollins1_dimm_population_admission(modules: modules)
+  unestablished_platform(r: r) && match r.policy {
+    PolicyDefaultDoesNotCover => true
+    _ => false
+  }
+}
+
+fn replace_at(pop: List<ObservedDimm>, memory_controller: Int, with: ObservedDimm) -> List<ObservedDimm> {
+  concat([with], filter(pop, m => m.memory_controller != memory_controller))
+}
+
+fn dimm_rate_text(m: ObservedDimm) -> String {
+  if m.megatransfers == megatransfers_per_second(count: 2133) { "2133" } else if m.megatransfers == megatransfers_per_second(count: 2666) { "2666" } else { "unrendered-rate" }
+}
+
+fn dimm_rank_text(m: ObservedDimm) -> String {
+  if m.rank_count == 1 { "1R" } else if m.rank_count == 2 { "2R" } else { "unrendered-rank" }
+}
+
+fn dimm_class_text(m: ObservedDimm) -> String {
+  if m.non_volatile_backing { "NV-RDIMM" } else { "RDIMM" }
+}
+
+// The reader's rendering of one line: the tokens after "SK<n> MC<n> S<n>:" joined by single spaces.
+fn dimm_rendering(m: ObservedDimm) -> String {
+  let head = concat(concat(dimm_class_text(m: m), "["), m.spd_manufacturer as String)
+  let mid = concat(concat(concat("] 16GB ", dimm_rate_text(m: m)), " ECC "), dimm_rank_text(m: m))
+  let tail = concat(concat(" x4 RCD[", m.controller as String), concat("] ", m.part_number as String))
+  concat(concat(head, mid), tail)
+}
+
+fn block_has(block: AmpereDramBlock, m: ObservedDimm) -> Bool {
+  any(block.dimms, d => d.socket == m.socket && d.memory_controller == m.memory_controller && d.slot == 0 && d.rendering == dimm_rendering(m: m))
+}
+
+// The typed reader's closed roster holds exactly this population: same count, every module's controller
+// and rendering present, no malformed row.
+fn capture_roster_is_exactly(text: String, pop: List<ObservedDimm>) -> Bool {
+  match ampere_dram_console_observation(lines: host_capture_lines(capture: HostCaptureLiveStream { text: text })) {
+    AmpereDramBlockNotPrinted => false
+    AmpereDramBlockObserved { block: b, blocks_printed: _ } =>
+      (match b.roster { RosterClosed => true _ => false })
+        && list_length(b.malformed) == 0
+        && list_length(b.dimms) == list_length(pop)
+        && !any(pop, m => !block_has(block: b, m: m))
+  }
+}
+
+test fn mtcollins1_RED_exact_refused_population_reads_refused_at_its_run() -> Bool {
+  refused_exact(r: mtcollins1_dimm_population_admission(modules: mtcollins1_run_39005709187_population))
+}
+
+test fn mtcollins1_exact_accepted_population_trains_at_its_run_and_widens_policy() -> Bool {
+  trains_exact(r: mtcollins1_dimm_population_admission(modules: mtcollins1_run_39010930690_population))
+}
+
+test fn mtcollins1_default_same_rank_same_type_any_speed_is_permitted_but_unestablished() -> Bool {
+  let r = mtcollins1_dimm_population_admission(modules: [
+    micron_rdimm_2r_2133(memory_controller: 0),
+    ObservedDimm { socket: 0, memory_controller: 1, spd_manufacturer: "2c:80", part_number: "36ASF2G72PZ-2G1A2", controller: "b3:80", buffering: Registered, non_volatile_backing: false, stacking: Present { value: MonolithicDie }, rank_count: 2, megatransfers: megatransfers_per_second(count: 2666) },
+  ])
+  unestablished_platform(r: r) && match r.policy {
+    PolicyPermitsAttempt { basis: OperatorDefaultSameRankSameType } => true
+    _ => false
+  }
+}
+
+test fn mtcollins1_empty_population_is_refused_by_policy_and_unestablished() -> Bool {
+  let r = mtcollins1_dimm_population_admission(modules: [])
+  unestablished_platform(r: r) && match r.policy {
+    PolicyEmptyPopulationRefused => true
+    _ => false
+  }
+}
+
+test fn mtcollins1_other_mixed_type_populations_are_neither_admitted_nor_refused() -> Bool {
+  not_covered_and_unestablished(modules: [
+    micron_nv_rdimm_1r_2666(memory_controller: 0),
+    micron_rdimm_2r_2133(memory_controller: 1),
+  ])
+    && not_covered_and_unestablished(modules: [
+      micron_rdimm_2r_2133(memory_controller: 0),
+      ObservedDimm { socket: 0, memory_controller: 1, spd_manufacturer: "2c:80", part_number: "36ASF2G72PZ-2G1A2", controller: "b3:80", buffering: LoadReduced, non_volatile_backing: false, stacking: Present { value: MonolithicDie }, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+    ])
+    && not_covered_and_unestablished(modules: [
+      hynix_rdimm_1r_2666(memory_controller: 0, controller: "32:86"),
+      micron_rdimm_2r_2133(memory_controller: 1),
+    ])
+}
+
+test fn mtcollins1_RED_any_change_to_an_observed_population_loses_its_verdict() -> Bool {
+  let acc = mtcollins1_run_39010930690_population
+  let refd = mtcollins1_run_39005709187_population
+  // rank, rate, controller, part, multiplicity (4+4 to 3+5) and a dropped module each unestablish
+  not_covered_and_unestablished(modules: replace_at(pop: acc, memory_controller: 0, with: micron_rdimm_2r_2133(memory_controller: 0)))
+    && not_covered_and_unestablished(modules: replace_at(pop: acc, memory_controller: 5, with: hynix_rdimm_1r_2666(memory_controller: 5, controller: "32:86")))
+    && not_covered_and_unestablished(modules: replace_at(pop: acc, memory_controller: 5, with: ObservedDimm { socket: 0, memory_controller: 5, spd_manufacturer: "ad:80", part_number: "HMA82GR7AFR4N-VK", controller: "b3:80", buffering: Registered, non_volatile_backing: false, stacking: Present { value: MonolithicDie }, rank_count: 1, megatransfers: megatransfers_per_second(count: 2400) }))
+    && not_covered_and_unestablished(modules: replace_at(pop: acc, memory_controller: 6, with: ObservedDimm { socket: 0, memory_controller: 6, spd_manufacturer: "ad:80", part_number: "HMA82GR7AFR4N-XX", controller: "b3:80", buffering: Registered, non_volatile_backing: false, stacking: Present { value: MonolithicDie }, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) }))
+    && not_covered_and_unestablished(modules: replace_at(pop: refd, memory_controller: 0, with: micron_rdimm_2r_2133(memory_controller: 0)))
+    && not_covered_and_unestablished(modules: filter(acc, m => m.memory_controller != 7))
+    && not_covered_and_unestablished(modules: filter(refd, m => m.memory_controller != 7))
+}
+
+test fn mtcollins1_admission_populations_are_exactly_the_committed_firmware_tables() -> Bool {
+  let refused = Filesystem.Read(path: "artifacts/bmc/mtcollins1-boot-run-39005709187/mtcollins1-boot-sol.capture")
+  let accepted = Filesystem.Read(path: "artifacts/bmc/mtcollins1-boot-run-39010930690/mtcollins1-boot-sol.capture")
+  refused.success && accepted.success
+    && capture_roster_is_exactly(text: refused.content, pop: mtcollins1_run_39005709187_population)
+    && capture_roster_is_exactly(text: accepted.content, pop: mtcollins1_run_39010930690_population)
+    && !capture_roster_is_exactly(text: accepted.content, pop: mtcollins1_run_39005709187_population)
+    && !capture_roster_is_exactly(text: refused.content, pop: mtcollins1_run_39010930690_population)
+    && string_contains(s: refused.content, pattern: "Non-identical DIMM mixture NOT supported!")
+    && !string_contains(s: accepted.content, pattern: "Non-identical DIMM mixture NOT supported!")
+    && string_contains(s: accepted.content, pattern: "DRAM: 128GB DDR4 2133")
+}
+
+test fn mtcollins1_RED_stacking_mixture_is_not_the_default_same_type() -> Bool {
+  not_covered_and_unestablished(modules: [
+    micron_rdimm_2r_2133(memory_controller: 0),
+    ObservedDimm { socket: 0, memory_controller: 1, spd_manufacturer: "2c:80", part_number: "36ASF2G72PZ-2G1A2", controller: "b3:80", buffering: Registered, non_volatile_backing: false, stacking: Present { value: ThreeDimensionalStacked }, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ])
+}
