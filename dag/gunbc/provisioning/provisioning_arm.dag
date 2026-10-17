@@ -133,7 +133,7 @@ fn derive_pxe(evidence: DeliveryEvidence) -> ArmShape {
   match evidence.firmware {
     Unobserved { unanswered: _ } => ArmUnobserved { missing: FirmwareStandingNotObserved }
     Refused { cause: _ } => ArmRefused { cause: FirmwareProbeRefused { standing: evidence.firmware } }
-    Ready { firmware_mode: _, network_interface: _, protocol: _, evidence: _ } => derive_pxe_with(evidence: evidence, firmware: FirmwareAlreadyReady)
+    Ready { firmware_mode: _, network_interface: _, evidence: _ } => derive_pxe_with(evidence: evidence, firmware: FirmwareAlreadyReady)
     NeedsPreparation { route: r, blocking: _ } => derive_pxe_with(evidence: evidence, firmware: FirmwarePreparedVia { route: r })
   }
 }
