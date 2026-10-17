@@ -86,6 +86,24 @@ witness; no conversion exists because there is one carrier declaration.**
 > carrier and realize as a host representation. These are distinct relations, and none gives the carrier a
 > second source-level name.
 
+**What each level means (operator, 2026-10-17):**
+
+- **`extdeps` is acknowledgement, not design.** It is our most faithful, honest transcription of an outside
+  concept: "this is literally that thing, 1:1, as far as we need to know about it." It records what the
+  external source says (a standard, a textbook definition, an upstream spec). It need not be executable; you
+  cannot run a Wikipedia page. It carries none of our own choices, so it does not grow when our needs grow.
+- **`std` is our interpretation.** "We respect the outside thing, but it does not do what we need, so we fleshed
+  it out and gave our own take on it." `std` may add operations, pick representations-in-meaning (e.g. String
+  observed as Unicode scalar values), and choose names. It must not contradict the external concept it
+  claims; where it deliberately departs, the departure is stated on the relation, not hidden.
+- **`Implements` is the claim between them:** "our take honours that external concept." The binding names
+  which std declarations realize which acknowledged operations, and records any stated departure. What `std`
+  adds beyond the acknowledged surface is ordinary std, owing nothing to `extdeps`.
+
+Consequence for disposition (§5.4): any `extdeps` declaration that encodes *our* design choices rather than the
+external source is misplaced and moves to `std`. Any `std` declaration that merely restates an external
+definition with no interpretation added is misplaced and moves to `extdeps`.
+
 Three levels, not two:
 
 | Level | Owns | List example |
