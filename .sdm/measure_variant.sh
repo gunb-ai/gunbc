@@ -45,8 +45,8 @@ try_attempt() { # name probe_dir entry roots
   set -e
   echo "attempt $name rc=$rc"
   head -40 .sdm/run/pf.log
-  if [ $rc -eq 0 ]; then FIXDIR="$dir"; FIXENTRY="$entry"; SOURCE_ROOT_ARGS="$roots"; echo "PREFLIGHT-OK $name"; return 0; fi
   rm -f "$dir/sd503_pf_probe_unique_9f3c.dag"
+  if [ $rc -eq 0 ]; then FIXDIR="$dir"; FIXENTRY="$entry"; SOURCE_ROOT_ARGS="$roots"; echo "PREFLIGHT-OK $name"; return 0; fi
   return 1
 }
 if ! { try_attempt repo-root-dagtest  "dag/test" "dag/test/sd503_pf_probe_unique_9f3c.dag" "--source-root $PWD" \
@@ -61,7 +61,10 @@ fi
 # and nowhere else (one module path, one file). They are re-staged from the pristine .dagx
 # copies before every variant so a re-run cannot leave a stale or duplicated copy behind.
 PRE=.sdm/fixtures_pristine
-rm -f "$FIXDIR"/gap_depth_*.dag "$FIXDIR"/garr_*.dag
+# Wipe every copy ANYWHERE under the tree first: if a previous variant staged fixtures into
+# a different directory (the preflight is deterministic, but a re-run may differ), two files
+# would declare the same module path and the whole compile would be refused.
+find . -name 'gap_depth_*.dag' -o -name 'garr_*.dag' | while read -r old; do rm -f "$old"; done
 for f in "$PRE"/gap_depth_*.dagx "$PRE"/garr_*.dagx; do
   base=$(basename "$f" .dagx)
   cp "$f" "$FIXDIR/$base" || { echo "FIXTURE-STAGE-FAILED $f"; exit 15; }
