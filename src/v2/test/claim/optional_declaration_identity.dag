@@ -21,23 +21,20 @@ import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
 
 // SUBJECT: THE ONE OPTIONAL DECLARATION IDENTITY (ruling gunbc.design_ruling
 // optional_sugar_is_declaration_bound). v2.std.qualified_name.optional_declaration_identity is the single
-// spelling of `std.optional.Optional` that every declaration-keyed reader of an OPTIONAL TYPE answers with.
-// THE DUPLICATE IT REMOVES: v2.std.optional_layers' occupancy_declaration_spelling built these three
-// segments by hand and was what production called. It is deleted, and the six places that called it — four
-// in v2.compiler.resolve (the Optional-backs-Occupancy contract and the two path comparisons beside it), one
-// in v2.compiler.module_acquisition (the sugar member a `T?` owes), one in v2.compiler.reference_site_collector
-// (the Occupancy reference site) — call this fn. So the rows below are production's own answers, not a
-// parallel spelling.
-// A LATER CHANGE, NOT THIS CLAIM'S SUBJECT: gunbc.structural_realization_bindings' optional_declaration_ref
-// row (the seed-kernel mint) spells the path a second way today, as decl_ref(module_path: "std.optional",
-// decl_name: "Optional"); #14087 (lively-fox-74) repoints it at this fn. Nothing here depends on that.
+// QualifiedName that every v2 type reader answers with when it asks which declaration an optional type
+// denotes. It replaces the hand-built spelling that production used to call, so the rows below are
+// production's own answers and not a parallel spelling.
 // BOUNDARY: the path is checked against the corpus, not against a string. The claim assembles a real
 // std.optional over the production route (assemble_program_from_ingest) and looks the identity up in the
 // tree resolve produced. An identity that names no declaration, or names one that is not the coproduct,
 // fails — a claim that only compared three lexemes would pass while everything behind the sugar pointed at
 // nothing.
-// NOT HERE: the shared reader that consumes this identity, and the match rows that depend on it. Those are
-// the reader PR; this claim is the identity's own standing, so #14087 can import it before that PR lands.
+// THE ROUTE ROWS are the non-tautological pair: an authored `left: T?` and the same subject with `left: T`
+// drive the route's own functions (collect_module_reference_sites, then acquisition_sugar_member_texts) over
+// a subject that imports only Absent/Present, never Optional, so the path can reach the collected sites only
+// through the repointed Occupancy arm. Flipping `?` flips the verdict.
+// NOT HERE: the shared reader that consumes this identity, and the match rows that depend on it — those are
+// the reader PR. This claim is the identity's own standing, so it can be imported before that PR lands.
 // RETIREMENT DIRECTION: the Occupancy wrapper is to dissolve into the declaration. This claim pins the
 // declaration as what the sugar denotes, which is the direction that retirement walks; it adds no field to
 // the wrapper and no new consumer of it.
@@ -105,8 +102,8 @@ test fn odi_the_identity_is_the_parsed_qualified_path() -> Bool {
 }
 
 // THE IDENTITY IS NOT SATISFIED BY A LOCAL HOMONYM. A corpus that declares only its own `Optional` must
-// leave the identity resolving to nothing, which is what keeps the seed mint (#14087) and the wrapper
-// pointing at std.optional rather than at whatever else in scope is named Optional. The same lookup that
+// leave the identity resolving to nothing, which is what keeps the sugar, and every reader that answers
+// with this path, pointing at std.optional rather than at whatever else in scope is named Optional. The same lookup that
 // passes above must miss when the coproduct is not there.
 test fn odi_a_local_homonym_is_not_reached_through_the_identity() -> Bool {
   match odd_assemble(sources: [
