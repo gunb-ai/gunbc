@@ -156,7 +156,7 @@ test fn slice_control_legs_follow_the_derived_plan() -> Bool {
       // upstream producer and wrap each with sudo_elevate_command. Comparing bare argvs would fail on
       // unmutated code, because the projection elevates every slice-control leg.
       let expected = flat_map(roster, u =>
-        list_map(xs: slice_control_converge_argvs_for_unit(u: u), argv =>
+        list_map(xs: slice_control_converge_argvs_for_unit(u: u), f: argv =>
           DarkLegArgv { step: DarkStepSliceControl, command: sudo_elevate_command(command: argv) }))
       count(legs) >= count(roster)
         && count(legs) == count(expected)
