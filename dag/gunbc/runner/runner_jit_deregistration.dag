@@ -48,6 +48,7 @@ type JitSlotExit
   = SlotJobCompleted
   | SlotJobFailed { cause: NonEmptyStr }
   | SlotNeverLaunched { cause: NonEmptyStr }
+  | SlotLostBoot { stale_boot_id: NonEmptyStr }
 
 // THE SUBJECT IS MINTED FROM THE AUTHORIZED DISPATCH AND NOWHERE ELSE. jit_registration_of is its
 // only constructor, so the runner this fold may delete is one an authorized mint named -- a caller
@@ -182,19 +183,23 @@ fn jit_runner_listing_of_read(name: JitRunnerName, read: OrganizationRunnerListR
 // host or authority that refuses to rebuild any admitted-grammar name refuses the sweep rather than
 // reading as nothing to delete.
 type LostBootSweep
-  = LostBootSweepSelected { registrations: List<JitRegistration>, untouched: List<String> }
+  = LostBootSweepSelected { registrations: List<StaleJitRegistration>, untouched: List<String> }
   | LostBootSweepRefused { refusal: LostBootSweepRefusal }
+
+// A SELECTED REGISTRATION CARRIES THE BOOT ID THAT MADE IT STALE, because the deregistration exit
+// (SlotLostBoot) names it and the registration alone does not.
+type StaleJitRegistration {
+  registration: JitRegistration
+  stale_boot_id: NonEmptyStr
+}
 
 type LostBootSweepRefusal
   = SweepListingUnreadable { reason: JitListingUnreadableReason, cause: NonEmptyStr }
   | SweepRegistrationRefused { listed: String, refusal: ListedRegistrationRefusal }
 
-// CONSUMER FRONTIER (DESIGN 3c): no production route calls this yet. Its consumer is the
-// fleet-converge mode that lands the stateless runner registration, which feeds each selected
-// registration to ensure_jit_runner_deregistered (success = absent from the listing) before it
-// registers the current incarnation's slots. That mode waits on operator answer Q3 of the
-// mtcollins1 stateless-registration design, so until then the executing route is the witness
-// test.claim.runner.runner_jit_listed_registration_witness.
+// CONSUMED BY fleet-converge mode mtcollins1_lost_boot_sweep (gunbc.runner.runner_lost_boot_sweep_run
+// lost_boot_sweep_wet), which feeds each selected registration to ensure_jit_runner_deregistered with
+// SlotLostBoot (success = absent from the listing).
 fn lost_boot_sweep(
   organization: GitHubOrganizationRef,
   host: HostControlStanding,
@@ -238,7 +243,7 @@ fn sweep_over(
             if (inc as String) == (current as String) {
               LostBootSweepSelected { registrations: selected, untouched: concat(untouched, [r.name]) }
             } else {
-              LostBootSweepSelected { registrations: concat(selected, [reg]), untouched: untouched }
+              LostBootSweepSelected { registrations: concat(selected, [StaleJitRegistration { registration: reg, stale_boot_id: inc }]), untouched: untouched }
             }
           ListedRegistrationRefused { refusal: ListedNameOutsideServiceGrammar { listed: _ } } =>
             LostBootSweepSelected { registrations: selected, untouched: concat(untouched, [r.name]) }
