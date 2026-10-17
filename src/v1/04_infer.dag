@@ -15637,7 +15637,7 @@ fn if_branch_argument_types_identical(left: Node, right: Node, source_indices: M
 
 // A HEAD IS IDENTICAL BY THE STRONGEST IDENTITY BOTH SIDES CARRY. A callable compares its whole
 // signature under this same relation. A compiler-error side is never identical to anything. A type
-// variable is identical only to the same variable. Otherwise two carried whole-declaration refs must
+// variable is identical only to the same owner's parameter (if_branch_type_variables_identical). Otherwise two carried whole-declaration refs must
 // be equal; with no carried ref on either side, the reference identities (type_reference_identity's
 // declaring file and declared name) must be equal and name something. One side carrying a ref and
 // the other not declines, so the join stays refused.
@@ -15650,7 +15650,8 @@ fn if_branch_argument_heads_identical(left: Node, right: Node, source_indices: M
       Present { value: CompilerError { message: _, span: _ } } => false
       Present { value: TypeVariable { id: left_id } } =>
         match right.inferred {
-          Present { value: TypeVariable { id: right_id } } => left_id == right_id
+          Present { value: TypeVariable { id: right_id } } =>
+            if_branch_type_variables_identical(left: left, right: right, left_id: left_id, right_id: right_id)
           _ => false
         }
       _ =>
@@ -15680,6 +15681,25 @@ fn if_branch_argument_heads_identical(left: Node, right: Node, source_indices: M
             }
         }
     }
+  }
+}
+
+// A TYPE VARIABLE IS ITS OWNER'S PARAMETER, NOT ITS SPELLING. The resolver stamps a reference to a
+// declaration's own parameter with a TypeParameter declaration ref naming that owner, so two `T`s
+// from different declarations carry different refs. Both carrying a ref compares the refs; only two
+// unowned synthetic variables fall back to the bare id; one owned and one unowned declines.
+fn if_branch_type_variables_identical(left: Node, right: Node, left_id: String, right_id: String) -> Bool {
+  match left.declaration {
+    Present { value: l } =>
+      match right.declaration {
+        Present { value: r } => declaration_ref_eq(a: l, b: r)
+        Absent => false
+      }
+    Absent =>
+      match right.declaration {
+        Present { value: _ } => false
+        Absent => left_id == right_id
+      }
   }
 }
 

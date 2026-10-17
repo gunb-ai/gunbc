@@ -26966,7 +26966,12 @@ pub fn if_branch_argument_heads_identical(
             Some(InferredNode::TypeVariable { id: left_id, .. }) => {
                 match right.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::TypeVariable { id: right_id, .. }) => {
-                        (left_id.clone() == right_id.clone())
+                        if_branch_type_variables_identical(
+                            left.clone(),
+                            right.clone(),
+                            left_id.clone(),
+                            right_id.clone(),
+                        )
                     }
                     _ => false,
                 }
@@ -26998,6 +27003,24 @@ pub fn if_branch_argument_heads_identical(
                 },
             },
         }
+    }
+}
+
+pub fn if_branch_type_variables_identical(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    left_id: String,
+    right_id: String,
+) -> bool {
+    match left.declaration.clone() {
+        Some(l) => match right.declaration.clone() {
+            Some(r) => crate::std_decl_ref::declaration_ref_eq(l.clone(), r.clone()),
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => match right.declaration.clone() {
+            Some(_) => false,
+            std::option::Option::None => (left_id.clone() == right_id.clone()),
+        },
     }
 }
 
