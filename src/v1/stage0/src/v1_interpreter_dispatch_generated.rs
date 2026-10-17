@@ -61,6 +61,9 @@ pub enum EvalBuiltinArm {
     FreeCallObservedPeakResidentBytes,
     FreeCallObservedMonotonicNanos,
     FreeCallObservedThreadCpuNanos,
+    FreeCallObservedAllocationAvailable,
+    FreeCallObservedAllocationOperations,
+    FreeCallObservedAllocationBytes,
     FreeCallHashCombine,
     FreeCallFilesystemRead,
     FreeCallToolchainHomeInterferenceProbe,
@@ -206,6 +209,9 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "observed_peak_resident_bytes" => Some(EvalBuiltinArm::FreeCallObservedPeakResidentBytes),
         "observed_monotonic_nanos" => Some(EvalBuiltinArm::FreeCallObservedMonotonicNanos),
         "observed_thread_cpu_nanos" => Some(EvalBuiltinArm::FreeCallObservedThreadCpuNanos),
+        "observed_allocation_available" => Some(EvalBuiltinArm::FreeCallObservedAllocationAvailable),
+        "observed_allocation_operations" => Some(EvalBuiltinArm::FreeCallObservedAllocationOperations),
+        "observed_allocation_bytes" => Some(EvalBuiltinArm::FreeCallObservedAllocationBytes),
         "hash_combine" => Some(EvalBuiltinArm::FreeCallHashCombine),
         "filesystem_read" => Some(EvalBuiltinArm::FreeCallFilesystemRead),
         "toolchain_home_interference_probe" => Some(EvalBuiltinArm::FreeCallToolchainHomeInterferenceProbe),
@@ -349,6 +355,9 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.observed_peak_resident_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedPeakResidentBytes };
     ("free_call.observed_monotonic_nanos") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedMonotonicNanos };
     ("free_call.observed_thread_cpu_nanos") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedThreadCpuNanos };
+    ("free_call.observed_allocation_available") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedAllocationAvailable };
+    ("free_call.observed_allocation_operations") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedAllocationOperations };
+    ("free_call.observed_allocation_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedAllocationBytes };
     ("free_call.hash_combine") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallHashCombine };
     ("free_call.filesystem_read") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFilesystemRead };
     ("free_call.toolchain_home_interference_probe") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallToolchainHomeInterferenceProbe };
