@@ -9,6 +9,9 @@ pub use crate::extdeps_languages_rust_capabilities::{
 };
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_count_shape, collection_join_shape, collection_map_shape,
+};
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_emit_model::SimpleMethodSpec;
