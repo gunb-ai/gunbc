@@ -135,9 +135,6 @@ fn cursor_cli_program_identity() -> ProgramIdentity {
 data cursor_list_models_flag: String = "--list-models"
 data cursor_invalid_api_key_marker: NonEmptyStr = "The provided API key is invalid" as NonEmptyStr
 data cursor_list_models_header: NonEmptyStr = "Available models" as NonEmptyStr
-data cursor_config_root_env_var: NonEmptyStr = "XDG_CONFIG_HOME" as NonEmptyStr
-data cursor_home_env_var: NonEmptyStr = "HOME" as NonEmptyStr
-data cursor_persisted_auth_relative_path: NonEmptyStr = "cursor/auth.json" as NonEmptyStr
 
 // The hidden global --disable-auto-update ("Disable auto-updates"): absent from --help, accepted by
 // 2026.09.15-d2fe57e (exit 0 with --version and with status, srv2 2026-10-17). A root-owned pinned tree
