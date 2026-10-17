@@ -3753,6 +3753,67 @@ pub fn settled_arity_agrees(
     }
 }
 
+pub fn kernel_settled_name(
+    mut __tco_loop_n: Rc<Node>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_fuel: i64,
+) -> Option<String> {
+    loop {
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut env = __tco_loop_env;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        let reading = match n.declaration.clone() {
+            Some(dn) => Rc::new(
+                TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                    declaration: dn.clone(),
+                },
+            ),
+            std::option::Option::None => {
+                type_reference_declaration_reading(n.clone(), source_indices.clone(), env.clone())
+            }
+        };
+        match (*reading.clone()).clone() {
+            TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: kernel, .. } => {
+                break Some(kernel.clone());
+            }
+            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                declaration: d,
+                ..
+            } => {
+                if (fuel.clone() <= 0) {
+                    break std::option::Option::None;
+                } else {
+                    match alias_rhs_of_declaration(d.clone(), env.clone()) {
+                        std::option::Option::None => {
+                            break std::option::Option::None;
+                        }
+                        Some(rhs) => {
+                            let __tco_0 = rhs.clone();
+                            let __tco_1 = source_indices;
+                            let __tco_2 = env;
+                            let __tco_3 = v1_rt::int_sub(fuel, 1);
+                            __tco_loop_n = __tco_0;
+                            __tco_loop_source_indices = __tco_1;
+                            __tco_loop_env = __tco_2;
+                            __tco_loop_fuel = __tco_3;
+                            continue;
+                        }
+                    }
+                }
+            }
+            _ => {
+                break std::option::Option::None;
+            }
+        }
+    }
+}
+
 pub fn alias_settled_agree(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -3761,9 +3822,19 @@ pub fn alias_settled_agree(
     agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
 ) -> bool {
     match settled_type(left.clone(), source_indices.clone(), env.clone(), 16) {
-        std::option::Option::None => false,
+        std::option::Option::None => kernel_settled_agree(
+            left.clone(),
+            right.clone(),
+            source_indices.clone(),
+            env.clone(),
+        ),
         Some(l) => match settled_type(right.clone(), source_indices.clone(), env.clone(), 16) {
-            std::option::Option::None => false,
+            std::option::Option::None => kernel_settled_agree(
+                left.clone(),
+                right.clone(),
+                source_indices.clone(),
+                env.clone(),
+            ),
             Some(r) => {
                 (crate::std_decl_ref::declaration_ref_eq(l.head.clone(), r.head.clone())
                     && settled_arity_agrees(
@@ -3775,6 +3846,23 @@ pub fn alias_settled_agree(
                     ))
             }
         },
+    }
+}
+
+pub fn kernel_settled_agree(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    match kernel_settled_name(left.clone(), source_indices.clone(), env.clone(), 16) {
+        std::option::Option::None => false,
+        Some(l) => {
+            match kernel_settled_name(right.clone(), source_indices.clone(), env.clone(), 16) {
+                std::option::Option::None => false,
+                Some(r) => (l.clone() == r.clone()),
+            }
+        }
     }
 }
 
@@ -3823,21 +3911,37 @@ pub fn declaration_named_by_type_name(
     name: String,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<DeclarationRef>> {
-    match operand_declaration_from_qualified_name(name.clone(), env.clone()) {
-        Some(od) => Some(od.declaration.clone()),
-        std::option::Option::None => {
-            if (qualified_all_but_last(name.clone()) != "".to_string()) {
-                std::option::Option::None
-            } else {
-                match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+    {
+        let scoped = match lookup_type_by_name(env.clone(), name.clone()) {
+            Some(decl) => declaration_ref_of_declaration_node(
+                decl.clone(),
+                env.source_indices.clone(),
+                env.clone(),
+            ),
+            std::option::Option::None => std::option::Option::None,
+        };
+        if (scoped.clone() != std::option::Option::None) {
+            return scoped.clone();
+        }
+        match operand_declaration_from_qualified_name(name.clone(), env.clone()) {
+            Some(od) => Some(od.declaration.clone()),
+            std::option::Option::None => {
+                if (qualified_all_but_last(name.clone()) != "".to_string()) {
+                    std::option::Option::None
+                } else {
+                    match v1_rt::map_get(
+                        &env.symbol_index.clone().global_bare.clone(),
+                        name.clone(),
+                    )
                     .as_deref()
                     .cloned()
-                {
-                    Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                        module_path: mp,
-                        ..
-                    }) => Some(crate::std_decl_ref::decl_ref(mp.clone(), name.clone())),
-                    _ => std::option::Option::None,
+                    {
+                        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                            module_path: mp,
+                            ..
+                        }) => Some(crate::std_decl_ref::decl_ref(mp.clone(), name.clone())),
+                        _ => std::option::Option::None,
+                    }
                 }
             }
         }

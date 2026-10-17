@@ -39,8 +39,8 @@ pub use crate::std_types::{
     container_template_alias_algebra, container_template_alias_rows, is_container_type, SourceSpan,
 };
 pub use crate::v1_compiler_infer_env::{
-    alias_settled_agree, settled_args_agree, text_crossing_by_identity,
-    type_reference_declaration_ref, TypeBinding, TypeEnv,
+    alias_settled_agree, settled_type, text_crossing_by_identity, type_reference_declaration_ref,
+    TypeBinding, TypeEnv,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -2688,24 +2688,56 @@ pub fn applied_argument_agrees(
     text: Rc<TextJudgment>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        (node_type_compatible(
-            left.clone(),
-            right.clone(),
-            source_indices.clone(),
-            text.clone(),
-        ) && (((left.children.clone().len() as i64) != (right.children.clone().len() as i64))
-            || crate::v1_compiler_infer_env::settled_args_agree(
-                left.children.clone(),
-                right.children.clone(),
-                |a, b| {
-                    applied_argument_agrees(
-                        child_type_node(a.clone()),
-                        child_type_node(b.clone()),
+        match (*text.clone()).clone() {
+            TextJudgment::TextJudgedIn { env: e, .. } => {
+                match crate::v1_compiler_infer_env::settled_type(
+                    left.clone(),
+                    source_indices.clone(),
+                    e.clone(),
+                    16,
+                ) {
+                    std::option::Option::None => node_type_compatible(
+                        left.clone(),
+                        right.clone(),
                         source_indices.clone(),
                         text.clone(),
-                    )
-                },
-            )))
+                    ),
+                    Some(_) => match crate::v1_compiler_infer_env::settled_type(
+                        right.clone(),
+                        source_indices.clone(),
+                        e.clone(),
+                        16,
+                    ) {
+                        std::option::Option::None => node_type_compatible(
+                            left.clone(),
+                            right.clone(),
+                            source_indices.clone(),
+                            text.clone(),
+                        ),
+                        Some(_) => crate::v1_compiler_infer_env::alias_settled_agree(
+                            left.clone(),
+                            right.clone(),
+                            source_indices.clone(),
+                            e.clone(),
+                            |a, b| {
+                                applied_argument_agrees(
+                                    child_type_node(a.clone()),
+                                    child_type_node(b.clone()),
+                                    source_indices.clone(),
+                                    text.clone(),
+                                )
+                            },
+                        ),
+                    },
+                }
+            }
+            TextJudgment::TextNotAsked { reason: _, .. } => node_type_compatible(
+                left.clone(),
+                right.clone(),
+                source_indices.clone(),
+                text.clone(),
+            ),
+        }
     })
 }
 
