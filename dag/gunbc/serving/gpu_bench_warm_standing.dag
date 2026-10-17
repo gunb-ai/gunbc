@@ -74,13 +74,6 @@ type WarmRetainedCohort
   | WarmRetainedInconsistent { retained: Nat }
   | WarmRetainedAbsent { cause: NonEmptyStr }
 
-// THE COHORT SIZE ADMISSION MAY DEPEND ON, OR THE REASON IT MAY NOT.
-type AdmittedRetained
-  = RetainedRead { retained: Nat }
-  | RetainedUnread { cause: NonEmptyStr }
-  | RetainedInconsistent { retained: Nat }
-  | RetainedExceedsPrimed { retained: Nat, primed: Nat }
-
 // The rows carry run and round because the kit bound each request to the run and the round that
 // produced it, so disagreement on the RUN is a receipt that was never one run. ROUND IS NOT CHECKED,
 // AND THAT IS DELIBERATE: a warm run primes its cohort at round 0 and then replays it over rounds 1..N,
@@ -239,35 +232,40 @@ fn gpu_bench_warm_run_admission(records: List<GpuBenchRequestV2>) -> GpuBenchWar
                 decimal_of_nat(value: r),
                 " is reported on a row that does not agree with the receipt's other rows",
               ], ""))
-              WarmRetained { retained: r } => {
-                let primed = gpu_bench_prime_count(records: records)
-                if r > primed {
-                  gpu_bench_refuse(join([
-                    "the retained prime cohort of ",
-                    decimal_of_nat(value: r),
-                    " exceeds the ",
-                    decimal_of_nat(value: primed),
-                    " sessions the receipt primed",
-                  ], ""))
-                } else {
-                  let primed_sessions = gpu_bench_prime_sessions(records: records)
-                  if gpu_bench_warm_session_outside_prime_cohort(
-                    records: records,
-                    primed: primed_sessions,
-                  ) {
-                    gpu_bench_refuse("a warm request targets a session that was not primed in this run")
-                  } else {
-                    WarmRunAdmitted {
-                      working_set_tokens: token_count(
-                        count: gpu_bench_prime_working_set_tokens(records: records),
-                      ),
-                    }
-                  }
-                }
-              }
+              WarmRetained { retained: r } => gpu_bench_admit_cohort(records: records, retained: r)
             }
           }
         }
+      }
+    }
+  }
+}
+
+// THE LAST TWO ADMISSION QUESTIONS, IN A FUNCTION RATHER THAN INLINE IN A MATCH ARM. This is not style.
+// gunbc.recurring_failure_mode.match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering
+// records that an arm body OPENED BY A STATEMENT lowers to its first expression only: the binder, the
+// continuation, and any nested match's scrutinee and arms are all dropped, silently. Both bindings here
+// have to exist before the tests that consume them, so they are fn-body bindings in their own function
+// rather than a let inside `WarmRetained { retained: r } => ...`, where the shape is a lowering trap.
+fn gpu_bench_admit_cohort(records: List<GpuBenchRequestV2>, retained: Nat) -> GpuBenchWarmRunAdmission {
+  let primed = gpu_bench_prime_count(records: records)
+  if retained > primed {
+    gpu_bench_refuse(join([
+      "the retained prime cohort of ",
+      decimal_of_nat(value: retained),
+      " exceeds the ",
+      decimal_of_nat(value: primed),
+      " sessions the receipt primed",
+    ], ""))
+  } else {
+    let primed_sessions = gpu_bench_prime_sessions(records: records)
+    if gpu_bench_warm_session_outside_prime_cohort(records: records, primed: primed_sessions) {
+      gpu_bench_refuse("a warm request targets a session that was not primed in this run")
+    } else {
+      WarmRunAdmitted {
+        working_set_tokens: token_count(
+          count: gpu_bench_prime_working_set_tokens(records: records),
+        ),
       }
     }
   }

@@ -1,7 +1,7 @@
 module test.claim.gpu_bench_warm_standing_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String }
+import std.types { Bool, String, List }
 import std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.measure { token_count, token_count_value }
@@ -260,28 +260,36 @@ test fn a_refused_receipt_is_not_reported_as_capacity_unread() -> Bool {
 // THE GATE IS NOT THEORETICAL: WarmValid IS reachable, and only by carrying the reuse evidence into
 // stage 3. The same rows that fit under capacity become WarmValid when the replay counter is handed to
 // the fold that requires it; nothing about the arithmetic changed.
+// The binding that admits the run has to exist before the fold that consumes it, and an arm body opened
+// by a statement is a lowering trap in this language
+// (gunbc.recurring_failure_mode.match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering:
+// the binder, the continuation and any nested match are dropped, silently). So the binding lives in a
+// function, where a let is an ordinary fn-body binding, and the test below is one expression.
+fn fit_becomes_evidence_only_when_the_counter_is_faced(rs: List<GpuBenchRequestV2>) -> Bool {
+  let admitted = gpu_bench_warm_run_admission(records: rs)
+  match admitted {
+    WarmRunRefused { cause: _ } => false
+    WarmRunAdmitted { working_set_tokens: _ } =>
+      match gpu_bench_warm_standing_after_replay(
+        check: gpu_bench_warm_capacity_check(
+          admission: admitted,
+          measured_kv: Present { value: token_count(count: 200) },
+        ),
+        replayed: NinferReplayedTokensRead { tokens: token_count(count: 0) },
+      ) {
+        WarmValid { working_set_tokens: w, measured_kv_tokens: k } =>
+          token_count_value(t: w) == 180 && token_count_value(t: k) == 200
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmRejected { cause: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
+  }
+}
+
 test fn the_capacity_fit_becomes_evidence_only_when_the_counter_is_faced() -> Bool {
   match gpu_bench_parse_jsonl(text: fx_ok_prime) {
     GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
-    GpuBenchRequestV2Parsed { records: rs } =>
-      let admitted = gpu_bench_warm_run_admission(records: rs)
-      match admitted {
-        WarmRunRefused { cause: _ } => false
-        WarmRunAdmitted { working_set_tokens: _ } =>
-          match gpu_bench_warm_standing_after_replay(
-            check: gpu_bench_warm_capacity_check(
-              admission: admitted,
-              measured_kv: Present { value: token_count(count: 200) },
-            ),
-            replayed: NinferReplayedTokensRead { tokens: token_count(count: 0) },
-          ) {
-            WarmValid { working_set_tokens: w, measured_kv_tokens: k } =>
-              token_count_value(t: w) == 180 && token_count_value(t: k) == 200
-            WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
-            WarmRejected { cause: _ } => false
-            WarmCapacityUnread { cause: _ } => false
-          }
-      }
+    GpuBenchRequestV2Parsed { records: rs } => fit_becomes_evidence_only_when_the_counter_is_faced(rs: rs)
   }
 }
 
