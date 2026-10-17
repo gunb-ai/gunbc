@@ -34,7 +34,7 @@ data operator_placement_ruling: DeclarationRef = decl_ref(
 )
 
 // THE TUNNEL, AS THE SHAPE OPENSSH ALREADY MODELS. srv1 runs a hand-placed systemd --user unit
-// (gunbc-gpu-pod-tunnel.service, observed 2026-10-11, repointed 2026-10-13 to the operator's Vast card)
+// (gunbc-gpu-pod-tunnel.service, observed 2026-10-11; repointed by hand whenever the operator's rented card changes -- three times on 2026-10-14 -- which is why the rental itself belongs to the allocation row, not here)
 // executing `ssh -N -L 127.0.0.1:18090:127.0.0.1:8000` to the card. The target port is the launch's own
 // (gunbc.harness.operator_pod_launch operator_pod_listen_port), not a second spelling of it. The row lives HERE, in the consumer, and not in extdeps.ssh.openssh_port_forwarding: that
 // module is the agnostic OpenSSH interface and DESIGN 3 forbids it from carrying a consumer's rows or
