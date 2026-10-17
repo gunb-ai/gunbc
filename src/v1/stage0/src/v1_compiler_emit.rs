@@ -43,6 +43,7 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
 pub use crate::std_occurrence_identity::{occurrence_id_eq, NodeOccurrenceIdentity, OccurrenceId};
+pub use crate::std_optional::Optional;
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;

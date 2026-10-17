@@ -24,6 +24,7 @@ use crate::std_coercion::SubtractionRefinement::{
 pub use crate::std_coercion::{dag_subtraction_refinement, SubtractionRefinement};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_optional::Optional;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
@@ -3195,7 +3196,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
         LiteralValue::LitInt { value: _, .. } => int_type(),
         LiteralValue::LitFloat { value: _, .. } => float_type(),
         LiteralValue::LitBool { value: _, .. } => bool_type(),
-        LiteralValue::LitNull => crate::v1_std_core::with_optional_cardinality(unit_type()),
+        LiteralValue::LitNull => type_variable_node("none".to_string()),
         LiteralValue::LitSymbol { value: _, .. } => string_type(),
     }
 }

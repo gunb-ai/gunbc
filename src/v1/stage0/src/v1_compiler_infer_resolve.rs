@@ -10,6 +10,7 @@ pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_optional::Optional;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitInt;
 use crate::std_syntax::LiteralValue::*;
@@ -32,7 +33,7 @@ pub use crate::v1_compiler_infer_types::{
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::{CardOptional, Required};
+use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::CompilerDiagnostic::{
     ArityMismatch, InternalError, TypeArgumentKindMismatch, UnlistedImportUse, UnresolvedType,
 };
@@ -63,10 +64,9 @@ pub use crate::v1_std_core::{
     node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    string_type, transport_request_body, type_param_kind_property_name, unit_type,
-    with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
-    Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern,
-    NewlineIndex, Node, ParsedModuleItemKind, StringPart,
+    string_type, transport_request_body, type_param_kind_property_name, unit_type, Cardinality,
+    CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind,
+    InferredNode, MatchPattern, NewlineIndex, Node, ParsedModuleItemKind, StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -783,6 +783,19 @@ pub fn resolve_paramless_generic_use_decl(
 }
 
 pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
+    match n.declaration.clone() {
+        Some(identified) => match crate::v1_compiler_infer_env::declaration_node_of_ref(
+            identified.clone(),
+            env.clone(),
+        ) {
+            Some(decl) => decl.clone(),
+            std::option::Option::None => resolve_generic_use_decl_by_scope(env.clone(), n.clone()),
+        },
+        std::option::Option::None => resolve_generic_use_decl_by_scope(env.clone(), n.clone()),
+    }
+}
+
+pub fn resolve_generic_use_decl_by_scope(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
     {
         let brand = crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
         match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
@@ -1429,51 +1442,27 @@ Rc::new(NodeResolveResult {
                         }
                     } else {
                         {
-                            let is_optional =
-                                (n.return_cardinality.clone() == Cardinality::CardOptional);
-                            if is_optional.clone() {
-                                {
-                                    let inner =
-                                        crate::v1_std_core::with_required_cardinality(n.clone());
-                                    let inner_result = resolve_node_bounded(
-                                        inner.clone(),
-                                        env.clone(),
-                                        module_name.clone(),
-                                        v1_rt::int_add(depth.clone(), 1),
-                                        masked.clone(),
-                                    );
-                                    let inner_resolved = inner_result.resolved.clone();
-                                    let inner_diags = inner_result.diagnostics.clone();
-                                    Rc::new(NodeResolveResult {
-                                        resolved: crate::v1_std_core::with_optional_cardinality(
-                                            inner_resolved.clone(),
-                                        ),
-                                        diagnostics: inner_diags.clone(),
-                                    })
-                                }
-                            } else {
-                                {
-                                    let variant_results = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for variant_child in n.children.clone().iter().cloned() {
-                                            __result.push({
-                                            let field_results = Rc::new({ let mut __result = Vec::new(); for field_child in variant_child.children.clone().iter().cloned() { __result.push(if (field_child.inferred.clone() == std::option::Option::None) {
-                                                Rc::new(NodeResolveResult {
+                            let variant_results = Rc::new({
+                                let mut __result = Vec::new();
+                                for variant_child in n.children.clone().iter().cloned() {
+                                    __result.push({
+                                    let field_results = Rc::new({ let mut __result = Vec::new(); for field_child in variant_child.children.clone().iter().cloned() { __result.push(if (field_child.inferred.clone() == std::option::Option::None) {
+                                        Rc::new(NodeResolveResult {
     resolved: field_child.clone(),
     diagnostics: Rc::new(vec![]),
 })
-                                            } else {
-                                                {
-                                                    let field_rt = crate::v1_compiler_infer_types::resolved_type(field_child.clone());
+                                    } else {
+                                        {
+                                            let field_rt = crate::v1_compiler_infer_types::resolved_type(field_child.clone());
 let is_self_ref = ((crate::v1_compiler_infer_env::authored_name(env.clone(), field_rt.clone()) == crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone())) && ((field_rt.children.clone().len() as i64) > 0));
 let rt_result = if is_self_ref.clone() {
-                                                        Rc::new(NodeResolveResult {
+                                                Rc::new(NodeResolveResult {
     resolved: field_rt.clone(),
     diagnostics: Rc::new(vec![]),
 })
-                                                    } else {
-                                                        resolve_node_bounded(field_rt.clone(), env.clone(), module_name.clone(), v1_rt::int_add(depth.clone(), 1), masked.clone())
-                                                    };
+                                            } else {
+                                                resolve_node_bounded(field_rt.clone(), env.clone(), module_name.clone(), v1_rt::int_add(depth.clone(), 1), masked.clone())
+                                            };
 let rt_resolved = rt_result.resolved.clone();
 let rt_diags = rt_result.diagnostics.clone();
 Rc::new(NodeResolveResult {
@@ -1506,7 +1495,7 @@ Rc::new(NodeResolveResult {
     diagnostics: rt_diags.clone(),
 })
 }
-                                            }); } __result });
+                                    }); } __result });
 let resolved_fields = Rc::new({ let mut __result = Vec::new(); for fr in field_results.iter().cloned() { __result.push(fr.resolved.clone()); } __result });
 let field_diags = Rc::new({ let mut __result = Vec::new(); for fr in field_results.iter().cloned() { __result.extend((*fr.diagnostics.clone()).iter().cloned()); } __result });
 Rc::new(NodeResolveResult {
@@ -1537,53 +1526,50 @@ Rc::new(NodeResolveResult {
     diagnostics: field_diags.clone(),
 })
 });
-                                        }
-                                        __result
-                                    });
-                                    let resolved_variants = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for vr in variant_results.iter().cloned() {
-                                            __result.push(vr.resolved.clone());
-                                        }
-                                        __result
-                                    });
-                                    let all_diags = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for vr in variant_results.iter().cloned() {
-                                            __result
-                                                .extend((*vr.diagnostics.clone()).iter().cloned());
-                                        }
-                                        __result
-                                    });
-                                    Rc::new(NodeResolveResult {
-                                        resolved: Rc::new(Node {
-                                            occurrence_identity: n.occurrence_identity.clone(),
-                                            name: n.name.clone(),
-                                            span: n.span.clone(),
-                                            ident_span: n.ident_span.clone(),
-                                            children: resolved_variants.clone(),
-                                            connective: n.connective.clone(),
-                                            params: n.params.clone(),
-                                            inferred: n.inferred.clone(),
-                                            return_cardinality: n.return_cardinality.clone(),
-                                            uses: n.uses.clone(),
-                                            body: n.body.clone(),
-                                            transport: n.transport.clone(),
-                                            properties: n.properties.clone(),
-                                            type_annotation: n.type_annotation.clone(),
-                                            is_self_recursive: false,
-                                            has_non_tail_self_call: false,
-                                            match_pattern: std::option::Option::None,
-                                            module_item_kind: n.module_item_kind.clone(),
-                                            declaration_marker: n.declaration_marker.clone(),
-                                            declaration: n.declaration.clone(),
-                                            expr_data: Rc::new(ExprData::NoExprData),
-                                            ident: None,
-                                        }),
-                                        diagnostics: all_diags.clone(),
-                                    })
                                 }
-                            }
+                                __result
+                            });
+                            let resolved_variants = Rc::new({
+                                let mut __result = Vec::new();
+                                for vr in variant_results.iter().cloned() {
+                                    __result.push(vr.resolved.clone());
+                                }
+                                __result
+                            });
+                            let all_diags = Rc::new({
+                                let mut __result = Vec::new();
+                                for vr in variant_results.iter().cloned() {
+                                    __result.extend((*vr.diagnostics.clone()).iter().cloned());
+                                }
+                                __result
+                            });
+                            Rc::new(NodeResolveResult {
+                                resolved: Rc::new(Node {
+                                    occurrence_identity: n.occurrence_identity.clone(),
+                                    name: n.name.clone(),
+                                    span: n.span.clone(),
+                                    ident_span: n.ident_span.clone(),
+                                    children: resolved_variants.clone(),
+                                    connective: n.connective.clone(),
+                                    params: n.params.clone(),
+                                    inferred: n.inferred.clone(),
+                                    return_cardinality: n.return_cardinality.clone(),
+                                    uses: n.uses.clone(),
+                                    body: n.body.clone(),
+                                    transport: n.transport.clone(),
+                                    properties: n.properties.clone(),
+                                    type_annotation: n.type_annotation.clone(),
+                                    is_self_recursive: false,
+                                    has_non_tail_self_call: false,
+                                    match_pattern: std::option::Option::None,
+                                    module_item_kind: n.module_item_kind.clone(),
+                                    declaration_marker: n.declaration_marker.clone(),
+                                    declaration: n.declaration.clone(),
+                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
+                                }),
+                                diagnostics: all_diags.clone(),
+                            })
                         }
                     }
                 }
@@ -2234,14 +2220,8 @@ Rc::new(NodeResolveResult {
                                                             env.clone(),
                                                             n.clone(),
                                                         );
-                                                    let is_optional =
-                                                        (n.return_cardinality.clone()
-                                                            == Cardinality::CardOptional);
-                                                    let final_resolved = if is_optional.clone() {
-                                                        crate::v1_std_core::with_optional_cardinality(structurally_resolved.clone())
-                                                    } else {
-                                                        structurally_resolved.clone()
-                                                    };
+                                                    let final_resolved =
+                                                        structurally_resolved.clone();
                                                     if ((((masked.clone() && v1_rt::type_ref_hit_ne_bind_measure_active()) && (crate::v1_compiler_infer_env::type_ref_measure_binding_authority(env.clone(), type_name.clone()) == false)) && (crate::std_types::is_kernel_type(type_name.clone()) == false)) && (crate::std_types::is_kernel_type(crate::v1_std_core::qualified_last_segment(type_name.clone())) == false)) {
                                                         Rc::new(NodeResolveResult {
     resolved: final_resolved.clone(),
