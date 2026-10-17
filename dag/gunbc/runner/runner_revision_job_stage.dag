@@ -61,6 +61,7 @@ type RevisionJobInputDigests {
 }
 
 type RevisionJobStaged {
+  revision: VerifiedGitCommitTree
   tree_archive: String
   vendor_archive: String
   spec: String
@@ -257,7 +258,7 @@ fn stage_spec_and_results(
       RevisionJobStageRefused { refusal: StageResultsDriveRefused { path: results, detail: "truncate could not size the results drive" } }
     } else {
       RevisionJobStageReady { staged: RevisionJobStaged {
-        tree_archive: tree_archive, vendor_archive: vendor_archive, spec: spec, spec_text: spec_text, results_drive: results,
+        revision: revision, tree_archive: tree_archive, vendor_archive: vendor_archive, spec: spec, spec_text: spec_text, results_drive: results,
         results_bytes: results_bytes, digests: digests,
       } }
     }

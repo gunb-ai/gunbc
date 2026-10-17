@@ -107,3 +107,17 @@ type CssFontStack {
 fn css_font_stack_wire(s: CssFontStack) -> String {
   join(map(s.families, f => css_font_family_wire(f: f)), ", ")
 }
+
+// <var> = var( <custom-property-name> , <declaration-value>? ) — CSS Values and Units Level 4
+// §3.10. The custom-property side of the reference is modelled here rather than in
+// extdeps.languages.css.properties, because this module already owns the value grammar the
+// reference substitutes into (§7.1 css-variables-1 puts the substitution where a <value> may
+// appear); properties.dag owns the DECLARATION (CustomProperty), which is the other side of the
+// same fact and already has its own arm. One place knows what a var reference looks like.
+type CssVarRef {
+  name: String
+}
+
+fn css_var_ref_wire(v: CssVarRef) -> String {
+  join(["var(--", v.name, ")"], "")
+}
