@@ -8781,14 +8781,21 @@ fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Se
     match needs_box_wrapping(n: rt_field, recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names) {
       NeedsBox => concat("Box<", ty, ">")
       NeedsBoxRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
-      NeedsNoBox =>
-        match rust_carrier_shared_layer(n: rt_field, source_indices: source_indices, shared_types: shared_types, type_decl_items: type_decl_items, generic_param_names: generic_param_names) {
-          SharedLayerAtShared =>
-            if !rust_type_is_rc_wrapped(type_name: ty) { wrap_shared_type(target: Rust, inner: ty) } else { ty }
-          SharedLayerAtValue => ty
-          SharedLayerRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
-        }
+      NeedsNoBox => rust_field_stored_layer_type(rt_field: rt_field, ty: ty, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
     }
+  }
+}
+
+// The type a field is STORED at below any Box: the declaration's shared layer applied to the rendered
+// spelling. The enum shared accessor returns this (the match binds exactly the stored layer), so the
+// accessor and the field cannot disagree about the layer (run 60: Multiplicity::proof returned plain
+// TerminationProof from an Rc<TerminationProof> field, 3 E0308).
+fn rust_field_stored_layer_type(rt_field: Node, ty: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> String {
+  match rust_carrier_shared_layer(n: rt_field, source_indices: source_indices, shared_types: shared_types, type_decl_items: type_decl_items, generic_param_names: generic_param_names) {
+    SharedLayerAtShared =>
+      if !rust_type_is_rc_wrapped(type_name: ty) { wrap_shared_type(target: Rust, inner: ty) } else { ty }
+    SharedLayerAtValue => ty
+    SharedLayerRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
   }
 }
 
@@ -8929,7 +8936,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   if shared |> count == 0 { return "" }
   let accessor_fns = shared |> map(fname =>
     let ty = match first_fielded.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
-      Present { value: f } => render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env, type_decl_items: emit_info.type_decl_items)
+      Present { value: f } => rust_field_stored_layer_type(rt_field: resolved_type(n: f), ty: render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env, type_decl_items: emit_info.type_decl_items), shared_types: shared_types, source_indices: env.source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: generic_param_names)
       Absent => "compile_error!(\"enum shared accessor missing field metadata\")"
     }
     let arms = children |> map(child =>
