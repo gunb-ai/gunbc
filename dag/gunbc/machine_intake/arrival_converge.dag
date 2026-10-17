@@ -523,7 +523,7 @@ type ArrivalStepRefusal
   // the next physical action, not a retry. The arm carries NO receipt: an available route is not
   // access, and nothing downstream may treat it as such -- it stops the run exactly like any other
   // refusal. IntakePhase is untouched: this is a refusal of a step already in the phase order, not a
-  // new phase, so the order authority stays where it lives (DESIGN §4d).
+  // new phase, so IntakePhase in this module stays the only authority over the order (§3).
   | AccessDiscoverCredentialUnknownRecoveryRouteAvailable { cause: RecoveryRouteUnavailable }
   | IdentityBindObserveRefused { cause: IdentityObserveRefusal }
   | IdentityBindAccessForAnotherInstance { access: StepInstanceKey }

@@ -461,6 +461,24 @@ service diagnostic.ipmi.Tool {
 //
 // The rendering matches what ipmitool prints, because ipmitool is what we run and observe: its
 // completion-code table (lib/ipmi_strings.c) maps { 0xcc, "Invalid data field in request" }.
+// WHY THIS SHAPE AND NOT AN EXISTING BYTE TYPE. Two candidates own an 8-bit concept elsewhere and both
+// were rejected on measured properties, not preference:
+//   - std.integer `UInt8` is `Compose<UInt, MachineWidth<8>>`, and Compose is Phantom: it has NO
+//     INHABITANT, so "the width is eight" checks nothing. std.integer's own note says so and cites the
+//     receipt -- std.encoding base64_octets takes List<UInt8> and was called with [256, 0, 0], which
+//     compiled and executed; and its mint uint8_of_int answers UInt8Ready carrying an Int, because
+//     declaring that arm UInt8 "WAS THE DEFECT" and the first consumer to EMIT it got E0308. Typing a
+//     completion code UInt8 would trade a bound for a brand and re-create a defect std.integer deleted.
+//     It is also the wrong concept: a completion code is an enumerated code from a spec list, not a
+//     quantity anyone does arithmetic on.
+//   - extdeps.network.ipv4 `Octet` is the same `Int where range(min: 0, max: 255)` shape but owned by the
+//     IPv4 layer, and std.machine_word's frontier row records it as "a pre-existing duplicate of UInt8"
+//     with an unbound dissolution waiting on a future cut. Pointing the IPMI wire at it would make a
+//     Platform Interface code depend on the IPv4 model, and add a consumer to the row the corpus wants to
+//     retire -- §3 runs the other way.
+// So the byte lives in the module that models this wire, beside IpmiChannelNumber and IpmiUserId, which
+// do the same for the other two spec-bounded numbers here. If the corpus's own next-rung trigger lands --
+// an inhabited, sole-constructed 8-bit type over the word carrier -- this row moves there.
 type IpmiCompletionCodeByte = Int where range(min: 0, max: 255)
 
 type IpmiCompletionCode {
