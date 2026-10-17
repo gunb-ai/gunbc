@@ -858,7 +858,7 @@ fn stable_path_arms(runtime_dir: FilePath, homes: IsolatedJobToolchainHomes, sta
 // CARGO_MANIFEST_DIR. If either fact differs (a sccache bump changed the key), the declared residual is
 // stale and a pass over it would certify the wrong ceiling: refuse with exit 2 instead.
 fn same_path_premise_refusal(facts: SccacheRustKeyFacts) -> Optional<String> {
-  if facts.cargo_prefixed_env_enters_key && !facts.basedirs_strips_cargo_manifest_dir { none }
+  if facts.cargo_prefixed_env_enters_key && !facts.basedirs_strips_cargo_manifest_dir { Absent }
   else { Present { value: "premise changed: re-derive the residual (extdeps.cache.sccache sccache_rust_key_facts no longer has cargo_prefixed_env_enters_key=true and basedirs_strips_cargo_manifest_dir=false)" } }
 }
 
