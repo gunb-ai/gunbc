@@ -7827,23 +7827,6 @@ fn is_lambda_expr(e: Node) -> Bool {
   }
 }
 
-fn expr_contains_lambda(n: Node) -> Bool {
-  is_lambda_expr(e: n) || (n.children |> any(c => expr_contains_lambda(n: c)))
-}
-
-// Second pass of a call is admitted only when the old trigger would have run one:
-// the callee has generics, discovery produced a nonempty substitution, and some
-// argument contains a lambda. Per-argument recheck is then a subset of that pass.
-fn call_needs_generic_rebinding_pass(call_args: List<Node>, generic_names: List<String>, subst: Map<String, Node>) -> Bool {
-  if generic_names |> count == 0 {
-    false
-  } else if map_is_empty(subst) {
-    false
-  } else {
-    call_args |> any(a => expr_contains_lambda(n: arg_value(n: a)))
-  }
-}
-
 // A lambda argument's parameter types are read OUT of the call substitution, which
 // only arguments to its LEFT have had a chance to extend. A generic bound to its RIGHT
 // is missing from its expected context on the discovery pass. Recheck demand is exactly
@@ -8239,10 +8222,7 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     results: discovered.readings |> map(r => r.result),
     subst: discovered.subst
   }
-  if !call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: discovered.subst) {
-    first_state
-  } else {
-    fold(discovered.readings |> enumerate, init: first_state, f: (st, pair) =>
+  fold(discovered.readings |> enumerate, init: first_state, f: (st, pair) =>
       if argument_needs_generic_recheck(still_missing_after: pair.second.still_missing_after, subst_final: st.subst) {
         let expected_context = call_argument_expected_context(plan: pair.second.plan, subst: st.subst, generic_names: generic_names, scope: scope)
         let result = if is_lambda_expr(e: arg_value(n: pair.second.plan.argument)) {
@@ -8258,7 +8238,6 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
         st
       }
     )
-  }
 }
 
 fn seed_override_map() -> Map<String, Node> {
