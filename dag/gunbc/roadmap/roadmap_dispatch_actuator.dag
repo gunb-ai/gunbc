@@ -48,7 +48,12 @@ import gunbc.session_lease {
   Start,
   classify_process_port_upsert,
 }
-import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv, git_non_bare_git_dir_name }
+import extdeps.git {
+  shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv, git_non_bare_git_dir_name,
+  git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
+  git_maintenance_auto_disabled_config_command,
+}
+import extdeps.tools.findutils { find_subtree_mode_readback_command }
 import std.measure { ByteSize, byte_size_count, Kibibyte }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
@@ -3098,15 +3103,116 @@ fn dispatch_worker_unit_stream_properties(
 // precedent and is not this cut; belt_commit_git still prefixes git_command_config_inert_args
 // so a planted hook would not be the hooksPath the controller uses. /tmp is PrivateTmp=yes.
 //
-// THE SHARED REF STORE IS A DECLARED RESIDUAL, NOT CONFINED. refs/, logs/ and packed-refs stay
-// writable as wholes because git updates a ref through a <ref>.lock created beside it, so the ref's
-// directory must be writable, and refs/heads/dispatch/ holds every attempt's branch. A worker can
-// therefore move any ref in the shared repository, including another attempt's branch and the
-// controller's base refs; it still cannot reach hooks or config, and the controller's own git runs
-// with git_command_config_inert_args. Removal: a per-attempt git directory (the worker commits into a
+// THE PER-ATTEMPT PRIVATE GIT ENTRY, AS A GRANTED SUBTREE (WORKER-ROOT-EQUIVALENT-3). This is where
+// a linked worktree's OWN git state lives -- HEAD, index(+.lock), logs/HEAD, ORIG_HEAD,
+// COMMIT_EDITMSG -- so a worker that can write the three shared subtrees and not this one still
+// cannot commit (measured: `index.lock`: Permission denied on the first commit, in
+// .git/worktrees/<key>). It joins the three at the ONE place both the attempt key and the spawn are
+// known, which is also why it is not in dashboard_git_worker_directory_children: no apply of an
+// instance knows the attempts in advance.
+//
+// TWO MEASURED FACTS SHAPE IT. ONE: the entry is ROOT-OWNED -- `git worktree add` runs as root, so the
+// entry arrives owned by root and only a root-owned step can put it in the attempt group; asserting
+// it is not optional, it is the only thing that makes the worker's first commit possible. TWO: the
+// grant must be RECURSIVE over the entry, because the commit writes an existing file (its index, its
+// HEAD) and creates new subdirectories (logs/, and the reflog file inside logs/) that have to inherit
+// the group; the mode this demands, 02775/0664, is exactly what core.sharedRepository=group makes git
+// ask for. It also says the entry must NOT be pre-created by hand: git silently renames an entry that
+// already exists (probe becomes probe1) and the grant plus the unit's ReadWritePaths= would then point
+// at a directory git is not using.
+fn dispatch_attempt_worker_git_entry_directories(instance: HostDashboardInstance, attempt_worktree: String) -> List<OwnedDirectoryTarget> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [
+      OwnedDirectoryDeclared {
+        member: join(
+          [
+            "git-worker-entry-",
+            dispatch_worktree_entry_name(attempt_worktree: attempt_worktree) as NonEmptyStr,
+          ],
+          "",
+        ) as NonEmptyStr,
+        path: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree) as String as FilePath,
+        owner: dashboard_instance_worker_writable_owner(instance: instance),
+        mode: DirectoryOwnerGroupWritableSetgid,
+      },
+    ]
+  }
+}
+
+// THE ROOT-OWNED MIGRATION OF THAT ENTRY, beside the spawn that creates it: same bounded walk, same
+// group, run as the step right after `git worktree add` and before the unit starts. Without it the
+// entry is root:root 0700 and the confined unit cannot write a single file inside it.
+fn dispatch_attempt_worker_git_entry_migration(instance: HostDashboardInstance, attempt_worktree: String) -> List<ArgvCommand> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [
+      dashboard_git_worker_subtree_chgrp_command(
+        target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
+        group: fleet_posix_worker_shared_group_name,
+      ),
+      dashboard_git_worker_subtree_chmod_command(
+        target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
+      ),
+    ]
+  }
+}
+
+// THE SHARED-REPOSITORY POSTURE, WRITTEN BEFORE THE WORKTREE IS ADDED, by the same root-owned step
+// and in this order, both measured:
+//   core.sharedRepository=group  git creates the fan-out directory, the ref file and the reflog with
+//                                the group bits set (0444/0664/2775). Set AFTER `git worktree add` and
+//                                it is already too late for that entry: the private entry's files
+//                                were created at 0644 and 0755 under the umask and the group write
+//                                dies on the worker's first index.lock.
+//   gc.auto=0, maintenance.auto=false  hand the automatic repack to the root job
+//                                (dashboard_git_maintenance_exec_commands). `git commit` spawns
+//                                `git maintenance run --auto`, whose sweep reaches for
+//                                packed-refs.lock IN .git ITSELF -- confined. The commit survives it
+//                                (exit 0, stderr noise) and that noise is what these two keys buy
+//                                out, not a grant to the confined path.
+fn dispatch_repository_shared_posture_commands(instance: HostDashboardInstance) -> List<ArgvCommand> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [
+      git_shared_repository_group_config_command(repo: instance.repo_root),
+      git_gc_auto_disabled_config_command(repo: instance.repo_root),
+      git_maintenance_auto_disabled_config_command(repo: instance.repo_root),
+    ]
+  }
+}
+
+// THE ONE MIGRATION THAT IS NOT IDEMPOTENT-AS-USUAL, and why that is fine: the walk re-groups and
+// re-modes whatever exists, so re-running it after an attempt has committed only re-asserts what git
+// already created under the shared posture. Its readback is dispatch_worker_git_subtree_readback.
+// THE READBACK, PER GRANTED SUBTREE, as the argv that produces the receipt: one `stat` of the
+// directory and one walk of the files under it. The model does not claim a migration worked because
+// it was issued; the claim compares THESE readings against
+// dashboard_git_worker_directory_mode_is_granted / dashboard_git_worker_file_mode_is_granted, and the
+// state srv1 measured (0775, no setgid) fails them.
+fn dispatch_worker_git_subtree_readback_command(target: String) -> ArgvCommand {
+  find_subtree_mode_readback_command(target: target)
+}
+
+// THE SHARED REF STORE IS A DECLARED RESIDUAL, NOT CONFINED. refs/ and logs/ stay writable as wholes
+// because git updates a ref through a <ref>.lock created beside it, so the ref's directory must be
+// writable, and refs/heads/dispatch/ holds every attempt's branch. A worker can therefore move any
+// ref in the shared repository, including another attempt's branch and the controller's base refs; it
+// still cannot reach hooks or config, and the controller's own git runs with
+// git_command_config_inert_args. Removal: a per-attempt git directory (the worker commits into a
 // repository of its own whose objects borrow the shared store as an alternate, and the controller
 // fetches the attempt branch from it), recorded on
 // gunbc.recurring_failure_mode.protect_carve_out_reopens_the_protected_subject.
+//
+// PACKED-REFS LEFT THIS LIST AT WORKER-ROOT-EQUIVALENT-3, and the reason it was never load-bearing is
+// worth keeping in prose. A worker has NEVER been able to rewrite packed-refs: git rewrites it by
+// creating packed-refs.lock IN .git ITSELF, which #13942 confines, so the grant named a file whose
+// only rewrite path was already closed. It was inert rather than dangerous -- until a claim read it
+// as a capability. The write-set derivation (gunbc.roadmap.roadmap_dashboard_instance
+// dashboard_git_worker_commit_write_set, measured) says the commit never touches packed-refs: a new
+// branch is written LOOSE, and a loose ref shadows the packed one. Rewriting it is a root maintenance
+// job -- dashboard_instance_git_repository_maintenance -- which is also why the automatic sweep is
+// switched off for the repository rather than given a grant for its noise.
 fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance, attempt_worktree: String) -> List<String> {
   let git = join([instance.repo_root as String, "/.git"], "")
   [
@@ -3114,7 +3220,6 @@ fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance, attempt_w
     join([git, "/refs"], ""),
     join([git, "/logs"], ""),
     dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
-    join([git, "/packed-refs"], ""),
   ]
 }
 
