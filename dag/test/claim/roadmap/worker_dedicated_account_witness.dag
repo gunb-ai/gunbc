@@ -2,7 +2,6 @@ module test.claim.roadmap.worker_dedicated_account_witness
 
 import std.types { Bool, NonEmptyStr, List, String }
 import std.optional { Present, Absent }
-import std.algebra { all, any }
 import std.measure { kibibyte }
 import extdeps.systemd { systemd_service_unit_name, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong }
 import gunbc.roadmap.roadmap_dashboard_instance {
