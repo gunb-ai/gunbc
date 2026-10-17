@@ -1,0 +1,8 @@
+module test.fixture.imported_arms.relay_without_arms
+
+import std.types { Int }
+import test.fixture.imported_arms.provider { ArmT }
+
+fn arm_relay_without_arms(t: ArmT) -> ArmT {
+  t
+}
