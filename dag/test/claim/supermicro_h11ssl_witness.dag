@@ -6,7 +6,7 @@ import std.measure { megatransfers_per_second, gigabyte }
 import extdeps.boards.types { PopulationSupported, PopulationUnsupported }
 import extdeps.boards.supermicro_h11ssl {
   Epyc7001, Epyc7002,
-  Jbt1ClearCmos, Jpb1BmcEnable, JumperDoesNotResetBmcAccounts,
+  Jbt1ClearCmos, Jpb1BmcEnable, BmcAccountResetNotStated,
   supermicro_h11ssl_admit_population,
   supermicro_h11ssl_max_data_rate,
   supermicro_h11ssl_jpwr2_pin, supermicro_h11ssl_jpwr1_pin, AtxGround, Atx12V, Atx5Vsb,
@@ -55,9 +55,9 @@ test fn w_fan_pin_four_is_pwm_and_five_refused() -> Bool {
   p4 && p5
 }
 
-test fn w_no_jumper_resets_bmc_accounts() -> Bool {
-  match supermicro_h11ssl_jumper_resets_bmc_accounts(j: Jbt1ClearCmos) { JumperDoesNotResetBmcAccounts => true  _ => false }
-    && match supermicro_h11ssl_jumper_resets_bmc_accounts(j: Jpb1BmcEnable) { JumperDoesNotResetBmcAccounts => true  _ => false }
+test fn w_manual_states_no_jumper_bmc_account_reset() -> Bool {
+  match supermicro_h11ssl_jumper_resets_bmc_accounts(j: Jbt1ClearCmos) { BmcAccountResetNotStated => true  _ => false }
+    && match supermicro_h11ssl_jumper_resets_bmc_accounts(j: Jpb1BmcEnable) { BmcAccountResetNotStated => true  _ => false }
 }
 
 test fn w_lan2_has_no_efi_option_rom() -> Bool {

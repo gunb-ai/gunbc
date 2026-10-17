@@ -306,20 +306,20 @@ data supermicro_h11ssl_power_rating_standing: CitedFigureStanding = TranscribedU
 type H11sslJumper = Jbt1ClearCmos | Jpb1BmcEnable | Jpg1VgaEnable | Jwd1WatchDog | Jpl1Lan1Enable | Jpl2Lan2Enable | Jbr1BiosRecovery
 data supermicro_h11ssl_jumpers_i_variant: List<H11sslJumper> = [Jbt1ClearCmos, Jpb1BmcEnable, Jpg1VgaEnable, Jwd1WatchDog, Jpl1Lan1Enable, Jpl2Lan2Enable, Jbr1BiosRecovery]
 
-// Whether a jumper's EFFECT reaches the BMC's accounts. The manual's only BMC jumper, JPB1,
+// Whether the MANUAL states a jumper reaches the BMC accounts. Silence is BmcAccountResetNotStated, not a claim about the board (see supermicro_h11ssl_bmc_reset_procedure_standing). The only BMC jumper, JPB1,
 // enables/disables the BMC (pins 1-2 enabled, default; 2-3 disabled). JBT1 clears CMOS and, per
 // p.46's note, the BIOS passwords. Neither is a BMC credential or factory reset.
-type H11sslJumperResetsBmcAccounts = JumperDoesNotResetBmcAccounts | ManualStatesBmcAccountReset
+type H11sslJumperResetsBmcAccounts = BmcAccountResetNotStated | ManualStatesBmcAccountReset
 
 fn supermicro_h11ssl_jumper_resets_bmc_accounts(j: H11sslJumper) -> H11sslJumperResetsBmcAccounts {
   match j {
-    Jbt1ClearCmos => JumperDoesNotResetBmcAccounts
-    Jpb1BmcEnable => JumperDoesNotResetBmcAccounts
-    Jpg1VgaEnable => JumperDoesNotResetBmcAccounts
-    Jwd1WatchDog => JumperDoesNotResetBmcAccounts
-    Jpl1Lan1Enable => JumperDoesNotResetBmcAccounts
-    Jpl2Lan2Enable => JumperDoesNotResetBmcAccounts
-    Jbr1BiosRecovery => JumperDoesNotResetBmcAccounts
+    Jbt1ClearCmos => BmcAccountResetNotStated
+    Jpb1BmcEnable => BmcAccountResetNotStated
+    Jpg1VgaEnable => BmcAccountResetNotStated
+    Jwd1WatchDog => BmcAccountResetNotStated
+    Jpl1Lan1Enable => BmcAccountResetNotStated
+    Jpl2Lan2Enable => BmcAccountResetNotStated
+    Jbr1BiosRecovery => BmcAccountResetNotStated
   }
 }
 
