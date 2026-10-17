@@ -443,7 +443,11 @@ pub fn func_env_declared_func_sig(
     ) {
         Rc::new(FuncSigLookup::FuncSigUnresolved)
     } else {
-        if v1_rt::contains(name.clone(), ".".to_string()) {
+        if (crate::v1_compiler_infer_env::declared_module_owner(
+            type_env.symbol_index.clone(),
+            name.clone(),
+        ) != std::option::Option::None)
+        {
             crate::v1_compiler_infer_sigs::decide_callable_candidates(
                 crate::v1_compiler_infer_sigs::owner_module_leaf_callable_candidates(
                     func_env.clone(),
@@ -531,7 +535,11 @@ pub enum BorrowedCensusDeclLookup {
 }
 
 pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedCensusDeclLookup> {
-    if v1_rt::contains(name.clone(), ".".to_string()) {
+    if (crate::v1_compiler_infer_env::declared_module_owner(
+        type_env.symbol_index.clone(),
+        name.clone(),
+    ) != std::option::Option::None)
+    {
         match crate::v1_compiler_infer_env::symbol_index_lookup(
             type_env.symbol_index.clone(),
             name.clone(),
