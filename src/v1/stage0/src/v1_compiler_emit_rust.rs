@@ -34,7 +34,7 @@ pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision
 pub use crate::std_compiler_entry::{NativeEffectDenominator};
 pub use crate::std_compiler_entry::{native_compiler_route_denominator, native_service_route_denominator, native_claim_route_denominator};
 pub use crate::std_decl_ref::{DeclarationRef, DeclField};
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_in_list};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_in_list, declaration_ref_eq};
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_literal_elaboration::{LiteralSourceKind, KernelGroundingLookup, KernelMintOwnership, KernelMintDeclarationLookup};
 pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership, kernel_mint_declaration_for};
@@ -42,7 +42,7 @@ pub use crate::std_measure::{millisecond_count};
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity};
 pub use crate::std_operator_realization::{OperatorRealization, OperandRealization, OperandShapeFacts, OperandDeclaration, StructuralOrderingBinding, OrderingTest, OperandDemand, HostRealizationReason};
 pub use crate::std_operator_realization::{operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label};
-pub use crate::std_primitive_projection::{primitive_identity_runtime_name, primitive_projection_row_for_declaration};
+pub use crate::std_primitive_projection::{primitive_identity_runtime_name, primitive_projection_row_for_declaration, never_type_declaration, never_eliminator_declaration};
 pub use crate::std_repair_input_origin::{repair_input_origin_candidates, repair_input_origin_compatibility_names, qualified_item_emit_surface_compatibility_names};
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
 pub use crate::std_syntax::{LiteralValue, BinOp, AlgebraFieldKind};
@@ -661,9 +661,13 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
 }
 
 pub fn rust_shared_wrap_ctor(inner_expr: String) -> String {
-    if ((v1_rt::starts_with(inner_expr.clone(), "panic!(".to_string())
+    if (((v1_rt::starts_with(inner_expr.clone(), "panic!(".to_string())
         || v1_rt::starts_with(inner_expr.clone(), "compile_error!(".to_string()))
         || v1_rt::starts_with(inner_expr.clone(), "unreachable!(".to_string()))
+        || v1_rt::starts_with(
+            inner_expr.clone(),
+            "v1_rt::pure_dag_seam_unreachable(".to_string(),
+        ))
     {
         inner_expr.clone()
     } else {
@@ -13611,14 +13615,59 @@ pub fn is_parametric_opaque_type_decl_item(
         ) || is_self_referential_opaque_type_resolved(item.clone(), source_indices.clone())))
 }
 
+pub fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> bool {
+    crate::std_decl_ref::declaration_ref_eq(
+        crate::std_decl_ref::decl_ref(module_path.clone(), name.clone()),
+        never_type_declaration(),
+    )
+}
+
+pub fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
+    {
+        let here = crate::std_decl_ref::decl_ref(module_path.clone(), name.clone());
+        if crate::std_decl_ref::declaration_ref_eq(here.clone(), never_eliminator_declaration()) {
+            "#[allow(unreachable_code)]\n".to_string()
+        } else {
+            "".to_string()
+        }
+    }
+}
+
 pub fn emit_zero_param_phantom_opaque_struct(
     item: Rc<Node>,
     map_key_required: bool,
+    module_path: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let item_text = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(crate::v1_compiler_trait_derive_emit::v1_with_map_key_requirement(crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits(), map_key_required.clone())), "\n".to_string()), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " ".to_string()), item_text.clone()), "(pub std::marker::PhantomData<()>);".to_string())
+        let derive = v1_rt::concat(crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(crate::v1_compiler_trait_derive_emit::v1_with_map_key_requirement(crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits(), map_key_required.clone())), "\n".to_string());
+        if rust_uninhabited_empty_enum_decl(module_path.clone(), item_text.clone()) {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(derive.clone(), rust_visibility_prefix()),
+                        "enum ".to_string(),
+                    ),
+                    item_text.clone(),
+                ),
+                " {}".to_string(),
+            )
+        } else {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(derive.clone(), rust_visibility_prefix()),
+                            rust_items().struct_keyword.clone(),
+                        ),
+                        " ".to_string(),
+                    ),
+                    item_text.clone(),
+                ),
+                "(pub std::marker::PhantomData<()>);".to_string(),
+            )
+        }
     }
 }
 
@@ -15932,6 +15981,7 @@ pub fn emit_typed_item(
                                                 item_text.clone(),
                                             ),
                                         ),
+                                        env.module_path.clone(),
                                         env.source_indices.clone(),
                                     )
                                 } else {
@@ -20377,7 +20427,13 @@ pub fn emit_fn_def(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
                                                         v1_rt::concat(
-                                                            rust_visibility_prefix(),
+                                                            v1_rt::concat(
+                                                                rust_uninhabited_elim_allow_attr(
+                                                                    scope.module_name.clone(),
+                                                                    name.clone(),
+                                                                ),
+                                                                rust_visibility_prefix(),
+                                                            ),
                                                             kw.clone(),
                                                         ),
                                                         " ".to_string(),
@@ -20491,19 +20547,22 @@ pub fn emit_fn_def(
         } else {
             {
                 let return_is_unit = return_type_is_unit(inferred.clone(), si.clone());
-                emit_fn_def_non_tco(
-                    name.clone(),
-                    type_params_str.clone(),
-                    params_str.clone(),
-                    ret_str.clone(),
-                    body.clone(),
-                    registry.clone(),
-                    body_scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    body_emit_info.clone(),
-                    needs_stacker.clone(),
-                    return_is_unit.clone(),
+                v1_rt::concat(
+                    rust_uninhabited_elim_allow_attr(scope.module_name.clone(), name.clone()),
+                    emit_fn_def_non_tco(
+                        name.clone(),
+                        type_params_str.clone(),
+                        params_str.clone(),
+                        ret_str.clone(),
+                        body.clone(),
+                        registry.clone(),
+                        body_scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        body_emit_info.clone(),
+                        needs_stacker.clone(),
+                        return_is_unit.clone(),
+                    ),
                 )
             }
         }
@@ -25496,17 +25555,19 @@ pub fn type_node_carries_applicationless_parametric_head(
         for c in n.children.clone().iter().cloned() {
             if {
                 let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
-                (rust_type_renders_bare_parametric_head(
-                    t.clone(),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                    emit_info.clone(),
-                ) || type_node_carries_applicationless_parametric_head(
-                    t.clone(),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                    emit_info.clone(),
-                ))
+                (((n.connective.clone() != Connective::Disj)
+                    && rust_type_renders_bare_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    || type_node_carries_applicationless_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
             } {
                 __found = true;
                 break;

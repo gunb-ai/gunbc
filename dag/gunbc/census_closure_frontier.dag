@@ -67,8 +67,11 @@ import extdeps.cloud.gcp.storage { gcs_storage_frontier_rows }
 import extdeps.ebay.browse { ebay_browse_frontier_rows }
 import extdeps.ebay.marketplace_account_deletion { ebay_account_deletion_frontier_rows }
 import gunbc.serving.rented_ninfer_source { rented_ninfer_source_consumer_frontier_rows }
+import extdeps.posix.process { posix_process_stdio_frontier_rows }
+import gunbc.host.host_effect_argv_stdio { s3c_launch_stdio_file_wiring_frontier_rows }
 import gunbc.serving.serving_artifact_placement { serving_startup_placement_frontier_rows }
 import gunbc.serving.serving_launch { serving_serve_launch_frontier_rows }
+import gunbc.serving.rented_allocation_host_enrollment { rented_allocation_host_enrollment_frontier_rows }
 import gunbc.serving.serving_provision_derivation { serving_provision_derivation_frontier_rows }
 import gunbc.cloudflare.r2_permission_group_observe { cloudflare_permission_group_observation_frontier_rows }
 import gunbc.where_refinement_predicate_vocabulary { http_status_where_clause_names_declaration_frontier_rows }
@@ -160,8 +163,11 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     machine_word_consumer_frontier_rows,
     tracker_web_oauth_frontier_rows,
     rented_ninfer_source_consumer_frontier_rows,
+    posix_process_stdio_frontier_rows,
+    s3c_launch_stdio_file_wiring_frontier_rows,
     serving_startup_placement_frontier_rows,
     serving_serve_launch_frontier_rows,
+    rented_allocation_host_enrollment_frontier_rows,
     serving_provision_derivation_frontier_rows,
     host_assimilation_program_frontier_rows,
   ]

@@ -1870,9 +1870,10 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind =>
       edges_conform(children: children, d: PositionalPlusNamedMarkerEdges) && (positional_child_count(children: children) == 3)
+    // Scrutinee only is well-formed (Never eliminator). Exhaustiveness is infer, not shape.
     Match =>
       edges_conform(children: children, d: PositionalEdges)
-        && (positional_child_count(children: children) >= 2)
+        && (positional_child_count(children: children) >= 1)
         && match_arm_children_conform_skip_first(children: children, skipped_scrutinee: false)
   }
 }

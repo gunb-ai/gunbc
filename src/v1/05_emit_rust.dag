@@ -2,7 +2,7 @@ module v1.compiler.emit_rust
 
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list }
+import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
   VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
   VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message,
@@ -14,7 +14,8 @@ import std.repair_input_origin {
   qualified_item_emit_surface_compatibility_names,
 }
 import std.primitive_projection {
-  primitive_identity_runtime_name, primitive_projection_row_for_declaration
+  primitive_identity_runtime_name, primitive_projection_row_for_declaration,
+  never_type_declaration, never_eliminator_declaration
 }
 import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
 import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, inline_path_reference_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
@@ -534,6 +535,7 @@ fn rust_shared_wrap_ctor(inner_expr: String) -> String {
   if starts_with(s: inner_expr, prefix: "panic!(")
     || starts_with(s: inner_expr, prefix: "compile_error!(")
     || starts_with(s: inner_expr, prefix: "unreachable!(")
+    || starts_with(s: inner_expr, prefix: "v1_rt::pure_dag_seam_unreachable(")
   {
     inner_expr
   } else {
@@ -6763,13 +6765,27 @@ fn is_parametric_opaque_type_decl_item(item: Node, source_indices: Map<String, N
     )
 }
 
-fn emit_zero_param_phantom_opaque_struct(item: Node, map_key_required: Bool, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> Bool {
+  declaration_ref_eq(a: decl_ref(module_path: module_path, decl_name: name), b: never_type_declaration)
+}
+
+fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
+  let here = decl_ref(module_path: module_path, decl_name: name)
+  if declaration_ref_eq(a: here, b: never_eliminator_declaration) {
+    "#[allow(unreachable_code)]\n"
+  } else {
+    ""
+  }
+}
+
+fn emit_zero_param_phantom_opaque_struct(item: Node, map_key_required: Bool, module_path: String, source_indices: Map<String, NewlineIndex>) -> String {
   let item_text = authored_name_at(source_indices: source_indices, node: item)
-  concat(
-    concat(rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: phantom_opaque_carrier_derive_traits(), map_key_required: map_key_required)), "\n"),
-    rust_visibility_prefix(),
-    rust_items().struct_keyword, " ", item_text, "(pub std::marker::PhantomData<()>);"
-  )
+  let derive = concat(rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: phantom_opaque_carrier_derive_traits(), map_key_required: map_key_required)), "\n")
+  if rust_uninhabited_empty_enum_decl(module_path: module_path, name: item_text) {
+    concat(derive, rust_visibility_prefix(), "enum ", item_text, " {}")
+  } else {
+    concat(derive, rust_visibility_prefix(), rust_items().struct_keyword, " ", item_text, "(pub std::marker::PhantomData<()>);")
+  }
 }
 
 fn emit_parametric_phantom_opaque_struct(item: Node, map_key_required: Bool, source_indices: Map<String, NewlineIndex>) -> String {
@@ -7705,7 +7721,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
+          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), module_path: env.module_path, source_indices: env.source_indices)
         } else {
           match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
             Present { value: host } =>
@@ -10041,7 +10057,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   }
   if realized_seam && (value_params |> count) == 0 {
     let kw = rust_items().func_keyword
-    return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "()", ret_str, " {\n",
+    return concat(rust_uninhabited_elim_allow_attr(module_path: scope.module_name, name: name), rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "()", ret_str, " {\n",
       make_indent(level: 1), "v1_rt::", emit_ident(name: rust_runtime_bridge_name(function_name: rust_seam_primitive_name(module_path: scope.module_name, name: name)), target: Rust), "()\n}")
   }
   if use_tco {
@@ -10054,7 +10070,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
     let return_is_unit = return_type_is_unit(n: inferred, source_indices: si)
-    emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit)
+    concat(rust_uninhabited_elim_allow_attr(module_path: scope.module_name, name: name), emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit))
   }
 }
 
@@ -12115,10 +12131,15 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 // rustc E0107 (v2.compiler.resolve type_param_value_binders, #14084). The fact asked is the declaration's own
 // parameter count from the env binding, not a name: a node whose binding declares parameters but renders as its bare
 // head has lost its application, so the position defers to the target's inference exactly as an erased argument does.
+// The children of a Disj node are its ARMS, not type arguments: lookup_type_for resolves an arm's name to the
+// owning parametric declaration, so an arm such as std.list FirstDuplicateNotFound read as the declaration named
+// without its arguments, the fold lambda's accumulator widened to `_` beside the `_` seed, and rustc E0282 had
+// nothing to infer from. A bare head is a type REFERENCE (a Map argument, a field), never an arm; the arms'
+// own children are still searched. Dissolution: adhoc-65526d74-43f, with the rest of this compensation.
 fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
   n.children |> any(c =>
     let t = child_type_node(ch: c)
-    rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    (n.connective != Disj && rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
       || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
 }
 
