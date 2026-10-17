@@ -49,7 +49,6 @@ import gunbc.firmware_network_boot_standing {
   BiosVersionUnobserved,
   AttemptConstructed,
   AttemptDhcpStanding,
-  AttemptRouteUncataloged,
   NetworkBootAttemptConstruction,
   DhcpOfferObserved,
   DhcpForeignOffer,
@@ -67,11 +66,13 @@ import gunbc.firmware_network_boot_standing {
   NicsRefused,
   NicsUnobserved,
   PreparationBlockingOn,
+  EnableNetworkStack,
+  PointUefiBootNext,
+  SelectNicBoot,
+  SetSecureBootAttribute,
+  mechanism_name,
   ReadyEvidence,
-  RedfishBiosAttributes,
   RedfishOneShotOverride,
-  RedfishUefiBootNext,
-  RouteAuthority,
   BootEntry,
   boot_entry,
   has_network_entry,
@@ -86,9 +87,7 @@ import gunbc.firmware_network_boot_standing {
   Uninhabited,
   is_network_target,
   route_for_blocking,
-  blocking_eq,
   blocker_of,
-  route_of,
   authority_of,
   obligation_of,
   SecureBootDisabled,
@@ -109,8 +108,6 @@ import gunbc.firmware_network_boot_standing {
   firmware_network_boot_standing,
   network_boot_attempt,
   ready_evidence,
-  route_eq,
-  route_is_cataloged,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -285,10 +282,13 @@ test fn refusal_on_any_axis_keeps_its_cause() -> Bool {
 // saying Refused tells the operator the board cannot network boot, which is false.
 test fn secure_boot_enabled_is_preparation_with_a_cataloged_attribute_route() -> Bool {
   match standing_of(observation: with_secure_boot(secure_boot: SecureBootEnabled)) {
-    NeedsPreparation { route: RedfishBiosAttributes { service_root: s, attribute: a }, blocking: b } =>
+    NeedsPreparation { route: SetSecureBootAttribute { service_root: s, attribute: a, authority: _, obligation: _ }, blocking: b } =>
       s == "redfish:Bios" && a == "SecureBoot"
         && match b {
-             SecureBootBlocksUnsignedChainloader => route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "SecureBoot" })
+             SecureBootBlocksUnsignedChainloader => route_matches_the_catalog_row(
+               blocker: SecureBootBlocksUnsignedChainloader,
+               route: SetSecureBootAttribute { service_root: s, attribute: a, authority: witness_authority, obligation: "" },
+             )
              _ => false
            }
     _ => false
@@ -300,7 +300,7 @@ test fn secure_boot_enabled_is_preparation_with_a_cataloged_attribute_route() ->
 test fn answered_and_absent_is_preparation_not_unobserved() -> Bool {
   match standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [] })) {
     NeedsPreparation { route: r, blocking: b } =>
-      route_is_cataloged(route: r)
+      is_a_fleet_route(route: r)
         && match b {
              NoNetworkBootOptionListed => true
              _ => false
@@ -316,7 +316,7 @@ test fn answered_and_absent_is_preparation_not_unobserved() -> Bool {
 test fn two_candidate_nics_refuse_to_guess_the_first() -> Bool {
   match standing_of(observation: with_nics(nics: NicsObserved { nics: ["eth0", "eth1"] })) {
     NeedsPreparation { route: r, blocking: b } =>
-      route_is_cataloged(route: r)
+      is_a_fleet_route(route: r)
         && match b {
              NoInterfaceCarriesPxe => true
              _ => false
@@ -368,32 +368,110 @@ test fn every_route_the_seam_emits_is_cataloged() -> Bool {
 
 fn every_emitted_route_cataloged(standing: FirmwareNetworkBootStanding) -> Bool {
   match standing {
-    NeedsPreparation { route: r, blocking: _ } => route_is_cataloged(route: r)
+    NeedsPreparation { route: r, blocking: _ } => is_a_fleet_route(route: r)
     _ => true
   }
 }
 
-// EVERY ROUTE THE CATALOG OWNS ROUND-TRIPS, and two mechanisms never collapse into one another.
-// The attribute names here are the ones the catalog really rows -- the BootMode row that used to be
-// asserted was removed, because it resolved no blocker and no branch reached it: data claiming a
-// capability nothing could reach is the same defect as a code path with no data behind it.
-test fn every_cataloged_route_round_trips_and_never_confuses_mechanisms() -> Bool {
-  route_is_cataloged(route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" })
-    && route_is_cataloged(route: RedfishOneShotOverride { service_root: "redfish:Systems/Self" })
-    && route_is_cataloged(route: RedfishUefiBootNext { service_root: "redfish:Systems/Self", boot_option: "uefi-boot-next" })
-    && route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "NetworkStack" })
-    && route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "NicBootSelection" })
-    && route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "SecureBoot" })
-    && route_is_cataloged(route: UefiShellOverSol { sol_channel: "sol:0", script: "netboot.efi" })
-    && route_is_cataloged(route: HumanConsole { instruction: "attend the unit and select the network device" })
-    && !route_eq(
-         a: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
-         b: RedfishOneShotOverride { service_root: "ipmi:chassis-boot-override" },
+// MEMBERSHIP, NOT COMPARISON (review 81760). The module no longer ships a route_eq or a
+// route_is_cataloged: route identity is structural `==`, and 'is this one of ours' is a lookup in
+// the one table that owns the routes. The fold's route comes OUT of that table, so this is testing
+// that the fold reached the table at all -- a route fabricated elsewhere would not be in it.
+fn is_a_fleet_route(route: FirmwareNetworkBootPreparationRoute) -> Bool {
+  length(xs: filter(firmware_network_boot_preparation_routes, candidate => candidate == route)) > 0
+}
+
+// THE FOLD'S ROUTE AND THE CATALOG'S ROUTE AGREE ON EVERYTHING THE EXECUTOR READS. Compared by
+// field rather than by whole-value equality because the fold does not restate the citation or the
+// obligation text it was handed -- those are catalog metadata the readiness fn has no business
+// rewriting, and demanding equality on them would test the copy, not the decision. Field names here
+// are the arm's own, so renaming or re-typing an executor field breaks this witness.
+fn route_matches_the_catalog_row(
+  blocker: PreparationBlockingOn,
+  route: FirmwareNetworkBootPreparationRoute
+) -> Bool {
+  match route_for_blocking(blocker: blocker) {
+    Present { value: row } => mechanism_name(route: row) == mechanism_name(route: route)
+      && field_pairs_agree(route_a: row, route_b: route)
+    Absent => false
+  }
+}
+
+fn field_pairs_agree(route_a: FirmwareNetworkBootPreparationRoute, route_b: FirmwareNetworkBootPreparationRoute) -> Bool {
+  match route_a {
+    EnableNetworkStack { service_root: sa, attribute: aa, authority: _, obligation: _ } =>
+      match route_b {
+        EnableNetworkStack { service_root: sb, attribute: ab, authority: _, obligation: _ } => sa == sb && aa == ab
+        _ => false
+      }
+    SetSecureBootAttribute { service_root: sa, attribute: aa, authority: _, obligation: _ } =>
+      match route_b {
+        SetSecureBootAttribute { service_root: sb, attribute: ab, authority: _, obligation: _ } => sa == sb && aa == ab
+        _ => false
+      }
+    _ => route_a == route_b
+  }
+}
+
+// EVERY BLOCKER THE SEAM CAN NAME HAS A ROUTE, IT IS FOUND BY LOOKUP, AND IT IS THE ROUTE THAT
+// CAN MOVE THAT BLOCKER. This replaces the old round-trip test (which hand-compared a fabricated
+// route against the catalog through a hand-written route_eq): with one union there is nothing to
+// translate, so what is worth asserting is that the fold's lookups land where the fleet intends.
+// Each expectation is written by ARM, so renaming an arm or mis-deriving its blocker fails here.
+test fn each_blocker_resolves_to_the_mechanism_the_fleet_actually_drives() -> Bool {
+  match route_for_blocking(blocker: NoNetworkStackInBootOrder) {
+    Present { value: EnableNetworkStack { service_root: sr, attribute: a, authority: _, obligation: _ } } =>
+      sr == "redfish:Bios" && a == "NetworkStack"
+    _ => false
+  }
+    && match route_for_blocking(blocker: NoNetworkBootOptionListed) {
+         // The fleet's PREFERENCE is the first row for a blocker, and preference is a fact worth
+         // pinning: silently reordering this table changes which control plane every MegaRAC unit
+         // gets pointed at, and nothing else in the diff would say so.
+         Present { value: PointUefiBootNext { service_root: sr, boot_option: bo, authority: _, obligation: _ } } =>
+           sr == "redfish:Systems/Self" && bo == "uefi-boot-next"
+         _ => false
+       }
+    && match route_for_blocking(blocker: NoInterfaceCarriesPxe) {
+         // THE 81711 REGRESSION GUARD, in its final form: this blocker must never be answered by a
+         // redirect. A one-shot points the next boot at an entry that already exists and cannot
+         // decide which PORT carries PXE, so if anyone re-files this row the arm name itself differs.
+         Present { value: r } =>
+           match r {
+             SelectNicBoot { service_root: sr, attribute: a, authority: _, obligation: _ } =>
+               sr == "redfish:Bios" && a == "NicBootSelection"
+             RedfishOneShotOverride { service_root: _, authority: _, obligation: _ } => false
+             IpmiOneShotOverride { channel: _, authority: _, obligation: _ } => false
+             PointUefiBootNext { service_root: _, boot_option: _, authority: _, obligation: _ } => false
+             _ => false
+           }
+         Absent => false
+       }
+    && match route_for_blocking(blocker: SecureBootBlocksUnsignedChainloader) {
+         Present { value: SetSecureBootAttribute { service_root: sr, attribute: a, authority: _, obligation: _ } } =>
+           sr == "redfish:Bios" && a == "SecureBoot"
+         _ => false
+       }
+    && match route_for_blocking(blocker: OverrideMechanismUnsupported) {
+         Present { value: UefiShellOverSol { sol_channel: sc, script: _, authority: _, obligation: _ } } =>
+           sc == "sol:0"
+         _ => false
+       }
+}
+
+// THE CATALOG IS A SET, NOT A BAG: no two rows are the same route, no two rows share a mechanism
+// name, and every row is findable under the blocker its own arm declares. The distinctness arms are
+// what a duplicate row -- the shape a careless 'add another mechanism' edit takes -- breaks.
+test fn the_catalog_has_no_duplicate_route_and_no_nameless_mechanism() -> Bool {
+  length(xs: firmware_network_boot_preparation_routes) == 8
+    && for_all(
+         xs: firmware_network_boot_preparation_routes,
+         predicate: route =>
+           length(xs: filter(firmware_network_boot_preparation_routes, candidate => candidate == route)) == 1
+             && length(xs: filter(firmware_network_boot_preparation_routes, candidate => mechanism_name(route: candidate) == mechanism_name(route: route))) == 1
+             && length(xs: filter(firmware_network_boot_preparation_routes, candidate => blocker_of(route: candidate) == blocker_of(route: route))) > 0,
        )
-    && !route_eq(
-         a: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "NetworkStack" },
-         b: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "SecureBoot" },
-       )
+    && length(xs: filter(firmware_network_boot_preparation_routes, route => blocker_of(route: route) == NoNetworkBootOptionListed)) == 3
 }
 
 // THE CATALOG IS NOT A HOST TABLE: rows are keyed on the route and every row carries an
@@ -403,39 +481,51 @@ test fn the_catalog_rows_are_route_keyed_and_each_carries_an_authority() -> Bool
   count_cataloged(firmware_network_boot_preparation_routes)
 }
 
-fn count_cataloged(rows: List<RouteAuthority>) -> Bool {
-  for_all(xs: rows, predicate: row => route_has_authority(row: row))
+fn count_cataloged(rows: List<FirmwareNetworkBootPreparationRoute>) -> Bool {
+  for_all(xs: rows, predicate: route => route_has_authority(route: route))
 }
 
-fn route_has_authority(row: RouteAuthority) -> Bool {
-  match authority_of(row: row) {
+fn route_has_authority(route: FirmwareNetworkBootPreparationRoute) -> Bool {
+  match authority_of(route: route) {
     CitedToAuthority { authority: _ } => true
     TranscribedUncited { read_obligation: _ } => true
     ObservedByReceipt { observed: _ } => true
   }
 }
 
-// THE ATTEMPT ABSORBS, NEVER DUPLICATES: an attempt on a route the fleet has no row for is
-// refused at construction (Absent), and a cataloged one keeps its BootControlReceiptStanding —
-// the type delivery owns — rather than this seam minting a rival receipt.
-test fn an_attempt_on_an_uncataloged_route_cannot_be_constructed() -> Bool {
-  let uncataloged_refused =
-    match synthetic_attempt(route: UefiShellOverSol { sol_channel: "sol:0", script: "made-up.efi" }) {
-      AttemptRouteUncataloged { route: _ } => true
-      AttemptConstructed { attempt: _ } => false
-    }
-  let cataloged_constructs =
-    match synthetic_attempt(route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" }) {
-      AttemptConstructed { attempt: _ } => true
-      AttemptRouteUncataloged { route: _ } => false
-    }
-  uncataloged_refused && cataloged_constructs
+// THE CALLER CANNOT STEER AN ATTEMPT (review 81760). `network_boot_attempt` used to accept a free
+// route and check it against the catalog at runtime; it now accepts the BLOCKER and the module
+// supplies the mechanism by lookup, so 'an attempt on a route the fleet has no row for' is not a
+// refused case any more -- it is not a case. That is the stronger property and it is what is
+// asserted: for every blocker the attempt's route is exactly the cataloged one, and the blocker it
+// carries is the one asked for. The refusal arm (AttemptBlockerUncataloged) stays reachable only to
+// an edit that deletes a catalog row, which every_blocker_has_a_route_that_can_act_on_it refuses.
+test fn an_attempt_can_only_ever_carry_the_cataloged_route_for_its_blocker() -> Bool {
+  attempt_carries_the_fleet_route(blocker: NoNetworkStackInBootOrder)
+    && attempt_carries_the_fleet_route(blocker: NoNetworkBootOptionListed)
+    && attempt_carries_the_fleet_route(blocker: NoInterfaceCarriesPxe)
+    && attempt_carries_the_fleet_route(blocker: SecureBootBlocksUnsignedChainloader)
+    && attempt_carries_the_fleet_route(blocker: OverrideMechanismUnsupported)
 }
 
-// The boot-control ABSORPTION is enforced at load time, not asserted here: NetworkBootAttempt's
-// boot_control field is typed as gunbc.network_boot_delivery's BootControlReceiptStanding, so a
-// rival spelling in this seam would not load. What this witness can say is which standing the
-// synthetic attempt carries — and that the seam's own receipt cannot be minted without one.
+fn attempt_carries_the_fleet_route(blocker: PreparationBlockingOn) -> Bool {
+  match network_boot_attempt(
+    blocker: blocker,
+    boot_control: BootControlUnobserved,
+    reset_observed_at: witness_epoch,
+    resulting_dhcp: DhcpOfferObserved { offer_ref: "synthetic-offer" },
+    unit_label: "synthetic-unit",
+  ) {
+    AttemptConstructed { attempt: built } =>
+      // The route is in the table, and it is the SAME value the fold would hand out: structural
+      // equality, no hand-written comparison anywhere.
+      is_a_fleet_route(route: built.route)
+        && route_for_blocking(blocker: blocker) == Present { value: built.route }
+        && blocker_of(route: built.route) == blocker
+    AttemptBlockerUncataloged { blocker: _ } => false
+  }
+}
+
 fn boot_control_is_the_imported_standing(control: BootControlReceiptStanding) -> Bool {
   match control {
     BootControlUnobserved => true
@@ -445,15 +535,15 @@ fn boot_control_is_the_imported_standing(control: BootControlReceiptStanding) ->
 }
 
 test fn the_attempt_receipt_cannot_be_minted_without_its_attempt_and_control_receipt() -> Bool {
-  match synthetic_attempt(route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" }) {
+  match synthetic_attempt() {
     AttemptConstructed { attempt: built } => boot_control_is_the_imported_standing(control: built.boot_control)
-    AttemptRouteUncataloged { route: _ } => false
+    AttemptBlockerUncataloged { blocker: _ } => false
   }
 }
 
-fn synthetic_attempt(route: FirmwareNetworkBootPreparationRoute) -> NetworkBootAttemptConstruction {
+fn synthetic_attempt() -> NetworkBootAttemptConstruction {
   network_boot_attempt(
-    route: route,
+    blocker: NoNetworkBootOptionListed,
     boot_control: BootControlUnobserved,
     reset_observed_at: witness_epoch,
     resulting_dhcp: DhcpOfferObserved { offer_ref: "synthetic-offer" },
@@ -540,7 +630,7 @@ test fn the_ready_names_the_firmware_spelled_interface_verbatim() -> Bool {
 // or the router answering when it should not be) still receipts completely, because 'the boot
 // went wrong in this specific way' is a fact worth keeping, not a reason to lose the receipt.
 test fn the_attempt_receipt_keeps_the_outcome_and_the_foreign_offer_too() -> Bool {
-  match synthetic_attempt(route: RedfishOneShotOverride { service_root: "redfish:Systems/Self" }) {
+  match synthetic_attempt() {
     AttemptConstructed { attempt: built } =>
       match firmware_network_boot_attempt_receipt(
         attempt: built,
@@ -559,7 +649,7 @@ test fn the_attempt_receipt_keeps_the_outcome_and_the_foreign_offer_too() -> Boo
                  _ => false
                }
       }
-    AttemptRouteUncataloged { route: _ } => false
+    AttemptBlockerUncataloged { blocker: _ } => false
   }
 }
 
@@ -580,7 +670,7 @@ test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silen
         DhcpSilent { why: _ } => false
         DhcpOfferObserved { offer_ref: _ } => false
       }
-    AttemptRouteUncataloged { route: _ } => false
+    AttemptBlockerUncataloged { blocker: _ } => false
   }
     && match network_boot_attempt(
          route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
@@ -594,7 +684,7 @@ test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silen
              DhcpSilent { why: w } => w == "no offer within timeout"
              _ => false
            }
-         AttemptRouteUncataloged { route: _ } => false
+         AttemptBlockerUncataloged { blocker: _ } => false
        }
 }
 
@@ -733,11 +823,14 @@ test fn a_boot_order_with_no_network_entry_gets_the_route_that_can_add_one() -> 
     observed_at: witness_epoch,
     boot_mode: UefiHttpBoot,
   ) {
-    NeedsPreparation { route: RedfishBiosAttributes { service_root: s, attribute: a }, blocking: b } =>
+    NeedsPreparation { route: EnableNetworkStack { service_root: s, attribute: a, authority: _, obligation: _ }, blocking: b } =>
       s == "redfish:Bios"
         && a == "NetworkStack"
         && match b {
-             NoNetworkStackInBootOrder => route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "NetworkStack" })
+             NoNetworkStackInBootOrder => route_matches_the_catalog_row(
+               blocker: NoNetworkStackInBootOrder,
+               route: EnableNetworkStack { service_root: s, attribute: a, authority: witness_authority, obligation: "" },
+             )
              _ => false
            }
     _ => false
@@ -795,7 +888,7 @@ test fn an_all_disk_boot_order_with_network_shaped_labels_is_not_ready() -> Bool
     boot_mode: UefiHttpBoot,
   ) {
     NeedsPreparation { route: r, blocking: b } =>
-      route_is_cataloged(route: r)
+      is_a_fleet_route(route: r)
         && match b {
              NoNetworkStackInBootOrder => true
              _ => false
@@ -806,62 +899,72 @@ test fn an_all_disk_boot_order_with_network_shaped_labels_is_not_ready() -> Bool
 }
 
 // THE PAIRING IS CHECKED FROM THE OUTSIDE, WHICH IS THE ONLY DIRECTION LEFT ONCE THE TYPE OWNS IT
-// (review 81734). Two independent things are asserted per row:
-//   (a) the row is FINDABLE under the blocker its own arm declares -- so blocker_of cannot drift
-//       away from the arms without the fold losing its route, and
-//   (b) the mechanism the arm PROJECTS to is one that can physically move that blocker.
-// (b) is written here against the executor vocabulary, NOT by calling a module helper: the module
-// no longer owns a capability function (it does not need one -- the wrong pairing is a type error),
-// so this table is the witness's own statement of what each mechanism can do. If a future edit
-// widens a remedy union so that an arm projects to something that cannot move its blocker, the
-// module still compiles and this goes red.
-test fn every_row_is_found_under_the_blocker_it_declares_and_its_mechanism_can_move_it() -> Bool {
-  for_all(xs: firmware_network_boot_preparation_routes, predicate: row =>
-    row_is_filed_under_its_blocker(row: row)
-      && mechanism_can_move(mechanism: route_of(row: row), blocker: blocker_of(row: row))
+// (reviews 81734 and 81760). Per catalog row, two independent things:
+//   (a) the row is findable under the blocker `blocker_of` derives for it -- so the derivation
+//       cannot drift away from the arms without the fold losing its route, and
+//   (b) the mechanism is one that can physically move that blocker, judged against the WITNESS's own
+//       table of what mechanisms do. The module no longer owns such a function (with one union and
+//       arm-level grouping the wrong pairing cannot be written), so this table is an independent
+//       statement of the same truth and the two agreeing is the claim under test. If an arm is
+//       re-filed under a blocker it cannot move, the module still compiles and this goes red.
+test fn every_route_is_found_under_the_blocker_it_declares_and_can_physically_move_it() -> Bool {
+  for_all(xs: firmware_network_boot_preparation_routes, predicate: route =>
+    length(xs: filter(catalog_rows_for(blocker: blocker_of(route: route)), candidate => candidate == route)) > 0
+      && mechanism_can_move(mechanism: route, blocker: blocker_of(route: route))
   )
 }
 
-fn row_is_filed_under_its_blocker(row: RouteAuthority) -> Bool {
-  length(xs: filter(catalog_rows_for(blocker: blocker_of(row: row)), candidate => route_eq(a: route_of(row: candidate), b: route_of(row: row)))) > 0
-}
-
-// WITNESS-SIDE MECHANISM CAPABILITIES. Written out per blocker, in the executor's vocabulary, and
-// deliberately NOT a copy of anything in the module: the module's type says what is writable, this
-// says what is true, and the two agreeing is the claim under test.
+// WITNESS-SIDE MECHANISM CAPABILITIES, in the executor's own vocabulary and deliberately not a copy
+// of module code. Each arm is named: a redirect is a redirect is a redirect (they differ only in
+// control plane), an attribute-change is how something is made to exist, and out-of-band is what is
+// left when the API refused.
 fn mechanism_can_move(mechanism: FirmwareNetworkBootPreparationRoute, blocker: PreparationBlockingOn) -> Bool {
   match blocker {
     // A stack that does not exist is created by a BIOS attribute, by nothing else.
-    NoNetworkStackInBootOrder => is_bios_attribute(mechanism: mechanism)
-    // An option that exists but is not selected is selected by a redirect -- and only by a redirect.
+    NoNetworkStackInBootOrder => is_stack_enabler(mechanism: mechanism)
+    // An option that exists but is unselected is selected by a redirect, and only by a redirect.
     NoNetworkBootOptionListed => is_redirect(mechanism: mechanism)
-    // Which port boots is an attribute; a redirect cannot answer it (review 81711's bug).
-    NoInterfaceCarriesPxe => is_bios_attribute(mechanism: mechanism)
-    SecureBootBlocksUnsignedChainloader => is_bios_attribute(mechanism: mechanism)
+    // Which port boots is firmware state; a redirect cannot answer it (review 81711's bug).
+    NoInterfaceCarriesPxe => is_nic_selector(mechanism: mechanism)
+    SecureBootBlocksUnsignedChainloader => is_secure_boot_setter(mechanism: mechanism)
     OverrideMechanismUnsupported => is_out_of_band(mechanism: mechanism)
   }
 }
 
-fn is_bios_attribute(mechanism: FirmwareNetworkBootPreparationRoute) -> Bool {
+fn is_stack_enabler(mechanism: FirmwareNetworkBootPreparationRoute) -> Bool {
   match mechanism {
-    RedfishBiosAttributes { service_root: _, attribute: _ } => true
+    EnableNetworkStack { service_root: _, attribute: _, authority: _, obligation: _ } => true
     _ => false
   }
 }
 
 fn is_redirect(mechanism: FirmwareNetworkBootPreparationRoute) -> Bool {
   match mechanism {
-    RedfishUefiBootNext { service_root: _, boot_option: _ } => true
-    RedfishOneShotOverride { service_root: _ } => true
-    IpmiOneShotOverride { channel: _ } => true
+    PointUefiBootNext { service_root: _, boot_option: _, authority: _, obligation: _ } => true
+    RedfishOneShotOverride { service_root: _, authority: _, obligation: _ } => true
+    IpmiOneShotOverride { channel: _, authority: _, obligation: _ } => true
+    _ => false
+  }
+}
+
+fn is_nic_selector(mechanism: FirmwareNetworkBootPreparationRoute) -> Bool {
+  match mechanism {
+    SelectNicBoot { service_root: _, attribute: _, authority: _, obligation: _ } => true
+    _ => false
+  }
+}
+
+fn is_secure_boot_setter(mechanism: FirmwareNetworkBootPreparationRoute) -> Bool {
+  match mechanism {
+    SetSecureBootAttribute { service_root: _, attribute: _, authority: _, obligation: _ } => true
     _ => false
   }
 }
 
 fn is_out_of_band(mechanism: FirmwareNetworkBootPreparationRoute) -> Bool {
   match mechanism {
-    UefiShellOverSol { sol_channel: _, script: _ } => true
-    HumanConsole { instruction: _ } => true
+    UefiShellOverSol { sol_channel: _, script: _, authority: _, obligation: _ } => true
+    HumanConsole { instruction: _, authority: _, obligation: _ } => true
     _ => false
   }
 }
@@ -879,7 +982,7 @@ test fn every_blocker_has_a_route_that_can_act_on_it() -> Bool {
 
 fn blocker_has_row(blocker: PreparationBlockingOn) -> Bool {
   match route_for_blocking(blocker: blocker) {
-    Present { value: row } => mechanism_can_move(mechanism: route_of(row: row), blocker: blocker)
+    Present { value: route } => mechanism_can_move(mechanism: route, blocker: blocker)
     Absent => false
   }
 }
@@ -888,43 +991,35 @@ fn blocker_has_row(blocker: PreparationBlockingOn) -> Bool {
 // witness keeps its own copy rather than reaching into a private helper, because 'can a blocker
 // even be looked up' is the thing under test and sharing the implementation would make the test
 // agree with the code by construction.
-fn catalog_rows_for(blocker: PreparationBlockingOn) -> List<RouteAuthority> {
-  filter(firmware_network_boot_preparation_routes, row => blocking_eq(a: blocker_of(row: row), b: blocker))
+fn catalog_rows_for(blocker: PreparationBlockingOn) -> List<FirmwareNetworkBootPreparationRoute> {
+  filter(firmware_network_boot_preparation_routes, route => blocker_of(route: route) == blocker)
 }
 
-// THE PROJECTIONS ARE TOTAL AND DISCRIMINATING. blocker_of and route_of are the two reads the fold
-// has of a row; if either is edited to answer the wrong question, rows still typecheck and the
-// catalog still looks populated, while the fold silently hands out a route for the wrong blocker.
-// So each arm's projection is pinned by name, arm by arm, and every one of the five arms is written
-// out -- a new arm is a compile error here.
-test fn each_row_arms_project_to_the_blocker_and_mechanism_they_mean() -> Bool {
-  blocker_of(row: row_with_redirect(UefiBootNextRemedy { service_root: "redfish:Systems/Self", boot_option: "uefi-boot-next" }))
-    == NoNetworkBootOptionListed
-    && route_eq(
-         a: route_of(row: row_with_redirect(UefiBootNextRemedy { service_root: "redfish:Systems/Self", boot_option: "uefi-boot-next" })),
-         b: RedfishUefiBootNext { service_root: "redfish:Systems/Self", boot_option: "uefi-boot-next" },
-       )
-    && route_eq(
-         a: route_of(row: row_with_redirect(RedfishOneShotRemedy { service_root: "redfish:Systems/Self" })),
-         b: RedfishOneShotOverride { service_root: "redfish:Systems/Self" },
-       )
-    && route_eq(
-         a: route_of(row: row_with_redirect(IpmiOneShotRemedy { channel: "ipmi:chassis-boot-override" })),
-         b: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
-       )
-    && blocker_of(row: NoNetworkStackRow { remedy: NetworkStackAttribute { service_root: "redfish:Bios", attribute: "NetworkStack" }, authority: witness_authority, obligation: "x" })
-      == NoNetworkStackInBootOrder
-    && blocker_of(row: NoInterfaceCarriesPxeRow { remedy: NicBootAttribute { service_root: "redfish:Bios", attribute: "NicBootSelection" }, authority: witness_authority, obligation: "x" })
+// THE ONE HAND-WRITTEN PAIRING, PINNED ARM BY ARM. `blocker_of` is the last place a human writes
+// down which blocker a mechanism answers; everything else reads it off the arm. So each of the eight
+// arms is named here with the blocker it must derive to -- a new arm is a compile error in this
+// match, and a re-filed arm is a red test. This is the witness that makes the union's grouping
+// checkable rather than merely intended.
+test fn each_route_arm_derives_the_blocker_the_fleet_acts_on() -> Bool {
+  blocker_of(route: EnableNetworkStack { service_root: "x", attribute: "y", authority: witness_authority, obligation: "o" })
+    == NoNetworkStackInBootOrder
+    && blocker_of(route: PointUefiBootNext { service_root: "x", boot_option: "y", authority: witness_authority, obligation: "o" })
+      == NoNetworkBootOptionListed
+    && blocker_of(route: RedfishOneShotOverride { service_root: "x", authority: witness_authority, obligation: "o" })
+      == NoNetworkBootOptionListed
+    && blocker_of(route: IpmiOneShotOverride { channel: "x", authority: witness_authority, obligation: "o" })
+      == NoNetworkBootOptionListed
+    && blocker_of(route: SelectNicBoot { service_root: "x", attribute: "y", authority: witness_authority, obligation: "o" })
       == NoInterfaceCarriesPxe
-    && blocker_of(row: SecureBootBlocksRow { remedy: SecureBootAttribute { service_root: "redfish:Bios", attribute: "SecureBoot" }, authority: witness_authority, obligation: "x" })
+    && blocker_of(route: SetSecureBootAttribute { service_root: "x", attribute: "y", authority: witness_authority, obligation: "o" })
       == SecureBootBlocksUnsignedChainloader
-    && blocker_of(row: OverrideUnsupportedRow { remedy: ConsoleRemedy { instruction: "attend" }, authority: witness_authority, obligation: "x" })
+    && blocker_of(route: UefiShellOverSol { sol_channel: "x", script: "y", authority: witness_authority, obligation: "o" })
       == OverrideMechanismUnsupported
-    && obligation_of(row: row_with_redirect(IpmiOneShotRemedy { channel: "ipmi:chassis-boot-override" })) == "x"
-}
-
-fn row_with_redirect(remedy: RedirectRemedy) -> RouteAuthority {
-  NoNetworkBootOptionRow { remedy: remedy, authority: witness_authority, obligation: "x" }
+    && blocker_of(route: HumanConsole { instruction: "x", authority: witness_authority, obligation: "o" })
+      == OverrideMechanismUnsupported
+    && obligation_of(route: HumanConsole { instruction: "x", authority: witness_authority, obligation: "o" }) == "o"
+    && mechanism_name(route: IpmiOneShotOverride { channel: "x", authority: witness_authority, obligation: "o" })
+      == "ipmi-one-shot-override"
 }
 
 // EVERY VALUE OF THE BLOCKER UNION, written out so a new arm is a compile error here (each is
@@ -940,7 +1035,7 @@ fn all_preparation_blockers() -> List<PreparationBlockingOn> {
 }
 
 fn blocker_is_in(blocker: PreparationBlockingOn, candidates: List<PreparationBlockingOn>) -> Bool {
-  length(xs: filter(candidates, candidate => blocking_eq(a: candidate, b: blocker))) > 0
+  length(xs: filter(candidates, candidate => candidate == blocker)) > 0
 }
 
 // ---------------------------------------------------------------------------
