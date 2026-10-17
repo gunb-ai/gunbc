@@ -2,7 +2,7 @@ module v1.compiler.infer_types
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, settled_type }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -954,7 +954,6 @@ type TextJudgment
 
 type TextNotAskedReason
   = TextNotAskedInVariantFieldSummary
-  | TextNotAskedForCallableComponentResidue
   | TextNotAskedForSyntheticWitnessNodes
 
 fn text_crossing_in_judgment(left: Node, right: Node, text: TextJudgment) -> Bool {
@@ -1033,7 +1032,38 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
     else if left_opt || right_opt { false }
     else {
       type_name_compatible(a: authored_name_at(source_indices: source_indices, node: left), b: authored_name_at(source_indices: source_indices, node: right))
+        || alias_identity_in_judgment(left: left, right: right, source_indices: source_indices, text: text)
     }
+  }
+}
+
+fn alias_identity_in_judgment(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  match text {
+    TextJudgedIn { env: e } =>
+      alias_settled_agree(left: left, right: right, source_indices: source_indices, env: e,
+        agree: (a, b) => applied_argument_agrees(left: child_type_node(ch: a), right: child_type_node(ch: b), source_indices: source_indices, text: text))
+    TextNotAsked { reason: _ } => false
+  }
+}
+
+// An applied argument of an alias-settled pair is judged by the declaration it settles to, under the same declared-arity rule as the
+// top level (alias_settled_agree): identical head, and for a parameterized head every argument agrees in turn, a side exposing none
+// refusing. Only an argument that names no declaration (a kernel scalar, a container, a type variable) falls to node_type_compatible,
+// which owns those kernel readings; node_type_compatible alone would pass `Inner<Int>` for `Inner<Bool>` by head name.
+fn applied_argument_agrees(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  match text {
+    TextJudgedIn { env: e } =>
+      match settled_type(n: left, source_indices: source_indices, env: e, fuel: 16) {
+        Absent => node_type_compatible(left: left, right: right, source_indices: source_indices, text: text)
+        Present { value: _ } =>
+          match settled_type(n: right, source_indices: source_indices, env: e, fuel: 16) {
+            Absent => node_type_compatible(left: left, right: right, source_indices: source_indices, text: text)
+            Present { value: _ } =>
+              alias_settled_agree(left: left, right: right, source_indices: source_indices, env: e,
+                agree: (a, b) => applied_argument_agrees(left: child_type_node(ch: a), right: child_type_node(ch: b), source_indices: source_indices, text: text))
+          }
+      }
+    TextNotAsked { reason: _ } => node_type_compatible(left: left, right: right, source_indices: source_indices, text: text)
   }
 }
 
