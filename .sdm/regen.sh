@@ -24,7 +24,13 @@ rm -rf $D; git -C $R worktree add --detach $D "$SHA" >/dev/null 2>&1
 cd $D
 echo "regen HEAD=$(git rev-parse HEAD)"
 echo "BEFORE sha256=$(sha256sum $TARGET | cut -d' ' -f1) lines=$(wc -l < $TARGET)"
-cargo build --release -p v1-compiler --bin gunbc --bin claim_executor > /tmp/regenbuild.log 2>&1 || { echo "BUILD-FAILED"; tail -30 /tmp/regenbuild.log; exit 11; }
+# The previous regen dispatch died with no output for 20 minutes and no completion line,
+# which is indistinguishable from a long quiet build. Heartbeat so "stuck" and "working"
+# are told apart from the log alone.
+cargo build --release -p v1-compiler --bin gunbc --bin claim_executor > /tmp/regenbuild.log 2>&1 &
+bp=$!
+while kill -0 $bp 2>/dev/null; do sleep 30; echo "hb-build $(wc -l < /tmp/regenbuild.log 2>/dev/null || echo 0) lines $(date -u +%H:%M:%S)"; done
+wait $bp || { echo "BUILD-FAILED"; tail -40 /tmp/regenbuild.log; exit 11; }
 echo "built $(date -u +%H:%M:%S)"
 CE="target/release/claim_executor"
 # With a shared CARGO_TARGET_DIR the binaries are NOT under ./target (that path gave
