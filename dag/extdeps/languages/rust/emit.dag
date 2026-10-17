@@ -283,6 +283,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "string_length",      bridge_name: "string_length",    passes_by_ref: true,  wraps_result: false },
   { name: "substring",          bridge_name: "substring",        passes_by_ref: true,  wraps_result: false },
   { name: "string_contains",    bridge_name: "string_contains",  passes_by_ref: true,  wraps_result: false },
+  { name: "chars",              bridge_name: "chars",            passes_by_ref: true,  wraps_result: false },
   { name: "scan_while",         bridge_name: "scan_while",       passes_by_ref: true,  wraps_result: false },
   { name: "skip_horizontal_ws", bridge_name: "skip_horizontal_ws", passes_by_ref: true, wraps_result: false },
   { name: "scan_to_eol",        bridge_name: "scan_to_eol",      passes_by_ref: true,  wraps_result: false },

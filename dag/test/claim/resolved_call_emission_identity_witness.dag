@@ -130,3 +130,26 @@ test fn w_algebra_string_contains_delegate_reaches_the_bridge() -> Bool {
     []
   )
 }
+
+// std.host_text chars (operator ruling H4) reaches its Rust realization BY DECLARATION: the imported
+// HostRealizedSeam is emitted as the v1_rt::chars bridge, selected by its projection row.
+test fn w_host_text_chars_reaches_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.host_text_chars_probe\nimport std.types { Char, List }\nimport std.host_text { chars }\nfn probe() -> List<Char> { chars(text: \"a\") }\n",
+    "src/test_claim_host_text_chars_probe.rs",
+    ["v1_rt::chars("],
+    []
+  )
+}
+
+// A same-named ordinary fn keeps its authored body: realization is keyed by std.host_text's
+// declaration, never by the spelling `chars`.
+test fn w_homonym_chars_keeps_authored_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.homonym_chars_probe\nimport std.integer { Int }\nfn chars(text: Int) -> Int { 424242 }\nfn probe() -> Int { chars(text: 1) }\n",
+    "src/test_claim_homonym_chars_probe.rs",
+    ["424242"],
+    ["v1_rt::chars("]
+  )
+}
+
