@@ -19,7 +19,7 @@ import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_
 // recorded here and NOT resolved. Until the operator names the fitted headers, the gate's verdict over this
 // set is a refusal that names this obligation: fail-closed, never a guess.
 data mtcollins1_fitted_fan_set: FittedFanSet = FittedFanSetNotEstablished {
-  read_obligation: "OPERATOR ACCOUNT 2026-10-17 (uncertainty stated by the operator): 8 fans total, 4 installed on the socket-0 side, 4 empty on the socket-1 side, silkscreen J#, J7-J11 on the socket-1 side 'i think'; it does not name which SDR FANn_m sensors are the fitted ones. The extdeps.ampere.mt_collins_product_brief holds no fan-to-connector map. OWED: the SDR-sensor-to-connector mapping from a cited source (a reading after power-on can establish the set once as an observation but cannot then be the check against itself). SEL Device Present reads FAN1..FAN6, unresolved"" as NonEmptyStr,
+  read_obligation: "OPERATOR ACCOUNT 2026-10-17 (uncertainty stated by the operator): 8 fans total, 4 installed on the socket-0 side, 4 empty on the socket-1 side, silkscreen J#, J7-J11 on the socket-1 side 'i think'; it does not name which SDR FANn_m sensors are the fitted ones. The extdeps.ampere.mt_collins_product_brief holds no fan-to-connector map. OWED: the SDR-sensor-to-connector mapping from a cited source (a reading after power-on can establish the set once as an observation but cannot then be the check against itself). SEL Device Present reads FAN1..FAN6, unresolved" as NonEmptyStr,
 }
 
 // WHERE THE COOLING MANAGER STANDS WHEN THE GATE STOPS THE BOOT. The fan-mode GET is cited, not executed by
