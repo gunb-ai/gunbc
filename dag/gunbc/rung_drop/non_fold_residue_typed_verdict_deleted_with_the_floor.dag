@@ -1,0 +1,83 @@
+module gunbc.rung_drop.non_fold_residue_typed_verdict_deleted_with_the_floor
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the non-fold-residue per-diff TYPED VERDICT (DESIGN 4b(3)) -- the
+// guarantee #13971 (B1/C, squash f815c83d4e) cut without declaring it. Its sibling
+// `gunbc.recurring_failure_mode` `non_fold_residue_diff_scope_misses_an_untouched_flip` carries
+// this drop's SUBJECT and had its RUNG line rewritten from 2 to 1 in the same change; what was
+// never filed is the row below, which 4b meta-obligation 3 requires whenever a cut lowers a
+// guarantee for an identified class. A failure-mode row whose rung moved is exactly the "lowered
+// a guarantee" event; the failure-mode ledger records the failure, the rung-drop ledger accounts
+// for the rung.
+// ============================================================================================
+//
+// WHAT WAS ENFORCED, AND WHERE, WITH COMMITS. At `1f6b4107a0^` (B0/#13932's parent) the chain was
+// live production code: `src/v1/stage0/src/bin/claim_executor.rs:1059` and `:1486` called
+// `v1_compiler::cli_run::run_required_floor`, whose body ran a phase calling
+// `non_fold_residue_diff_verdict` (at `cli_run/required_floor_runner.rs:8763`). The verdict read
+// the diff's touched and planned `.dag` modules through the parsed program, not through text, and
+// REFUSED a claim whose diff flipped a rostered closed-coproduct match to a non-structural
+// wildcard arm, or added an unrostered flip -- a top-level wildcard arm outside the foldable
+// accumulator shape, off the frontier. That is rung 2 by the ladder's own words: mechanically
+// preventable -- a violating diff could not complete its claim.
+//
+// THE TWO STEPS THAT LOWERED IT, AND WHY THE FIRST EXCUSES NOBODY. B0 deleted
+// `claim_executor.rs`, the verdict's only caller, and marked the runner dead
+// (`#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor`) --
+// after B0 the check executed on NO path but was still a file. #13971 then deleted
+// `src/v1/stage0/src/cli_run/non_fold_residue.rs`'s verdict (with `run_required_floor`'s residue,
+// `class_b_census.rs`'s census half and `compile_clean_whole_tree_hard_diagnostics.rs`), rewrote
+// the failure-mode row's RUNG from 2 to 1 in the same commit, and landed with a rung-drop
+// declaration of "NONE -- this is not a rung drop" (PR body). The chain-delete is sound; the
+// ACCOUNTING was the missing obligation. `git log -S` across `dag/gunbc/rung_drop/` for the
+// class (`non_fold_residue`, `fallback_arm_census`, `typed verdict`) finds no row naming it, and
+// no `gunbc.rung_drop_amendment` row covers it -- `manual_required_floor_runner_deleted` is the
+// nearest and its population is the runner's other phases, not this verdict.
+//
+// WHY IT IS RUNG 1 NOW AND NOT OUTSIDE THE LADDER. Three pieces survive. The frontier itself is
+// intact and typed: 70 `FrontierRow` members across the 27 `data non_fold_residue_frontier`
+// declarations -- 9 seed-mirrored/extdeps subjects in `gunbc.non_fold_residue` and 61 in the 26
+// owner modules, each a `PathSubject` path::symbol. The host readers survive self-tested
+// (`dag/test/claim/non_fold_residue_frontier.dag` over `non_fold_residue_units_from_module_source`,
+// `non_fold_residue_triples_from_module_source`). And `v2.lens.fallback_arm_census` -- the
+// whole-corpus typed census -- executes under claim_batch as local diligence. What is gone is the
+// EXECUTION ON A REQUIRED PATH: nothing refuses a violating diff before it is pushed, so a flip
+// that bypassed the ratchet would surface only when a human re-runs a census, or when review
+// happens to look. Mitigatable, rung 1, exactly as the failure-mode row now reads.
+//
+// WHY THE SURVIVING LENS IS CITED AS MATERIAL AND NOT AS THE TRIGGER. #13971's own follow-up
+// text pointed here, and the pointer is honest about the grain:
+// `src/v2/lens/fallback_arm_census.dag` is a census that RUNS; it is imported by nothing outside
+// itself and enrolled on no merge path, so a commit that trips it turns no required run red.
+// Naming the artifact ("wire the lens into the floor") would be a trigger that can be ticked
+// without restoring anything; naming the capability -- a typed reading that REFUSES on the
+// acceptance path -- is the grain the loss is at, per 4b meta-obligation 3.
+data non_fold_residue_typed_verdict_deleted_with_the_floor: RungDrop = RungDrop {
+  identity: "non_fold_residue_typed_verdict_deleted_with_the_floor" as NonEmptyStr,
+
+  subject: "the non-fold-residue per-diff typed verdict (`non_fold_residue_diff_verdict`, deleted with `run_required_floor`): the acceptance-path refusal of a diff that flips a rostered closed-coproduct match to a non-structural wildcard arm, or lands an unrostered flip, in a touched or planned `.dag` module",
+
+  declared: "2026-10-17",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      // Bounded, and closed by the frontier rows themselves -- the drop's population is the set
+      // the verdict policed: the 70 rostered non-fold-residue sites the per-diff verdict would
+      // have refused to regress, which is the host union of every `data non_fold_residue_frontier`
+      // list (joined by `non_fold_residue_identity_join_triples`).
+      "the 9 seed-mirrored/extdeps subjects in gunbc.non_fold_residue: section13_population_law_id_eq, occurrence_category_binding_verdict, binding_outcome_from_resolution, git_diff_name_status_pending_after_status, md_nested, ldd_reading_of, dag_kernel_value_type_binding, namespace_graft_spine_shaped_edge_optional, swl_closure_is_inline",
+      "the 61 members of the 26 owner-module `data non_fold_residue_frontier` lists, each named by PathSubject path::symbol: action_use_admission, bmc_model, build_selection, cohort_observation, commit_workflow, fabric_control_plane_live_probe, generated_artifact, generated_workflow_provenance, megarac_boot_media_attach, megarac_kvm_observer_observe, megarac_kvm_still, mtcollins1_boot_diagnostic_bundle, mtcollins1_boot_run, mtcollins1_sol_notice, native_app_attest, observation_ci_render, owned_process, provider_standing, readiness, repo_local_git_config, repository_convergence, repository_envelope, roadmap_workflow_progress, runner_browser_toolchain, runner_throughput_qualification, verified_archive_install",
+      "any future flip site: a top-level wildcard arm over a closed coproduct added to a touched or planned `.dag` module while unrostered -- the class the verdict refused at claim time and that now reaches main unrefused",
+    ],
+    restoration_trigger: "a typed reading of the program, executed on a required path, refuses a diff that flips a rostered closed-coproduct match to a non-structural wildcard arm or lands an unrostered flip in a touched or planned module -- the capability `non_fold_residue_diff_verdict` had as a phase of `run_required_floor` behind `claim_executor`, whether re-expressed there or as a merge-blocking verdict derived from the whole-corpus census `v2.lens.fallback_arm_census` once it is ENROLLED on the acceptance path rather than merely executed under claim_batch. Observed, not asserted: this row retires in the change whose required run turns red on a planted flip, evidenced by that RED.",
+  }
+}
