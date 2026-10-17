@@ -5118,25 +5118,35 @@ fn live_deploy_preamble_fold(
   legs: List<LiveDeployPreambleLeg>,
   injected: LiveDeployPreambleInjected,
 ) -> LiveDeployPreambleRun {
-  fold(
-    legs,
-    init: PreambleFoldAcc { state: live_deploy_preamble_leg_ok, observations: 0 },
-    f: (acc, leg) =>
-      match acc {
-        PreambleFoldAcc { state: st, observations: obs } =>
-          match live_deploy_preamble_leg_decision(state: st) {
-            Stop { reason: _ } => PreambleFoldAcc { state: st, observations: obs }
-            ContinueAndRun => {
-              let result = live_deploy_preamble_injected_result(leg: leg, injected: injected)
-              PreambleFoldAcc {
-                state: live_deploy_preamble_next_state(state: st, leg: leg, result: result),
-                observations: obs + live_deploy_preamble_result_calls(result: result),
+  match_fold_acc(
+    acc: fold(
+      legs,
+      init: live_deploy_preamble_fold_init,
+      f: (acc, leg) =>
+        match acc {
+          PreambleFoldAcc { state: st, observations: obs } =>
+            match live_deploy_preamble_leg_decision(state: st) {
+              Stop { reason: _ } => PreambleFoldAcc { state: st, observations: obs }
+              ContinueAndRun => {
+                let result = live_deploy_preamble_injected_result(leg: leg, injected: injected)
+                PreambleFoldAcc {
+                  state: live_deploy_preamble_next_state(state: st, leg: leg, result: result),
+                  observations: obs + live_deploy_preamble_result_calls(result: result),
+                }
               }
             }
-          }
-      },
+        },
+    ),
   )
-  |> fn(w) { match w { PreambleFoldAcc { state: st, observations: obs } => LiveDeployPreambleRun { state: st, observations: obs } } }
+}
+
+// The fold's accumulator projected into the observable (state, calls) pair. A function rather than an
+// inline `match` on the end of a pipe: a `match` as a pipe lambda's body is not a form this parser
+// accepts (it reported the lambda parameter itself as an undefined variable).
+fn match_fold_acc(acc: LiveDeployPreambleFoldAcc) -> LiveDeployPreambleRun {
+  match acc {
+    PreambleFoldAcc { state: st, observations: obs } => LiveDeployPreambleRun { state: st, observations: obs }
+  }
 }
 
 // How many legs have run, for callers that must report the count without matching the whole state.
