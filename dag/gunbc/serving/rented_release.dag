@@ -463,6 +463,11 @@ data rented_release_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "trigger:the flex wet create produces an Acquired allocation per card; then flex_release_pass's FlexDestroy is resolved to its allocation and passed with the FlexPolicy actuation as mode"),
   ),
   frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_destroy_perform"),
+    reason: "no claim executes rented_destroy_perform: vast_ai.InstanceLifecycle Destroy is Bearer-authenticated, and extdeps.transports.rest RestAuthenticated replay is unexecuted because the invocation input_digest limbs still use a host hash, so only the decisions are witnessed and the real Destroy route is unexecuted",
+    dissolution: unbound_dissolution(description: "trigger:an authenticated REST replay route in extdeps.transports.rest executes (RestExchangeFixture matched against a RestAuthenticated invocation); then a claim drives rented_destroy_perform over it and asserts the route"),
+  ),
+  frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_drain_decision"),
     reason: "no producer yet supplies RentedHostReading: the vantage control and the ssh answer are read by the flex caller, not by this module",
     dissolution: unbound_dissolution(description: "trigger:the flex caller that resolves a FlexDestroy to its allocation supplies the host reading from an ssh attempt and a control to a second endpoint"),
