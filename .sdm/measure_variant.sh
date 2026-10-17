@@ -30,35 +30,51 @@ echo "help_rc=$?"
 grep -iE "source-root|entry|target|output-dir|claim" .sdm/run/help_$V.log | head -25
 set -e
 cp .sdm/fixtures/pf_probe.dag ./sd503_pf_probe.dag
-ENTRY_DIR=""; SOURCE_ROOT_ARGS=""
-for combo in "dag/test/|--source-root $PWD" \
-             "dag/test/|--source-root $PWD --source-root dag" \
-             "root/|--source-root $PWD" \
-             "root/|--source-root $PWD --source-root dag" \
-             "test/|--source-root dag" ; do
-  ED="${combo%%|*}"; SR="${combo#*|}"
-  if [ "$ED" = "root/" ]; then E="sd503_pf_probe.dag"; else E="${ED}sd503_pf_probe.dag"; fi
-  [ "$ED" = "test/" ] && { mkdir -p dag/test; cp .sdm/fixtures/pf_probe.dag dag/test/sd503_pf_probe.dag; }
-  echo "--- attempt entry=$E roots=$SR ---"
+# Each attempt is (name, where the probe file is placed, how --entry is spelled, roots).
+# Placed probe files are uniquely named so they can never collide with a tracked module.
+FIXDIR=""; FIXENTRY=""; SOURCE_ROOT_ARGS=""
+try_attempt() { # name probe_dir entry roots
+  local name="$1" dir="$2" entry="$3" roots="$4"
+  rm -rf .sdm/run/pf_out; mkdir -p "$dir"
+  cp .sdm/fixtures/pf_probe.dag "$dir/sd503_pf_probe_unique_9f3c.dag"
+  echo "--- attempt $name: probe=$dir entry=$entry roots=$roots"
   set +e
-  timeout 600 $BIN compile $SR --entry "$E" --target rust \
+  timeout 600 $BIN compile $roots --entry "$entry" --target rust \
     --output-dir .sdm/run/pf_out > .sdm/run/pf.log 2>&1
-  prc=$?
+  local rc=$?
   set -e
-  echo "preflight rc=$prc entry=$E roots=$SR"
+  echo "attempt $name rc=$rc"
   head -40 .sdm/run/pf.log
-  if [ $prc -eq 0 ]; then ENTRY_DIR="$ED"; SOURCE_ROOT_ARGS="$SR"; echo "PREFLIGHT-OK entry_dir=$ED roots=$SR"; break; fi
-done
-rm -f ./sd503_pf_probe.dag dag/test/sd503_pf_probe.dag
-if [ -z "$ENTRY_DIR" ]; then
+  if [ $rc -eq 0 ]; then FIXDIR="$dir"; FIXENTRY="$entry"; SOURCE_ROOT_ARGS="$roots"; echo "PREFLIGHT-OK $name"; return 0; fi
+  rm -f "$dir/sd503_pf_probe_unique_9f3c.dag"
+  return 1
+}
+if ! { try_attempt repo-root-dagtest  "dag/test" "dag/test/sd503_pf_probe_unique_9f3c.dag" "--source-root $PWD" \
+    || try_attempt repo-root-dagtest-2roots "dag/test" "dag/test/sd503_pf_probe_unique_9f3c.dag" "--source-root $PWD --source-root dag" \
+    || try_attempt repo-root-toplevel  "."        "sd503_pf_probe_unique_9f3c.dag"         "--source-root $PWD" \
+    || try_attempt dag-root            "dag"      "sd503_pf_probe_unique_9f3c.dag"         "--source-root dag"; }; then
+  rm -f dag/test/sd503_pf_probe_unique_9f3c.dag sd503_pf_probe_unique_9f3c.dag dag/sd503_pf_probe_unique_9f3c.dag 2>/dev/null
   echo "PREFLIGHT-FAILED: no entry/source-root spelling compiled the probe; aborting rather than emitting an empty A/B"
   exit 14
 fi
+# fixtures live in EXACTLY the directory the preflight proved, and nowhere else
+rm -f "$FIXDIR"/gap_depth_*.dag "$FIXDIR"/garr_*.dag
+mv .sdm/fixtures/gap_depth_*.dag .sdm/fixtures/garr_*.dag "$FIXDIR"/
+rm -rf .sdm/fixtures
+# the entry spelling that worked, turned into a prefix for bare fixture names
+case "$FIXENTRY" in
+  *sd503_pf_probe_unique_9f3c.dag) FIX_PREFIX="${FIXENTRY%sd503_pf_probe_unique_9f3c.dag}" ;;
+  *) FIX_PREFIX="" ;;
+esac
+[ "$FIXDIR" = "." ] && FIX_PREFIX=""
+WITNESS_ENTRY="${FIX_PREFIX}claim/generic_argument_recheck_witness.dag"
+[ -f "$WITNESS_ENTRY" ] || WITNESS_ENTRY="dag/test/claim/generic_argument_recheck_witness.dag"
+echo "PREFLIGHT SUMMARY fixdir=$FIXDIR entry_prefix=$FIX_PREFIX roots=$SOURCE_ROOT_ARGS witness=$WITNESS_ENTRY"
 
 # ---- depth series ------------------------------------------------------------------
 for SERIES in gap_depth garr; do
   for d in 1 2 3 4 5 6; do
-    f="${ENTRY_DIR}${SERIES}_${d}.dag"
+    f="${FIX_PREFIX}${SERIES}_${d}.dag"
     [ -f "$f" ] || { echo "MISSING-FIXTURE $f"; fail=1; continue; }
     printf "@@@ VARIANT=%s SERIES=%s DEPTH=%s entry=%s\n" "$V" "$SERIES" "$d" "$f"
     set +e
@@ -128,7 +144,7 @@ fi
 # which prints one PASS/FAIL verdict per function. This witness is cited by no roster and
 # no workflow (the v1_required_lanes_withdrawn drop), so nothing in CI runs it; per parent,
 # no new lane is added -- the seven verdicts are instead pasted verbatim into the PR body.
-W=dag/test/claim/generic_argument_recheck_witness.dag
+W="$WITNESS_ENTRY"
 if [ -f "$W" ] && [ -x "$CB" ]; then
   echo "@@@ VARIANT=$V WITNESS"
   for FN in a_lambda_after_the_argument_that_binds_its_parameter_is_accepted \
@@ -140,7 +156,7 @@ if [ -f "$W" ] && [ -x "$CB" ]; then
             an_inner_generic_bound_only_by_the_outer_settlement_is_re_inferred ; do
     set +e
     t0=$(date +%s)
-    timeout 900 "$CB" $SOURCE_ROOT_ARGS --entry "$PWD/$W" --function "$FN" \
+    timeout 900 "$CB" $SOURCE_ROOT_ARGS --entry "$W" --function "$FN" \
       > .sdm/run/fn_${V}_${FN}.log 2>&1
     rc=$?
     set -e
