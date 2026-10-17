@@ -4,6 +4,7 @@ import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import std.algebra { FreeSemigroup }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import gunbc.host.host_capability_row { host_access_repoint_firmware }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
@@ -242,7 +243,7 @@ test fn w_an_x86_machine_with_no_smpro_is_a_valid_controlled_machine() -> Bool {
 // the whole point of the RED.
 data aarch64_family_outside_the_cited_set: SoCFamily = SoCFamily {
   name: "Aarch64-Family-Outside-The-Cited-Set",
-  models: [altra_q6430_catalog],
+  models: FreeSemigroup { head: altra_q6430_catalog, tail: [] },
 }
 
 test fn w_an_aarch64_family_the_cited_set_does_not_name_is_not_carried() -> Bool {
@@ -452,7 +453,7 @@ test fn w_an_x86_platform_with_no_smpro_facility_is_not_carried_by_the_cited_set
 // that is what makes the claim worth having.
 data altra_named_impostor_family: SoCFamily = SoCFamily {
   name: "Altra",
-  models: [ryzen_9_7950x3d_catalog],
+  models: FreeSemigroup { head: ryzen_9_7950x3d_catalog, tail: [] },
 }
 
 test fn w_an_impostor_family_named_altra_does_not_carry_smpro() -> Bool {
@@ -589,7 +590,7 @@ test fn w_the_supplied_x86_specimen_is_managed_and_carries_no_smpro_site() -> Bo
 // on.
 data amd_7950x3d_soc_family: SoCFamily = SoCFamily {
   name: "Ryzen 9 7950X3D",
-  models: [ryzen_9_7950x3d_catalog],
+  models: FreeSemigroup { head: ryzen_9_7950x3d_catalog, tail: [] },
 }
 
 

@@ -8,7 +8,7 @@ import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, Bmc
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
 import extdeps.bmc.capability {
   bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq,
-  BmcFirmwareReleaseCapabilityRow, bmc_capability_observation_citation,
+  BmcFirmwareReleaseCapabilityRow,
   CapabilityBootSourceOverride, CapabilityPowerControl, CapabilityOemRemoteMedia,
 }
 import extdeps.bmc.megarac { megarac_firmware_0_45_3 }
@@ -25,6 +25,7 @@ import gunbc.host.bmc_release_capability_catalog {
   megarac_release_capability_catalog, MegaRacReleaseCapabilityEntry,
   megarac_release_version_is_machine_read, megarac_release_entry_is_coherent,
   MegaRacVersionMachineRead, megarac_run_38789347052_evidence,
+  bmc_capability_observation_citation,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.managed_host { managed_host_fixture, managed_hosts }

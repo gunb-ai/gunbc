@@ -15,6 +15,7 @@
 module gunbc.host.board_platform_facts
 
 import std.types { List }
+import std.algebra { non_empty_to_list }
 import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessObserved }
 import extdeps.board_authority { BoardAuthorityRef, board_authority_for, board_facts_authority, board_authority_ref_eq }
 import extdeps.board_soc { BoardSocEdge, BoardSocArchitectureStanding, board_soc_architecture }
@@ -64,7 +65,7 @@ fn host_board_soc_families(access: BmcAccessObservationStanding) -> List<SoCFami
         Absent => none
         Present { value: authority } => match board_soc_edges_for(authority: authority) {
           Absent => none
-          Present { value: edge } => Present { value: edge.soc_families }
+          Present { value: edge } => Present { value: non_empty_to_list(xs: edge.soc_families) }
         }
       }
     }

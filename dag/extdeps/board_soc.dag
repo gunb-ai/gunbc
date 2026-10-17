@@ -14,6 +14,7 @@
 module extdeps.board_soc
 
 import std.types { Bool, List }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.cpu.types { SoCFamily, soc_family_architecture }
 import extdeps.external_authority { FactCitation }
@@ -23,7 +24,12 @@ import extdeps.toolchain.types { Architecture }
 // families (the product brief for the board), so the edge is cited, not inferred.
 type BoardSocEdge {
   board: BoardAuthorityRef
-  soc_families: List<SoCFamily>
+  // NON-EMPTY BY CONSTRUCTION (review 81340 F1). An edge that admits NO family is not an edge about a
+  // board -- it asserts a relationship with nobody -- and it used to be writable, with the emptiness
+  // caught later: board_soc_architecture matched Absent and answered Unestablished, the same answer a
+  // genuine disagreement gives. DESIGN.md Sec 5 ("make the bad state unwritable") plus Sec 3b's ruling
+  // gunbc.design_ruling nonemptiness_is_constructed_or_proved, which names FreeSemigroup as the carrier.
+  soc_families: FreeSemigroup<SoCFamily>
   citations: List<FactCitation>
 }
 
@@ -49,18 +55,22 @@ type BoardSocArchitectureStanding =
 // `lead_arch != none` means a lead that establishes nothing answers Unestablished rather than letting
 // every other nothing-establishing family "agree" with it.
 fn board_soc_architecture(edge: BoardSocEdge) -> BoardSocArchitectureStanding {
-  match edge.soc_families |> first() {
+  // ONE agreement fold, over the per-family ANSWERS (review 81340 F2). soc_family_architecture already
+  // folds "every model in this family agrees" one level down; the shape this replaces wrote that same
+  // fold a second time at the board level -- a nested match plus a separate all(), so the two copies
+  // could drift apart (DESIGN.md Sec 2, "net concepts must not grow by re-invention"). Now there is one
+  // fold: the per-family answers are compared, and a lead that establishes nothing still refuses rather
+  // than letting every other nothing-establishing family "agree" with it.
+  //
+  // THE EMPTY-EDGE ARM IS GONE, not patched: soc_families is FreeSemigroup, so there is always a head to
+  // ask, and the only ways left to answer Unestablished are real facts about the silicon.
+  let lead_arch = soc_family_architecture(family: edge.soc_families.head)
+  let every_family_agrees = all(
+    non_empty_to_list(xs: edge.soc_families),
+    f => soc_family_architecture(family: f) == lead_arch,
+  )
+  match lead_arch {
+    Present { value: arch } => if every_family_agrees { Established { architecture: arch } } else { Unestablished }
     Absent => Unestablished
-    Present { value: lead } => {
-      let lead_arch = soc_family_architecture(family: lead)
-      if lead_arch != none && edge.soc_families |> all(f => soc_family_architecture(family: f) == lead_arch) {
-        match lead_arch {
-          Present { value: arch } => Established { architecture: arch }
-          Absent => Unestablished
-        }
-      } else {
-        Unestablished
-      }
-    }
   }
 }
