@@ -267,3 +267,11 @@ test fn offer_stamped_before_the_request_is_refused() -> Bool {
     want: "offer_before_request",
   )
 }
+
+test fn same_client_with_a_different_transaction_is_not_the_offers_exchange() -> Bool {
+  attempt_refusal_is(
+    clients: bound_client(obs: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 78, code: 11, requested: 10, response: synthetic_accept(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, at: 30), source: Present { value: synthetic_source() })),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: "no_edge_offer",
+  )
+}
