@@ -1,6 +1,7 @@
 module gunbc.machine_intake.mtcollins1_dimm_admission
 
 import std.types { Bool, Int, List, NonEmptyStr }
+import extdeps.memory.types { DimmBuffering, Registered }
 import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 
 // THE PER-PLATFORM DIMM POPULATION ADMISSION ROW OF MT. COLLINS UNIT 1 (ruling
@@ -30,10 +31,13 @@ import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 // boot-attempt admission join (gunbc.recurring_failure_mode attested_population_never_joined_to_the_firmware_reading),
 // which compares a receipt's declared population with the firmware DRAM-table reading and asks this fold
 // whether that population was expected to train. Trigger: that join landing.
-type DimmModuleType = Rdimm | NvRdimm
+// Buffering is extdeps.memory.types DimmBuffering (the firmware's RDIMM and NV-RDIMM are both Registered);
+// non-volatile backing is the one fact the memory model does not yet carry, so it is declared here as the
+// observed unit's own field rather than minted as a second module-kind vocabulary.
 
 type ObservedDimm {
-  module_type: DimmModuleType
+  buffering: DimmBuffering
+  non_volatile_backing: Bool
   rank_count: Int
   megatransfers: MegatransfersPerSecond
 }
@@ -52,8 +56,8 @@ data mtcollins1_refused_run: NonEmptyStr = "39005709187"
 
 data mtcollins1_accepted_run: NonEmptyStr = "39010930690"
 
-fn dimm_population_has_type(modules: List<ObservedDimm>, t: DimmModuleType) -> Bool {
-  any(modules, m => m.module_type == t)
+fn dimm_population_has_backing(modules: List<ObservedDimm>, nv: Bool) -> Bool {
+  any(modules, m => m.non_volatile_backing == nv)
 }
 
 fn dimm_population_has_rank_mixture(modules: List<ObservedDimm>) -> Bool {
@@ -61,10 +65,10 @@ fn dimm_population_has_rank_mixture(modules: List<ObservedDimm>) -> Bool {
 }
 
 fn mtcollins1_dimm_population_admission(modules: List<ObservedDimm>) -> DimmAdmission {
-  if dimm_population_has_type(modules: modules, t: Rdimm) && dimm_population_has_type(modules: modules, t: NvRdimm) {
+  if dimm_population_has_backing(modules: modules, nv: false) && dimm_population_has_backing(modules: modules, nv: true) {
     DimmPopulationRefused { basis: PlatformObservationModuleTypeMixtureRefused { run: mtcollins1_refused_run } }
   } else if dimm_population_has_rank_mixture(modules: modules) {
-    if dimm_population_has_type(modules: modules, t: Rdimm) {
+    if dimm_population_has_backing(modules: modules, nv: false) {
       DimmPopulationAdmitted { basis: PlatformObservationMixedRankAccepted { run: mtcollins1_accepted_run } }
     } else {
       DimmPopulationAdmitted { basis: OperatorDefaultRankMixtureNotObserved }
@@ -75,23 +79,23 @@ fn mtcollins1_dimm_population_admission(modules: List<ObservedDimm>) -> DimmAdmi
 }
 
 data mtcollins1_run_39005709187_population: List<ObservedDimm> = [
-  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: true, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: true, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: true, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: true, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
 ]
 
 data mtcollins1_run_39010930690_population: List<ObservedDimm> = [
-  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
 ]
