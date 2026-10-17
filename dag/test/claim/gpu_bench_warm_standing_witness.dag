@@ -284,7 +284,7 @@ test fn type_comment_line_does_not_malform_a_following_counter() -> Bool {
   match gpu_bench_parse_jsonl(text: fx_ok_prime) {
     GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
     GpuBenchRequestV2Parsed { records: rs } =>
-      match gpu_bench_warm_standing_with_ninfer_log(records: rs, log: "# TYPE ninfer_replayed_tokens_total counter\nninfer_replayed_tokens_total 12\n") {
+      match gpu_bench_warm_standing_with_ninfer_log(records: rs, log: "CAPACITY_OK 1920000\n# TYPE ninfer_replayed_tokens_total counter\nninfer_replayed_tokens_total 12\n") {
         WarmCapacityUnread { cause: c } => string_contains(s: c as String, pattern: "not an upstream-published contract")
         WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
         WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
