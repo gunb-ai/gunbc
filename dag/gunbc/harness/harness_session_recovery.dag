@@ -336,10 +336,21 @@ fn session_event_recovery_needed(round: Int, refusal: UnexplainedEngineRefusal, 
   ]))
 }
 
-// THE POOL FRONT'S 503 IS THE SAME RECOVERY, WITH ITS OWN EXPLAINED CAUSE. No TLS card serving means nothing was
-// forwarded and the request had no effect, so the session stopped at the validated state `messages` holds and
-// the belt resumes it (the same turn.recovery_needed event, the same bound, the same worktree, conversation and
-// x-pool-session) rather than ending it. It is not an UnexplainedEngineRefusal: the front said why.
+// THE POOL FRONT'S 503 IS A WAIT, NOT A REFUSAL. No TLS card serving means nothing was forwarded and the request
+// had no effect: the front said why, so it is not an UnexplainedEngineRefusal, and it is not a fault that more
+// resumes could cure or exhaust. It is the zero-supply reading gunbc.serving.caller_backlog
+// apply_ready_supply_law names (KeepWaitingAcrossZeroSupply: zero supply is waiting with nothing ready to take the
+// work, never an expired or failed request), recorded here as its own event kind so session_resume_bound, which
+// counts unexplained engine refusals, never sees it. The wait has its own declared budget, recorded in the event
+// beside the instant the wait began; the wake is a capacity observation, never a resume count.
+//
+// WHY THE SEAT BACKLOG ITSELF CANNOT HOLD IT: caller_backlog persists a waiting record per dispatch turn key
+// against a serving-group roster that grants seats, and the pool front is not a roster member (it grants no seat;
+// it places by x-pool-session on cards this lab does not enrol). What carries over is the law, not the store:
+// supply zero keeps the work waiting, a probe reading is not a failed request, and only a failed request spends a
+// bound. The lab's durable wait is the session's own event stream, which already survives the worker's exit.
+data session_capacity_wait_budget_seconds: Int = 86400
+
 fn session_cause_text_no_capacity(round: Int, held: Int) -> String {
   join([
     "round ", to_string(value: round), ": the pool front answered 503 (no TLS card serving) for ", to_string(value: held + 1),
@@ -347,14 +358,24 @@ fn session_cause_text_no_capacity(round: Int, held: Int) -> String {
   ], "")
 }
 
-fn session_event_recovery_needed_no_capacity(round: Int, held: Int, validation: SessionValidation) -> String {
+fn session_event_capacity_wait(round: Int, held: Int, since: Int, validation: SessionValidation) -> String {
   serialize_json(v: json_object([
-    json_kv(key: "type", value: json_string(s: "turn.recovery_needed")),
+    json_kv(key: "type", value: json_string(s: "turn.capacity_wait")),
     json_kv(key: "round", value: json_int(n: round)),
     json_kv(key: "status", value: json_int(n: 503)),
     json_kv(key: "cause", value: json_string(s: session_cause_text_no_capacity(round: round, held: held))),
+    json_kv(key: "since_epoch_seconds", value: json_int(n: since)),
+    json_kv(key: "budget_seconds", value: json_int(n: session_capacity_wait_budget_seconds)),
     json_kv(key: "resumable", value: json_bool(b: session_validation_resumable(v: validation))),
     json_kv(key: "interrupted_calls", value: json_array(elements: session_validation_interrupted_ids(v: validation) |> map(id => json_string(s: id)))),
+  ]))
+}
+
+fn session_event_capacity_resumed(ordinal: Int, round: Int) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.capacity_resumed")),
+    json_kv(key: "ordinal", value: json_int(n: ordinal)),
+    json_kv(key: "round", value: json_int(n: round)),
   ]))
 }
 
@@ -374,11 +395,24 @@ fn session_event_resumed(ordinal: Int, round: Int, cause: String) -> String {
 type SessionRecovery
   = SessionRecoveryNone
   | SessionRecoveryPending { causes: List<String>, resumes_made: Int, interrupted_calls: List<String>, resume_round: Int }
+  | SessionRecoveryAwaitingCapacity { cause: String, since: Int, budget_seconds: Int, resumes_made: Int, capacity_resumes: Int, interrupted_calls: List<String>, resume_round: Int }
   | SessionRecoveryMalformed { mismatch: String }
+
+// WHAT THE FRONT SAYS ABOUT CAPACITY, read at one instant. This is the wake of a capacity wait: the front's
+// GET /pool/v1/models listing the model for a requireTls client means a TLS card is serving (a bet about the live
+// front, read for the first time at qualification, as DESIGN 4d asks). NotAsked is the reading when no wait is
+// pending; Unobserved is a probe that could not establish either answer, and the decision does not guess from it.
+type PoolCapacityObservation
+  = CapacityNotAsked
+  | CapacityServing { at: Int }
+  | CapacityNotServing { at: Int }
+  | CapacityUnobserved { reason: String }
 
 type SessionRecoveryEvent
   = RecoveryEventNeeded { cause: String, round: Int, interrupted_calls: List<String> }
+  | RecoveryEventCapacityWait { cause: String, round: Int, interrupted_calls: List<String>, since: Int, budget_seconds: Int }
   | RecoveryEventResumed
+  | RecoveryEventCapacityResumed
   | RecoveryEventOther
   | RecoveryEventMalformed { mismatch: String }
 
@@ -443,6 +477,25 @@ fn session_needed_event_of(doc: JsonValue) -> SessionRecoveryEvent {
   }
 }
 
+fn session_capacity_wait_event_of(doc: JsonValue) -> SessionRecoveryEvent {
+  match session_needed_event_of(doc: doc) {
+    RecoveryEventMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.capacity_wait (read as a recovery event): ", m], "") }
+    RecoveryEventNeeded { cause, round, interrupted_calls } =>
+      match session_int_member(v: doc, key: "since_epoch_seconds") {
+        SessionIntMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.capacity_wait: ", m], "") }
+        SessionIntFound { value: since } =>
+          match session_int_member(v: doc, key: "budget_seconds") {
+            SessionIntMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.capacity_wait: ", m], "") }
+            SessionIntFound { value: budget } => RecoveryEventCapacityWait { cause: cause, round: round, interrupted_calls: interrupted_calls, since: since, budget_seconds: budget }
+          }
+      }
+    RecoveryEventCapacityWait { cause: _, round: _, interrupted_calls: _, since: _, budget_seconds: _ } => RecoveryEventMalformed { mismatch: "turn.capacity_wait: read as a different event" }
+    RecoveryEventResumed => RecoveryEventMalformed { mismatch: "turn.capacity_wait: read as a different event" }
+    RecoveryEventCapacityResumed => RecoveryEventMalformed { mismatch: "turn.capacity_wait: read as a different event" }
+    RecoveryEventOther => RecoveryEventMalformed { mismatch: "turn.capacity_wait: read as a different event" }
+  }
+}
+
 fn session_recovery_event_of_line(line: String) -> SessionRecoveryEvent {
   match parse_json_document(s: line) {
     JsonDocumentUnreadable { gap: _ } => RecoveryEventOther
@@ -453,6 +506,10 @@ fn session_recovery_event_of_line(line: String) -> SessionRecoveryEvent {
         SessionTextFound { value: kind } =>
           if kind == "turn.resumed" {
             RecoveryEventResumed
+          } else if kind == "turn.capacity_resumed" {
+            RecoveryEventCapacityResumed
+          } else if kind == "turn.capacity_wait" {
+            session_capacity_wait_event_of(doc: doc)
           } else if kind == "turn.recovery_needed" {
             session_needed_event_of(doc: doc)
           } else {
@@ -471,7 +528,9 @@ fn session_recovery_of_events(lines: List<String>) -> SessionRecovery {
   let malformed = events |> flat_map(e => match e {
     RecoveryEventMalformed { mismatch } => [mismatch]
     RecoveryEventNeeded { cause: _, round: _, interrupted_calls: _ } => [] as List<String>
+    RecoveryEventCapacityWait { cause: _, round: _, interrupted_calls: _, since: _, budget_seconds: _ } => [] as List<String>
     RecoveryEventResumed => [] as List<String>
+    RecoveryEventCapacityResumed => [] as List<String>
     RecoveryEventOther => [] as List<String>
   })
   match malformed.first() {
@@ -480,32 +539,83 @@ fn session_recovery_of_events(lines: List<String>) -> SessionRecovery {
   }
 }
 
-fn session_recovery_of_read_events(events: List<SessionRecoveryEvent>) -> SessionRecovery {
-  let needed = events |> flat_map(e => match e {
-    RecoveryEventNeeded { cause, round, interrupted_calls } => [RecoveryEventNeeded { cause: cause, round: round, interrupted_calls: interrupted_calls }]
-    RecoveryEventResumed => [] as List<SessionRecoveryEvent>
-    RecoveryEventOther => [] as List<SessionRecoveryEvent>
-    RecoveryEventMalformed { mismatch: _ } => [] as List<SessionRecoveryEvent>
-  })
-  let resumed = list_length(items: events |> filter(e => match e { RecoveryEventResumed => true RecoveryEventNeeded { cause: _, round: _, interrupted_calls: _ } => false RecoveryEventOther => false RecoveryEventMalformed { mismatch: _ } => false }))
-  if list_length(items: needed) <= resumed {
-    SessionRecoveryNone
-  } else {
-    match needed.last() {
-      Absent => SessionRecoveryNone
-      Present { value: latest } =>
-        match latest {
-          RecoveryEventNeeded { cause: _, round, interrupted_calls } =>
-            SessionRecoveryPending {
-              causes: needed |> map(e => match e { RecoveryEventNeeded { cause, round: _, interrupted_calls: _ } => cause RecoveryEventResumed => "" RecoveryEventOther => "" RecoveryEventMalformed { mismatch: _ } => "" }),
-              resumes_made: resumed,
-              interrupted_calls: interrupted_calls,
-              resume_round: round,
-            }
-          RecoveryEventResumed => SessionRecoveryNone
-          RecoveryEventOther => SessionRecoveryNone
-          RecoveryEventMalformed { mismatch: _ } => SessionRecoveryNone
-        }
-    }
+// THE STREAM IS READ IN ORDER: a need (an unexplained refusal or a capacity wait) is pending until a resume of
+// its own kind answers it. The two kinds keep separate tallies: session_resume_bound counts the S3 resumes only, a
+// capacity wake is not one, and a capacity wait is not a cause the S3 bound lists.
+type SessionRecoveryScan {
+  pending: SessionRecoveryEvent?
+  s3_causes: List<String>
+  s3_resumed: Int
+  capacity_resumed: Int
+}
+
+fn session_recovery_scan_step(acc: SessionRecoveryScan, e: SessionRecoveryEvent) -> SessionRecoveryScan {
+  match e {
+    RecoveryEventNeeded { cause, round, interrupted_calls } =>
+      SessionRecoveryScan {
+        pending: Present { value: RecoveryEventNeeded { cause: cause, round: round, interrupted_calls: interrupted_calls } },
+        s3_causes: concat(acc.s3_causes, [cause]),
+        s3_resumed: acc.s3_resumed,
+        capacity_resumed: acc.capacity_resumed,
+      }
+    RecoveryEventCapacityWait { cause, round, interrupted_calls, since, budget_seconds } =>
+      SessionRecoveryScan {
+        pending: Present { value: RecoveryEventCapacityWait { cause: cause, round: round, interrupted_calls: interrupted_calls, since: since, budget_seconds: budget_seconds } },
+        s3_causes: acc.s3_causes,
+        s3_resumed: acc.s3_resumed,
+        capacity_resumed: acc.capacity_resumed,
+      }
+    RecoveryEventResumed => SessionRecoveryScan { pending: none, s3_causes: acc.s3_causes, s3_resumed: acc.s3_resumed + 1, capacity_resumed: acc.capacity_resumed }
+    RecoveryEventCapacityResumed => SessionRecoveryScan { pending: none, s3_causes: acc.s3_causes, s3_resumed: acc.s3_resumed, capacity_resumed: acc.capacity_resumed + 1 }
+    RecoveryEventOther => acc
+    RecoveryEventMalformed { mismatch: _ } => acc
   }
+}
+
+fn session_recovery_of_read_events(events: List<SessionRecoveryEvent>) -> SessionRecovery {
+  let scan = fold(events, init: SessionRecoveryScan { pending: none, s3_causes: [], s3_resumed: 0, capacity_resumed: 0 }, f: (acc, e) => session_recovery_scan_step(acc: acc, e: e))
+  match scan.pending {
+    Absent => SessionRecoveryNone
+    Present { value: latest } =>
+      match latest {
+        RecoveryEventNeeded { cause: _, round, interrupted_calls } =>
+          SessionRecoveryPending { causes: scan.s3_causes, resumes_made: scan.s3_resumed, interrupted_calls: interrupted_calls, resume_round: round }
+        RecoveryEventCapacityWait { cause, round, interrupted_calls, since: _, budget_seconds } =>
+          SessionRecoveryAwaitingCapacity {
+            cause: cause,
+            since: session_capacity_wait_window_start(events: events, round: round),
+            budget_seconds: budget_seconds,
+            resumes_made: scan.s3_resumed,
+            capacity_resumes: scan.capacity_resumed,
+            interrupted_calls: interrupted_calls,
+            resume_round: round,
+          }
+        RecoveryEventResumed => SessionRecoveryNone
+        RecoveryEventCapacityResumed => SessionRecoveryNone
+        RecoveryEventOther => SessionRecoveryNone
+        RecoveryEventMalformed { mismatch: _ } => SessionRecoveryNone
+      }
+  }
+}
+
+// THE WAIT WINDOW OF A ROUND is the earliest instant any capacity wait recorded for that same round: a wake that
+// found the front still without a card re-holds the same round, and re-holding does not restart the budget. A round
+// that completes starts a window of its own.
+fn session_capacity_wait_window_start(events: List<SessionRecoveryEvent>, round: Int) -> Int {
+  let sinces = events |> flat_map(e => match e {
+    RecoveryEventCapacityWait { cause: _, round: r, interrupted_calls: _, since, budget_seconds: _ } => if r == round { [since] } else { [] as List<Int> }
+    RecoveryEventNeeded { cause: _, round: _, interrupted_calls: _ } => [] as List<Int>
+    RecoveryEventResumed => [] as List<Int>
+    RecoveryEventCapacityResumed => [] as List<Int>
+    RecoveryEventOther => [] as List<Int>
+    RecoveryEventMalformed { mismatch: _ } => [] as List<Int>
+  })
+  fold(sinces, init: 9223372036854775807, f: (acc, x) => if x < acc { x } else { acc })
+}
+
+// THE SINCE A NEW WAIT EVENT RECORDS: the window already open for this round, else now.
+fn session_capacity_wait_since_for(lines: List<String>, round: Int, now: Int) -> Int {
+  let events = lines |> map(l => session_recovery_event_of_line(line: l))
+  let window = session_capacity_wait_window_start(events: events, round: round)
+  if window < now { window } else { now }
 }

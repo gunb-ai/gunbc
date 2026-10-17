@@ -36,11 +36,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // THE STANDING OF THE FRONT'S STATED CONTRACT (path, header, model ids, certificate, auth, 503 semantics and the
-// limits below): the pool operator's own statement of 2026-10-17 (ctrl #2375; ctrl #2376 is the TLS card whose absence
-// makes 503 the live answer), cited to the live service it describes. The two reasoning figures are the exception:
-// the statement does not give them, so each carries its own TranscribedUncited standing (PoolFrontFigure) and is
-// read only through pool_front_figure_read.
-data pool_front_contract_standing: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
+// limits below): the pool operator's own statement of 2026-10-17 (ctrl #2375; ctrl #2376 is the TLS card whose
+// absence makes 503 the live answer), passed on by that operator's session. Nothing at the service has been read
+// yet, so this is a bet typed as a bet (DESIGN 4d), TranscribedUncited, naming what would ground it; the lab
+// qualification's first live replies promote each figure to ObservedByReceipt. The two reasoning figures below
+// carry their own standing and are read only through pool_front_figure_read.
+data pool_front_contract_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read the path, model ids, limits and 503 semantics from live replies of the front (GET /pool/v1/models, a chat completion, a 503)" as NonEmptyStr
+}
 
 // ── THE SURFACE ─────────────────────────────────────────────────────────────────────────────────
 data pool_front_origin: NonEmptyStr = "https://192.168.1.188:3737" as NonEmptyStr
