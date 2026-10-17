@@ -1,0 +1,49 @@
+module gunbc.machine_intake.supermicro_h11ssl_first_contact
+
+import std.types { Bool, List, NonEmptyStr }
+import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyUnobserved }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_authority }
+import extdeps.board_authority { BoardAuthorityRef }
+
+// RECEIPT, NOT UPSTREAM FACT (DESIGN section 3, external upstream decomposition). What THIS
+// repository observed of the two H11SSL-i REV 2.0 units delivered 2026-10-16 (each with 2x AMD
+// EPYC 7702P as the operator reports it). Nothing here belongs in extdeps.boards.supermicro_h11ssl:
+// the manual (Rev. 1.1) predates these observations and is silent on each of them.
+//
+// Consumer: arrival intake for this board, via supermicro_h11ssl_first_contact_family_standing,
+// which selects the family-neutral first-contact path (bmc_first_contact_standing) and so refuses
+// to run the OpenBMC factory-login producer against this controller.
+type H11sslRedfishRootObservation
+  = RedfishRootRefusedLicence { message_id: NonEmptyStr }
+
+type H11sslDefaultLoginObservation
+  = DefaultAdminLoginRejected { observed_on: NonEmptyStr }
+
+type H11sslFirstContactReceipt {
+  board: BoardAuthorityRef
+  bmc_address: NonEmptyStr
+  bmc_mac: NonEmptyStr
+  redfish_root: H11sslRedfishRootObservation
+  default_login: H11sslDefaultLoginObservation
+}
+
+data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11sslFirstContactReceipt {
+  board: supermicro_h11ssl_board_authority,
+  bmc_address: "192.168.1.252",
+  bmc_mac: "AC:1F:6B:E3:F5:7B",
+  // Redfish service root answered Base.v1_4_0.OemLicenseNotPassed, naming the SUM DCMS OOB licences.
+  redfish_root: RedfishRootRefusedLicence { message_id: "Base.v1_4_0.OemLicenseNotPassed" },
+  default_login: DefaultAdminLoginRejected { observed_on: "2026-10-17" },
+}
+
+// A refused Redfish root and a rejected default login identify no firmware family.
+data supermicro_h11ssl_first_contact_family_standing: BmcFirmwareFamilyStanding = FamilyUnobserved {
+  discriminator: "Redfish root refused Base.v1_4_0.OemLicenseNotPassed; ADMIN/ADMIN rejected 2026-10-17; manual p.15 says only 'ATEN IPMI' on AST2500",
+}
+
+// True when the receipt's login observation permits the factory-default producer: it never does.
+fn supermicro_h11ssl_factory_login_producer_admitted(r: H11sslFirstContactReceipt) -> Bool {
+  match r.default_login {
+    DefaultAdminLoginRejected { observed_on: _ } => false
+  }
+}
