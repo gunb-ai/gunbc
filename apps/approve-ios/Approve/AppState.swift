@@ -183,17 +183,18 @@ final class AppState: ObservableObject {
             try adopt(EnrolledDevice(
                 enrollment_id: grant.enrollment_id, decision_key_blob: p.decision_key_blob,
                 attest_key_id: p.attest_key_id, forwarded_apns_token: token))
-        } catch let WireError.status(status, body) where Self.codeMintedNothing(body) != nil {
-            // The enrol route answered, for THIS code, that it was never spent and never will be
-            // (code_expired / code_not_issued are reachable only from an unspent or unknown slot;
-            // gunbc.auth.approval_device_redemption enrolment_admission). The request carried the
-            // code itself, so the answer speaks for the enrolment this device was waiting on: none
-            // exists and none can. That is the authenticated absence SubmissionUnknown waits for, so
-            // the prepared keys are discarded and the phone returns to Unenrolled for a fresh code.
-            let kind = Self.codeMintedNothing(body)!.rawValue
+        } catch let WireError.status(status, body) where Self.refusal(body) != nil {
+            // The enrol route answered with a typed refusal. Which phase follows it is the generated
+            // EnrolmentMachine's (gunbc.approve_ios_enrolment_machine) decision, not this file's:
+            // only the refusals that prove the code minted no enrolment leave SubmissionUnknown.
+            let kind = Self.refusal(body)!
             do {
-                try transition(.unenrolled)
-                lastError = "The server says this code minted no enrolment (\(kind), HTTP \(status)). Enter a new code."
+                if EnrolmentMachine.next(.submissionUnknown, on: .refused(kind)) == .unenrolled {
+                    try transition(.unenrolled)
+                    lastError = "The server says this code minted no enrolment (\(kind.rawValue), HTTP \(status)). Enter a new code."
+                } else {
+                    lastError = "The server refused the enrolment (\(kind.rawValue), HTTP \(status)); whether it was recorded is unknown."
+                }
             } catch {
                 lastError = error.localizedDescription
             }
@@ -204,14 +205,9 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// The typed enrol refusals that prove the submitted code minted no enrolment. Every other kind
-    /// (code_already_used above all) and every undecodable body answer nil and change nothing.
-    private static func codeMintedNothing(_ body: String) -> EnrolmentRefusalKind? {
-        guard let kind = try? WireDecode.enrolmentRefusal(Data(body.utf8)) else { return nil }
-        switch kind {
-        case .code_expired, .code_not_issued: return kind
-        default: return nil
-        }
+    /// The typed refusal an enrol answer carries; nil for an undecodable body (EnrolmentAnswer.unanswered).
+    private static func refusal(_ body: String) -> EnrolmentRefusalKind? {
+        try? WireDecode.enrolmentRefusal(Data(body.utf8))
     }
 
     /// The one place Enrolled is entered. The attest key id is persisted as ENROLLED only here,
