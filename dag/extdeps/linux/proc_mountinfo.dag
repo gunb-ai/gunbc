@@ -55,3 +55,106 @@ fn mountinfo_mount_points(content: String) -> MountinfoMountPoints {
     Absent => MountPointsRead { mount_points: folded.points }
   }
 }
+
+// THE MOUNT THAT HOLDS A PATH, with the filesystem type and the SUPER options the kernel reports for it.
+// proc_pid_mountinfo(5): after the optional fields comes a single " - " separator, then the filesystem
+// type, the mount source and the per-superblock options (field 6 before the separator is the per-MOUNT
+// option list and is not read here: a tmpfs size/mode/noswap setting is a superblock option). The
+// separator is " - " with spaces on both sides because every space inside a path field is escaped.
+type MountinfoEntry {
+  mount_point: String
+  fs_type: String
+  super_options: List<String>
+}
+
+type MountinfoEntries
+  = MountEntriesRead { entries: List<MountinfoEntry> }
+  | MountEntriesUndecodable { line: String, cause: NonEmptyStr }
+
+type MountinfoEntryReading
+  = MountinfoEntryParsed { entry: MountinfoEntry }
+  | MountinfoEntryRefused { cause: NonEmptyStr }
+
+data mountinfo_super_options_field_index: Int = 2
+
+fn mountinfo_entry_of_fields(before: List<String>, after: List<String>) -> MountinfoEntryReading {
+  match before[mountinfo_mount_point_field_index] {
+    Absent => MountinfoEntryRefused { cause: "the line has fewer than five fields before its separator, so it names no mount point" as NonEmptyStr }
+    Present { value: point } =>
+      match after[0] {
+        Absent => MountinfoEntryRefused { cause: "the line has no filesystem type after its separator" as NonEmptyStr }
+        Present { value: fs } =>
+          match after[mountinfo_super_options_field_index] {
+            Absent => MountinfoEntryRefused { cause: "the line has no super-options field after its separator" as NonEmptyStr }
+            Present { value: options } =>
+              if string_contains(s: point, pattern: "\\") {
+                MountinfoEntryRefused { cause: "the mount point carries a kernel octal escape, which this model does not decode" as NonEmptyStr }
+              } else {
+                MountinfoEntryParsed { entry: MountinfoEntry { mount_point: point, fs_type: fs, super_options: split(s: options, delimiter: ",") } }
+              }
+          }
+      }
+  }
+}
+
+fn mountinfo_entry_of_line(line: String) -> MountinfoEntryReading {
+  let halves = split(s: line, delimiter: " - ")
+  match halves[0] {
+    Absent => MountinfoEntryRefused { cause: "the line is empty" as NonEmptyStr }
+    Present { value: before } =>
+      match halves[1] {
+        Absent => MountinfoEntryRefused { cause: "the line has no ' - ' separator between its mount fields and its filesystem fields" as NonEmptyStr }
+        Present { value: after } =>
+          mountinfo_entry_of_fields(before: split(s: before, delimiter: " "), after: split(s: after, delimiter: " "))
+      }
+  }
+}
+
+type MountinfoEntriesFold { entries: List<MountinfoEntry>, refusal: MountinfoEntries? }
+
+fn mountinfo_entries(content: String) -> MountinfoEntries {
+  let folded = fold(
+    filter(map(split(s: content, delimiter: "\n"), l => trim(l)), l => l != ""),
+    init: MountinfoEntriesFold { entries: [], refusal: none },
+    f: (acc, line) => match acc.refusal {
+      Present { value: _ } => acc
+      Absent =>
+        match mountinfo_entry_of_line(line: line) {
+          MountinfoEntryRefused { cause: c } => MountinfoEntriesFold { entries: acc.entries, refusal: Present { value: MountEntriesUndecodable { line: line, cause: c } } }
+          MountinfoEntryParsed { entry: e } => MountinfoEntriesFold { entries: list_push(acc.entries, e), refusal: none }
+        }
+    },
+  )
+  match folded.refusal {
+    Present { value: r } => r
+    Absent => MountEntriesRead { entries: folded.entries }
+  }
+}
+
+// THE MOUNT THAT HOLDS A PATH IS THE ONE WITH THE LONGEST MOUNT POINT THAT IS THE PATH OR ITS ANCESTOR.
+// A mount point matches on a path-segment boundary (`/run` holds `/run/x`, and does not hold `/runner`);
+// a later mount over the same point shadows an earlier one, which mountinfo lists in mount order, so the
+// last entry among the longest matches is the visible one.
+fn mountinfo_holds_path(entry: MountinfoEntry, path: String) -> Bool {
+  entry.mount_point == path || starts_with(s: path, prefix: if entry.mount_point == "/" { "/" } else { concat(entry.mount_point, "/") })
+}
+
+type MountinfoHolding
+  = MountHolds { entry: MountinfoEntry }
+  | MountHoldsNone
+
+fn mountinfo_mount_holding(entries: List<MountinfoEntry>, path: String) -> MountinfoHolding {
+  let best = fold(entries, init: none, f: (acc: MountinfoEntry?, e) =>
+    if mountinfo_holds_path(entry: e, path: path) {
+      match acc {
+        Absent => Present { value: e }
+        Present { value: a } => if length(xs: e.mount_point) >= length(xs: a.mount_point) { Present { value: e } } else { acc }
+      }
+    } else {
+      acc
+    })
+  match best {
+    Present { value: e } => MountHolds { entry: e }
+    Absent => MountHoldsNone
+  }
+}

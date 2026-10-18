@@ -13,6 +13,7 @@ import extdeps.github.actions_runner {
   actions_runner_listener_run_verb,
 }
 import gunbc.host.host_control_route { ControlledHost, HostControlStanding, HostControlled, HostControlRefused, HostControlRefusal }
+import gunbc.runner.runner_slot_provision { runner_slot_instance_dir }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
@@ -93,8 +94,18 @@ type HostUnitSlotStanding
 // run one listener whose environment contract is the one cited in extdeps.github.actions_runner.
 data host_unit_slot_runner_release: ActionsRunnerRelease = actions_runner_release_2_337_0
 
-fn host_unit_slot_listener_argv() -> List<String> {
-  [concat(actions_runner_base_dir, actions_runner_listener_relative_path), actions_runner_listener_run_verb]
+// THE LISTENER RUNS FROM ITS SLOT'S OWN ROOT. Runner.Listener derives every file it writes (the decoded JIT
+// config, its credential, _work, _diag) from the directory of its own binary (extdeps.github.actions_runner
+// actions_runner_state_paths), so a shared binary path is shared state between concurrent slots. The root is
+// the one derivation attempt slots already use for their trees (runner_slot_provision runner_slot_instance_dir),
+// keyed by the slot's unit, which names the purpose, boot and index and so is distinct per slot.
+// FRONTIER: the image/unit legs provision the tree at this root; nothing here creates it.
+fn host_unit_slot_root(unit: NonEmptyStr) -> NonEmptyStr {
+  runner_slot_instance_dir(instance_name: unit)
+}
+
+fn host_unit_slot_listener_argv(root: NonEmptyStr) -> List<String> {
+  [concat(root as String, actions_runner_listener_relative_path), actions_runner_listener_run_verb]
 }
 
 // THE WORKFLOW IS THE CALLER'S: the slot exists to run one workflow, and the mint refuses a runner
@@ -125,7 +136,7 @@ fn host_unit_slot_over(host: HostControlStanding, purpose: HostUnitSlotPurpose, 
           match purpose_spelling(host: b.host, purpose: purpose, registration_labels: registration_labels) {
             PurposeLabelsRefused { host: h, cause: c } => HostUnitSlotRefused { refusal: HostUnitSlotRegistrationLabelsRefused { host: h, cause: c } }
             PurposeSpelled { unit: unit, labels: labels } =>
-              match ephemeral_slot_command(unit: unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()) {
+              match ephemeral_slot_command(unit: unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv(root: host_unit_slot_root(unit: unit))) {
                 SystemdRunCommandRefused { cause: why } =>
                   HostUnitSlotRefused { refusal: HostUnitSlotSystemdRunRefused { cause: why } }
                 SystemdRunCommandReady { command: command } =>
@@ -376,7 +387,7 @@ fn provider_guest_slot_for(incarnation: ProviderGuestIncarnation, workflow: NonE
     Absent => HostUnitSlotRefused { refusal: HostUnitSlotRunnerBinaryUnpublished { binary_release: host_unit_slot_runner_release } }
     Present { value: artifact } => {
       let unit = provider_guest_slot_unit(incarnation: incarnation)
-      match systemd_run_transient_wait_unit_command(unit: unit, properties: [], command_argv: host_unit_slot_listener_argv()) {
+      match systemd_run_transient_wait_unit_command(unit: unit, properties: [], command_argv: host_unit_slot_listener_argv(root: actions_runner_base_dir as NonEmptyStr)) {
         SystemdRunCommandRefused { cause: why } => HostUnitSlotRefused { refusal: HostUnitSlotSystemdRunRefused { cause: why } }
         SystemdRunCommandReady { command: command } =>
           HostUnitSlotBound {

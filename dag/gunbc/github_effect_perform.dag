@@ -97,7 +97,7 @@ data lifecycle_controller_app_key: JwsSigningKeyRef = HostKeyFile {
 // THE SERVICE-SLOT SIGNER IS THE SAME APP'S KEY ON A TMPFS PATH. Operator ruling
 // gunbc.design_ruling mtcollins1_in_memory_app_credential_per_boot: the credential is pushed per boot, in
 // memory only. The path is below /run, and its custody row (gunbc.fleet.host_credential_custody_converge
-// ServiceSlotAppKey) declares the CustodyTmpfsOnly medium, so a placement or readback that put it on a disk is
+// ServiceSlotAppKey) declares the CustodyTmpfsNoSwap medium, so a placement or readback that put it on a disk is
 // a refusal, not a held credential.
 data service_slot_app_key: JwsSigningKeyRef = HostKeyFile {
   path: "/run/gunbc-service-slot/app.pem",
