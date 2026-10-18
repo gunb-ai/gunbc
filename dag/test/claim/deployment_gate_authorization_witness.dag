@@ -72,10 +72,11 @@ import gunbc.auth.deployment_gate_authorization {
   WebhookRelayFallback,
   StandingRefuted,
   rule_delivery_independence,
-  rule_delivery_is_unproven,
   selected_gate_route,
-  gate_route_adds_no_inbound,
+  gate_route_for,
   operator_webhook_sets_no_receiver,
+  admit_reviewer_removal,
+  DeploymentGateTrialEvidence,
   broker_may_answer,
   ownership_names_environment,
   run_is_still_worth_answering,
@@ -92,7 +93,8 @@ import gunbc.auth.deployment_gate_authorization {
   documented_timer_maximum_in_seconds,
   gate_ceilings_agree,
   observed_review_from_readback,
-  ObservedRuleReview,
+  RemovalAdmitted,
+  RemovalRefused,
 }
 
 data gated_env: NonEmptyStr = srv1_production_environment_name
@@ -466,16 +468,24 @@ test fn the_pattern_comes_from_the_selector_and_redeems_a_tap() -> Bool {
 // the inference, the relay arm is selected and the operator's webhook step stops being a no-op. A route
 // that could not be re-derived from the standing is a route nobody can explain after the fact.
 test fn the_selected_route_follows_the_standing_and_adds_no_exposure() -> Bool {
-  rule_delivery_is_unproven(standing: rule_delivery_independence)
-    && gate_route_adds_no_inbound(route: selected_gate_route())
+  match rule_delivery_independence {
+    StandingUntested { read_obligation: obligation } => (obligation as String).contains("non-privileged")
+    StandingConfirmed { witnessed_run_id: _ } => false
+    StandingRefuted { refused_because: _ } => false
+  }
     && operator_webhook_sets_no_receiver()
-    && !gate_route_adds_no_inbound(
-         route: WebhookRelayFallback { relay_ingress: "tailscale-relay:approval-broker" }
-       )
-    && (match rule_delivery_independence {
-          StandingRefuted { refused_because: _ } => true
-          _ => false
-        }) == false
+    // THE OTHER ARM, EXERCISED: refuting the standing selects the relay, and the relay is where an
+    // inbound ingress appears. A Bool fold over either sum would have hidden this branch.
+    && (match gate_route_for(standing: StandingRefuted { refused_because: "refused without a delivery" }) {
+          WebhookRelayFallback { relay_ingress: ingress } => (ingress as String).contains("relay")
+          NoWebhookPollAndSubmit => false
+        })
+    // And the route actually selected is the one the standing implies, read through the SAME mapping
+    // rather than through a copy in this file.
+    && (match selected_gate_route() {
+          NoWebhookPollAndSubmit => true
+          WebhookRelayFallback { relay_ingress: _ } => false
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -501,15 +511,50 @@ test fn the_documented_example_is_not_our_gate() -> Bool {
   documented_example_is_not_the_gated_environment()
 }
 
-// THE MINT REFUSES EVIDENCE IT DID NOT SEE. An ObservedRuleReview comes only from the readback fold;
-// these three are the shortcuts a fixture would have allowed, and each returns nothing.
-test fn no_unobserved_rule_review_can_be_fabricated() -> Bool {
-  observed_review_from_readback(
+// THE MINT REFUSES EVIDENCE IT DID NOT SEE, and the admission has no other door. observed_review_from_
+// readback returns nothing for a still-waiting environment, for an approve claim on a run that failed at
+// the gate, or for a reject claim on a run that is still going; and admit_reviewer_removal returns a
+// refusal naming what is missing for every pair that is not one corroborated approval plus one
+// corroborated rejection on two DIFFERENT runs of the gated environment. There is no admitted
+// DeploymentGateTrialEvidence to build by hand: the type is sole_constructor, so a literal outside the
+// minting module is refused by the compiler, which the probe below enrolls and asserts.
+test fn an_admission_comes_only_from_the_mint_and_the_mint_refuses_shortcuts() -> Bool {
+  let good_approve = observed_review_from_readback(
     run: run_record(run_id: 35447067113, settled: false, failed: false),
-    environment_still_waiting: true,
+    environment_still_waiting: false,
     claimed: Approved,
     environment_name: gated_env
-  ) == none
+  )
+  let good_reject = observed_review_from_readback(
+    run: run_record(run_id: 35447067114, settled: true, failed: true),
+    environment_still_waiting: false,
+    claimed: Rejected,
+    environment_name: gated_env
+  )
+  // The honest pair admits.
+  match admit_reviewer_removal(approved: good_approve, rejected: good_reject) {
+    RemovalAdmitted { evidence: e } =>
+      e.run_id_approved == 35447067113
+        && e.run_id_rejected == 35447067114
+        && e.environment_name == gated_env
+    RemovalRefused { missing: _ } => false
+  }
+    // Nothing witnessed: refused, and the frontier row is exactly that refusal.
+    && (match admit_reviewer_removal(approved: none, rejected: none) {
+          RemovalRefused { missing: _ } => true
+          RemovalAdmitted { evidence: _ } => false
+        })
+    // One arm missing.
+    && (match admit_reviewer_removal(approved: good_approve, rejected: none) {
+          RemovalRefused { missing: m } => (m as String).contains("rejecting")
+          RemovalAdmitted { evidence: _ } => false
+        })
+    // BOTH ARMS ON ONE DISPATCH: the shortcut that a single lucky run would allow.
+    && (match admit_reviewer_removal(approved: good_approve, rejected: good_approve) {
+          RemovalRefused { missing: m } => (m as String).contains("same dispatch")
+          RemovalAdmitted { evidence: _ } => false
+        })
+    // An approve claim the readback never corroborated mints nothing, so the pair cannot be built.
     && observed_review_from_readback(
          run: run_record(run_id: 35447067113, settled: true, failed: true),
          environment_still_waiting: false,
@@ -518,22 +563,10 @@ test fn no_unobserved_rule_review_can_be_fabricated() -> Bool {
        ) == none
     && observed_review_from_readback(
          run: run_record(run_id: 35447067113, settled: false, failed: false),
-         environment_still_waiting: false,
-         claimed: Rejected,
-         environment_name: gated_env
-       ) == none
-    && observed_review_from_readback(
-         run: run_record(run_id: 35447067113, settled: false, failed: false),
-         environment_still_waiting: false,
+         environment_still_waiting: true,
          claimed: Approved,
          environment_name: gated_env
-       ) != none
-    && observed_review_from_readback(
-         run: run_record(run_id: 35447067114, settled: true, failed: true),
-         environment_still_waiting: false,
-         claimed: Rejected,
-         environment_name: gated_env
-       ) != none
+       ) == none
 }
 
 // The configured installation is a fact the operator recorded, never something a readback handed over:

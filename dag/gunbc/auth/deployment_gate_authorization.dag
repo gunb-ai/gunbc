@@ -237,13 +237,11 @@ data rule_delivery_independence: DeliveryIndependenceStanding = StandingUntested
   read_obligation: "Enable the gate App's rule on a non-privileged environment with no reachable receiver, trigger one gated dispatch, and POST the review. Accepted => StandingConfirmed with that run id; refused => StandingRefuted, and the webhook relay route becomes the selection.",
 }
 
-fn rule_delivery_is_unproven(standing: DeliveryIndependenceStanding) -> Bool {
-  match standing {
-    StandingUntested { read_obligation: _ } => true
-    StandingConfirmed { witnessed_run_id: _ } => false
-    StandingRefuted { refused_because: _ } => false
-  }
-}
+// NO UNPROVEN/PROVEN FOLD. Three arms, three different things to do with: an untested standing carries
+// a read obligation someone owes, a confirmed one carries the run id that settled it, a refuted one
+// carries the reason the relay becomes the route. A Bool would flatten all three into "false" and
+// discard the receipt, so callers match the sum — which is also the only honest way to consume a
+// standing, since the branch you take depends on which receipt you hold.
 
 // THE ROUTE, as a closed sum that the standing above decides between — not a string compared to
 // itself. The broker is tailnet-only, so a public GitHub webhook would be a NEW INBOUND EXPOSURE;
@@ -254,22 +252,28 @@ type GateDiscoveryRoute
   = NoWebhookPollAndSubmit
   | WebhookRelayFallback { relay_ingress: NonEmptyStr }
 
-fn gate_route_adds_no_inbound(route: GateDiscoveryRoute) -> Bool {
-  match route {
-    NoWebhookPollAndSubmit => true
-    WebhookRelayFallback { relay_ingress: _ } => false
-  }
-}
+// NO ADDS-NO-INBOUND FOLD, for the same reason: the relay arm carries the ingress it opens, and a
+// predicate that returns false throws that away. Callers match, and the relay arm's own field is what
+// has to be reviewed when it is selected.
 
 // THE SELECTED ROUTE, derived from the standing rather than asserted beside it: untested or confirmed
 // keeps the no-webhook route, refuted selects the relay. A route that could not be re-derived from the
 // evidence is a route nobody can explain after the fact.
-fn selected_gate_route() -> GateDiscoveryRoute {
-  match rule_delivery_independence {
+// THE MAPPING, EXPOSED AS A FUNCTION OF THE STANDING so a witness can walk every arm of it. If only
+// the selected route were reachable, a test of the relay arm would have to re-implement this match in
+// the test — which is a second authority over the routing decision, and the kind of thing that passes
+// when the two copies agree by construction.
+fn gate_route_for(standing: DeliveryIndependenceStanding) -> GateDiscoveryRoute {
+  match standing {
     StandingRefuted { refused_because: _ } =>
       WebhookRelayFallback { relay_ingress: "tailscale-relay:approval-broker" }
-    _ => NoWebhookPollAndSubmit
+    StandingUntested { read_obligation: _ } => NoWebhookPollAndSubmit
+    StandingConfirmed { witnessed_run_id: _ } => NoWebhookPollAndSubmit
   }
+}
+
+fn selected_gate_route() -> GateDiscoveryRoute {
+  gate_route_for(standing: rule_delivery_independence)
 }
 
 // The operator's webhook step has to say something, and this is what it says: while the standing is
@@ -277,7 +281,10 @@ fn selected_gate_route() -> GateDiscoveryRoute {
 // that configured a real public receiver would be adding the inbound exposure the route was chosen to
 // avoid — and if the trial refutes the inference, it is this row that changes.
 fn operator_webhook_sets_no_receiver() -> Bool {
-  gate_route_adds_no_inbound(route: selected_gate_route())
+  match selected_gate_route() {
+    NoWebhookPollAndSubmit => true
+    WebhookRelayFallback { relay_ingress: _ } => false
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -443,7 +450,7 @@ fn review_was_accepted(status: HttpStatus) -> Bool {
 //               A job that carried on was not refused.
 // The two arms require mutually exclusive evidence, which is what makes one dispatch incapable of
 // satisfying both halves of the pair.
-type ObservedRuleReview {
+type ObservedRuleReview sole_constructor {
   run_id: Int,
   environment_name: NonEmptyStr,
   state: ReviewState,
@@ -496,40 +503,89 @@ fn observed_review_from_readback(
 // seen on DIFFERENT runs. An approval and a rejection of the same dispatch is one dispatch, and one
 // dispatch cannot show that the broker refuses when it should — which is the half of the gate that
 // stops being tested the moment the human reviewer goes away.
-type DeploymentGateTrialEvidence {
-  approved_run: ObservedRuleReview,
-  rejected_run: ObservedRuleReview,
+type DeploymentGateTrialEvidence sole_constructor {
+  run_id_approved: Int,
+  run_id_rejected: Int,
+  environment_name: NonEmptyStr,
 }
+
+
+// THE RUNG, STATED AT WHAT EXECUTES IT (§4b meta-obligation 1: the reported rung equals the rung
+// established by executed evidence, and rung inflation is worse than sitting low).
+//
+//   STRUCTURAL, ENFORCED BY THE COMPILER. ObservedRuleReview and DeploymentGateTrialEvidence are
+//   sole_constructor, so OUTSIDE THIS MODULE a literal for either is refused at the name
+//   (SoleConstructorViolation — executed as a probe red by
+//   gunbc.test.claim.deployment_gate_authorization_witness). That is what makes "remove the reviewer
+//   without both trials" unrepresentable AS SOURCE: there is no value of the admitted arm an outside
+//   caller can supply, because there is no value of the evidence type it could carry.
+//
+//   RUNTIME, FOR THE ONE PROPERTY THE TYPE CANNOT HOLD. That the two trials name DIFFERENT runs and
+//   the gated environment is checked by admit_reviewer_removal below at the moment of minting, because
+//   the record keeps the two run ids as plain Ints and no type here says "different". So the pair is
+//   minted-or-refused, and the coherence check runs at the mint rather than at each call site — a
+//   caller cannot re-check it wrongly, and cannot mint it wrongly either.
+//
+// NEXT RUNG, AND ITS TRIGGER: the check moves from the mint into the type when the corpus grows a
+// distinct run-id carrier that carries inequality in its own construction; until then this is rung 4
+// on construction and a checked mint on coherence, and no stronger claim is made anywhere in this file.
+// WHY the removal is not yet performable, as a closed sum. A paragraph here would be read by nobody
+// but a test comparing sentences; a refusal an operator can act on is a name.
+type RemovalRefusalReason
+  = NoApprovingReview
+  | NoRejectingReview
+  | ApprovingArmWasNotAnApproval
+  | RejectingArmWasNotARejection
+  | BothArmsOneDispatch
+  | EvidenceFromAnotherEnvironment
 
 type ReviewerRemovalAdmission
   = RemovalAdmitted { evidence: DeploymentGateTrialEvidence }
-  | RemovalRefused { missing: NonEmptyStr }
+  | RemovalRefused { missing: RemovalRefusalReason }
 
-// The removal act CONSUMES this, so "enable the rule, then remove the reviewer without both trials" is
-// not a representable sequence — the act has no admitted value to be performed with.
-fn reviewer_removal_is_admitted(admission: ReviewerRemovalAdmission) -> Bool {
-  match admission {
-    RemovalAdmitted { evidence: e } => trials_are_the_real_thing(evidence: e)
-    RemovalRefused { missing: _ } => false
+// THE ONLY WAY AN ADMISSION COMES INTO EXISTENCE. Both arms arrive here, and the arms are the point:
+// anything that is not exactly one corroborated approve plus one corroborated reject on the gated
+// environment comes back as a refusal naming what is missing. Witnesses do not construct an admitted
+// admission; they call this with what their readbacks returned.
+fn admit_reviewer_removal(
+  approved: ObservedRuleReview?,
+  rejected: ObservedRuleReview?
+) -> ReviewerRemovalAdmission {
+  match approved {
+    Present { value: a } => match rejected {
+      Present { value: r } =>
+        if a.state != Approved {
+          RemovalRefused { missing: ApprovingArmWasNotAnApproval }
+        } else if r.state != Rejected {
+          RemovalRefused { missing: RejectingArmWasNotARejection }
+        } else if a.environment_name != srv1_production_environment_name {
+          RemovalRefused { missing: EvidenceFromAnotherEnvironment }
+        } else if r.environment_name != srv1_production_environment_name {
+          RemovalRefused { missing: EvidenceFromAnotherEnvironment }
+        } else if a.run_id == r.run_id {
+          RemovalRefused { missing: BothArmsOneDispatch }
+        } else {
+          RemovalAdmitted {
+            evidence: DeploymentGateTrialEvidence {
+              run_id_approved: a.run_id,
+              run_id_rejected: r.run_id,
+              environment_name: a.environment_name,
+            },
+          }
+        }
+      none => RemovalRefused { missing: NoRejectingReview }
+    }
+    none => RemovalRefused { missing: NoApprovingReview }
   }
 }
 
-fn trials_are_the_real_thing(evidence: DeploymentGateTrialEvidence) -> Bool {
-  let a = evidence.approved_run
-  let r = evidence.rejected_run
-  review_is_approved(observed: a)
-    && review_is_rejected(observed: r)
-    && a.environment_name == srv1_production_environment_name
-    && r.environment_name == srv1_production_environment_name
-    && a.run_id != r.run_id
-}
-
-fn review_is_approved(observed: ObservedRuleReview) -> Bool {
-  observed.state == Approved
-}
-
-fn review_is_rejected(observed: ObservedRuleReview) -> Bool {
-  observed.state == Rejected
+// What the removal act asks, and all it can ask: the admission is the whole precondition, and the act
+// has no other way to be performed.
+fn reviewer_removal_is_admitted(admission: ReviewerRemovalAdmission) -> Bool {
+  match admission {
+    RemovalAdmitted { evidence: _ } => true
+    RemovalRefused { missing: _ } => false
+  }
 }
 
 // THE FRONTIER, AS A VALUE. Stage 1 models the admission and its refusals; it cannot produce the
@@ -537,9 +593,13 @@ fn review_is_rejected(observed: ObservedRuleReview) -> Bool {
 // reads as in the model, and the removal act has no admitted value until stage 4 witnesses both arms on
 // a real fleet-converge dispatch — each one through observed_review_from_readback, so the day it
 // changes it changes because GitHub said so.
-data reviewer_removal_admission: ReviewerRemovalAdmission = RemovalRefused {
-  missing: "neither an approving nor a rejecting rule review has been witnessed on a real fleet-converge dispatch",
-}
+// Minted, not written out: the frontier refusal is what the mint returns when no readback has
+// corroborated either arm. A stage-1 module cannot fabricate an admitted admission, and it cannot even
+// fabricate this refusal — it asks the mint, and the mint says what is missing.
+data reviewer_removal_admission: ReviewerRemovalAdmission = admit_reviewer_removal(
+  approved: none,
+  rejected: none,
+)
 
 fn reviewer_removal_is_performable() -> Bool {
   reviewer_removal_is_admitted(admission: reviewer_removal_admission)

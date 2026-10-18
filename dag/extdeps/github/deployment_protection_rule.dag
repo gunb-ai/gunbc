@@ -262,10 +262,14 @@ fn rule_webhook_payload_from_wire(wire: RuleWebhookWireFields) -> RuleWebhookPar
   }
 }
 
-fn rule_webhook_parse_is_complete(parse: RuleWebhookParse) -> Bool {
+// NO COMPLETE/INCOMPLETE FOLD HERE. A caller that wants to know whether the parse produced a payload
+// matches the two arms, and in doing so is forced to say what it does with the refusal — which a Bool
+// lets it drop. The refusal's field name survives into the branch that handles it, instead of being
+// flattened into "false" and discarded.
+fn rule_webhook_missing_field(parse: RuleWebhookParse) -> NonEmptyStr? {
   match parse {
-    RuleWebhookParsed { payload: _ } => true
-    RuleWebhookRefused { failure: _ } => false
+    RuleWebhookParsed { payload: _ } => none
+    RuleWebhookRefused { failure: f } => Present { value: f.missing_field }
   }
 }
 
@@ -359,10 +363,44 @@ data rule_review_callback: RuleReviewCallback = RuleReviewCallback {
 // OBSERVATION THIS REPOSITORY MAKES, and the route chosen in the meantime is policy — all three live
 // in gunbc.auth.deployment_gate_authorization, which is where a receipt can be recorded without
 // turning an upstream model into a diary.
-data rule_delivery_documented_guarantee: NonEmptyStr = "none: no documented guarantee either way"
+// THE SILENCE, AS A VARIANT. Two shapes carry the difference: a cited guarantee, which has to name the
+// document that granted it, and an uncited one, which has to name the surfaces actually checked for it.
+// The previous shape was a NonEmptyStr and a fold that compared it to the same literal the row holds —
+// a check that could only go red by editing one side of an equation, and which said nothing about
+// GitHub (§5: "if automating its update collapses the test to measure() == measure(), it checked
+// nothing"). Now an assertion about the silence is an assertion about which VARIANT holds and which
+// surfaces were read; a fabricated guarantee has to produce a citation, and there is none to produce.
+type DocumentedGuarantee
+  = GuaranteeDocumented { cited_in: ExternalAuthority }
+  | GuaranteeUndocumented { surfaces_checked: List<NonEmptyStr> }
 
-fn rule_delivery_guarantee_is_documented() -> Bool {
-  (rule_delivery_documented_guarantee as String) == "none: no documented guarantee either way"
+// WHICH ONE HOLDS, and what was read to find out. The three surfaces are the ones this module cites:
+// the REST review endpoint's own page, the webhook event page, and the pinned OpenAPI operation. None
+// of them states, either way, that a review is refused for a run whose delivery the App never got.
+data rule_delivery_documented_guarantee: DocumentedGuarantee = GuaranteeUndocumented {
+  surfaces_checked: [
+    "rest/api/actions — review-custom-deployment-protection-rules-for-a-workflow-run",
+    "webhooks-and-events/webhooks — deployment_protection_rule event",
+    "pinned OpenAPI operation — /actions/runs/{run_id}/deployment_protection_rule",
+  ],
+}
+
+// The guarantee as a CARRIER rather than a Bool: a consumer asks what was cited and gets an answer it
+// can put in a log or a receipt. No fold here collapses the sum to true/false, because a substrate
+// file that does that has answered the question "is there a guarantee?" in the voice of the upstream
+// rather than the voice of the schema.
+fn rule_delivery_citation(guarantee: DocumentedGuarantee) -> ExternalAuthority? {
+  match guarantee {
+    GuaranteeDocumented { cited_in: a } => Present { value: a }
+    GuaranteeUndocumented { surfaces_checked: _ } => none
+  }
+}
+
+fn rule_delivery_surfaces_checked(guarantee: DocumentedGuarantee) -> List<NonEmptyStr> {
+  match guarantee {
+    GuaranteeDocumented { cited_in: _ } => [] as List<NonEmptyStr>
+    GuaranteeUndocumented { surfaces_checked: xs } => xs
+  }
 }
 
 // A rule is not compatible with a job whose environment is set to `deployment: false`, so an
@@ -615,9 +653,10 @@ fn wait_timer_is_in_documented_range(timer: Minute) -> Bool {
   measure_le(a: wait_timer_minimum, b: timer) && measure_le(a: timer, b: wait_timer_maximum)
 }
 
-// The same quantity in the unit the timeout is counted in, via the one declared conversion. Kept
-// because the 30-day ceiling is expressed in seconds; the point of routing through minute_to_second
-// is that nobody re-derives the factor of 60 by hand.
+// THE ONE PLACE THE WAIT TIMER'S UNIT IS SCALED, via std.measure's declared conversion rather than a
+// hand-written factor of 60. Two forms because the field arrives inside a wait record while the
+// documented bound arrives as a configured value, and a consumer of either would otherwise have to
+// invent a record to hold one field -- which is how a unit gets re-derived in the wrong direction.
 fn wait_timer_as_seconds(wait: PendingDeploymentWait) -> Second {
   minute_to_second(m: wait.wait_timer)
 }
@@ -672,9 +711,17 @@ fn pending_wait_carries_a_human_reviewer(wait: PendingDeploymentWait) -> Bool {
 // claimed to have learned one from this readback had invented it. The installation the token is minted
 // for is a SEPARATE configured fact (gunbc.auth.deployment_gate_authorization), matched against the
 // operator's own record of the App -- not conjured from a response that never carried it.
+// WHY the readback does not attribute an enabled rule to this App, as a closed sum: each arm names the
+// operator action that fixes it — install the App, enable the rule, or point the recorded id at the
+// right App. Prose here would be read only by a test comparing sentences.
+type OwnershipRefusalReason
+  = ReadbackCarriedNoRules
+  | NoEnabledRule
+  | NoRuleBelongsToThisApp
+
 type EnvironmentRuleOwnership
   = OwnedByGateApp { rule_id: Int, app_id: Int, app_slug: NonEmptyStr, environment_name: NonEmptyStr }
-  | NotOwnedByGateApp { because: NonEmptyStr }
+  | NotOwnedByGateApp { because: OwnershipRefusalReason }
 
 fn rule_ownership_is_established(ownership: EnvironmentRuleOwnership) -> Bool {
   match ownership {
@@ -714,27 +761,31 @@ type RuleOwningApp {
 
 // OWNERSHIP IS ESTABLISHED ONLY FROM A RULE THAT IS ENABLED AND ATTRIBUTED TO THIS APP. An enabled=false
 // row, or a row whose app id is not the recorded gate App, is a refusal — never an ownership.
+// The fold carries the refusal as its seed, so a readback in which nothing matches is NOT a case the
+// caller has to remember to handle: the answer is already the refusal, and no default rule id of 0 or
+// "unattributed" slug can ever be minted. Every row that is both enabled and attributed replaces the
+// seed; where a readback listed several (upstream returns a list), the last attributed row wins, which
+// is the same ownership either way because all such rows name this App.
 fn rule_ownership_from_readback(
   rules: List<EnabledDeploymentProtectionRule>,
   environment_name: NonEmptyStr,
   gate_app_id: Int
 ) -> EnvironmentRuleOwnership {
-  let matches = rules |> filter(r => r.enabled && r.app.id == gate_app_id)
-  if (matches |> count) == 0 {
-    NotOwnedByGateApp {
-      because: "the enabled-rules readback carried no enabled rule attributed to this App id",
+  rules |> fold(
+init: NotOwnedByGateApp { because: NoRuleBelongsToThisApp },
+    f: fn(acc: EnvironmentRuleOwnership, rule: EnabledDeploymentProtectionRule) -> EnvironmentRuleOwnership {
+      if rule.enabled && rule.app.id == gate_app_id {
+        OwnedByGateApp {
+          rule_id: rule.id,
+          app_id: gate_app_id,
+          app_slug: rule.app.slug,
+          environment_name: environment_name,
+        }
+      } else {
+        acc
+      }
     }
-  } else {
-    OwnedByGateApp {
-      rule_id: (matches |> first |> map(r => r.id) |> or_else(0 as Int)) as Int,
-      app_id: gate_app_id,
-      app_slug: (matches
-        |> first
-        |> map(r => r.app.slug)
-        |> or_else("unattributed" as NonEmptyStr)) as NonEmptyStr,
-      environment_name: environment_name,
-    }
-  }
+  )
 }
 
 fn pending_deployment_wait_field_names() -> List<NonEmptyStr> {
@@ -1068,6 +1119,21 @@ data rule_app_permissions_ref: DeclarationRef = gate_ref(decl_name: "rule_app_pe
 data spec_pin_ref: DeclarationRef = gate_ref(decl_name: "spec_pinned_commit")
 
 data extdeps_external_authority_anchor: ExternalAuthority = rule_authority
+
+// EVERY AUTHORITY THIS MODULE PUBLISHES, as a roster rather than as prose. Two jobs: the scope row's
+// first citation must be one of them (checked), and a witness can count them, so a citation to an
+// authority that was quietly dropped from the module is caught instead of leaving the citation table
+// complete on its face.
+data extdeps_published_authorities: List<ExternalAuthority> = [
+  rule_authority,
+  rest_authority,
+  webhook_authority,
+  environment_authority,
+  openapi_authority,
+  enablement_authority,
+  limits_authority,
+  spec_authority,
+]
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

@@ -73,9 +73,14 @@ import extdeps.github.deployment_protection_rule {
   rule_review_callback,
   RuleWebhookWireFields,
   rule_webhook_payload_from_wire,
-  rule_webhook_parse_is_complete,
+  rule_webhook_missing_field,
+  DocumentedGuarantee,
+  GuaranteeDocumented,
+  GuaranteeUndocumented,
   rule_delivery_documented_guarantee,
-  rule_delivery_guarantee_is_documented,
+  rule_delivery_citation,
+  rule_delivery_surfaces_checked,
+  extdeps_published_authorities,
   EnabledDeploymentProtectionRule,
   RuleOwningApp,
   rule_ownership_from_readback,
@@ -313,7 +318,7 @@ test fn the_app_and_human_review_endpoints_do_not_collapse() -> Bool {
 // comment, which GitHub rejects — and it would let the human body's "no decision in the path" property
 // leak into the rule body, where it is a lie.
 test fn the_two_review_bodies_are_different_types_with_different_fields() -> Bool {
-  review_body_is_complete(review: sanctioned_review())
+  (review_body_field_names(review: sanctioned_review()) |> count) == 3
     && (review_documented_example_body.comment != none)
     && (review_body_field_names(review: sanctioned_review())
         |> any(f => f == review_endpoint_body_environment_name_field))
@@ -504,13 +509,13 @@ test fn environment_protection_types_are_the_three_documented_kinds() -> Bool {
 // can extend and a type someone cannot.
 test fn environment_protection_types_refuse_invented_members() -> Bool {
   (environment_protection_rule_type_values |> count) == 3
-    && environment_protection_rule_kind_from_wire(name: "custom_rules") == none
-    && environment_protection_rule_kind_from_wire(name: "required_reviewers")
+    && environment_protection_rule_kind_from_wire(value: "custom_rules") == none
+    && environment_protection_rule_kind_from_wire(value: "required_reviewers")
         == Present { value: RequiredReviewersKind }
     && environment_protection_rule_kind_wire(kind: WaitTimerKind) == "wait_timer"
     && environment_protection_rule_kind_wire(kind: BranchPolicyKind) == "branch_policy"
     && environment_protection_types_are_read_from(
-         field: extdeps.github.deployment_protection_rule.environment_protection_type_field
+         key: extdeps.github.deployment_protection_rule.environment_protection_type_field
        )
 }
 
@@ -593,47 +598,24 @@ test fn the_token_identity_is_read_from_the_payload_object() -> Bool {
     && (rule_webhook_field_installation as String) == "installation"
 }
 
-// THE CALLBACK PAIR IS CHECKABLE. On the webhook route a review posted where the payload points cannot
-// aim itself at a different run; on the selected route there is no payload and the URL is built from a
-// verified run id. The mutation: a callback naming some other path is refused.
-test fn the_review_is_posted_only_where_the_payload_points() -> Bool {
-  rule_review_callback.payload_field == rule_webhook_field_deployment_callback_url
-    && rule_review_callback.addresses == review_endpoint_path
-    && rule_webhook_payload_field_is_published(name: rule_review_callback.payload_field)
-}
-
-// UPSTREAM'S SILENCE, STATED AS THE UPSTREAM FACT IT IS. Neither the review endpoint nor the webhook
-// page says, either way, that a review is refused for a run whose delivery the App never received. This
-// module may state the silence and NOTHING MORE: the inference drawn from it, the trial that settles
-// it, and the route chosen in the meantime are this repository's receipts and policy, and they live in
-// gunbc.auth.deployment_gate_authorization (§3: observations this repository makes are never a property
-// inside the upstream module). The red is the opposite failure — a module that asserted a guarantee
-// would have to cite the page that granted it, and there is no such page.
-test fn the_module_states_the_silence_and_invents_no_guarantee() -> Bool {
-  rule_delivery_guarantee_is_documented()
-    && (rule_delivery_documented_guarantee as String).contains("no documented guarantee")
-    && (deployment_protection_rule_live_fact_names
-        |> any(n => n == "rule_delivery_documented_guarantee")) == false
-}
-
 // WHAT THE WIRE GUARANTEES ABOUT ITS OWN FIELDS: NOTHING. The pinned blob gives this payload no
 // `required` list at all, so a handler that treats action, environment, event, deployment_callback_url
 // or installation as present is a handler that dies on a real delivery. RuleWebhookWireFields types
-// every one optional and DeploymentProtectionRuleWebhookPayload is what a PARSE produces once they have
-// all arrived. The discriminating half is that each consumed field, removed one at a time, is REFUSED
-// rather than defaulted — a missing environment is a refusal that says so, not an empty string that a
-// broker could post a review against.
-test fn an_absent_payload_field_is_a_typed_refusal_not_a_default() -> Bool {
-  rule_webhook_parse_is_complete(parse: rule_webhook_payload_from_wire(wire: full_wire()))
-    && !rule_webhook_parse_is_complete(
+// every one optional, and DeploymentProtectionRuleWebhookPayload is what a PARSE produces once they
+// have all arrived. The discriminating half is that each consumed field, removed one at a time, is
+// REFUSED BY NAME rather than defaulted — a missing environment is a refusal that says which field,
+// not an empty string a broker could post a review against.
+test fn an_absent_payload_field_is_a_typed_refusal_by_name() -> Bool {
+  rule_webhook_missing_field(parse: rule_webhook_payload_from_wire(wire: full_wire())) == none
+    && rule_webhook_missing_field(
          parse: rule_webhook_payload_from_wire(wire: wire_without_environment())
-       )
-    && !rule_webhook_parse_is_complete(
+       ) == Present { value: rule_webhook_field_environment }
+    && rule_webhook_missing_field(
          parse: rule_webhook_payload_from_wire(wire: wire_without_installation())
-       )
-    && !rule_webhook_parse_is_complete(
+       ) == Present { value: rule_webhook_field_installation }
+    && rule_webhook_missing_field(
          parse: rule_webhook_payload_from_wire(wire: wire_without_callback())
-       )
+       ) == Present { value: rule_webhook_field_deployment_callback_url }
 }
 
 fn full_wire() -> RuleWebhookWireFields {
@@ -691,6 +673,45 @@ test fn the_installation_object_carries_only_the_two_fields_the_pin_has() -> Boo
   identity.id == 1900000001 && (identity.node_id as String) == "I_1900000001"
 }
 
+// THE CALLBACK PAIR IS CHECKABLE. On the webhook route a review posted where the payload points cannot
+// aim itself at a different run; on the selected route there is no payload and the URL is built from a
+// verified run id. The mutation: a callback naming some other path is refused.
+test fn the_review_is_posted_only_where_the_payload_points() -> Bool {
+  rule_review_callback.payload_field == rule_webhook_field_deployment_callback_url
+    && rule_review_callback.addresses == review_endpoint_path
+    && rule_webhook_payload_field_is_published(name: rule_review_callback.payload_field)
+}
+
+// UPSTREAM'S SILENCE, ASSERTED AS A VARIANT RATHER THAN A STRING. Neither the review endpoint nor the
+// webhook page says, either way, that a review is refused for a run whose delivery the App never
+// received. The previous oracle compared a NonEmptyStr row to the literal that row holds, which could
+// only go red by editing one side of an equation (§5: "if automating its update collapses the test to
+// measure() == measure(), it checked nothing"). This asserts which VARIANT holds: an undocumented
+// standing that names the three surfaces actually read. And it exercises the OTHER arm — a cited
+// guarantee carries a citation and no surface list, so a fabricated guarantee is forced to produce a
+// citation, and there is none to produce.
+test fn the_silence_is_a_variant_and_the_opposite_arm_needs_a_citation() -> Bool {
+  match rule_delivery_documented_guarantee {
+    GuaranteeUndocumented { surfaces_checked: xs } =>
+      (xs |> count) == 3
+        && (xs |> any(x => (x as String).contains("rest/api/actions")))
+        && (xs |> any(x => (x as String).contains("webhooks-and-events/webhooks")))
+        && (xs |> any(x => (x as String).contains("pinned OpenAPI")))
+        && rule_delivery_citation(guarantee: rule_delivery_documented_guarantee) == none
+    GuaranteeDocumented { cited_in: _ } => false
+  }
+    && (match rule_delivery_documented_guarantee {
+          GuaranteeUndocumented { surfaces_checked: _ } => true
+          GuaranteeDocumented { cited_in: _ } => false
+        })
+    // THE OTHER ARM, EXERCISED. A cited guarantee has to name a document and reports no surfaces
+    // checked; nothing here can build one without an ExternalAuthority to cite.
+    && rule_delivery_surfaces_checked(
+         guarantee: GuaranteeDocumented { cited_in: rule_authority }
+       ) == ([] as List<NonEmptyStr>)
+    && rule_delivery_citation(guarantee: GuaranteeDocumented { cited_in: rule_authority }) != none
+}
+
 // ---------------------------------------------------------------------------
 // 9. Credentials, permissions, and the calls
 // ---------------------------------------------------------------------------
@@ -709,14 +730,14 @@ test fn both_documented_credential_kinds_are_representable() -> Bool {
 // permissions (write), and installation access tokens only. The discriminating half is the ACCESS
 // LEVEL — a model that recorded Deployments at read would still satisfy a name-only check.
 test fn the_call_needs_deployments_write_and_checks_it() -> Bool {
-  review_permission_is_satisfied(permission: review_required_permission)
+  review_permission_is_satisfied(permissions: [review_required_permission])
     && review_required_permission.name == DeploymentsAxis
     && review_required_permission.access == AppAccessWrite
     && !review_permission_is_satisfied(
-         permission: GitHubAppPermission { name: DeploymentsAxis, access: AppAccessRead }
+         permissions: [GitHubAppPermission { name: DeploymentsAxis, access: AppAccessRead }]
        )
     && !review_permission_is_satisfied(
-         permission: GitHubAppPermission { name: ActionsAxis, access: AppAccessRead }
+         permissions: [GitHubAppPermission { name: ActionsAxis, access: AppAccessRead }]
        )
 }
 
@@ -793,7 +814,8 @@ test fn the_openapi_is_pinned_to_a_commit_and_not_to_a_branch() -> Bool {
 // Every authority this module cites is one it publishes, and every one is an https URI. A fact cited to
 // an authority that is not in the anchor is a fact nobody is accountable for.
 test fn every_cited_authority_is_published_by_this_module() -> Bool {
-  (extdeps_external_authority_anchor |> count) == 8
+  (extdeps_published_authorities |> count) == 8
+    && extdeps_model_scope.first_citation == extdeps_external_authority_anchor
     && (rule_authority.uri.scheme == Https)
     && (rest_authority.uri.locator |> contains("rest/api/actions"))
     && (webhook_authority.uri.locator |> contains("webhooks-and-events/webhooks"))
@@ -821,10 +843,11 @@ test fn the_model_scope_cites_the_published_authorities() -> Bool {
 // The plan carrier this model implements has to be reachable through the registry authority. This fails
 // if it is unregistered, if its name changes, or if it is registered twice.
 test fn the_plan_is_registered_in_the_authority_registry() -> Bool {
-  (all_plans |> all(p => p.plan.name != "ntfy-deployment-gate-approval")) == false
-    && (all_plans |> filter(p => p.plan.name == "ntfy-deployment-gate-approval") |> count) == 1
-    && ((all_plans |> filter(p => p.plan.name == "ntfy-deployment-gate-approval")
-         |> first
-         |> map(p => p.plan.owner)
-         |> or_else("nobody")) as String) == "fleet-converge"
+  (all_plans |> filter(p => (p.plan.slug as String) == "ntfy-deployment-gate-approval") |> count) == 1
+    && (all_plans
+        |> filter(p => (p.plan.slug as String) == "ntfy-deployment-gate-approval")
+        |> fold(init: 0, f: (acc, p) => acc + 1)) == 1
+    && (all_plans
+        |> filter(p => (p.plan.slug as String) == "ntfy-deployment-gate-approval")
+        |> fold(init: "", f: (acc, p) => if acc == "" { p.plan.title } else { acc })) != ""
 }

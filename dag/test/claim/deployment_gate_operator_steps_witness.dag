@@ -63,15 +63,13 @@ import gunbc.auth.deployment_gate_operator_steps {
   removal_is_strictly_after_enablement,
 }
 import gunbc.auth.deployment_gate_authorization {
-  ObservedRuleReview,
   observed_review_from_readback,
-  DeploymentGateTrialEvidence,
   ReviewerRemovalAdmission,
   RemovalAdmitted,
   RemovalRefused,
+  admit_reviewer_removal,
   reviewer_removal_is_admitted,
   reviewer_removal_is_performable,
-  trials_are_the_real_thing,
   rule_app_permission_is_admissible,
   rule_app_permission_set_is_admissible,
   rule_app_permission_set_is_complete,
@@ -130,18 +128,17 @@ fn a_run(run_id: Int, in_flight: Bool) -> WorkflowRunRecord {
   }
 }
 
-// THE ADMITTED PAIR, minted. Both trials must exist for the act to have anything to be performed with.
+// THE ADMITTED PAIR, MINTED THROUGH THE ONLY DOOR THAT HAS ONE. This file cannot write
+// DeploymentGateTrialEvidence { ... }: the type is sole_constructor in
+// gunbc.auth.deployment_gate_authorization, so a literal here is refused at the name
+// (SoleConstructorViolation), which is the executed red
+// gunbc.test.probe.deployment_gate_evidence_forged_probe enrolls. So the only way to get an admitted
+// admission is to hand the mint what two readbacks returned and see whether it admits.
 fn admitted_pair() -> ReviewerRemovalAdmission {
-  match approved_trial(run_id: 35447067113) {
-    Present { value: a } => match rejected_trial(run_id: 35447067114) {
-      Present { value: r } =>
-        RemovalAdmitted {
-          evidence: DeploymentGateTrialEvidence { approved_run: a, rejected_run: r },
-        }
-      none => RemovalRefused { missing: "the rejecting dispatch did not conclude as a failure" }
-    }
-    none => RemovalRefused { missing: "the approving dispatch did not proceed" }
-  }
+  admit_reviewer_removal(
+    approved: approved_trial(run_id: 35447067113),
+    rejected: rejected_trial(run_id: 35447067114),
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -225,60 +222,41 @@ test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
 }
 
 // Each mutation is a shortcut someone would actually take: both arms the same state, both arms on the
-// SAME dispatch, one arm witnessed on an environment nobody gates. One dispatch cannot show the broker
-// refusing when it should, which is the half of the gate that stops being tested when the reviewer goes.
+// SAME dispatch, one arm witnessed on an environment nobody gates. None of them is expressed as a
+// hand-built record — they are inputs to the mint, because building the record is exactly what this
+// file is no longer allowed to do. One dispatch cannot show the broker refusing when it should, which
+// is the half of the gate that stops being tested when the reviewer goes.
 test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused() -> Bool {
-  let a = approved_trial(run_id: 35447067113)
-  let r = rejected_trial(run_id: 35447067114)
-  match a {
-    Present { value: approve } => match r {
-      Present { value: reject } =>
-        reviewer_removal_is_admitted(admission: admitted_pair())
-          && !reviewer_removal_is_admitted(
-               admission: RemovalAdmitted {
-                 evidence: DeploymentGateTrialEvidence {
-                   approved_run: approve,
-                   rejected_run: approve,
-                 },
-               }
-             )
-          && !reviewer_removal_is_admitted(
-               admission: RemovalAdmitted {
-                 evidence: DeploymentGateTrialEvidence {
-                   approved_run: approve,
-                   rejected_run: ObservedRuleReview {
-                     run_id: 35447067113,
-                     environment_name: gate_env,
-                     state: Rejected,
-                   },
-                 },
-               }
-             )
-          && !reviewer_removal_is_admitted(
-               admission: RemovalAdmitted {
-                 evidence: DeploymentGateTrialEvidence {
-                   approved_run: approve,
-                   rejected_run: ObservedRuleReview {
-                     run_id: 35447067115,
-                     environment_name: "gcp-iam-converge",
-                     state: Rejected,
-                   },
-                 },
-               }
-             )
-          && !reviewer_removal_is_admitted(
-               admission: RemovalRefused { missing: "no rejecting review was witnessed" }
-             )
-          && trials_are_the_real_thing(
-               evidence: DeploymentGateTrialEvidence {
-                 approved_run: approve,
-                 rejected_run: reject,
-               }
-             )
-      none => false
-    }
-    none => false
-  }
+  let approve = approved_trial(run_id: 35447067113)
+  let reject = rejected_trial(run_id: 35447067114)
+  reviewer_removal_is_admitted(admission: admitted_pair())
+    // both arms the same observed review => one dispatch, which cannot show a refusal
+    && (match admit_reviewer_removal(approved: approve, rejected: approve) {
+          RemovalRefused { missing: m } => (m as String).contains("same dispatch")
+          RemovalAdmitted { evidence: _ } => false
+        })
+    // a rejection read off an environment that is not the gate
+    && (match admit_reviewer_removal(
+          approved: approve,
+          rejected: observed_review_from_readback(
+            run: a_run(run_id: 35447067115, in_flight: false),
+            environment_still_waiting: false,
+            claimed: Rejected,
+            environment_name: "gcp-iam-converge"
+          ),
+        ) {
+          RemovalRefused { missing: m } => (m as String).contains("not the gate")
+          RemovalAdmitted { evidence: _ } => false
+        })
+    // a refusal is a refusal: the act is not performable with one
+    && !reviewer_removal_is_admitted(
+         admission: RemovalRefused { missing: "no rejecting review was witnessed" }
+       )
+    && (match admitted_pair() {
+          RemovalAdmitted { evidence: e } =>
+            e.run_id_approved != e.run_id_rejected && e.environment_name == gate_env
+          RemovalRefused { missing: _ } => false
+        })
 }
 
 // THE MINT REFUSES WHAT A LITERAL WOULD HAVE ACCEPTED. A still-waiting environment, or an approve claim
