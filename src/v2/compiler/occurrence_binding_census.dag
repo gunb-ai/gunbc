@@ -4,6 +4,7 @@ import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_snoc_item,
 import std.optional { Optional, Present, Absent }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
 import std.types { List, Map }
+import v2.std.source_position { SourceLineCol }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -45,7 +46,7 @@ type OccurrenceBindingCensusRow {
   ordinal: Int
   source: BindingSourceClass
   target: String
-  locus: String
+  locus: Optional<SourceLineCol>
 }
 
 // What one module contributed: its rows, the occurrences resolve recorded with two different bindings (a resolver defect the
@@ -139,15 +140,22 @@ type BindingCensusFold {
   unreadable: Int
 }
 
-// The locus the census walk recorded for an occurrence (v2.compiler.source_root_eval native_census_binding_loci), `-` when none.
-fn binding_census_locus(loci: Map<OccurrenceId, String>, id: OccurrenceId) -> String {
-  match map_lookup(m: loci, key: id) {
-    Present { value: l } => l
+// The locus the census walk recorded for an occurrence (v2.compiler.source_root_eval native_census_binding_loci), Absent when none.
+fn binding_census_locus(loci: Map<OccurrenceId, SourceLineCol>, id: OccurrenceId) -> Optional<SourceLineCol> {
+  map_lookup(m: loci, key: id)
+}
+
+// THE ENCODING BOUNDARY of a locus: `<line>:<byte column>`, or `-` for an occurrence the span index does not record.
+// Absence is the Optional's Absent arm everywhere else; this is the one place it becomes text, and a reader parses `-`
+// back to Absent at its own single boundary.
+fn occurrence_binding_locus_text(locus: Optional<SourceLineCol>) -> String {
+  match locus {
+    Present { value: lc } => to_string(lc.line) + ":" + to_string(lc.byte_column.value)
     Absent => "-"
   }
 }
 
-fn occurrence_binding_contribution(module: String, tree: ResolvedTree, loci: Map<OccurrenceId, String>) -> OccurrenceBindingContribution {
+fn occurrence_binding_contribution(module: String, tree: ResolvedTree, loci: Map<OccurrenceId, SourceLineCol>) -> OccurrenceBindingContribution {
   let ids = list_sort_by_key(xs: map_support_keys(m: tree.occurrence_bindings), key: fn(id) { id.value }, order: int_total_order())
   let split = unrecorded_split_walk(tree: tree, n: tree.root, order_head: false, acc: UnrecordedSplit { other: [], declared_order: [] })
   let unrecorded = split.other
@@ -273,7 +281,7 @@ fn ambient_table_is_module_level(table: AmbientBindingTable) -> Bool {
   }
 }
 
-fn binding_census_step(module: String, acc: BindingCensusFold, record: OccurrenceBindingRecord, locus: String) -> BindingCensusFold {
+fn binding_census_step(module: String, acc: BindingCensusFold, record: OccurrenceBindingRecord, locus: Optional<SourceLineCol>) -> BindingCensusFold {
   if occurrence_binding_is_module_level(binding: record.binding) {
     binding_census_module_level_step(module: module, acc: acc, record: record, locus: locus)
   } else {
@@ -281,7 +289,7 @@ fn binding_census_step(module: String, acc: BindingCensusFold, record: Occurrenc
   }
 }
 
-fn binding_census_module_level_step(module: String, acc: BindingCensusFold, record: OccurrenceBindingRecord, locus: String) -> BindingCensusFold {
+fn binding_census_module_level_step(module: String, acc: BindingCensusFold, record: OccurrenceBindingRecord, locus: Optional<SourceLineCol>) -> BindingCensusFold {
   match record.authored {
     Absent => BindingCensusFold { ordinals: acc.ordinals, rows: acc.rows, unreadable: acc.unreadable + 1 }
     Present { value: qn } =>
@@ -313,7 +321,7 @@ fn occurrence_binding_census_line(row: OccurrenceBindingCensusRow) -> String {
 
 // A row's fields after its kind word; a complete row and a partial row (binding_partial) share them.
 fn occurrence_binding_row_fields(row: OccurrenceBindingCensusRow) -> String {
-  "\t" + row.module + "\t" + row.authored + "\t" + to_string(row.ordinal) + "\t" + binding_source_label(source: row.source) + "\t" + row.target + "\t" + row.locus
+  "\t" + row.module + "\t" + row.authored + "\t" + to_string(row.ordinal) + "\t" + binding_source_label(source: row.source) + "\t" + row.target + "\t" + occurrence_binding_locus_text(locus: row.locus)
 }
 
 fn occurrence_binding_contribution_lines(c: OccurrenceBindingContribution) -> List<String> {
@@ -355,7 +363,7 @@ type OccurrenceBindingPartial {
   unreadable: Int
 }
 
-fn occurrence_binding_partial(module: String, entries: List<OccurrenceBindingEntry>, loci: Map<OccurrenceId, String>) -> OccurrenceBindingPartial {
+fn occurrence_binding_partial(module: String, entries: List<OccurrenceBindingEntry>, loci: Map<OccurrenceId, SourceLineCol>) -> OccurrenceBindingPartial {
   let records = fold_list(xs: entries, empty: empty_map(), cons: fn(m, e) {
     if map_contains_key(m: m, key: e.reference) { m } else { map_insert(m: m, key: e.reference, value: e.record) }
   })
@@ -375,7 +383,7 @@ fn occurrence_binding_partial(module: String, entries: List<OccurrenceBindingEnt
   }
 }
 
-fn occurrence_binding_partial_lines(module: String, entries: List<OccurrenceBindingEntry>, loci: Map<OccurrenceId, String>) -> List<String> {
+fn occurrence_binding_partial_lines(module: String, entries: List<OccurrenceBindingEntry>, loci: Map<OccurrenceId, SourceLineCol>) -> List<String> {
   let p = occurrence_binding_partial(module: module, entries: entries, loci: loci)
   list_snoc_item(
     xs: fold_list(xs: p.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: "binding_partial" + occurrence_binding_row_fields(row: row)) }),

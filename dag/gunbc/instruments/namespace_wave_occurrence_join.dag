@@ -54,11 +54,18 @@ import v2.workflow.roster_import_sweep {
 type JoinEntry {
   module: String
   spelling: String
-  line: Int
-  column: Int
+  locus: JoinLocus
   source: String
   target: String
 }
+
+// A census locus read ONCE (read_join_locus): a valid coordinate, the explicit `-` the census prints when no locus was
+// recovered, or text that is neither (refused, never defaulted). Absence proves no provenance: a missing file or span
+// index entry prints `-` too, so a generated reference is admitted only under the proven edit recomputation.
+type JoinLocus
+  = LocusAt { line: Int, column: Int }
+  | LocusAbsent
+  | LocusMalformed { text: String }
 
 type JoinDelta
   = JoinAdmitted { coordinate: String, spelling: String, home: String }
@@ -72,19 +79,39 @@ fn join_field(line: String, index: Int) -> String {
   }
 }
 
-fn join_int(text: String) -> Int {
-  match parse_int(text) {
-    Present { value: n } => n
-    Absent => 0 - 1
+fn read_join_locus(text: String) -> JoinLocus {
+  if text == "-" {
+    LocusAbsent
+  } else {
+    let parts = split(s: text, delimiter: ":")
+    if length(xs: parts) != 2 {
+      LocusMalformed { text: text }
+    } else {
+      join_locus_by_parts(text: text, parts: parts)
+    }
   }
 }
 
-fn join_locus_line(locus: String) -> Int {
-  join_int(text: join_field(line: replace(locus, ":", "\t"), index: 0))
+fn join_locus_by_parts(text: String, parts: List<String>) -> JoinLocus {
+  match list_at_optional(xs: parts, index: 0) {
+    Absent => LocusMalformed { text: text }
+    Present { value: l } =>
+      match list_at_optional(xs: parts, index: 1) {
+        Absent => LocusMalformed { text: text }
+        Present { value: c } => join_locus_from_ints(text: text, line: parse_int(l), column: parse_int(c))
+      }
+  }
 }
 
-fn join_locus_column(locus: String) -> Int {
-  join_int(text: join_field(line: replace(locus, ":", "\t"), index: 1))
+fn join_locus_from_ints(text: String, line: Optional<Int>, column: Optional<Int>) -> JoinLocus {
+  match line {
+    Absent => LocusMalformed { text: text }
+    Present { value: l } =>
+      match column {
+        Absent => LocusMalformed { text: text }
+        Present { value: c } => if (l >= 1) && (c >= 1) { LocusAt { line: l, column: c } } else { LocusMalformed { text: text } }
+      }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -277,18 +304,61 @@ fn module_rows(grouped: Map<String, List<String>>, module: String) -> List<Strin
 
 fn join_entry_row(l: String) -> JoinEntry {
   if starts_with(s: l, prefix: "binding_unbound\t") {
-    JoinEntry { module: join_field(line: l, index: 1), spelling: join_field(line: l, index: 2), line: join_locus_line(locus: join_field(line: l, index: 3)), column: join_locus_column(locus: join_field(line: l, index: 3)), source: "unbound", target: "-" }
+    JoinEntry { module: join_field(line: l, index: 1), spelling: join_field(line: l, index: 2), locus: read_join_locus(text: join_field(line: l, index: 3)), source: "unbound", target: "-" }
   } else {
-    JoinEntry { module: join_field(line: l, index: 1), spelling: join_field(line: l, index: 2), line: join_locus_line(locus: join_field(line: l, index: 6)), column: join_locus_column(locus: join_field(line: l, index: 6)), source: join_field(line: l, index: 4), target: join_field(line: l, index: 5) }
+    JoinEntry { module: join_field(line: l, index: 1), spelling: join_field(line: l, index: 2), locus: read_join_locus(text: join_field(line: l, index: 6)), source: join_field(line: l, index: 4), target: join_field(line: l, index: 5) }
   }
 }
 
 fn join_located(e: JoinEntry) -> Bool {
-  (e.line >= 1) && (e.column >= 1)
+  match e.locus {
+    LocusAt { line: _, column: _ } => true
+    LocusAbsent => false
+    LocusMalformed { text: _ } => false
+  }
+}
+
+fn join_absent(e: JoinEntry) -> Bool {
+  match e.locus {
+    LocusAt { line: _, column: _ } => false
+    LocusAbsent => true
+    LocusMalformed { text: _ } => false
+  }
+}
+
+fn join_locus_text(e: JoinEntry) -> String {
+  match e.locus {
+    LocusAt { line: l, column: c } => to_string(l) + ":" + to_string(c)
+    LocusAbsent => "-"
+    LocusMalformed { text: t } => t
+  }
+}
+
+fn join_locus_line(e: JoinEntry) -> Int {
+  match e.locus {
+    LocusAt { line: l, column: _ } => l
+    LocusAbsent => 0 - 1
+    LocusMalformed { text: _ } => 0 - 1
+  }
+}
+
+fn join_locus_column(e: JoinEntry) -> Int {
+  match e.locus {
+    LocusAt { line: _, column: c } => c
+    LocusAbsent => 0 - 1
+    LocusMalformed { text: _ } => 0 - 1
+  }
+}
+
+// A locus that is neither a coordinate nor `-` is refused, never read as a position or as generated.
+fn join_malformed(entries: List<JoinEntry>, module: String, side: String) -> List<JoinDelta> {
+  entries
+    |> filter(e => !join_located(e: e) && !join_absent(e: e))
+    |> map(e => JoinRefused { cause: "MalformedLocus", coordinate: module + " " + e.spelling + " @" + side + " " + join_locus_text(e: e), detail: e.source + " " + e.target })
 }
 
 fn join_site_key(e: JoinEntry) -> String {
-  e.spelling + " @" + to_string(e.line) + ":" + to_string(e.column)
+  e.spelling + " @" + join_locus_text(e: e)
 }
 
 fn join_leaf(spelling: String) -> String {
@@ -332,7 +402,7 @@ type BaseStep {
 
 fn base_step(rows: List<AmbientNameHome>, module: String, b: JoinEntry, head_index: Map<String, JoinEntry>, base_starts: List<Int>, head_starts: List<Int>, rounds: List<List<EditStep>>) -> BaseStep {
   let coordinate = module + " " + join_site_key(e: b)
-  let o = offset_at(starts: base_starts, line: b.line, column: b.column)
+  let o = offset_at(starts: base_starts, line: join_locus_line(e: b), column: join_locus_column(e: b))
   if o < 0 {
     BaseStep { delta: Present { value: JoinUnobserved { coordinate: coordinate, detail: "the census locus lies outside the base text" } }, claimed: Absent }
   } else {
@@ -407,12 +477,14 @@ fn occurrence_join_proven(rows: List<AmbientNameHome>, module: String, base: Lis
   let claimed = claimed_set(steps: steps)
   let appeared = head_located
     |> filter(h => match map_get(claimed, join_site_key(e: h)) { Present { value: _ } => false  Absent => true })
-    |> map(h => JoinRefused { cause: "Appeared", coordinate: module + " " + h.spelling + " @head " + to_string(h.line) + ":" + to_string(h.column), detail: h.source + " " + h.target })
+    |> map(h => JoinRefused { cause: "Appeared", coordinate: module + " " + h.spelling + " @head " + join_locus_text(e: h), detail: h.source + " " + h.target })
   present_deltas(steps: steps)
     + appeared
     + duplicate_sites(entries: base_located, side: "base")
     + duplicate_sites(entries: head_located, side: "head")
-    + join_generated_multiset(base: base |> filter(e => !join_located(e: e)), head: head |> filter(e => !join_located(e: e)))
+    + join_generated_multiset(base: base |> filter(e => join_absent(e: e)), head: head |> filter(e => join_absent(e: e)))
+    + join_malformed(entries: base, module: module, side: "base")
+    + join_malformed(entries: head, module: module, side: "head")
 }
 
 // ONE MODULE, BOTH SIDES. Identical rows are no change and need no proof; otherwise the edit proof decides what the
@@ -535,12 +607,21 @@ fn join_control_base_rows() -> List<String> {
   text_sites(text: join_control_base_text(), needle: "chars(") |> map(locus => "binding_unbound\tm\tchars\t" + locus)
 }
 
+// The locus one column to the right, read through the one reader (a locus that does not read is returned as it was).
+fn join_shifted_locus(locus: String) -> String {
+  match read_join_locus(text: locus) {
+    LocusAt { line: l, column: c } => to_string(l) + ":" + to_string(c + 1)
+    LocusAbsent => locus
+    LocusMalformed { text: _ } => locus
+  }
+}
+
 // Head rows from the head's own sites; `target_for(i)` chooses each site's target, `shift_for(i)` its column shift.
 fn join_control_head_rows(head_text: String, wrong_index: Int, shifted_index: Int) -> List<String> {
   let loci = text_sites(text: head_text, needle: "chars(")
   head_rows_rows(h: fold(loci, init: HeadRows { index: 0, rows: [] }, f: fn(acc, locus) {
     let target = if acc.index == wrong_index { "examples.elsewhere.chars" } else { "std.host_text.chars" }
-    let at = if acc.index == shifted_index { to_string(join_locus_line(locus: locus)) + ":" + to_string(join_locus_column(locus: locus) + 1) } else { locus }
+    let at = if acc.index == shifted_index { join_shifted_locus(locus: locus) } else { locus }
     HeadRows { index: acc.index + 1, rows: list_snoc_item(xs: acc.rows, item: "binding_partial\tm\tchars\t" + to_string(acc.index) + "\tdeclared\t" + target + "\t" + at) }
   }))
 }
@@ -585,6 +666,7 @@ fn occurrence_join_controls_failure(prepared: PreparedGrammar, lex: PreparedLexR
       + join_control_case(name: "equal-count-wrong-home-same-line-site", base_rows: base_rows, head_rows: join_control_head_rows(head_text: head_text, wrong_index: 2, shifted_index: 0 - 1), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 2, want_refused: ["TargetChanged"])
       + join_control_case(name: "head is not the recomputation", base_rows: base_rows, head_rows: admit_rows, evidence: ModuleEvidence { module: "m", base_text: base_text, head_text: head_text + "\n", readable: true }, prepared: prepared, lex: lex, want_admitted: 0, want_refused: ["EditsNotGenerated"])
       + join_control_case(name: "unreadable text", base_rows: base_rows, head_rows: admit_rows, evidence: ModuleEvidence { module: "m", base_text: "", head_text: "", readable: false }, prepared: prepared, lex: lex, want_admitted: 0, want_refused: ["Unobserved"])
+      + join_control_case(name: "malformed locus", base_rows: base_rows, head_rows: list_snoc_item(xs: admit_rows, item: "binding_partial\tm\tchars\t9\tdeclared\tstd.host_text.chars\t3:x"), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 3, want_refused: ["MalformedLocus"])
       + generated_controls()
     if report == "" { Absent } else { Present { value: report } }
   }
