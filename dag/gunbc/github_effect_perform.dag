@@ -559,6 +559,26 @@ fn controller_key_residue_cause(before: FilesystemDelete, why: String) -> String
   }
 }
 
+// THE FILE HALF OF THE STAGING, split out so the pre-clear, the O_EXCL write and the cleanup run in a
+// witness against a real filesystem with no Secret Manager exchange.
+fn stage_key_file(key: Secret, key_path: NonEmptyStr) -> ControllerKeyStaging admit_callers: [
+  decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+  decl_ref(module_path: "test.claim.github_effect_perform_witness", decl_name: "a_real_filesystem_write_refusal_names_what_became_of_the_path"),
+] {
+    let before = Filesystem.Delete(path: key_path)
+    let written = Filesystem.WriteOwnerOnly(path: key_path, content: key as String)
+    if written.success {
+      ControllerKeyStaged { key: HostKeyFile { path: key_path } }
+    } else {
+      let after = Filesystem.Delete(path: key_path)
+      ControllerKeyNotStaged { cause: controller_key_write_refusal(
+        write_error: written.error,
+        before: filesystem_delete(path: key_path as String, success: before.success, error: before.error, error_kind: before.error_kind),
+        after: filesystem_delete(path: key_path as String, success: after.success, error: after.error, error_kind: after.error_kind),
+      ) }
+    }
+}
+
 fn stage_controller_app_key(wif_access_token: Secret, key_path: NonEmptyStr) -> ControllerKeyStaging uses net: Network admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
 ] {
@@ -574,18 +594,7 @@ fn stage_controller_app_key(wif_access_token: Secret, key_path: NonEmptyStr) -> 
         SmAccessVersionSecretDecodeRefused { cause: _ } =>
           ControllerKeyNotStaged { cause: "ControllerAppKeyUnreadable: the Secret Manager payload did not decode" }
         SmAccessVersionSecretDecoded { credential: key } => {
-          let before = Filesystem.Delete(path: key_path)
-          let written = Filesystem.WriteOwnerOnly(path: key_path, content: key as String)
-          if written.success {
-            ControllerKeyStaged { key: HostKeyFile { path: key_path } }
-          } else {
-            let after = Filesystem.Delete(path: key_path)
-            ControllerKeyNotStaged { cause: controller_key_write_refusal(
-              write_error: written.error,
-              before: filesystem_delete(path: key_path as String, success: before.success, error: before.error, error_kind: before.error_kind),
-              after: filesystem_delete(path: key_path as String, success: after.success, error: after.error, error_kind: after.error_kind),
-            ) }
-          }
+          stage_key_file(key: key, key_path: key_path)
         }
       }
   }

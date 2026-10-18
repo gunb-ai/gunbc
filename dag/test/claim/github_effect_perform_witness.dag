@@ -22,7 +22,7 @@ import gunbc.github_effect_perform {
   publisher_key_unreadable, publisher_installation_token_refused, publisher_jwt_after_removal,
   stage_sign_and_remove_publisher_key, AppJwtSigned, AppJwtUnsigned,
   heal_publisher_installation_token_permissions, publication_helper_installation_token_permissions,
-  controller_key_write_refusal,
+  controller_key_write_refusal, stage_key_file, ControllerKeyStaged, ControllerKeyNotStaged,
 }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemPermissionDenied }
 import std.algebra { string_contains }
@@ -256,4 +256,19 @@ test fn a_partial_file_that_cannot_be_removed_is_a_residue_refusal() -> Bool {
 test fn an_unclearable_preexisting_path_is_not_reported_as_this_attempts_residue() -> Bool {
   let c = controller_key_write_refusal(write_error: "exists", before: ck_refused, after: ck_refused)
   string_contains(s: c, pattern: "ControllerAppKeyPreexistingPathUnremovable") && !string_contains(s: c, pattern: "ControllerAppKeyResidueRemains")
+}
+
+// THE PRODUCTION PATH, REAL FILESYSTEM: stage_key_file (the function stage_controller_app_key calls)
+// against paths whose write must fail. A parent that does not exist creates nothing; /proc/self cannot be
+// removed by the pre-clear and exists, so O_EXCL refuses it. NOT REACHABLE: a file left PARTIALLY written
+// (a mid-write failure cannot be authored), so dropping the cleanup call itself is covered only by the
+// supplied-outcome tests above.
+test fn a_real_filesystem_write_refusal_names_what_became_of_the_path() -> Bool {
+  (match stage_key_file(key: "k" as Secret, key_path: "/tmp/gunbc_ck_no_such_parent/x/key" as NonEmptyStr) {
+    ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyUnstaged") && string_contains(s: c, pattern: "no file was created")
+    ControllerKeyStaged { key: _ } => false
+  }) && (match stage_key_file(key: "k" as Secret, key_path: "/proc/self" as NonEmptyStr) {
+    ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyPreexistingPathUnremovable")
+    ControllerKeyStaged { key: _ } => false
+  })
 }
