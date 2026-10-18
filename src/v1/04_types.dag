@@ -993,20 +993,6 @@ type TextJudgment
 type TextNotAskedReason
   = TextNotAskedInVariantFieldSummary
   | TextNotAskedForSyntheticWitnessNodes
-  // RESTORED HERE, not invented. #12512 added this variant together with its one construction site; #14287
-  // (#14256 review follow-up, main) deleted BOTH, because its rewrite of the callable path no longer had
-  // that call. The merge then re-created the construction without the definition: this branch's rewrite of
-  // callable_leaf_substitution is a whole-function replacement in a region #14287 never touched, so git
-  // auto-merged it with no conflict, and the name died on the types side while surviving on the infer side.
-  // The first thing to notice it was a 30-minute remote regen that refused to emit ("undefined variable
-  // 'TextNotAskedForCallableComponentResidue'"). No consumer distinguishes it -- measured over the tree,
-  // TextNotAsked is matched by 5 wildcard arms (`{ reason: _ }`) and zero discriminating ones -- so this
-  // restores a LABEL, not a behaviour: which variant is passed cannot change any verdict. It is restored
-  // rather than swapping in an existing variant because neither of the two that remain is true at that
-  // call: the site is a callable-component residue, not a variant-field summary and not a synthetic
-  // witness. Passing one of those would buy a compile by putting a false label on a judgment. Anyone who
-  // wants this variant gone must delete the construction with it, or the fold loses the reason it asks for.
-  | TextNotAskedForCallableComponentResidue
 
 fn peel_alias_rhs_once(n: Node, text: TextJudgment) -> Node {
   match text {
