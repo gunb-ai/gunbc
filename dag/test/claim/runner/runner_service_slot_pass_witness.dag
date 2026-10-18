@@ -21,7 +21,11 @@ import gunbc.github_effect_perform { JitMintPerformance, JitMintReceived, JitMin
 import gunbc.auth.github_apps { GitHubAppControlPlaneState }
 import extdeps.auth.jws { JwsSigningKeyRef }
 import extdeps.github.actions_jit_runner { EncodedJitConfig, jit_config_mint_outcome }
-import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, restricted_group_1 }
+import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref }
+import gunbc.runner.runner_group_restriction_observation { observe_runner_group_restriction }
+import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
+import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
+import extdeps.transports.rest { RestAnswered }
 import gunbc.fleet.host_credential_custody_converge { host_credential_custody_row, ServiceSlotAppKey, CustodyPathAsDeclared }
 import gunbc.runner.runner_service_slot_controller {
   ServiceSlotPass, ServiceSlotPassDeregistered, ServiceSlotPassNothingRegistered, ServiceSlotPassRegistrationRemains,
@@ -49,7 +53,22 @@ fn delivering_mint(binding: JitMintBinding, state: GitHubAppControlPlaneState) -
     authority: app_credential,
     control_plane: state,
     organization: gunbai_org_ref,
-    runner_group: restricted_group_1(),
+    runner_group: observe_runner_group_restriction(
+      name: binding.runner_group_name,
+      selected_workflow: binding.selected_workflow,
+      listed: runner_groups_of_rest_read(outcome: RestAnswered { answer: OrgRunnerGroupListWire {
+        total_count: 1,
+        runner_groups: [OrgRunnerGroupWire {
+          id: 1,
+          name: binding.runner_group_name as String,
+          visibility: "selected",
+          allows_public_repositories: false,
+          restricted_to_workflows: true,
+          selected_workflows: [binding.selected_workflow as String],
+          workflow_restrictions_read_only: false,
+        }],
+      } }),
+    ),
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   ) {
     JitMintDispatchAuthorized { dispatch: d } =>
