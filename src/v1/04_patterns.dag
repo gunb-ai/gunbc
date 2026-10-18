@@ -8,7 +8,7 @@ import std.decl_ref { declaration_ref_eq }
 
 import std.syntax { LiteralValue }
 
-import v1.std.core { type_is_optional, optional_of, Unmarked,
+import v1.std.core { type_is_optional, optional_of, optional_payload, Unmarked,
   match_pattern_is_irrefutable,
   Node,
   find_child_named, NewlineIndex, authored_name_at, generic_param_name_at,
@@ -487,9 +487,13 @@ type ConstructorField { name: String, type_node: Node }
 type PatternWitnessRow { cells: List<String> }
 
 fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
-  let scrut_is_optional = type_is_optional(n: type_node)
-  let has_structure = type_node.connective != NoConnective
-  let resolved_raw = if has_structure {
+  if type_is_optional(n: type_node) {
+    // The std.optional application names Optional, so the column is its PAYLOAD resolved, re-wrapped; the
+    // declaration's own instance (a Disj) already is the resolved column.
+    if (type_node.connective == NoConnective) {
+      optional_of(payload: resolve_scrutinee_type(type_node: optional_payload(n: type_node), env: env))
+    } else { type_node }
+  } else if type_node.connective != NoConnective {
     type_node
   } else {
     match lookup_type_for(env: env, node: type_node) {
@@ -497,7 +501,6 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
       Absent => type_node
     }
   }
-  if scrut_is_optional { optional_of(payload: resolved_raw) } else { resolved_raw }
 }
 
 // THE ROSTER FOLLOWS THE TYPE SYSTEM'S ANSWER, NOT THE AUTHORED SPELLING -- AND THAT IS AN OPEN

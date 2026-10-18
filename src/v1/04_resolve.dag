@@ -9,7 +9,7 @@ import std.types { SourceSpan, container_param_name }
 
 import std.syntax { LiteralValue }
 
-import v1.std.core { preserve_outer_optional, Unmarked,
+import v1.std.core { preserve_outer_optional, type_is_optional, optional_payload, optional_of, Unmarked,
   Node, ModuleItemFunction, ModuleItemTypeDeclaration,
   authored_name_at, NewlineIndex,
   make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
@@ -346,8 +346,16 @@ fn node_is_type_parameter_reference(n: Node) -> Bool {
   }
 }
 
+// THE std.optional APPLICATION IS PEELED THROUGH ITS PAYLOAD: looking the application up by its own name would
+// answer the declaration's unsubstituted body and drop the payload it was applied to.
 fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
-  if node_is_type_parameter_reference(n: n) { n } else { peel_nominal_alias_identity_by_name(n: n, env: env, module_name: module_name) }
+  if node_is_type_parameter_reference(n: n) { n }
+  else if type_is_optional(n: n) && (n.connective == NoConnective) && ((n.children |> count) > 0) {
+    let payload = optional_payload(n: n)
+    let peeled = peel_nominal_alias_identity(n: payload, env: env, module_name: module_name)
+    if rc_ptr_eq(peeled, payload) { n } else { optional_of(payload: peeled) }
+  }
+  else { peel_nominal_alias_identity_by_name(n: n, env: env, module_name: module_name) }
 }
 
 fn peel_nominal_alias_identity_by_name(n: Node, env: TypeEnv, module_name: String) -> Node {

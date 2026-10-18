@@ -883,6 +883,11 @@ pub enum CompilerDiagnostic {
         missing_realization_fact: String,
         span: Rc<SourceSpan>,
     },
+    TypeNameCarriesNoRecordConstructor {
+        type_name: String,
+        declared_variants: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
 }
 
 #[derive(
@@ -1047,6 +1052,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
         CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { span: s, .. } => s.clone(),
     }
 }
 
@@ -1119,6 +1125,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
     CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
     CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
+    CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name: t, declared_variants: vs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("record literal names '".to_string(), t.clone()), "' which declares no record constructor: '".to_string()), t.clone()), "' is a union with variants [".to_string()), vs.clone().join(&", ".to_string())), "]; construct one of its variants instead (DESIGN §4b: a value inhabits its declared type)".to_string()),
 }
 }
 
@@ -1435,6 +1442,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::TransportEmissionNotModeled { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -5240,43 +5251,29 @@ pub fn type_is_optional(n: Rc<Node>) -> bool {
     }
 }
 
-pub fn optional_payload(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        match n.declaration.clone() {
-            Some(d) => {
-                if ((d.clone() == bootstrap_optional_ref())
-                    && (n.connective.clone() == Connective::NoConnective))
-                {
-                    match n.children.clone().first().cloned() {
-                        Some(p) => {
-                            break p.clone();
-                        }
-                        std::option::Option::None => {
-                            break n.clone();
-                        }
-                    }
-                } else {
-                    break n.clone();
+pub fn optional_payload(n: Rc<Node>) -> Rc<Node> {
+    match n.declaration.clone() {
+        Some(d) => {
+            if ((d.clone() == bootstrap_optional_ref())
+                && (n.connective.clone() == Connective::NoConnective))
+            {
+                match n.children.clone().first().cloned() {
+                    Some(p) => p.clone(),
+                    std::option::Option::None => n.clone(),
                 }
+            } else {
+                n.clone()
             }
-            std::option::Option::None => match n.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: r, .. }) => {
-                    if type_is_optional(n.clone()) {
-                        {
-                            let __tco_0 = r.clone();
-                            __tco_loop_n = __tco_0;
-                            continue;
-                        }
-                    } else {
-                        break n.clone();
-                    }
+        }
+        std::option::Option::None => {
+            if (type_is_optional(n.clone()) && (n.connective.clone() == Connective::NoConnective)) {
+                match n.children.clone().first().cloned() {
+                    Some(p) => p.clone(),
+                    std::option::Option::None => n.clone(),
                 }
-                _ => {
-                    break n.clone();
-                }
-            },
+            } else {
+                n.clone()
+            }
         }
     }
 }

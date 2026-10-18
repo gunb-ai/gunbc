@@ -34,9 +34,9 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
     find_child_named, generic_param_name_at, is_compiler_error, kernel_span, make_error_node,
-    match_pattern_is_irrefutable, no_span, none_type, optional_of, qualified_last_segment,
-    type_is_optional, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
-    InferredNode, MatchPattern, NewlineIndex, Node,
+    match_pattern_is_irrefutable, no_span, none_type, optional_of, optional_payload,
+    qualified_last_segment, type_is_optional, CompilerDiagnostic, Connective, DeclarationMarker,
+    ErrorNode, ExprData, InferredNode, MatchPattern, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -891,23 +891,28 @@ pub struct PatternWitnessRow {
 }
 
 pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
-    {
-        let scrut_is_optional = crate::v1_std_core::type_is_optional(type_node.clone());
-        let has_structure = (type_node.connective.clone() != Connective::NoConnective);
-        let resolved_raw = if has_structure.clone() {
-            type_node.clone()
-        } else {
-            match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), type_node.clone()) {
-                Some(def) => def.clone(),
-                std::option::Option::None => type_node.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if crate::v1_std_core::type_is_optional(type_node.clone()) {
+            if (type_node.connective.clone() == Connective::NoConnective) {
+                crate::v1_std_core::optional_of(resolve_scrutinee_type(
+                    crate::v1_std_core::optional_payload(type_node.clone()),
+                    env.clone(),
+                ))
+            } else {
+                type_node.clone()
             }
-        };
-        if scrut_is_optional.clone() {
-            crate::v1_std_core::optional_of(resolved_raw.clone())
         } else {
-            resolved_raw.clone()
+            if (type_node.connective.clone() != Connective::NoConnective) {
+                type_node.clone()
+            } else {
+                match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), type_node.clone())
+                {
+                    Some(def) => def.clone(),
+                    std::option::Option::None => type_node.clone(),
+                }
+            }
         }
-    }
+    })
 }
 
 pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<ConstructorRoster> {

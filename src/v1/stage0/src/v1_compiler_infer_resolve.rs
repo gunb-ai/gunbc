@@ -59,12 +59,13 @@ pub use crate::v1_std_core::{
     make_arm_node, make_error_node, make_expr_error_node, make_expr_node, make_field_init_node,
     make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
     make_resolved_param_node, make_resource_use_node, make_text_part_node, make_transport_node,
-    map_children, no_span, node_name_span, param_node_default_value, param_node_name_at,
-    param_node_type_expr, preserve_outer_optional, qualified_last_segment,
+    map_children, no_span, node_name_span, optional_of, optional_payload, param_node_default_value,
+    param_node_name_at, param_node_type_expr, preserve_outer_optional, qualified_last_segment,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    string_type, transport_request_body, type_param_kind_property_name, unit_type,
-    CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind,
-    InferredNode, MatchPattern, NewlineIndex, Node, ParsedModuleItemKind, StringPart,
+    string_type, transport_request_body, type_is_optional, type_param_kind_property_name,
+    unit_type, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
+    ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node, ParsedModuleItemKind,
+    StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -461,11 +462,31 @@ pub fn node_is_type_parameter_reference(n: Rc<Node>) -> bool {
 }
 
 pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
-    if node_is_type_parameter_reference(n.clone()) {
-        n.clone()
-    } else {
-        peel_nominal_alias_identity_by_name(n.clone(), env.clone(), module_name.clone())
-    }
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if node_is_type_parameter_reference(n.clone()) {
+            n.clone()
+        } else {
+            if (crate::v1_std_core::type_is_optional(n.clone())
+                && (n.connective.clone() == Connective::NoConnective))
+            {
+                {
+                    let payload = crate::v1_std_core::optional_payload(n.clone());
+                    let peeled = peel_nominal_alias_identity(
+                        payload.clone(),
+                        env.clone(),
+                        module_name.clone(),
+                    );
+                    if v1_rt::rc_ptr_eq(peeled.clone(), payload.clone()) {
+                        n.clone()
+                    } else {
+                        crate::v1_std_core::optional_of(peeled.clone())
+                    }
+                }
+            } else {
+                peel_nominal_alias_identity_by_name(n.clone(), env.clone(), module_name.clone())
+            }
+        }
+    })
 }
 
 pub fn peel_nominal_alias_identity_by_name(

@@ -48,9 +48,10 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
     intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
-    param_node_name_at, param_node_type_expr, qualified_last_segment,
-    resolved_node_is_kernel_identity_for_name, source_text_at, CompilerDiagnostic, Connective,
-    DeclarationMarker, ExprData, InferredNode, InternTable, NewlineIndex, Node,
+    optional_payload, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    resolved_node_is_kernel_identity_for_name, source_text_at, type_is_optional,
+    CompilerDiagnostic, Connective, DeclarationMarker, ExprData, InferredNode, InternTable,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2252,32 +2253,66 @@ pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
     crate::v1_std_core::authored_name_at(env.source_indices.clone(), node.clone())
 }
 
-pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
-    match node.ident.clone() {
-        Some(id) => match lookup_type(env.clone(), id.clone()) {
-            Some(resolved) => {
-                let name = authored_name(env.clone(), node.clone());
-                match ((resolved.connective.clone() == Connective::Disj)
-                    && (crate::v1_std_core::authored_name_at(
-                        env.source_indices.clone(),
-                        resolved.clone(),
-                    ) != name.clone()))
-                {
-                    true => match variant_arm_type_projection(
+pub fn lookup_type_for(
+    mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_node: Rc<Node>,
+) -> Option<Rc<Node>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut env = __tco_loop_env;
+        #[allow(unused_mut)]
+        let mut node = __tco_loop_node;
+        if (crate::v1_std_core::type_is_optional(node.clone())
+            && (node.connective.clone() == Connective::NoConnective))
+        {
+            {
+                let __tco_0 = env;
+                let __tco_1 = crate::v1_std_core::optional_payload(node);
+                __tco_loop_env = __tco_0;
+                __tco_loop_node = __tco_1;
+                continue;
+            }
+        } else {
+            match node.ident.clone() {
+                Some(id) => match lookup_type(env.clone(), id.clone()) {
+                    Some(resolved) => {
+                        let name = authored_name(env.clone(), node.clone());
+                        match ((resolved.connective.clone() == Connective::Disj)
+                            && (crate::v1_std_core::authored_name_at(
+                                env.source_indices.clone(),
+                                resolved.clone(),
+                            ) != name.clone()))
+                        {
+                            true => {
+                                match variant_arm_type_projection(
+                                    env.clone(),
+                                    resolved.clone(),
+                                    name.clone(),
+                                ) {
+                                    Some(arm) => {
+                                        break Some(arm.clone());
+                                    }
+                                    std::option::Option::None => {
+                                        break Some(resolved.clone());
+                                    }
+                                }
+                            }
+                            false => {
+                                break Some(resolved.clone());
+                            }
+                        }
+                    }
+                    std::option::Option::None => {
+                        break std::option::Option::None;
+                    }
+                },
+                std::option::Option::None => {
+                    break lookup_type_by_name(
                         env.clone(),
-                        resolved.clone(),
-                        name.clone(),
-                    ) {
-                        Some(arm) => Some(arm.clone()),
-                        std::option::Option::None => Some(resolved.clone()),
-                    },
-                    false => Some(resolved.clone()),
+                        authored_name(env.clone(), node.clone()),
+                    );
                 }
             }
-            std::option::Option::None => std::option::Option::None,
-        },
-        std::option::Option::None => {
-            lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone()))
         }
     }
 }

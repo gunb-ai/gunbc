@@ -1144,6 +1144,21 @@ fn type_reference_identity_key(n: Node, source_indices: Map<String, NewlineIndex
 }
 
 // ONE TYPE, TWO REPRESENTATIONS (gunbc.recurring_failure_mode optional_equality_answers_by_representation):
+// THE PAYLOAD OF ONE std.optional APPLICATION, in either form it takes: the `T?` wrapper (payload is its
+// child) or the declaration's own instance (payload is the type of its Present arm's member).
+fn optional_application_payload(n: Node) -> Node {
+  if (n.connective == Disj) {
+    match n.children |> filter(arm => (arm.children |> count) > 0) |> first {
+      Present { value: arm } =>
+        match arm.children |> first {
+          Present { value: member } => child_type_node(ch: member)
+          Absent => n
+        }
+      Absent => n
+    }
+  } else { optional_payload(n: n) }
+}
+
 fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
   let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
@@ -1158,6 +1173,9 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
   else if text_crossing_in_judgment(left: left, right: right, text: text) { false }
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
+  else if left_opt && right_opt && ((left.connective == Disj) != (right.connective == Disj)) {
+    node_type_compatible(left: optional_application_payload(n: left), right: optional_application_payload(n: right), source_indices: source_indices, text: text)
+  }
   else if left.connective == Arrow && (right.connective == Arrow) {
     callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_compatible(left: a, right: b, source_indices: source_indices, text: text))
   }
