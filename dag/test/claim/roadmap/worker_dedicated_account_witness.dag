@@ -726,7 +726,7 @@ test fn the_per_attempt_git_entry_is_granted_where_the_attempt_key_lives() -> Bo
 // closed, together with the ruling that the automatic sweep is DEFERRED TO A NAMED ROOT JOB rather than
 // granted. DESIGN 3c: a deferred trigger with no owner is a cost-shape defect, so the owner is named in
 // the model and its count is part of this claim.
-test fn the_worker_never_rewrites_packed_refs_and_the_repack_has_one_named_root_owner() -> Bool {
+test fn the_worker_never_rewrites_packed_refs_and_the_repack_has_one_named_owner() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let worktree = lab_worktree(instance: lab, key: "dispatch-attempt-claim-packed")
   let paths = dispatch_worker_git_writable_paths(instance: lab, attempt_worktree: worktree)
@@ -741,14 +741,26 @@ test fn the_worker_never_rewrites_packed_refs_and_the_repack_has_one_named_root_
     && length(paths) == 4
     // (c) THE DEFERRAL HAS AN OWNER: exactly the two keys that defer the automatic repack, named by the
     //     maintenance job whose own argv re-enables the threshold and does the repack (gc, then
-    //     pack-refs -- both rewrite the file the worker must not touch), run as root on a timer.
+    //     pack-refs -- both rewrite the file the worker must not touch), on a timer, AS THE INSTANCE'S
+    //     OWN PRINCIPAL. The principal is the leg that used to read `== "root"`, which was a claim about
+    //     the host that had never been read off the host: the lab's serve, its actuator's `git worktree
+    //     add`, every object and every .git/worktrees/<key> entry belong to instance.directory_owner.user
+    //     (srv1, 2026-10-17), and the apply's exec route is an SSH command as that same account. So the
+    //     repack runs as the OWNER of the tree it packs -- which is also the only principal the sticky bit
+    //     on objects/ lets unlink and rmdir the worker-created entries `repack -d` removes. An owner that
+    //     is not the instance's is refused here rather than assumed.
     && length(dashboard_git_maintenance_owned_config_keys) == 2
     && all(dashboard_git_maintenance_owned_config_keys, k => any(
       dashboard_git_worker_local_config_keys, c => (c as String) == (k as String)))
     && length(dashboard_git_maintenance_exec_commands(instance: lab)) == 2
     && any(dashboard_git_maintenance_exec_commands(instance: lab), c => any(c.arguments, a => a == "gc"))
     && any(dashboard_git_maintenance_exec_commands(instance: lab), c => any(c.arguments, a => a == "pack-refs"))
-    && (dashboard_git_maintenance_principal as String) == "root"
+    && (dashboard_git_maintenance_principal(instance: lab) as String)
+      == (lab.directory_owner.user as String)
+    //     and the owner is not the worker: if the repack ran as the confined account it would need the
+    //     packed-refs.lock write this claim just refused, and the whole deferral would be circular.
+    && (dashboard_git_maintenance_principal(instance: lab) as String)
+      != (fleet_posix_worker_user.name as String)
     && contains(haystack: dashboard_git_maintenance_service_unit_name(instance: lab), needle: dashboard_git_maintenance_unit_stem as String)
     && contains(haystack: dashboard_git_maintenance_timer_unit_name(instance: lab), needle: dashboard_git_maintenance_unit_stem as String)
     && length(dashboard_git_maintenance_timer_on_calendar) > 0

@@ -3113,13 +3113,26 @@ fn dispatch_worker_unit_stream_properties(
 // known, which is also why it is not in dashboard_git_worker_directory_children: no apply of an
 // instance knows the attempts in advance.
 //
-// TWO MEASURED FACTS SHAPE IT. ONE: the entry is ROOT-OWNED -- `git worktree add` runs as root, so the
-// entry arrives owned by root and only a root-owned step can put it in the attempt group; asserting
-// it is not optional, it is the only thing that makes the worker's first commit possible. TWO: the
-// grant must be RECURSIVE over the entry, because the commit writes an existing file (its index, its
-// HEAD) and creates new subdirectories (logs/, and the reflog file inside logs/) that have to inherit
-// the group; the mode this demands, 02775/0664, is exactly what core.sharedRepository=group makes git
-// ask for. It also says the entry must NOT be pre-created by hand: git silently renames an entry that
+// TWO MEASURED FACTS SHAPE IT.
+//
+// ONE: THE ENTRY IS OWNED BY THE INSTANCE'S PRINCIPAL, so the re-group must be performed by that same
+// account -- by `git worktree add`, which on the lab is a spawn command of the serve and runs as
+// instance.directory_owner.user (measured on srv1, 2026-10-17: the serve is a system unit running as
+// that account, all 185 .git/worktrees/<key> entries are owned by it, and `getent group gunbc-attempt`
+// shows it as a member). An earlier cut of this comment said the entry was root-owned and that only a
+// root step could re-group it; that was read off a BuildBuddy runner whose uid is 0, not off the lab
+// (DESIGN 4d: name where a figure or a principal was measured), and it implied a privilege the lab
+// deploy does not use. WHAT THE FACT STILL REQUIRES is unchanged and still load-bearing: the re-group
+// has to be done by the ENTRY'S OWNER, and it cannot be left to the worker -- chgrp to a group the
+// caller is not a member of is restricted, and the worker is not the entry's owner. Hence the step is
+// part of THIS actuator's spawn sequence, run between the worktree add and the unit start, under the
+// same principal that just created the entry. Asserting it is still the only thing that makes the
+// worker's first commit possible.
+//
+// TWO: the grant must be RECURSIVE over the entry, because the commit writes an existing file (its
+// index, its HEAD) and creates new subdirectories (logs/, and the reflog file inside logs/) that have
+// to inherit the group; the mode this demands, 02775/0664, is exactly what core.sharedRepository=group
+// makes git ask for. It also says the entry must NOT be pre-created by hand: git silently renames an entry that
 // already exists (probe becomes probe1) and the grant plus the unit's ReadWritePaths= would then point
 // at a directory git is not using.
 fn dispatch_attempt_worker_git_entry_directories(instance: HostDashboardInstance, attempt_worktree: String) -> List<OwnedDirectoryTarget> {
@@ -3162,18 +3175,20 @@ fn dispatch_attempt_worker_git_entry_migration(instance: HostDashboardInstance, 
         target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
         pruned: [],
         // NO STICKY BIT HERE, and it is the one granted subtree where getting it wrong would BREAK the
-        // feature rather than weaken it: root's `git worktree add` checks the entry out, so its index
-        // and HEAD are ROOT-owned entries inside a directory the attempt group writes, and the worker's
-        // first `git add` renames index.lock OVER index -- a rename of an entry it does not own, which
-        // +t refuses with EPERM. The objects/ argument does not transfer: nothing under this entry is
-        // confined, and no root job writes or deletes through it.
+        // feature rather than weaken it: the instance principal's `git worktree add` checks the entry
+        // out, so its index and HEAD are entries OWNED BY THAT ACCOUNT inside a directory the attempt
+        // group writes, and the worker's first `git add` renames index.lock OVER index -- a rename of an
+        // entry whose owner is somebody else, which +t refuses with EPERM. The objects/ argument does
+        // not transfer: nothing under this entry is confined, and no maintenance step writes or deletes
+        // through it.
         sticky: false,
       ),
     ]
   }
 }
 
-// THE SHARED-REPOSITORY POSTURE, WRITTEN BEFORE THE WORKTREE IS ADDED, by the same root-owned step
+// THE SHARED-REPOSITORY POSTURE, WRITTEN BEFORE THE WORKTREE IS ADDED, by the instance's own
+// principal step
 // and in this order, both measured:
 //   core.sharedRepository=group  git creates the fan-out directory, the ref file and the reflog with
 //                                the group bits set (0444/0664/2775). Set AFTER `git worktree add` and

@@ -1828,14 +1828,14 @@ fn dashboard_instance_provider_state_directory(instance: HostDashboardInstance) 
 // THE THREE SHARED SUBTREES, as children of the repo root, plus the per-attempt entry the dispatch
 // actuator names (below, at WORKER-ROOT-EQUIVALENT-3, because this module has no business naming an
 // attempt). `.git/worktrees` itself is deliberately NOT in this list: a worker's commit never creates
-// an entry there -- the root-owned `git worktree add` does -- so the parent needs traverse, not
+// an entry there -- the instance principal's `git worktree add` does -- so the parent needs traverse, not
 // write, and a group-writable parent would let a worker create entries of its own. The entry UNDER it
 // is what the commit writes (its own index, HEAD, reflog and ORIG_HEAD), and it is granted as a
 // subtree where the attempt key lives.
 data dashboard_git_worker_directory_children: List<NonEmptyStr> = [".git/objects", ".git/refs", ".git/logs"] as List<NonEmptyStr>
 
-// THE CHILD OF THE REPO ROOT UNDER WHICH EVERY ATTEMPT'S PRIVATE GIT ENTRY SITS. Root-owned to
-// create, world-traversable, never group-writable: git creates an entry there, and the worker's own
+// THE CHILD OF THE REPO ROOT UNDER WHICH EVERY ATTEMPT'S PRIVATE GIT ENTRY SITS. Owned by the
+// account that creates the entries, world-traversable, never group-writable: git creates an entry there, and the worker's own
 // commit only ever writes inside the one entry the unit's ReadWritePaths= names.
 data dashboard_git_worktrees_child: NonEmptyStr = ".git/worktrees"
 
@@ -1873,7 +1873,7 @@ fn dashboard_instance_worker_git_directories(instance: HostDashboardInstance) ->
 //                      all -- measured with it 0555, 25 consecutive commits.
 //   packed-refs        never, for this write-set. A new branch is written LOOSE and a loose ref
 //                      shadows the packed one; git rewrites packed-refs only for `pack-refs`, a
-//                      branch delete, or the auto-GC/maintenance sweep. Those are root's jobs; the
+//                      branch delete, or the auto-GC/maintenance sweep. Those belong to the owner's
 //                      worker's own commit must not, and the confined path list below says so.
 //   config, HEAD, description, index (repo-level), hooks/, info/, branches/, objects/pack/,
 //   objects/info/, .git/COMMIT_EDITMSG's parent grant -- all stay as #13942 left them.
@@ -1881,7 +1881,7 @@ data dashboard_git_worker_commit_write_set: List<NonEmptyStr> = [
   ".git/objects/<fan-out>/<object>", ".git/refs/heads/<branch>", ".git/logs/refs/heads/<branch>",
 ] as List<NonEmptyStr>
 
-// THE CONFIG THE POSTURE NEEDS, written by the ROOT-owned step before any attempt worktree is added
+// THE CONFIG THE POSTURE NEEDS, written by the INSTANCE PRINCIPAL's step before any attempt worktree is added
 // (extdeps/git git_shared_repository_group_config_argv). Two keys, both load-bearing and both
 // measured:
 //   core.sharedRepository=group  git's own shared-repository behaviour. Without it git creates under
@@ -1889,10 +1889,10 @@ data dashboard_git_worker_commit_write_set: List<NonEmptyStr> = [
 //                                and a second writer arriving through the group cannot write at all.
 //   gc.auto=0, maintenance.auto=false  `git commit` spawns `git maintenance run --auto`, which
 //                                reaches for packed-refs.lock IN .git ITSELF -- a path #13942
-//                                confines to root. The attempt still commits (the child's failure is
+//                                confines from the worker. The attempt still commits (the child's failure is
 //                                a stderr error, not the commit's), but it is not noise the model
 //                                should be teaching a worker to tolerate: the automatic repack is a
-//                                root maintenance job, so the auto trigger is switched off for the
+//                                maintenance job, so the auto trigger is switched off for the
 //                                repository instead of the confined write being granted.
 data dashboard_git_worker_local_config_keys: List<NonEmptyStr> = [
   "core.sharedRepository", "gc.auto", "maintenance.auto",
@@ -1923,7 +1923,7 @@ fn dashboard_instance_worker_git_unwritable_paths(instance: HostDashboardInstanc
 // asked to be decided). REASON IT IS A MIGRATION AND NOT A RECURSIVE PROVIDER: the provider asserts
 // one directory and does not recurse (gunbc.owned_directory ensure_owned_directory_provider_argv),
 // and making it recurse is the wrong instrument here -- a recursive assert over .git would descend
-// into hooks, info and objects/pack, which #13942 confines to root, and it would run on every apply
+// into hooks, info and objects/pack, which #13942 confines from the worker, and it would run on every apply
 // over an object store that grows without bound. A migration runs ONCE, its readback is the
 // receipt, and it can name what it must not touch. A hand step on srv1 is therefore not needed: the
 // step below is the bounded, declared form of it, and its readback is the claim below, not a person.
@@ -1950,7 +1950,7 @@ fn dashboard_instance_worker_git_unwritable_paths(instance: HostDashboardInstanc
 // whatever the grant list says, and a later reader cannot "simplify" a prune away without the
 // confinement claim noticing.
 // WHICH CHILDREN OF A GRANTED SUBTREE ARE CONFINED, named RELATIVE to that subtree itself. objects
-// carries the two confined children #13942 hands to root; refs and logs carry NONE, and that is
+// carries the two confined children #13942 keeps out of the worker's reach; refs and logs carry NONE, and that is
 // load-bearing: a prune name in refs would be a pattern, and a pattern prunes real refs (a branch
 // named pack or branches) out of the walk forever. The builder splices each name under the target, so
 // what is pruned is exactly <target>/pack and <target>/info and nothing at any other depth.
@@ -1987,10 +1987,10 @@ fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr
 // WHICH GRANTED SUBTREES GET THE STICKY BIT, and the answer is deliberately not "all of them".
 // +t is the bit that stops a group-writable PARENT from letting its writer rename or unlink entries
 // it does not own, and it is needed exactly where such entries exist: .git/objects holds the two
-// subtrees #13942 keeps for root (pack, info), and the root maintenance job this PR names later
+// subtrees #13942 keeps out of the worker's reach (pack, info), and the maintenance job this PR names later
 // WRITES AND DELETES THROUGH objects/pack (`git gc` runs `repack -d`). Without +t, one `mv
 // objects/pack objects/pack.x && ln -s <worker's dir> objects/pack` from inside a confined attempt
-// points that root job at a directory the worker chose -- root writing and deleting where a worker
+// points that job at a directory the worker chose -- the owner writing and deleting where a worker
 // directed it, which voids the confinement against the job it names (bright-moth-475's finding,
 // 2026-10-18; rename(2) checks the parent, not the entry, so a 0555 objects/pack renames freely
 // under a writable objects/). refs and logs get NO +t because they hold no entries the worker is
@@ -2060,9 +2060,19 @@ fn dashboard_instance_worker_git_subtree_migration(instance: HostDashboardInstan
 //               packed-refs and both write under .git/objects/pack -- the exact paths #13942 confines
 //               to root, which is why no attempt can run them and why deferring to a root job is the
 //               only shape that closes the noise rather than granting a confined write.
-//   AS WHOM     root (the instance's apply principal, the same one the migration steps run as). NOT
-//               the service user: the confinement story is that the worker's group can write four
-//               subtrees and root owns the discipline, so the repack runs where the ownership sits.
+//   AS WHOM     THE INSTANCE'S OWN PRINCIPAL -- instance.directory_owner.user, the same account the
+//               serve runs as, the same account the enrolled SSH user is, and the owner of every entry
+//               in the repository. NOT root and NOT the worker. Measured on srv1 (bright-moth-475,
+//               2026-10-17): the lab serve is a SYSTEM unit running as the directory owner, the
+//               actuator's `git worktree add` runs as that same account (it is a spawn command of the
+//               serve, not a privileged step), and EVERY entry under objects/refs/logs and all 185
+//               .git/worktrees/<key> entries are owned by it. So ownership already sits there, and a
+//               repack that runs as anyone else is a stranger to the tree it is packing.
+//               An earlier cut of this row said "root", and so did the surrounding rationale; that was
+//               read off a BuildBuddy runner whose uid happens to be 0, not off the lab (DESIGN 4d:
+//               a figure or a principal must name where it was measured). It matters beyond prose:
+//               the sticky bit on objects/ is what makes the owner's `gc` safe, and the owner is the
+//               ONLY principal that may unlink or rmdir the worker-created entries it removes.
 //   ON WHAT     a systemd timer, 03:30 daily with a randomized delay, matching the shape of the
 //               machine's other opportunistic sweep (gunbc.fleet.fleet_converge_timer). Nightly and
 //               untimed-at-boot so the sweep never competes with an attempt's worktree add.
@@ -2076,14 +2086,21 @@ fn dashboard_instance_worker_git_subtree_migration(instance: HostDashboardInstan
 // the migration's own argv is consumed, so the two land together or not at all. Until then the lab
 // repository accumulates loose objects at the rate attempts commit, which is the cost the timer
 // bounds. The claim (test.claim.roadmap.worker_dedicated_account_witness
-// the_deferred_repack_has_one_named_root_owner) pins the pair: the number of deferred keys equals the
+// the_worker_never_rewrites_packed_refs_and_the_repack_has_one_named_owner) pins the pair: the number of deferred keys equals the
 // number of keys the maintenance job's own argv re-enables, and a unit whose principal is not root is
 // refused.
 data dashboard_git_maintenance_unit_stem: NonEmptyStr = "git-maintenance"
 data dashboard_git_maintenance_service_suffix: String = ".service"
 data dashboard_git_maintenance_timer_suffix: String = ".timer"
 data dashboard_git_maintenance_timer_on_calendar: String = "*-*-* 03:30:00"
-data dashboard_git_maintenance_principal: NonEmptyStr = "root"
+// THE PRINCIPAL IS READ FROM THE INSTANCE, not asserted. A constant "root" here would have been a
+// second, unfalsifiable story about the host: it claimed a privilege the lab apply does not have (its
+// exec route is an SSH command as the enrolled user) and it denied the one the lab actually has (the
+// entries are the directory owner's). Deriving it also makes the unit land correctly on a host whose
+// owner is not the fleet default, and it is what the claim pins against instance.directory_owner.user.
+fn dashboard_git_maintenance_principal(instance: HostDashboardInstance) -> NonEmptyStr {
+  instance.directory_owner.user
+}
 
 fn dashboard_git_maintenance_service_unit_name(instance: HostDashboardInstance) -> String {
   join(
