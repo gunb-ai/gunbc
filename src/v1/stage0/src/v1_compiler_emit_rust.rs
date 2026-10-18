@@ -6766,7 +6766,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             fn_type_env: base_info.fn_type_env.clone(),
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
-            tco_cursor_param: "".to_string(),
+            tco_cursor_params: Rc::new(vec![]),
             tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         });
         let registry = typed.item_registry.clone();
@@ -8062,7 +8062,7 @@ pub fn emit_module(
             fn_type_env: base_info.fn_type_env.clone(),
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
-            tco_cursor_param: "".to_string(),
+            tco_cursor_params: Rc::new(vec![]),
             tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         });
         let shared_types = emit_info.shared_types.clone();
@@ -11086,7 +11086,7 @@ pub fn emit_module_full(
             fn_type_env: scope.type_env.clone(),
             fn_return_type: emit_info.fn_return_type.clone(),
             expected_type: emit_info.expected_type.clone(),
-            tco_cursor_param: emit_info.tco_cursor_param.clone(),
+            tco_cursor_params: emit_info.tco_cursor_params.clone(),
             tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
         });
         let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -16324,7 +16324,7 @@ pub fn emit_typed_item(
                         fn_type_env: emit_info.fn_type_env.clone(),
                         fn_return_type: emit_info.fn_return_type.clone(),
                         expected_type: emit_info.expected_type.clone(),
-                        tco_cursor_param: emit_info.tco_cursor_param.clone(),
+                        tco_cursor_params: emit_info.tco_cursor_params.clone(),
                         tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
                     });
                     let is_effectful = match crate::v1_compiler_emit::lookup_item_by_identity(
@@ -20582,7 +20582,7 @@ pub fn emit_fn_def(
                     si.clone(),
                 );
                 let cursor_emit_info = Rc::new(EmitGraphInfo {
-                    tco_cursor_param: cursor_plan.param.clone(),
+                    tco_cursor_params: cursor_plan.params.clone(),
                     tco_cursor_tails: cursor_plan.tails.clone(),
                     ..(*body_emit_info.clone()).clone()
                 });
@@ -29833,7 +29833,7 @@ pub fn emit_rust_fold_method_call(
                             fn_type_env: emit_info.fn_type_env.clone(),
                             fn_return_type: emit_info.fn_return_type.clone(),
                             expected_type: emit_info.expected_type.clone(),
-                            tco_cursor_param: emit_info.tco_cursor_param.clone(),
+                            tco_cursor_params: emit_info.tco_cursor_params.clone(),
                             tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
                         }),
                         std::option::Option::None => emit_info.clone(),
@@ -29891,7 +29891,7 @@ pub fn emit_rust_fold_method_call(
                                 fn_type_env: emit_info.fn_type_env.clone(),
                                 fn_return_type: emit_info.fn_return_type.clone(),
                                 expected_type: emit_info.expected_type.clone(),
-                                tco_cursor_param: emit_info.tco_cursor_param.clone(),
+                                tco_cursor_params: emit_info.tco_cursor_params.clone(),
                                 tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
                             }),
                             std::option::Option::None => emit_info.clone(),
@@ -37189,8 +37189,8 @@ pub fn emit_typed_tco_body(
             emit_info.clone(),
         );
         let si = scope.type_env.source_indices.clone();
-        let cursor_param = emit_info.tco_cursor_param.clone();
-        if (cursor_param.clone() == "".to_string()) {
+        let cursor_params = emit_info.tco_cursor_params.clone();
+        if ((cursor_params.clone().len() as i64) == 0) {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
@@ -37213,39 +37213,18 @@ pub fn emit_typed_tco_body(
             )
         } else {
             {
-                let slot = crate::v1_compiler_emit::emit_ident(
-                    crate::v1_compiler_emit::tco_loop_slot_name(cursor_param.clone()),
-                    RenderTarget::Rust,
-                );
-                let cursor_let = v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            crate::v1_compiler_emit_core_support::make_indent(
-                                                v1_rt::int_add(depth.clone(), 1),
-                                            ),
-                                            "#[allow(unused_mut)]\n".to_string(),
-                                        ),
-                                        crate::v1_compiler_emit_core_support::make_indent(
-                                            v1_rt::int_add(depth.clone(), 1),
-                                        ),
-                                    ),
-                                    "let mut ".to_string(),
-                                ),
-                                crate::v1_compiler_emit::emit_ident(
-                                    cursor_param.clone(),
-                                    RenderTarget::Rust,
-                                ),
-                            ),
-                            " = ".to_string(),
-                        ),
-                        slot.clone(),
-                    ),
-                    ".clone();\n".to_string(),
-                );
+                let cursor_decls = Rc::new({
+                    let mut __result = Vec::new();
+                    for cp in cursor_params.iter().cloned() {
+                        __result.push(v1_rt::concat(
+                            v1_rt::concat("let mut ".to_string(), tco_cursor_name(cp.clone())),
+                            ": usize = 0; ".to_string(),
+                        ));
+                    }
+                    __result
+                })
+                .join(&"".to_string());
+                let cursor_lets = Rc::new({ let mut __result = Vec::new(); for cp in cursor_params.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1)), "#[allow(unused_mut)]\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "let mut ".to_string()), crate::v1_compiler_emit::emit_ident(cp.clone(), RenderTarget::Rust)), " = ".to_string()), crate::v1_compiler_emit::emit_ident(crate::v1_compiler_emit::tco_loop_slot_name(cp.clone()), RenderTarget::Rust)), ".clone();\n".to_string())); } __result }).join(&"".to_string());
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -37255,10 +37234,10 @@ pub fn emit_typed_tco_body(
                                         v1_rt::concat(
                                             v1_rt::concat(
                                                 v1_rt::concat(
-                                                    "{ let mut ".to_string(),
-                                                    tco_cursor_name(),
+                                                    "{ ".to_string(),
+                                                    cursor_decls.clone(),
                                                 ),
-                                                ": usize = 0;\n".to_string(),
+                                                "\n".to_string(),
                                             ),
                                             crate::v1_compiler_emit_core_support::make_indent(
                                                 v1_rt::int_add(depth.clone(), 1),
@@ -37270,11 +37249,13 @@ pub fn emit_typed_tco_body(
                                         Rc::new({
                                             let mut __result = Vec::new();
                                             for p in params.iter().cloned() {
-                                                if (crate::v1_std_core::param_node_name_at(
-                                                    p.clone(),
-                                                    si.clone(),
-                                                ) != cursor_param.clone())
-                                                {
+                                                if !cursor_name_in(
+                                                    cursor_params.clone(),
+                                                    crate::v1_std_core::param_node_name_at(
+                                                        p.clone(),
+                                                        si.clone(),
+                                                    ),
+                                                ) {
                                                     __result.push(p);
                                                 }
                                             }
@@ -37284,7 +37265,7 @@ pub fn emit_typed_tco_body(
                                         v1_rt::int_add(depth.clone(), 1),
                                     ),
                                 ),
-                                cursor_let.clone(),
+                                cursor_lets.clone(),
                             ),
                             crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
                                 depth.clone(),
@@ -37450,19 +37431,47 @@ pub struct CursorWalk {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoCursorPlan {
-    pub param: String,
+    pub params: Rc<Vec<String>>,
     pub tails: Rc<HashMap<String, i64>>,
 }
 
-pub fn tco_cursor_name() -> String {
-    "__tco_cursor".to_string()
+pub fn tco_cursor_name(param: String) -> String {
+    v1_rt::concat(
+        "__tco_cursor_".to_string(),
+        crate::v1_compiler_emit::emit_ident(param.clone(), RenderTarget::Rust),
+    )
+}
+
+pub fn cursor_tail_key(param: String, tail: String) -> String {
+    v1_rt::concat(v1_rt::concat(param.clone(), ".".to_string()), tail.clone())
 }
 
 pub fn no_tco_cursor_plan() -> Rc<TcoCursorPlan> {
     Rc::new(TcoCursorPlan {
-        param: "".to_string(),
+        params: Rc::new(vec![]),
         tails: v1_rt::rc_empty_map::<String, i64>(),
     })
+}
+
+pub fn cursor_scrutinee_param(
+    scrutinee: Rc<Node>,
+    params: Rc<Vec<String>>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match (*scrutinee.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
+            let scrutinee_name =
+                crate::v1_std_core::expr_var_name_at(scrutinee.clone(), si.clone());
+            if cursor_name_in(params.clone(), scrutinee_name.clone()) {
+                scrutinee_name.clone()
+            } else {
+                "".to_string()
+            }
+        }
+        _ => "".to_string(),
+    }
 }
 
 pub fn cursor_walk_fail() -> Rc<CursorWalk> {
@@ -37992,15 +38001,6 @@ pub fn cursor_tails_consistent(tails: Rc<Vec<Rc<CursorTail>>>) -> bool {
     }
 }
 
-pub fn cursor_tails_map(tails: Rc<Vec<Rc<CursorTail>>>) -> Rc<HashMap<String, i64>> {
-    tails.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |m: Rc<HashMap<String, i64>>, t: Rc<CursorTail>| {
-            v1_rt::rc_map_insert(m, t.name.clone(), t.depth.clone())
-        },
-    )
-}
-
 pub fn tco_cursor_plan(
     body: Rc<Node>,
     fn_name: String,
@@ -38021,31 +38021,57 @@ pub fn tco_cursor_plan(
         });
         param_names.clone().iter().cloned().fold(
             no_tco_cursor_plan(),
-            |best: Rc<TcoCursorPlan>, p: String| {
-                if (best.param.clone() != "".to_string()) {
-                    best.clone()
-                } else {
-                    {
-                        let walked = cursor_walk(
-                            body.clone(),
-                            p.clone(),
-                            Rc::new(vec![]),
-                            fn_name.clone(),
-                            param_names.clone(),
-                            emit_info.clone(),
-                            si.clone(),
-                        );
-                        if ((walked.ok.clone() && ((walked.tails.clone().len() as i64) > 0))
-                            && cursor_tails_consistent(walked.tails.clone()))
-                        {
-                            Rc::new(TcoCursorPlan {
-                                param: p.clone(),
-                                tails: cursor_tails_map(walked.tails.clone()),
-                            })
-                        } else {
-                            best.clone()
+            |plan: Rc<TcoCursorPlan>, p: String| {
+                let walked = cursor_walk(
+                    body.clone(),
+                    p.clone(),
+                    Rc::new(vec![]),
+                    fn_name.clone(),
+                    param_names.clone(),
+                    emit_info.clone(),
+                    si.clone(),
+                );
+                let shares_spelling = {
+                    let mut __found = false;
+                    for q in plan.params.clone().iter().cloned() {
+                        if {
+                            let mut __found = false;
+                            for t in walked.tails.clone().iter().cloned() {
+                                if v1_rt::map_contains_key(
+                                    &plan.tails.clone(),
+                                    cursor_tail_key(q.clone(), t.name.clone()),
+                                ) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
+                            __found = true;
+                            break;
                         }
                     }
+                    __found
+                };
+                if (((walked.ok.clone() && ((walked.tails.clone().len() as i64) > 0))
+                    && cursor_tails_consistent(walked.tails.clone()))
+                    && !shares_spelling.clone())
+                {
+                    Rc::new(TcoCursorPlan {
+                        params: v1_rt::concat(plan.params.clone(), Rc::new(vec![p.clone()])),
+                        tails: walked.tails.clone().iter().cloned().fold(
+                            plan.tails.clone(),
+                            |m: Rc<HashMap<String, i64>>, t: Rc<CursorTail>| {
+                                v1_rt::rc_map_insert(
+                                    m,
+                                    cursor_tail_key(p.clone(), t.name.clone()),
+                                    t.depth.clone(),
+                                )
+                            },
+                        ),
+                    })
+                } else {
+                    plan.clone()
                 }
             },
         )
@@ -38184,16 +38210,16 @@ pub fn emit_rust_tco_match(
             let s = crate::v1_std_core::match_scrutinee(frame.expr.clone());
             let arm_list = crate::v1_std_core::match_arm_nodes(frame.expr.clone());
             let tco_si = frame.scope.type_env.source_indices.clone();
-            let on_cursor = ((emit_info.tco_cursor_param.clone() != "".to_string())
-                && cursor_scrutinee_is(
-                    s.clone(),
-                    emit_info.tco_cursor_param.clone(),
-                    tco_si.clone(),
-                ));
+            let cursor_of_scrutinee = cursor_scrutinee_param(
+                s.clone(),
+                emit_info.tco_cursor_params.clone(),
+                tco_si.clone(),
+            );
+            let on_cursor = (cursor_of_scrutinee.clone() != "".to_string());
             let scrut_str = if on_cursor.clone() {
                 v1_rt::concat(
                     crate::v1_compiler_emit::emit_ident(
-                        emit_info.tco_cursor_param.clone(),
+                        cursor_of_scrutinee.clone(),
                         RenderTarget::Rust,
                     ),
                     ".clone()".to_string(),
@@ -38218,7 +38244,7 @@ pub fn emit_rust_tco_match(
                 emit_native_freemonoid_tco_match(
                     scrut_str.clone(),
                     if on_cursor.clone() {
-                        tco_cursor_name()
+                        tco_cursor_name(cursor_of_scrutinee.clone())
                     } else {
                         "".to_string()
                     },
@@ -38897,6 +38923,12 @@ pub fn expr_references_var(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TcoAssign {
+    pub target: String,
+    pub value: String,
+}
+
 pub fn emit_typed_tco_reassign(
     args: Rc<Vec<Rc<Node>>>,
     params: Rc<Vec<Rc<Node>>>,
@@ -38967,122 +38999,103 @@ pub fn emit_typed_tco_reassign(
             }
             __result
         });
-        let param_names = Rc::new({
+        let cursor_params = emit_info.tco_cursor_params.clone();
+        let entries = Rc::new({
             let mut __result = Vec::new();
             for pair in pairs.iter().cloned() {
-                __result.push(crate::v1_compiler_emit::emit_ident(
-                    crate::v1_compiler_emit::tco_loop_slot_name(
-                        crate::v1_std_core::param_node_name_at(pair.1.clone(), si.clone()),
-                    ),
-                    RenderTarget::Rust,
-                ));
+                __result.extend(
+                    (*{
+                        let assigned_name =
+                            crate::v1_std_core::param_node_name_at(pair.1.clone(), si.clone());
+                        let slot = crate::v1_compiler_emit::emit_ident(
+                            crate::v1_compiler_emit::tco_loop_slot_name(assigned_name.clone()),
+                            RenderTarget::Rust,
+                        );
+                        let arg_str =
+                            match ordered_args.clone().get((pair.0.clone()) as usize).cloned() {
+                                Some(given_str) => given_str.clone(),
+                                std::option::Option::None => "".to_string(),
+                            };
+                        if cursor_name_in(cursor_params.clone(), assigned_name.clone()) {
+                            {
+                                let assigned_av = match arg_values
+                                    .clone()
+                                    .get((pair.0.clone()) as usize)
+                                    .cloned()
+                                {
+                                    Some(given_av) => given_av.clone(),
+                                    std::option::Option::None => pair.1.clone(),
+                                };
+                                let advance = match (*assigned_av.expr_data.clone()).clone() {
+                                    ExprData::ExprVar {
+                                        binding_kind: _, ..
+                                    } => v1_rt::map_get(
+                                        &emit_info.tco_cursor_tails.clone(),
+                                        cursor_tail_key(
+                                            assigned_name.clone(),
+                                            crate::v1_std_core::expr_var_name_at(
+                                                assigned_av.clone(),
+                                                si.clone(),
+                                            ),
+                                        ),
+                                    ),
+                                    _ => std::option::Option::None,
+                                };
+                                match advance.clone() {
+                                    Some(depth_of_tail) => Rc::new(vec![Rc::new(TcoAssign {
+                                        target: tco_cursor_name(assigned_name.clone()),
+                                        value: v1_rt::concat(
+                                            v1_rt::concat(
+                                                tco_cursor_name(assigned_name.clone()),
+                                                " + ".to_string(),
+                                            ),
+                                            crate::v1_compiler_emit_core_support::to_string(
+                                                depth_of_tail.clone(),
+                                            ),
+                                        ),
+                                    })]),
+                                    std::option::Option::None => Rc::new(vec![
+                                        Rc::new(TcoAssign {
+                                            target: slot.clone(),
+                                            value: arg_str.clone(),
+                                        }),
+                                        Rc::new(TcoAssign {
+                                            target: tco_cursor_name(assigned_name.clone()),
+                                            value: "0".to_string(),
+                                        }),
+                                    ]),
+                                }
+                            }
+                        } else {
+                            Rc::new(vec![Rc::new(TcoAssign {
+                                target: slot.clone(),
+                                value: arg_str.clone(),
+                            })])
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
             }
             __result
         });
-        let cursor_param = emit_info.tco_cursor_param.clone();
-        let cursor_pos = Rc::new({
-            let mut __result = Vec::new();
-            for pair in pairs.iter().cloned() {
-                if ((cursor_param.clone() != "".to_string())
-                    && (crate::v1_std_core::param_node_name_at(pair.1.clone(), si.clone())
-                        == cursor_param.clone()))
-                {
-                    __result.push(pair);
+        let inner = crate::v1_compiler_emit::shared_tco_reassign(
+            Rc::new({
+                let mut __result = Vec::new();
+                for e in entries.iter().cloned() {
+                    __result.push(e.value.clone());
                 }
-            }
-            __result
-        })
-        .first()
-        .cloned();
-        let cursor_advance = match cursor_pos.clone() {
-            std::option::Option::None => std::option::Option::None,
-            Some(pair) => {
-                let av = match arg_values.clone().get((pair.0.clone()) as usize).cloned() {
-                    Some(v) => v.clone(),
-                    std::option::Option::None => pair.1.clone(),
-                };
-                match (*av.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => v1_rt::map_get(
-                        &emit_info.tco_cursor_tails.clone(),
-                        crate::v1_std_core::expr_var_name_at(av.clone(), si.clone()),
-                    ),
-                    _ => std::option::Option::None,
+                __result
+            }),
+            Rc::new({
+                let mut __result = Vec::new();
+                for e in entries.iter().cloned() {
+                    __result.push(e.target.clone());
                 }
-            }
-        };
-        let inner = match cursor_pos.clone() {
-            std::option::Option::None => crate::v1_compiler_emit::shared_tco_reassign(
-                ordered_args.clone(),
-                param_names.clone(),
-                crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust),
-            ),
-            Some(cpair) => match cursor_advance.clone() {
-                Some(depth_of_tail) => {
-                    let kept = Rc::new({
-                        let mut __result = Vec::new();
-                        for pair in pairs.iter().cloned() {
-                            if (pair.0.clone() != cpair.0.clone()) {
-                                __result.push(pair);
-                            }
-                        }
-                        __result
-                    });
-                    crate::v1_compiler_emit::shared_tco_reassign(
-                        v1_rt::concat(
-                            Rc::new({
-                                let mut __result = Vec::new();
-                                for pair in kept.iter().cloned() {
-                                    __result.push(
-                                        match ordered_args
-                                            .clone()
-                                            .get((pair.0.clone()) as usize)
-                                            .cloned()
-                                        {
-                                            Some(a) => a.clone(),
-                                            std::option::Option::None => "".to_string(),
-                                        },
-                                    );
-                                }
-                                __result
-                            }),
-                            Rc::new(vec![v1_rt::concat(
-                                v1_rt::concat(tco_cursor_name(), " + ".to_string()),
-                                crate::v1_compiler_emit_core_support::to_string(
-                                    depth_of_tail.clone(),
-                                ),
-                            )]),
-                        ),
-                        v1_rt::concat(
-                            Rc::new({
-                                let mut __result = Vec::new();
-                                for pair in kept.iter().cloned() {
-                                    __result.push(
-                                        match param_names
-                                            .clone()
-                                            .get((pair.0.clone()) as usize)
-                                            .cloned()
-                                        {
-                                            Some(a) => a.clone(),
-                                            std::option::Option::None => "".to_string(),
-                                        },
-                                    );
-                                }
-                                __result
-                            }),
-                            Rc::new(vec![tco_cursor_name()]),
-                        ),
-                        crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust),
-                    )
-                }
-                std::option::Option::None => crate::v1_compiler_emit::shared_tco_reassign(
-                    v1_rt::concat(ordered_args.clone(), Rc::new(vec!["0".to_string()])),
-                    v1_rt::concat(param_names.clone(), Rc::new(vec![tco_cursor_name()])),
-                    crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust),
-                ),
-            },
-        };
+                __result
+            }),
+            crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust),
+        );
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
