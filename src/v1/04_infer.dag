@@ -100,6 +100,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, declaration_provenance
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
+  TextNotAskedForCallableComponentResidue,
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, collection_carrier_node, is_fully_resolved,
   kernel_profile_lookup,
@@ -6350,19 +6351,22 @@ fn callable_signature_substitution(
   generic_names: List<String>,
   source_indices: Map<String, NewlineIndex>,
   acc: Map<String, Node>
-) -> Map<String, Node> {
+) -> UnifyGenericsAcc {
   let f_params = callable_value_params(arrow: formal, source_indices: source_indices)
   let a_params = callable_value_params(arrow: actual, source_indices: source_indices)
-  let after_params = fold(f_params |> enumerate, init: acc, f: (st, pair) =>
+  let after_params = fold(f_params |> enumerate, init: UnifyGenericsAcc { subst: acc, diagnostics: [] }, f: (st, pair) =>
     match a_params |> skip(pair.first) |> first {
-      Present { value: ap } => callable_leaf_substitution(
-        formal_part: callable_param_type(p: pair.second), actual_part: callable_param_type(p: ap),
-        generic_names: generic_names, source_indices: source_indices, acc: st)
+      Present { value: ap } =>
+        let step = callable_leaf_substitution(
+          formal_part: callable_param_type(p: pair.second), actual_part: callable_param_type(p: ap),
+          generic_names: generic_names, source_indices: source_indices, acc: st.subst)
+        UnifyGenericsAcc { subst: step.subst, diagnostics: concat(st.diagnostics, step.diagnostics) }
       Absent => st
     })
-  callable_leaf_substitution(
+  let ret = callable_leaf_substitution(
     formal_part: resolved_type(n: formal), actual_part: resolved_type(n: actual),
-    generic_names: generic_names, source_indices: source_indices, acc: after_params)
+    generic_names: generic_names, source_indices: source_indices, acc: after_params.subst)
+  UnifyGenericsAcc { subst: ret.subst, diagnostics: concat(after_params.diagnostics, ret.diagnostics) }
 }
 
 fn callable_leaf_substitution(
@@ -6371,13 +6375,13 @@ fn callable_leaf_substitution(
   generic_names: List<String>,
   source_indices: Map<String, NewlineIndex>,
   acc: Map<String, Node>
-) -> Map<String, Node> {
+) -> UnifyGenericsAcc {
   if (formal_part.connective == Arrow) && (actual_part.connective == Arrow) {
     callable_signature_substitution(formal: formal_part, actual: actual_part,
       generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else {
     unify_generics(formal: actual_part, actual: formal_part, generic_names: generic_names,
-      source_indices: source_indices, acc: acc)
+      source_indices: source_indices, acc: acc, text: TextNotAsked { reason: TextNotAskedForCallableComponentResidue }, module_name: "")
   }
 }
 
@@ -6426,9 +6430,16 @@ fn callable_signature_mismatch(formal: Node, actual: Node, env: TypeEnv, source_
   if (f.connective != Arrow) || (a.connective != Arrow) { false }
   else {
     let generic_names = callable_generic_names(arrow: a, source_indices: source_indices)
-    let subst = callable_signature_substitution(formal: f, actual: a, generic_names: generic_names,
+    let step = callable_signature_substitution(formal: f, actual: a, generic_names: generic_names,
       source_indices: source_indices, acc: empty_map())
-    callable_arrow_mismatch(formal: f, actual: a, subst: subst, env: env, source_indices: source_indices)
+    // MERGE RESOLUTION (both sides changed these two lines for different reasons, so this is a union):
+    //  - this side retyped callable_signature_substitution to return UnifyGenericsAcc {subst, diagnostics},
+    //    so the substitution result is `step.subst` and a diagnostic raised while substituting a signature
+    //    is itself a mismatch (the fold's refusal is carried, not re-derived);
+    //  - main added `env: TypeEnv` to callable_arrow_mismatch (#14287, for its TextJudgedIn judgement), so
+    //    the environment must be passed or the callee's own signature is unsatisfied. Main's line also named
+    //    a bare `subst`, a variable this side no longer binds -- taking main's hunk alone would not compile.
+    (step.diagnostics |> count > 0) || callable_arrow_mismatch(formal: f, actual: a, subst: step.subst, env: env, source_indices: source_indices)
   }
 }
 
@@ -6564,15 +6575,17 @@ fn direct_call_arg_type_mismatch(
   }
 }
 
-fn borrowed_callable_call_type(gnode: Node, typed_args: List<Node>, scope: InferScope) -> Node {
+type BorrowedCallType { ret: Node, diagnostics: List<ErrorNode> }
+
+fn borrowed_callable_call_type(gnode: Node, typed_args: List<Node>, scope: InferScope) -> BorrowedCallType {
   let source_indices = scope.type_env.source_indices
   let base = callable_inferred(n: gnode)
   let tp_names = fn_type_param_names(item: gnode, source_indices: source_indices)
   if tp_names |> count == 0 {
-    base
+    BorrowedCallType { ret: base, diagnostics: [] }
   } else {
     let value_params = gnode.params |> filter(p => !param_is_generic_decl(p: p, source_indices: source_indices))
-    let subst = fold(value_params |> enumerate, init: empty_map(), f: (acc, pair) =>
+    let unified = fold(value_params |> enumerate, init: UnifyGenericsAcc { subst: empty_map(), diagnostics: [] }, f: (acc, pair) =>
       let formal_raw = param_node_type_expr(n: pair.second)
       let param_name = authored_name_at(source_indices: source_indices, node: pair.second)
       let matched_arg = match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
@@ -6580,11 +6593,13 @@ fn borrowed_callable_call_type(gnode: Node, typed_args: List<Node>, scope: Infer
         Absent => typed_args |> skip(pair.first) |> first
       }
       match matched_arg {
-        Present { value: ta } => unify_generics(formal: formal_raw, actual: resolved_type(n: arg_value(n: ta)), generic_names: tp_names, source_indices: source_indices, acc: acc)
+        Present { value: ta } =>
+          let step = unify_generics(formal: formal_raw, actual: resolved_type(n: arg_value(n: ta)), generic_names: tp_names, source_indices: source_indices, acc: acc.subst, text: TextJudgedIn { env: scope.type_env }, module_name: scope.module_name)
+          UnifyGenericsAcc { subst: step.subst, diagnostics: concat(acc.diagnostics, step.diagnostics) }
         Absent => acc
       }
     )
-    substitute_generics(n: base, subst: subst, source_indices: source_indices)
+    BorrowedCallType { ret: substitute_generics(n: base, subst: unified.subst, source_indices: source_indices), diagnostics: unified.diagnostics }
   }
 }
 
@@ -7287,8 +7302,8 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       module_name: "v1.compiler.trace",
       method: "map",
       occurrences: 1,
-      receiver_shape: "Product(SpanMapping)",
-      cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.",
+      receiver_shape: "Product(SpanMapping<Primitive(Int),Product(SourceSpan<Product(FilePath<Primitive(String)>),Primitive(Int),Primitive(Int)>)>)",
+      cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted. node_type_shape now prints the product's field types, so the key is the applied Product(SpanMapping<...>) rather than the bare Product(SpanMapping).",
       dissolution: unbound_dissolution(description: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup")
     },
     {
@@ -7993,6 +8008,140 @@ fn call_needs_generic_rebinding_pass(call_args: List<Node>, generic_names: List<
   }
 }
 
+// (c) THE FORMAL-AS-FIRST-BINDING GUARD (stern-bat-401 msg_92f01032, ruling on the 63-class
+// census: "the fold stores the CALLEE'S FORMAL as the first binding, then compares it against
+// a concrete second actual and refuses ... compare the SETTLED first actual, never the callee's
+// formal"). unify_generics is called with formal: formal_raw, which is the callee's WRITTEN
+// signature -- param_node_type_expr at v1.compiler.infer unify_callable_shape_mismatch_region
+// and the formal_selection at the second call site -- so a generic callee's annotation such as
+// Map(K, V) can be stored as variable A's first binding with K and V still the callee's OWN
+// unsubstituted parameters, and a later settled actual Map(Symbol, Product(...)) is then
+// refused as a rebind. That is 'formal-vs-concrete', never 'two settled bindings': the
+// measurement is 5 such refusals at dag/std/parse.dag:11564-11571 and 9 at
+// src/v2/compiler/diagnostic_render.dag:10481-10488 (v2-bootstrap run 38918165053).
+// A node MENTIONS a generic when some leaf of it is still that parameter: either its own
+// TypeVariable id, or -- for a node with no resolution at all, which is what an annotation
+// leaf is -- a NoConnective leaf spelled like the parameter. A settled actual never looks like
+// this: its leaves carry resolution, and the reject controls (P vs Q, Int vs Bool,
+// FreeMonoid<Int> vs FreeMonoid<Bool>) name no generic at all, so they keep refusing.
+fn generic_node_mentions(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if n.inferred != none {
+    match n.inferred {
+      Present { value: TypeVariable { id: tv_id } } => tv_id == name
+      _ => false
+    }
+  } else if n.connective == NoConnective && n.children |> count == 0 && generic_type_node_name(n: n, source_indices: source_indices) == name {
+    true
+  } else {
+    n.children |> any(c => generic_node_mentions(n: c, name: name, source_indices: source_indices))
+  }
+}
+
+fn binding_is_unsettled_formal_annotation(n: Node, generics: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  generics |> any(g => generic_node_mentions(n: n, name: g, source_indices: source_indices))
+}
+
+// AN UNSETTLED BINDING IS ONE THAT STILL CARRIES A TYPE-VARIABLE LEAF (stern-bat-401
+// msg_0306d56f, predicate APPROVED: "The fold treats a TypeVariable leaf as unsettled").
+// This is deeper than unify_binding_is_uninformative, which only follows a SINGLE-child
+// chain and so answers false for a two-child node like Map(C, Int) whose leaf C is still a
+// variable: comparing such a binding against a settled Map(String, Int) refuses C against
+// String, which is a refusal about a variable that was never settled -- the variable could
+// BE String. The measurement that motivates it: 7 substitutions in the corpus hand a kernel
+// parameter leaf a fabricated Unit node (ins_name="Unit", ins_span=<kernel:Unit>:0-4,
+// expr_data NoExprData, inferred None) against 1196 ordinary ones, fanning out into the
+// Product(Unit<>) census family; an unsettled variable must stay a variable, and while the
+// producer of that Unit is being hunted (parent's part (1)), the fold must not treat a
+// variable-bearing node as settled evidence. Reject twins are unaffected: they contain no
+// type variable at all (Int vs Bool, P vs Q, FreeMonoid<Int> vs FreeMonoid<Bool>).
+fn binding_has_type_variable_leaf(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ =>
+      if n.children |> count == 0 {
+        false
+      } else {
+        // THE CHILD IS PASSED RAW, and that is the whole point of this line. child_type_node
+        // (v1.compiler.types, src/v1/04_types.dag:74) routes any inferred-bearing child through
+        // resolved_type, whose ONLY non-error arm is Present { Resolved } (src/v1/04_types.dag:61):
+        // a child still carrying Present { TypeVariable } -- exactly the node this predicate exists
+        // to find -- comes back as error_type (name "", CompilerError, ExprError), so the marker is
+        // destroyed before the test and the predicate answers false for every NESTED variable. That
+        // is not a hypothetical: with child_type_node here, the direct-call control
+        // fold_replaces_a_binding_that_still_carries_a_type_variable_leaf failed at the regenerated
+        // head -- Map(C, Int) with C a variable kept its binding instead of taking the settled
+        // Map(String, Int). child_type_node is correct for its own purpose ('the type this child
+        // DENOTES', for children already resolved); asking it to preserve a variable is a misuse of
+        // it, so the fix is here and not in that load-bearing accessor.
+        n.children |> any(c => binding_has_type_variable_leaf(n: c))
+      }
+  }
+}
+
+// THE BINDING IS THE GENERIC DECLARATION'S OWN FORM, NOT A SETTLED ACTUAL (stern-bat-401
+// msg_ba79f3e3, APPROVED for build in msg_0b50238d with the predicate applied SEMANTICALLY, not
+// class-scoped -- "the class was only the evidence"). A binding can be stored in the substitution
+// still carrying the CALLEE'S DECLARED GENERIC FORM: its leaves are the parameters that declaration
+// itself introduced, never substituted for that call. Comparing one against a settled instance
+// refuses a slot that was never settled -- `FreeMonoid`'s `T` could BE that instance's element type.
+// This is the same family as the (c) arm above, which catches a binding that mentions one of THIS
+// callee's `generic_names` but misses one that mentions ANOTHER declaration's parameters: the bound
+// side here is a stored binding read back from the environment, not the written annotation.
+//
+// THE MEASUREMENT (probe v4 at depth 40 with ZERO cap events, on a fresh clone at 59606870e8ba, status
+// clean, seed = the clone's own main mirrors, instrument on the instrumentation branch). It computes
+// BOTH readings of 'its leaves are its own declared parameters' in Rust, per refusal row, because they
+// differ: ROOT-OWN (this code: the compared node's own Node.params) fires on 141 of the 254 rebind
+// refusals, TREE-AGGREGATED (params from any visited node) on 155. The shipped predicate is root-own, so
+// 141 is its coverage; the tree-aggregated figure is the upper bound and is NOT claimed here. An earlier
+// probe reported 142 (122 in the conn class that produced the hypothesis -- a Disj naming the actual's
+// head, e.g. `Coproduct(FreeMonoid)` vs `Container(FreeMonoid, X)` at dag/std/algebra.dag:3706-3716 --
+// plus 20 outside it) under the aggregated reading; the by-identity PR-body tables are rebuilt from the
+// root-own fields.
+// THE REFUSAL TWINS SURVIVE: 69 of the 254 are same-head, both-applied, different-shape pairs --
+// `Map(Primitive(K),Primitive(V))` vs `Map(Primitive(String),Primitive(Symbol))`,
+// `Node(FreeMonoid<Primitive(Symbol)>)` vs `Node(QualifiedName<Primitive(Symbol)>)`. ZERO of them fire
+// under the AGGREGATED reading, which is the superset, so a fortiori none fires under root-own either:
+// a settled instance's leaves are its substituted arguments, never its own parameters.
+//
+// WHY THE WALK LOOKS THE WAY IT DOES. A parameter leaf is printed as `Primitive(T)` with the childless
+// node's NAME being the parameter, so the test is a CHILDLESS node's `name` -- NOT its printed shape,
+// and not a `Primitive(...)` special case: `Primitive` is one connective among several that can carry a
+// slot, so matching on it would under-admit a `Product(T)` or `Container(T, _)` slot. Children are
+// passed RAW, exactly as in binding_has_type_variable_leaf above and for the same documented reason:
+// child_type_node routes an inferred-bearing child through resolved_type, whose Absent and else arms
+// both mint error_type, which would erase the very leaf this looks for. Node.params is read directly --
+// the field v1 and v2 never printed, and the only mechanical reading of "its leaves are its own declared
+// parameters". The nested level mirrors the measured capture, which read a parameter's own parameters.
+// THE WALK MUST FOLLOW THE `inferred` RESOLVED HOP, NOT JUST RAW CHILDREN. Measured: of the rows this
+// admits, ZERO have a parameter leaf among the raw children alone -- every witness sits one or two
+// `Present { Resolved }` hops below the root (witness paths like L010r: three raw children, then the
+// hop). A children-only walk admits nothing and looks like a clean no-op. The hop is BOUNDED at 3
+// because `inferred` can point back up the tree; 3 is headroom over the measured maximum of 2, and the
+// bound is what makes the recursion terminate, not a fuel budget on the tree itself.
+fn node_mentions_own_parameter(n: Node, declared: List<Node>, hops: Int) -> Bool {
+  let is_named_leaf = (n.children |> count) == 0 && (declared |> any(p => p.name == n.name))
+  let below = n.children |> any(c => node_mentions_own_parameter(n: c, declared: declared, hops: hops))
+  let beyond = if hops > 0 {
+    match n.inferred {
+      Present { value: Resolved { node: rt } } => node_mentions_own_parameter(n: rt, declared: declared, hops: hops - 1)
+      _ => false
+    }
+  } else {
+    false
+  }
+  is_named_leaf || below || beyond
+}
+
+fn binding_is_generic_declaration_own_form(n: Node) -> Bool {
+  if (n.params |> count) == 0 {
+    false
+  } else {
+    let declared = concat(n.params, n.params |> flat_map(p => p.params))
+    n.children |> any(c => node_mentions_own_parameter(n: c, declared: declared, hops: 3))
+  }
+}
+
 fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let name = expr_var_name_at(texpr: n, source_indices: source_indices)
   if string_length(s: name) == 0 { false }
@@ -8093,7 +8242,7 @@ fn formal_code_point_view_peeled(formal: ResolvedFormal, env: TypeEnv) -> Node? 
 }
 
 fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
-  fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
+  fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst, unify_diagnostics: [] }, f: (st, pair) =>
     let a = pair.second
     let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
     let formal_raw = match formal_selection {
@@ -8139,24 +8288,29 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     let ar = if formal_is_code_point_sequence {
       InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
     } else { ar_inferred }
-    let next_subst = if !has_formal {
-      st.subst
+    let unify_step = if !has_formal {
+      UnifyGenericsAcc { subst: st.subst, diagnostics: [] }
     } else if is_lambda_expr(e: arg_value(n: a)) {
       if map_is_empty(init_subst) {
-        unify_lambda_solves(
-          solved: unify_generics(formal: formal_raw, actual: lambda_callable_type(lambda: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: empty_map()),
-          generic_names: generic_names,
-          acc: st.subst
-        )
-      } else { st.subst }
+        let solved = unify_generics(formal: formal_raw, actual: lambda_callable_type(lambda: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: empty_map(), text: TextJudgedIn { env: scope.type_env }, module_name: scope.module_name)
+        UnifyGenericsAcc {
+          subst: unify_lambda_solves(
+            solved: solved.subst,
+            generic_names: generic_names,
+            acc: st.subst
+          ),
+          diagnostics: solved.diagnostics
+        }
+      } else { UnifyGenericsAcc { subst: st.subst, diagnostics: [] } }
     } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
       unify_record_lit_generics(formal: formal_raw, record: ar.typed, generic_names: generic_names, scope: scope, acc: st.subst)
     } else {
-      unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
+      unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst, text: TextJudgedIn { env: scope.type_env }, module_name: scope.module_name)
     }
     ArgGenericFoldState {
       results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
-      subst: next_subst
+      subst: unify_step.subst,
+      unify_diagnostics: concat(st.unify_diagnostics, unify_step.diagnostics)
     }
   )
 }
@@ -9092,21 +9246,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         LocallyBoundBindingMissing { name: _ } => false
       }
       let arg_call = if declared_formal_authority_failed {
-        fold(call_args, init: ArgGenericFoldState { subst: empty_map(), results: [] }, f: (st, a) =>
+        fold(call_args, init: ArgGenericFoldState { subst: empty_map(), results: [], unify_diagnostics: [] }, f: (st, a) =>
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: none)
           ArgGenericFoldState {
             subst: st.subst,
             results: concat(st.results, [ArgInferResult {
               typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span),
               diagnostics: ar.diagnostics
-            }])
+            }]),
+            unify_diagnostics: st.unify_diagnostics
           }
         )
       } else if has_lambda && call_args |> count >= 2 && match sig {
         Absent => true
         Present { value: _ } => false
       } {
-        ArgGenericFoldState { subst: empty_map(), results: match call_args |> first {
+        ArgGenericFoldState { subst: empty_map(), unify_diagnostics: [], results: match call_args |> first {
           Present { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
@@ -9126,7 +9281,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         let generic_names = call_sig_split.generic_names
         let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope)
         if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
-          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
+          let second_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
+          ArgGenericFoldState {
+            results: second_pass.results,
+            subst: second_pass.subst,
+            unify_diagnostics: concat(first_pass.unify_diagnostics, second_pass.unify_diagnostics)
+          }
         } else {
           first_pass
         }
@@ -9159,7 +9319,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
       }
       let arg_diags = concat(
-        concat(flat_map(arg_infer_results, air => air.diagnostics), local_call_diags),
+        concat(concat(flat_map(arg_infer_results, air => air.diagnostics), local_call_diags), arg_call.unify_diagnostics),
         function_value_call_named_arg_diags(
           func_name: func_name,
           typed_args: typed_args,
@@ -9563,19 +9723,29 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   _ => global_bare_callable_node(type_env: scope.type_env, name: func_name)
                 }
               }
-              let resolved_type = match type_match {
-                Present { value: tn } => tn
+              let borrowed_call = match type_match {
+                Present { value: _ } => none
                 Absent => match global_bare_callable {
                   Present { value: gnode } =>
-                    if (gnode.params |> count) > 0 { borrowed_callable_call_type(gnode: gnode, typed_args: typed_arg_nodes, scope: scope) }
-                    else { callable_return_type(n: gnode) }
+                    if (gnode.params |> count) > 0 {
+                      Present { value: borrowed_callable_call_type(gnode: gnode, typed_args: typed_arg_nodes, scope: scope) }
+                    } else {
+                      Present { value: BorrowedCallType { ret: callable_return_type(n: gnode), diagnostics: [] } }
+                    }
+                  Absent => none
+                }
+              }
+              let resolved_type = match type_match {
+                Present { value: tn } => tn
+                Absent => match borrowed_call {
+                  Present { value: b } => b.ret
                   Absent => error_type
                 }
               }
               let call_diags = match type_match {
                 Present { value: _ } => []
-                Absent => match global_bare_callable {
-                  Present { value: _ } => []
+                Absent => match borrowed_call {
+                  Present { value: b } => b.diagnostics
                   Absent =>
                     let call_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: func_name)
                     if (call_ambiguity_cands |> count) > 0 {
@@ -14521,7 +14691,9 @@ fn is_type_variable_name(name: String) -> Bool {
   name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
 }
 
-type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node> }
+type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node>, unify_diagnostics: List<ErrorNode> }
+
+type UnifyGenericsAcc { subst: Map<String, Node>, diagnostics: List<ErrorNode> }
 
 fn type_node_label(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let authored = authored_name_at(source_indices: source_indices, node: n)
@@ -14664,39 +14836,381 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
-fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+// THE GENERIC-BINDING UNIFICATION RELATION (v1.compiler.infer, THE unifier for two type
+// nodes standing as candidate bindings of ONE type variable; review 81163/81191 line,
+// parent ruling msg_20536b59). WHY IT EXISTS AND node_type_equals IS NOT IT: unify_generics
+// bound first-wins, then REJECTED a rebind whose two shapes differed -- but a generic
+// binding needs UNIFIABILITY, not identity. Two measurements on the shipped seed binary
+// (smoking-gun probe, dispatch at b5bb104's branch, /tmp/sg.log): node_type_equals REFUSES
+// 'String' against 'FreeMonoid<Char>' -- the pair DESIGN section 4 declares identical on
+// the code-point/text axes -- and refuses a bare carrier head against its own application
+// ('Outcome' vs 'Outcome<Int>'), because no arm of the equality relates an unapplied head
+// to an applied one. Those acceptances are what 220 false refusals in the v2-bootstrap
+// lane (CI run 38918165053) are made of. WHY IT IS NOT node_type_compatible: the
+// compatibility judgment answers true when EITHER side is a type variable -- wrong for
+// rebind arbitration, where both sides are settled types and the question is whether one
+// substitution makes them equal. WHY node_type_equals STAYS UNTOUCHED (§3 blast radius):
+// it is the identity judgment for the whole corpus (declared fields, inhabitance, emission
+// decisions); loosening it there would silently widen every judgment at once. The fold
+// routes its rebind question HERE instead; identity elsewhere keeps its old answer.
+//
+// THREE ACCEPTANCES beyond equality, each named, each with its refusal twin below:
+//  (1) ALIAS UNFOLD TO FIXPOINT, both applied and unapplied spellings: peel_alias_rhs_once
+//      unfolds ONLY a childless node, so 'QualifiedName' (alias = FreeMonoid<Symbol>)
+//      against the applied expansion never reaches a comparable pair. Unfold before the
+//      shape comparison, up to four times (cycle bound; the same depth the fold's own
+//      descent tolerates).
+//  (2) THE DECLARED TEXT PAIR: String and FreeMonoid<Char> are the two representations of
+//      text (DESIGN section 4, line "v2 Text literal ... host String ... Char sequence"),
+//      so a bare String unifies with a bare FreeMonoid<Char> at either position. The pair
+//      is NAME-scoped on both sides (the carrier head after the container table), so
+//      'FreeMonoid<Int>' still refuses 'String'.
+//  (3) BARE HEAD AGAINST ITS APPLICATION: a carrier declared as an unapplied head (an
+//      Outcome node with zero children) unifies with any application of the same carrier
+//      head -- the fold's job is to bind T, and 'same_arm(a: Outcome.Ok{...}, b:
+//      Outcome<Int>)' is the corpus's own spelling. The twin refusal keeps this honest:
+//      SAME head, DIFFERENT arguments still refuse ('FreeMonoid<Int>' vs
+//      'FreeMonoid<Bool>' must stay red; smoking-gun CONTROL_FreeMonoid_Int_vs_Bool (2)
+//      refused it under the old judgment and this relation must keep refusing it).
+// THE RELATION IS NOT THE FOLD'S. Measured, and it decided this: my own fold-local relation
+// (an equality peel, a declared text pair, a bare-head-vs-application arm) removed 2 of 106 rows
+// in the one class it was written for -- the Coproduct(x) vs Node(x<...>) printings -- because
+// those are not unification questions at all. Coproduct(x), Node(x<...>), Container(x, ...) and
+// the CardOptional leaf are FOUR PRINTINGS OF ONE TYPE: node_type_shape (v1.compiler.types,
+// src/v1/04_types.dag:918-971) chooses the head word from three unrelated axes -- 'Coproduct(' when
+// connective == Disj, 'Container(' when node_is_element_collection, 'Node(' when NoConnective with
+// children and a Present declaration, 'Primitive(' for a leaf, 'UnresolvedDecl(' when the
+// declaration is Absent. Same authored name, same type, different word. A relation that lives in
+// the fold cannot see through a fork at the type authority, and a second comparison in the fold
+// would be a second meaning route (DESIGN section 3). So the fold ASKS the single compatibility
+// authority, per stern-bat-401's ruling, and carries none of its own.
+//
+// Why node_type_compatible and not node_type_equals: measured by quiet-eagle-395 on PR #14256,
+// these pairs were refused inside node_type_equals_core, while node_type_compatible already
+// accepts them by name at its tail; and node_type_equals has no refusing consumer on main, so it
+// is not the authority any caller was relying on. The fold's job is only to keep the fold honest:
+// it still refuses two settled bindings that differ (Int then Bool, FreeMonoid<Int> then
+// FreeMonoid<Bool>), which the reject controls in
+// src/v1/tests/src/cross_coproduct_generic_locate_test.rs pin, and it still refuses when the
+// shared authority says no.
+//
+// WHAT THE FOLD STILL DOES ITSELF, and why that is not a second route: the alias peel below.
+// TypeBinding.alias_rhs is a dead field (see generic_alias_unfold), so nothing reaches an alias's
+// right-hand side through peel_alias_rhs_once -- not here and not in the authority. Peeling first
+// is therefore the only way the authority ever sees an alias's declaration rather than its
+// spelling, and the peel consults the environment, which is exactly what the authority cannot do
+// from a Node alone. It widens nothing on its own: after peeling, the answer is still the
+// authority's.
+// WHAT THE FOLD CALLS, decided by measurement rather than by preference, because the obvious
+// answer -- the single compatibility authority node_type_compatible -- is unfit for this call site
+// and it broke my reject controls to use it. At the converged seed, with node_type_compatible as
+// this relation: the same 26-case suite went 24 passed / 2 failed -> 22 passed / 4 failed, and the
+// two NEW failures were the controls that pin the fold's whole purpose --
+// fold_refuses_two_distinct_settled_bindings_of_the_same_shape and
+// applied_constructor_same_head_differing_argument_list_refuses -- i.e. the fold stopped refusing
+// two settled bindings that differ. The cause is visible in the function: node_type_compatible
+// answers true when either side's inferred is a compiler error, and true when a container's element
+// is unit-like, and it treats a TypeVariable on one side as compatible. Those are right for its own
+// question (is a produced value acceptable where this was declared) and fatal for mine (may this
+// variable be REBOUND to this second spelling): error_type-accepts is precisely the nameless-leaf
+// class quiet-eagle-395 measured, so it would admit ~a hundred rows for the wrong reason.
+//
+// So the fold keeps node_type_equals as its relation, plus the two widenings that are about
+// SPELLING and not about compatibility: the declared text pair (String = FreeMonoid<Char>, whose
+// own authority is DESIGN section 4's text ruling) and the bare-head-vs-application arm (an applied
+// carrier and its unapplied carrier name are one carrier; element-wise descent keeps
+// FreeMonoid<Int>/FreeMonoid<Bool> refusing at position 0). The representation fork itself --
+// Coproduct(x) vs Node(x<...>) vs Container(x, ...) vs the CardOptional leaf, four printings of ONE
+// type chosen by connective/element-collection/declaration presence in node_type_shape
+// (src/v1/04_types.dag:918-971) -- is NOT settled here and is deliberately not duplicated here: it
+// belongs in node_type_equals_core, which is where quiet-eagle-395 measured these pairs REFUSING
+// (node_type_compatible already accepts them by name at its tail), and where PR #14256 puts the
+// arm. node_type_equals has no refusing consumer on main, so widening it there cannot move any
+// existing judgment. This fold calls node_type_equals, so it inherits that arm the moment #14256
+// lands and carries no fork knowledge of its own -- one relation, one authority (DESIGN section 3).
+fn generic_types_unify(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  let left_u = generic_type_unify_unfold(n: left, text: text, depth: 0, source_indices: source_indices)
+  let right_u = generic_type_unify_unfold(n: right, text: text, depth: 0, source_indices: source_indices)
+  if node_type_equals(left: left_u, right: right_u, source_indices: source_indices, text: text) {
+    true
+  } else if generic_types_are_the_text_pair(left: left_u, right: right_u, source_indices: source_indices) {
+    true
+  } else {
+    generic_head_matches_application(head: left_u, applied: right_u, source_indices: source_indices)
+      || generic_head_matches_application(head: right_u, applied: left_u, source_indices: source_indices)
+  }
+}
+
+// Alias peel to fixpoint with a cycle bound: four unfolds of alias_rhs stop the walk no
+// matter how the environment is spelt; a deeper chain is a pathological environment and
+// answers with whatever it reached (unresolved spellings then refuse against each other,
+// which is where the fold's own descent would also stop).
+//
+// TWO routes, both declaration-based (DESIGN section 3: a type means what its declaration
+// says; neither route resolves by authored spelling in an ambient environment, and neither
+// answers a name lookup in a module that did not declare it):
+//  (a) v1.compiler.types peel_alias_rhs_once -- the existing authority, which unfolds an
+//      UNAPPLIED alias reference only (it returns the node unchanged once there are
+//      argument children).
+//  (b) THE APPLIED REFERENCE route, added here because route (a) cannot reach it: the
+//      corpus spells an alias reference with its arguments attached (measured shape
+//      'Node(QualifiedName<Symbol>)' against 'FreeMonoid<Symbol>', /tmp/sg.log), so the
+//      reference is never childless and route (a) always declines it. This route takes the
+//      binding for the reference's HEAD name and unfolds its declared rhs, but ONLY when
+//      the declared rhs carries no parameters of its own: an alias whose rhs is ground
+//      (an abbreviation) means exactly that type whatever it is spelled with, while a
+//      GENERIC alias ('type Pair<T> = Box<T>') would lose the actual argument if unfolded
+//      by name -- and a route that dropped arguments could ACCEPT Pair<Int> against a
+//      foreign application. Refusing to unfold is the sound side of that trade, so a
+//      generic alias keeps route (a)'s answer (no unfold) and keeps refusing.
+fn generic_type_unify_unfold(n: Node, text: TextJudgment, depth: Int, source_indices: Map<String, NewlineIndex>) -> Node {
+  if depth >= 4 { n }
+  else {
+    let peeled = generic_alias_unfold(n: n, text: text, source_indices: source_indices)
+    if node_type_shape(n: peeled, source_indices: source_indices) == node_type_shape(n: n, source_indices: source_indices) { n }
+    else { generic_type_unify_unfold(n: peeled, text: text, depth: depth + 1, source_indices: source_indices) }
+  }
+}
+
+// The alias peel, measured rather than assumed -- and its justification CORRECTED once.
+//
+// I first wrote here that peel_alias_rhs_once (v1.compiler.types, src/v1/04_types.dag:995) reads a
+// DEAD field: "all 52 TypeBinding producers set alias_rhs: none", hence an unreachable Present arm.
+// THAT WAS WRONG, and the error was a method error, not a typo: I counted with `grep -c`, which
+// counts LINES NOT OCCURRENCES, and I censored the matches whose line did not literally contain
+// 'TypeBinding::new' as a zero-dispatch join. Measured properly, a full-tree scan gives 50
+// constructions of TypeBinding, of which 40 set none, 8 PROPAGATE the field from another binding,
+// and 2 are origins -- alias_rhs_reference, which can and does return Present. The field has
+// exactly one reader, peel_alias_rhs_once. So the Present arm is REACHABLE, and the item this
+// belonged to is "is alias_rhs reachable from a fold-visible module", which is still open and is NOT
+// "delete the field". The consequence I claimed as evidence (that the then-accept control for an
+// alias against its own applied expansion failed BECAUSE of the dead field) is therefore also
+// withdrawn: that row no longer isolates this question at all, having been inverted to assert
+// REFUSAL under stern-bat-401's ruling (msg_ad1a90c2) once #14256 @ 740eac5d64 deleted the mixed
+// application-vs-non-application acceptance -- it now refuses at the type authority for a different
+// reason, so it cannot witness for or against the peel.
+//
+// WHAT STILL SUPPORTS THIS PEEL, and it is a weaker and truer claim than the one above: it puts the
+// SAME question to the SAME authority and reads the field that is populated on EVERY producer,
+// TypeBinding.resolved, rather than the one that is populated on TWO. That is not
+// a second meaning route (DESIGN section 3) -- peel_alias_rhs_once already performs exactly this
+// lookup_binding_by_name(env, authored_name_at(n)) and only asks the rarer field, so reading the
+// live one through the same lookup cannot let a local alias shadow an imported one any more than
+// that lookup already can. The shadowing defect review 80660 finding 1 named lives in the lookup
+// itself, which is reused unchanged rather than reimplemented.
+//
+// What is deliberately NOT done is substitution. TypeBinding carries NO parameter list, so for a
+// parameterised alias ('type MoneyAmount<S> = Measure<Currency, S, Nat>',
+// dag/std/measure.dag:1052) there is no sound way to map a node's applied arguments onto the
+// right-hand side from here, and inventing a mapping would fabricate a type (§5). So the
+// childless restriction is kept -- peel's own rule, not relaxed -- and an applied alias reference
+// keeps REFUSING. Refusal is the sound side, and it still covers the pair the corpus actually
+// spells: there the alias side is childless and the expansion side is the applied one.
+fn generic_alias_unfold(n: Node, text: TextJudgment, source_indices: Map<String, NewlineIndex>) -> Node {
+  let peeled = peel_alias_rhs_once(n: n, text: text)
+  if node_type_shape(n: peeled, source_indices: source_indices)
+    != node_type_shape(n: n, source_indices: source_indices) {
+    peeled
+  } else if (n.children |> count) > 0 {
+    n
+  } else {
+    match text {
+      TextJudgedIn { env: env } =>
+        match lookup_binding_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
+          Present { value: binding } =>
+            if node_type_shape(n: binding.resolved, source_indices: source_indices)
+              == node_type_shape(n: n, source_indices: source_indices) { n }
+            else { binding.resolved }
+          Absent => n
+        }
+      TextNotAsked { reason: _ } => n
+    }
+  }
+}
+
+// THE DECLARED TEXT PAIR (DESIGN section 4: host text and the code-point sequence are the
+// two representations of ONE type). Name-scoped on both sides, so no other carrier can
+// ride it: one side must be the bare kernel spelling String (no children), the other a
+// FreeMonoid (bare, or applied at character elements only -- every child's node name is
+// Char, so FreeMonoid<Int> still refuses String: the fold does not get to call an
+// Int sequence text). The pair reads either direction.
+fn generic_types_are_the_text_pair(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  generic_side_is_bare_text(left: left, right: right, source_indices: source_indices)
+    || generic_side_is_bare_text(left: right, right: left, source_indices: source_indices)
+}
+
+fn generic_side_is_bare_text(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let l_head = type_head_carrier(name: generic_type_head_of_name(name: generic_type_node_name(n: left, source_indices: source_indices)))
+  let r_name = generic_type_node_name(n: right, source_indices: source_indices)
+  let r_head = type_head_carrier(name: generic_type_head_of_name(name: r_name))
+  // The sequence side is spelled THREE ways and no other way, each named: the exact
+  // declared text spelling (an UnresolvedDecl-style name node 'FreeMonoid<Char>'), the
+  // bare carrier 'FreeMonoid', or a structured application whose every child is Char.
+  // Anything else -- FreeMonoid<Int>, FreeMonoid<List<Char>>, FreeMonoid<FreeMonoid<Char>>
+  // -- refuses: the fold does not get to call an Int sequence, or a sequence of
+  // sequences, text. The nested spellings fail the exact-name arm and the all-children
+  // -are-Char arm because their element is not the name Char.
+  let right_is_char_sequence = r_name == "FreeMonoid<Char>"
+    || (r_head == "FreeMonoid" && right.children |> count == 0 && r_name == "FreeMonoid")
+    || (r_head == "FreeMonoid"
+        && right.children |> count > 0
+        && (right.children |> filter(c =>
+             generic_type_node_name(n: child_type_node(ch: c), source_indices: source_indices) == "Char")
+            |> count) == (right.children |> count))
+  left.children |> count == 0
+    && l_head == "String"
+    && right_is_char_sequence
+}
+
+// Name extraction as v1.compiler.types reads it in canonical_template_name and
+// node_type_shape: the authored spelling from authored_name_at, then the last qualified
+// segment. Same source of truth as the identity judgment, so this relation and that one
+// agree on what a node is CALLED before they are asked what it IS. There is deliberately no
+// identifier-span arm here: v1.compiler.core Node has no identifier_span field (the field is
+// ident_span, a SourceSpan?), and an invented field name does not fail late -- it makes the
+// scrutinee's type unresolvable, which is how the 'no field' diagnostic and a Present-arm
+// refusal both came out of this one line.
+fn generic_type_node_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let raw = authored_name_at(source_indices: source_indices, node: n)
+  qualified_last_segment(name: raw)
+}
+
+// The carrier head of an authored name: the text before the first '<', so an applied
+// spelling 'FreeMonoid<Char>' answers the carrier 'FreeMonoid'. No trimming: this name
+// comes out of authored_name_at, which yields the authored token, and an authored type head
+// carries no surrounding whitespace (a space before '<' is not a type spelling here).
+//
+// The let is ANNOTATED on purpose, and it is the repair a checker rule demands rather than
+// a style choice. v1.compiler.core Diagnostic::PresentArmScrutineeTypeUnresolved (main,
+// landed while this PR was open) refuses a Present arm whose scrutinee type cannot be
+// resolved -- typically an Optional<T> whose T was never instantiated -- because the arm's
+// meaning would be undecided and the rule refuses to guess. Naming the list's element type
+// here is what instantiates it.
+fn generic_type_head_of_name(name: String) -> String {
+  let parts: List<String> = name |> split(delimiter: "<")
+  match parts |> first {
+    Present { value: s } => s
+    Absent => name
+  }
+}
+
+// BARE HEAD AGAINST ITS APPLICATION: `head` must be the carrier with no arguments (zero
+// children AND empty params); `applied` must be an application whose carrier head, read
+// through the container table like every other head comparison here, is the same carrier.
+// Arguments are NOT compared in this arm -- the head-vs-application acceptance IS the arm.
+// The argument-distinctness refusal lives in node_type_equals' own recursion, which this
+// arm cannot weaken: two APPLIED nodes never enter it (neither side is childless).
+fn generic_head_matches_application(head: Node, applied: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let head_name_raw = generic_type_node_name(n: head, source_indices: source_indices)
+  // A HEAD, not a spelled application: an unapplied carrier is named by its carrier alone.
+  // Requiring no '<' in the name keeps a head spelled 'FreeMonoid<Int>' out of the head
+  // seat even if it arrives childless, so the arm cannot smuggle an application through.
+  let head_childless = head.children |> count == 0
+    && head.params |> count == 0
+    && head.connective == NoConnective
+    && !contains(head_name_raw, "<")
+  // Only CHILDREN make an application here: a params-only node is a callable type, and
+  // the head-vs-application arm is about carriers, not about callables.
+  let applied_applied = applied.children |> count > 0
+  if head_childless && applied_applied {
+    let head_name = type_head_carrier(name: generic_type_head_of_name(name: head_name_raw))
+    let applied_name = type_head_carrier(name: generic_type_head_of_name(name: generic_type_node_name(n: applied, source_indices: source_indices)))
+    head_name == applied_name
+  } else { false }
+}
+
+fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>, text: TextJudgment, module_name: String) -> UnifyGenericsAcc {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
   if (f_bare || match formal.inferred { Present { value: TypeVariable { id: _ } } => true  _ => false })
     && (generic_names |> any(g => g == bind_name)) {
 
     match map_get(acc, bind_name) {
-      Absent => map_insert(acc, bind_name, actual)
-      Present { value: _ } => acc
+      Absent => UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+      Present { value: bound } =>
+        // (c) A binding that still MENTIONS one of this callee's own generics is the callee's
+        // UNSETTLED FORMAL, not a settled first binding: it is the written annotation carried in
+        // through `formal: formal_raw` at the call sites (v1.compiler.infer
+        // unify_callable_shape_mismatch_region and the lambda/callable sites), never a resolved
+        // actual. Comparing it is what produced the 63-class refusals, so it is REPLACED by this
+        // actual, which is the first settled binding for the variable. A settled actual never
+        // mentions a generic, so the reject twins (P vs Q, Int vs Bool, FreeMonoid<Int> vs
+        // FreeMonoid<Bool>) fall through to the refusal below.
+        if binding_is_unsettled_formal_annotation(n: bound, generics: generic_names, source_indices: source_indices) {
+          UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+        } else if binding_has_type_variable_leaf(n: bound) {
+          // The stored binding still carries a type-variable leaf, so it is not settled
+          // evidence for this variable; this actual is the first settled binding.
+          UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+        } else if binding_has_type_variable_leaf(n: actual) {
+          // This actual still carries a type-variable leaf, so it cannot falsify the stored
+          // binding: the variable could be exactly that type. Keep the first binding.
+          UnifyGenericsAcc { subst: acc, diagnostics: [] }
+        } else if unify_binding_is_uninformative(n: bound) {
+          if unify_binding_is_uninformative(n: actual) {
+            UnifyGenericsAcc { subst: acc, diagnostics: [] }
+          } else {
+            UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+          }
+        } else if unify_binding_is_uninformative(n: actual) {
+          UnifyGenericsAcc { subst: acc, diagnostics: [] }
+        } else if generic_binding_is_self(n: bound, bind_name: bind_name, source_indices: source_indices) {
+          UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+        } else if generic_binding_is_self(n: actual, bind_name: bind_name, source_indices: source_indices) {
+          UnifyGenericsAcc { subst: acc, diagnostics: [] }
+        } else if generic_types_unify(left: bound, right: actual, source_indices: source_indices, text: text) {
+          UnifyGenericsAcc { subst: acc, diagnostics: [] }
+        } else if binding_is_generic_declaration_own_form(n: bound) {
+          // THE STORED BINDING IS THE GENERIC DECLARATION'S OWN FORM: its leaves are still that
+          // declaration's own parameters, so it was never settled for this call and this actual is
+          // the first settled binding -- REPLACE, as the two unsettled arms above do. This arm sits
+          // AFTER generic_types_unify on purpose: only rows that reach the refusal below can be
+          // affected, and those 254 refusals are the rows the whole-tree probe measured. An arm
+          // placed earlier would also re-route bindings that unify today, whose behaviour is not
+          // in that measurement.
+          UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+        } else if binding_is_generic_declaration_own_form(n: actual) {
+          // SYMMETRIC: an actual that is still a declaration's own form carries unsubstituted
+          // slots, so it cannot falsify the stored binding -- the slot could denote exactly that
+          // binding. KEEP the first binding, as binding_has_type_variable_leaf(n: actual) does.
+          UnifyGenericsAcc { subst: acc, diagnostics: [] }
+        } else {
+          UnifyGenericsAcc {
+            subst: acc,
+            diagnostics: [type_mismatch_error(
+              expected: concat("type variable ", bind_name, " bound as ", node_type_shape(n: bound, source_indices: source_indices), " (first argument)"),
+              got: concat(node_type_shape(n: actual, source_indices: source_indices), " (later argument)"),
+              span: actual.span,
+              module_name: module_name
+            )]
+          }
+        }
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
-    unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
+    unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
   } else if formal.children |> count == 1 && actual.children |> count == 1 {
     match formal.children |> first {
       Present { value: fc } =>
         match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
-          Absent => acc
+          Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
+          Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
         }
-      Absent => acc
+      Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
     }
-  } else { acc }
+  } else { UnifyGenericsAcc { subst: acc, diagnostics: [] } }
 }
 
 // A callable denotes its parameters in params and its return in inferred (make_callable_type), so
 // it has no children for the descent below to walk. Its parameters unify positionally and its
 // return unifies return, each read through child_type_node, the total read of a type position.
-fn unify_callable_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
-  let with_params = unify_callable_param_pairs(formals: formal.params, actuals: actual.params, generic_names: generic_names, source_indices: source_indices, acc: acc)
+fn unify_callable_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>, text: TextJudgment, module_name: String) -> UnifyGenericsAcc {
+  let with_params = unify_callable_param_pairs(formals: formal.params, actuals: actual.params, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
   match formal.inferred {
     Present { value: Resolved { node: formal_ret } } =>
       match actual.inferred {
-        Present { value: Resolved { node: actual_ret } } => unify_generics(formal: formal_ret, actual: actual_ret, generic_names: generic_names, source_indices: source_indices, acc: with_params)
+        Present { value: Resolved { node: actual_ret } } =>
+          let ret = unify_generics(formal: formal_ret, actual: actual_ret, generic_names: generic_names, source_indices: source_indices, acc: with_params.subst, text: text, module_name: module_name)
+          UnifyGenericsAcc { subst: ret.subst, diagnostics: concat(with_params.diagnostics, ret.diagnostics) }
         _ => with_params
       }
     _ => with_params
@@ -14710,21 +15224,25 @@ fn lambda_callable_type(lambda: Node) -> Node {
   make_callable_type(func_params: lambda.children |> skip(1), ret: resolved_type(n: lambda))
 }
 
-fn unify_callable_param_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+fn unify_callable_param_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>, text: TextJudgment, module_name: String) -> UnifyGenericsAcc {
   match formals |> first {
     Present { value: f } =>
       match actuals |> first {
         Present { value: a } =>
-          unify_callable_param_pairs(
+          let step = unify_generics(formal: child_type_node(ch: f), actual: child_type_node(ch: a), generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
+          let rest = unify_callable_param_pairs(
             formals: formals |> skip(1),
             actuals: actuals |> skip(1),
             generic_names: generic_names,
             source_indices: source_indices,
-            acc: unify_generics(formal: child_type_node(ch: f), actual: child_type_node(ch: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
+            acc: step.subst,
+            text: text,
+            module_name: module_name
           )
-        Absent => acc
+          UnifyGenericsAcc { subst: rest.subst, diagnostics: concat(step.diagnostics, rest.diagnostics) }
+        Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
       }
-    Absent => acc
+    Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
   }
 }
 
@@ -14748,6 +15266,11 @@ fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, a
       Absent => st
     }
   )
+}
+
+fn generic_binding_is_self(n: Node, bind_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  (n.children |> count == 0 && n.connective == NoConnective)
+    && type_node_label(n: n, source_indices: source_indices) == bind_name
 }
 
 // A type that is, or holds as its single element, any unresolved type variable.
@@ -14780,8 +15303,8 @@ fn should_unify_record_lit_generics(formal: Node, arg_expr: Node, generic_names:
   }
 }
 
-fn unify_record_lit_field_walk(struct_fields: List<Node>, record: Node, generic_names: List<String>, scope: InferScope, acc: Map<String, Node>) -> Map<String, Node> {
-  fold(struct_fields, init: acc, f: (st, sf) =>
+fn unify_record_lit_field_walk(struct_fields: List<Node>, record: Node, generic_names: List<String>, scope: InferScope, acc: Map<String, Node>) -> UnifyGenericsAcc {
+  fold(struct_fields, init: UnifyGenericsAcc { subst: acc, diagnostics: [] }, f: (st, sf) =>
     let field_name = authored_name_at(source_indices: scope.type_env.source_indices, node: sf)
     match record.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices) == field_name) |> first {
       Present { value: fi } =>
@@ -14790,23 +15313,24 @@ fn unify_record_lit_field_walk(struct_fields: List<Node>, record: Node, generic_
           Present { value: Resolved { node: rt } } => rt
           _ => field_node_type_expr(n: sf)
         }
-        match record_lit_expr_optional(expr: actual_value) {
+        let step = match record_lit_expr_optional(expr: actual_value) {
           Present { value: nested_record } =>
-            unify_record_lit_generics(formal: field_formal, record: nested_record, generic_names: generic_names, scope: scope, acc: st)
+            unify_record_lit_generics(formal: field_formal, record: nested_record, generic_names: generic_names, scope: scope, acc: st.subst)
           Absent =>
-            unify_generics(formal: field_formal, actual: resolved_type(n: actual_value), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st)
+            unify_generics(formal: field_formal, actual: resolved_type(n: actual_value), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst, text: TextJudgedIn { env: scope.type_env }, module_name: scope.module_name)
         }
+        UnifyGenericsAcc { subst: step.subst, diagnostics: concat(st.diagnostics, step.diagnostics) }
       Absent => st
     }
   )
 }
 
-fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<String>, scope: InferScope, acc: Map<String, Node>) -> Map<String, Node> {
+fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<String>, scope: InferScope, acc: Map<String, Node>) -> UnifyGenericsAcc {
   if formal.children |> count == 0 {
     let formal_name = type_node_label(n: formal, source_indices: scope.type_env.source_indices)
     let is_generic_slot = generic_names |> any(g => g == formal_name)
     if is_generic_slot {
-      unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
+      unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc, text: TextJudgedIn { env: scope.type_env }, module_name: scope.module_name)
     } else {
       match record_lit_expr_optional(expr: record) {
         Present { value: record_lit } =>
@@ -14820,10 +15344,10 @@ fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<Str
               acc: acc
             )
           } else {
-            unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
+            unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc, text: TextJudgedIn { env: scope.type_env }, module_name: scope.module_name)
           }
         Absent =>
-          unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
+          unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc, text: TextJudgedIn { env: scope.type_env }, module_name: scope.module_name)
       }
     }
   } else {

@@ -41,7 +41,9 @@ data transitional_admission_exception_identities: List<String> = [
   // these identities was exempted. Their cadence is UNCHANGED — they are not re-routed onto a cadence
   // that would pretend to run them, because nothing does: the falsifier.yml executor was deleted at
   // 611fd02770 (#8283) and dag/gunbc/ci/ci_layer_roots.dag records that no live executor runs this
-  // probe batch. Until the exit condition below fires, these eighteen rows produce ZERO OBSERVATIONS:
+  // probe batch. Until the exit condition below fires, these seventeen rows produce ZERO OBSERVATIONS:
+  // (eighteen on main minus the dag/test/claim/constructor_tag_route_probe_red.dag identity, which
+  // #14152 retires together with its row and probe file; the v2 identity stays, see below.)
   // they are admitted as data, never executed. EXIT CONDITION (§4b obligation 3, stated as a
   // CAPABILITY): a scheduled executor runs the QuarantineProbeExpectRed batch. That capability is
   // already registered and already owns this wait — gunbc.rung_drop.shared_capability
@@ -49,13 +51,12 @@ data transitional_admission_exception_identities: List<String> = [
   // this enrolment adds NO parallel authority; the category is the trigger and the per-identity
   // migration onto a live scheduled route is the remainder. At that point each of these identities is
   // removed from this list in the same change that retires its exception.
-  // The first two rows below are retired by PR #14152 / commit 5d750054b34, which deletes both
-  // constructor_tag_route_probe_red.dag probe files AND their ledger rows (their RED is re-enrolled
-  // there as a permanent Rust control, src/v1/tests/src/cross_coproduct_probe_discharge_test.rs). They
-  // are kept here until that change lands, because this list gates rows that still exist on main: an
-  // enrolment missing a live row turns the wall red, while a leftover identity for a row that has been
-  // deleted can never match anything and is inert. Drop those two in the same merge that takes #14152.
-  "dag/test/claim/constructor_tag_route_probe_red.dag::same_arm_one_t_two_coproducts_must_refuse",
+  // #14152 retires ONLY the v1 identity below-left: that row and probe file are deleted
+  // and its RED is re-enrolled as a permanent Rust control
+  // (src/v1/tests/src/cross_coproduct_probe_discharge_test.rs). The v2 identity STAYS
+  // ENROLLED -- review 81163 finding 1: #14152 changes src/v1/04_infer.dag and the seed
+  // mirror only, touches no file under src/v2/compiler, so the v2 route's acceptance is
+  // unrepaired and DESIGN section 4b meta-obligation 4 keeps its RED with no climb.
   "src/v2/test/claim/manual/constructor_tag_route_probe_red.dag::same_arm_one_t_two_coproducts_must_refuse",
   "src/v2/test/claim/body_lowering/map_literal.dag::ml_an_elaborated_map_infers_holds",
   "src/v2/test/claim/body_lowering/map_literal.dag::ml_a_same_module_generic_entry_construct_infers_holds",

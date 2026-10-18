@@ -1,0 +1,98 @@
+module test.claim.cross_coproduct_generic_locate
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_count_at_key,
+  census_total_count,
+}
+
+// The defect control below became executable at the seed regeneration (2751b200):
+// the shipped seed's unify_generics now returns UnifyGenericsAcc and carries the
+// rebind diagnostics, so the refusal can be MEASURED instead of deferred. The
+// accept rows stay after the climb; the refuse row is the discriminating RED that
+// §4b requires before a top-rung claim.
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn prelude() -> String {
+  "module locate.cross\n\ntype P = P1 { x: Int } | P2 { y: Int }\ntype Q = Q1 { x: Int } | Q2 { y: Int }\n\n"
+}
+
+fn same_arm_source(a: String, b: String) -> String {
+  join([
+    prelude(),
+    "fn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: ",
+    a,
+    ", b: ",
+    b,
+    ")\n}\n"
+  ], "")
+}
+
+test fn same_arm_same_coproduct_is_accepted() -> Bool {
+  blocking_count(source: same_arm_source(a: "P1 { x: 1 }", b: "P2 { y: 2 }")) == 0
+}
+
+test fn same_arm_int_int_is_accepted() -> Bool {
+  blocking_count(source: "module locate.ii\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: 1, b: 2)\n}\n") == 0
+}
+
+test fn uninformative_then_int_then_int_is_accepted() -> Bool {
+  blocking_count(source: "module locate.tv3ok\nfn same_arm<T>(a: T, b: T, c: T) -> Bool { true }\nfn probe<U>(u: U) -> Bool {\n  same_arm(a: u, b: 1, c: 2)\n}\n") == 0
+}
+
+test fn same_arm_two_lambdas_does_not_compare_return_to_callable() -> Bool {
+  blocking_count(source: "module locate.lam\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: (x: Int) => x, b: (y: Int) => y)\n}\n") == 0
+}
+
+test fn same_arm_two_applied_box_int_is_accepted() -> Bool {
+  blocking_count(source: "module locate.box\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Int>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") == 0
+}
+
+// THE DISCRIMINATING RED, and its positive control is same_arm_int_int_is_accepted
+// directly above: same generic, same arity, same call shape, and only the two
+// actuals' identity differs. Both actuals are VALUES, not type names — a type name in
+// an argument position would refuse at parse/resolve and make the blocking_count > 0
+// assertion true for a reason that has nothing to do with the rebind rule.
+// The census module is explicit that the row set is the WHOLE COMPILE'S, imported closure
+// included, so `blocking_count(...) > 0` is not evidence the fixture refused for the reason
+// claimed -- any unrelated blocking row in the closure satisfies it. The two exact forms the
+// module itself prescribes are used here: a count scoped to class AND subject_name, and a
+// DIFFERENTIAL between two censuses. `refusal_rows` is the scoped count, keyed on what the
+// fold actually emits: type_mismatch_error (the rebind-branch expected/got construction of v1.compiler.infer unify_generics) projects to
+// diagnostic_class "TypeMismatch" with subject_name = the rejected actual's `got` string,
+// which for this fold is concat(node_type_shape(actual), " (later argument)") -- measured,
+// not guessed, by printing the blocking messages for these exact fixtures on the shipped
+// seed (throwaway probe test, remote dispatch jb2430a08 at head b5bb104e3ba):
+//   P/Q pair   -> "Coproduct(Q) (later argument)"
+//   Int/Bool   -> "Primitive(Bool) (later argument)"
+//   Box<Int>/Box<Bool> -> "Node(Box<Coproduct(Bool)>) (later argument)"
+// (Bool is a COPRODUCT in this corpus, so it prints Coproduct(Bool), and the shape carries
+// the node_type_shape wrapper plus the fold's own " (later argument)" suffix -- the earlier
+// values "Q1", "Primitive(Bool)" and "Box<Bool>" were unverified guesses and are corrected
+// here. If the comparison boundary changes the message, these keys must be re-measured.)
+fn refusal_rows(source: String, wanted_class: String, wanted_subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_count_at_key(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn same_arm_two_distinct_coproduct_values_refuse() -> Bool {
+  refusal_rows(source: same_arm_source(a: "P1 { x: 1 }", b: "Q1 { x: 1 }"), wanted_class: "TypeMismatch", wanted_subject: "Coproduct(Q) (later argument)") > 0
+}
+
+test fn same_arm_int_bool_values_refuse() -> Bool {
+  refusal_rows(source: "module locate.ib\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: 1, b: true)\n}\n", wanted_class: "TypeMismatch", wanted_subject: "Primitive(Bool) (later argument)") > 0
+}
+
+test fn same_arm_nested_two_distinct_coproduct_values_refuse() -> Bool {
+  refusal_rows(source: "module locate.arg\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n", wanted_class: "TypeMismatch", wanted_subject: "Node(Box<Coproduct(Bool)>) (later argument)") > 0
+}
