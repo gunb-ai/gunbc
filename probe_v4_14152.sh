@@ -29,7 +29,7 @@
 set -uo pipefail
 export PATH="/opt/cargo/bin:/usr/local/bin:/usr/local/sbin:$PATH"
 BASE_SHA=59606870e8ba3001a845627696509e8aa16bb0f0    # main, pinned
-CARRIER_SHA=2dbfa1ec866a193a3e8f7be7097a2f9b4d4d8b83  # scratch: probe v4 + carriers, pushed below
+CARRIER_SHA=045a854f19c1f909e124f0673d78e8c0ffd620eb  # scratch head, pushed: probe v4 + s1b + carriers
 URL=https://github.com/gunb-ai/gunbc.git
 D=/tmp/probeV4; rm -rf $D; mkdir -p $D
 LOGS=$D/logs; mkdir -p $LOGS
