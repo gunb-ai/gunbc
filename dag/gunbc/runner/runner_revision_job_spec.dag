@@ -36,6 +36,19 @@ import gunbc.runner.runner_claim_set_results { ClaimSetResult }
 // S4b-3b), which runs one job from spec to published receipt. TRIGGER: S4b-3b's stand-in inhabitance
 // claim, the light discriminating claim set run end to end over these staged inputs.
 
+// THE REPOSITORY AUTHORITY. The job fetches and extracts the spec's repository as root, so the spec
+// does not choose it: only an authored repository is admitted, and a foreign one refuses at decode,
+// before any effect. This proves WHICH repository, not that every commit in it is trusted (a fork's
+// refs/pull/N/head is fetchable from this repository too); the staging that handles such content is
+// the declared frontier below.
+//
+// DECLARED FRONTIER (ruling pending, operator): staging runs as root today. TERMINAL SHAPE: staging
+// as a dedicated unprivileged account, root keeping only the cell, jailer and cgroup work.
+// TRIGGER: before any spec names a commit not on main (PR receipts citing job receipts feed it
+// pull-request heads), whichever is first. Until then the vendor step is isolated from the tree's
+// cargo configuration (extdeps.rust.cargo_build cargo_vendor_command).
+data revision_job_admitted_repositories: List<String> = ["https://github.com/gunb-ai/gunbc"]
+
 type RevisionJobProvenance {
   ref_name: String
   resolved_commit: String
@@ -59,6 +72,7 @@ type RevisionJobSpecRefusal
   | SpecClaimsEmpty
   | SpecClaimNotALabel { index: Int, text: String }
   | SpecClaimDuplicated { label: String }
+  | SpecRepositoryNotAdmitted { repository: String }
 
 type RevisionJobSpecDecode
   = RevisionJobSpecDecoded { spec: RevisionJobSpec }
@@ -168,7 +182,9 @@ fn decode_revision_job_spec(text: String) -> RevisionJobSpecDecode {
     JsonDocumentUnreadable { gap: g } => RevisionJobSpecRefused { refusal: SpecUnreadable { detail: json_document_gap_text(gap: g) } }
     JsonDocumentParsed { value: doc } => match spec_string(obj: doc, key: "repository") {
       SpecStringRefused { refusal: r } => RevisionJobSpecRefused { refusal: r }
-      SpecStringRead { value: repo } => match spec_object_id(obj: doc, key: "commit") {
+      SpecStringRead { value: repo } => if !any(revision_job_admitted_repositories, a => a == repo) {
+        RevisionJobSpecRefused { refusal: SpecRepositoryNotAdmitted { repository: repo } }
+      } else { match spec_object_id(obj: doc, key: "commit") {
         SpecObjectIdRefused { refusal: r } => RevisionJobSpecRefused { refusal: r }
         SpecObjectIdRead { oid: commit } => match spec_object_id(obj: doc, key: "tree") {
           SpecObjectIdRefused { refusal: r } => RevisionJobSpecRefused { refusal: r }
@@ -182,7 +198,7 @@ fn decode_revision_job_spec(text: String) -> RevisionJobSpecDecode {
             }
           }
         }
-      }
+      } }
     }
   }
 }
