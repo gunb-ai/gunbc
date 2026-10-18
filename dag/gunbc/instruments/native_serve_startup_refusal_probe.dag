@@ -50,7 +50,7 @@ fn native_serve_probe_standing(announcement: String, peer_announcement: String, 
   if refused_status == -1 {
     no_observation(reason: "the launch did not exit by itself (killed at the deadline), so the startup fold neither refused nor passed")
   } else if refused_status != native_serve_startup_refused_exit_code() {
-    ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: the launch exited ", concat(to_string(value: refused_status), concat(" instead of the startup exit code ", concat(to_string(value: native_serve_startup_refused_exit_code()), concat(" -- stderr [", concat(refused_stderr, "]"))))))) }
+    ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: the launch exited ", concat(to_string(value: refused_status), concat(" instead of the startup exit code ", concat(to_string(value: native_serve_startup_refused_exit_code()), concat(" -- stderr [", concat(refused_stderr, "]")))))) }
   } else if !starts_with(s: refused_stderr, prefix: native_serve_startup_refusal_line(reason: "")) {
     ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: stderr is not the typed startup refusal [", concat(refused_stderr, "]")) }
   } else if (missing_evidence(stderr: refused_stderr) |> count) > 0 {
