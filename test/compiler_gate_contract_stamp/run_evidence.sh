@@ -118,38 +118,59 @@ case_token_default="gunbc-contract-stamp-evidence-case"
 # --prepare deletes it before A reads it, and A exits GREEN with a failed case -- a silent widen, which
 # DESIGN 5 rejects outright. The run token guarded the case COUNT; the marker is the channel that
 # carries FAILURE, so it needed the same key.
+# THE IDENTITY IS VALIDATED BEFORE IT NAMES A DIRECTORY. A caller can name the directory outright with
+# GUNBC_CONTRACT_STAMP_EVIDENCE_DIR and hand the per-run REQUIREMENT a constant shared by every run --
+# GITHUB_RUN_ID="" gives two slots the same directory, which reopens the very race this fix closes, one
+# layer down. So the run identity is checked here as well, and a supplied directory must carry it: the
+# directory's own name has to end in <run_id>-<attempt>, which is what makes it per-ATTEMPT rather than
+# per-job or per-host.
+run_identity=""
+if [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_RUN_ATTEMPT:-}" ]; then
+  case "$GITHUB_RUN_ID" in ""|*[!0-9]*) run_identity="" ;;
+    *) case "$GITHUB_RUN_ATTEMPT" in ""|*[!0-9]*) run_identity="" ;;
+         *) run_identity="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" ;; esac ;;
+  esac
+fi
 evidence_dir="${GUNBC_CONTRACT_STAMP_EVIDENCE_DIR:-}"
-if [ -z "$evidence_dir" ]; then
-  if [ -n "${RUNNER_TEMP:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_RUN_ATTEMPT:-}" ]; then
-    evidence_dir="$RUNNER_TEMP/gunbc-contract-stamp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+if [ -z "$evidence_dir" ] && [ -n "$run_identity" ] && [ -n "${RUNNER_TEMP:-}" ]; then
+  evidence_dir="$RUNNER_TEMP/gunbc-contract-stamp-$run_identity"
+fi
+if [ -n "$evidence_dir" ]; then
+  if [ -z "$run_identity" ]; then
+    echo "FAIL: GUNBC_CONTRACT_STAMP_EVIDENCE_DIR is set but the run identity is not a valid" >&2
+    echo "      <digits>-<digits> (GITHUB_RUN_ID='${GITHUB_RUN_ID:-}' GITHUB_RUN_ATTEMPT='${GITHUB_RUN_ATTEMPT:-}')." >&2
+    echo "      A directory without a per-ATTEMPT suffix is a directory two runs can share." >&2
+    exit 1
   fi
+  case "$evidence_dir" in
+    *"$run_identity"|*"$run_identity"/) : ;;
+    *) echo "FAIL: evidence directory '$evidence_dir' is not keyed to this run's identity '$run_identity'." >&2
+       exit 1 ;;
+  esac
 fi
 transcript="${GUNBC_CONTRACT_STAMP_EVIDENCE_TRANSCRIPT:-${evidence_dir:+$evidence_dir/}gunbc-contract-stamp-evidence.log}"
 fail_marker="${GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER:-${evidence_dir:+$evidence_dir/}gunbc-contract-stamp-evidence.fail}"
-# WHERE THE PER-RUN REQUIREMENT BITES, and where it does not. It is checked in two places:
-#   * the STEP's bytes -- the step must derive its channels from the per-run vars and must contain no
-#     /tmp/ path at all (the derivation checks below);
-#   * this file's OWN defaults -- see require_per_run_channels, called once a mode has settled its paths.
-# It is deliberately NOT imposed on paths handed to us as argv. A caller who names a scratch file for one
-# --case invocation is doing something legitimate (and my own regeneration dispatch does exactly that);
-# the thing that must never share a path with a neighbour is a verdict nobody chose. Enforcing it on argv
-# too would refuse the model's own well-formed invocation only after the model had been proven correct
-# elsewhere, which is strictness with no failure mode behind it.
+# ONE RULE, EVERY CHANNEL, NO EXEMPTION FOR ARGV (review 82257, claude/opus[1m]).
+# Every verdict channel -- transcript or fail marker, however it was obtained -- must live inside the
+# per-run directory. Earlier this file exempted paths handed in as argv, on the reasoning that a caller
+# naming a scratch file is doing something legitimate. That exemption was a HOLE, and the reviewer's
+# "alternatively" clause was the necessary half of the fix rather than the optional one: the checks that
+# read the STEP's bytes live in local mode, and NOTHING ON THE REQUIRED PATH RUNS LOCAL MODE (verified:
+# witnesses.yml invokes this file only with --prepare / --case). So if the model ever regressed to fixed
+# /tmp paths, the generated step would pass them as argv, every argv-carrying check would pass them on,
+# and no code on the required path would refuse. Enforcement has to sit where the paths are actually
+# consumed, which is here.
+#
+# THE TEST IS MEMBERSHIP OF THE PER-RUN DIRECTORY, not "is not under /tmp". An earlier version rejected
+# any path containing /tmp/, which would have refused the very layout this fix requires: RUNNER_TEMP is
+# a directory someone else chooses, and a runner (or a developer) that puts it under /tmp would have been
+# told its own correct path was the bug. Being under /tmp is not the defect; being SHARED is.
 require_per_run_channels() {
-  # Called with the paths a mode settled on when those paths came from THIS file's defaults rather than
-  # from argv. A fixed name here is the review 82230 bug: concurrent runner slots share /tmp, so one
-  # slot's --prepare deletes another slot's fail marker and a real refusal goes green.
-  #
-  # THE TEST IS MEMBERSHIP OF THE PER-RUN DIRECTORY, not "is not under /tmp". The first version rejected
-  # any path containing /tmp/, which would have refused the very layout this fix exists to require --
-  # RUNNER_TEMP is a directory someone else chooses, and a runner (or a developer) that puts it under
-  # /tmp would have been told its own correct path was the bug. Being under /tmp is not the defect;
-  # being SHARED is.
   if [ -z "$evidence_dir" ]; then
     echo "FAIL: no per-run evidence directory for '$1'." >&2
     echo "      Set GUNBC_CONTRACT_STAMP_EVIDENCE_DIR, or RUNNER_TEMP + GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT." >&2
     echo "      Concurrent runner slots share /tmp: one slot's --prepare can delete another slot's fail" >&2
-    echo "      marker and turn a real refusal green (review 82230)." >&2
+    echo "      marker and turn a real refusal green (reviews 82230, 82257)." >&2
     exit 1
   fi
   case "$1" in
@@ -157,7 +178,9 @@ require_per_run_channels() {
       return 0 ;;
     *)
       echo "FAIL: '$1' is outside the per-run evidence directory '$evidence_dir'." >&2
-      echo "      A verdict channel no run owns is a channel two runs can share (review 82230)." >&2
+      echo "      A verdict channel no run owns is a channel two runs can share (reviews 82230, 82257)." >&2
+      echo "      This applies to --transcript/--fail-marker from argv too: nothing else on the required" >&2
+      echo "      path can catch a generated step that stopped deriving per-run channels." >&2
       exit 1 ;;
   esac
 }
@@ -388,11 +411,10 @@ if [ "${1:-}" = "--case" ]; then
   [ "$#" -ge 5 ] || bail "--case needs label, subject, running, expected-exit and finding"
   shift 5
   case_transcript="$transcript"; marker="$fail_marker"; token="$case_token_default"; run_token=""
-  from_argv=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --transcript) case_transcript="$2"; from_argv=1; shift 2 ;;
-      --fail-marker) marker="$2"; from_argv=1; shift 2 ;;
+      --transcript) case_transcript="$2"; shift 2 ;;
+      --fail-marker) marker="$2"; shift 2 ;;
       # THE PER-RUN TOKEN, handed back from the model's own assignment. The generated step counts lines
       # carrying THIS value, not the constant marker: a stale transcript from an earlier invocation can
       # satisfy a count of a constant, and mine did exactly that in simulation (harness deleted, step
@@ -408,9 +430,21 @@ if [ "${1:-}" = "--case" ]; then
   done
   [ -n "$label" ] && [ -n "$subject" ] || bail "--case needs label and subject"
   [ -n "$marker" ] && [ -n "$case_transcript" ] || bail "--case needs --transcript and --fail-marker"
-  # Paths the CALLER chose are the caller's business (a scratch file for one invocation is legitimate).
-  # Paths this file invented for itself must be per-run, or two slots share one verdict channel.
-  [ "$from_argv" = "1" ] || require_per_run_channels "$case_transcript"
+  # BOTH channels, whichever way they arrived -- including argv. --case is the mode the required path
+  # actually invokes, so the rule is worthless unless it applies here (reviews 82230, 82257).
+  require_per_run_channels "$case_transcript"
+  require_per_run_channels "$marker"
+  # THE TRANSCRIPT MUST BE WRITABLE BEFORE A CASE RUNS. The generated step mkdirs the per-run directory,
+  # so this is normally already true; the reason to check anyway is the FAILURE MODE. If tee cannot write,
+  # tee prints to stderr and the case still exits 0 -- the count then finds no lines and the step refuses
+  # with "the harness ran the wrong number of cases", which blames the harness for what was a filesystem
+  # problem. Name the real cause at the point it happens.
+  if ! mkdir -p "$(dirname "$case_transcript")" 2>/dev/null; then
+    bail "cannot create the transcript directory $(dirname "$case_transcript")"
+  fi
+  if ! : >> "$case_transcript" 2>/dev/null; then
+    bail "cannot write the transcript '$case_transcript' -- a case that cannot record is a case that did not run"
+  fi
   case "$expect_rc" in
     ""|*[!0-9]*) bail "--case: expected exit is not a number: '$expect_rc'" ;;
   esac
@@ -514,15 +548,15 @@ if [ "${1:-}" = "--prepare" ]; then
       *) bail "--prepare: unknown argument $1" ;;
     esac
   done
-  prep_from_argv=1
-  [ -n "$prep_marker" ] || { prep_marker="$fail_marker"; prep_from_argv=0; }
-  [ -n "$prep_transcript" ] || { prep_transcript="$transcript"; prep_from_argv=0; }
+  [ -n "$prep_marker" ] || prep_marker="$fail_marker"
+  [ -n "$prep_transcript" ] || prep_transcript="$transcript"
   [ -n "$prep_marker" ] || bail "--prepare needs --fail-marker"
   [ -n "$prep_transcript" ] || bail "--prepare needs --transcript"
-  # --prepare DELETES files, so it is where the shared-path bug does real damage: a fixed name means
-  # one slot's prepare wipes another slot's marker. Defaults must be per-run; argv stays the caller's.
-  [ "$prep_from_argv" = "1" ] || require_per_run_channels "$prep_transcript"
-  rm -f "$marker"
+  # --prepare DELETES files, which is exactly how the shared-path bug does its damage: a fixed name
+  # means one slot's prepare wipes another slot's marker. Enforced on argv too -- see the rule above.
+  require_per_run_channels "$prep_transcript"
+  require_per_run_channels "$prep_marker"
+  rm -f "$prep_marker"
   # Both artifacts are cleared: the marker so a stale failure cannot redden a clean run, and the
   # TRANSCRIPT so a stale success cannot GREEN a run that executed nothing. The generated step counts
   # lines in it, so leaving an old one behind would let the count reach the modelled number by itself.
