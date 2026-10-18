@@ -12,6 +12,12 @@ import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.measure { byte_size }
 import std.optional { Optional, Absent, Present }
 import extdeps.storage.types { storage_device_serial }
+import extdeps.libxcrypt.crypt_scheme {
+  Sha512CryptFormat,
+  sha512_crypt_figure_read_obligation,
+  sha512_crypt_format,
+}
+import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash {
   Fnv1a64Structural,
@@ -154,7 +160,7 @@ import gunbc.provisioning.altra_autoinstall_seed {
   NotACryptDigest,
   RoundsMalformed,
   SaltAbsent,
-  SaltNotInCryptAlphabet,
+  SaltHoldsForbiddenCharacter,
   SaltTooLong,
   ReceiptAccepted,
   ReceiptRefused,
@@ -932,12 +938,34 @@ test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
     && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnjXX")
     && refuses(crypt_digest: "$5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && accepts(crypt_digest: "$6$saltsaltX$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
-    && refuses(crypt_digest: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // A SALT MAY HOLD PUNCTUATION. libxcrypt's salt class is a FORBIDDEN set (any character except '", ':',
+    // CR, LF), so "sa!tsalt" is a legal salt and refusing it would deny a real credential to a board whose only
+    // console is the BMC. This line used to be a `refuses`, which is the defect the spec reading caught.
+    && accepts(crypt_digest: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // ...and the class really is a forbidden set rather than a preference: a COLON is what must be refused.
+    && refuses(crypt_digest: "$6$sa:tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6d!9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "x$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$saltsalt$")
+    // THE COST FIELD, AS ITS CLASS IS WRITTEN: `rounds=[1-9][0-9]+` within 1000..999,999,999. Both bounds are
+    // powers of ten, so the range is decidable from the digit COUNT — which is why a single digit, three digits
+    // and ten digits are each refused without the door ever converting the text to a number. "rounds=5" is not a
+    // cheap-but-valid cost, it is a malformed one: silently parsing it would install a credential whose cost
+    // nobody chose, on a board nobody can reach to fix.
+    && refuses(crypt_digest: "$6$rounds=5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$rounds=999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$rounds=10000000000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // A LEADING ZERO is outside [1-9], so "rounds=05000" is malformed rather than a slower spelling of 5000.
+    && refuses(crypt_digest: "$6$rounds=05000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // A NON-NUMERIC COST OF LEGAL WIDTH. "rounds=abc" above is only three characters, so it is refused by the
+    // width check and the digit-strip check is never reached -- a mutation that disabled the strip would be
+    // invisible. At four characters the width check passes and ONLY the strip can reject it.
+    && refuses(crypt_digest: "$6$rounds=abcd$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // ...and the two documented ENDS of the range are accepted, so the check is not secretly a smaller range.
+    && accepts(crypt_digest: "$6$rounds=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && accepts(crypt_digest: "$6$rounds=999999999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     // A DIGEST LONGER THAN 86, as well as the 85-character truncation above. Refusing "at least 86" instead of
     // "exactly 86" accepts this one, and both directions have to be on file or the width is a floor in disguise.
     && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.XX")
@@ -965,6 +993,72 @@ fn accepts(crypt_digest: String) -> Bool {
   }
 }
 
+// THE FIGURES ARE CITED, AND THE DOOR READS THEM RATHER THAN RESTATING THEM. Two sides, both needed. (1) The
+// row's standing must actually be a citation and its read obligation must be Absent: if the standing is ever
+// downgraded to a bare constant, or quietly re-typed as an uncited transcription, the obligation appears and this
+// goes red — a citation that only exists in a comment is the §4d failure DESIGN says a reader cannot see later.
+// (2) The refusal's payload must equal the ROW's figures, not literals in this file: that is what proves the door
+// reads upstream. Together they are two-sided — widen the row and the spec pins below go red; hard-code the door
+// and the comparison to the row goes red. Either edit alone leaves one witness standing.
+//
+// The literals are the sha512crypt `.hash` line of crypt(5) at libcrypt1 1:4.4.38-1: salt {1,16}, digest
+// [./0-9A-Za-z]{86}, cost [1-9][0-9]+ within 1000..999,999,999 (which, both bounds being powers of ten, is the
+// digit-count pair 4..9).
+test fn the_crypt_figures_are_cited_and_the_door_reads_them() -> Bool {
+  match sha512_crypt_figure_read_obligation() {
+    // Cited, so nothing is owed before the figures are believed.
+    Absent =>
+      match sha512_crypt_format {
+        Sha512CryptFormat {
+          scheme_token: token, cost_marker: marker, salt_forbidden_characters: forbidden,
+          salt_least_characters: salt_min, salt_greatest_characters: salt_max, digest_alphabet: alphabet,
+          digest_exact_characters: width, cost_least_digits: cost_min, cost_greatest_digits: cost_max,
+          figure_standing: standing,
+        } =>
+          match (token as String) == "6"
+            && (marker as String) == "rounds="
+            && salt_min == 1 && salt_max == 16
+            && width == 86
+            && cost_min == 4 && cost_max == 9
+            && list_length(items: alphabet) == 64
+            && list_length(items: forbidden) == 4
+          {
+            False => false
+            True =>
+              // THE STANDING IS THE CITATION, NOT A PLACEHOLDER.
+              match standing {
+                CitedToAuthority { authority: source } =>
+                  match (source.uri.locator as String).contains("besser82/libxcrypt") {
+                    False => false
+                    True =>
+                      // AND THE DOOR'S REFUSALS QUOTE THE ROW. An 85-character digest must report the ROW's
+                      // width, and a 17-character salt the ROW's ceiling: if the door carried its own copy of
+                      // either number, these two comparisons are where the split shows.
+                      match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj") {
+                        Present { value: DigestWrongLength { length: reported, expected: quoted_width } } =>
+                          match quoted_width == width && reported == width - 1 {
+                            False => false
+                            True =>
+                              match cause_of(crypt_digest: "$6$12345678901234567$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                                Present { value: SaltTooLong { length: seen_salt, ceiling: quoted_ceiling } } =>
+                                  seen_salt == 17 && quoted_ceiling == salt_max && salt_min == 1
+                                _ => false
+                              }
+                          }
+                        _ => false
+                      }
+                  }
+                // An uncited transcription would make the figures a bet consumed as fact. Red on purpose.
+                TranscribedUncited { read_obligation: _ } => false
+                ObservedByReceipt { observed: _ } => false
+              }
+          }
+      }
+    // Somebody owes a read: the figures are not admissible as fact yet.
+    Present { value: _ } => false
+  }
+}
+
 // THE REFUSAL IS TYPED, AND EACH ARM IS REACHED BY ITS OWN CANDIDATE. A refusal that names the wrong part is a
 // worse outcome than no refusal at all, because the operator acts on the name: "your digest is 85 characters"
 // says re-copy it, "your salt is not over the crypt alphabet" says the credential store handed out something
@@ -979,8 +1073,8 @@ test fn each_refusal_arm_names_the_part_that_failed() -> Bool {
           seen == 85 && wanted == 86
           && match cause_of(crypt_digest: "$5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
             Present { value: SchemeUnsupported } =>
-              match cause_of(crypt_digest: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
-                Present { value: SaltNotInCryptAlphabet } =>
+              match cause_of(crypt_digest: "$6$sa:tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                Present { value: SaltHoldsForbiddenCharacter } =>
                   match cause_of(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
                     Present { value: RoundsMalformed } =>
                       match cause_of(crypt_digest: "$6$12345678901234567$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
