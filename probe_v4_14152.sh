@@ -66,11 +66,11 @@ echo "carrier sizes: $(wc -c < $LOGS/my_04_infer.dag) $(wc -c < $LOGS/my_04_type
 # mistyped 40-character SHA and the dispatch died at the fetch. A typo inside such a literal is
 # invisible to the eye and to grep, so it must never be authored by hand.
 SRC_SHA=a8e23ad9db56c29781789004102e57f91806a3f4
-# VERIFIED, not trusted: typed SHAs have already cost this lane two dispatches (one mistyped here, one
-# empty `git show` there). The branch tip is also a moving reference, which would make the measurement
-# unreproducible; a pinned SHA is what makes 're-run this dispatch' mean the same thing twice.
-timeout 300 git ls-remote origin refs/heads/session/gentle-carp-16 | grep -q "^$SRC_SHA\b" \
-  || { echo "SRC_SHA $SRC_SHA is NOT the tip of session/gentle-carp-16 -- re-derive it, do not proceed"; exit 30; }
+# VERIFIED BY CONTENT, not by tip equality. Typed SHAs have already cost this lane two dispatches (one
+# mistyped here, one empty `git show` there), so the version that lands is checked by what it CONTAINS
+# below. The tip is printed for the record only -- an earlier revision of this script required equality
+# with the tip, which is a landmine: it would refuse this pre-extension measurement the moment the
+# extension is committed to that same branch.
 echo "tests source (derived from the branch name) = $SRC_SHA"
 timeout 600 git fetch --depth 1 origin "$SRC_SHA" > $LOGS/fs.log 2>&1 || { echo "TESTS FETCH FAILED for $SRC_SHA"; tail -3 $LOGS/fs.log; exit 30; }
 git show FETCH_HEAD:src/v1/tests/claim/generic_identity_census.dag > src/v1/tests/claim/generic_identity_census.dag || { echo "no census claim"; exit 31; }
