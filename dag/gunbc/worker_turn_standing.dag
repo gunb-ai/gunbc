@@ -9,6 +9,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.posix.sh_invocation {
   posix_sh_export_from_file_then_exec_command,
   PosixShExportExecReady,
+  PosixShExportExecCommand,
   PosixShExportExecEmitRefused,
   PosixShKeepFile,
   posix_sh_export_from_file_unreadable_exit,
@@ -227,33 +228,52 @@ fn cursor_sandbox_preflight_observe(program: ProgramIdentity, root: CursorAttemp
   cursor_sandbox_preflight_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
 }
 
+// THE KEY PROBE IS BOUNDED: --list-models is network-backed and measured at about 1.3 s wall on srv2, so a
+// stalled network or CLI would otherwise hold selection until the belt limit kills the producer (A3 recovery is
+// crash recovery, not an operating bound). The timeout wraps the WHOLE export-from-file command, so the shell and
+// the exec'd CLI are one process tree under it. A returned 124 stays CursorKeyProbeUnreadable: it is not an
+// observed timeout (gunbc.recurring_failure_mode bare_exit_124_read_as_an_observed_timeout_event).
+data cursor_key_probe_bound: Second = second(count: 30)
+data cursor_key_probe_kill_grace: Second = second(count: 5)
+
+// THE ONE KEYED, BOUNDED PROBE COMMAND: admit name -> export-from-file -> timeout. cursor_key_probe_observe and the
+// wet witness's probe both build it here, so (a), (b), (c) run the production bound and not a parallel copy.
+fn cursor_bounded_keyed_probe_command(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, key_path: NonEmptyStr) -> PosixShExportExecCommand {
+  match admit_posix_shell_name(spelling: cursor_api_key_env_var as String) {
+    PosixShellNameRefused { spelling } => PosixShExportExecEmitRefused { name: spelling as NonEmptyStr }
+    PosixShellNameAdmitted { name } =>
+      match posix_sh_export_from_file_then_exec_command(
+        name: name,
+        path: key_path,
+        command: argv_words(command: cursor_bound_key_probe_command(program: program, root: root)),
+        disposition: PosixShKeepFile,
+      ) {
+        PosixShExportExecEmitRefused { name: n } => PosixShExportExecEmitRefused { name: n }
+        PosixShExportExecReady { command } =>
+          PosixShExportExecReady {
+            command: timeout_command(duration: cursor_key_probe_bound, kill_after: cursor_key_probe_kill_grace, command: command),
+          }
+      }
+  }
+}
+
 // The key probe BORROWS the attempt's credential snapshot: it reads the sealed value the take returned and
 // keeps the file for the spawn (PosixShKeepFile). It is reached only when the sandbox read Ready.
 fn cursor_key_probe_observe(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, snapshot: TakenCredentialSnapshot) -> ProviderStanding {
   let path = taken_credential_snapshot_path(snapshot: snapshot)
-  match admit_posix_shell_name(spelling: cursor_api_key_env_var as String) {
-    PosixShellNameRefused { spelling } =>
-      ProviderStandingUnobserved { reason: join(["the cursor credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr }
-    PosixShellNameAdmitted { name } =>
-      match posix_sh_export_from_file_then_exec_command(
-        name: name,
-        path: path,
-        command: argv_words(command: cursor_bound_key_probe_command(program: program, root: root)),
-        disposition: PosixShKeepFile,
-      ) {
-        PosixShExportExecEmitRefused { name: n } =>
-          ProviderStandingUnobserved { reason: join(["the sh emitter refused the export-and-exec program for ", n as String], "") as NonEmptyStr }
-        PosixShExportExecReady { command } => {
-          let run = run_shell_command_observe(command: command, transport: LocalExec)
-          if run.exit_code == posix_sh_export_from_file_unreadable_exit {
-            ProviderStandingUnobserved {
-              reason: join(["the cursor credential snapshot ", path as String, " is unreadable: ", run.stderr], "") as NonEmptyStr,
-            }
-          } else {
-            cursor_standing_from_key(key: cursor_key_probe_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr))
-          }
+  match cursor_bounded_keyed_probe_command(program: program, root: root, key_path: path) {
+    PosixShExportExecEmitRefused { name: n } =>
+      ProviderStandingUnobserved { reason: join(["the sh emitter refused the export-and-exec program for ", n as String], "") as NonEmptyStr }
+    PosixShExportExecReady { command } => {
+      let run = run_shell_command_observe(command: command, transport: LocalExec)
+      if run.exit_code == posix_sh_export_from_file_unreadable_exit {
+        ProviderStandingUnobserved {
+          reason: join(["the cursor credential snapshot ", path as String, " is unreadable: ", run.stderr], "") as NonEmptyStr,
         }
+      } else {
+        cursor_standing_from_key(key: cursor_key_probe_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr))
       }
+    }
   }
 }
 

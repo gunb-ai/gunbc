@@ -120,3 +120,13 @@ test fn the_worker_turn_argv_carries_no_credential() -> Bool {
   let name = cursor_api_key_env_var as String
   !any(turn_words(), w => w == name || starts_with(s: w, prefix: join([name, "="], "")))
 }
+
+// THE PREFLIGHT IS KEYLESS and the probe/turn inner environments are not: the preflight words carry `-u`
+// CURSOR_API_KEY before the pinned program; the probe's and turn's words do not (their outer export-from-file
+// wrapper supplies the key on purpose).
+test fn only_the_preflight_unsets_the_credential_variable() -> Bool {
+  let name = cursor_api_key_env_var as String
+  follows(words: preflight_words(), first: "-u", second: name)
+    && !follows(words: probe_words(), first: "-u", second: name)
+    && !follows(words: turn_words(), first: "-u", second: name)
+}
