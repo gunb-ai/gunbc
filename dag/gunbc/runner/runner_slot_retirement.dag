@@ -1179,15 +1179,28 @@ fn retirement_standing_wire(s: RunnerRetirementStanding) -> String {
   }
 }
 
-fn retirement_baseline_rows(evidence: SlotRetirementEvidence) -> List<String> {
+// THE EVIDENCE'S PRESENCE IS A PREMISE OF ACTUATION; ITS PER-UNIT STANDINGS ARE A SEPARATE FAMILY.
+// Teardown is rendered from a plan-time RetirementComplete and the apply script re-checks nothing, so
+// a standing that moved is judged unit by unit (fleet_converge_plan, retirement drift admission)
+// rather than hashed with the rest of the identity: planned pending / observed complete only
+// under-actuates, and every other change must refuse naming the unit.
+fn retirement_baseline_header_rows(evidence: SlotRetirementEvidence) -> List<String> {
   match evidence {
     SlotRetirementEvidenceAbsent { cause: _ } => ["retirement:absent"]
-    SlotRetirementEvidencePresent { authorization: _, standings: ss } =>
-      concat(
-        ["retirement:observed"],
-        ss |> map(s => join(["retirement:", retirement_unit(s: s), "=", retirement_standing_wire(s: s)], "")),
-      )
+    SlotRetirementEvidencePresent { authorization: _, standings: _ } => ["retirement:observed"]
   }
+}
+
+fn retirement_unit_standing_rows(evidence: SlotRetirementEvidence) -> List<String> {
+  match evidence {
+    SlotRetirementEvidenceAbsent { cause: _ } => []
+    SlotRetirementEvidencePresent { authorization: _, standings: ss } =>
+      ss |> map(s => join(["retirement:", retirement_unit(s: s), "=", retirement_standing_wire(s: s)], ""))
+  }
+}
+
+fn retirement_baseline_rows(evidence: SlotRetirementEvidence) -> List<String> {
+  concat(retirement_baseline_header_rows(evidence: evidence), retirement_unit_standing_rows(evidence: evidence))
 }
 
 // THE TRANSITION'S OWN IDENTITY IS BOUND TOO, so a plan for one transition cannot admit against a

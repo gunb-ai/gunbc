@@ -22,7 +22,13 @@ import gunbc.runner.runner_slot_provision {
 }
 import std.content_hash { serialize_content_hash }
 import std.algebra { string_contains }
-import gunbc.fleet.fleet_converge_plan { fleet_converge_member_set_drift_text }
+import gunbc.fleet.fleet_converge_plan {
+  fleet_converge_member_set_drift_text,
+  fleet_converge_retirement_drift_text,
+  fleet_converge_member_set_fingerprint,
+}
+import gunbc.runner.runner_slot_retirement { RetirementPendingDrain, RetirementUnobserved }
+import gunbc.runner.runner_service_activation { UnitStandingsObserved, RunnerUnitStanding, RunnerUnitStandings }
 import gunbc.membership_reconcile { MemberAction, MemberAdded, MemberRemoved }
 import gunbc.host.host_axis_caps { CapMember, desired_cap_member }
 import gunbc.host.host_converge { gunbc_runner_per_slot_dropin_path }
@@ -2830,4 +2836,141 @@ fn wt_srv3_deploy() -> RunnerHostDeploy {
     Present { value: d } => d
     Absent => wt_missing_deploy()
   }
+}
+
+
+fn witness_identity_request(
+  slots: List<RunnerSlotMember>,
+  standings: RunnerUnitStandings,
+  retirement: SlotRetirementEvidence,
+) -> FleetConvergeRequest {
+  FullHostConverge {
+    host: witness_host_srv1,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: slots,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: standings,
+    observed_retirement: retirement,
+  }
+}
+
+fn witness_retirement_plan_body(planned: SlotRetirementEvidence) -> String {
+  match fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: planned,
+  ) {
+    Absent => ""
+    Present { value: artifact } => artifact.plan_body
+  }
+}
+
+fn witness_retirement_unit_string() -> String {
+  witness_open_transition_delta_unit(offset: 0) as String
+}
+
+fn witness_pending() -> RunnerRetirementStanding {
+  RetirementPendingDrain { unit: witness_retirement_unit_string(), cause: "occupied" }
+}
+
+fn witness_unobserved() -> RunnerRetirementStanding {
+  RetirementUnobserved { unit: witness_retirement_unit_string(), cause: "unreadable" }
+}
+
+fn witness_retirement_drift(planned: RunnerRetirementStanding, observed: RunnerRetirementStanding) -> String {
+  fleet_converge_retirement_drift_text(
+    plan_body: witness_retirement_plan_body(planned: witness_srv1_evidence(standings: [planned])),
+    observed: witness_identity_request(
+      slots: [],
+      standings: runner_unit_standings_unobserved_no_transaction,
+      retirement: witness_srv1_evidence(standings: [observed]),
+    ),
+  )
+}
+
+// CHURN-ONLY: a runner unit going active then idle changes the observation but not the identity.
+test fn unit_standing_churn_leaves_the_subject_identity_unchanged() -> Bool {
+  let u = witness_open_transition_delta_unit(offset: 0)
+  let active = witness_identity_request(
+    slots: [],
+    standings: UnitStandingsObserved { units: [RunnerUnitStanding { unit: u, active: true, enabled: true }] },
+    retirement: witness_no_retirement_evidence(),
+  )
+  let idle = witness_identity_request(
+    slots: [],
+    standings: UnitStandingsObserved { units: [RunnerUnitStanding { unit: u, active: false, enabled: true }] },
+    retirement: witness_no_retirement_evidence(),
+  )
+  serialize_content_hash(hash: fleet_converge_member_set_fingerprint(request: active)) as String
+    == serialize_content_hash(hash: fleet_converge_member_set_fingerprint(request: idle)) as String
+}
+
+// PREMISE: the slot population is still in the identity.
+test fn slot_population_change_still_moves_the_subject_identity() -> Bool {
+  let none_slots = witness_identity_request(slots: [], standings: runner_unit_standings_unobserved_no_transaction, retirement: witness_no_retirement_evidence())
+  let one_slot = witness_identity_request(
+    slots: [runner_slot_member_from_instance_name(instance_name: "srv1-01")],
+    standings: runner_unit_standings_unobserved_no_transaction,
+    retirement: witness_no_retirement_evidence(),
+  )
+  serialize_content_hash(hash: fleet_converge_member_set_fingerprint(request: none_slots)) as String
+    != serialize_content_hash(hash: fleet_converge_member_set_fingerprint(request: one_slot)) as String
+}
+
+// The unit standing rows stay observed: printed in plan.txt beside the identity.
+test fn unit_standings_stay_printed_in_the_plan_as_observed() -> Bool {
+  match fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: UnitStandingsObserved { units: [RunnerUnitStanding { unit: witness_open_transition_delta_unit(offset: 0), active: true, enabled: true }] },
+    observed_retirement: witness_no_retirement_evidence(),
+  ) {
+    Absent => false
+    Present { value: artifact } =>
+      string_contains(s: artifact.plan_body, pattern: "\nobserved_only_rows:\n")
+        && string_contains(s: artifact.plan_body, pattern: witness_retirement_unit_string())
+  }
+}
+
+test fn retirement_complete_then_pending_refuses_located() -> Bool {
+  let t = witness_retirement_drift(planned: witness_open_transition_delta_complete_standing(), observed: witness_pending())
+  string_contains(s: t, pattern: "retirement drift: ")
+    && string_contains(s: t, pattern: witness_retirement_unit_string())
+    && string_contains(s: t, pattern: "planned complete, now pending")
+}
+
+test fn retirement_complete_then_unobserved_refuses_located() -> Bool {
+  let t = witness_retirement_drift(planned: witness_open_transition_delta_complete_standing(), observed: witness_unobserved())
+  string_contains(s: t, pattern: "planned complete, now unobserved")
+    && string_contains(s: t, pattern: witness_retirement_unit_string())
+}
+
+test fn retirement_pending_then_complete_admits() -> Bool {
+  witness_retirement_drift(planned: witness_pending(), observed: witness_open_transition_delta_complete_standing()) == ""
+}
+
+test fn retirement_pending_then_unobserved_refuses() -> Bool {
+  string_contains(
+    s: witness_retirement_drift(planned: witness_pending(), observed: witness_unobserved()),
+    pattern: "planned pending, now unobserved",
+  )
+}
+
+// The admitted drift must NOT actuate the withheld teardown: apply.sh is rendered from the PLAN-time
+// pending standing, and nothing at apply re-renders it from the later complete observation.
+test fn retirement_pending_plan_renders_no_teardown_for_the_unit() -> Bool {
+  !removes_retired_tree(lines: witness_open_transition_delta_apply(standings: [witness_pending()]))
 }

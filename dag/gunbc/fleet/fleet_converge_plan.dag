@@ -196,7 +196,8 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
-  retirement_baseline_rows,
+  retirement_baseline_header_rows,
+  retirement_unit_standing_rows,
   transition_baseline_rows,
 }
 import gunbc.runner.runner_slot_provision {
@@ -508,7 +509,7 @@ fn fleet_converge_plan_subject(request: FleetConvergeRequest) -> FleetConvergePl
 }
 
 fn fleet_converge_member_set_fingerprint(request: FleetConvergeRequest) -> ContentHash {
-  content_hash_of_value(value: observed_baseline_text(request: request) as NonEmptyStr)
+  content_hash_of_value(value: observed_identity_text(request: request) as NonEmptyStr)
 }
 
 fn fleet_converge_apply_subject_host_matches(planned_host: NonEmptyStr, observed_host: NonEmptyStr) -> Bool {
@@ -775,29 +776,41 @@ fn fleet_converge_apply_generation_stale(planned_generation: Int, store_generati
 // before apply admits anything (fleet_converge_plan_manifest, DerivedFromBoundAuthority). So the
 // planned rows are read out of bytes apply has already verified, and NO hash is minted from them:
 // the located refusal is a presentation of two row lists, never a second identity.
+data fleet_converge_plan_baseline_section: String = "observed_baseline"
+data fleet_converge_plan_observed_only_section: String = "observed_only_rows"
+data fleet_converge_plan_monotone_section: String = "monotone_premise_rows"
+
+fn fleet_converge_plan_section_end_marker(section: String) -> String {
+  concat(section, "_end:")
+}
+
 data fleet_converge_plan_baseline_end_marker: String = "observed_baseline_end:"
 
 type PlannedBaselineRows
   = PlannedBaselineRowsRead { rows: List<String> }
   | PlannedBaselineRowsUnavailable { cause: String }
 
-fn fleet_converge_planned_baseline_rows(plan_body: String) -> PlannedBaselineRows {
-  match skip(xs: split(s: plan_body, delimiter: "\nobserved_baseline:\n"), n: 1).first() {
-    Absent => PlannedBaselineRowsUnavailable { cause: "plan.txt carries no observed_baseline: section" }
+fn fleet_converge_planned_section_rows(plan_body: String, section: String) -> PlannedBaselineRows {
+  match skip(xs: split(s: plan_body, delimiter: concat("\n", section, ":\n")), n: 1).first() {
+    Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt carries no ", section, ": section") }
     Present { value: tail } => {
-      let parts = split(s: tail, delimiter: concat("\n", fleet_converge_plan_baseline_end_marker))
+      let parts = split(s: tail, delimiter: concat("\n", fleet_converge_plan_section_end_marker(section: section)))
       if list_length(items: parts) < 2 {
         PlannedBaselineRowsUnavailable {
-          cause: "plan.txt carries no observed_baseline_end: marker (minted before baseline rows were delimited)",
+          cause: concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)"),
         }
       } else {
         match parts.first() {
-          Absent => PlannedBaselineRowsUnavailable { cause: "plan.txt baseline section is empty" }
+          Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
           Present { value: block } => PlannedBaselineRowsRead { rows: split(s: block, delimiter: "\n") }
         }
       }
     }
   }
+}
+
+fn fleet_converge_planned_baseline_rows(plan_body: String) -> PlannedBaselineRows {
+  fleet_converge_planned_section_rows(plan_body: plan_body, section: fleet_converge_plan_baseline_section)
 }
 
 fn baseline_row_in(rows: List<String>, row: String) -> Bool {
@@ -808,7 +821,7 @@ fn baseline_row_in(rows: List<String>, row: String) -> Bool {
 // "-" rows were in the plan and are gone; "+" rows were not planned and are now observed. Unavailable
 // planned rows degrade to printing the observed rows with the cause, never to a bare "drifted".
 fn fleet_converge_member_set_drift_text(plan_body: String, observed: FleetConvergeRequest) -> String {
-  let observed_rows = split(s: observed_baseline_text(request: observed), delimiter: "\n")
+  let observed_rows = split(s: observed_identity_text(request: observed), delimiter: "\n")
   match fleet_converge_planned_baseline_rows(plan_body: plan_body) {
     PlannedBaselineRowsUnavailable { cause: why } =>
       join(concat(["planned rows unavailable: ", why, "; observed rows:"], observed_rows), "\n")
@@ -823,6 +836,61 @@ fn fleet_converge_member_set_drift_text(plan_body: String, observed: FleetConver
         ),
         "\n",
       )
+  }
+}
+
+// THE RETIREMENT STANDINGS ARE A PREMISE THAT MAY MOVE IN ONE DIRECTION. Teardown is rendered from a
+// plan-time RetirementComplete and apply.sh re-checks nothing, so planned complete / observed anything
+// else would rm -rf against a unit that is no longer retired. Planned pending / observed complete only
+// under-actuates (the plan withheld that teardown and still does), so it admits. Everything else,
+// including a unit that appears or vanishes, refuses naming the unit and both standings. The empty
+// string is "admitted"; any text is the located refusal.
+fn retirement_row_unit(row: String) -> String {
+  match split(s: row, delimiter: "=").first() { Absent => row  Present { value: u } => u }
+}
+
+fn retirement_row_standing(row: String) -> String {
+  match skip(xs: split(s: row, delimiter: "="), n: 1).first() { Absent => ""  Present { value: t } => t }
+}
+
+fn retirement_row_for_unit(rows: List<String>, unit: String) -> String? {
+  filter(rows, r => retirement_row_unit(row: r) == unit).first()
+}
+
+fn retirement_unit_planned(rows: List<String>, unit: String) -> Bool {
+  match retirement_row_for_unit(rows: rows, unit: unit) { Absent => false  Present { value: _ } => true }
+}
+
+fn retirement_standing_drift_line(planned: String, observed: String?) -> String {
+  match observed {
+    Absent => concat("retirement drift: ", retirement_row_unit(row: planned), " planned ", retirement_row_standing(row: planned), ", now unobserved (absent from the observation)")
+    Present { value: o } =>
+      if retirement_row_standing(row: planned) == retirement_row_standing(row: o) {
+        ""
+      } else if retirement_row_standing(row: planned) == "pending" && retirement_row_standing(row: o) == "complete" {
+        ""
+      } else {
+        concat("retirement drift: ", retirement_row_unit(row: planned), " planned ", retirement_row_standing(row: planned), ", now ", retirement_row_standing(row: o))
+      }
+  }
+}
+
+fn fleet_converge_retirement_drift_text(plan_body: String, observed: FleetConvergeRequest) -> String {
+  let observed_rows = monotone_premise_rows(request: observed)
+  match fleet_converge_planned_section_rows(plan_body: plan_body, section: fleet_converge_plan_monotone_section) {
+    PlannedBaselineRowsUnavailable { cause: why } =>
+      concat("retirement drift: planned standings unavailable: ", why)
+    PlannedBaselineRowsRead { rows: block } => {
+      let planned_rows = filter(block, r => r != "")
+      let lines = concat(
+        map(planned_rows, p => retirement_standing_drift_line(planned: p, observed: retirement_row_for_unit(rows: observed_rows, unit: retirement_row_unit(row: p)))),
+        map(
+          filter(observed_rows, o => !retirement_unit_planned(rows: planned_rows, unit: retirement_row_unit(row: o))),
+          o => concat("retirement drift: ", retirement_row_unit(row: o), " not planned, now ", retirement_row_standing(row: o)),
+        ),
+      )
+      join(filter(lines, l => l != ""), "\n")
+    }
   }
 }
 
@@ -1979,10 +2047,35 @@ fn fabric_cell_baseline_rows(population: FabricCellObservationDecision) -> List<
   }
 }
 
-// THE BASELINE IS DERIVED FROM THE REQUEST, so the rows that exist are exactly the families the
-// request named. The fabric-only arm emits the scope, the host and the fabric rows and nothing
-// else -- not empty timer rows, which would assert the host has no timers.
-fn observed_baseline_text(request: FleetConvergeRequest) -> String {
+// EVERY BASELINE ROW FAMILY DECLARES WHETHER IT IS A PREMISE OF ACTUATION. The standing is a field
+// of the family, so a new family cannot be added without choosing, and the subject identity is the
+// fold over the PremiseOfActuation families only (observed_identity_text). A family that is
+// ObservedOnly is still observed and still printed in plan.txt; it just does not decide admission.
+// PremiseAdmittingMonotoneDrift is judged row by row at apply (fleet_converge_retirement_drift_text)
+// instead of hashed: a standing may move in the one direction that under-actuates.
+type BaselineStanding
+  = PremiseOfActuation
+  | ObservedOnly
+  | PremiseAdmittingMonotoneDrift
+
+type BaselineFamily {
+  standing: BaselineStanding
+  rows: List<String>
+}
+
+fn baseline_standing_eq(a: BaselineStanding, b: BaselineStanding) -> Bool {
+  match a {
+    PremiseOfActuation => match b { PremiseOfActuation => true  _ => false }
+    ObservedOnly => match b { ObservedOnly => true  _ => false }
+    PremiseAdmittingMonotoneDrift => match b { PremiseAdmittingMonotoneDrift => true  _ => false }
+  }
+}
+
+fn baseline_family_rows_of(families: List<BaselineFamily>, standing: BaselineStanding) -> List<String> {
+  flat_map(filter(families, f => baseline_standing_eq(a: f.standing, b: standing)), f => f.rows)
+}
+
+fn observed_baseline_families(request: FleetConvergeRequest) -> List<BaselineFamily> {
   match request {
     FullHostConverge {
       host: host,
@@ -1994,31 +2087,75 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
       observed_unit_standings: standings,
       observed_retirement: retirement_evidence,
     } =>
-      join(
-        concat(
-          concat(
+      [
+        BaselineFamily {
+          standing: PremiseOfActuation,
+          rows: concat(
+            [fleet_converge_scope_wire(scope: FullHost), concat("host:", host as String)],
             concat(
-              [fleet_converge_scope_wire(scope: FullHost), concat("host:", host as String)],
               map(observed_timers, m => concat("timer:", m.unit_name as String)),
-            ),
-            concat(
+              concat(
                 map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
-                concat(
-                  map(observed_slots, m => join(["slot:", runner_slot_member_key(m: m) as String, "=", runner_slot_provenance_wire(p: m.provenance)], "")),
-                  runner_unit_standings_baseline_rows(standings: standings),
-                ),
+                map(observed_slots, m => join(["slot:", runner_slot_member_key(m: m) as String, "=", runner_slot_provenance_wire(p: m.provenance)], "")),
               ),
+            ),
           ),
-          concat(
+        },
+        BaselineFamily {
+          standing: PremiseOfActuation,
+          rows: concat(
             fabric_cell_baseline_rows(population: observed_fabric_cells),
             concat(
               transition_baseline_rows(host: host as HostIdentity),
-              retirement_baseline_rows(evidence: retirement_evidence),
+              retirement_baseline_header_rows(evidence: retirement_evidence),
             ),
           ),
-        ),
-        "\n",
-      )
+        },
+        BaselineFamily {
+          standing: ObservedOnly,
+          rows: runner_unit_standings_baseline_rows(standings: standings),
+        },
+        BaselineFamily {
+          standing: PremiseAdmittingMonotoneDrift,
+          rows: retirement_unit_standing_rows(evidence: retirement_evidence),
+        },
+      ]
+    _ => [BaselineFamily { standing: PremiseOfActuation, rows: split(s: observed_scoped_baseline_text(request: request), delimiter: "\n") }]
+  }
+}
+
+fn observed_identity_text(request: FleetConvergeRequest) -> String {
+  join(baseline_family_rows_of(families: observed_baseline_families(request: request), standing: PremiseOfActuation), "\n")
+}
+
+fn observed_only_rows(request: FleetConvergeRequest) -> List<String> {
+  baseline_family_rows_of(families: observed_baseline_families(request: request), standing: ObservedOnly)
+}
+
+fn monotone_premise_rows(request: FleetConvergeRequest) -> List<String> {
+  baseline_family_rows_of(families: observed_baseline_families(request: request), standing: PremiseAdmittingMonotoneDrift)
+}
+
+// THE BASELINE IS DERIVED FROM THE REQUEST, so the rows that exist are exactly the families the
+// request named. The fabric-only arm emits the scope, the host and the fabric rows and nothing
+// else -- not empty timer rows, which would assert the host has no timers.
+fn observed_baseline_text(request: FleetConvergeRequest) -> String {
+  join(flat_map(observed_baseline_families(request: request), f => f.rows), "\n")
+}
+
+// The non-FullHost scopes: each is one family of premise rows. FullHost is the family roster above.
+fn observed_scoped_baseline_text(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge {
+      host: _,
+      observed_timers: _,
+      observed_caps: _,
+      observed_slots: _,
+      observed_fabric_cells: _,
+      observed_activation_readiness: _,
+      observed_unit_standings: _,
+      observed_retirement: _,
+    } => ""
     LaunchEnvironmentConverge { host: host, observed_timers: observed_timers } =>
       join(
         concat(
@@ -2849,7 +2986,7 @@ fn fleet_converge_plan_artifact_of_request(
   prior_generation: Int,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(request: request)
-  let baseline = observed_baseline_text(request: request)
+  let baseline = observed_identity_text(request: request)
   match cas_generation_following(prior: prior_generation) {
     Absent => none
     Present { value: generation } => {
@@ -2871,6 +3008,12 @@ fn fleet_converge_plan_artifact_of_request(
               "observed_baseline:",
               baseline,
               fleet_converge_plan_baseline_end_marker,
+              concat(fleet_converge_plan_observed_only_section, ":"),
+              join(observed_only_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_observed_only_section),
+              concat(fleet_converge_plan_monotone_section, ":"),
+              join(monotone_premise_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_monotone_section),
             ],
             fleet_converge_plan_axis_lines(request: request),
           ),
@@ -3010,7 +3153,7 @@ fn fleet_converge_observed_baseline_matches(
   observed_baseline_hex: Fnv1a64StructuralDigestHex,
   observed: FleetConvergeRequest,
 ) -> Bool {
-  let baseline = observed_baseline_text(request: observed)
+  let baseline = observed_identity_text(request: observed)
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) => structural.digest == observed_baseline_hex
     Sha256Hash(_) => false
