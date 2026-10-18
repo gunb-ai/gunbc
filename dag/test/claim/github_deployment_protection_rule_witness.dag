@@ -21,22 +21,27 @@ module gunbc.test.claim.github_deployment_protection_rule_witness
 // modelled and witnessed in gunbc.auth.deployment_gate_authorization, not here. An upstream model that
 // held them would be edited every time our policy changed.
 
-import std.types { String, Int, List, Bool, NonEmptyStr, HttpStatus }
-import std.nat { Nat }
+import std.types {
+  String,
+  Int,
+  List,
+  Bool,
+  NonEmptyStr,
+  HttpStatus,
+}
+
 import std.measure {
-  Second,
   second,
   second_count,
   minute,
-  Minute,
   minute_count,
   seconds_per_day,
 }
-import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
-import extdeps.external_authority {
-  ExternalAuthority,
-  external_model_scope_citations,
+import extdeps.ietf.http_semantics {
+  GET,
+  POST,
 }
+import extdeps.external_authority { external_model_scope_citations }
 import extdeps.github.deployment_protection_rule {
   DeploymentProtectionRuleReview,
   ReviewState,
@@ -44,8 +49,6 @@ import extdeps.github.deployment_protection_rule {
   Rejected,
   review_state_wire,
   review_state_from_wire,
-  HumanDeploymentReview,
-  EnvironmentProtectionRuleKind,
   RequiredReviewersKind,
   WaitTimerKind,
   BranchPolicyKind,
@@ -60,22 +63,25 @@ import extdeps.github.deployment_protection_rule {
   rule_webhook_absent_fields,
   rule_webhook_payload_field_is_published,
   rule_webhook_consumed_fields,
-  rule_webhook_field_environment,
   rule_webhook_field_installation,
   rule_webhook_field_deployment_callback_url,
   rule_webhook_is_an_answerable_request,
   rule_webhook_action,
   rule_webhook_event_name,
-  rule_installation_id_payload_field,
   rule_installation_id_nested_field,
   rule_installation_id_is_read_from,
-  RuleReviewCallback,
   rule_review_callback,
-  rule_webhook_selected_route,
-  rule_webhook_route_adds_no_inbound,
-  DeliveryIndependenceStanding,
-  rule_delivery_independence,
-  rule_delivery_is_unproven,
+  RuleWebhookWireFields,
+  rule_webhook_payload_from_wire,
+  rule_webhook_parse_is_complete,
+  rule_delivery_documented_guarantee,
+  rule_delivery_guarantee_is_documented,
+  EnabledDeploymentProtectionRule,
+  RuleOwningApp,
+  rule_ownership_from_readback,
+  enabled_rule_readback_endpoint_path,
+  enabled_rule_readback_endpoint_method,
+  enabled_rule_readback_items_field,
   PendingDeploymentWait,
   PendingDeploymentEnvironment,
   PendingDeploymentReviewer,
@@ -86,9 +92,6 @@ import extdeps.github.deployment_protection_rule {
   pending_wait_carries_a_human_reviewer,
   pending_deployment_wait_field_names,
   pending_deployments_field_environment,
-  EnvironmentRuleOwnership,
-  OwnedByGateApp,
-  NotOwnedByGateApp,
   rule_ownership_is_established,
   RestCall,
   review_call,
@@ -105,9 +108,6 @@ import extdeps.github.deployment_protection_rule {
   review_endpoint_body_comment_field,
   review_endpoint_body_alternatives,
   pending_deployments_endpoint_method,
-  ReviewCredential,
-  InstallationAccessToken,
-  OAuthClassicWithRepoScope,
   review_credential_is_documented,
   review_accepted_token_type,
   review_oauth_classic_scope,
@@ -136,7 +136,6 @@ import extdeps.github.deployment_protection_rule {
   rest_authority,
   webhook_authority,
   environment_authority,
-  openapi_authority,
   enablement_authority,
   limits_authority,
   spec_authority,
@@ -146,17 +145,16 @@ import extdeps.github.deployment_protection_rule {
 }
 import extdeps.github.app {
   GitHubAppPermission,
-  GitHubPermissionAxis,
   ActionsAxis,
   DeploymentsAxis,
-  ContentsAxis,
-  AdministrationAxis,
-  IdTokenAxis,
   AppAccessRead,
   AppAccessWrite,
 }
-import extdeps.github.actions_runs { RunConclusion, RunFailure, RunSuccess }
-import extdeps.uri { Uri, Https }
+import extdeps.github.actions_runs {
+  RunFailure,
+  RunSuccess,
+}
+import extdeps.uri { Https }
 import gunbc.plan_registry { all_plans }
 
 // Two fixed environments, named rather than spelled at each call site: the one the gate protects and
@@ -375,30 +373,73 @@ test fn the_wait_names_its_environment_through_the_object() -> Bool {
     && !(pending_deployment_wait_field_names |> any(f => f == "installation_id"))
 }
 
-// WHO MAY ANSWER is a separate read, not a field of the wait. Ownership comes from the environment's
-// enabled-rule readback matched against this installation, and "we did not check" is a value.
-test fn ownership_is_a_separate_fact_with_two_arms() -> Bool {
+// OWNERSHIP IS A SEPARATE FACT, MINTED ONLY FROM A READBACK THAT CAN ESTABLISH IT. Three ways this
+// was wrong before, and each is refused by a value rather than by a sentence:
+//   the wrong ENDPOINT — .../deployment_protection_rules/apps is a CATALOGUE of integrations that
+//     could be installed ("AVAILABLE"); its items carry no rule id and no `enabled`, so a guard built
+//     on it passes for a rule that exists and is switched off.
+//   the wrong ATTRIBUTE — that response carries an App id and slug, never an installation id, so a
+//     record claiming to have learned an installation id from it had invented one.
+//   the missing CONDITION — a rule row is ownership only if it is ENABLED and attributed to this App.
+test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -> Bool {
+  let gate_app_id = 1900000001
+  let enabled_rule = EnabledDeploymentProtectionRule {
+    id: 900000001,
+    node_id: "DPPR_1",
+    enabled: true,
+    app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
+  }
+  let disabled_rule = EnabledDeploymentProtectionRule {
+    id: 900000002,
+    node_id: "DPPR_2",
+    enabled: false,
+    app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
+  }
+  let foreign_rule = EnabledDeploymentProtectionRule {
+    id: 900000003,
+    node_id: "DPPR_3",
+    enabled: true,
+    app: RuleOwningApp { id: 2222222222, slug: "some-other-integration" },
+  }
   rule_ownership_is_established(
-    ownership: OwnedByGateApp {
-      rule_id: 900000001,
-      installation_id: 1900000001,
-      environment_name: srv1_env,
-    }
+    ownership: rule_ownership_from_readback(
+      rules: [enabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+    )
   )
     && !rule_ownership_is_established(
-         ownership: NotOwnedByGateApp { because: "the readback never ran" }
+         ownership: rule_ownership_from_readback(
+           rules: [disabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+         )
        )
-    && (available_rule_readback_path_mentions("deployment_protection_rules/apps"))
-    && available_rule_readback_is_a_get()
+    && !rule_ownership_is_established(
+         ownership: rule_ownership_from_readback(
+           rules: [foreign_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+         )
+       )
+    && !rule_ownership_is_established(
+         ownership: rule_ownership_from_readback(
+           rules: [] as List<EnabledDeploymentProtectionRule>,
+           environment_name: srv1_env,
+           gate_app_id: gate_app_id,
+         )
+       )
+    // A readback that attributes nothing to this App id is a refusal even when rules came back: the
+    // environment in the ownership can never be one that was not read.
+    && !rule_ownership_is_established(
+         ownership: rule_ownership_from_readback(
+           rules: [enabled_rule], environment_name: srv1_env, gate_app_id: 7
+         )
+       )
 }
 
-fn available_rule_readback_path_mentions(fragment: NonEmptyStr) -> Bool {
-  extdeps.github.deployment_protection_rule.available_rule_readback_endpoint_path
-    |> contains(fragment as String)
-}
-
-fn available_rule_readback_is_a_get() -> Bool {
-  extdeps.github.deployment_protection_rule.available_rule_readback_endpoint_method == GET
+// THE ENDPOINT CENSUS, as data. Both endpoints exist upstream and do different jobs; the model cites
+// the ENABLED one. The mutation is the plausible mistake: the /apps path reads like the right answer to
+// anyone who has not read either description.
+test fn the_enabled_rules_endpoint_is_the_one_cited_not_the_catalogue() -> Bool {
+  (enabled_rule_readback_endpoint_path as String).contains("deployment_protection_rules")
+    && !(enabled_rule_readback_endpoint_path as String).contains("deployment_protection_rules/apps")
+    && enabled_rule_readback_endpoint_method == GET
+    && (enabled_rule_readback_items_field as String) == "custom_deployment_protection_rules"
 }
 
 // ---------------------------------------------------------------------------
@@ -429,13 +470,19 @@ test fn the_wait_timer_is_minutes_and_not_seconds() -> Bool {
 // The documented range, checked rather than described: 0 and 43,200 are the boundaries upstream gives,
 // and one past either is not in range.
 test fn the_configured_timer_cannot_exceed_the_documented_range() -> Bool {
-  extdeps.github.deployment_protection_rule.wait_timer_is_in_documented_range(minutes: 0 as Nat)
+  extdeps.github.deployment_protection_rule.wait_timer_is_in_documented_range(
+       timer: minute(count: 0)
+    )
     && extdeps.github.deployment_protection_rule.wait_timer_is_in_documented_range(
-         minutes: 43200 as Nat
+         timer: minute(count: 43200)
        )
     && !extdeps.github.deployment_protection_rule.wait_timer_is_in_documented_range(
-         minutes: 43201 as Nat
+         timer: minute(count: 43201)
        )
+    // The bound itself is a carrier, so the maximum is 30 days in ANY unit-consistent reading.
+    && second_count(s: extdeps.github.deployment_protection_rule.wait_minutes_as_seconds(
+         minutes: extdeps.github.deployment_protection_rule.wait_timer_maximum
+       )) == 30 * seconds_per_day()
 }
 
 // ---------------------------------------------------------------------------
@@ -555,14 +602,93 @@ test fn the_review_is_posted_only_where_the_payload_points() -> Bool {
     && rule_webhook_payload_field_is_published(name: rule_review_callback.payload_field)
 }
 
-// THE SELECTED ROUTE ADDS NO INBOUND EXPOSURE, and the bet that makes it work is typed as an open
-// standing rather than asserted as a fact. The broker is tailnet-only, so a public GitHub webhook would
-// be a new exposure; the route therefore reads nothing from a delivery, and the inference that GitHub
-// accepts a review for a run whose delivery was never received is carried with its read obligation.
-test fn the_selected_route_is_the_no_webhook_one_and_the_bet_is_still_open() -> Bool {
-  rule_webhook_route_adds_no_inbound(route: rule_webhook_selected_route)
-    && !rule_webhook_route_adds_no_inbound(route: "public-webhook")
-    && rule_delivery_is_unproven(standing: rule_delivery_independence)
+// UPSTREAM'S SILENCE, STATED AS THE UPSTREAM FACT IT IS. Neither the review endpoint nor the webhook
+// page says, either way, that a review is refused for a run whose delivery the App never received. This
+// module may state the silence and NOTHING MORE: the inference drawn from it, the trial that settles
+// it, and the route chosen in the meantime are this repository's receipts and policy, and they live in
+// gunbc.auth.deployment_gate_authorization (§3: observations this repository makes are never a property
+// inside the upstream module). The red is the opposite failure — a module that asserted a guarantee
+// would have to cite the page that granted it, and there is no such page.
+test fn the_module_states_the_silence_and_invents_no_guarantee() -> Bool {
+  rule_delivery_guarantee_is_documented()
+    && (rule_delivery_documented_guarantee as String).contains("no documented guarantee")
+    && (deployment_protection_rule_live_fact_names
+        |> any(n => n == "rule_delivery_documented_guarantee")) == false
+}
+
+// WHAT THE WIRE GUARANTEES ABOUT ITS OWN FIELDS: NOTHING. The pinned blob gives this payload no
+// `required` list at all, so a handler that treats action, environment, event, deployment_callback_url
+// or installation as present is a handler that dies on a real delivery. RuleWebhookWireFields types
+// every one optional and DeploymentProtectionRuleWebhookPayload is what a PARSE produces once they have
+// all arrived. The discriminating half is that each consumed field, removed one at a time, is REFUSED
+// rather than defaulted — a missing environment is a refusal that says so, not an empty string that a
+// broker could post a review against.
+test fn an_absent_payload_field_is_a_typed_refusal_not_a_default() -> Bool {
+  rule_webhook_parse_is_complete(parse: rule_webhook_payload_from_wire(wire: full_wire()))
+    && !rule_webhook_parse_is_complete(
+         parse: rule_webhook_payload_from_wire(wire: wire_without_environment())
+       )
+    && !rule_webhook_parse_is_complete(
+         parse: rule_webhook_payload_from_wire(wire: wire_without_installation())
+       )
+    && !rule_webhook_parse_is_complete(
+         parse: rule_webhook_payload_from_wire(wire: wire_without_callback())
+       )
+}
+
+fn full_wire() -> RuleWebhookWireFields {
+  RuleWebhookWireFields {
+    action: Present { value: rule_webhook_action },
+    environment: Present { value: srv1_env },
+    event: Present { value: rule_webhook_event_name },
+    deployment_callback_url: Present { value: "https://api.github.com/callback" },
+    installation: Present {
+      value: RuleWebhookInstallation { id: 1900000001, node_id: "I_1900000001" },
+    },
+  }
+}
+
+fn wire_without_environment() -> RuleWebhookWireFields {
+  RuleWebhookWireFields {
+    action: Present { value: rule_webhook_action },
+    environment: Absent,
+    event: Present { value: rule_webhook_event_name },
+    deployment_callback_url: Present { value: "https://api.github.com/callback" },
+    installation: Present {
+      value: RuleWebhookInstallation { id: 1900000001, node_id: "I_1900000001" },
+    },
+  }
+}
+
+fn wire_without_installation() -> RuleWebhookWireFields {
+  RuleWebhookWireFields {
+    action: Present { value: rule_webhook_action },
+    environment: Present { value: srv1_env },
+    event: Present { value: rule_webhook_event_name },
+    deployment_callback_url: Present { value: "https://api.github.com/callback" },
+    installation: Absent,
+  }
+}
+
+fn wire_without_callback() -> RuleWebhookWireFields {
+  RuleWebhookWireFields {
+    action: Present { value: rule_webhook_action },
+    environment: Present { value: srv1_env },
+    event: Present { value: rule_webhook_event_name },
+    deployment_callback_url: Absent,
+    installation: Present {
+      value: RuleWebhookInstallation { id: 1900000001, node_id: "I_1900000001" },
+    },
+  }
+}
+
+// THE installation OBJECT IS EXACTLY {id, node_id} at the pin. This file previously carried
+// `account_login` there — a field the pinned schema does not have, sitting on the one object a handler
+// would trust to identify who sent the delivery. The witness is the type's own field census read by
+// construction: adding a third required field makes these literals stop compiling.
+test fn the_installation_object_carries_only_the_two_fields_the_pin_has() -> Bool {
+  let identity = RuleWebhookInstallation { id: 1900000001, node_id: "I_1900000001" }
+  identity.id == 1900000001 && (identity.node_id as String) == "I_1900000001"
 }
 
 // ---------------------------------------------------------------------------

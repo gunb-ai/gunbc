@@ -19,44 +19,30 @@ module gunbc.auth.deployment_gate_operator_steps
 // READ BACK FROM GITHUB, not as a checkbox. In particular the removal row must not be dischargeable
 // before the enablement row's approve-AND-reject witness exists: the ordering is the thing that
 // keeps the gate shut at every instant.
+//
+// WHY THIS FILE CARRIES NO TESTS. No module under dag/gunbc/auth does, and it is not an accident: a
+// production module that ships fixtures ships values someone can mistake for observations, and a
+// guarded act built from a fixture is the prose guard it replaced wearing a type. Every witness for
+// these rows, and every fixture they mutate, lives in
+// gunbc.test.claim.deployment_gate_operator_steps_witness. What stays here is the rows and the folds
+// that decide them.
 
-import std.types { String, List, Bool }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types {
+  String,
+  List,
+  Bool,
+}
+
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionFrequency,
   HumanInterventionIdentity,
-  InterventionCompletionEvidence,
   FleetOnce,
   NoDischargeSiteModeled,
-  human_intervention_frequency_eq
+  human_intervention_frequency_eq,
 }
-import extdeps.github.deployment_protection_rule {
-  ReviewState,
-  Approved,
-  Rejected,
-  review_state_wire,
-  rule_app_permissions,
-  rule_app_permission_set_is_complete,
-  rule_app_permission_set_is_complete,
-  environment_protection_rule_type_values,
-  RequiredReviewersKind,
-  BranchPolicyKind,
-  environment_protection_rule_kind_wire
-}
-import extdeps.github.app {
-  GitHubAppPermission,
-  ActionsAxis,
-  DeploymentsAxis,
-  ContentsAxis,
-  AdministrationAxis,
-  PullRequestsAxis,
-  SecurityEventsAxis,
-  WorkflowsAxis,
-  IdTokenAxis,
-  AppAccessRead,
-  AppAccessWrite,
-}
+import extdeps.github.deployment_protection_rule { rule_app_permissions }
+import extdeps.github.app { GitHubAppPermission }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 
 // The repository the App is installed on. Named once, in one row, so the installation subject and
@@ -73,13 +59,6 @@ data deployment_gate_environment: NonEmptyStr = srv1_production_environment_name
 // is NOT on that list; an App granted Contents:write here holds something the upstream never asked
 // for, on the identity that releases srv1 root mutation.
 data deployment_gate_app_permissions: List<GitHubAppPermission> = rule_app_permissions
-
-test fn the_gate_app_carries_only_the_rule_permissions() -> Bool {
-  (deployment_gate_app_permissions |> count) == 2
-    && rule_app_permission_set_is_complete()
-    && (deployment_gate_app_permissions |> any(p => p.name == DeploymentsAxis && p.access == AppAccessWrite))
-    && (deployment_gate_app_permissions |> any(p => p.name == ActionsAxis && p.access == AppAccessRead))
-}
 
 // ---------------------------------------------------------------------------
 // The five operator acts
@@ -140,31 +119,6 @@ data reviewer_removal_step: HumanIntervention = HumanIntervention {
   completion_evidence: NoDischargeSiteModeled
 }
 
-// THE ACT CONSUMES THE ADMISSION. Not a grep of the instruction for the words APPROVING or
-// REJECTING — those words were in the row from the start and proved nothing about whether anyone had
-// seen either outcome. The performable set is now the admitted set: with the frontier row a
-// RemovalRefused, there is no value this act can be performed with, which is what "not yet" has to
-// mean in a model that is used to decide anything.
-fn reviewer_removal_is_performable() -> Bool {
-  reviewer_removal_is_admitted(admission: reviewer_removal_admission)
-}
-
-// THE DISCRIMINATING RED for the whole ordering control: the same act, performed with an admitted
-// pair of trials, IS performable; performed with the frontier's refusal, it is not. If the typed
-// prerequisite were replaced by prose again, the second clause would stop being a fact anyone could
-// break.
-test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
-  !reviewer_removal_is_performable()
-    && reviewer_removal_is_admitted(
-         admission: RemovalAdmitted {
-           evidence: DeploymentGateTrialEvidence {
-             approved_run: witnessed_approval,
-             rejected_run: witnessed_rejection,
-           }
-         }
-       )
-}
-
 data deployment_gate_operator_steps: List<HumanIntervention> = [
   app_registration_step,
   app_installation_step,
@@ -186,16 +140,6 @@ fn human_frequency_is_fleet_once(f: HumanInterventionFrequency) -> Bool {
 // overstate an act that happens once.
 fn all_steps_are_fleet_once(steps: List<HumanIntervention>) -> Bool {
   steps |> all(s => human_frequency_is_fleet_once(f: s.frequency))
-}
-
-test fn every_operator_act_is_counted_once_per_fleet() -> Bool {
-  all_steps_are_fleet_once(steps: deployment_gate_operator_steps)
-    && (deployment_gate_operator_steps |> count) == 5
-}
-
-test fn the_count_refuses_a_silently_dropped_or_doubled_row() -> Bool {
-  (deployment_gate_operator_steps |> count) != 4
-    && (deployment_gate_operator_steps |> count) != 6
 }
 
 // How many rows carry a given identity. A brand-checked identity is supposed to make two rows
@@ -226,106 +170,4 @@ fn removal_is_strictly_after_enablement(steps: List<HumanIntervention>) -> Bool 
     }
   )
   walked.seen_enable && !walked.removal_before_enable
-}
-
-test fn the_human_gate_is_removed_only_after_the_app_gate_appears() -> Bool {
-  removal_is_strictly_after_enablement(steps: deployment_gate_operator_steps)
-}
-
-// The discriminating mutation: the same fold over a list with the two rows swapped must refuse.
-fn removal_is_strictly_after_enablement_mutated(steps: List<HumanIntervention>) -> Bool {
-  removal_is_strictly_after_enablement(steps: steps)
-}
-
-test fn a_swapped_ordering_is_refused() -> Bool {
-  !removal_is_strictly_after_enablement_mutated(
-    steps: [
-      app_registration_step,
-      app_installation_step,
-      webhook_configuration_step,
-      reviewer_removal_step,
-      rule_enablement_step
-    ]
-  )
-}
-
-test fn the_removal_is_not_collapsed_into_the_enablement() -> Bool {
-  (rule_enablement_step.identity as String) != (reviewer_removal_step.identity as String)
-    && (rule_enablement_step.instruction as String).contains("Do not remove any reviewer")
-}
-
-test fn no_two_operator_acts_share_an_identity() -> Bool {
-  count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.app.register") == 1
-    && count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.app.install") == 1
-    && count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.webhook.configure") == 1
-    && count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.enable.srv1-production") == 1
-    && count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.reviewer-removal.srv1-production") == 1
-    && count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.not-a-real-row") == 0
-}
-
-// The rows must name the real environment, not a literal that can drift from the row that owns the
-// srv1 boundary.
-test fn the_gate_rows_point_at_the_boundary_environment() -> Bool {
-  (deployment_gate_environment as String) == "srv1-production"
-    && (rule_enablement_step.subject as String).contains("srv1-production")
-    && (reviewer_removal_step.subject as String).contains("srv1-production")
-}
-
-test fn the_gate_rows_refuse_a_drifted_environment_name() -> Bool {
-  (deployment_gate_environment as String) != "srv1-staging"
-    && (deployment_gate_environment as String) != "mtcollins1-boot"
-}
-
-// The removal row's own text must carry its precondition, because the precondition is the only
-// thing standing between a routine ticket-closing and an ungated root mutation.
-test fn the_removal_row_carries_its_own_precondition() -> Bool {
-  (reviewer_removal_step.instruction as String).contains("APPROVING")
-    && (reviewer_removal_step.instruction as String).contains("REJECTING")
-    && (reviewer_removal_step.instruction as String).contains("do not perform it")
-}
-
-// The discriminating red for the precondition: a row that asked for only the approve witness would
-// let a broker that never tested its reject path stand up with a human gate removed.
-test fn the_removal_precondition_requires_both_outcomes() -> Bool {
-  !((reviewer_removal_step.instruction as String).contains("witnessed approving a real dispatch."))
-}
-
-// The review states the witnesses must show are GitHub's two, not broker-invented ones.
-test fn the_witnessed_states_are_githubs_own() -> Bool {
-  (review_state_wire(state: Approved) as String) == "approved"
-    && (review_state_wire(state: Rejected) as String) == "rejected"
-}
-
-// The webhook row must not become the pretext for exposing the tailnet-only broker.
-test fn the_webhook_row_forbids_exposing_the_broker() -> Bool {
-  (webhook_configuration_step.instruction as String).contains("Do NOT open any inbound path")
-}
-
-test fn the_webhook_row_is_not_mistaken_for_a_dependency() -> Bool {
-  !(webhook_configuration_step.instruction as String).contains("the broker listens")
-}
-
-// Enabling a rule is not a fourth environment protection-rule type; the read-back must be written
-// against the three kinds GitHub actually reports.
-test fn the_enablement_readback_uses_real_protection_types() -> Bool {
-  (environment_protection_rule_type_values |> count) == 3
-    && (environment_protection_rule_type_values |> any(t =>
-      (t as String) == environment_protection_rule_kind_wire(kind: BranchPolicyKind)))
-    && (environment_protection_rule_type_values |> any(t =>
-      (t as String) == environment_protection_rule_kind_wire(kind: RequiredReviewersKind)))
-    && (rule_enablement_step.instruction as String).contains("required_reviewers")
-}
-
-// The discriminating red for the operator's registration act: add ONE axis beyond the two GitHub
-// asks for — Contents, or IdToken, which would let the reviewer identity federate into a cloud role —
-// and this goes red. It compares GitHubPermissionAxis values, so it cannot be satisfied by a
-// description that merely fails to mention the widening.
-test fn the_permission_set_refuses_a_widened_app() -> Bool {
-  rule_app_permission_set_is_admissible()
-    && !(deployment_gate_app_permissions |> any(p => p.name == ContentsAxis))
-    && !(deployment_gate_app_permissions |> any(p => p.name == AdministrationAxis))
-    && !(deployment_gate_app_permissions |> any(p => p.name == PullRequestsAxis))
-    && !(deployment_gate_app_permissions |> any(p => p.name == SecurityEventsAxis))
-    && !(deployment_gate_app_permissions |> any(p => p.name == WorkflowsAxis))
-    && !(deployment_gate_app_permissions |> any(p => p.name == IdTokenAxis))
 }

@@ -12,10 +12,12 @@ module extdeps.github.deployment_protection_rule
 // idea that an ntfy capability, a broker, or srv1 exists. Those decisions live in gunbc.auth --
 // see gunbc.auth.deployment_gate_authorization.
 //
-// ONE ASSERTION IN THIS FILE IS NOT AN UPSTREAM FACT, and is labelled where it appears: that GitHub
-// accepts an App's review for a run whose deployment_protection_rule webhook the App never received.
-// Upstream documents no such guarantee either way, so it is carried as a typed standing with a read
-// obligation (rule_delivery_independence), not as a fact.
+// WHAT THIS FILE CANNOT SAY. Upstream documents no guarantee, either way, that a review is refused for
+// a run whose deployment_protection_rule webhook the App never received. That silence is stated here as
+// an upstream fact (rule_delivery_documented_guarantee); the inference drawn from it, the trial that
+// settles it, and the route selected while it is open are all receipts and policy, and they live in
+// gunbc.auth.deployment_gate_authorization (§3: observations this repository makes never become a
+// property inside the upstream module).
 //
 // WHY A SEPARATE MODULE FROM extdeps.github.deployment_environments (which already models
 // GitHubEnvironmentProtectionSettings): that file models the ENVIRONMENT side of the boundary —
@@ -32,9 +34,18 @@ module extdeps.github.deployment_protection_rule
 // calling the human reviewer endpoint either fails, or — worse — succeeds while a human is still
 // being asked, which is two authorities for one decision.
 
-import std.types { String, Int, List, NonEmptyStr, HttpStatus }
-import std.nat { Nat }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types {
+  String,
+  Int,
+  List,
+  NonEmptyStr,
+  HttpStatus,
+}
+
+import std.decl_ref {
+  DeclarationRef,
+  WholeDeclaration,
+}
 // Duration: std.measure is the authority. A "30 days" stored as an Int keeps its unit only in its
 // name, so the unit rule (ctrl's mechanical blocker) is satisfied by the carrier, not by a comment.
 import std.measure {
@@ -43,21 +54,26 @@ import std.measure {
   minute,
   minute_count,
   minute_to_second,
+  measure_le,
   second,
-  second_count,
   seconds_per_day,
-  seconds_per_minute,
-  minutes_per_hour,
 }
 // HttpMethod comes from the RFC authority rather than being re-minted per module (§2).
-import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
+import extdeps.ietf.http_semantics {
+  HttpMethod,
+  GET,
+  POST,
+}
 import extdeps.external_authority {
   ExternalAuthority,
   ExternalModelScope,
   ExternalSubjectRef,
   FactCitation,
 }
-import extdeps.uri { Uri, Https }
+import extdeps.uri {
+  Uri,
+  Https,
+}
 // The run's own conclusion vocabulary comes from the sibling Actions model rather than being
 // re-minted here (§2): the broker verifies a waiting run THROUGH that record.
 import extdeps.github.actions_runs {
@@ -68,13 +84,7 @@ import extdeps.github.actions_runs {
 import extdeps.github.app {
   GitHubPermissionAxis,
   ActionsAxis,
-  ContentsAxis,
   DeploymentsAxis,
-  PullRequestsAxis,
-  AdministrationAxis,
-  SecurityEventsAxis,
-  WorkflowsAxis,
-  IdTokenAxis,
   GitHubAppPermissionAccess,
   AppAccessRead,
   AppAccessWrite,
@@ -182,21 +192,91 @@ data rule_webhook_action: NonEmptyStr = "requested"
 // the upstream fact AND the documented fallback route -- it is kept so that the fallback has a
 // model to be built against, and so that this file cannot re-invent the payload again. The fields
 // the fallback would consume are named by rule_webhook_consumed_fields.
+// WHAT A TYPED PARSE PRODUCES, not what the wire guarantees. THE PIN GIVES THIS PAYLOAD NO `required`
+// LIST AT ALL, so every one of its twelve top-level fields is optional as delivered: a handler that
+// treats them as present is a handler that panics on a real delivery. This record is therefore the
+// OUTPUT of a parse that has already proved each field arrived — obtainable only through
+// rule_webhook_payload_from_wire below, which refuses with the name of what was missing.
 type DeploymentProtectionRuleWebhookPayload {
   action: NonEmptyStr,
   environment: NonEmptyStr,
   event: NonEmptyStr,
-  sha: NonEmptyStr,
-  ref: NonEmptyStr,
   deployment_callback_url: NonEmptyStr,
   installation: RuleWebhookInstallation,
 }
 
-// `installation` is an OBJECT (components/schemas/simple-installation: id, node_id, account), not a
-// bare integer. A model that read payload.installation as an Int would fail on the real delivery.
+// WHAT THE WIRE ACTUALLY CARRIES, field by field, with nothing assumed. Optional<T> for every field,
+// because that is what the pin says. A parse consumes this and produces the record above or a refusal.
+type RuleWebhookWireFields {
+  action: NonEmptyStr?,
+  environment: NonEmptyStr?,
+  event: NonEmptyStr?,
+  deployment_callback_url: NonEmptyStr?,
+  installation: RuleWebhookInstallation?,
+}
+
+// The refusal, named. A field that did not arrive is a fact about the delivery, and the reason has to
+// survive to the log — "the payload had no environment" and "the payload was malformed" are different
+// incidents, and the second is unactionable.
+type RuleWebhookParseFailure {
+  missing_field: NonEmptyStr,
+}
+
+type RuleWebhookParse
+  = RuleWebhookParsed { payload: DeploymentProtectionRuleWebhookPayload }
+  | RuleWebhookRefused { failure: RuleWebhookParseFailure }
+
+fn rule_webhook_payload_from_wire(wire: RuleWebhookWireFields) -> RuleWebhookParse {
+  match wire.action {
+    Present { value: a } => match wire.environment {
+      Present { value: e } => match wire.event {
+        Present { value: v } => match wire.deployment_callback_url {
+          Present { value: u } => match wire.installation {
+            Present { value: i } =>
+              RuleWebhookParsed {
+                payload: DeploymentProtectionRuleWebhookPayload {
+                  action: a,
+                  environment: e,
+                  event: v,
+                  deployment_callback_url: u,
+                  installation: i,
+                },
+              }
+            Absent =>
+              RuleWebhookRefused {
+                failure: RuleWebhookParseFailure { missing_field: rule_webhook_field_installation },
+              }
+          }
+          Absent =>
+            RuleWebhookRefused {
+              failure: RuleWebhookParseFailure { missing_field: rule_webhook_field_deployment_callback_url },
+            }
+        }
+        Absent =>
+          RuleWebhookRefused { failure: RuleWebhookParseFailure { missing_field: "event" } }
+      }
+      Absent =>
+        RuleWebhookRefused { failure: RuleWebhookParseFailure { missing_field: rule_webhook_field_environment } }
+    }
+    Absent => RuleWebhookRefused { failure: RuleWebhookParseFailure { missing_field: "action" } }
+  }
+}
+
+fn rule_webhook_parse_is_complete(parse: RuleWebhookParse) -> Bool {
+  match parse {
+    RuleWebhookParsed { payload: _ } => true
+    RuleWebhookRefused { failure: _ } => false
+  }
+}
+
+// `installation` is an OBJECT, not a bare integer — and at the pin it is exactly {id, node_id}, both
+// required. It is NOT {id, node_id, account}: this file previously carried an `account_login` there,
+// which is a field the pinned schema does not have, and a handler reading it would read nothing while
+// looking like it had authenticated the sender. A model that read payload.installation as an Int would
+// fail on the real delivery in a different way; both wrong shapes are worth naming.
 type RuleWebhookInstallation {
   id: Int,
-  account_login: NonEmptyStr,
+  node_id: NonEmptyStr,
 }
 
 // The fields the fallback route would actually consume. A NAMED SUBSET, and the claim is deliberately
@@ -271,38 +351,18 @@ data rule_review_callback: RuleReviewCallback = RuleReviewCallback {
   addresses: review_endpoint_path,
 }
 
-// THE BET, TYPED AS A BET (DESIGN §4d). "GitHub accepts an App's review for a run whose
-// deployment_protection_rule webhook the App never received" is an INFERENCE from the review
-// endpoint being a plain POST guarded by token permissions, not a documented guarantee -- upstream
-// says nothing either way. The no-webhook route depends on it, so it is carried as a standing with
-// the observation that settles it, rather than as a fact. Its discriminator is the stage-4 trial:
-// enable the rule on a non-privileged environment with no reachable receiver and post a review.
-// If the review is refused without a delivery, the fallback route (a modelled tailnet relay) becomes
-// the selection, and the operator's webhook step stops being a no-op.
-type DeliveryIndependenceStanding
-  = StandingUntested { read_obligation: NonEmptyStr }
-  | StandingConfirmed { witnessed_run_id: Int }
-  | StandingRefuted { refused_because: NonEmptyStr }
+// THE ONE THING UPSTREAM SAYS ABOUT DELIVERY: NOTHING. The review endpoint is documented as a POST
+// guarded by token permissions, and the webhook page documents its own delivery; neither states, in
+// either direction, that a review is refused for a run whose deployment_protection_rule delivery the
+// App never received. THAT SILENCE IS THE UPSTREAM FACT, and it is the only one this file may hold on
+// the subject. What anyone concludes from it is an inference, the trial that settles it is an
+// OBSERVATION THIS REPOSITORY MAKES, and the route chosen in the meantime is policy — all three live
+// in gunbc.auth.deployment_gate_authorization, which is where a receipt can be recorded without
+// turning an upstream model into a diary.
+data rule_delivery_documented_guarantee: NonEmptyStr = "none: no documented guarantee either way"
 
-data rule_delivery_independence: DeliveryIndependenceStanding = StandingUntested {
-  read_obligation: "Enable the gate App's rule on a non-privileged environment with no reachable receiver, trigger one gated dispatch, and POST the review. Accepted => StandingConfirmed; refused => StandingRefuted, and the webhook fallback route is selected.",
-}
-
-fn rule_delivery_is_unproven(standing: DeliveryIndependenceStanding) -> Bool {
-  match standing {
-    StandingUntested { read_obligation: _ } => true
-    StandingConfirmed { witnessed_run_id: _ } => false
-    StandingRefuted { refused_because: _ } => false
-  }
-}
-
-// The operator's webhook step has to say something, and this is what: on the selected route there is
-// NO receiver, so the App's webhook is left pointed at a disabled endpoint. A step that configured a
-// real public receiver would be adding the inbound exposure the route was chosen to avoid.
-data rule_webhook_selected_route: NonEmptyStr = "no-webhook"
-
-fn rule_webhook_route_adds_no_inbound(route: NonEmptyStr) -> Bool {
-  route == rule_webhook_selected_route
+fn rule_delivery_guarantee_is_documented() -> Bool {
+  (rule_delivery_documented_guarantee as String) == "none: no documented guarantee either way"
 }
 
 // A rule is not compatible with a job whose environment is set to `deployment: false`, so an
@@ -539,18 +599,20 @@ fn pending_deployment_reviewer_type_wire(reviewer: PendingDeploymentReviewer) ->
   }
 }
 
-// THE RANGE UPSTREAM PUBLISHES, as values rather than as prose in a comment: 0 to 43,200 minutes,
-// where the maximum is exactly the 30-day ceiling. Consumed by wait_timer_is_in_documented_range().
-data wait_timer_minimum_minutes: Nat = 0
-data wait_timer_maximum_minutes: Nat = 43200
+// THE RANGE UPSTREAM PUBLISHES, as carriers rather than as prose or as bare counts: "The time (in
+// minutes) must be an integer between 0 and 43,200 (30 days)", where the maximum is exactly the 30-day
+// ceiling. A count in a row named `_minutes` keeps its unit only in its name, and the field it bounds
+// is a Minute -- so the bound is a Minute too and the comparison is carrier to carrier, with no
+// minute_count in the middle silently re-labelling one side.
+data wait_timer_minimum: Minute = minute(count: 0)
+data wait_timer_maximum: Minute = minute(count: 43200)
 
-// Is a read wait_timer a value upstream could actually return? This is the check that catches the
-// mis-scale in the only place it can be caught: 43,200 is legal, and one more is not; and a value
-// read from a seconds-based source would either sit absurdly high or, after a wrong division, look
-// plausible. Asserting the documented bounds is what keeps a unit slip from being silently absorbed.
-fn wait_timer_is_in_documented_range(wait: PendingDeploymentWait) -> Bool {
-  let m = minute_count(m: wait.wait_timer)
-  m >= wait_timer_minimum_minutes && m <= wait_timer_maximum_minutes
+// Is a read wait_timer a value upstream could actually return? This is where a unit slip has to be
+// caught: 43,200 MINUTES is legal and 43,201 is not, while 43,200 SECONDS would be a legal-looking
+// number whose meaning is off by sixty. Both comparisons are carrier to carrier through std.measure's
+// own ordering, so there is no scalar in sight to mis-scale.
+fn wait_timer_is_in_documented_range(timer: Minute) -> Bool {
+  measure_le(a: wait_timer_minimum, b: timer) && measure_le(a: timer, b: wait_timer_maximum)
 }
 
 // The same quantity in the unit the timeout is counted in, via the one declared conversion. Kept
@@ -600,25 +662,80 @@ fn pending_wait_carries_a_human_reviewer(wait: PendingDeploymentWait) -> Bool {
 }
 
 // WHETHER THIS APP OWNS THE RULE THAT IS HOLDING THE JOB. That is NOT readable from the wait (see the
-// reviewer note above), so it is established by a separate, independent read: the environment's
-// enabled custom protection rules, read back, matched against the installation this deployment gate
-// was configured with. Modelled as a sum so "we did not check" is a value rather than a skipped call.
+// reviewer note above), so it is established by a separate, independent read: the environment's ENABLED
+// custom protection rules, read back, with the rule attributed to an App id and required to be enabled.
+// Modelled as a sum so "we did not check" is a value rather than a skipped call.
+//
+// IT CARRIES AN APP ID, NOT AN INSTALLATION ID. components/schemas/deployment-protection-rule is
+// {id, node_id, enabled, app}, and its `app` is a custom-deployment-rule-app {id, slug,
+// integration_url, node_id}. There is no installation id anywhere in that response, so a record that
+// claimed to have learned one from this readback had invented it. The installation the token is minted
+// for is a SEPARATE configured fact (gunbc.auth.deployment_gate_authorization), matched against the
+// operator's own record of the App -- not conjured from a response that never carried it.
 type EnvironmentRuleOwnership
-  = OwnedByGateApp { rule_id: Int, installation_id: Int, environment_name: NonEmptyStr }
+  = OwnedByGateApp { rule_id: Int, app_id: Int, app_slug: NonEmptyStr, environment_name: NonEmptyStr }
   | NotOwnedByGateApp { because: NonEmptyStr }
 
 fn rule_ownership_is_established(ownership: EnvironmentRuleOwnership) -> Bool {
   match ownership {
-    OwnedByGateApp { rule_id: _, installation_id: _, environment_name: _ } => true
+    OwnedByGateApp { rule_id: _, app_id: _, app_slug: _, environment_name: _ } => true
     NotOwnedByGateApp { because: _ } => false
   }
 }
 
-// The readback that establishes it, upstream's own path and method. GET .../apps returns the
-// environment's available custom protection rules, each carrying an `id` and the `app` that owns it.
-data available_rule_readback_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/environments/\{environment_name\}/deployment_protection_rules/apps"
-data available_rule_readback_endpoint_method: HttpMethod = GET
+// THE READBACK THAT ESTABLISHES OWNERSHIP IS THE ENABLED-RULES ENDPOINT, not the integrations
+// endpoint. The pin distinguishes them flatly:
+//   GET .../deployment_protection_rules        "Gets all custom deployment protection rules that are
+//                                              ENABLED for an environment. Anyone with read access..."
+//                                              -> {total_count, custom_deployment_protection_rules[]}
+//   GET .../deployment_protection_rules/apps   "Gets all custom deployment protection rule
+//                                              integrations that are AVAILABLE for an environment"
+//                                              -> {total_count, available_custom_..._integrations[]}
+// The second is an app-CATALOGUE list: its items carry no rule id and no `enabled`, so it cannot say a
+// rule is enabled, and a guard built on it would pass for an integration that exists but is switched
+// off. Read access suffices for the first, which is the one that answers the question being asked.
+data enabled_rule_readback_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/environments/\{environment_name\}/deployment_protection_rules"
+data enabled_rule_readback_endpoint_method: HttpMethod = GET
+data enabled_rule_readback_items_field: NonEmptyStr = "custom_deployment_protection_rules"
 
+// The rule record itself, as the pin types it: all four fields required, and `enabled` is the one that
+// makes ownership a claim about the gate rather than about an installation existing somewhere.
+type EnabledDeploymentProtectionRule {
+  id: Int,
+  node_id: NonEmptyStr,
+  enabled: Bool,
+  app: RuleOwningApp,
+}
+
+type RuleOwningApp {
+  id: Int,
+  slug: NonEmptyStr,
+}
+
+// OWNERSHIP IS ESTABLISHED ONLY FROM A RULE THAT IS ENABLED AND ATTRIBUTED TO THIS APP. An enabled=false
+// row, or a row whose app id is not the recorded gate App, is a refusal — never an ownership.
+fn rule_ownership_from_readback(
+  rules: List<EnabledDeploymentProtectionRule>,
+  environment_name: NonEmptyStr,
+  gate_app_id: Int
+) -> EnvironmentRuleOwnership {
+  let matches = rules |> filter(r => r.enabled && r.app.id == gate_app_id)
+  if (matches |> count) == 0 {
+    NotOwnedByGateApp {
+      because: "the enabled-rules readback carried no enabled rule attributed to this App id",
+    }
+  } else {
+    OwnedByGateApp {
+      rule_id: (matches |> first |> map(r => r.id) |> or_else(0 as Int)) as Int,
+      app_id: gate_app_id,
+      app_slug: (matches
+        |> first
+        |> map(r => r.app.slug)
+        |> or_else("unattributed" as NonEmptyStr)) as NonEmptyStr,
+      environment_name: environment_name,
+    }
+  }
+}
 
 fn pending_deployment_wait_field_names() -> List<NonEmptyStr> {
   [
@@ -629,9 +746,6 @@ fn pending_deployment_wait_field_names() -> List<NonEmptyStr> {
     pending_deployments_field_reviewers,
   ]
 }
-
-
-
 
 // The HUMAN/team reviewer endpoint, named so it is never confused with the App's. A GitHub App does
 // not use this to answer its own rule, and its body shape is genuinely different: it names
@@ -732,7 +846,6 @@ fn the_two_review_endpoints_are_distinct() -> Bool {
 fn review_releases_environment(review: DeploymentProtectionRuleReview) -> NonEmptyStr {
   review.environment_name
 }
-
 
 // The decision, as the value the body carries rather than as a search for the word "state". The field
 // is required in the App's body, so this returns a ReviewState and CANNOT return nothing — which is
@@ -911,7 +1024,7 @@ data deployment_protection_rule_live_fact_names: List<NonEmptyStr> = [
   "environment_protection_rule_type_values",
   "custom_rule_response_timeout",
   "rule_gate_approval_ceiling",
-  "wait_timer_maximum_minutes",
+  "wait_timer_maximum",
   "pending_deployment_reviewer_type_wire",
   "rule_app_permissions",
   "spec_pinned_commit",
@@ -943,13 +1056,13 @@ fn gate_ref(decl_name: NonEmptyStr) -> DeclarationRef {
 
 data review_endpoint_ref: DeclarationRef = gate_ref(decl_name: "review_endpoint_path")
 data review_state_enum_ref: DeclarationRef = gate_ref(decl_name: "review_state_wire")
-data pending_deployments_endpoint_ref: DeclarationRef  gate_ref(decl_name: "pending_deployments_endpoint_path")
+data pending_deployments_endpoint_ref: DeclarationRef = gate_ref(decl_name: "pending_deployments_endpoint_path")
 data human_review_endpoint_ref: DeclarationRef = gate_ref(decl_name: "human_review_endpoint_path")
 data rule_webhook_fields_ref: DeclarationRef = gate_ref(decl_name: "rule_webhook_field_environment")
-data environment_protection_types_ref: DeclarationRef  gate_ref(decl_name: "environment_protection_rule_type_values")
+data environment_protection_types_ref: DeclarationRef = gate_ref(decl_name: "environment_protection_rule_type_values")
 data custom_rule_timeout_ref: DeclarationRef = gate_ref(decl_name: "custom_rule_response_timeout")
 data gate_ceiling_ref: DeclarationRef = gate_ref(decl_name: "rule_gate_approval_ceiling")
-data wait_timer_field_ref: DeclarationRef = gate_ref(decl_name: "wait_timer_maximum_minutes")
+data wait_timer_field_ref: DeclarationRef = gate_ref(decl_name: "wait_timer_maximum")
 data reviewer_types_ref: DeclarationRef = gate_ref(decl_name: "pending_deployment_reviewer_type_wire")
 data rule_app_permissions_ref: DeclarationRef = gate_ref(decl_name: "rule_app_permissions")
 data spec_pin_ref: DeclarationRef = gate_ref(decl_name: "spec_pinned_commit")

@@ -1,0 +1,546 @@
+module gunbc.test.claim.deployment_gate_authorization_witness
+
+// Witness file for the authorization decision behind "answer a pending environment gate for a run".
+// This is where the fixtures live; the production module gunbc.auth.deployment_gate_authorization
+// carries types and folds only, exactly as DESIGN §3 wants a deciding module to read.
+//
+// WHAT THESE TESTS EXERCISE, and why each is shaped the way it is. The feature replaces one approval
+// surface with another, so the failure modes worth paying for are the ones where the model still looks
+// healthy: a review posted for the environment nobody tapped (a 204 comes back either way), a run
+// "verified" by comparing the workflow's own id to itself, a human required-reviewer wait answered by
+// an App, a broker that reads an approval out of a poll's 200. Each of those is a value here, refused
+// by a value, and the refusal is what the test asserts.
+//
+// THE BINDINGS A MUTATION MUST BREAK are exercised against a claim the WORKFLOW filed, a capability the
+// OPERATOR tapped, and a rule ownership a READBACK minted — three different sources for three names of
+// the same gate, which is the point: agreeing with itself is not verification.
+
+import std.types {
+  Int,
+  List,
+  Bool,
+  NonEmptyStr,
+  HttpStatus,
+  Timestamp,
+}
+import std.measure {
+  second_count,
+  minute,
+}
+import std.optional { Present }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.github.deployment_protection_rule {
+  InstallationAccessToken,
+  OAuthClassicWithRepoScope,
+  DeploymentProtectionRuleReview,
+  Approved,
+  Rejected,
+  PendingDeploymentWait,
+  PendingDeploymentEnvironment,
+  PendingDeploymentReviewer,
+  UserReviewer,
+  rule_ownership_from_readback,
+  EnabledDeploymentProtectionRule,
+  RuleOwningApp,
+  EnvironmentRuleOwnership,
+  NotOwnedByGateApp,
+  rule_ownership_is_established,
+  review_call,
+  human_review_call,
+  pending_deployments_poll_call,
+  custom_rule_response_timeout,
+}
+import extdeps.github.actions_runs {
+  WorkflowRunRecord,
+  RunSettlementInFlight,
+  RunSettled,
+  RunFailure,
+  RunSuccess,
+}
+import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
+import gunbc.auth.approval_capability {
+  ApprovalCapability,
+  ApprovalCapabilityClaims,
+  ProposedDecision,
+  ProposeApprove,
+  ProposeDeny,
+}
+import extdeps.crypto.mac { MacKeyId }
+import gunbc.auth.deployment_gate_authorization {
+  GateRequestClaim,
+  GateInstallation,
+  WebhookRelayFallback,
+  StandingRefuted,
+  rule_delivery_independence,
+  rule_delivery_is_unproven,
+  selected_gate_route,
+  gate_route_adds_no_inbound,
+  operator_webhook_sets_no_receiver,
+  broker_may_answer,
+  ownership_names_environment,
+  run_is_still_worth_answering,
+  capability_binds_request,
+  review_answers_capability,
+  review_matches_decision,
+  review_was_accepted,
+  gate_credential_is_permitted,
+  gate_credential_is_documented,
+  for_answer_pending_gate,
+  gate_pattern_redeems_a_human_decision,
+  documented_example_is_not_the_gated_environment,
+  gate_ceiling_in_seconds,
+  documented_timer_maximum_in_seconds,
+  gate_ceilings_agree,
+  observed_review_from_readback,
+  ObservedRuleReview,
+}
+
+data gated_env: NonEmptyStr = srv1_production_environment_name
+data ungated_env: NonEmptyStr = "gcp-iam-converge"
+data other_env: NonEmptyStr = "mtcollins1-boot"
+data gate_run_id: Int = 35447067113
+data gate_app_id: Int = 1234567
+
+// ---------------------------------------------------------------------------
+// Fixtures: the three sources, kept genuinely separate
+// ---------------------------------------------------------------------------
+
+// What the WORKFLOW claims, filed by the earlier ungated job in the same run.
+data gate_claim: GateRequestClaim = GateRequestClaim {
+  run_id: 35447067113,
+  environment: gated_env,
+  escalation_id: "srv1-gate-35447067113",
+  request_revision: "rev-1",
+  attempt: "fleet-converge-35447067113" as AttemptIdentity,
+}
+
+// What the OPERATOR tapped, authenticated by the broker's MAC over escalation + revision + attempt.
+fn gate_capability(decision: ProposedDecision) -> ApprovalCapability {
+  ApprovalCapability {
+    claims: ApprovalCapabilityClaims {
+      protocol: "gunbc.approval-capability.v1",
+      issuer: "gunbc.auth.approval_broker",
+      audience: "gunbc.auth.approval_broker",
+      authority: "gunbc.auth.scoped_authorization",
+      escalation_id: "srv1-gate-35447067113",
+      request_revision: "rev-1",
+      decision: decision,
+      attempt: "fleet-converge-35447067113" as AttemptIdentity,
+      issued_at: "2026-10-18T09:01:00Z" as Timestamp,
+      expires_at: "2026-10-18T09:11:00Z" as Timestamp,
+      key_id: "broker-key-1" as MacKeyId,
+    },
+    tag_b64url: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  }
+}
+
+// What a READBACK minted: an enabled rule on the gated environment, attributed to the gate App.
+fn minted_ownership() -> EnvironmentRuleOwnership {
+  rule_ownership_from_readback(
+    rules: [
+      EnabledDeploymentProtectionRule {
+        id: 900000001,
+        node_id: "DPPR_1",
+        enabled: true,
+        app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
+      }
+    ],
+    environment_name: gated_env,
+    gate_app_id: gate_app_id,
+  )
+}
+
+fn unattributed_ownership() -> EnvironmentRuleOwnership {
+  NotOwnedByGateApp { because: "the readback listed no enabled rule for this App" }
+}
+
+// The wait, as the poll reports it: the environment as an OBJECT, a short configured timer, and the
+// reviewer list the caller was given.
+fn waiting_on(environment_name: NonEmptyStr, named: List<PendingDeploymentReviewer>) -> PendingDeploymentWait {
+  PendingDeploymentWait {
+    environment: PendingDeploymentEnvironment { id: 160000001, name: environment_name },
+    wait_timer: minute(count: 30),
+    wait_timer_started_at: Present { value: "2026-10-18T09:00:00Z" },
+    current_user_can_approve: true,
+    reviewers: named,
+  }
+}
+
+// The run, as GitHub's record of it — the only way in, since a bare id verifies nothing.
+fn run_record(run_id: Int, settled: Bool, failed: Bool) -> WorkflowRunRecord {
+  WorkflowRunRecord {
+    run_id: run_id,
+    event: "workflow_dispatch",
+    head_branch: "main",
+    status: if settled {
+      "completed"
+    } else {
+      "in_progress"
+    },
+    conclusion: if settled {
+      if failed {
+        "failure"
+      } else {
+        "success"
+      }
+    } else {
+      ""
+    },
+    created_at_epoch_s: 1792000000,
+    run_started_at_epoch_s: 1792000060,
+    updated_at_epoch_s: 1792000120,
+  }
+}
+
+fn an_answerable_wait() -> PendingDeploymentWait {
+  waiting_on(environment_name: gated_env, named: [] as List<PendingDeploymentReviewer>)
+}
+
+fn an_in_flight_run() -> WorkflowRunRecord {
+  run_record(run_id: 35447067113, settled: false, failed: false)
+}
+
+fn an_answerable_broker_call() -> Bool {
+  broker_may_answer(
+    wait: an_answerable_wait(),
+    run: an_in_flight_run(),
+    claim: gate_claim,
+    capability: gate_capability(decision: ProposeApprove),
+    ownership: minted_ownership()
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 1. THE MUTATED BINDINGS — the brief's discriminating reds
+// ---------------------------------------------------------------------------
+
+// THE ENVIRONMENT MUTATION. Broker, capability, ownership and run are all identical below; the only
+// difference is which environment GitHub reports as waiting. Answering a wait on an environment nobody
+// tapped is the accident this feature could otherwise introduce unnoticed, because the review endpoint
+// answers 204 for a wrong-environment review exactly as happily as for a right one — the response
+// cannot tell them apart, which is why the check is before the call.
+test fn a_wait_for_another_environment_is_never_answered() -> Bool {
+  an_answerable_broker_call()
+    && !broker_may_answer(
+         wait: waiting_on(
+           environment_name: other_env, named: [] as List<PendingDeploymentReviewer>
+         ),
+         run: an_in_flight_run(),
+         claim: gate_claim,
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: minted_ownership()
+       )
+    // The claim pointing at srv1 while the wait names something else is the same refusal from the
+    // other side, and the ungated environment must be refused too rather than treated as harmless.
+    && !broker_may_answer(
+         wait: an_answerable_wait(),
+         run: an_in_flight_run(),
+         claim: GateRequestClaim {
+           run_id: gate_claim.run_id,
+           environment: ungated_env,
+           escalation_id: gate_claim.escalation_id,
+           request_revision: gate_claim.request_revision,
+           attempt: gate_claim.attempt,
+         },
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: minted_ownership()
+       )
+}
+
+// THE RUN MUTATION, AND THE SELF-COMPARISON IT REPLACES. verified_run_id: Int beside claim.run_id: Int
+// was the mistake: a caller that passed the claim's id straight through "verified" the run, and the
+// fold could not tell that from a real check. Now the caller supplies GitHub's RECORD, so an id that
+// GitHub's record does not carry is refused — and a concluded run is refused INSIDE the fold rather
+// than by a second call the integrator has to remember.
+test fn a_run_the_submission_did_not_file_is_never_answered() -> Bool {
+  an_answerable_broker_call()
+    && !broker_may_answer(
+         wait: an_answerable_wait(),
+         run: run_record(run_id: 35447067114, settled: false, failed: false),
+         claim: gate_claim,
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: minted_ownership()
+       )
+    && !broker_may_answer(
+         wait: an_answerable_wait(),
+         run: run_record(run_id: 35447067113, settled: true, failed: false),
+         claim: gate_claim,
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: minted_ownership()
+       )
+    && !broker_may_answer(
+         wait: an_answerable_wait(),
+         run: run_record(run_id: 35447067113, settled: true, failed: true),
+         claim: gate_claim,
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: minted_ownership()
+       )
+}
+
+// A wait that names a HUMAN is a required-reviewer wait, and an App answering it is the
+// double-authority this whole change exists to remove. It is refused rather than answered-and-left-
+// waiting, because posting it would look like a broker failure and read like a policy question.
+test fn a_wait_that_names_a_human_is_not_answered_by_the_app() -> Bool {
+  !broker_may_answer(
+    wait: waiting_on(
+      environment_name: gated_env,
+      named: [UserReviewer { login: "mtcollins1" }] as List<PendingDeploymentReviewer>
+    ),
+    run: an_in_flight_run(),
+    claim: gate_claim,
+    capability: gate_capability(decision: ProposeApprove),
+    ownership: minted_ownership()
+  )
+    && an_answerable_broker_call()
+}
+
+// THE TAP'S OWN BINDING: escalation, revision and attempt are the capability's authenticated claims,
+// not the workflow's word about them. Each mutation is exactly what the MAC exists to prevent.
+test fn a_capability_for_another_request_or_revision_is_refused() -> Bool {
+  capability_binds_request(capability: gate_capability(decision: ProposeApprove), claim: gate_claim)
+    && !capability_binds_request(
+         capability: gate_capability(decision: ProposeApprove),
+         claim: GateRequestClaim {
+           run_id: gate_claim.run_id,
+           environment: gate_claim.environment,
+           escalation_id: "srv1-gate-OTHER",
+           request_revision: gate_claim.request_revision,
+           attempt: gate_claim.attempt,
+         }
+       )
+    && !capability_binds_request(
+         capability: gate_capability(decision: ProposeApprove),
+         claim: GateRequestClaim {
+           run_id: gate_claim.run_id,
+           environment: gate_claim.environment,
+           escalation_id: gate_claim.escalation_id,
+           request_revision: "rev-2",
+           attempt: gate_claim.attempt,
+         }
+       )
+    && !capability_binds_request(
+         capability: gate_capability(decision: ProposeApprove),
+         claim: GateRequestClaim {
+           run_id: gate_claim.run_id,
+           environment: gate_claim.environment,
+           escalation_id: gate_claim.escalation_id,
+           request_revision: gate_claim.request_revision,
+           attempt: "fleet-converge-99999999999" as AttemptIdentity,
+         }
+       )
+}
+
+// THE BODY MUTATION at the moment of posting: the review the broker is about to send must name the
+// environment the tap authorised and carry the decision the tap took.
+test fn a_review_body_naming_another_environment_is_not_posted() -> Bool {
+  review_answers_capability(
+    review: sanctioned_review(),
+    claim: gate_claim,
+    capability: gate_capability(decision: ProposeApprove)
+  )
+    && !review_answers_capability(
+         review: DeploymentProtectionRuleReview {
+           environment_name: other_env,
+           state: Approved,
+           comment: Present { value: "ntfy tap srv1-gate-35447067113 rev-1" },
+         },
+         claim: gate_claim,
+         capability: gate_capability(decision: ProposeApprove)
+       )
+}
+
+test fn a_review_that_flips_the_tapped_decision_is_not_posted() -> Bool {
+  review_matches_decision(review: sanctioned_review(), decision: ProposeApprove)
+    && !review_matches_decision(review: sanctioned_review(), decision: ProposeDeny)
+    && review_matches_decision(
+         review: DeploymentProtectionRuleReview {
+           environment_name: gated_env,
+           state: Rejected,
+           comment: Present { value: "tapped no" },
+         },
+         decision: ProposeDeny
+       )
+    && !review_matches_decision(
+         review: DeploymentProtectionRuleReview {
+           environment_name: gated_env,
+           state: Rejected,
+           comment: Present { value: "tapped no" },
+         },
+         decision: ProposeApprove
+       )
+}
+
+fn sanctioned_review() -> DeploymentProtectionRuleReview {
+  DeploymentProtectionRuleReview {
+    environment_name: gated_env,
+    state: Approved,
+    comment: Present { value: "ntfy tap srv1-gate-35447067113 rev-1" },
+  }
+}
+
+// OWNERSHIP from a separate read, with its own mutations: an unchecked readback, or one attributing
+// the rule elsewhere, never answers. The review endpoint enforces own-rule-only too, which is a reason
+// to expect a refusal and never a reason to skip the check.
+test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
+  rule_ownership_is_established(ownership: minted_ownership())
+    && !rule_ownership_is_established(ownership: unattributed_ownership())
+    && !broker_may_answer(
+         wait: an_answerable_wait(),
+         run: an_in_flight_run(),
+         claim: gate_claim,
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: unattributed_ownership()
+       )
+    && !broker_may_answer(
+         wait: an_answerable_wait(),
+         run: an_in_flight_run(),
+         claim: gate_claim,
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: rule_ownership_from_readback(
+           rules: [
+             EnabledDeploymentProtectionRule {
+               id: 900000001,
+               node_id: "DPPR_1",
+               enabled: true,
+               app: RuleOwningApp { id: 7777777, slug: "someone-else" },
+             }
+           ],
+           environment_name: gated_env,
+           gate_app_id: gate_app_id,
+         )
+       )
+    && ownership_names_environment(
+         ownership: minted_ownership(), environment: gated_env
+       )
+    && !ownership_names_environment(ownership: minted_ownership(), environment: other_env)
+}
+
+// ---------------------------------------------------------------------------
+// 2. Success is one status on one call
+// ---------------------------------------------------------------------------
+
+// 204 and nothing else. The poll and the human reviewer endpoint answer 200 WITH A BODY; reading either
+// as an accepted review reports an approval that was never given — the specific way this feature could
+// tell the operator "approved" while the deployment stayed waiting.
+test fn success_is_one_status_on_the_right_call() -> Bool {
+  review_was_accepted(status: review_call.success_status)
+    && !review_was_accepted(status: human_review_call.success_status)
+    && !review_was_accepted(status: pending_deployments_poll_call.success_status)
+    && !review_was_accepted(status: 200 as HttpStatus)
+    && !review_was_accepted(status: 201 as HttpStatus)
+    && !review_was_accepted(status: 202 as HttpStatus)
+}
+
+// A concluded run is not answered: its deployment has settled, and a review now changes nothing while
+// looking like it did. Both arms of GitHub's own settlement sum are exercised, so "we did not look" is
+// a value rather than a skipped call.
+test fn a_concluded_run_is_never_answered() -> Bool {
+  run_is_still_worth_answering(settlement: RunSettlementInFlight)
+    && !run_is_still_worth_answering(settlement: RunSettled { conclusion: RunSuccess })
+    && !run_is_still_worth_answering(settlement: RunSettled { conclusion: RunFailure })
+}
+
+// ---------------------------------------------------------------------------
+// 3. Credential, pattern, and the route the silence leaves open
+// ---------------------------------------------------------------------------
+
+// THE DISCRIMINATING RED for the credential decision: the refused arm must be CONSTRUCTIBLE, or the
+// test passes for the wrong reason — nothing would have been refused, and the day someone "supports"
+// PATs there would be no closed position to point at.
+test fn the_operators_own_token_is_refused_though_github_accepts_it() -> Bool {
+  gate_credential_is_permitted(credential: InstallationAccessToken)
+    && !gate_credential_is_permitted(credential: OAuthClassicWithRepoScope)
+    && gate_credential_is_documented()
+}
+
+// The pattern is READ from the selection authority, never restated here. If the selector declines to
+// select one, the gate does not open — a declined selection must stop the broker, not fall back to a
+// remembered answer.
+test fn the_pattern_comes_from_the_selector_and_redeems_a_tap() -> Bool {
+  for_answer_pending_gate() != none
+    && gate_pattern_redeems_a_human_decision()
+}
+
+// THE ROUTE IS DERIVED FROM THE EVIDENCE, not asserted beside it. While the inference about delivery is
+// untested the route adds no inbound exposure to a tailnet-only broker; if the stage-4 trial refutes
+// the inference, the relay arm is selected and the operator's webhook step stops being a no-op. A route
+// that could not be re-derived from the standing is a route nobody can explain after the fact.
+test fn the_selected_route_follows_the_standing_and_adds_no_exposure() -> Bool {
+  rule_delivery_is_unproven(standing: rule_delivery_independence)
+    && gate_route_adds_no_inbound(route: selected_gate_route())
+    && operator_webhook_sets_no_receiver()
+    && !gate_route_adds_no_inbound(
+         route: WebhookRelayFallback { relay_ingress: "tailscale-relay:approval-broker" }
+       )
+    && (match rule_delivery_independence {
+          StandingRefuted { refused_because: _ } => true
+          _ => false
+        }) == false
+}
+
+// ---------------------------------------------------------------------------
+// 4. Ceiling, unit, and the observation about the upstream's own example
+// ---------------------------------------------------------------------------
+
+// THE UNIT RED, in the consumer's hands. 43,200 is the documented maximum wait_timer in MINUTES: read
+// as minutes it is exactly the 30-day ceiling; read as seconds it is twelve hours, and a break-glass
+// check written against the seconds reading waves through a job that has waited a month. The two
+// clauses differ only in unit.
+test fn the_wait_timer_is_minutes_and_not_seconds() -> Bool {
+  documented_timer_maximum_in_seconds() == gate_ceiling_in_seconds()
+    && documented_timer_maximum_in_seconds() == 30 * 86400
+    && documented_timer_maximum_in_seconds() != 43200
+    && second_count(s: custom_rule_response_timeout()) == gate_ceiling_in_seconds()
+    && gate_ceilings_agree()
+}
+
+// GitHub's worked example posts prod-eus. Completing it is an upstream fact; noticing that it is not
+// THIS repository's gate is an observation gunbc makes — and posting it unchanged releases nothing while
+// reading as a success.
+test fn the_documented_example_is_not_our_gate() -> Bool {
+  documented_example_is_not_the_gated_environment()
+}
+
+// THE MINT REFUSES EVIDENCE IT DID NOT SEE. An ObservedRuleReview comes only from the readback fold;
+// these three are the shortcuts a fixture would have allowed, and each returns nothing.
+test fn no_unobserved_rule_review_can_be_fabricated() -> Bool {
+  observed_review_from_readback(
+    run: run_record(run_id: 35447067113, settled: false, failed: false),
+    environment_still_waiting: true,
+    claimed: Approved,
+    environment_name: gated_env
+  ) == none
+    && observed_review_from_readback(
+         run: run_record(run_id: 35447067113, settled: true, failed: true),
+         environment_still_waiting: false,
+         claimed: Approved,
+         environment_name: gated_env
+       ) == none
+    && observed_review_from_readback(
+         run: run_record(run_id: 35447067113, settled: false, failed: false),
+         environment_still_waiting: false,
+         claimed: Rejected,
+         environment_name: gated_env
+       ) == none
+    && observed_review_from_readback(
+         run: run_record(run_id: 35447067113, settled: false, failed: false),
+         environment_still_waiting: false,
+         claimed: Approved,
+         environment_name: gated_env
+       ) != none
+    && observed_review_from_readback(
+         run: run_record(run_id: 35447067114, settled: true, failed: true),
+         environment_still_waiting: false,
+         claimed: Rejected,
+         environment_name: gated_env
+       ) != none
+}
+
+// The configured installation is a fact the operator recorded, never something a readback handed over:
+// the enabled-rules response carries an App id and slug and no installation id at all.
+test fn the_configured_installation_carries_both_ids_and_no_readback_can() -> Bool {
+  let configured = GateInstallation { installation_id: 1900000001, app_id: gate_app_id }
+  configured.installation_id == 1900000001
+    && configured.app_id == gate_app_id
+    && configured.app_id != configured.installation_id
+}

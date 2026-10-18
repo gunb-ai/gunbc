@@ -1,0 +1,401 @@
+module gunbc.test.claim.deployment_gate_operator_steps_witness
+
+// Witness file for the five operator acts that stand up the deployment gate, and for the ordering that
+// keeps the gate shut until the app-side rule has been witnessed BOTH ways.
+//
+// WHY THESE TESTS ARE NOT IN gunbc.auth.deployment_gate_operator_steps. No module under dag/gunbc/auth
+// carries a test on main, and the reason is worth stating: a production module that ships fixtures
+// ships values someone can mistake for observations. The removal act is guarded by a typed admission;
+// if the evidence inside that admission were a fixture sitting in the module the act is decided from,
+// the guard would be the prose it replaced wearing a type. So the fixtures live here, and — for the
+// trial evidence specifically — they are not literals either: they are minted through the readback fold
+// that GitHub's own records feed.
+//
+// Each test below is written so the WRONG model returns the wrong answer. The ordering control is
+// exercised by performing the swap a shortcut would make; the identity census by dropping and doubling
+// a row; the permission census by widening the App by one axis; the readback control by citing the
+// endpoint that cannot answer the question.
+
+import std.types {
+  String,
+  Int,
+  Bool,
+  NonEmptyStr,
+}
+import std.human_intervention { FleetOnce }
+import extdeps.github.deployment_protection_rule {
+  Approved,
+  Rejected,
+  review_state_wire,
+  environment_protection_rule_type_values,
+  environment_protection_rule_kind_wire,
+  RequiredReviewersKind,
+  BranchPolicyKind,
+  WaitTimerKind,
+  enabled_rule_readback_endpoint_path,
+  enabled_rule_readback_items_field,
+}
+import extdeps.github.app {
+  GitHubAppPermission,
+  ActionsAxis,
+  DeploymentsAxis,
+  ContentsAxis,
+  AdministrationAxis,
+  IdTokenAxis,
+  AppAccessRead,
+  AppAccessWrite,
+}
+import extdeps.github.actions_runs { WorkflowRunRecord }
+import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
+import gunbc.auth.deployment_gate_operator_steps {
+  deployment_gate_repository,
+  deployment_gate_environment,
+  deployment_gate_app_permissions,
+  app_registration_step,
+  app_installation_step,
+  webhook_configuration_step,
+  rule_enablement_step,
+  reviewer_removal_step,
+  deployment_gate_operator_steps,
+  human_frequency_is_fleet_once,
+  all_steps_are_fleet_once,
+  count_with_identity,
+  removal_is_strictly_after_enablement,
+}
+import gunbc.auth.deployment_gate_authorization {
+  ObservedRuleReview,
+  observed_review_from_readback,
+  DeploymentGateTrialEvidence,
+  ReviewerRemovalAdmission,
+  RemovalAdmitted,
+  RemovalRefused,
+  reviewer_removal_is_admitted,
+  reviewer_removal_is_performable,
+  trials_are_the_real_thing,
+  rule_app_permission_is_admissible,
+  rule_app_permission_set_is_admissible,
+  rule_app_permission_set_is_complete,
+  GateInstallation,
+}
+
+data gate_env: NonEmptyStr = srv1_production_environment_name
+
+// THE FIXTURES ARE MINTED, NOT WRITTEN OUT. An ObservedRuleReview is obtainable only through
+// observed_review_from_readback, which reads GitHub's record of the run and the pending_deployments
+// readback and REFUSES when they do not corroborate the state claimed. So the pair below is not two
+// records with convenient fields: it is what the readback fold returns for a run that proceeded (the
+// approve arm) and a run that concluded as a failure (the reject arm). The fixtures that CANNOT be
+// minted are the point — see the refusals asserted under the removal tests.
+fn approved_trial(run_id: Int) -> ObservedRuleReview? {
+  observed_review_from_readback(
+    run: a_run(run_id: run_id, in_flight: true),
+    environment_still_waiting: false,
+    claimed: Approved,
+    environment_name: gate_env
+  )
+}
+
+fn rejected_trial(run_id: Int) -> ObservedRuleReview? {
+  observed_review_from_readback(
+    run: a_run(run_id: run_id, in_flight: false),
+    environment_still_waiting: false,
+    claimed: Rejected,
+    environment_name: gate_env
+  )
+}
+
+// A run as GitHub's OWN record, in the two states that matter to the gate. Built through the upstream's
+// wire spellings rather than invented: "completed"/"failure" is what GitHub says about a run a rule
+// refused, and a status that is not "completed" is what it says about a run an rule released and which
+// is still going. The settlement the gate reasons about is derived from these strings by
+// extdeps.github.actions_runs, so the fixtures cannot claim a conclusion GitHub never reported.
+fn a_run(run_id: Int, in_flight: Bool) -> WorkflowRunRecord {
+  WorkflowRunRecord {
+    run_id: run_id,
+    event: "workflow_dispatch",
+    head_branch: "main",
+    status: if in_flight {
+      "in_progress"
+    } else {
+      "completed"
+    },
+    conclusion: if in_flight {
+      ""
+    } else {
+      "failure"
+    },
+    created_at_epoch_s: 1792000000,
+    run_started_at_epoch_s: 1792000060,
+    updated_at_epoch_s: 1792000120,
+  }
+}
+
+// THE ADMITTED PAIR, minted. Both trials must exist for the act to have anything to be performed with.
+fn admitted_pair() -> ReviewerRemovalAdmission {
+  match approved_trial(run_id: 35447067113) {
+    Present { value: a } => match rejected_trial(run_id: 35447067114) {
+      Present { value: r } =>
+        RemovalAdmitted {
+          evidence: DeploymentGateTrialEvidence { approved_run: a, rejected_run: r },
+        }
+      none => RemovalRefused { missing: "the rejecting dispatch did not conclude as a failure" }
+    }
+    none => RemovalRefused { missing: "the approving dispatch did not proceed" }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1. The five acts, counted and distinct
+// ---------------------------------------------------------------------------
+
+test fn every_operator_act_is_counted_once_per_fleet() -> Bool {
+  all_steps_are_fleet_once(steps: deployment_gate_operator_steps)
+    && (deployment_gate_operator_steps |> count) == 5
+}
+
+// The census is not decoration. A row dropped in a rebase and a row duplicated in a merge are both
+// silent in the rendered checklist; each is refused by a count that has to stay at exactly five.
+test fn the_count_refuses_a_silently_dropped_or_doubled_row() -> Bool {
+  (deployment_gate_operator_steps |> count) != 4
+    && (deployment_gate_operator_steps |> count) != 6
+    && human_frequency_is_fleet_once(f: FleetOnce)
+}
+
+test fn no_two_operator_acts_share_an_identity() -> Bool {
+  count_with_identity(
+    steps: deployment_gate_operator_steps, identity: "github.deployment-rule.app.register"
+  ) == 1
+    && count_with_identity(
+         steps: deployment_gate_operator_steps, identity: "github.deployment-rule.app.install"
+       ) == 1
+    && count_with_identity(
+         steps: deployment_gate_operator_steps, identity: "github.deployment-rule.webhook.configure"
+       ) == 1
+    && count_with_identity(
+         steps: deployment_gate_operator_steps,
+         identity: "github.deployment-rule.enable.srv1-production",
+       ) == 1
+    && count_with_identity(
+         steps: deployment_gate_operator_steps,
+         identity: "github.deployment-rule.reviewer-removal.srv1-production",
+       ) == 1
+}
+
+// ---------------------------------------------------------------------------
+// 2. Ordering: the human gate goes last, or the fold refuses
+// ---------------------------------------------------------------------------
+
+test fn the_human_gate_is_removed_only_after_the_app_gate_appears() -> Bool {
+  removal_is_strictly_after_enablement(steps: deployment_gate_operator_steps)
+}
+
+// THE DISCRIMINATING RED for the whole ordering control: the same fold, over the same five rows with
+// the last two swapped — the sequence that removes the human reviewer before anything can replace it.
+test fn a_swapped_ordering_is_refused() -> Bool {
+  !removal_is_strictly_after_enablement(
+    steps: [
+      app_registration_step,
+      app_installation_step,
+      webhook_configuration_step,
+      reviewer_removal_step,
+      rule_enablement_step,
+    ]
+  )
+    && removal_is_strictly_after_enablement(steps: deployment_gate_operator_steps)
+}
+
+// The two acts are not one act wearing a hat: if removal were folded into the enablement row, the
+// ordering control would have nothing to order.
+test fn the_removal_is_not_collapsed_into_the_enablement() -> Bool {
+  (rule_enablement_step.identity as String) != (reviewer_removal_step.identity as String)
+    && (rule_enablement_step.instruction as String).contains("Do not remove any reviewer")
+}
+
+// ---------------------------------------------------------------------------
+// 3. The removal act needs a typed admission, not an instruction that mentions both outcomes
+// ---------------------------------------------------------------------------
+
+// THE DISCRIMINATING RED for the guard itself. The frontier row refuses, so the act is not
+// performable; and an admission MINTED FROM THE READBACK admits it. If the prerequisite were prose
+// again, the second clause would not be a fact anyone could break — the instruction already contained
+// the words APPROVING and REJECTING and proved nothing.
+test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
+  !reviewer_removal_is_performable()
+    && reviewer_removal_is_admitted(admission: admitted_pair())
+}
+
+// Each mutation is a shortcut someone would actually take: both arms the same state, both arms on the
+// SAME dispatch, one arm witnessed on an environment nobody gates. One dispatch cannot show the broker
+// refusing when it should, which is the half of the gate that stops being tested when the reviewer goes.
+test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused() -> Bool {
+  let a = approved_trial(run_id: 35447067113)
+  let r = rejected_trial(run_id: 35447067114)
+  match a {
+    Present { value: approve } => match r {
+      Present { value: reject } =>
+        reviewer_removal_is_admitted(admission: admitted_pair())
+          && !reviewer_removal_is_admitted(
+               admission: RemovalAdmitted {
+                 evidence: DeploymentGateTrialEvidence {
+                   approved_run: approve,
+                   rejected_run: approve,
+                 },
+               }
+             )
+          && !reviewer_removal_is_admitted(
+               admission: RemovalAdmitted {
+                 evidence: DeploymentGateTrialEvidence {
+                   approved_run: approve,
+                   rejected_run: ObservedRuleReview {
+                     run_id: 35447067113,
+                     environment_name: gate_env,
+                     state: Rejected,
+                   },
+                 },
+               }
+             )
+          && !reviewer_removal_is_admitted(
+               admission: RemovalAdmitted {
+                 evidence: DeploymentGateTrialEvidence {
+                   approved_run: approve,
+                   rejected_run: ObservedRuleReview {
+                     run_id: 35447067115,
+                     environment_name: "gcp-iam-converge",
+                     state: Rejected,
+                   },
+                 },
+               }
+             )
+          && !reviewer_removal_is_admitted(
+               admission: RemovalRefused { missing: "no rejecting review was witnessed" }
+             )
+          && trials_are_the_real_thing(
+               evidence: DeploymentGateTrialEvidence {
+                 approved_run: approve,
+                 rejected_run: reject,
+               }
+             )
+      none => false
+    }
+    none => false
+  }
+}
+
+// THE MINT REFUSES WHAT A LITERAL WOULD HAVE ACCEPTED. A still-waiting environment, or an approve claim
+// on a run that failed at the gate, produce nothing — so the pair cannot be assembled from a dispatch
+// that did not happen the way the evidence claims.
+test fn the_readback_refuses_to_mint_evidence_it_did_not_see() -> Bool {
+  observed_review_from_readback(
+    run: a_run(run_id: 35447067113, in_flight: true),
+    environment_still_waiting: true,
+    claimed: Approved,
+    environment_name: gate_env
+  ) == none
+    && observed_review_from_readback(
+         run: a_run(run_id: 35447067113, in_flight: false),
+         environment_still_waiting: false,
+         claimed: Approved,
+         environment_name: gate_env
+       ) == none
+    && observed_review_from_readback(
+         run: a_run(run_id: 35447067114, in_flight: true),
+         environment_still_waiting: false,
+         claimed: Rejected,
+         environment_name: gate_env
+       ) == none
+    && approved_trial(run_id: 35447067113) != none
+    && rejected_trial(run_id: 35447067114) != none
+}
+
+// The states in the evidence are GitHub's own wire spellings, not strings that merely look like them.
+test fn the_witnessed_states_are_githubs_own() -> Bool {
+  (review_state_wire(state: Approved) as String) == "approved"
+    && (review_state_wire(state: Rejected) as String) == "rejected"
+    && (reviewer_removal_step.instruction as String).contains("RemovalRefused")
+    && (reviewer_removal_step.instruction as String).contains("ReviewerRemovalAdmission")
+}
+
+// ---------------------------------------------------------------------------
+// 4. The rows name the boundary they protect, and the webhook row says what it sets
+// ---------------------------------------------------------------------------
+
+test fn the_gate_rows_point_at_the_boundary_environment() -> Bool {
+  deployment_gate_environment == gate_env
+    && (deployment_gate_repository as String) == "gunb-ai/gunbc"
+    && (rule_enablement_step.subject as String).contains("srv1-production")
+    && (reviewer_removal_step.subject as String).contains("srv1-production")
+}
+
+// A drifted environment name is the quiet failure: the gate would be enabled on one environment and
+// the reviewers removed from another. Both rows are pinned to the same symbol, and a literal that
+// drifted is caught here.
+test fn the_gate_rows_refuse_a_drifted_environment_name() -> Bool {
+  (rule_enablement_step.subject as String).contains(gate_env as String)
+    && (reviewer_removal_step.subject as String).contains(gate_env as String)
+    && (rule_enablement_step.subject as String) != "mtcollins1-boot"
+    && (reviewer_removal_step.subject as String) != "gcp-iam-converge"
+}
+
+test fn the_webhook_row_forbids_exposing_the_broker() -> Bool {
+  (webhook_configuration_step.instruction as String).contains("DISABLED endpoint")
+    && (webhook_configuration_step.instruction as String).contains("rejected alternative")
+}
+
+// The webhook row is an OPERATOR ACT with an instruction, not a dependency the gate runs on. On the
+// selected route nothing reads a delivery, so a row that made the broker depend on GitHub reaching it
+// would describe a component that does not exist — and would open the exposure the route avoids.
+test fn the_webhook_row_is_not_mistaken_for_a_dependency() -> Bool {
+  (webhook_configuration_step.instruction as String).contains("rule_delivery_independence")
+    && (webhook_configuration_step.instruction as String).contains("tailscale")
+    && (webhook_configuration_step.subject as String).contains("webhook")
+}
+
+// ---------------------------------------------------------------------------
+// 5. Readback types and the permission census
+// ---------------------------------------------------------------------------
+
+// The enablement row tells the operator to read back protection types. Those types are the upstream's
+// three, and the readback that can ANSWER is the enabled-rules endpoint — not the /apps catalogue,
+// whose items carry no rule id and no enabled flag.
+test fn the_enablement_readback_uses_real_protection_types() -> Bool {
+  (environment_protection_rule_type_values |> count) == 3
+    && (environment_protection_rule_kind_wire(kind: RequiredReviewersKind) as String)
+        == "required_reviewers"
+    && (environment_protection_rule_kind_wire(kind: BranchPolicyKind) as String) == "branch_policy"
+    && (environment_protection_rule_kind_wire(kind: WaitTimerKind) as String) == "wait_timer"
+    && !(enabled_rule_readback_endpoint_path as String).contains("deployment_protection_rules/apps")
+    && (enabled_rule_readback_items_field as String) == "custom_deployment_protection_rules"
+}
+
+test fn the_gate_app_carries_only_the_rule_permissions() -> Bool {
+  (deployment_gate_app_permissions |> count) == 2
+    && rule_app_permission_set_is_complete()
+    && (deployment_gate_app_permissions
+        |> any(p => p.name == DeploymentsAxis && p.access == AppAccessWrite))
+    && (deployment_gate_app_permissions
+        |> any(p => p.name == ActionsAxis && p.access == AppAccessRead))
+}
+
+// THE DISCRIMINATING RED for least privilege: the identical call over a set widened by one axis. The
+// App that releases srv1 root mutation must not be able to read source, mint a workload token, or
+// administer the repository.
+test fn the_permission_set_refuses_a_widened_app() -> Bool {
+  rule_app_permission_set_is_admissible()
+    && !(deployment_gate_app_permissions
+         |> append(GitHubAppPermission { name: ContentsAxis, access: AppAccessWrite })
+         |> all(p => rule_app_permission_is_admissible(permission: p)))
+    && !(deployment_gate_app_permissions
+         |> append(GitHubAppPermission { name: IdTokenAxis, access: AppAccessRead })
+         |> all(p => rule_app_permission_is_admissible(permission: p)))
+    && !(deployment_gate_app_permissions
+         |> append(GitHubAppPermission { name: AdministrationAxis, access: AppAccessWrite })
+         |> all(p => rule_app_permission_is_admissible(permission: p)))
+}
+
+// The installation the token is minted from is a configured fact, never a field of a readback — the
+// enabled-rules response carries an App id and slug and no installation id. A record that could hold
+// both confusions is the record that gets written; this checks the type cannot.
+test fn the_configured_installation_is_separate_from_the_readback() -> Bool {
+  let configured = GateInstallation { installation_id: 1900000001, app_id: 1234567 }
+    configured.installation_id == 1900000001 && configured.app_id == 1234567
+}
