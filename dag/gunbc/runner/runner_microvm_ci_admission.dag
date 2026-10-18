@@ -25,6 +25,9 @@ fn microvm_ci_admission(executor: NonEmptyStr, sanction: ExecutorSanction,
       GitHubRunnerWorkload { registration_id: _ } => MicrovmCiRecoveryRequired { bound: bound }
       WorkspaceWorkload { bootstrap_identity: _, image_identity: _, lease_expires_unix: _ } =>
         MicrovmCiAdmissionRefused { reason: "workspace recovery requires its durable owner-ledger directive" }
+      // A lost revision job's cell is torn down like a lost runner's: its cleanup subjects are the
+      // attempt's own, and its grant is settled (or left held) by FCI-4, not by recovery.
+      ClaimSetWorkload { grant: _, tree: _ } => MicrovmCiRecoveryRequired { bound: bound }
     } }
     CellIncarnationAdmitted { cell, generation: _ } => if (cell as String) != (executor as String) {
       MicrovmCiAdmissionRefused { reason: "readiness names another executor" }

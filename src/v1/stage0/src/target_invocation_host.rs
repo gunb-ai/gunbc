@@ -488,6 +488,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-allocation-observation"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_allocation_observation.dag",
+            },
+        ),
+        (
             instrument_label("native-xl2-rehearsal"),
             TargetProducer::NativeClaimProgram {
                 entry: "src/v2/workflow/namespace_xl2_rehearsal_native.dag",

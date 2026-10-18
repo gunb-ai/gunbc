@@ -454,6 +454,16 @@ fn native_emission_controls_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-emission-controls" } }
 }
 
+// The allocation reading of the state-threading specimen: a NativeClaimDriver program that `uses`
+// AllocationCounter, so its emitted binary alone carries the counting allocator.
+fn native_allocation_observation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-allocation-observation" } }
+}
+
+fn native_allocation_observation_entry() -> String {
+  "dag/gunbc/instruments/native_allocation_observation.dag"
+}
+
 fn native_emission_controls_entry() -> String {
   "dag/gunbc/instruments/native_emission_controls.dag"
 }
@@ -831,6 +841,10 @@ fn native_app_attest_binding() -> TargetBinding {
   TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
+fn native_allocation_observation_binding() -> TargetBinding {
+  TargetBinding { target: native_allocation_observation_label() producer: NativeClaimProgramProducer { entry: native_allocation_observation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
 fn native_xl2_rehearsal_binding() -> TargetBinding {
   TargetBinding { target: native_xl2_rehearsal_label() producer: NativeClaimProgramProducer { entry: native_xl2_rehearsal_entry() deadline: native_claim_policy_child_deadline() } }
 }
@@ -1047,7 +1061,7 @@ fn instrument_targets() -> List<Label> {
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), brand_mark_assets_label()
+    native_emission_controls_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), brand_mark_assets_label()
   ]
 }
 
@@ -1069,7 +1083,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), brand_mark_assets_binding()
+    native_emission_controls_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), brand_mark_assets_binding()
   ]
 }
 
