@@ -54,12 +54,20 @@ fn step_if_of(s: Step) -> String {
             UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" } }
 }
 
+fn step_id_of_opt(s: Step?) -> String {
+  match s { Present { value: v } => step_id_of(s: v)  Absent => "" }
+}
+
+fn step_if_of_opt(s: Step?) -> String {
+  match s { Present { value: v } => step_if_of(s: v)  Absent => "" }
+}
+
 fn step_index(steps: List<Step>, id: String) -> Int {
   step_index_from(steps: steps, id: id, i: 0)
 }
 
 fn step_index_from(steps: List<Step>, id: String, i: Int) -> Int {
-  if i >= steps.length() { 0 - 1 } else if step_id_of(s: steps[i]) == id { i } else { step_index_from(steps: steps, id: id, i: i + 1) }
+  if i >= steps.length() { 0 - 1 } else if step_id_of_opt(s: steps[i]) == id { i } else { step_index_from(steps: steps, id: id, i: i + 1) }
 }
 
 fn mode_of_wire(wire: String) -> FleetConvergeWorkflowMode? {
@@ -77,8 +85,8 @@ fn job_waits_for_the_grant_before(j: Job, mode_wire: String, work_step_id: Strin
   let w = step_index(steps: j.steps, id: "branch_run_grant_await")
   let k = step_index(steps: j.steps, id: work_step_id)
   w >= 0 && k > w
-    && step_if_of(s: j.steps[w]).contains(join(["github.event.inputs.mode == '", mode_wire, "'"], ""))
-    && step_if_of(s: j.steps[w]).contains("github.ref != 'refs/heads/main'")
+    && step_if_of_opt(s: j.steps[w]).contains(join(["github.event.inputs.mode == '", mode_wire, "'"], ""))
+    && step_if_of_opt(s: j.steps[w]).contains("github.ref != 'refs/heads/main'")
 }
 
 fn without_the_grant_wait(j: Job) -> Job {
@@ -98,7 +106,7 @@ test fn each_covered_mode_waits_for_the_grant_in_its_own_job_before_its_work() -
       && (match j.environment { Present { value: _ } => true  Absent => false })
       && (match j.concurrency { Present { value: _ } => true  Absent => false })
       && !any(j.steps, s => step_id_of(s: s).starts_with("wif_auth"))
-      && step_if_of(s: j.steps[step_index(steps: j.steps, id: "dashboard_deploy")]) == ""
+      && step_if_of_opt(s: j.steps[step_index(steps: j.steps, id: "dashboard_deploy")]) == ""
   }) && all(["plan", "apply"], w => match mode_of_wire(wire: w) {
     Absent => false
     Present { value: m } => match executing_job(mode: m) {
@@ -129,9 +137,9 @@ test fn a_failed_wait_withholds_the_deploy_and_main_needs_no_wait() -> Bool {
     Absent => false
     Present { value: j } => {
       let w = j.steps[step_index(steps: j.steps, id: "branch_run_grant_await")]
-      !step_if_of(s: j.steps[step_index(steps: j.steps, id: "dashboard_deploy")]).contains("always()")
-        && match w { RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: c, timeout_minutes: _ } => match c { Present { value: v } => !v  Absent => true }
-                     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false }
+      !step_if_of_opt(s: j.steps[step_index(steps: j.steps, id: "dashboard_deploy")]).contains("always()")
+        && match w { Absent => false  Present { value: ws } => match ws { RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: c, timeout_minutes: _ } => match c { Present { value: v } => !v  Absent => true }
+                     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false } }
         && (match run_scoped_mode_eligible(mode: "dashboard_deploy", branch: "main") { Present { value: _ } => false  Absent => true })
         && (match run_scoped_mode_eligible(mode: "dashboard_deploy", branch: "work/x") { Present { value: _ } => true  Absent => false })
     }
