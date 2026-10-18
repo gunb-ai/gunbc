@@ -29,7 +29,7 @@ use v1_compiler::v1_compiler_trait_derive_emit::{v1_type_expr_keyed_map_verdict,
 use v1_compiler::v1_std_core::NewlineIndex;
 use v1_compiler::v1_std_core::{
     authored_container_spelling_verdict, build_newline_index, default_ident_span,
-    leaf_node_with_span, make_arm_node, no_span, with_optional_cardinality, Cardinality,
+    leaf_node_with_span, make_arm_node, no_span, optional_of, optional_payload, type_is_optional,
     CompilerDiagnostic, Connective, ContainerSpellingVerdict, ExprData, InferredNode, MatchPattern,
     Node, SourceSpan,
 };
@@ -284,7 +284,7 @@ fn empty_infer_scope() -> Rc<InferScope> {
     })
 }
 
-fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc<Node> {
+fn sum_node(name: &str, variants: Vec<Rc<Node>>) -> Rc<Node> {
     let sp = no_span();
     Rc::new(Node {
         occurrence_identity: Rc::new(
@@ -298,7 +298,6 @@ fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc
         connective: Connective::Disj,
         params: Rc::new(vec![]),
         inferred: None,
-        return_cardinality: cardinality,
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -658,8 +657,8 @@ fn valid_map_index_preserves_optional_value_type() {
         .as_ref()
     {
         InferredNode::Resolved { node, .. } => {
-            assert_eq!(node.name, "Int");
-            assert!(matches!(node.return_cardinality, Cardinality::CardOptional));
+            assert!(type_is_optional(node.clone()));
+            assert_eq!(optional_payload(node.clone()).name, "Int");
         }
         other => panic!("expected resolved return type, got {:?}", other),
     }
@@ -710,9 +709,9 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
 }
 
 fn optional_pattern_lookup_rejects_some_variant() {
-    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
-        leaf_node("String".to_string()),
-    ));
+    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_of(leaf_node(
+        "String".to_string(),
+    )));
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
@@ -730,9 +729,9 @@ fn optional_pattern_lookup_rejects_some_variant() {
 }
 
 fn optional_pattern_lookup_resolves_present_variant() {
-    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
-        leaf_node("String".to_string()),
-    ));
+    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_of(leaf_node(
+        "String".to_string(),
+    )));
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Present".to_string(),
@@ -817,7 +816,6 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         connective: Connective::Disj,
         params: Rc::new(vec![]),
         inferred: None,
-        return_cardinality: Cardinality::CardOptional,
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -831,7 +829,8 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     });
-    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_inner_sum);
+    let subject =
+        v1_compiler_infer_patterns::pattern_subject_from_node(optional_of(optional_inner_sum));
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Present".to_string(),
@@ -855,9 +854,9 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
 
 fn optional_present_absent_patterns_keep_canonical_names() {
     let scope = empty_infer_scope();
-    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
-        leaf_node("String".to_string()),
-    ));
+    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_of(leaf_node(
+        "String".to_string(),
+    )));
 
     let present = v1_compiler::v1_compiler_infer::annotate_pattern_parent_enums(
         Rc::new(MatchPattern::VariantPattern {
@@ -1044,7 +1043,7 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
 
 fn optional_match_exhaustiveness_reports_missing_absent() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
-        with_optional_cardinality(leaf_node("String".to_string())),
+        optional_of(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Present")]),
         Rc::new(TypeEnv {
             module_path: "".to_string(),
@@ -1075,7 +1074,7 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
 
 fn optional_match_exhaustiveness_rejects_some_and_none() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
-        with_optional_cardinality(leaf_node("String".to_string())),
+        optional_of(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         Rc::new(TypeEnv {
             module_path: "".to_string(),
@@ -1106,7 +1105,7 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
 
 fn optional_match_exhaustiveness_accepts_present_and_absent() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
-        with_optional_cardinality(leaf_node("String".to_string())),
+        optional_of(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
         Rc::new(TypeEnv {
             module_path: "".to_string(),
@@ -1372,16 +1371,14 @@ fn structural_method_first_on_list_returns_optional_element() {
     .as_ref()
     .expect("first must resolve on List<Int>")
     .clone();
-    assert_eq!(
-        result.result_type.name, "Int",
-        "first on List<Int> should return Int"
-    );
     assert!(
-        matches!(
-            result.result_type.return_cardinality,
-            Cardinality::CardOptional
-        ),
-        "first should return Optional"
+        type_is_optional(result.result_type.clone()),
+        "first should return the std.optional application"
+    );
+    assert_eq!(
+        optional_payload(result.result_type.clone()).name,
+        "Int",
+        "first on List<Int> should return Int"
     );
 }
 
@@ -1485,16 +1482,14 @@ fn structural_method_get_on_map_returns_optional_value() {
     .as_ref()
     .expect("get must resolve on Map<String,Int>")
     .clone();
-    assert_eq!(
-        result.result_type.name, "Int",
-        "get on Map<String,Int> should return Int"
-    );
     assert!(
-        matches!(
-            result.result_type.return_cardinality,
-            Cardinality::CardOptional
-        ),
-        "get should return Optional"
+        type_is_optional(result.result_type.clone()),
+        "get should return the std.optional application"
+    );
+    assert_eq!(
+        optional_payload(result.result_type.clone()).name,
+        "Int",
+        "get on Map<String,Int> should return Int"
     );
 }
 
@@ -1816,8 +1811,8 @@ fn map_index_with_correct_key_type_succeeds() {
     );
     match result.inferred.as_ref().map(|i| i.as_ref()) {
         Some(InferredNode::Resolved { node }) => {
-            assert_eq!(node.name, "Int");
-            assert!(matches!(node.return_cardinality, Cardinality::CardOptional));
+            assert!(type_is_optional(node.clone()));
+            assert_eq!(optional_payload(node.clone()).name, "Int");
         }
         other => panic!("expected Resolved(Int?), got {:?}", other),
     }

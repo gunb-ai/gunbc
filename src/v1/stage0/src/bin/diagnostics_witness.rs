@@ -639,7 +639,7 @@ fn record_literal_field_walls() {
         diagnostic_messages(&complete_result)
     );
 
-    // GREEN (exclusion boundary): Optional wrapper at a CardOptional formal.
+    // GREEN (exclusion boundary): Optional wrapper at a std.optional formal.
     let optional_wrapper_green = "module fieldwall_optional_wrapper_green\n\
         type Payload { n: Int }\n\
         type Holder { value: Payload? }\n\
@@ -653,7 +653,7 @@ fn record_literal_field_walls() {
             .diagnostics
             .iter()
             .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
-        "Present wrapper at CardOptional formal must stay green, got: {:?}",
+        "Present wrapper at std.optional formal must stay green, got: {:?}",
         diagnostic_messages(&optional_wrapper_green_result)
     );
 

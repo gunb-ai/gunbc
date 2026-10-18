@@ -507,7 +507,7 @@ fn emit_data_fields_json(value: Node, source_indices: Map<String, NewlineIndex>,
 // cardinality -- never by the spelling of a variant's parent. Every target realizes `T?` natively
 // (Rust Option, Python None, Go nil), and each one's JSON reading of it is transparent: absent is
 // `null`, present is the payload itself. The caller (v1.compiler.emit_rust emit_data_def_body) asks
-// this only for a row whose declared type carries CardOptional, so an unrelated coproduct that happens
+// this only for a row whose declared type is the std.optional application, so an unrelated coproduct that happens
 // to be NAMED Optional keeps its own wire policy (review on gunbc#13202: a leaf-name test here was a
 // second, unrostered authority that would have serialized such a coproduct as null or a bare payload).
 // Within an optional row, a variant literal whose parent IS the declared inner type is a bare T under

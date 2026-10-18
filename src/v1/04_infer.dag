@@ -725,8 +725,7 @@ fn expected_variant_owner_instantiation(expected: Node?, name: String, scope: In
 // ConvergeVerdict alike). Re-targeting would leave the returned parent_enum naming one
 // coproduct while the inferred type named another.
 //
-// CARDINALITY: optionality is NOT a wrapper type here — `BinOp?` is a BinOp node whose
-// return_cardinality is CardOptional (00_core optional_of), so a head-name
+// OPTIONALITY: `BinOp?` is the std.optional application over BinOp (00_core optional_of), so a head-name
 // comparison alone cannot see it. For `binop: Mod` against an expected `BinOp?` the head
 // IS "BinOp" and the arm IS found, but the constructor's own type is BinOp and the
 // optionality is a coercion the emitter performs; adopting the expected node makes the
@@ -1552,9 +1551,8 @@ fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -
 // conformance judgment at all before this change.
 //
 // OPTIONALITY IS EXCLUDED on both sides, the exclusion its neighbours state and for the same
-// reason: optionality lives in two representations here (a cardinality marker and the nominal
-// `Optional` coproduct), so a difference across them is a representation gap rather than a
-// mismatch, and refusing it would be the fabricated refusal DESIGN section 5 forbids exactly as it
+// reason: optionality is the std.optional application, whose payload this kernel comparison does not
+// read, so a difference across it is not a mismatch this function can judge, and refusing it would be the fabricated refusal DESIGN section 5 forbids exactly as it
 // forbids a fabricated success.
 fn declared_type_kernel_inhabitance_mismatch(declared: Node, produced: Node, scope: InferScope) -> Bool {
   if type_is_optional(n: declared) || type_is_optional(n: produced) {
@@ -3128,8 +3126,8 @@ fn match_arm_mixes_bare_and_optional(unified_arm_type: Node, arm_type: Node, sco
 
 // CLAIMED SCOPE OF THE WALL (not a rung drop): the wall does not judge an arm whose whole body is the
 // payload binding of a `Present { value: x }` pattern. Infer types that payload as bare T from a
-// scrutinee carried as single-level CardOptional (join_optional_cardinality / optional_payload
-// collapse nesting), so over List<T?> `first()` yields T? and the payload reads as T though emission
+// scrutinee carried as a single-level std.optional application (optional_payload
+// collapses nesting), so over List<T?> `first()` yields T? and the payload reads as T though emission
 // carries Option<Option<T>>; judging it would refuse a correct arm. Row:
 // nested_optional_collapsed_by_infer_carried_by_emission; trigger: a nested-optional carrier in 00_core.
 fn match_arm_body_is_present_payload_binding(arm: ArmInferResult, scope: InferScope) -> Bool {
@@ -3236,10 +3234,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 // A BINDING ARM AFTER AN UNGUARDED ABSENT ARM BINDS THE PRESENT VALUE. `match opt { null => a
 // v => b }` is the corpus idiom for eliminating an optional: the absent case is taken first, so
 // the bare binding in a later arm can only ever hold a present value. Typing that binding at the
-// scrutinee's own CardOptional type would make optional_produced_at_required_declared refuse
+// scrutinee's own std.optional type would make optional_produced_at_required_declared refuse
 // correct code (std.serialize serialize_value_doc was the measured specimen) -- a fabricated
 // refusal. The narrowing is positive: it requires an earlier UNGUARDED `null` / `Absent` arm, a
-// bare Bind pattern, and a CardOptional scrutinee; anything else keeps the scrutinee's type.
+// bare Bind pattern, and a std.optional scrutinee; anything else keeps the scrutinee's type.
 fn match_unguarded_absent_arm_index(arm_nodes: List<Node>) -> Int {
   arm_nodes |> enumerate |> fold(init: -1, f: (acc, pair) =>
     if acc >= 0 { acc }
@@ -3652,9 +3650,8 @@ fn equality_operand_is_presence_literal(n: Node, source_indices: Map<String, New
 // routes), and the interpreter answered it by representation: true when the optional was
 // stored bare, false when it was wrapped in Present. An emitter-only lift to `== Some(..)`
 // would have legalized the conversion at the target layer. Optionality is read where the
-// emitter reads it -- the typed operand's resolved node carrying CardOptional -- plus the
-// nominal Optional coproduct, the second representation declared_type_conformance_note
-// names. The presence idiom (`== none` / `== Absent`) is exempt before this arm runs.
+// emitter reads it -- the typed operand's resolved node being the std.optional application
+// (type_is_optional), or the bare Optional declaration. The presence idiom (`== none` / `== Absent`) is exempt before this arm runs.
 fn equality_operand_is_optional(n: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   match n.inferred {
@@ -4068,7 +4065,7 @@ fn foreign_concrete_coproduct_where_parent_required(
 //
 // TWO EXCLUSIONS ARE LOAD-BEARING AND NEITHER IS INCIDENTAL. `Optional` is the language's own
 // cardinality carrier rather than an ordinary coproduct -- a `T` standing in an `Optional<T>`
-// position is the declared spelling, not a payload escape -- so both the CardOptional cardinality
+// position is the declared spelling, not a payload escape -- so both the std.optional application
 // and a formal or actual literally named `Optional` are excluded before any declaration is walked.
 // And a GENERIC coproduct is excluded because its payload positions can be type variables, which
 // makes "the actual is one of this coproduct's payload types" undecidable from the declaration
@@ -4497,7 +4494,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // "values inhabit declared types"). UndecidableOptionalCarrier was written for the lift direction --
 // a T standing in an Optional<T> position is the declared spelling -- and that direction stays
 // undecided below. The converse was swept into the same arm: a produced value that CARRIES
-// optionality (CardOptional, or the nominal Optional coproduct) at a declared position that carries
+// optionality (the std.optional application, or the bare Optional declaration) at a declared position that carries
 // none has no inhabitant relation to settle, because Absent inhabits no Required type. Filing it as
 // undecidable made it an advisory, the program compiled, and the interpreter then rendered the
 // variant into a String context -- receipt gunbc#11626, `join([prefix, base64_encode(..)], "")`
@@ -4506,8 +4503,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // or erased declared identity is not a Required fact, so those stay with their own arms.
 //
 // ONE ANSWER TO "IS THIS DECLARED TYPE OPTIONAL", read by both cardinality directions. Optionality
-// lives in two representations (declared_type_conformance_note class 1): CardOptional on the node or
-// its alias-peeled form, or the nominal Optional coproduct a `-> T?` return arrives as. The leaf-name
+// is the std.optional application, on the node or its alias-peeled form, or the bare Optional declaration. The leaf-name
 // arm is the pre-existing authority this function always used, not a new one; it is part of the
 // bare-name identity debt routed to 2K's identity-keying lane.
 fn declared_type_carries_optional(declared: Node, scope: InferScope) -> Bool {
@@ -4584,7 +4580,7 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
 // same rendering, so a position moving from this producer to the full one changes which arms run
 // and nothing about how an optional at a required position is decided or reported. Before this, the
 // record-literal field, declared-return, let-annotation and data-initializer seams compared the two
-// types through node_type_compatible, which reads the type name and not return_cardinality, so
+// types through node_type_compatible, which reads the type name and not the optional layer, so
 // `Rec { code: parse_int(s) }` for `code: Int` was admitted with no row (review 73175 on
 // gunbc#12677). node_type_compatible is left cardinality-blind on purpose: it is an undirected
 // relation also asked of branch pairs and of the lift direction, and optional-into-required is a
@@ -11313,7 +11309,7 @@ fn optional_reading_of_kernel_mint(kernel: String) -> OptionalDeclarationReading
 }
 
 // `Present { value: v }` UNDER AN EXPECTED OPTIONAL EXPECTS THE PAYLOAD FOR ITS VALUE. `T?`
-// (CardOptional) peels its cardinality; the nominal Optional is recognized by DECLARATION
+// peels its application; the bare Optional is recognized by DECLARATION
 // IDENTITY (optional_declaration_reading), and the arm and its payload field are read from that
 // declaration's own arm, not from the spellings "Present"/"value". A nested record construction
 // receives the peeled node; a list literal only when that node admits a list, so
@@ -11344,7 +11340,7 @@ fn std_optional_payload_node(exp: Node, type_name: String, field_name: String, s
 // peeled payload type to a nested record or list literal only, so `Present { value: r }` for a plain reference `r` was never
 // judged against the declared payload and a whole record escaped a declared `T?` (gunbc.recurring_failure_mode
 // record_value_escapes_declared_optional_return). This is the same peeled node without the value-shape filter; it answers none
-// for any expected that is not a plain `T?` (return_cardinality CardOptional), so an alias or a nominal `Optional<T>` expected keeps
+// for any expected that is not a plain `T?` application, so an alias or a nominal `Optional<T>` expected keeps
 // abstaining: this is a product-versus-coproduct judgment of a plain-`T?` Present payload, not general recursive Optional conformance.
 fn present_payload_declared_from_optional(type_name: String, field_name: String, expected: Node?, scope: InferScope) -> Node? {
   match expected {

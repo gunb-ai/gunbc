@@ -1894,7 +1894,7 @@ fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decision: TypeRealiza
 }
 
 // A TYPE PARAMETER CARRIES ITS OWN CARDINALITY, AND EVERY ARM THAT SPELLS ONE WRAPS IT HERE. `K?` on a
-// declared parameter is a leaf whose return_cardinality is CardOptional. The four arms that spell a
+// declared parameter is the std.optional application over the leaf. The four arms that spell a
 // type parameter -- the declared-generic leaf in render_rust_decl_type and in
 // render_rust_alias_rhs_type, and the TypeVariable arms of render_rust_type and render_rust_applied_type_arg
 // -- returned the bare name, so `get: K?` in a generic record emitted `K`: an absent value had no
@@ -11699,8 +11699,8 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
 
 // Fail-open closed (sharp-bee-290 msg_6317aebe / DESIGN §5): when none/None has no resolved
 // variant_parent, the emitter previously emitted Rust null as a fabricated plausible default.
-// variant_parent == none conflated (a) bare Optional none with a determined CardOptional carrier
-// and (b) undetermined carrier. Split: CardOptional → None (type-directed); any other determined
+// variant_parent == none conflated (a) bare Optional none with a determined std.optional carrier
+// and (b) undetermined carrier. Split: std.optional → None (type-directed); any other determined
 // non-optional carrier → typed refuse; undetermined (Absent / non-Resolved inferred) → typed
 // refuse. Never null as a default. The refuse surfaces as emit_error_expr (UNRESOLVED_… diagnostic
 // text in emitted Rust) so the deficit is countable; if the refusal spike is corpus-red-large, fold
