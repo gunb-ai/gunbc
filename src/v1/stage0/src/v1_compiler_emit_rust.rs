@@ -6322,7 +6322,77 @@ pub fn is_type_constant(
     }
 }
 
+pub fn field_type_head_leaf(type_name: String) -> String {
+    match string_index_of(type_name.clone(), "<".to_string()) {
+        Some(i) => v1_rt::substring(&type_name, 0, i.clone()),
+        std::option::Option::None => type_name.clone(),
+    }
+}
+
+pub fn field_clone_is_shallow(type_summaries: Rc<TypeSummaryIndex>, type_name: String) -> bool {
+    {
+        let leaf = field_type_head_leaf(type_name.clone());
+        if is_dag_value_type_name(leaf.clone()) {
+            true
+        } else {
+            if {
+                let mut __found = false;
+                for k in Rc::new({
+                    let mut __result = Vec::new();
+                    for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
+                        .iter()
+                        .cloned()
+                    {
+                        if ((k.clone() != "optional".to_string())
+                            && (k.clone() != "boolean_algebra".to_string()))
+                        {
+                            __result.push(k);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    if (crate::v1_compiler_emit_core_support::to_pascal(k.clone()) == leaf.clone())
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                true
+            } else {
+                {
+                    let keys = crate::v1_compiler_infer_emit_info::type_summary_keys_of_leaf(
+                        type_summaries.clone(),
+                        leaf.clone(),
+                    );
+                    (((keys.clone().len() as i64) > 0) && {
+                        let mut __all = true;
+                        for key in keys.iter().cloned() {
+                            if !(match crate::v1_compiler_infer_emit_info::type_summary_decided(
+                                type_summaries.clone(),
+                                key.clone(),
+                            ) {
+                                Some(_) => true,
+                                std::option::Option::None => false,
+                            }) {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    })
+                }
+            }
+        }
+    }
+}
+
 pub fn is_clone_allocation_free(
+    type_summaries: Rc<TypeSummaryIndex>,
     summary: Rc<TypeSummary>,
     recursive_type_set: Rc<BTreeSet<String>>,
 ) -> bool {
@@ -6341,7 +6411,19 @@ pub fn is_clone_allocation_free(
                             as i64);
                     let ft_count = (Rc::new(v1_rt::sorted_map_keys(&summary.field_type_map.clone()))
                         .len() as i64);
-                    ((field_count.clone() > 0) && (ft_count.clone() >= field_count.clone()))
+                    (((field_count.clone() > 0) && (ft_count.clone() >= field_count.clone())) && {
+                        let mut __all = true;
+                        for tn in Rc::new(v1_rt::map_values(&summary.field_type_map.clone()))
+                            .iter()
+                            .cloned()
+                        {
+                            if !(field_clone_is_shallow(type_summaries.clone(), tn.clone())) {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    })
                 }
             }
         }
@@ -6349,6 +6431,7 @@ pub fn is_clone_allocation_free(
 }
 
 pub fn maybe_mark_shared_type(
+    type_summaries: Rc<TypeSummaryIndex>,
     acc: Rc<BTreeSet<String>>,
     summary: Rc<TypeSummary>,
     recursive_type_set: Rc<BTreeSet<String>>,
@@ -6370,7 +6453,11 @@ pub fn maybe_mark_shared_type(
             if ((needs_sharing.clone()
                 && !is_type_constant(summary.clone(), recursive_type_set.clone()))
                 && !(by_value_records.clone()
-                    && is_clone_allocation_free(summary.clone(), recursive_type_set.clone())))
+                    && is_clone_allocation_free(
+                        type_summaries.clone(),
+                        summary.clone(),
+                        recursive_type_set.clone(),
+                    )))
             {
                 v1_rt::rc_set_insert(acc.clone(), summary.name.clone())
             } else {
@@ -6402,6 +6489,7 @@ pub fn shared_by_every_declarer(
             ) {
                 Some(summary) => v1_rt::set_contains(
                     &maybe_mark_shared_type(
+                        type_summaries.clone(),
                         v1_rt::rc_empty_set::<String>(),
                         summary.clone(),
                         recursive_type_set.clone(),
@@ -6443,6 +6531,7 @@ pub fn build_shared_types(
                             by_value_records.clone(),
                         ) {
                             maybe_mark_shared_type(
+                                type_summaries.clone(),
                                 acc.clone(),
                                 summary.clone(),
                                 recursive_type_set.clone(),
