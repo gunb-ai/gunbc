@@ -1067,7 +1067,7 @@ mod compiler_tests {
                 let typed = graph.modules.iter().find(|m| m.module.name == "probe.if_join_identity").expect("probe module");
                 let ty = |n: &str| crate::v1_std_core::param_node_type_expr(typed.items.iter().find(|i| i.name == n).expect(n).params[0].clone());
                 let si = resolved.source_indices.clone();
-                let identical = |a: &std::rc::Rc<crate::v1_std_core::Node>, b: &std::rc::Rc<crate::v1_std_core::Node>| crate::v1_compiler_infer::if_branch_argument_types_identical(a.clone(), b.clone(), si.clone());
+                let identical = |a: &std::rc::Rc<crate::v1_std_core::Node>, b: &std::rc::Rc<crate::v1_std_core::Node>| crate::v1_compiler_infer_types::applied_argument_types_identical(a.clone(), b.clone(), si.clone());
                 let compatible = |a: &std::rc::Rc<crate::v1_std_core::Node>, b: &std::rc::Rc<crate::v1_std_core::Node>| crate::v1_compiler_infer_types::node_type_compatible(a.clone(), b.clone(), si.clone(), std::rc::Rc::new(crate::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }));
                 let with_inferred = |n: &std::rc::Rc<crate::v1_std_core::Node>, inferred: crate::v1_std_core::InferredNode| {
                     let mut m = (**n).clone();
