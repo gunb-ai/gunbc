@@ -29,7 +29,7 @@
 set -uo pipefail
 export PATH="/opt/cargo/bin:/usr/local/bin:/usr/local/sbin:$PATH"
 BASE_SHA=59606870e8ba3001a845627696509e8aa16bb0f0    # main, pinned
-CARRIER_SHA=9531e67c97a0ff4477a6db251322053d864dcae6  # scratch head WITH the .py instruments (gitignore trap fixed)
+CARRIER_SHA=ef64c3fd645ece80e5f6827a52cf3e5aac72cebb  # scratch head: probe v4 patcher WITH lconn/rconn/lname/rname
 URL=https://github.com/gunb-ai/gunbc.git
 D=/tmp/probeV4; rm -rf $D; mkdir -p $D
 LOGS=$D/logs; mkdir -p $LOGS
@@ -56,6 +56,12 @@ for f in $LOGS/my_04_infer.dag $LOGS/my_04_types.dag $LOGS/rebind_census.sh $LOG
   [ -s "$f" ] || { echo "CARRIER FILE EMPTY: $f -- abort (an empty file here is the silent-wrong-answer trap)"; exit 29; }
 done
 echo "carrier sizes: $(wc -c < $LOGS/my_04_infer.dag) $(wc -c < $LOGS/my_04_types.dag) $(wc -c < $LOGS/patch_rebind_probe4.py) $(wc -c < $LOGS/patch_s1b_counter.py)"
+# The fields the identity tables need. If this is 0, the carrier is a PRE-lconn revision and every row
+# would classify as out-of-class AND as a twin -- the failure my synthetic fixture just caught.
+echo "probe has the classification fields: lconn=$(grep -acF '|lconn=' $LOGS/patch_rebind_probe4.py) lname=$(grep -acF '|lname=' $LOGS/patch_rebind_probe4.py) (want >=1 each)"
+# -F and >=1 rather than an escaped exact match: the pattern's escaping is itself untested code, and a
+# wrong pattern here would ABORT a good run, which is worse than the mislabel it guards against.
+[ "$(grep -acF '|lconn=' $LOGS/patch_rebind_probe4.py)" -ge 1 ] || { echo "CARRIER Patcher LACKS lconn -- every row would classify as out-of-class AND as a twin. ABORT"; exit 35; }
 
 # THE CLAIM TEST SOURCES MUST COME FROM MY BRANCH, NOT MAIN. unify_generics grew a 6th argument
 # (`text`) when the fold landed, and the DAG-side census CALLS it; main's copy passes 5 and the regen
