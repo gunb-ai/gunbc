@@ -426,22 +426,123 @@ test fn refusal_on_any_axis_keeps_its_cause() -> Bool {
        }
 }
 
-// SECURE BOOT ON IS NOT READY AND NOT REFUSED: it is preparation. The board may well boot the
-// pinned chainloader once a covering certificate is enrolled; saying Ready sends it to fail, and
-// saying Refused tells the operator the board cannot network boot, which is false.
-test fn secure_boot_enabled_is_preparation_with_a_cataloged_attribute_route() -> Bool {
+// SECURE BOOT ON IS NOT READY, AND -- SINCE BLOCKER 3 -- NOT A ROUTE EITHER: it is a refusal that
+// names the mechanism. The OLD version of this test asserted `attribute == "SecureBoot"`, and that
+// assertion asserted the defect: the seam was declaring a write to a BIOS key nobody had read, on the
+// one control the catalog itself marks as needing operator consent. Saying Ready would send the board
+// to fail; saying 'this board cannot network boot' would be false; saying 'we would set Secure Boot,
+// and here is the read that would let us name the key' is the standing the unit is actually in.
+//
+// WHY THE MECHANISM NAME IS ASSERTED RATHER THAN MERELY 'it refused': the refusal must be
+// distinguishable from an unconfigured board or a refused transport. The seam still knows WHAT it would
+// do -- it only will not do it without the read -- and `mechanism` is the field that carries that.
+test fn secure_boot_enabled_refuses_until_the_attribute_name_is_in_hand() -> Bool {
   match standing_of(observation: with_secure_boot(secure_boot: SecureBootEnabled)) {
-    NeedsPreparation { route: SetSecureBootAttribute { service_root: s, attribute: a, authority: _ }, blocking: b } =>
-      s == "redfish:Bios" && a == "SecureBoot"
-        && match b {
-             SecureBootBlocksUnsignedChainloader => route_matches_the_catalog_row(
-               blocker: SecureBootBlocksUnsignedChainloader,
-               route: SetSecureBootAttribute { service_root: s, attribute: a, authority: witness_authority },
-             )
-             _ => false
-           }
-    _ => false
+    Refused {
+      cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: owed },
+      gaps: _,
+    } =>
+      mechanism == "redfish-bios-secure-boot"
+        // THE OWED READ IS AN INSTRUCTION, not a shrug: it has to say what to read.
+        && length(xs: owed) > 0
+        && (string_contains(s: owed, pattern: "GET") || string_contains(s: owed, pattern: "Attributes"))
+    // EVERY OTHER STANDING NAMED. Ready and NeedsPreparation both mean the seam would act, and acting
+    // here is the defect; Unobserved would mean the unit never answered, which it did; a DIFFERENT
+    // refusal cause would mean the seam blamed the wrong thing, which is the failure a `_ => false`
+    // hides -- the test would report 'the unit was refused' while the seam refused for an unrelated
+    // reason such as the transport being down.
+    Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
+    NeedsPreparation { route: _, blocking: _ } => false
+    Refused { cause: _, gaps: _ } => false
+    Unobserved { unanswered: _ } => false
   }
+}
+
+// THE REFUSAL IS ABOUT MISSING EVIDENCE, NOT A MISSING MECHANISM, and the only way to witness that is
+// to change the evidence and watch the answer move. Same mechanism, three transcriptions: one read
+// against the version the unit reports, one against a superseded version, and none at all.
+//
+// THE MIDDLE CASE IS THE ONE THAT EARNS ITS KEEP. A test showing only 'a bound name is accepted'
+// would also pass if the binder ignored the version entirely -- the same class of defect as the fold
+// that used to match `BiosVersionObserved { version: _ }` and throw the value away. Carrying BOTH
+// versions in the refusal (rather than a sentence about staleness) is what makes the mismatch checkable.
+test fn a_bios_attribute_name_is_accepted_only_for_the_version_it_was_read_against() -> Bool {
+  match bind_route_from(
+    route: SetSecureBootAttribute {
+      service_root: "redfish:Bios",
+      attribute: firmware_attribute_name_from_read(
+        value: "SecureBoot",
+        read_against_bios_version: "1.08",
+      ),
+      authority: witness_authority,
+    },
+    redirect_to: RedirectTargetAbsent { why: "not a redirect blocker" },
+    observed_bios_version: present(version: "1.08"),
+  ) {
+    // THE ROW COMES BACK UNCHANGED IN EVERY FIELD THE FLEET OWNS, with the slot filled. Checking
+    // service_root is the guard against a binder that REBUILT the row and dropped a field the caller
+    // supplied -- a failure that would otherwise surface as a PATCH to the wrong Redfish container.
+    RouteBound {
+      route: SetSecureBootAttribute {
+        service_root: s,
+        attribute: MechanismNameBound { value: v, grounded_by: GroundedByBiosAttributeRead { bios_version: read_against } },
+        authority: _,
+      },
+    } => s == "redfish:Bios" && v == "SecureBoot" && read_against == "1.08"
+    RouteBound { route: _ } => false
+    BindingRefused { refusal: _ } => false
+  }
+    // THE SAME NAME, A SUPERSEDED VERSION: refused, not written.
+    && match bind_route_from(
+         route: SetSecureBootAttribute {
+           service_root: "redfish:Bios",
+           attribute: firmware_attribute_name_from_read(
+             value: "SecureBoot",
+             read_against_bios_version: "1.06",
+           ),
+           authority: witness_authority,
+         },
+         redirect_to: RedirectTargetAbsent { why: "not a redirect blocker" },
+         observed_bios_version: present(version: "1.08"),
+       ) {
+         BindingRefused {
+           refusal: RouteBindingStaleGrounding {
+             mechanism: mechanism,
+             grounded_for_bios_version: grounded,
+             observed_bios_version: seen,
+           },
+         } =>
+           mechanism == "redfish-bios-secure-boot" && grounded == "1.06" && seen == "1.08"
+         RouteBound { route: _ } => false
+         BindingRefused { refusal: RouteBindingUnresolvedRoute { mechanism: _, owed_read: _ } } => false
+       }
+    // NO VERSION OBSERVED AT ALL: the transcription cannot be shown current, so it does not get
+    // written. This is the standing the Secure Boot fold reaches for directly -- it is evaluated ABOVE
+    // the BIOS axis, so no version is in scope -- which is exactly why the fold's own answer above is
+    // a refusal rather than a route.
+    && match bind_route_from(
+         route: SetSecureBootAttribute {
+           service_root: "redfish:Bios",
+           attribute: firmware_attribute_name_from_read(
+             value: "SecureBoot",
+             read_against_bios_version: "1.08",
+           ),
+           authority: witness_authority,
+         },
+         redirect_to: RedirectTargetAbsent { why: "not a redirect blocker" },
+         observed_bios_version: Absent,
+       ) {
+         BindingRefused { refusal: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
+           mechanism == "redfish-bios-secure-boot" && string_contains(s: owed, pattern: "BIOS version")
+         RouteBound { route: _ } => false
+         BindingRefused {
+           refusal: RouteBindingStaleGrounding {
+             mechanism: _,
+             grounded_for_bios_version: _,
+             observed_bios_version: _,
+           },
+         } => false
+       }
 }
 
 // ANSWERED-AND-EMPTY MUST NOT LOOK LIKE UNASKED. The options axis came back and said 'nothing';
@@ -588,9 +689,9 @@ fn catalog_slot_is_an_honest_absence(blocker: PreparationBlockingOn) -> Bool {
   match catalog_slot(blocker: blocker) {
     Present { value: MechanismNameUnbound { owed_read: owed } } =>
       length(xs: owed) > 0
-        && (string_contains(haystack: owed, needle: "read")
-          || string_contains(haystack: owed, needle: "GET")
-          || string_contains(haystack: owed, needle: "enumerat"))
+        && (string_contains(s: owed, pattern: "read")
+          || string_contains(s: owed, pattern: "GET")
+          || string_contains(s: owed, pattern: "enumerat"))
     // A BOUND SLOT IN THE CATALOG. Legitimate only once an operator has accepted a cited attribute read
     // into the row, and then the citation is the thing under review -- so this arm is deliberately
     // false: it fails until the test that wants it says so explicitly, rather than quietly passing
@@ -617,9 +718,11 @@ fn bind_the_preferred_row(
     // NO ROW: the binder is not the thing under test here, and inventing a standing would be the
     // witness grading its own homework. A caller that reaches this has asked about a blocker with no
     // mechanism, which is a different test.
-    Absent => RouteBindingUnresolvedRoute {
-      mechanism: "no-row",
-      owed_read: "the catalog has no row for this blocker",
+    Absent => BindingRefused {
+      refusal: RouteBindingUnresolvedRoute {
+        mechanism: "no-row",
+        owed_read: "the catalog has no row for this blocker",
+      },
     }
   }
 }
@@ -722,7 +825,7 @@ test fn each_blocker_resolves_to_the_mechanism_the_fleet_actually_drives() -> Bo
              // invented option reference again, and this arm is what says so.
              && match bo {
                 MechanismNameUnbound { owed_read: owed } =>
-                  string_contains(haystack: owed, needle: "BootOptionReference")
+                  string_contains(s: owed, pattern: "BootOptionReference")
                 MechanismNameBound { value: _, grounded_by: _ } => false
               }
          _ => false
@@ -1300,7 +1403,21 @@ test fn an_option_that_exists_but_is_not_selected_gets_a_redirect_not_a_persiste
   ) {
     NeedsPreparation { route: PointUefiBootNext { service_root: s, boot_option: bo, authority: _ }, blocking: b } =>
       s == "redfish:Systems/Self"
-        && bo == "uefi-boot-next"
+        // THE CENTERPIECE OF BLOCKER 3. The OLD assertion here was `bo == "uefi-boot-next"` -- the
+        // catalog's literal, handed to every unit in the fleet, which is not a BootOptionReference at
+        // all but a string shaped like one, and an executor would have pointed this board's next-boot
+        // variable at it. The reference now has to be the one THIS unit enumerated: 0001 is the HTTP
+        // option in this fixture's own BootOptions, and no other value is legitimate. The grounding is
+        // asserted alongside it because a bare string in that field proves nothing about where it came
+        // from -- and 'where did this name come from' is the entire question.
+        && match bo {
+             MechanismNameBound {
+               value: v,
+               grounded_by: GroundedByBootOptionEnumeration,
+             } => v == ref_http()
+             // AN UNBOUND SLOT MEANS NO ROUTE SHOULD HAVE BEEN EMITTED AT ALL.
+             MechanismNameUnbound { owed_read: _ } => false
+           }
         && match b {
              NetworkBootOptionNotSelected => route_matches_the_catalog_row(
                blocker: NetworkBootOptionNotSelected,
@@ -1316,10 +1433,14 @@ test fn an_option_that_exists_but_is_not_selected_gets_a_redirect_not_a_persiste
 }
 
 // THE OTHER HALF OF THE SPLIT: nothing exists, so a redirect is not offered even though three of the
-// eight rows are redirects and the fold could have picked one. It goes to the one mechanism that
-// CREATES an option. Under the old single blocker these two tests described the same state and got
-// the same route; they now describe two states, get two different routes, and both are right.
-test fn an_absent_option_gets_the_authoring_route_and_never_a_redirect() -> Bool {
+// eight rows are redirects and the fold could have picked one -- the mechanism that would be picked is
+// the one that CREATES an option, and blocker 3 means it cannot be named yet, so this unit is refused
+// with the authoring mechanism named in the cause. Under the old single blocker these two tests
+// described the same state and got the same route; they now describe two states and get two different
+// answers, which is what the split is for. THE NAME MATTERS: an earlier version promised 'the authoring
+// route', which is what the seam used to hand out unexamined -- a reader taking the name at face value
+// would expect a route here and find a refusal.
+test fn an_absent_option_names_the_authoring_mechanism_and_never_a_redirect() -> Bool {
   let observation = firmware_boot_observation(
     boot_order: BootOrderObserved {
       devices: [entry(reference: "0003", label: "NVMe0"), entry(reference: "0004", label: "NVMe1"), entry(reference: "0005", label: "SATA0")],
@@ -1338,20 +1459,33 @@ test fn an_absent_option_gets_the_authoring_route_and_never_a_redirect() -> Bool
     observed_at: witness_epoch,
     boot_mode: UefiHttpBoot,
   ) {
-    NeedsPreparation { route: EnableNetworkStack { service_root: s, attribute: a, authority: _ }, blocking: b } =>
-      s == "redfish:Bios"
-        && a == "NetworkStack"
-        && match b {
-             NetworkBootOptionAbsent => route_matches_the_catalog_row(
-               blocker: NetworkBootOptionAbsent,
-               route: EnableNetworkStack { service_root: s, attribute: a, authority: witness_authority },
-             )
-             _ => false
-           }
+    // NO BIOS-ATTRIBUTE ROUTE IS DECLARABLE, so the authoring case is a refusal naming the mechanism.
+    // This is the arm whose old version asserted `attribute == "NetworkStack"` -- a string that came
+    // from the ComputerSystem schema citation, which establishes that Redfish has a Bios CONTAINER and
+    // never names a vendor key. Asserting it was asserting the guess.
+    Refused {
+      cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: owed },
+      gaps: _,
+    } =>
+      mechanism == "redfish-bios-network-stack"
+        && length(xs: owed) > 0
+        && (string_contains(s: owed, pattern: "GET") || string_contains(s: owed, pattern: "Attributes"))
+    // THE OTHER VERDICTS, EACH NAMED, because each is a different claim the seam might be tempted to
+    // make and each would be wrong in its own way: a redirect here would point the next boot at a
+    // disk (the head is a disk, so the redirect fold falls through to the enumeration's enabled network
+    // option -- which is the wrong repair for 'no PXE stack exists'); a one-shot override would claim a
+    // mechanism for a blocker that means 'there is no option to point at'; and Ready would call a board
+    // with no network stack network-bootable.
     NeedsPreparation { route: PointUefiBootNext { service_root: _, boot_option: _, authority: _ }, blocking: _ } => false
     NeedsPreparation { route: RedfishOneShotOverride { service_root: _, authority: _ }, blocking: _ } => false
     NeedsPreparation { route: IpmiOneShotOverride { channel: _, authority: _ }, blocking: _ } => false
-    _ => false
+    NeedsPreparation { route: SelectNicBoot { service_root: _, attribute: _, authority: _ }, blocking: _ } => false
+    NeedsPreparation { route: SetSecureBootAttribute { service_root: _, attribute: _, authority: _ }, blocking: _ } => false
+    NeedsPreparation { route: UefiShellOverSol { sol_channel: _, shell_script: _, authority: _ }, blocking: _ } => false
+    NeedsPreparation { route: HumanConsole { instruction: _, authority: _ }, blocking: _ } => false
+    Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
+    Unobserved { unanswered: _ } => false
+    Refused { cause: _, gaps: _ } => false
   }
 }
 
@@ -1372,6 +1506,19 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
     Refused { cause: RefusedByOperatorPolicy { policy: _ }, gaps: _ } => false
     Refused { cause: NoNetworkInterfacePresent { why: _ }, gaps: _ } => false
     Refused { cause: NoRouteOwnsThisBlocking { why: _ }, gaps: _ } => false
+    // THE TWO BLOCKER-3 CAUSES, named rather than swept under a `_ => false`: they are refusals, so a
+    // wildcard would let the seam report 'the conflict is named' while naming something else entirely.
+    // Each states a remedy the other does not -- one says read this, the other says your transcription
+    // is from another board -- and this test's whole claim is that the seam distinguishes causes.
+    Refused { cause: RouteBindingUnresolved { mechanism: _, owed_read: _ }, gaps: _ } => false
+    Refused {
+      cause: RouteBindingStaleForUnit {
+        mechanism: _,
+        grounded_for_bios_version: _,
+        observed_bios_version: _,
+      },
+      gaps: _,
+    } => false
     NeedsPreparation { route: _, blocking: _ } => false
     Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
     Unobserved { unanswered: _ } => false
@@ -1875,17 +2022,45 @@ fn catalog_rows_for(blocker: PreparationBlockingOn) -> List<FirmwareNetworkBootP
 // match, and a re-filed arm is a red test. This is the witness that makes the union's grouping
 // checkable rather than merely intended.
 test fn each_route_arm_derives_the_blocker_the_fleet_acts_on() -> Bool {
-  blocker_of(route: EnableNetworkStack { service_root: "x", attribute: "y", authority: witness_authority })
+  blocker_of(route: EnableNetworkStack {
+        service_root: "x",
+        // UNBOUND: this specimen is fed to `blocker_of`, which reads only the ARM. A bound
+        // name here would imply blocker derivation depends on a firmware name, which it does
+        // not -- and a claim the code does not make is a claim a later reader has to unlearn.
+        attribute: MechanismNameUnbound { owed_read: "an unread vendor name" },
+        authority: witness_authority,
+      })
     == NetworkBootOptionAbsent
-    && blocker_of(route: PointUefiBootNext { service_root: "x", boot_option: "y", authority: witness_authority })
+    && blocker_of(route: PointUefiBootNext {
+        service_root: "x",
+        // UNBOUND: this specimen is fed to `blocker_of`, which reads only the ARM. A bound
+        // name here would imply blocker derivation depends on a firmware name, which it does
+        // not -- and a claim the code does not make is a claim a later reader has to unlearn.
+        boot_option: MechanismNameUnbound { owed_read: "an unread vendor name" },
+        authority: witness_authority,
+      })
       == NetworkBootOptionNotSelected
     && blocker_of(route: RedfishOneShotOverride { service_root: "x", authority: witness_authority })
       == NetworkBootOptionNotSelected
     && blocker_of(route: IpmiOneShotOverride { channel: "x", authority: witness_authority })
       == NetworkBootOptionNotSelected
-    && blocker_of(route: SelectNicBoot { service_root: "x", attribute: "y", authority: witness_authority })
+    && blocker_of(route: SelectNicBoot {
+        service_root: "x",
+        // UNBOUND: this specimen is fed to `blocker_of`, which reads only the ARM. A bound
+        // name here would imply blocker derivation depends on a firmware name, which it does
+        // not -- and a claim the code does not make is a claim a later reader has to unlearn.
+        attribute: MechanismNameUnbound { owed_read: "an unread vendor name" },
+        authority: witness_authority,
+      })
       == NoInterfaceCarriesPxe
-    && blocker_of(route: SetSecureBootAttribute { service_root: "x", attribute: "y", authority: witness_authority })
+    && blocker_of(route: SetSecureBootAttribute {
+        service_root: "x",
+        // UNBOUND: this specimen is fed to `blocker_of`, which reads only the ARM. A bound
+        // name here would imply blocker derivation depends on a firmware name, which it does
+        // not -- and a claim the code does not make is a claim a later reader has to unlearn.
+        attribute: MechanismNameUnbound { owed_read: "an unread vendor name" },
+        authority: witness_authority,
+      })
       == SecureBootBlocksUnsignedChainloader
     && blocker_of(route: UefiShellOverSol { sol_channel: "x", shell_script: "y", authority: witness_authority })
       == OverrideMechanismUnsupported
@@ -1911,8 +2086,21 @@ test fn each_route_arm_derives_the_blocker_the_fleet_acts_on() -> Bool {
 // Every arm of ProcedureRequires is named across these assertions, so a new arm is a compile error
 // here rather than an unrendered sentence.
 test fn the_route_procedure_is_typed_and_the_rendered_text_is_derived_from_it() -> Bool {
-  let redirect = PointUefiBootNext { service_root: "s", boot_option: "b", authority: witness_authority }
-  let authoring = EnableNetworkStack { service_root: "s", attribute: "a", authority: witness_authority }
+  // THE SLOTS ARE UNBOUND HERE ON PURPOSE. Both tests that build this pair ask a question a firmware
+  // name cannot answer -- one asks which PROCEDURE a blocker admits, the other asks what the rendered
+  // text is derived from -- and `route_prose` renders the mechanism and the requirement list, never a
+  // slot. A bound name in a specimen that never reaches the binder would be decoration, and decoration
+  // in a witness is how a test starts asserting a shape the code never required.
+  let redirect = PointUefiBootNext {
+    service_root: "s",
+    boot_option: MechanismNameUnbound { owed_read: "the BootOptionReference of this unit's network option" },
+    authority: witness_authority,
+  }
+  let authoring = EnableNetworkStack {
+    service_root: "s",
+    attribute: MechanismNameUnbound { owed_read: "GET redfish:Bios -> Attributes" },
+    authority: witness_authority,
+  }
   // (a) the asymmetry, both directions.
   procedure_asks(
     route: redirect,
@@ -1940,7 +2128,13 @@ test fn the_route_procedure_is_typed_and_the_rendered_text_is_derived_from_it() 
     )
     // (d) consent belongs to Secure Boot and to the console, and to nothing else in the catalog.
     && procedure_asks(
-      route: SetSecureBootAttribute { service_root: "s", attribute: "SecureBoot", authority: witness_authority },
+      route: SetSecureBootAttribute {
+        service_root: "s",
+        // AN UNBOUND SLOT, and the claim still holds: this asks whether the PROCEDURE demands operator
+        // consent, which is a property of the requirement list and not of the attribute name.
+        attribute: MechanismNameUnbound { owed_read: "GET redfish:Bios -> Attributes" },
+        authority: witness_authority,
+      },
       requirement: RequiresPersistentChange,
     )
     && for_all(
@@ -1983,7 +2177,7 @@ fn slot_agrees_with_catalog(
         // grounding costume, and states where it came from.
         MechanismNameBound { value: value, grounded_by: grounding } =>
           length(xs: value) > 0
-            && !string_contains(haystack: owed, needle: value)
+            && !string_contains(s: owed, pattern: value)
             && grounding_is_named(grounding: grounding)
       }
     // THE CATALOG WAS ALREADY BOUND -- an accepted, cited attribute read. Then the route must carry a
@@ -2050,8 +2244,21 @@ fn demands_consent(route: FirmwareNetworkBootPreparationRoute) -> Bool {
 // A fold that stopped consulting this gate would hand a unit with no option a redirect again, and
 // these two directions are what fail.
 test fn a_redirect_is_never_admissible_for_the_blocker_that_means_no_option_exists() -> Bool {
-  let redirect = PointUefiBootNext { service_root: "s", boot_option: "b", authority: witness_authority }
-  let authoring = EnableNetworkStack { service_root: "s", attribute: "a", authority: witness_authority }
+  // THE SLOTS ARE UNBOUND HERE ON PURPOSE. Both tests that build this pair ask a question a firmware
+  // name cannot answer -- one asks which PROCEDURE a blocker admits, the other asks what the rendered
+  // text is derived from -- and `route_prose` renders the mechanism and the requirement list, never a
+  // slot. A bound name in a specimen that never reaches the binder would be decoration, and decoration
+  // in a witness is how a test starts asserting a shape the code never required.
+  let redirect = PointUefiBootNext {
+    service_root: "s",
+    boot_option: MechanismNameUnbound { owed_read: "the BootOptionReference of this unit's network option" },
+    authority: witness_authority,
+  }
+  let authoring = EnableNetworkStack {
+    service_root: "s",
+    attribute: MechanismNameUnbound { owed_read: "GET redfish:Bios -> Attributes" },
+    authority: witness_authority,
+  }
   // THE CLAUSE ITSELF, PINNED ON ITS OWN INPUTS, so the gate is not being carried by the blocker_of
   // equality alone: a redirect really does declare the precondition and the authoring route really
   // does not. Invert either answer and the fold's own outputs below go red.
