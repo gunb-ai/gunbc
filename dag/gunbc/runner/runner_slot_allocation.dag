@@ -110,6 +110,13 @@ fn host_authored_microvm_slots(host: HostIdentity) -> List<RunnerSlotIdentity> {
   filter(authored_microvm_slots, s => (s.host as String) == (host as String))
 }
 
+// A WIDTH SMALLER THAN THE AUTHORED LIST COMMITS ONLY ITS FIRST SLOTS, and membership, fleet range and
+// charge all read this one answer (review 81866): a width of 1 on srv1 is srv1-13 alone, charged as
+// such, never two members charged as one fleet slot.
+fn host_authored_slots_within_width(host: HostIdentity, width: Int) -> List<RunnerSlotIdentity> {
+  take_prefix(host_authored_microvm_slots(host: host), width)
+}
+
 // A REVISION-JOB SLOT MUST BE GRANTED EXACTLY THE FLEET ROW. One image serves every revision-job
 // slot and its guest unit's MemoryMax is baked from the fleet row (runner_revision_job_guest), so a
 // slot whose granted row differs would run a guest sized for a cell it does not have. Asked of the
@@ -987,8 +994,8 @@ fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
 // This is the BUDGET charge, not the runner slice's systemd cap (gunbc_runner_slice_cap_for_width):
 // the controller slice is its own unit and is charged here, not inside the runner slice.
 fn host_runner_pool_charge(host: HostIdentity, slots: Int) -> ByteSize {
-  let authored = host_authored_microvm_slots(host: host)
-  if authored.length() > 0 && slots >= authored.length() {
+  let authored = host_authored_slots_within_width(host: host, width: slots)
+  if authored.length() > 0 {
     byte_size(
       byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - authored.length()))
         + byte_size_count(b: authored_microvm_slots_charge(slots: authored))
@@ -1765,8 +1772,8 @@ fn committed_slot_identities(host: HostIdentity) -> CommittedSlotPopulation {
 // srv1-13, rename no live state). The indices stay authored for the reason
 // gunbc_microvm_shakedown_slot_index gives; only the fleet range is derived.
 fn host_fleet_slot_indices(host: HostIdentity, committed: Int) -> List<Nat> {
-  let authored = host_authored_microvm_slots(host: host)
-  let fleet_count = if committed > authored.length() { committed - authored.length() } else { 0 }
+  let authored = host_authored_slots_within_width(host: host, width: committed)
+  let fleet_count = committed - authored.length()
   take_prefix(
     filter(
       nat_range_inclusive(lo: 1, hi: committed),
@@ -1777,7 +1784,7 @@ fn host_fleet_slot_indices(host: HostIdentity, committed: Int) -> List<Nat> {
 }
 
 fn host_authored_members_above_fleet_range(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
-  if committed > 0 { host_authored_microvm_slots(host: host) } else { [] }
+  host_authored_slots_within_width(host: host, width: committed)
 }
 
 fn host_committed_identities_at(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
