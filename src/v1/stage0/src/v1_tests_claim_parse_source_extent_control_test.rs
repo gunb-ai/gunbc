@@ -84,7 +84,7 @@ pub fn free_monoid_last(
     mut __tco_loop_last: Option<OccurrenceId>,
 ) -> Option<OccurrenceId> {
     {
-        let mut __tco_cursor: usize = 0;
+        let mut __tco_cursor_xs: usize = 0;
         loop {
             #[allow(unused_mut)]
             let mut last = __tco_loop_last;
@@ -92,15 +92,15 @@ pub fn free_monoid_last(
             let mut xs = __tco_loop_xs.clone();
             {
                 let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor) == 0 {
+                if (__fm.len() - __tco_cursor_xs) == 0 {
                     break last;
                 } else {
-                    let h = (*__fm)[__tco_cursor + 0].clone();
+                    let h = (*__fm)[__tco_cursor_xs + 0].clone();
                     {
-                        let __tco_0 = Some(h.clone());
-                        let __tco_1 = __tco_cursor + 1;
-                        __tco_loop_last = __tco_0;
-                        __tco_cursor = __tco_1;
+                        let __tco_0 = __tco_cursor_xs + 1;
+                        let __tco_1 = Some(h.clone());
+                        __tco_cursor_xs = __tco_0;
+                        __tco_loop_last = __tco_1;
                         continue;
                     }
                 }
