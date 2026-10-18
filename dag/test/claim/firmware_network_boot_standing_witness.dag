@@ -444,7 +444,6 @@ test fn secure_boot_enabled_refuses_until_the_attribute_name_is_in_hand() -> Boo
     } =>
       mechanism == "redfish-bios-secure-boot"
         // THE OWED READ IS AN INSTRUCTION, not a shrug: it has to say what to read.
-        && length(xs: owed) > 0
         && (string_contains(s: owed, pattern: "GET") || string_contains(s: owed, pattern: "Attributes"))
     // EVERY OTHER STANDING NAMED. Ready and NeedsPreparation both mean the seam would act, and acting
     // here is the defect; Unobserved would mean the unit never answered, which it did; a DIFFERENT
@@ -688,8 +687,7 @@ fn catalog_slot(blocker: PreparationBlockingOn) -> Optional<FirmwareMechanismNam
 fn catalog_slot_is_an_honest_absence(blocker: PreparationBlockingOn) -> Bool {
   match catalog_slot(blocker: blocker) {
     Present { value: MechanismNameUnbound { owed_read: owed } } =>
-      length(xs: owed) > 0
-        && (string_contains(s: owed, pattern: "read")
+      (string_contains(s: owed, pattern: "read")
           || string_contains(s: owed, pattern: "GET")
           || string_contains(s: owed, pattern: "enumerat"))
     // A BOUND SLOT IN THE CATALOG. Legitimate only once an operator has accepted a cited attribute read
@@ -1417,6 +1415,13 @@ test fn an_option_that_exists_but_is_not_selected_gets_a_redirect_not_a_persiste
              } => v == ref_http()
              // AN UNBOUND SLOT MEANS NO ROUTE SHOULD HAVE BEEN EMITTED AT ALL.
              MechanismNameUnbound { owed_read: _ } => false
+             // A REDIRECT GROUNDED BY A BIOS ATTRIBUTE READ IS THE MIRROR OF THE CASE THE BINDER
+             // refuses on the attribute side -- an option reference and a BIOS attribute key are
+             // different namespaces, and the redirect arm mints its own grounding rather than
+             // forwarding the row's, so this state cannot be emitted. It is named rather than
+             // wildcarded because the compiler is what noticed: a state that typechecks but cannot be
+             // produced is exactly where a future change to the binder would go wrong unnoticed.
+             MechanismNameBound { value: _, grounded_by: GroundedByBiosAttributeRead { bios_version: _ } } => false
            }
         && match b {
              NetworkBootOptionNotSelected => route_matches_the_catalog_row(
@@ -1468,7 +1473,6 @@ test fn an_absent_option_names_the_authoring_mechanism_and_never_a_redirect() ->
       gaps: _,
     } =>
       mechanism == "redfish-bios-network-stack"
-        && length(xs: owed) > 0
         && (string_contains(s: owed, pattern: "GET") || string_contains(s: owed, pattern: "Attributes"))
     // THE OTHER VERDICTS, EACH NAMED, because each is a different claim the seam might be tempted to
     // make and each would be wrong in its own way: a redirect here would point the next boot at a
@@ -1476,6 +1480,7 @@ test fn an_absent_option_names_the_authoring_mechanism_and_never_a_redirect() ->
     // option -- which is the wrong repair for 'no PXE stack exists'); a one-shot override would claim a
     // mechanism for a blocker that means 'there is no option to point at'; and Ready would call a board
     // with no network stack network-bootable.
+    NeedsPreparation { route: EnableNetworkStack { service_root: _, attribute: _, authority: _ }, blocking: _ } => false
     NeedsPreparation { route: PointUefiBootNext { service_root: _, boot_option: _, authority: _ }, blocking: _ } => false
     NeedsPreparation { route: RedfishOneShotOverride { service_root: _, authority: _ }, blocking: _ } => false
     NeedsPreparation { route: IpmiOneShotOverride { channel: _, authority: _ }, blocking: _ } => false
@@ -2176,8 +2181,11 @@ fn slot_agrees_with_catalog(
         // A BOUND NAME: only legitimate if it is non-empty, is not the catalog's own text wearing a
         // grounding costume, and states where it came from.
         MechanismNameBound { value: value, grounded_by: grounding } =>
-          length(xs: value) > 0
-            && !string_contains(s: owed, pattern: value)
+          // NO PROVENANCE-FREE NAME: the value must not be the catalog's own owed-read text wearing a
+          // grounding costume. (Non-emptiness is NOT checked here -- `value` is a NonEmptyStr, whose
+          // refinement already carries it, and re-testing it would be a second representation of a
+          // constraint the type holds.)
+          && !string_contains(s: owed, pattern: value)
             && grounding_is_named(grounding: grounding)
       }
     // THE CATALOG WAS ALREADY BOUND -- an accepted, cited attribute read. Then the route must carry a
@@ -2199,7 +2207,10 @@ fn slot_agrees_with_catalog(
 fn grounding_is_named(grounding: MechanismNameGrounding) -> Bool {
   match grounding {
     GroundedByBootOptionEnumeration => true
-    GroundedByBiosAttributeRead { bios_version: read_against } => length(xs: read_against) > 0
+    // NO ARGUMENT FOR THIS ARM: a transcription has to say WHICH version it was read against, and the
+    // only check that means anything is that the field is not a placeholder. Non-emptiness comes from
+    // NonEmptyStr's own refinement, so it is not re-tested here.
+    GroundedByBiosAttributeRead { bios_version: read_against } => read_against != "unknown"
   }
 }
 
