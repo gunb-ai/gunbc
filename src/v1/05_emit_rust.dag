@@ -13353,7 +13353,7 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
   }
   let target_is_runtime = call_target_is_runtime_primitive(target: call_target)
   match emit_machine_word_lowered_call(call_target: call_target, func: func, args: args, call_semantics: call_semantics, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
-    Present { value: lowered } => return lowered
+    Present { value: word_call } => return word_call
     Absent => {}
   }
   if target_is_runtime && func == "get" {
