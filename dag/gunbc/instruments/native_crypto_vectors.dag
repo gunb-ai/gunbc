@@ -1,5 +1,6 @@
 module gunbc.instruments.native_crypto_vectors
 
+import std.measure { nanosecond_count }
 import std.types { Int, List, String, Bool }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
@@ -213,7 +214,7 @@ fn curve_parameter_cases() -> List<NativeCryptoCase> {
 }
 
 fn cost_case(r: CostRow) -> NativeCryptoCase {
-  NativeCryptoCase { identity: r.identity, held: r.held, observed: concat("nanos:", to_string(r.nanos)) }
+  NativeCryptoCase { identity: r.identity, held: r.held, observed: concat("nanos:", to_string(nanosecond_count(n: r.nanos))) }
 }
 
 fn native_crypto_cases() -> List<NativeCryptoCase> {

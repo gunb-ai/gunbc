@@ -1,6 +1,7 @@
 module gunbc.instruments.native_crypto_cost
 
 import std.types { Int, List, String, Bool, NonEmptyStr }
+import std.measure { Nanosecond, nanosecond }
 import std.bignat { BigNat, bignat_one, bignat_sub, bignat_zero_limbs }
 import extdeps.crypto.sha2 { sha256 }
 import extdeps.crypto.signature {
@@ -29,7 +30,7 @@ import gunbc.instruments.app_attest_sample_rows { ios_14_4_sample, assertion_exp
 type CostRow {
   identity: String
   held: Bool
-  nanos: Int
+  nanos: Nanosecond
 }
 
 fn octet_run(n: Int, acc: List<Int>) -> List<Int> {
@@ -42,7 +43,7 @@ fn sha256_row(n: Int) -> CostRow {
   let t0 = observed_monotonic_nanos(concat("sha256-start-", to_string(n)))
   let digest = sha256(message: message)
   let t1 = observed_monotonic_nanos(concat("sha256-end-", to_string(n)))
-  CostRow { identity: concat("sha256_over_", concat(to_string(n), "_octets")), held: count(digest) == 32, nanos: t1 - t0 }
+  CostRow { identity: concat("sha256_over_", concat(to_string(n), "_octets")), held: count(digest) == 32, nanos: nanosecond(count: t1 - t0) }
 }
 
 // ── the field: 200 chained Montgomery multiplications and 50 doublings / additions on P-256.
@@ -55,7 +56,7 @@ fn fmul_row() -> CostRow {
   let t0 = observed_monotonic_nanos("fmul-start")
   let out = fmul_chain(a: g.x, n: 200)
   let t1 = observed_monotonic_nanos("fmul-end")
-  CostRow { identity: "p256_field_multiplication_x200", held: !(out == g.x), nanos: t1 - t0 }
+  CostRow { identity: "p256_field_multiplication_x200", held: !(out == g.x), nanos: nanosecond(count: t1 - t0) }
 }
 
 fn point_chain_double(p: JacobianPoint, n: Int) -> JacobianPoint {
@@ -71,7 +72,7 @@ fn point_double_row() -> CostRow {
   let t0 = observed_monotonic_nanos("double-start")
   let out = point_chain_double(p: g, n: 50)
   let t1 = observed_monotonic_nanos("double-end")
-  CostRow { identity: "p256_point_doubling_x50", held: !jacobian_is_infinity(p: out), nanos: t1 - t0 }
+  CostRow { identity: "p256_point_doubling_x50", held: !jacobian_is_infinity(p: out), nanos: nanosecond(count: t1 - t0) }
 }
 
 fn point_add_row() -> CostRow {
@@ -80,7 +81,7 @@ fn point_add_row() -> CostRow {
   let t0 = observed_monotonic_nanos("add-start")
   let out = point_chain_add(p: two_g, q: g, n: 50)
   let t1 = observed_monotonic_nanos("add-end")
-  CostRow { identity: "p256_point_addition_x50", held: !jacobian_is_infinity(p: out), nanos: t1 - t0 }
+  CostRow { identity: "p256_point_addition_x50", held: !jacobian_is_infinity(p: out), nanos: nanosecond(count: t1 - t0) }
 }
 
 // ── the scalar multiplication the verifier does: (n-1)*G + (n-2)*G, full-width scalars.
@@ -88,12 +89,12 @@ fn scalar_row() -> CostRow {
   let g = p256_affine(x: p256_gx, y: p256_gy)
   let one = bignat_one()
   match bignat_sub(a: p256_n, b: one) {
-    Absent => CostRow { identity: "p256_double_scalar_multiplication", held: false, nanos: 0 }
+    Absent => CostRow { identity: "p256_double_scalar_multiplication", held: false, nanos: nanosecond(count: 0) }
     Present { value: nm1 } => {
       let t0 = observed_monotonic_nanos("scalar-start")
       let out = p256_double_scalar(u1: nm1, g: g, u2: nm1, q: g)
       let t1 = observed_monotonic_nanos("scalar-end")
-      CostRow { identity: "p256_double_scalar_multiplication", held: !jacobian_is_infinity(p: out), nanos: t1 - t0 }
+      CostRow { identity: "p256_double_scalar_multiplication", held: !jacobian_is_infinity(p: out), nanos: nanosecond(count: t1 - t0) }
     }
   }
 }
@@ -101,17 +102,17 @@ fn scalar_row() -> CostRow {
 // ── extdeps.crypto.signature verify_signature (P-256) over the RFC 6979 A.2.5 sample vector.
 fn verify_signature_row() -> CostRow {
   match base64_of(octets: rfc6979_a25_p256_public_key, url_safe: true) {
-    Absent => CostRow { identity: "signature_verify_p256", held: false, nanos: 0 }
+    Absent => CostRow { identity: "signature_verify_p256", held: false, nanos: nanosecond(count: 0) }
     Present { value: key_b64 } =>
       match base64_of(octets: rfc6979_a25_p256_sha256_sample_signature, url_safe: true) {
-        Absent => CostRow { identity: "signature_verify_p256", held: false, nanos: 0 }
+        Absent => CostRow { identity: "signature_verify_p256", held: false, nanos: nanosecond(count: 0) }
         Present { value: sig_b64 } => {
           let key = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: key_b64 as NonEmptyStr }
           let signature = SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: sig_b64 as NonEmptyStr }
           let t0 = observed_monotonic_nanos("verify-signature-start")
           let v = verify_signature(key: key, signature: signature, message: rfc6979_a25_message_sample as NonEmptyStr)
           let t1 = observed_monotonic_nanos("verify-signature-end")
-          CostRow { identity: "signature_verify_p256", held: signature_verified(v: v), nanos: t1 - t0 }
+          CostRow { identity: "signature_verify_p256", held: signature_verified(v: v), nanos: nanosecond(count: t1 - t0) }
         }
       }
   }
@@ -146,17 +147,17 @@ fn attestation_rows(s: AppAttestSample) -> List<CostRow> {
   let t0 = observed_monotonic_nanos("verify-attestation-start")
   let whole = verify_attestation(object: s.attestation, e: s.expectation)
   let t1 = observed_monotonic_nanos("verify-attestation-end")
-  let first = CostRow { identity: "app_attest_verify_attestation", held: attestation_refused(v: whole), nanos: t1 - t0 }
+  let first = CostRow { identity: "app_attest_verify_attestation", held: attestation_refused(v: whole), nanos: nanosecond(count: t1 - t0) }
   match decode_attestation(object: s.attestation) {
-    AttestationDecodeRefused { cause: _ } => [first, CostRow { identity: "app_attest_verify_assertion", held: false, nanos: 0 }]
+    AttestationDecodeRefused { cause: _ } => [first, CostRow { identity: "app_attest_verify_assertion", held: false, nanos: nanosecond(count: 0) }]
     AttestationDecodeOk { decoded: d } =>
       match assertion_expectation(s: s, d: d) {
-        Absent => [first, CostRow { identity: "app_attest_verify_assertion", held: false, nanos: 0 }]
+        Absent => [first, CostRow { identity: "app_attest_verify_assertion", held: false, nanos: nanosecond(count: 0) }]
         Present { value: e } => {
           let a0 = observed_monotonic_nanos("verify-assertion-start")
           let a = verify_assertion(object: s.assertion, e: e)
           let a1 = observed_monotonic_nanos("verify-assertion-end")
-          [first, CostRow { identity: "app_attest_verify_assertion", held: assertion_refused(v: a), nanos: a1 - a0 }]
+          [first, CostRow { identity: "app_attest_verify_assertion", held: assertion_refused(v: a), nanos: nanosecond(count: a1 - a0) }]
         }
       }
   }
