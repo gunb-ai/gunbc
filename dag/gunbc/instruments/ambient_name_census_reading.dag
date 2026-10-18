@@ -93,29 +93,31 @@ fn ambient_census_unindexed_files() -> List<AmbientCensusFixtureFile> {
 // holds four (twice, yes, p, xs), so a per-module dedupe that counted them once fails the join.
 fn ambient_census_fixture_expected() -> List<String> {
   [
-    "binding\texamples.decls\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
-    "binding\texamples.decls\tInt\t1\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
-    "binding\texamples.decls\tPair\t0\tdeclared\texamples.decls.Pair",
-    "binding\texamples.uses\tPairAlias\t0\tdeclared\texamples.decls.PairAlias",
-    "binding\texamples.uses\tPairAlias\t1\texpected_type\texamples.decls.Pair",
-    "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
-    "binding\texamples.uses\thelper\t0\tdeclared\texamples.decls.helper",
-    "binding\texamples.uses\thelper\t1\tdeclared\texamples.decls.helper",
-    "binding\texamples.uses\tBool\t0\tambient:kernel_type_spelling\tkernel:bool_node_symbol",
-    "binding\texamples.uses\tdag_token_kw_true\t0\tambient:kernel_canonical_symbol\tkernel:dag_token_kw_true",
-    "binding\texamples.uses\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid",
-    "binding\texamples.uses\tInt\t1\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
-    "binding\texamples.uses\tstd.algebra.FreeMonoid\t0\tgenerated\tstd.algebra.FreeMonoid",
-    "binding\tstd.algebra\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid",
+    "binding\texamples.decls\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t3:16",
+    "binding\texamples.decls\tInt\t1\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t8:6",
+    "binding\texamples.decls\tPair\t0\tdeclared\texamples.decls.Pair\t11:18",
+    "binding\texamples.uses\tPairAlias\t0\tdeclared\texamples.decls.PairAlias\t14:9",
+    "binding\texamples.uses\tPairAlias\t1\texpected_type\texamples.decls.Pair\t-",
+    "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t6:15",
+    "binding\texamples.uses\thelper\t0\tdeclared\texamples.decls.helper\t7:3",
+    "binding\texamples.uses\thelper\t1\tdeclared\texamples.decls.helper\t7:14",
+    "binding\texamples.uses\tBool\t0\tambient:kernel_type_spelling\tkernel:bool_node_symbol\t10:13",
+    "binding\texamples.uses\tdag_token_kw_true\t0\tambient:kernel_canonical_symbol\tkernel:dag_token_kw_true\t11:3",
+    "binding\texamples.uses\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid\t16:10",
+    "binding\texamples.uses\tInt\t1\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t16:21",
+    "binding\texamples.uses\tstd.algebra.FreeMonoid\t0\tgenerated\tstd.algebra.FreeMonoid\t-",
+    "binding\tstd.algebra\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid\t5:27",
     "binding_unanswered\tstd.algebra\tstd.algebra.FreeMonoid\t0\tdeclared_order",
-    "binding_partial\texamples.partial\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
-    "binding_partial\texamples.partial\thelper\t0\tdeclared\texamples.decls.helper",
+    "binding_partial\texamples.partial\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t5:11",
+    "binding_partial\texamples.partial\thelper\t0\tdeclared\texamples.decls.helper\t6:3",
     "binding_partial_module\texamples.partial\t2\t0\t0",
     "binding_unanswered\texamples.decls\tstd.algebra.FreeMonoid\t0\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t0\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t1\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t2\tdeclared_order",
-    "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t3\tdeclared_order"
+    "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t3\tdeclared_order",
+    "binding_unbound\texamples.partial\tnot_declared_anywhere\t6:14",
+    "binding_unbound_module\texamples.partial\t1\t0"
   ]
 }
 
@@ -148,7 +150,7 @@ fn field_at(line: String, index: Int) -> String {
 }
 
 fn fixture_join_failure(stdout: String) -> Optional<String> {
-  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t") || starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t"))
+  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t") || starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t"))
   let expected = ambient_census_fixture_expected()
   let missing = expected |> filter(e => count(lines |> filter(l => l == e)) == 0)
   let unexpected = lines |> filter(l => count(expected |> filter(e => e == l)) == 0)
@@ -273,7 +275,7 @@ fn census_observation_text(tree_stdout: String) -> String {
 // validity line travels with the rows, so a later reader sees a conflicting count (rows withheld) and an
 // unreadable count beside them rather than a silently shortened row set.
 fn partial_lines(stdout: String) -> List<String> {
-  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t"))
+  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t"))
 }
 
 fn ambient_name_census_standing(

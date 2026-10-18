@@ -9,8 +9,7 @@ import v2.test.claim.compiler.compile_eval_thesis_proof { compile_eval_thesis_te
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_last_segment, qualified_name_to_dotted_string }
 import std.optional { Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Edge, Instantiation, Node, Positional, TypeNode, node_subtree_nodes, node_synthetic, symbol_intern_lexeme }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Atom, Edge, Instantiation, Node, Positional, TypeNode, node_subtree_nodes, node_synthetic, symbol_intern_lexeme }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.std.list_introduction { list_introduction_head_path }
 import v2.extdeps.languages.dag { dag_binding_denotation }
@@ -90,7 +89,7 @@ fn cca_formals() -> List<Node> {
       match collection_roster_signature_arrow(row: row) {
         Absent => Empty
         Present { value: arrow } =>
-          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+          match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
             Absent => Empty
             Present { value: domain } =>
               match infer_formals_from_domain(domain: domain) {

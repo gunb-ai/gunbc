@@ -5,7 +5,8 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import std.types { Bool, FilePath, NonEmptyStr, Unit }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.command { ArgvCommand, argv_command, env_prefixed_command_in }
+import std.env_binding { EnvSet }
 import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -69,8 +70,25 @@ fn cargo_run_release_manifest_offline_command(manifest_path: String, target_dir:
 // would change; `--versioned-dirs` names each crate directory with its version so two versions of
 // one crate cannot collide. Its output layout and .cargo-checksum.json files are cargo's, so a
 // vendor set is keyed by the cargo that wrote it as well as by the lockfile (cargo_version_command).
-fn cargo_vendor_command(manifest_path: String, output_dir: String) -> ArgvCommand {
-  argv_command(program: cargo_program(), arguments: ["vendor", "--locked", "--versioned-dirs", "--manifest-path", manifest_path, output_dir])
+//
+// CARGO READS ITS CONFIGURATION FROM THE WORKING DIRECTORY'S ANCESTORS AND FROM CARGO_HOME, NEVER FROM
+// THE MANIFEST'S DIRECTORY. A caller vendoring an UNTRUSTED tree (the revision job, as root) must
+// therefore keep that tree off both paths, or the tree's own .cargo/config.toml configures the
+// vendoring cargo (source replacement, credential providers that EXECUTE a program). So this builder
+// fixes the working directory to `/` (the typed env_prefixed_command_in over the cargo command, so the program identity stays cargo) and takes an isolated, empty-by-construction
+// CARGO_HOME from the caller; the manifest and output are named by absolute path.
+fn cargo_vendor_command(manifest_path: String, output_dir: String, cargo_home: String) -> ArgvCommand {
+  cargo_vendor_command_from(directory: "/", manifest_path: manifest_path, output_dir: output_dir, cargo_home: cargo_home)
+}
+
+// The same argv with the working directory a parameter, so the claim that `/` is what keeps the tree's
+// configuration unread has a control that names the tree instead (the red the production form avoids).
+fn cargo_vendor_command_from(directory: String, manifest_path: String, output_dir: String, cargo_home: String) -> ArgvCommand {
+  env_prefixed_command_in(
+    directory: directory,
+    bindings: [EnvSet { name: "CARGO_HOME", value: cargo_home }],
+    command: argv_command(program: cargo_program(), arguments: ["vendor", "--locked", "--versioned-dirs", "--manifest-path", manifest_path, output_dir]),
+  )
 }
 
 // The cargo identity: `cargo --version` prints `cargo <semver> (<commit> <date>)`.
