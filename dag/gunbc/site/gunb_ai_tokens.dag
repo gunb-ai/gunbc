@@ -5,16 +5,13 @@ import std.optional { Absent, Present }
 import std.markup { Fragment, Element, attr }
 import std.list { distinct_by_key }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import extdeps.languages.css.values {
-  css_ch, CssLength, CssLengthUnit, Px, Percent, css_length_wire,
-  CssFontStack, GenericFamily, GenericSystemUi, GenericSansSerif,
-}
+import extdeps.languages.css.values { css_ch, CssLength, CssLengthUnit, Px, Percent, css_length_wire,   CssFontStack, GenericFamily, GenericSystemUi, GenericSansSerif, CssVarRef, css_var_ref_wire }
 import extdeps.languages.css.properties {
   Background, Border, BorderBottom, BorderCollapse,
   Color, Display, FontFamily, FontSize, Height, LetterSpacing, MarginBottom, MarginLeft,
   MarginRight, MarginTop, MaxWidth, Padding, VerticalAlign, Width, CustomProperty,
 }
-import extdeps.languages.css.selectors { ElementSelector, ClassSelector, PseudoSuffix }
+import extdeps.languages.css.selectors { ElementSelector, ClassSelector, root_selector }
 import extdeps.accessibility.wcag_contrast {
   srgb8_contrast_ratio_x100, wcag_aa_normal_text_hundredths,
   wcag_aa_large_text_and_graphics_hundredths,
@@ -245,23 +242,22 @@ fn role_row(t: TokenSwatch) -> Fragment {
   ])
 }
 
-// `var(--role)` is the read side of the CustomProperty declarations token_root_decls
-// emits; extdeps.languages.css.properties models the declaration (CustomProperty) but
-// not yet the reference. SCAFFOLD, narrowly: the STRING SHAPE of a var reference is
-// this function's residue, and it dissolves the moment extdeps.languages.css.properties
-// grows a var-reference wire (same grammar, one home).
+// `var(--role)` is the read side of the CustomProperty declarations token_root_decls emits.
+// The SHAPE of a var reference is no longer this function's residue: it lives in
+// extdeps.languages.css.values (css_var_ref_wire, css-values-4 §3.10), which is the dissolution
+// trigger this scaffold named — so the scaffold is gone, not left beside the grammar (§6: no
+// second path beside a modelled route). What remains here is only the choice of WHICH field of
+// the row becomes the name.
 //
 // WHICH ERROR CLASS THIS LEAVES UNWRITABLE (review 81528; DESIGN §5 "correctness by
 // construction, not validation"): it takes the TOKEN ROW, not a role string — the same
 // shape scale_var(t: …) already uses. A call site cannot name a role that is not a
 // declared row: role_var(t: token_text_dimm) does not resolve. Reading a role is
-// therefore not validated after the fact, it is unavailable to type wrongly. The
-// string that comes out is still built here (the scaffold), so a mis-shaped var()
-// would still be a shape bug in one place instead of 24 — and witness_all_var_references_resolve
-// checks the rendered artifact for exactly that, across EVERY reference rather than a
-// hand-pinned pair.
+// therefore not validated after the fact, it is unavailable to type wrongly. And
+// witness_all_var_references_resolve still checks the rendered artifact across EVERY
+// reference rather than a hand-pinned pair.
 fn role_var(t: TokenSwatch) -> String {
-  join(["var(--", t.role, ")"], "")
+  css_var_ref_wire(v: CssVarRef { name: t.role })
 }
 
 // The review surface's CSS as TYPED RULES through gunbc.design.material
@@ -297,7 +293,7 @@ fn review_rules() -> List<BuildRule> {
     // The token layer itself, as the :root rule material emits it — the bug this
     // rewrite catches: an earlier draft emitted these declarations BARE inside
     // <style>, with no selector, so every browser dropped them.
-    [StaticRule { selector: PseudoSuffix { base: "", pseudo: "root" }, decls: token_root_decls() }],
+    [StaticRule { selector: root_selector, decls: token_root_decls() }],
     concat(
       // Per-swatch chip paints, generated from the hue set (one home: palette).
       map(swatches_of(s: gunb_ai_hues), sw => StaticRule {

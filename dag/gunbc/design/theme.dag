@@ -12,6 +12,10 @@ import gunbc.design.material {
   decl, css_block, CssDecl,
 }
 import extdeps.languages.css.properties { CssPropertyName }
+import extdeps.languages.css.media_queries {
+  MediaPrefersColorScheme, ColorSchemePreference, SchemeLight, SchemeDark,
+  color_scheme_preference_token, css_media_rule_wire,
+}
 
 // Layer 2 theme machinery: total role-to-material binding, WCAG contrast law, night/day atlas rows.
 // Lifted from gunbc.site.tokens (design-register-library.md Phase A).
@@ -78,7 +82,13 @@ type RoleAssignment {
 
 type Theme {
   name: String
-  scheme: String
+  // The MEDIA FEATURE value, typed, not a String. An earlier draft held "light"/"dark"
+  // here as free text and joined it into a @media query by hand, which meant a theme
+  // could name a value the spec dropped (MQ4's no-preference) and still build: the
+  // grammar in extdeps.languages.css.media_queries made that state unwritable for its
+  // own consumers while this parallel path kept it writable. Same fact, one domain —
+  // the type now IS that domain (§3, §5 correctness by construction).
+  scheme: ColorSchemePreference
   assignments: List<RoleAssignment>
 }
 
@@ -112,7 +122,7 @@ data ink_edge: Material = Material { name: "ink-edge", hue: 226, sat_pct: 22, li
 data day_brass: Material = Material { name: "day-brass", hue: 42, sat_pct: 52, light_pct: 38, area: PointArea }
 data day_clay: Material = Material { name: "day-clay", hue: 8, sat_pct: 56, light_pct: 44, area: HairlineArea }
 
-data night_theme: Theme = Theme { name: "night", scheme: "dark", assignments: [
+data night_theme: Theme = Theme { name: "night", scheme: SchemeDark, assignments: [
   assign(role: CanvasRole, material: night_canvas),
   assign(role: SurfaceRole, material: night_surface),
   assign_alpha(role: BorderRole, material: night_border, alpha_pct: 45),
@@ -126,7 +136,7 @@ data night_theme: Theme = Theme { name: "night", scheme: "dark", assignments: [
   assign(role: BoundaryRole, material: night_clay),
 ] }
 
-data day_theme: Theme = Theme { name: "day", scheme: "light", assignments: [
+data day_theme: Theme = Theme { name: "day", scheme: SchemeLight, assignments: [
   assign(role: CanvasRole, material: day_canvas),
   assign(role: SurfaceRole, material: day_surface),
   assign_alpha(role: BorderRole, material: day_border, alpha_pct: 45),
@@ -217,7 +227,7 @@ fn role_decl(prop: CssPropertyName, r: ThemeRole) -> CssDecl {
 fn theme_var_decls(t: Theme) -> List<CssDecl> {
   concat(
     map(t.assignments, a => decl(prop: CustomProperty { name: role_key(r: a.role) }, value: assignment_paint(a: a))),
-    [decl(prop: ColorScheme, value: t.scheme)])
+    [decl(prop: ColorScheme, value: color_scheme_preference_token(p: t.scheme))])
 }
 
 // ONE THEME-SELECTOR GRAMMAR, N VAR FAMILIES. The three-block shape below — :root for the base
@@ -237,11 +247,13 @@ fn theme_scoped_blocks(base: Theme, alternate: Theme, decls_for: fn(Theme) -> Li
     css_block(
       selector: join([":root[data-theme=\"", alternate.name, "\"]"], ""),
       decls: decls_for(alternate)),
-    join([
-      "@media (prefers-color-scheme: ", alternate.scheme, ") { ",
-      css_block(selector: ":root:not([data-theme])", decls: decls_for(alternate)),
-      " }",
-    ], ""),
+    // The upstream route, not a hand-joined copy of its text. css_media_rule_wire over
+    // css_block reproduces "@media (…) { … }" byte for byte — design_register_lift_parity
+    // and roadmap_register_witness pin this module's emission, so any drift in spacing is
+    // red there rather than a silent stylesheet change in production.
+    css_media_rule_wire(
+      condition: MediaPrefersColorScheme { preference: alternate.scheme },
+      body: css_block(selector: ":root:not([data-theme])", decls: decls_for(alternate))),
   ], "\n")
 }
 

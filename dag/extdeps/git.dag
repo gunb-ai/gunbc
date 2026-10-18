@@ -880,6 +880,12 @@ fn git_checkout_revision_command(repository_dir: String, revision: String) -> Ar
 
 // THE TREE A REVISION NAMES, read from the object store: `rev-parse --verify <rev>^{tree}` prints the
 // tree id or refuses, so a caller compares a printed id rather than trusting the revision.
+// `git hash-object <path>`: the blob object id of the file's bytes (git-hash-object(1)), printed on
+// stdout. Without -w it writes nothing, so it needs no repository.
+fn git_hash_object_command(path: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["hash-object", path])
+}
+
 fn git_rev_parse_tree_command(repository_dir: String, revision: String) -> ArgvCommand {
   argv_command(program: git_program(), arguments: ["-C", repository_dir, "rev-parse", "--verify", join([revision, "^", "{", "tree", "}"], "")])
 }

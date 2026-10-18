@@ -7172,15 +7172,16 @@ pub fn emit_rust_selected(
         } else {
             "v1_compiled".to_string()
         };
+        let native_effects = native_entry_effects(typed.modules.clone(), ctx.registry.clone());
         let rust_crate = Rc::new(EmittedRustCrate {
             crate_name: crate_name.clone(),
             demand: EmittedCrateDependencyDemand {
                 renders_clap_cli: has_pipeline.clone(),
-                renders_async_services: (has_services.clone()
-                    || closure_renders_async_trait_resource(typed.clone())),
+                renders_async_services: ((has_services.clone()
+                    || closure_renders_async_trait_resource(typed.clone()))
+                    || native_entry_has_effects(native_effects.clone())),
             },
         });
-        let native_effects = native_entry_effects(typed.modules.clone(), ctx.registry.clone());
         let native_effect_refusals =
             native_entry_effect_diagnostics(native_effects.clone(), typed.modules.clone());
         if ((native_effect_refusals.clone().len() as i64) > 0) {
@@ -8853,9 +8854,26 @@ pub fn collect_item_type_surface_names(
             }
             _ => Rc::new(vec![]),
         };
+        let from_uses = Rc::new({
+            let mut __result = Vec::new();
+            for u in item.uses.clone().iter().cloned() {
+                __result.extend(
+                    (*crate::v1_compiler_infer_emit_info::collect_type_node_import_surface_names(
+                        crate::v1_std_core::resource_use_resource(u.clone()),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
         v1_rt::concat(
             from_ann.clone(),
-            v1_rt::concat(from_params.clone(), from_inferred.clone()),
+            v1_rt::concat(
+                from_params.clone(),
+                v1_rt::concat(from_inferred.clone(), from_uses.clone()),
+            ),
         )
     }
 }
@@ -8911,11 +8929,21 @@ pub fn collect_item_type_surface_occurrences(
             } else {
                 Rc::new(vec![])
             };
+        let from_uses = Rc::new({
+            let mut __result = Vec::new();
+            for u in item.uses.clone().iter().cloned() {
+                __result.extend((*crate::v1_compiler_infer_emit_info::collect_type_node_import_surface_occurrences(crate::v1_std_core::resource_use_resource(u.clone()), false, source_indices.clone())).iter().cloned());
+            }
+            __result
+        });
         v1_rt::concat(
             from_ann.clone(),
             v1_rt::concat(
                 from_params.clone(),
-                v1_rt::concat(from_inferred.clone(), from_decl_children.clone()),
+                v1_rt::concat(
+                    from_inferred.clone(),
+                    v1_rt::concat(from_uses.clone(), from_decl_children.clone()),
+                ),
             ),
         )
     })
@@ -11949,7 +11977,7 @@ pub fn has_physical_type_def_in_module_filename(
                             source_indices.clone(),
                             item.clone(),
                         ) == rhs_name.clone())
-                            && ((crate::v1_compiler_emit_core_support::is_type_def_item(
+                            && (((crate::v1_compiler_emit_core_support::is_type_def_item(
                                 item.clone(),
                             ) || crate::v1_compiler_emit_core_support::is_type_alias_item(
                                 item.clone(),
@@ -11957,7 +11985,8 @@ pub fn has_physical_type_def_in_module_filename(
                             )) || crate::v1_compiler_emit_core_support::is_type_decl_item(
                                 item.clone(),
                                 source_indices.clone(),
-                            )))
+                            )) || (item.module_item_kind.clone()
+                                == ParsedModuleItemKind::ModuleItemResource)))
                         {
                             __found = true;
                             break;
@@ -12060,7 +12089,7 @@ pub fn type_name_is_export_source_in_module(
             for item in tm.items.clone().iter().cloned() {
                 if ((crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
                     == name.clone())
-                    && ((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                    && (((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
                         || crate::v1_compiler_emit_core_support::is_type_alias_item(
                             item.clone(),
                             source_indices.clone(),
@@ -12068,7 +12097,9 @@ pub fn type_name_is_export_source_in_module(
                         || crate::v1_compiler_emit_core_support::is_type_decl_item(
                             item.clone(),
                             source_indices.clone(),
-                        )))
+                        ))
+                        || (item.module_item_kind.clone()
+                            == ParsedModuleItemKind::ModuleItemResource)))
                 {
                     __found = true;
                     break;
@@ -12100,7 +12131,7 @@ pub fn type_name_is_rust_importable_in_module(
             for item in tm.items.clone().iter().cloned() {
                 if ((crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
                     == name.clone())
-                    && ((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                    && (((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
                         || crate::v1_compiler_emit_core_support::is_type_alias_item(
                             item.clone(),
                             source_indices.clone(),
@@ -12108,7 +12139,9 @@ pub fn type_name_is_rust_importable_in_module(
                         || crate::v1_compiler_emit_core_support::is_type_decl_item(
                             item.clone(),
                             source_indices.clone(),
-                        )))
+                        ))
+                        || (item.module_item_kind.clone()
+                            == ParsedModuleItemKind::ModuleItemResource)))
                 {
                     __result.push(item);
                 }
@@ -13333,7 +13366,9 @@ pub fn type_item_has_rust_nominal_shell_authority(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
-    if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
+    if (crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+        || (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemResource))
+    {
         true
     } else {
         if crate::v1_compiler_emit_core_support::is_type_alias_item(
@@ -13930,6 +13965,43 @@ pub fn import_variant_parent_for_name(
     }
 }
 
+pub fn imported_name_is_resource_declaration(
+    name: String,
+    import_module: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> bool {
+    match typed_module_by_name(
+        import_module.clone(),
+        typed_modules.clone(),
+        source_indices.clone(),
+        module_index.clone(),
+    ) {
+        std::option::Option::None => false,
+        Some(tm) => {
+            let mut __found = false;
+            for item in tm.items.clone().iter().cloned() {
+                if resource_item_declares_name(item.clone(), name.clone(), source_indices.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn resource_item_declares_name(
+    item: Rc<Node>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemResource)
+        && (crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
+            == name.clone()))
+}
+
 pub fn import_name_resolves_to_host_realized_kernel_scalar(
     name: String,
     module_env: Option<Rc<TypeEnv>>,
@@ -14315,10 +14387,16 @@ pub fn emit_specific_import_use_lines(
                 .iter()
                 .cloned()
                 {
-                    if !import_name_resolves_to_host_realized_kernel_scalar(
+                    if (!import_name_resolves_to_host_realized_kernel_scalar(
                         n.clone(),
                         module_env.clone(),
-                    ) {
+                    ) || imported_name_is_resource_declaration(
+                        n.clone(),
+                        import_module.clone(),
+                        typed_modules.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    )) {
                         __result.push(n);
                     }
                 }
@@ -43827,6 +43905,13 @@ pub fn native_entry_effects(
     }
 }
 
+pub fn native_entry_has_effects(effects: Option<Rc<NativeEntryEffects>>) -> bool {
+    match effects.clone() {
+        std::option::Option::None => false,
+        Some(e) => ((e.admissions.clone().len() as i64) > 0),
+    }
+}
+
 pub fn native_entry_effect_diagnostics(
     effects: Option<Rc<NativeEntryEffects>>,
     modules: Rc<Vec<Rc<TypedModule>>>,
@@ -44176,6 +44261,79 @@ pub fn native_claim_terminal_exit_lines() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    print!(\"{}\", report.stdout);".to_string(), "\n".to_string()), "    match &*report.terminal {".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNotHeld { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NOT HELD: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNoObservation { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NO OBSERVATION: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string())
 }
 
+pub fn native_binds_allocation_counter(
+    bindings: Rc<Vec<Rc<NativeEffectBindingText>>>,
+    crate_name: String,
+) -> bool {
+    {
+        let mut __found = false;
+        for b in bindings.iter().cloned() {
+            if (b.type_path.clone()
+                == v1_rt::concat(
+                    crate_name.clone(),
+                    "::std_realization_measurement::AllocationCounter".to_string(),
+                ))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn native_claim_allocator_lines(
+    bindings: Rc<Vec<Rc<NativeEffectBindingText>>>,
+    crate_name: String,
+) -> String {
+    if native_binds_allocation_counter(bindings.clone(), crate_name.clone()) {
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "#[global_allocator]".to_string(),
+                                        "\n".to_string(),
+                                    ),
+                                    "static COUNTING_ALLOCATOR: ".to_string(),
+                                ),
+                                crate_name.clone(),
+                            ),
+                            "::v1_rt::CountingAllocator = ".to_string(),
+                        ),
+                        crate_name.clone(),
+                    ),
+                    "::v1_rt::CountingAllocator::new();".to_string(),
+                ),
+                "\n".to_string(),
+            ),
+            "\n".to_string(),
+        )
+    } else {
+        "".to_string()
+    }
+}
+
+pub fn native_claim_allocator_registration_lines(
+    bindings: Rc<Vec<Rc<NativeEffectBindingText>>>,
+    crate_name: String,
+) -> String {
+    if native_binds_allocation_counter(bindings.clone(), crate_name.clone()) {
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat("    ".to_string(), crate_name.clone()),
+                "::v1_rt::register_counting_allocator(&COUNTING_ALLOCATOR);".to_string(),
+            ),
+            "\n".to_string(),
+        )
+    } else {
+        "".to_string()
+    }
+}
+
 pub fn emit_native_claim_driver_effect_main_rs(
     crate_name: String,
     pipeline_mod: String,
@@ -44200,7 +44358,7 @@ pub fn emit_native_claim_driver_effect_main_rs(
         .join(&", ".to_string());
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_claim_report;".to_string()), "\n".to_string()), "\n".to_string()), "#[tokio::main(flavor = \"current_thread\")]".to_string()), "\n".to_string()), "async fn main() {".to_string()), "\n".to_string()), binding_lines.clone()), "    let report = match native_claim_report(".to_string()), effect_args.clone()), ").await {".to_string()), "\n".to_string()), "        Ok(report) => report,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"NO OBSERVATION: native effect transport: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), native_claim_terminal_exit_lines()), "}".to_string()), "\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_claim_report;".to_string()), "\n".to_string()), "\n".to_string()), native_claim_allocator_lines(bindings.clone(), crate_name.clone())), "#[tokio::main(flavor = \"current_thread\")]".to_string()), "\n".to_string()), "async fn main() {".to_string()), "\n".to_string()), native_claim_allocator_registration_lines(bindings.clone(), crate_name.clone())), binding_lines.clone()), "    let report = match native_claim_report(".to_string()), effect_args.clone()), ").await {".to_string()), "\n".to_string()), "        Ok(report) => report,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"NO OBSERVATION: native effect transport: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), native_claim_terminal_exit_lines()), "}".to_string()), "\n".to_string()),
 })
     }
 }

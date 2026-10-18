@@ -252,6 +252,9 @@ struct EmittedPreparation {
     /// run can create it, so no peer can overwrite the crate, or the executable built into its target dir, between
     /// emission and every spawn.
     _probe_root: super::emitted_closure_compile_host::PrivateProbeRoot,
+    /// The emitted workspace this preparation built, or `None` for a restored product, which has
+    /// no workspace to judge (`run_runtime_calibration` refuses it).
+    emitted_crate_dir: Option<PathBuf>,
 }
 
 /// The emitted compiler's build as the receipt records it — mirror of
@@ -569,6 +572,7 @@ fn prepare_emitted_compiler_for_entry(
                         warning_headers: manifest.warning_headers,
                     },
                     _probe_root: probe_root,
+                    emitted_crate_dir: None,
                 });
             }
             super::native_product_cache::Lookup::Refused { cause } => eprintln!(
@@ -884,6 +888,7 @@ fn prepare_emitted_compiler_for_entry(
         seed_identity,
         build,
         _probe_root: probe_root,
+        emitted_crate_dir: Some(crate_dir),
     })
 }
 
@@ -1953,6 +1958,31 @@ fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<String, Stri
     Ok(refusal.fatal_reason.clone())
 }
 
+/// THE RUNTIME CALIBRATION SUITE, AN ACTION OF THIS PRODUCER over the workspace it just built. A
+/// restored product has no workspace, so the suite was not run against what is being judged and the
+/// run refuses; the required lane asks for a fresh product. Every expected identity must have
+/// executed and passed (`run_runtime_calibration_suite`).
+fn run_runtime_calibration(prepared: &EmittedPreparation) -> Result<(), String> {
+    let Some(crate_dir) = &prepared.emitted_crate_dir else {
+        return Err("V2-NATIVE REFUSAL cause=RuntimeCalibrationSuiteNotRun — the product was restored, not built by this run, so there is no emitted workspace to run counting_allocator_tests against; require a fresh product".to_string());
+    };
+    let started = std::time::Instant::now();
+    let executed = super::emitted_closure_compile_host::run_runtime_calibration_suite(
+        crate_dir,
+        &prepared._probe_root.target_dir(),
+    )
+    .map_err(|cause| {
+        format!("V2-NATIVE REFUSAL cause=RuntimeCalibrationSuiteNotPassed — {cause}")
+    })?;
+    eprintln!(
+        "v2-native-route: runtime calibration suite passed — {} tests executed ({}) wall_s={}",
+        executed.len(),
+        executed.join(", "),
+        started.elapsed().as_secs()
+    );
+    Ok(())
+}
+
 pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
     let started = std::time::Instant::now();
     eprintln!(
@@ -1972,6 +2002,7 @@ pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
     // NOT HOLD, and a refusal above is the subject never having been reached; those are different
     // terminations with different exit statuses, and the instrument seam is the one place that
     // knows the vocabulary. Deciding it here too would give one fact two homes.
+    run_runtime_calibration(&prepared)?;
     let door_refusal_reason =
         walk_eval_driver_door(&prepared.binary_path, &super::process_workspace_root())?;
     Ok(SelfHostHeld {
