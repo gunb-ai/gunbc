@@ -301,11 +301,14 @@ fn an_imported_variant_name_is_accepted_under_a_pool_collision() {
     // third compiles the construction that imports the first by name but not the second.
     let files = im::vector![
         Rc::new(SourceFile {
-            // The arm's owner. The arm's authored name is UnitPropertyRead.
+            // The arm's owner. The arm's authored name is UnitPropertyRead. Mirrors the real site's
+            // shape: the union has one arm carrying a NESTED record field, so the field walk -- the
+            // very code the refusal sits in front of -- is exercised on a legal construction.
             path: "zz_owner.dag".to_string(),
             content: "module zz_owner\n\
+                      type ZzTag { name: String }\n\
                       type UnitPropertyReading\n\
-                      \x20 = UnitPropertyRead { value: String }\n\
+                      \x20 = UnitPropertyRead { value: String, tag: ZzTag }\n\
                       \x20 | UnitPropertyUnread { property: String, detail: String }\n"
                 .to_string(),
         }),
@@ -321,11 +324,23 @@ fn an_imported_variant_name_is_accepted_under_a_pool_collision() {
                 .to_string(),
         }),
         Rc::new(SourceFile {
+            // Constructed in FIELD POSITION of an outer record, which is how the real witness does it
+            // (SlotStartCompleted { exec_main_status: UnitPropertyRead { value: status }, .. }). The
+            // position matters for what this control proves: a top-level `data x: Union = Arm { .. }`
+            // is settled by the expected-variant route and never reaches this refusal under EITHER
+            // lookup, so an unnested fixture is green for both and discriminates nothing. In field
+            // position the question "does this head name a record constructor" is live, and only the
+            // resolution decides the answer.
             path: "zz_consumer.dag".to_string(),
             content: "module zz_consumer\n\
-                      import zz_owner { UnitPropertyReading, UnitPropertyRead, UnitPropertyUnread }\n\
-                      data zz_owner_status: UnitPropertyReading = UnitPropertyRead { value: \"running\" }\n\
-                      data zz_owner_unread: UnitPropertyReading = UnitPropertyUnread { property: \"ExecMainStatus\", detail: \"unreadable\" }\n"
+                      import zz_owner { UnitPropertyReading, UnitPropertyRead, UnitPropertyUnread, ZzTag }\n\
+                      type ZzHolder { exec_main_status: UnitPropertyReading }\n\
+                      data zz_owner_status: Bool =\n\
+                      \x20 (ZzHolder { exec_main_status: UnitPropertyRead { value: \"running\", tag: ZzTag { name: \"s\" } } })\n\
+                      \x20   .exec_main_status == UnitPropertyRead { value: \"running\", tag: ZzTag { name: \"s\" } }\n\
+                      data zz_owner_unread: Bool =\n\
+                      \x20 (ZzHolder { exec_main_status: UnitPropertyUnread { property: \"ExecMainStatus\", detail: \"unreadable\" } })\n\
+                      \x20   .exec_main_status == UnitPropertyUnread { property: \"ExecMainStatus\", detail: \"unreadable\" }\n"
                 .to_string(),
         }),
     ];
