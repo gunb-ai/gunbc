@@ -55,11 +55,13 @@ import gunbc.host.bmc_control_binding {
 // subject is not a field: secure.subject is the one
 // home of it, and a second copy could disagree with the standing it was derived beside.
 //
-// access is the fact gunbc.machine_intake.oob_boot_handoff oob_boot_handoff_admission consumes: the
-// controller's reported firmware release resolves its capability row through the release catalog
-// (gunbc.host.host_capability_row), so no per-unit row is carried here. A per-unit row would be the
-// reflash-staleness defect: a unit that moved 0.32 -> 0.45.3 would keep a row describing the old
-// build. DECLARED FRONTIER: access becomes one gunbc.machine_intake.access
+// access supplies the ENDPOINT and the receipt binding, and nothing else live: the handoff
+// (gunbc.machine_intake.oob_boot_handoff oob_boot_handoff_admission_for_row) takes the capability row
+// of the release the boot SELECTION was admitted on -- it travels inside the admitted subject, resolved
+// once through the release catalog (gunbc.host.host_capability_row) -- and the observation answers
+// nothing live. No per-unit row is carried here for the same reason: a row pinned to the unit instead
+// of the release is the reflash-staleness defect, a unit that moved 0.32 -> 0.45.3 keeping a row that
+// describes the old build. DECLARED FRONTIER: access becomes one gunbc.machine_intake.access
 // BoundBmcAccessContextStanding, whose context binds through the profile it bound, and the trigger is
 // the first production producer of that standing. No such producer exists yet
 // (bind_bmc_access_context has no production caller and there is no profile catalog), so a bound
