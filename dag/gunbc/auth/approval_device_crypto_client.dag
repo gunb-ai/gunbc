@@ -1,20 +1,22 @@
 module gunbc.auth.approval_device_crypto_client
 
 import std.types { String, Int, List, NonEmptyStr, Port }
+import std.native_realization_proof { NativeRealizationProof }
 import std.measure { Second, second }
 import extdeps.http.client
 import extdeps.http.client { http_client_max_time_flag }
 import extdeps.tools.curl { CurlTransferCompleted, curl_exit_outcome, curl_exit_outcome_name, classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
 import extdeps.crypto.signature {
-  VerifyingKey, SignatureBytes, SignatureVerification, SignatureVerified, SignatureInvalid, EcdsaP256Sha256, signed_message_from_sidecar,
+  VerifyingKey, SignatureBytes, SignatureVerification, SignatureVerified, SignatureInvalid, EcdsaP256Sha256, SignedMessage, signed_message_from_native_realization,
 }
 import extdeps.apple.app_attest {
-  AttestationExpectation, AssertionExpectation,
+  AttestationExpectation, AssertionExpectation, AttestKeyId, AppAttestEnvironment, VerifiedAttestation, AuthenticAssertion,
   AttestationVerification, AttestationVerified, AttestationRefused, AttestationUndecodable,
   AssertionVerification, AssertionAuthentic, AssertionRefused, AssertionSignatureInvalid, AssertionUndecodable,
-  verified_attestation_from_sidecar, authentic_assertion_from_sidecar,
+  verified_attestation_from_native_realization, authentic_assertion_from_native_realization,
 }
-import gunbc.auth.approval_device_crypto_realization { DeviceCryptoAdmission }
+import std.decl_ref { decl_ref }
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoAdmission, device_crypto_proof_of }
 import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
 import gunbc.auth.approval_device_crypto_wire {
   device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path,
@@ -32,9 +34,10 @@ import gunbc.auth.approval_device_crypto_wire {
 // WHAT COMES BACK IS THE FOLD'S OWN CARRIER. A `verified` answer carries the verified payload on the wire and
 // the decode below mints extdeps.crypto.signature SignedMessage / extdeps.apple.app_attest VerifiedAttestation /
 // AuthenticAssertion again through the admitted mints declared beside those sole constructors
-// (signed_message_from_sidecar, verified_attestation_from_sidecar, authentic_assertion_from_sidecar). Each takes
-// the DeviceCryptoAdmission, so no decode without an admitted realization yields a verified value, and each
-// names the fold here as its one admitted caller. The redemption joins therefore read the same types and fields
+// (signed_message_from_native_realization, verified_attestation_from_native_realization, authentic_assertion_from_native_realization). Each takes
+// the std NativeRealizationProof for its own fold, which device_crypto_proof_of derives only from DeviceCryptoAdmitted,
+// so no decode without an admitted realization yields a verified value, and each names the helper here as its one
+// admitted caller. The redemption joins therefore read the same types and fields
 // they read from the in-process folds, and a payload that disagrees with the request is refused by the join's own
 // comparison, not by a second one here.
 //
@@ -107,12 +110,40 @@ fn sidecar_refusal_cause(what: String, answer: DeviceCryptoAnswer) -> NonEmptySt
 
 // ── Each decode, from the admitted answer to the fold's own result ────────────────────────────
 // `admission` is the admission the route obtained; the mints refuse to mint on a refused one.
+// The std proof that this fold's native realization is bound, derived from the admission or absent.
+fn proof_for(admission: DeviceCryptoAdmission, module_path: NonEmptyStr, decl_name: NonEmptyStr) -> NativeRealizationProof? {
+  device_crypto_proof_of(admission: admission, fold: decl_ref(module_path: module_path, decl_name: decl_name))
+}
+
+fn signed_from(admission: DeviceCryptoAdmission, k: VerifyingKey, m: NonEmptyStr) -> SignedMessage? {
+  match proof_for(admission: admission, module_path: "extdeps.crypto.signature", decl_name: "verify_signature") {
+    Present { value: proof } => signed_message_from_native_realization(proof: proof, key: k, message: m)
+    Absent => none
+  }
+}
+
+fn attested_from(admission: DeviceCryptoAdmission, id: AttestKeyId, pk: NonEmptyStr, r: NonEmptyStr, e: AppAttestEnvironment, c: NonEmptyStr) -> VerifiedAttestation? {
+  match proof_for(admission: admission, module_path: "extdeps.apple.app_attest", decl_name: "verify_attestation") {
+    Present { value: proof } =>
+      verified_attestation_from_native_realization(proof: proof, key_id: id, public_key_point_b64url: pk, receipt_b64: r, environment: e, client_data: c)
+    Absent => none
+  }
+}
+
+fn asserted_from(admission: DeviceCryptoAdmission, id: AttestKeyId, pk: NonEmptyStr, n: Int, c: NonEmptyStr) -> AuthenticAssertion? {
+  match proof_for(admission: admission, module_path: "extdeps.apple.app_attest", decl_name: "verify_assertion") {
+    Present { value: proof } =>
+      authentic_assertion_from_native_realization(proof: proof, key_id: id, public_key_point_b64url: pk, counter: n, client_data: c)
+    Absent => none
+  }
+}
+
 fn signature_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCryptoAnswer) -> SidecarResult<SignatureVerification> {
   match answer.verdict {
     CryptoVerified =>
       match answer.payload {
         SignedPayload { key: k, message: m } =>
-          match signed_message_from_sidecar(admission: admission, key: k, message: m) {
+          match signed_from(admission: admission, k: k, m: m) {
             Present { value: v } => SidecarAnswered { verification: SignatureVerified { verified: v } }
             Absent => SidecarFailed { cause: "the device-crypto admission refused the sidecar's verified answer" }
           }
@@ -129,7 +160,7 @@ fn attestation_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCrypt
     CryptoVerified =>
       match answer.payload {
         AttestedPayload { key_id: id, public_key_point_b64url: pk, receipt_b64: r, environment: e, client_data: c } =>
-          match verified_attestation_from_sidecar(admission: admission, key_id: id, public_key_point_b64url: pk, receipt_b64: r, environment: e, client_data: c) {
+          match attested_from(admission: admission, id: id, pk: pk, r: r, e: e, c: c) {
             Present { value: v } => SidecarAnswered { verification: AttestationVerified { verified: v } }
             Absent => SidecarFailed { cause: "the device-crypto admission refused the sidecar's verified answer" }
           }
@@ -145,7 +176,7 @@ fn assertion_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCryptoA
     CryptoVerified =>
       match answer.payload {
         AssertedPayload { key_id: id, public_key_point_b64url: pk, counter: n, client_data: c } =>
-          match authentic_assertion_from_sidecar(admission: admission, key_id: id, public_key_point_b64url: pk, counter: n, client_data: c) {
+          match asserted_from(admission: admission, id: id, pk: pk, n: n, c: c) {
             Present { value: v } => SidecarAnswered { verification: AssertionAuthentic { authentic: v } }
             Absent => SidecarFailed { cause: "the device-crypto admission refused the sidecar's verified answer" }
           }

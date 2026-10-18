@@ -6,8 +6,9 @@ import extdeps.crypto.signature { SignatureVerification, VerifyingKey, EcdsaP256
 import extdeps.apple.app_attest { AttestationVerification, AssertionVerification, AppAttestProduction, AttestKeyId, AttestationVerified, AttestationRefused, AssertionAuthentic, AssertionRefused }
 import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
 import gunbc.auth.approval_device_crypto_realization {
-  DeviceCryptoAdmission, NativeDeviceCryptoBound, NativeDeviceCryptoUnavailable, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations,
+  DeviceCryptoAdmission, NativeDeviceCryptoBound, NativeDeviceCryptoUnavailable, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations, device_crypto_proof_of,
 }
+import std.decl_ref { decl_ref }
 import gunbc.auth.approval_device_crypto_wire {
   DeviceCryptoAnswer, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, NoPayload, SignedPayload, AttestedPayload, AssertedPayload,
   device_crypto_arm_signature_verified, device_crypto_arm_attestation_verified, device_crypto_arm_assertion_verified,
@@ -163,4 +164,18 @@ test fn witness_a_sidecar_failure_answers_503() -> Bool {
 // THE ENDPOINT IS DERIVED FROM THE TYPED PORT.
 test fn witness_the_endpoint_names_the_declared_port() -> Bool {
   (approval_device_crypto_sidecar_endpoint() as String) == "http://127.0.0.1:8086"
+}
+
+// THE STD PROOF EXISTS ONLY UNDER AN ADMISSION, and names the fold it was derived for.
+test fn witness_the_native_realization_proof_is_derived_only_from_an_admission() -> Bool {
+  let fold = decl_ref(module_path: "extdeps.crypto.signature", decl_name: "verify_signature")
+  let refused = match device_crypto_proof_of(admission: unavailable(), fold: fold) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let granted = match device_crypto_proof_of(admission: admitted(), fold: fold) {
+    Present { value: p } => p.fold == fold && (p.handler_identity as String) == "fixture"
+    Absent => false
+  }
+  refused && granted
 }

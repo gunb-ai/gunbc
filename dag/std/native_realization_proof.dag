@@ -1,0 +1,27 @@
+module std.native_realization_proof
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// THE PROOF THAT A DECLARED FOLD'S NATIVE REALIZATION IS BOUND. Which realization of an upstream's fold a consumer
+// admits is the consumer's policy, never the upstream's, so an upstream interface module that wants to mint its
+// sole-constructed evidence from a realized answer takes THIS value and imports nothing of the consumer. `fold` names
+// the declaration whose realization was admitted, so a proof for one fold is not a proof for another; the handler
+// identity and exact revision say which binary stood behind it.
+//
+// The mint is sealed: its roster names the one consumer function that derives the proof from its own admission, so no
+// other module can assemble a proof from strings. The roster names that function by DeclarationRef, as every
+// admit_callers roster does; it imports nothing.
+type NativeRealizationProof sole_constructor {
+  fold: DeclarationRef
+  handler_identity: NonEmptyStr
+  exact_revision: NonEmptyStr
+}
+
+fn native_realization_proof(fold: DeclarationRef, handler_identity: NonEmptyStr, exact_revision: NonEmptyStr) -> NativeRealizationProof
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_crypto_realization", decl_name: "device_crypto_proof_of"),
+  ]
+{
+  NativeRealizationProof { fold: fold, handler_identity: handler_identity, exact_revision: exact_revision }
+}
