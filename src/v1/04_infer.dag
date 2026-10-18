@@ -18202,6 +18202,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     type_summaries: empty_type_summary_index(),
     type_decl_items: type_decl_index_with_qualified_names(index: empty_type_decl_index(), qualified_names: qualified_names),
     fn_decl_items: empty_map(),
+    fn_decl_identity_items: empty_map(),
     structural_alias_fn_surface_names: empty_map(),
     structural_alias_direct_fn_names: empty_set()
   }
@@ -18215,7 +18216,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       }
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, fn_decl_identity_items: built_raw.fn_decl_identity_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       let recursive_name = intern_str(table: m.type_env.intern_table, id: ident)
@@ -18234,6 +18235,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     type_decl_items: built.type_decl_items,
     data_variant_wire_spellings: empty_map(),
     fn_decl_items: built.fn_decl_items,
+    fn_decl_identity_items: built.fn_decl_identity_items,
     fn_map_key_bounds: empty_map(),
     recursive_type_set: all_recursive,
     fielded_variants: variant_shapes.fielded,
