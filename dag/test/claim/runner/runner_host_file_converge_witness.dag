@@ -59,6 +59,9 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerGroupRead, VisudoCheck, NoValidation, remote_file_mode_octal }
+import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
+import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
@@ -142,6 +145,7 @@ import gunbc.runner.runner_host_file_converge {
   HostFileActionRefused,
   RunnerHostFileAction,
   runner_host_file_action,
+  runner_host_file_action_wire,
   RunnerSlotUnitReading,
   RunnerSlotUnitStanding,
   SlotTeardownEffective,
@@ -1539,4 +1543,58 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         slots: population_of(standings: [SlotTeardownEffective]),
       })
   }
+}
+
+// ── The sudoers install row (msg_b6241e41) ────────────────────────────────────────────────────────
+
+fn sudoers_desired() -> RunnerHostFileDesired? {
+  match srv1_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => none
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
+      fold(fs, init: none, f: (acc, f) => if (f.subject as String) == "runner-host-sudoers" { Present { value: f } } else { acc })
+  }
+}
+
+// The row carries the RENDERED bytes from the one producer, at the one path, 0440, validated: no
+// second rendering, no widening. Reads the producer independently of the row's own fold.
+test fn the_sudoers_row_is_the_rendered_body_at_the_sudoers_path_validated_and_0440() -> Bool {
+  match sudoers_desired() {
+    Absent => false
+    Present { value: f } =>
+      match runner_host_sudoers_body(host: "srv1" as HostIdentity, artifact_path: artifact_path(a: RunnerHostSudoersArtifact { host: "srv1" as HostIdentity })) {
+        RunnerHostSudoersBodyProduced { content: c } =>
+          f.content == c
+            && (f.path as String) == "/etc/sudoers.d/gunbc-ghrunner"
+            && remote_file_mode_octal(mode: f.mode) == "440"
+            && (match f.validation { VisudoCheck => true NoValidation => false })
+        RunnerHostSudoersBodyRefused { reason: _ } => false
+      }
+  }
+}
+
+// Only the sudoers row is validated: every other row keeps NoValidation, so visudo is never pointed at
+// a systemd or needrestart file.
+test fn only_the_sudoers_row_is_visudo_validated() -> Bool {
+  match srv1_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
+      all(fs, f => ((f.subject as String) == "runner-host-sudoers") == (match f.validation { VisudoCheck => true NoValidation => false }))
+  }
+}
+
+// ADOPT: an identical root-only file is left in place -- no write, so no replaced-file decision.
+test fn an_identical_installed_sudoers_file_is_adopted_untouched() -> Bool {
+  is_leave(a: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
+}
+
+// REPLACE: a differing file is written (renamed over), and the decision is printed as `write`.
+test fn a_differing_installed_sudoers_file_is_replaced_and_the_decision_prints() -> Bool {
+  let a = action_of(content: HostFileDiffers, file_metadata: PathsNotApplicable, ancestors: PathsRootOnly)
+  is_write(a: a) && runner_host_file_action_wire(action: a) == "write"
+    && runner_host_file_action_wire(action: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly)) == "leave-in-place"
+}
+
+// An unreadable observation refuses typed; it is never read as absent (and so never as a write).
+test fn an_unreadable_sudoers_observation_refuses_rather_than_writes() -> Bool {
+  is_refused(a: action_of(content: HostFileUnobservable { reason: "sudo: a password is required" }, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
 }
