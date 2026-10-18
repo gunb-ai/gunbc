@@ -4749,38 +4749,28 @@ fn live_deploy_preamble_leg_step(leg: LiveDeployPreambleLeg) -> LiveDeployPreamb
     PreambleArgv { step: s, command: _ } => s
     PreambleStdin { step: s, command: _, payload: _ } => s
     PreambleEffect { step: s, effect: _ } => s
-    // The check half is the leg's identity: it is what runs unconditionally, and the act half is
-    // addressed by name through live_deploy_preamble_leg_step_named when an outcome names it.
+    // The check half is the leg's identity: it is what runs unconditionally; the act half is
+    // live_deploy_preamble_either_act_step.
     PreambleEither { check_step: cs, check: _, act_step: _, act: _ } => cs
   }
 }
 
-// The step a leg runs that an injected outcome could be aimed at, for a given half. The Either leg has
-// TWO steps — the check and the conditional act — and an outcome must be able to name either one, or
-// the act half of that leg is unaddressable and can never be refused in a witness.
-fn live_deploy_preamble_leg_step_named(leg: LiveDeployPreambleLeg, step: String) -> LiveDeployPreambleStep {
+// The act half's step, for a leg that has one. An injected outcome can be aimed at either half of an
+// `A || B` leg; a leg with no act half has none, so an outcome aimed at an act step can never be
+// mistaken for one aimed at an argv, stdin or effect leg's only step.
+fn live_deploy_preamble_either_act_step(leg: LiveDeployPreambleLeg) -> Optional<LiveDeployPreambleStep> {
   match leg {
-    PreambleArgv { step: s, command: _ } => s
-    PreambleStdin { step: s, command: _, payload: _ } => s
-    PreambleEffect { step: s, effect: _ } => s
-    PreambleEither { check_step: cs, check: _, act_step: as_, act: _ } =>
-      if step == live_deploy_preamble_step_name(step: as_) { as_ } else { cs }
+    PreambleArgv { step: _, command: _ } => Absent
+    PreambleStdin { step: _, command: _, payload: _ } => Absent
+    PreambleEffect { step: _, effect: _ } => Absent
+    PreambleEither { check_step: _, check: _, act_step: as_, act: _ } => Present { value: as_ }
   }
 }
 
-// No leg step is ever spelled like this, so a leg that has no act half can never be mistaken for one
-// that does: comparing against this sentinel is how the act branches stay non-matching for argv, stdin
-// and effect legs instead of falling through to their only step.
-data live_deploy_preamble_no_such_step: String = "\u{1f43e}no-such-preamble-step\u{1f43e}"
-
-// The act half's step name, or the sentinel above for a leg that has no act half.
-fn live_deploy_preamble_either_act_name(leg: LiveDeployPreambleLeg) -> String {
-  match leg {
-    PreambleArgv { step: _, command: _ } => live_deploy_preamble_no_such_step
-    PreambleStdin { step: _, command: _, payload: _ } => live_deploy_preamble_no_such_step
-    PreambleEffect { step: _, effect: _ } => live_deploy_preamble_no_such_step
-    PreambleEither { check_step: _, check: _, act_step: as_, act: _ } =>
-      live_deploy_preamble_step_name(step: as_)
+fn live_deploy_preamble_aimed_at_act(leg: LiveDeployPreambleLeg, step: LiveDeployPreambleStep) -> Bool {
+  match live_deploy_preamble_either_act_step(leg: leg) {
+    Present { value: as_ } => as_ == step
+    Absent => false
   }
 }
 
@@ -4946,9 +4936,9 @@ fn live_deploy_preamble_observe_leg(leg: LiveDeployPreambleLeg, access: DeployAc
 type LiveDeployPreambleInjected
   = AllLegsSucceed
   | PrincipalAbsent
-  | LegTransportRefused { step: String, reason: String }
-  | LegExited { step: String, exit_code: Int, stderr: String }
-  | LegEffectRefusedArm { step: String, reason: String }
+  | LegTransportRefused { step: LiveDeployPreambleStep, reason: String }
+  | LegExited { step: LiveDeployPreambleStep, exit_code: Int, stderr: String }
+  | LegEffectRefusedArm { step: LiveDeployPreambleStep, reason: String }
 
 // The answer a leg gets when nothing was injected at it: success, shaped to the kind of leg it is. An
 // `A || B` leg reports the account as ALREADY PRESENT, so the default fold exercises the cheapest path
@@ -4968,7 +4958,7 @@ fn live_deploy_preamble_injected_result(
   leg: LiveDeployPreambleLeg,
   injected: LiveDeployPreambleInjected,
 ) -> LiveDeployPreambleLegResult {
-  let here = live_deploy_preamble_step_name(step: live_deploy_preamble_leg_step(leg: leg))
+  let here = live_deploy_preamble_leg_step(leg: leg)
   match injected {
     AllLegsSucceed => live_deploy_preamble_success_result(leg: leg)
     // The account is missing, so the `A || B` leg runs BOTH its commands: two calls, and the act
@@ -4981,11 +4971,11 @@ fn live_deploy_preamble_injected_result(
     LegTransportRefused { step: s, reason: why } =>
       if here == s {
         LegObserved { outcome: RunArgvTransportRefused { reason: why } }
-      } else if live_deploy_preamble_either_act_name(leg: leg) == s {
+      } else if live_deploy_preamble_aimed_at_act(leg: leg, step: s) {
         // A transport refusal aimed at the ACT half of an Either leg. Production runs the check first
         // (one call spent) and only then dies on the act, so the result costs two calls — mirroring
         // live_deploy_preamble_observe_leg or the witness and the host disagree about the cost.
-        LegRefusedAt { step: live_deploy_preamble_leg_step_named(leg: leg, step: s), reason: why, calls: 2 }
+        LegRefusedAt { step: s, reason: why, calls: 2 }
       } else {
         live_deploy_preamble_success_result(leg: leg)
       }
@@ -4994,11 +4984,11 @@ fn live_deploy_preamble_injected_result(
     LegExited { step: s, exit_code: c, stderr: err } =>
       if here == s {
         LegObserved { outcome: RunArgvTransportObserved { observed: ShellExecObserved { exit_code: c, success: false, stdout: "", stderr: err } } }
-      } else if live_deploy_preamble_either_act_name(leg: leg) == s {
+      } else if live_deploy_preamble_aimed_at_act(leg: leg, step: s) {
         // A non-zero exit aimed at the act half: production observes the check succeed, runs the act,
         // and reports the act's exit through LegRefusedAt at two calls — not a bare LegObserved at one.
         LegRefusedAt {
-          step: live_deploy_preamble_leg_step_named(leg: leg, step: s),
+          step: s,
           reason: join(["exited ", to_string(c), ": ", err], ""),
           calls: 2,
         }

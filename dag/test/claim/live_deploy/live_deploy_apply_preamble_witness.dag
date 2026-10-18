@@ -279,7 +279,7 @@ test fn a_missing_principal_costs_exactly_one_extra_call() -> Bool {
 // sudoers-stage, consume NOTHING, and make exactly one call. The zero-consumed / one-call pair is the
 // discriminating part: a fold that ignored the failure would report ten legs consumed.
 test fn a_stage_that_could_not_be_written_stops_the_whole_preamble() -> Bool {
-  let run = w_fold(injected: LegTransportRefused { step: "sudoers-stage", reason: "ssh channel refused" })
+  let run = w_fold(injected: LegTransportRefused { step: SudoersStage, reason: "ssh channel refused" })
   match w_state(run: run) {
     PreambleLegFailed { step: s, reason: r, consumed: c } =>
       live_deploy_preamble_step_name(step: s) == "sudoers-stage"
@@ -296,7 +296,7 @@ test fn a_stage_that_could_not_be_written_stops_the_whole_preamble() -> Bool {
 // the exit code and stderr become the refusal detail, never a silent skip to the install. If the exit
 // status were dropped, a syntactically broken sudoers file would still be installed at 0440.
 test fn a_broken_staged_sudoers_refuses_with_the_scripts_exit_code_and_never_installs() -> Bool {
-  let run = w_fold(injected: LegExited { step: "sudoers-visudo-check", exit_code: 1, stderr: ">>> syntax error at line 3" })
+  let run = w_fold(injected: LegExited { step: SudoersVisudoCheck, exit_code: 1, stderr: ">>> syntax error at line 3" })
   match w_state(run: run) {
     PreambleLegFailed { step: s, reason: r, consumed: c } =>
       live_deploy_preamble_step_name(step: s) == "sudoers-visudo-check"
@@ -312,7 +312,7 @@ test fn a_broken_staged_sudoers_refuses_with_the_scripts_exit_code_and_never_ins
 // installed path precisely because install can change what is there (mode, ownership, SELinux relabel);
 // a fold that treated this as a warning would leave a broken /etc/sudoers.d file on the host.
 test fn the_post_install_policy_check_refuses_naming_its_own_step() -> Bool {
-  let run = w_fold(injected: LegExited { step: "sudoers-policy-final", exit_code: 1, stderr: "bad permissions" })
+  let run = w_fold(injected: LegExited { step: SudoersPolicyFinal, exit_code: 1, stderr: "bad permissions" })
   match w_state(run: run) {
     PreambleLegFailed { step: s, reason: r, consumed: c } =>
       live_deploy_preamble_step_name(step: s) == "sudoers-policy-final"
@@ -328,7 +328,7 @@ test fn the_post_install_policy_check_refuses_naming_its_own_step() -> Bool {
 // died on the first miss; the typed route reaches the same verdict through the module's OWN probe
 // leaves, so the refusal is a non-converging typed effect, not a swallowed exit code.
 test fn an_unadmitted_grant_refuses_at_the_grant_step() -> Bool {
-  let run = w_fold(injected: LegEffectRefusedArm { step: "grant-admission", reason: "sudo -n -l does not list /usr/sbin/visudo" })
+  let run = w_fold(injected: LegEffectRefusedArm { step: GrantAdmission, reason: "sudo -n -l does not list /usr/sbin/visudo" })
   match w_state(run: run) {
     PreambleLegFailed { step: s, reason: r, consumed: c } =>
       live_deploy_preamble_step_name(step: s) == "grant-admission"
@@ -344,7 +344,7 @@ test fn an_unadmitted_grant_refuses_at_the_grant_step() -> Bool {
 // account is missing, and treating it as such would run `useradd` on a host whose account state nobody
 // read. The refusal lands on the CHECK's step and costs exactly one call — the act is never reached.
 test fn a_principal_check_that_could_not_run_never_falls_through_to_useradd() -> Bool {
-  let run = w_fold(injected: LegTransportRefused { step: "principal-check", reason: "transport down" })
+  let run = w_fold(injected: LegTransportRefused { step: PrincipalCheck, reason: "transport down" })
   match w_state(run: run) {
     PreambleLegFailed { step: s, reason: r, consumed: c } =>
       live_deploy_preamble_step_name(step: s) == "principal-check"
@@ -359,7 +359,7 @@ test fn a_principal_check_that_could_not_run_never_falls_through_to_useradd() ->
 // RED 6 -- the account is missing AND the create fails. The blame must name principal-ensure (not the
 // check, which succeeded) and the leg must have cost BOTH its calls.
 test fn a_failed_create_blames_the_act_and_costs_two_calls() -> Bool {
-  let run = w_fold(injected: LegExited { step: "principal-ensure", exit_code: 1, stderr: "useradd: cannot open /etc/passwd" })
+  let run = w_fold(injected: LegExited { step: PrincipalEnsure, exit_code: 1, stderr: "useradd: cannot open /etc/passwd" })
   match w_state(run: run) {
     PreambleLegFailed { step: s, reason: r, consumed: c } =>
       live_deploy_preamble_step_name(step: s) == "principal-ensure"
@@ -377,7 +377,7 @@ test fn a_failed_create_blames_the_act_and_costs_two_calls() -> Bool {
 // (NOT the check, which succeeded) and still cost BOTH calls — matching what the impure runner does when
 // the check runs and the act dies.
 test fn a_create_the_transport_refuses_blames_the_act_and_costs_two_calls() -> Bool {
-  let run = w_fold(injected: LegTransportRefused { step: "principal-ensure", reason: "ssh channel closed" })
+  let run = w_fold(injected: LegTransportRefused { step: PrincipalEnsure, reason: "ssh channel closed" })
   match w_state(run: run) {
     PreambleLegFailed { step: s, reason: r, consumed: c } =>
       live_deploy_preamble_step_name(step: s) == "principal-ensure"
@@ -398,7 +398,7 @@ test fn a_create_the_transport_refuses_blames_the_act_and_costs_two_calls() -> B
 // reports the STEP THAT REFUSED IT — the cleanup detail is appended, never substituted. Losing
 // "visudo refused" to "rm failed" would send an operator chasing a leftover directory.
 test fn a_cleanup_failure_never_replaces_the_refusal_that_stopped_the_deploy() -> Bool {
-  let refused = w_state(run: w_fold(injected: LegExited { step: "sudoers-install", exit_code: 1, stderr: "No space left on device" }))
+  let refused = w_state(run: w_fold(injected: LegExited { step: SudoersInstall, exit_code: 1, stderr: "No space left on device" }))
   match w_verdict(state: refused, cleanup_failure: Present { value: "rm: Device or resource busy" }) {
     PreambleRefused { step: s, reason: r, legs_consumed: c } =>
       live_deploy_preamble_step_name(step: s) == "sudoers-install"
