@@ -279,13 +279,14 @@ test fn an_unread_uid_withholds_depriv_and_still_delivers_teardown_and_cpu() -> 
   match runner_host_file_desired_population_from_uid_reading(host: "srv1" as HostIdentity, reading: fixture_unread_job_user_uid()) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 3
+      length(fs) == 4
         && length(w) == 2
         && !runner_host_files_deliver_fragment(files: fs)
         && any(fs, f => (f.subject as String) == "runner-cpu-dropin")
         && any(w, x => (x.subject as String) == "runner-depriv-dropin" && string_contains(s: x.cause as String, pattern: "was not read"))
         && any(w, x => (x.subject as String) == "runner-unit-fragment")
         && any(fs, f => (f.subject as String) == "runner-teardown-dropin")
+        && any(fs, f => (f.subject as String) == "runner-host-sudoers")
         && any(fs, f => (f.subject as String) == "needrestart-runner-deferral")
         && !any(fs, f => (f.subject as String) == "runner-unit-fragment")
         && !any(fs, f => (f.subject as String) == "runner-depriv-dropin")
@@ -297,6 +298,7 @@ test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_o
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
       length(fs) == 5
+        && any(fs, f => (f.subject as String) == "runner-host-sudoers")
         && length(w) == 0
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
         && desired_path(subject: "runner-cpu-dropin") == "/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf"
