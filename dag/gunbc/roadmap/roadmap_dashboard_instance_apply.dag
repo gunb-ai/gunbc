@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_dashboard_instance_apply
 
-import std.algebra { trim }
+import std.algebra { trim, is_empty }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -291,7 +291,7 @@ fn dashboard_git_shared_repository_posture_readback_refusal(
   instance: HostDashboardInstance,
   repo: FilePath,
 ) -> String {
-  match filter(
+  let missing = filter(
     git_shared_repository_posture_readbacks,
     expectation =>
       !dashboard_git_local_config_value_is_postured(
@@ -300,15 +300,17 @@ fn dashboard_git_shared_repository_posture_readback_refusal(
         key: expectation.key,
         expected: expectation.expected,
       ),
-  ) {
-    [] => ""
-    missing => join([
+  )
+  if is_empty(missing) {
+    ""
+  } else {
+    join([
       "the posture did not take: ",
       join(map(missing, e => concat(e.key as String, "=", e.expected)), ", "),
       " is not what git reports in ",
       repo as String,
       " -- the write ran and the readback disagreed, so the receipt refuses",
-    ], ""),
+    ], "")
   }
 }
 
@@ -337,17 +339,19 @@ fn dashboard_git_worker_subtree_is_granted(
 fn dashboard_git_worker_subtree_migration_readback_refusal(
   instance: HostDashboardInstance,
 ) -> String {
-  match filter(
+  let missing = filter(
     dashboard_git_worker_directory_children,
     child => !dashboard_git_worker_subtree_is_granted(instance: instance, child: child),
-  ) {
-    [] => ""
-    missing => join([
+  )
+  if is_empty(missing) {
+    ""
+  } else {
+    join([
       "the subtree re-group did not take for ",
       join(missing, ", "),
       " -- the readback walk came back empty, unreadable, or holding a mode outside the granted set,",
       " so the receipt refuses rather than claiming a grant it did not see",
-    ], ""),
+    ], "")
   }
 }
 

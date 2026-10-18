@@ -41,6 +41,7 @@ import extdeps.git {
 }
 import extdeps.tools.findutils {
   find_subtree_regroup_command, find_subtree_group_writable_command, find_subtree_mode_readback_command,
+  find_printf_type_directory_letter, find_printf_type_regular_file_letter,
 }
 // THE DEPTH THE WET TREE IS WALKED AT IS THE MODEL'S, NOT THE WITNESS'S PREFERENCE. Spelling 32 here
 // would let the witness walk deeper than the migration ever does -- and a tree the migration cannot
@@ -157,22 +158,33 @@ fn wet_self_uid() -> Int {
   }
 }
 
-// THE RECEIPT AS EXACT LINES. The readback builder prints `<octal-mode> <path-relative-to-target>`; a
-// grant is asserted by a line being PRESENT AND EQUAL to the mode the model's predicates demand -- never
-// by a substring, which could match a different entry (or match "277" inside "2775").
-// ONE RECEIPT LINE, as find prints it: the octal mode, a single space, then the path relative to the
-// target. Spelled here once so no claim can compare against a mode-and-path glued by the wrong
+// THE RECEIPT AS EXACT LINES. The readback builder prints `<type-letter> <octal-mode>
+// <path-relative-to-target>`; a grant is asserted by a line being PRESENT AND EQUAL to what the model's
+// predicates demand -- never by a substring, which could match a different entry (or match "277" inside
+// "2775"). THE TYPE LETTER IS PART OF THE LINE HERE FOR THE SAME REASON THE MODEL DECIDES ON IT: the
+// claim says which KIND of entry it expects, so a walk that granted a setgid FILE where a directory
+// should be cannot satisfy a directory line and pass (review 82165 on this PR).
+//
+// ONE DIRECTORY LINE, as find prints it: `d`, the octal mode, a single space, then the path relative to
+// the target. Spelled here once so no claim can compare against a mode-and-path glued by the wrong
 // separator and pass on nothing.
 fn wet_line(mode: String, path: String) -> String {
-  concat(mode, concat(" ", path))
+  concat(find_printf_type_directory_letter as String, concat(" ", concat(mode, concat(" ", path))))
 }
 
-// THE TARGET'S OWN LINE: find's %P is EMPTY for the starting point, so the target prints as the mode
-// and a single space and nothing else. Asserting "2775 " is the only way to say objects/ itself is
-// granted -- the entries alone would all be right while the parent that must accept tomorrow's new
-// fan-out directory stayed 0755.
+// ONE REGULAR-FILE LINE. Separate from wet_line because the letter is the fact under test, not padding:
+// the two constructors cannot be confused with each other, and a claim that wanted a file can never be
+// satisfied by a directory at the same mode.
+fn wet_file_line(mode: String, path: String) -> String {
+  concat(find_printf_type_regular_file_letter as String, concat(" ", concat(mode, concat(" ", path))))
+}
+
+// THE TARGET'S OWN LINE: find's %P is EMPTY for the starting point, so the target prints as `d`, the
+// mode, a space and nothing else. Asserting it is the only way to say objects/ itself is granted -- the
+// entries alone would all be right while the parent that must accept tomorrow's new fan-out directory
+// stayed 0755.
 fn wet_target_line(mode: String) -> String {
-  concat(mode, " ")
+  concat(find_printf_type_directory_letter as String, concat(" ", concat(mode, " ")))
 }
 
 fn wet_receipt_has_all(out: String, wanted: List<String>) -> Bool {
@@ -304,7 +316,7 @@ test fn the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree
       ])
       && wet_receipt_has_either(out: objects_receipt, alternatives: [
         [wet_line(mode: wet_granted_directory_mode, path: "f9"), wet_line(mode: wet_granted_shared_directory_mode, path: "f9")],
-        [wet_line(mode: wet_granted_file_mode, path: "f9/0123456789abcdef0123456789abcdef01234567")],
+        [wet_file_line(mode: wet_granted_file_mode, path: "f9/0123456789abcdef0123456789abcdef01234567")],
       ])
       // refs/, its intermediate refs/heads (git mkdir's that path when a new branch is nested), a branch
       // UNDER a directory named branches, and the leaf ref -- 0664, not 0644, so a sibling attempt in the
@@ -313,14 +325,14 @@ test fn the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree
         wet_target_line(mode: wet_granted_directory_mode),
         wet_line(mode: wet_granted_directory_mode, path: "heads"),
         wet_line(mode: wet_granted_directory_mode, path: "heads/branches"),
-        wet_line(mode: wet_granted_file_mode, path: "heads/branches/x"),
+        wet_file_line(mode: wet_granted_file_mode, path: "heads/branches/x"),
       ])
       // logs/ mirrors refs/ one level at a time; the reflog is the file git appends to on every commit.
       && wet_receipt_has_all(out: logs_receipt, wanted: [
         wet_target_line(mode: wet_granted_directory_mode),
         wet_line(mode: wet_granted_directory_mode, path: "refs"),
         wet_line(mode: wet_granted_directory_mode, path: "refs/heads"),
-        wet_line(mode: wet_granted_file_mode, path: "refs/heads/x"),
+        wet_file_line(mode: wet_granted_file_mode, path: "refs/heads/x"),
       ])
       // THE PRUNED SUBTREES ARE NOT MERELY UNGRANTED, THEY ARE NOT EVEN LISTED: reaching the -printf is
       // proof the walk stopped at the prune. EVERY granted spelling is forbidden -- both directory modes
@@ -332,10 +344,10 @@ test fn the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree
       && wet_receipt_has_none(out: objects_receipt, forbidden: [
         wet_line(mode: wet_granted_directory_mode, path: "pack"),
         wet_line(mode: wet_granted_shared_directory_mode, path: "pack"),
-        wet_line(mode: wet_granted_file_mode, path: "pack/pack.pack"),
+        wet_file_line(mode: wet_granted_file_mode, path: "pack/pack.pack"),
         wet_line(mode: wet_granted_directory_mode, path: "info"),
         wet_line(mode: wet_granted_shared_directory_mode, path: "info"),
-        wet_line(mode: wet_granted_file_mode, path: "info/commit-graph"),
+        wet_file_line(mode: wet_granted_file_mode, path: "info/commit-graph"),
       ])
       && clean
   }
@@ -364,7 +376,7 @@ test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is
     // (a) Whole-subtree read, prunes ABSENT, so the confined paths are visible at all.
     let whole = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
     let confined_untouched = wet_receipt_has_all(out: whole, wanted: [
-      "755 pack", "644 pack/pack.pack", "755 info", "644 info/commit-graph",
+      "d 755 pack", "f 644 pack/pack.pack", "d 755 info", "f 644 info/commit-graph",
     ])
     // (b) The same walk with the prunes dropped REACHES them -- the prunes are what stand between the
     // migration and a confined-subtree grant, so this is the control that makes leg (a) mean something.
@@ -376,7 +388,7 @@ test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is
     // leg is only that they are GRANTED at all, which the prunes are what prevent.
     let unpruned_reaches_them = wet_receipt_has_either(out: after, alternatives: [
       [wet_line(mode: wet_granted_directory_mode, path: "pack"), wet_line(mode: wet_granted_shared_directory_mode, path: "pack")],
-      [wet_line(mode: wet_granted_file_mode, path: "pack/pack.pack")],
+      [wet_file_line(mode: wet_granted_file_mode, path: "pack/pack.pack")],
       [wet_line(mode: wet_granted_directory_mode, path: "info"), wet_line(mode: wet_granted_shared_directory_mode, path: "info")],
     ])
     // (c) The collision, read from the filesystem: the ref under a directory named branches is walked
@@ -399,7 +411,7 @@ test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is
         // refs/heads/branches, so BOTH would have stayed 0755 / 0644.
         wet_line(mode: wet_granted_directory_mode, path: "heads"),
         wet_line(mode: wet_granted_directory_mode, path: "heads/branches"),
-        wet_line(mode: wet_granted_file_mode, path: "heads/branches/x"),
+        wet_file_line(mode: wet_granted_file_mode, path: "heads/branches/x"),
       ])
       && clean
   }
