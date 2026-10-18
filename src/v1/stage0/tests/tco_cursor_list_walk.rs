@@ -106,7 +106,7 @@ fn unique_rlib(deps: &Path, name: &str) -> PathBuf {
     assert_eq!(
         matches.len(),
         1,
-        "ambiguous or absent {name} artifact: {matches:?}; remove the stale rlibs (cargo clean -p {name}) and rerun"
+        "ambiguous or absent {name} artifact: {matches:?}; remove the stale rlibs (cargo clean -p v1-compiler) and rerun"
     );
     matches[0].clone()
 }
