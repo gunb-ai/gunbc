@@ -1995,7 +1995,7 @@ fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr
 // WRITES AND DELETES THROUGH objects/pack (`git gc` runs `repack -d`). Without +t, one `mv
 // objects/pack objects/pack.x && ln -s <worker's dir> objects/pack` from inside a confined attempt
 // points that job at a directory the worker chose -- the owner writing and deleting where a worker
-// directed it, which voids the confinement against the job it names (bright-moth-475's finding,
+// directed it, which voids the confinement against the job it names (the host reading,
 // 2026-10-18; rename(2) checks the parent, not the entry, so a 0555 objects/pack renames freely
 // under a writable objects/). refs and logs get NO +t because they hold no entries the worker is
 // forbidden to remove -- every ref and reflog there is created by an attempt, and attempts all run
@@ -2316,7 +2316,7 @@ fn dashboard_ensure_git_shared_repository_posture(instance: HostDashboardInstanc
 }
 
 // WHAT ONE LINE OF THE WALK CAN BE: the subtree's OWN directory, a directory beneath it, or a file.
-// THREE CASES, not two booleans -- review 82172 on this PR. `is_directory` beside `is_top` admitted a
+// THREE CASES, not two booleans. `is_directory` beside `is_top` would admit a
 // fourth state (top, and not a directory) that the parser never built but nothing prevented anyone else
 // from building, and it left the fold re-deriving the three-way choice by hand. DESIGN 4b's fourth rung
 // is that the invalid state has NO CONSTRUCTOR; declaring the sum is what buys it, and the fold then
@@ -2327,7 +2327,7 @@ fn dashboard_ensure_git_shared_repository_posture(instance: HostDashboardInstanc
 // unreadable mode and left to notice.
 //
 // THE KIND COMES FROM find's `%y` LETTER, never from the mode -- see find_subtree_mode_readback_command
-// for why the execute bit cannot carry it (a setgid FILE sets it; review 82165). A letter outside the two
+// for why the execute bit cannot carry it (a setgid FILE sets it). A letter outside the two
 // the model names is read as NOTHING, because a symlink, socket or device inside a git object store is
 // not a granted entry, and guessing which of the two it was would be DESIGN 5's fabricated verdict. The
 // subtree's own directory is the line whose `%P` came back EMPTY, and only a directory can be the start
@@ -2446,7 +2446,7 @@ fn dashboard_git_subtree_readback_is_granted_under(top: FileMode, receipt: Strin
         ReadbackInteriorDirectory { mode: mode, path: _ } =>
           dashboard_git_worker_interior_directory_mode_is_accepted(mode: mode)
         // A FILE must be group-writable and not world-writable. This is the case the execute-bit
-        // classifier got wrong (review 82165): a file at 02775 now lands here, where its missing
+        // execute-bit classifier got wrong: a file at 02775 now lands here, where its missing
         // world-write leg refuses it, instead of being read as an interior directory.
         ReadbackEntryFile { mode: mode, path: _ } =>
           dashboard_git_worker_file_mode_is_granted(mode: mode)

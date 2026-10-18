@@ -9,7 +9,7 @@ import std.nat { Nat }
 // found. It does not own what `chmod g+w` means or what guard `chgrp` needs, and spelling those words
 // here put another tool's grammar in this module: an edit to extdeps.tools.chmod's mode rows would
 // change the standalone assert and leave the migration granting something else, and the two would
-// disagree silently because both look correct in isolation (review 81980, item 2). The words come from
+// disagree silently because both look correct in isolation (a readback that re-spells its key is the bug this closes). The words come from
 // the modules that own the programs; find composes them into actions.
 import extdeps.tools.chmod { chmod_mode_words, chmod_group_writable_mode, chmod_directory_setgid_mode, chmod_directory_sticky_mode }
 import extdeps.tools.chown { chgrp_words }
@@ -229,11 +229,11 @@ fn find_path_probe_command(path: String, kind: String, clause: List<String>) -> 
 // tests on one path, which never holds, so find pruned NOTHING and the migration chgrp'd and made
 // group-writable objects/pack and objects/info: a confined attempt with a writable
 // objects/info/alternates, which is how an object store is redirected at a foreign repository (found
-// by bright-moth-475's srv1 probe at ec03cef3ab2, whose readback showed "2775 pack / 664
+// on the lab, where the readback showed "2775 pack / 664
 // pack/pack.pack / 2775 info"). The fix that followed inferred "first term" from length(acc) == 1,
 // which works but rests on an UNSTATED fact -- that a term contributes words enough to change the
 // length -- and a check whose correctness depends on a fact nobody wrote down is the next bug waiting
-// (review 81959, item 2). The join now depends on nothing but its own rule.
+// (the alternative is two rules that agree by accident). The join now depends on nothing but its own rule.
 fn find_subtree_prune_words(target: String, pruned: List<String>) -> List<String> {
   if is_empty(xs: pruned) {
     []
@@ -310,7 +310,7 @@ fn find_subtree_exec_action(words: List<String>) -> List<String> {
 // so the two layers need exactly one join, here. Written as a fold rather than a literal of literals
 // so there is no version of this builder where a nested list can reach argv_command: adding a fourth
 // action means adding a line to `actions:`, and the flatten is not something each call site has to
-// remember (review 82028: the first cut of this builder passed List<List<String>> where find wanted
+// remember (the failure this guards against: passing List<List<String>> where find wanted
 // words, and both a lenient checker and a hand-read diff could miss it).
 fn flatten_actions(actions: List<List<String>>) -> List<String> {
   fold(actions, init: [] as List<String>, f: (acc, action) => concat(acc, action))
@@ -403,7 +403,7 @@ data find_printf_type_regular_file_letter: NonEmptyStr = "f"
 // setgid sets the owner-execute leg of the special digit, so a decision that infers "directory" from an
 // executable owner bit waves a setgid FILE through as a directory -- while this PR's own migration
 // comment says setgid belongs on directories alone, because setgid on a file is a privilege shape
-// (review 82165 caught the readback doing exactly that). find prints the type as its own fact, so the
+// (the execute bit is not a type: a setgid file sets it). find prints the type as its own fact, so the
 // decision reads the fact instead of guessing at it: DESIGN 4's "the richer source always exists". The
 // path stays LAST, so a path holding a space survives, and the mode is a whole field rather than a head.
 // The migration's readback is this command's OUTPUT, and the model's predicates decide whether it is a

@@ -203,7 +203,7 @@ data git_work_tree_flag_prefix: String = "--work-tree="
 
 // THE SAME TWO REFUSALS AS WORDS, for the one caller that owns its env program: the belt's commit runs
 // program "/usr/bin/env" and splices these after it, which is why this returns the assignments ALONE and
-// MUST NOT prepend "env" itself -- or the belt's argv becomes `/usr/bin/env env git ...` (review 81949,
+// MUST NOT prepend "env" itself -- or the belt's argv becomes `/usr/bin/env env git ...` (the runner's PATH lookup is what makes it so,
 // item 1, is what caught that). These are RENDERED from git_untrusted_config_env_bindings() by the one
 // renderer in extdeps.tools.env, so the word form and the binding form cannot disagree by construction
 // rather than by comment.
@@ -1018,7 +1018,7 @@ fn shape_git_add_argv() -> List<String> {
 // exec a vector with no separate program field; the builders hand the same word to argv_command's
 // program field. Both readings come off this row, so a host that needs /usr/local/bin/git changes one
 // line and every shape moves together -- including the readback below, whose two realizations are the
-// reason a second home for the word was worth minting (review 81980, item 1).
+// reason a second home for the word was worth minting (one home for the word, so a rename cannot miss a call site).
 data git_program_word: String = "git"
 
 fn git_program() -> ProgramIdentity = uncataloged_program(invocation: git_program_word as NonEmptyStr)
