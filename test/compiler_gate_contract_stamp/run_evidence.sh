@@ -1,14 +1,25 @@
 #!/usr/bin/env bash
 # Execute the contract-stamp guard against the real bytes, and fail if it does not refuse what it
 # is supposed to refuse.
-# SCAFFOLD - dissolve-on: the restoration_trigger of gunbc.rung_drop v1_required_lanes_withdrawn --
-# "on every landing revision, a binary built from an emission of v2 ... judges this population on the
-# required path with a discriminating red". That is THE trigger, cited by symbol so this carrier and the
-# drop retire together rather than separately (manager ruling on review 82166, 2026-10-18). When that
-# drop is retired, the modelled rows in compiler_gate_contract_stamp_evidence_cases become a `gunbc test`
-# row in gunbc.instrument_targets and run the guard through shell.Exec.RunArgvOutcome, and THIS FILE IS
-# DELETED. A runner-side pre-build reader of a committed workflow member (GitHub's own workflow_sha)
-# would retire the guard's read too, but it is not what dissolves the SPAWNING residual here.
+# SCAFFOLD - dissolve-on: TWO capabilities, named separately because they retire DIFFERENT halves of
+# this file. Naming only one is what review 82230 filed, and review 82166 filed its mirror image, so the
+# pair is on the record rather than one of them being traded away.
+#   (1) orch-emitted for the RESIDUAL SHELL: the orchestration-to-shell bash-emit capability, i.e. node
+#       kinds in v2.extdeps.languages.bash_build (rendered by v2.workflow.bash_emit / bash_emit_stmts)
+#       for WHAT THIS FILE DOES -- extract a committed workflow member, scan it structurally, drive
+#       argv, invoke awk. Everything this PR could express that way already IS expressed that way: the
+#       guard step and the evidence step are node trees, and that is why they carry dissolve-on lines in
+#       the emitted YAML. What has no node kind is the extraction and the awk program, and that is the
+#       residual sitting in this file. When those node kinds land, this file becomes an emitted step.
+#   (2) gunbc.rung_drop v1_required_lanes_withdrawn for the TEST PROCESS: its restoration_trigger --
+#       "on every landing revision, a binary built from an emission of v2 ... judges this population on
+#       the required path with a discriminating red" -- is the condition under which the modelled rows in
+#       compiler_gate_contract_stamp_evidence_cases become a `gunbc test` row in gunbc.instrument_targets
+#       and run the guard through shell.Exec.RunArgvOutcome. When THAT lands, this file is DELETED rather
+#       than emitted, because nothing needed executing by hand any more.
+# Cited by symbol so carrier and drop retire together rather than separately (manager ruling on review
+# 82166, 2026-10-18). A runner-side pre-build reader of a committed workflow member (GitHub's own
+# workflow_sha) would retire the guard's READ as well; it is not what dissolves the SPAWNING residual.
 #
 # HONEST STATE OF THE RESIDUAL, corrected after review 82166 (claude/opus[1m]) caught me claiming a
 # capability gap that does not exist. I wrote that "the substrate has no process-exec surface at all"
