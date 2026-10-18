@@ -540,13 +540,23 @@ type ReviewCredential
   = InstallationAccessToken
   | OAuthClassicWithRepoScope
 
+// The two labels the REST page uses for the token types this endpoint accepts, quoted rather than
+// paraphrased. Both are upstream facts; WHICH one gunbc permits is gunbc.auth's refusal, not a fact
+// about GitHub. A fold over ONE label (as this was) reported the second documented type as
+// undocumented — a false fact about the dependency, which is the one thing this file exists to avoid.
 data review_accepted_token_type: NonEmptyStr = "GitHub App installation access tokens"
+data review_oauth_classic_token_type: NonEmptyStr = "OAuth app tokens and personal access tokens (classic)"
 data review_oauth_classic_scope: NonEmptyStr = "repo"
 
-// The credential the model actually endorses, read from the upstream's own label rather than
-// restated: a caller that offers a token type other than this one is not making a supported call.
+data review_documented_token_types: List<NonEmptyStr> = [
+  review_accepted_token_type,
+  review_oauth_classic_token_type,
+]
+
+// Whether a token-type label is one GitHub documents for this endpoint. Membership in the quoted set,
+// so a third label ("a token kind GitHub has never heard of") is refused and the two real ones are not.
 fn review_credential_is_documented(token_type: NonEmptyStr) -> Bool {
-  token_type == review_accepted_token_type
+  review_documented_token_types |> any(t => t == token_type)
 }
 
 // GitHub's own worked example for this call, transcribed from the REST reference: the body it posts

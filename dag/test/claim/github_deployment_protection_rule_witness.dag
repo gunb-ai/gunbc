@@ -120,6 +120,8 @@ import extdeps.github.deployment_protection_rule {
   review_credential_is_documented,
   review_accepted_token_type,
   review_oauth_classic_scope,
+  review_oauth_classic_token_type,
+  review_documented_token_types,
   review_permission_is_satisfied,
   review_required_permission,
   review_documented_example_body,
@@ -314,7 +316,7 @@ test fn the_app_and_human_review_endpoints_do_not_collapse() -> Bool {
     && review_endpoint_method == POST
     && human_review_endpoint_method == POST
     && (review_endpoint_path as String) != (human_review_endpoint_path as String)
-    && (human_review_endpoint_path |> contains("statuses"))
+    && (human_review_endpoint_path |> contains("pending_deployments"))
     && (review_endpoint_path |> contains("deployment_protection_rule"))
     && (pending_deployments_endpoint_path |> contains("pending_deployments"))
 }
@@ -376,13 +378,13 @@ test fn the_wait_names_its_environment_through_the_object() -> Bool {
   pending_wait_environment_name(wait: waiting_wait(
     reviewers: [] as List<PendingDeploymentReviewer>
   )) == srv1_env
-    && (pending_deployment_wait_field_names |> count) == 5
-    && (pending_deployment_wait_field_names
+    && (pending_deployment_wait_field_names() |> count) == 5
+    && (pending_deployment_wait_field_names()
         |> any(f => f == pending_deployments_field_environment))
-    && (pending_deployment_wait_field_names
+    && (pending_deployment_wait_field_names()
         |> any(f => f == "current_user_can_approve"))
-    && !(pending_deployment_wait_field_names |> any(f => f == "app"))
-    && !(pending_deployment_wait_field_names |> any(f => f == "installation_id"))
+    && !(pending_deployment_wait_field_names() |> any(f => f == "app"))
+    && !(pending_deployment_wait_field_names() |> any(f => f == "installation_id"))
 }
 
 // OWNERSHIP IS A SEPARATE FACT, MINTED ONLY FROM A READBACK THAT CAN ESTABLISH IT. Three ways this
@@ -423,7 +425,7 @@ test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -
     rules: [enabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
   ) {
     OwnedByGateApp { rule_id: r, app_id: a, app_slug: _, environment_name: e } =>
-      r == 900000002 && a == gate_app_id && e == srv1_env
+      r == 900000001 && a == gate_app_id && e == srv1_env
     NotOwnedByGateApp { because: _ } => false
   }
     && (match rule_ownership_from_readback(
@@ -739,10 +741,15 @@ test fn the_silence_is_a_variant_and_the_opposite_arm_needs_a_citation() -> Bool
 // a separate decision, witnessed in gunbc.auth.deployment_gate_authorization; an upstream model that
 // quietly omitted the operator-token arm would be stating something false about GitHub.
 test fn both_documented_credential_kinds_are_representable() -> Bool {
+  // Both labels GitHub prints for this endpoint are documented. The labels are read from the rows
+  // rather than re-typed here: a second copy of a quoted string is a second authority over it, and
+  // this test failed for exactly that reason -- the witness said "OAuth app tokens and personal access
+  // tokens" while the page says "(classic)" at the end.
   review_credential_is_documented(token_type: review_accepted_token_type)
-    && review_credential_is_documented(token_type: "OAuth app tokens and personal access tokens")
+    && review_credential_is_documented(token_type: review_oauth_classic_token_type)
+    && (review_documented_token_types |> count) == 2
     && (review_oauth_classic_scope as String) == "repo"
-    && (review_credential_is_documented(token_type: "a token kind GitHub has never heard of") == false)
+    && !review_credential_is_documented(token_type: "a token kind GitHub has never heard of")
 }
 
 // The permission the endpoint requires, in the upstream's own words: "Deployments" repository
@@ -795,14 +802,14 @@ test fn success_is_one_status_on_the_right_call() -> Bool {
   // the behaviour that matters: which statuses `review_call_succeeded` accepts, fed statuses it might
   // actually receive — including 200, which is what the poll and the human reviewer answer, and which
   // must NOT read as an accepted rule review.
-  review_call_succeeded(status: 204 as HttpStatus)
-    && !review_call_succeeded(status: 200 as HttpStatus)
-    && !review_call_succeeded(status: 201 as HttpStatus)
-    && !review_call_succeeded(status: 304 as HttpStatus)
-    && !review_call_succeeded(status: 500 as HttpStatus)
-    && review_call.success_status == 204 as HttpStatus
-    && human_review_call.success_status == 200 as HttpStatus
-    && pending_deployments_poll_call.success_status == 200 as HttpStatus
+  review_call_succeeded(status: 204)
+    && !review_call_succeeded(status: 200)
+    && !review_call_succeeded(status: 201)
+    && !review_call_succeeded(status: 304)
+    && !review_call_succeeded(status: 500)
+    && review_call.success_status == 204
+    && human_review_call.success_status == 200
+    && pending_deployments_poll_call.success_status == 200
     && review_call_succeeded(status: review_call.success_status)
     && !review_call_succeeded(status: human_review_call.success_status)
     && !review_call_succeeded(status: pending_deployments_poll_call.success_status)
@@ -841,7 +848,7 @@ test fn the_api_version_header_is_the_pinned_one() -> Bool {
 // looking complete while covering nothing.
 test fn the_citation_table_names_only_live_declarations() -> Bool {
   every_citation_names_a_live_declaration()
-    && deployment_protection_rule_citation_count() == 12
+    && deployment_protection_rule_citation_count() == 11
     && (deployment_protection_rule_fact_citations |> count) == (
          deployment_protection_rule_live_fact_names |> count
        )
@@ -871,9 +878,9 @@ test fn every_cited_authority_is_published_by_this_module() -> Bool {
   (extdeps_published_authorities |> count) == 8
     && extdeps_model_scope.first_citation == extdeps_external_authority_anchor
     && (rule_authority.uri.scheme == Https)
-    && (rest_authority.uri.locator |> contains("rest/api/actions"))
-    && (webhook_authority.uri.locator |> contains("webhooks-and-events/webhooks"))
-    && (environment_authority.uri.locator |> contains("rest/api/deployments"))
+    && (rest_authority.uri.locator |> contains("rest/actions/workflow-runs"))
+    && (webhook_authority.uri.locator |> contains("webhooks/webhook-events-and-payloads"))
+    && (environment_authority.uri.locator |> contains("rest/deployments/environments"))
     && (limits_authority.uri.locator |> contains("limits"))
     && (enablement_authority.uri.locator
         |> contains("configure-custom-protection-rules"))

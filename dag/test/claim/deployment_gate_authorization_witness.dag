@@ -99,6 +99,9 @@ import gunbc.auth.deployment_gate_authorization {
   observed_review_from_readback,
   RemovalAdmitted,
   RemovalRefused,
+  NoRejectingReview,
+  RejectingArmWasNotARejection,
+  BothArmsOneDispatch,
 }
 
 data gated_env: NonEmptyStr = srv1_production_environment_name
@@ -578,14 +581,36 @@ test fn an_admission_comes_only_from_the_mint_and_the_mint_refuses_shortcuts() -
           RemovalRefused { missing: _ } => true
           RemovalAdmitted { evidence: _ } => false
         })
-    // One arm missing.
+    // One arm missing. The reason is matched BY NAME: an earlier version of this test asked the
+    // reason to contain the word "rejecting", which passed for a sentence and broke when the sentence
+    // was rephrased -- the reason is a closed sum now, so a fold that mixed two blockers up is caught
+    // and a rewording is not.
     && (match admit_reviewer_removal(approved: good_approve, rejected: none) {
-          RemovalRefused { missing: m } => (m as String).contains("rejecting")
+          RemovalRefused { missing: NoRejectingReview } => true
+          RemovalRefused { missing: _ } => false
           RemovalAdmitted { evidence: _ } => false
         })
-    // BOTH ARMS ON ONE DISPATCH: the shortcut that a single lucky run would allow.
+    // AN ARM THAT IS NOT WHAT IT CLAIMS. Both arms have to be what they say: an "approval" the
+    // readback never corroborated, or a "rejection" that is really an approval, mints nothing.
     && (match admit_reviewer_removal(approved: good_approve, rejected: good_approve) {
-          RemovalRefused { missing: m } => (m as String).contains("same dispatch")
+          RemovalRefused { missing: RejectingArmWasNotARejection } => true
+          RemovalRefused { missing: _ } => false
+          RemovalAdmitted { evidence: _ } => false
+        })
+    // BOTH ARMS ON ONE DISPATCH: the shortcut that a single lucky run would allow. Two VALID arms --
+    // an approval and a rejection -- read off the SAME run id, which is how one fortunate dispatch
+    // would be dressed up as two trials.
+    && (match admit_reviewer_removal(
+          approved: good_approve,
+          rejected: observed_review_from_readback(
+            run: run_record(run_id: 35447067113, settled: true, failed: true),
+            environment_still_waiting: false,
+            claimed: Rejected,
+            environment_name: gated_env,
+          ),
+        ) {
+          RemovalRefused { missing: BothArmsOneDispatch } => true
+          RemovalRefused { missing: _ } => false
           RemovalAdmitted { evidence: _ } => false
         })
     // An approve claim the readback never corroborated mints nothing, so the pair cannot be built.

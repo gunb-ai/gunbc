@@ -98,6 +98,7 @@ import gunbc.auth.approval_capability {
   ProposeDeny,
 }
 import gunbc.auth.authorization_pattern_selection {
+  OperatorApprovedCapability,
   AuthorizationPattern,
   PatternSelected,
   PrivilegedEffect,
@@ -149,8 +150,11 @@ fn for_answer_pending_gate() -> AuthorizationPattern? {
 // The capability-mediated pattern is the only one under which a review may be posted: a pattern that is
 // not a redeemed human decision means nothing was tapped, and nothing tapped means nothing to post.
 fn gate_pattern_redeems_a_human_decision() -> Bool {
+  // THE PATTERN ITSELF, not a label compared to a string this file wrote. Matching on a paraphrase of
+  // pattern_label made this test red for a wording change in the selection module and green for the
+  // wrong pattern; the arm is the fact, the label is its rendering.
   match for_answer_pending_gate() {
-    Present { value: p } => (pattern_label(p: p) as String) == "operator-approved-capability"
+    Present { value: p } => p == OperatorApprovedCapability
     Absent => false
   }
 }
