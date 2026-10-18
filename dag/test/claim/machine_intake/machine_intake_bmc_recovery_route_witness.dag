@@ -5,7 +5,7 @@ import std.types {
 }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.bmc.ipmi {
-  IpmiCompletionCode, ipmi_completion_code_invalid_data_field, ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_eq,
+  IpmiCompletionCode, ipmi_completion_code_invalid_data_field,
 }
 // THE RECEIPT SHELF, NOT THE VENDOR MODULE (review 81926). The measurements -- the capture digest, the
 // Get Device ID reading, what the firmware answered -- are read from the observing layer's own shelf,
@@ -113,14 +113,17 @@ test fn a_completion_code_beside_the_measured_one_is_not_the_refusal() -> Bool {
   // the code in extdeps.bmc.ipmi as the spec's description of it and is not carried on the row at all.)
   refuses_that_code(policy: FirmwareRefusesPublishedPassword {
     firmware: firmware,
-    completion_code: ipmi_completion_code_request_data_length_invalid,
+    completion_code: IpmiCompletionCode { code: 199 },
     capture: asrock_altrad8ud_inband_recovery_capture,
     measured_under: asrock_altrad8ud_1l2t_inband_device_identity,
   }) == false
-    // and the codes stay distinct as numbers -- 204 is the rejected field, 199 the length complaint
-    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 204 })
-    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 199 }) == false
-    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 203 }) == false
+    // and the codes stay distinct as numbers -- 204 is the rejected field, 199 the length complaint.
+    // Compared with == : a named equality predicate over two of these would restate == with the byte
+    // hidden behind its name and would exist for no caller but this test, which is what section 3c
+    // counts as dangling.
+    && (ipmi_completion_code_invalid_data_field == IpmiCompletionCode { code: 204 })
+    && (ipmi_completion_code_invalid_data_field == IpmiCompletionCode { code: 199 }) == false
+    && (ipmi_completion_code_invalid_data_field == IpmiCompletionCode { code: 203 }) == false
 }
 
 // AN ORACLE WITH SOMETHING TO FAIL AGAINST. Comparing a data row's text against a literal copy of itself
@@ -133,21 +136,21 @@ test fn a_completion_code_beside_the_measured_one_is_not_the_refusal() -> Bool {
 // coming from the notation and not from the constant under test. A row edited to any other byte -- 203, or
 // 199 for both -- fails here. That is precisely the substitution that would spend a destructive ResetAll on
 // a unit whose firmware would have accepted the write.
-test fn the_two_completion_codes_are_the_numbers_the_specification_publishes() -> Bool {
+test fn the_measured_completion_code_is_the_number_the_specification_publishes() -> Bool {
   (ipmi_completion_code_invalid_data_field.code as Int) == 12 * 16 + 12
-    && (ipmi_completion_code_request_data_length_invalid.code as Int) == 12 * 16 + 7
-    // distinct bytes, and not merely by decree: each equals its own derived hex value
-    && (ipmi_completion_code_invalid_data_field.code as Int)
-      != (ipmi_completion_code_request_data_length_invalid.code as Int)
+    // and it is NOT the length complaint a reader confuses it with, whose byte derives the same way:
+    // 0xC7 is 12*16+7. Written as a value here rather than as a named row, because nothing in the
+    // product reads 0xC7 -- the one refusal this repository measured was 0xCC.
+    && (ipmi_completion_code_invalid_data_field.code as Int) != (12 * 16 + 7)
 }
 
 // THE ROW'S OWN CODE, AS A DECISION AND NOT A SHAPE. A refusal arm that points at 0xC7 is a different
 // fact, not "the refusal with a stale label": the identity is the typed byte alone (the deleted
-// predicate had let the English vouch for the code). Compared with ipmi_completion_code_eq against the
-// constant, which keeps the byte being demanded in plain sight.
+// predicate had let the English vouch for the code). Compared with == against the constant, which keeps
+// the byte being demanded in plain sight.
 fn refuses_that_code(policy: PublishedFactoryPasswordWritePolicy) -> Bool {
   match policy_refusal_completion_code(policy: policy) {
-    Present { value: c } => ipmi_completion_code_eq(a: c, b: ipmi_completion_code_invalid_data_field)
+    Present { value: c } => c == ipmi_completion_code_invalid_data_field
     Absent => false
   }
 }
@@ -159,7 +162,7 @@ test fn the_measured_row_is_keyed_by_the_catalog_version_and_not_by_a_rerollable
         && f.version.major == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.major
         && f.version.minor == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.minor
         && f.version.patch == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.patch
-        && ipmi_completion_code_eq(a: c, b: ipmi_completion_code_invalid_data_field)
+        && (c == ipmi_completion_code_invalid_data_field)
         && cap == asrock_altrad8ud_inband_recovery_capture
     NotMeasured { firmware: _ } => false
   }

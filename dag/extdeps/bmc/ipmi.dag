@@ -492,24 +492,27 @@ type IpmiCompletionCode {
 // was never written -- §3c's "a row no fold reads", with §4c's warning that an annotation is never
 // evidence the claim beside it holds. Both rows are gone rather than given invented consumers. A text row
 // is minted when a caller needs it, naming that caller in the same change, and not before. What is NOT
-// relaxed: the code arrives as a typed `IpmiCompletionCode`, so the BYTE is the fact an operator acts on.
-// Comparison goes through ipmi_completion_code_eq alone, with the named constant in plain sight; a
-// per-code equality wrapper would say the same thing with the constant hidden behind its name and would
-// exist for no caller but a test.
+// relaxed: the code arrives as a typed `IpmiCompletionCode`, so the BYTE is the fact an operator acts on,
+// and two of them are compared with == like any other value type -- a named equality predicate would
+// restate == with the constant hidden behind its name and would exist for no caller but a test.
 //
 // 0xCC -- "Invalid data field in Request": a data field in the request was not valid for this
 // controller's policy or state. Distinct from 0xC7 (length) and 0xCC is not an authentication
 // failure: the command was accepted, understood, and refused on policy.
 data ipmi_completion_code_invalid_data_field: IpmiCompletionCode = IpmiCompletionCode { code: 204 }
 
-// 0xC7 -- "Request data length invalid". Carried here because it is the code a reader confuses with
-// 0xCC when a password-related write is refused: length versus content, which is the difference
-// between "the form was wrong" and "the value is not acceptable to this firmware".
-data ipmi_completion_code_request_data_length_invalid: IpmiCompletionCode = IpmiCompletionCode { code: 199 }
-
-fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool {
-  a.code == b.code
-}
+// 0xC7 IS NOT DECLARED HERE, AND 0xCC IS. Only the code a write was actually refused with gets a name:
+// 0xCC is read by the receipts row that records the measured refusal. 0xC7 ("Request data length
+// invalid" -- the request's LENGTH, not the firmware's policy on the value) is worth knowing because a
+// reader confuses the two, and mistaking the length complaint for the policy refusal would spend a
+// destructive ResetAll on a unit whose firmware would have accepted the write. That is a reason for the
+// sentence to exist, not for a declaration to: it has no reader outside a test, and §3c counts a witness
+// asserting existence as dangling, not consuming. The byte is 0xC7 = 199; the sentence above is the fact
+// worth keeping.
+//
+// NO EQUALITY WRAPPER EITHER. Two IpmiCompletionCode values are compared with == like any other value
+// type; a named predicate over them would restate == with the constant hidden behind its name and would
+// exist for no caller but a test.
 
 // THE IPMI COMMAND-LINE INTERFACE, AS A CLOSED PAIR OF SUMS ────────────────────────────────────
 //
