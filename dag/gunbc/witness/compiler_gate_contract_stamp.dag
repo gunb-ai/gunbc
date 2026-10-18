@@ -440,7 +440,7 @@ fn compiler_gate_contract_stamp_guard_script() -> String {
   // witness and the shape asserted here.
   join(
     [
-      "STAMP_RUNNING=\"\${{ env.",
+      "STAMP_RUNNING=\"${{ env.",
       compiler_gate_contract_stamp_env_key,
       " }}\"\n",
       "if [ -z \"$STAMP_RUNNING\" ]; then\n",

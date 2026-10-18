@@ -174,7 +174,7 @@ test fn a_pr_changing_the_contract_itself_proceeds_holds() -> Bool {
 test fn an_unreadable_stamp_member_refuses_holds() -> Bool {
   let with_expression = compiler_gate_contract_stamp_read_from(
     src: workflow_with_env(
-      extra: join(["  ", compiler_gate_contract_stamp_env_key, ": \${{ github.sha }}\n"], ""),
+      extra: join(["  ", compiler_gate_contract_stamp_env_key, ": ${{ github.sha }}\n"], ""),
       after_env: after_env_marker()
     )
   )
@@ -357,7 +357,7 @@ test fn the_stamp_moves_when_an_invoked_field_is_added_holds() -> Bool {
   )
     && for_all(
       compiler_gate_invocation_contract_canonical_rows(),
-      row => !string_contains(s: row, pattern: "\${{")
+      row => !string_contains(s: row, pattern: "${{")
     )
 }
 
