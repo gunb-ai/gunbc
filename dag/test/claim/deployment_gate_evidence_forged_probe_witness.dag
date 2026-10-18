@@ -1,0 +1,121 @@
+module test.claim.deployment_gate_evidence_forged_probe_witness
+
+import std.types { String, Bool, Int, List }
+import extdeps.filesystem.filesystem_io
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FORGED GATE EVIDENCE, ENROLLED AS EXECUTED REDS (§4b meta-obligation 1: the reported rung
+// equals the rung established by EXECUTED evidence, and rung inflation is worse than sitting low).
+//
+// gunbc.auth.deployment_gate_authorization claims that "remove the required reviewer from
+// srv1-production" cannot be performed without both arms of the gate having been witnessed on real
+// dispatches. Sealing DeploymentGateTrialEvidence and ObservedRuleReview is the difference between
+// that claim being STRUCTURAL and being a Bool a fixture sets by writing `true`. A seal asserted in a
+// comment is not evidence: what enforces it is the compiler refusing a literal, and what makes it
+// enrollable is a probe module that spells the literal and a witness that reads the refusal class at
+// the named subject. That is what this file does, the same way
+// test.claim.census_app_acquisition_refusal_probe_witness does it for the App acquisition receipt.
+//
+// WHY A CONTROL, AND WHAT IT CONTROLS. The control source imports the same three names and FORGES
+// nothing; it reads zero rows at both keys. Paired with the probe, the only difference along the axis
+// under test is the presence of the literals -- so a refusal can be attributed to the forgery rather
+// than to naming a sealed type. A nonzero exit code or a total blocking count is deliberately NOT
+// asserted: a fixture that imports production modules never reads zero blocking rows, so a total would
+// be a check with no red in it.
+
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_source(name: String) -> String {
+  filesystem_read(path: probe_dir + name + ".dag").content
+}
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_count_for_class_and_subject(
+  c: CompileDiagnosticCensus,
+  wanted: String,
+  subject: String
+) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r =>
+             (r.diagnostic_class as String) == wanted
+               && r.subject_name == subject
+               && r.blocking
+           )
+        |> fold(init: 0, f: (acc: Int, r: CompileDiagnosticCensusRow) -> Int { acc + r.count })
+  }
+}
+
+// THE CONTROL: names the sealed types and the mint, builds nothing. If THIS reads a violation, the
+// probe's violations say nothing about forgery -- they would be about importing the module at all.
+data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { ObservedRuleReview, DeploymentGateTrialEvidence, admit_reviewer_removal }\nfn label() -> String { \"control names the sealed types and forges nothing\" }\n"
+
+test fn a_source_that_only_names_the_gate_types_forges_no_evidence() -> Bool {
+  let control = census_of(source: harness_control_source)
+  blocking_count_for_class_and_subject(
+    c: control,
+    wanted: "SoleConstructorViolation",
+    subject: "DeploymentGateTrialEvidence",
+  ) == 0
+    && blocking_count_for_class_and_subject(
+         c: control,
+         wanted: "SoleConstructorViolation",
+         subject: "ObservedRuleReview",
+       ) == 0
+}
+
+// (a) THE RECEIPT HAS NO CONSTRUCTOR OUTSIDE THE MODULE. A hand-written trial pair over two convenient
+// run ids refuses at the record.
+test fn a_forged_trial_pair_cannot_be_authored_outside_the_module() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "deployment_gate_evidence_forged_probe")),
+    wanted: "SoleConstructorViolation",
+    subject: "DeploymentGateTrialEvidence",
+  ) >= 1
+}
+
+// (a') THE READBACK HAS NO CONSTRUCTOR EITHER, and this is the one that matters more. The trial pair is
+// downstream of the readbacks; if ObservedRuleReview were writable, the mint would faithfully admit
+// evidence nobody read, and every check inside the mint would be a check over invented inputs.
+test fn a_forged_readback_cannot_be_authored_outside_the_module() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "deployment_gate_evidence_forged_probe")),
+    wanted: "SoleConstructorViolation",
+    subject: "ObservedRuleReview",
+  ) >= 1
+}
+
+// THE SHAPE OF THE CLAIM, stated so a reader can see what is NOT claimed here. The mint itself is
+// reachable -- it is exported and takes two Optionals -- so this feature is rung 4 on CONSTRUCTION and
+// a CHECKED MINT on coherence, which is what admit_reviewer_removal's own comment says. What the two
+// rows above establish is that no value of either type crosses this boundary unless
+// observed_review_from_readback returned it, and that fold's reds (in
+// test.claim.deployment_gate_operator_steps_witness) are what tie a returned value to GitHub's record.
+test fn the_seal_is_on_the_carriers_and_not_on_the_mint() -> Bool {
+  let probe = census_of(source: probe_source(name: "deployment_gate_evidence_forged_probe"))
+  blocking_count_for_class_and_subject(
+    c: probe,
+    wanted: "SoleConstructorViolation",
+    subject: "DeploymentGateTrialEvidence",
+  ) >= 1
+    && blocking_count_for_class_and_subject(
+         c: probe,
+         wanted: "SoleConstructorViolation",
+         subject: "ObservedRuleReview",
+       ) >= 1
+    && blocking_count_for_class_and_subject(
+         c: census_of(source: harness_control_source),
+         wanted: "SoleConstructorViolation",
+         subject: "DeploymentGateTrialEvidence",
+       ) == 0
+}

@@ -67,6 +67,9 @@ import gunbc.auth.deployment_gate_authorization {
   ReviewerRemovalAdmission,
   RemovalAdmitted,
   RemovalRefused,
+  NoRejectingReview,
+  BothArmsOneDispatch,
+  EvidenceFromAnotherEnvironment,
   admit_reviewer_removal,
   reviewer_removal_is_admitted,
   reviewer_removal_is_performable,
@@ -232,7 +235,8 @@ test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refuse
   reviewer_removal_is_admitted(admission: admitted_pair())
     // both arms the same observed review => one dispatch, which cannot show a refusal
     && (match admit_reviewer_removal(approved: approve, rejected: approve) {
-          RemovalRefused { missing: m } => (m as String).contains("same dispatch")
+          RemovalRefused { missing: BothArmsOneDispatch } => true
+          RemovalRefused { missing: _ } => false
           RemovalAdmitted { evidence: _ } => false
         })
     // a rejection read off an environment that is not the gate
@@ -245,12 +249,13 @@ test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refuse
             environment_name: "gcp-iam-converge"
           ),
         ) {
-          RemovalRefused { missing: m } => (m as String).contains("not the gate")
+          RemovalRefused { missing: EvidenceFromAnotherEnvironment } => true
+          RemovalRefused { missing: _ } => false
           RemovalAdmitted { evidence: _ } => false
         })
     // a refusal is a refusal: the act is not performable with one
     && !reviewer_removal_is_admitted(
-         admission: RemovalRefused { missing: "no rejecting review was witnessed" }
+         admission: RemovalRefused { missing: NoRejectingReview }
        )
     && (match admitted_pair() {
           RemovalAdmitted { evidence: e } =>
