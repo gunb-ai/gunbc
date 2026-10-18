@@ -261,6 +261,12 @@ for t in fold_replaces_a_binding_that_is_the_generic_declarations_own_form \
   esac
 done
 
+echo "=== BEGIN-TAR ==="
+( cd $LOGS && tar -c suite_${MODE}.txt tb_${MODE}.log rr_${MODE}_1.log rr_${MODE}_2.log src_04_infer.dag my_04_types.dag 2>/dev/null | base64 -w0 )
+echo
+echo "=== END-TAR ==="
+echo "PARTIAL SHIP DONE (suite + regen survive a timeout in the self-host below)"
+
 # THE BINARY MUST BE BUILT BEFORE IT IS RUN. The first run of this script went straight to
 # `target/release/gunbc test` and got rc=127 'No such file or directory': cargo test does not produce
 # that binary, and a 127 with an empty census is the same 'looks like data, is nothing' trap as an empty
