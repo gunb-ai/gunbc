@@ -146,7 +146,10 @@ if [ -s $LOGS/stubcheck.py ]; then
 fi
 echo "injected: v4=$(grep -ac rebind_probe_print9 src/v1/stage0/src/v1_compiler_infer.rs) predOwn=$(grep -ac 'fn rebind9_names' src/v1/stage0/src/v1_compiler_infer.rs) s1b=$(grep -ac s1b_count_mint src/v1/stage0/src/v1_compiler_infer_types.rs) enterExit=$(grep -ac 's1b_enter();' src/v1/stage0/src/v1_compiler_infer.rs)"
 [ "$(grep -ac rebind_probe_print9 src/v1/stage0/src/v1_compiler_infer.rs)" -ge 2 ] || { echo "PROBE NOT IN THE EMITTED SEED -- a suite/probe run here would be meaningless"; exit 12; }
-[ "$(grep -ac 's1b_enter();' src/v1/stage0/src/v1_compiler_infer.rs)" -ge 1 ] || { echo "S1B BRACKET NOT INJECTED"; exit 12; }
+# (the S1B bracket guard that stood here is REMOVED: probe v9 dropped the s1b counter on purpose -- it
+# measured 0 minting events on all 254 rows and S1b stays parked per stern-bat-401. The guard was a v10
+# leftover demanding instrumentation this probe deliberately does not carry, and it killed a 20-minute
+# run after everything that mattered had already succeeded.)
 
 echo "########## SELF-HOST WITH THE PROBE ##########"
 cargo build --release -p v1-compiler --bin gunbc 2>&1 | grep -E "^error|error\[|warning: unused" | head -12
