@@ -1659,10 +1659,13 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
 // does not declare is a type variable or host spelling at this position and stays at the value
 // layer; the undeclared-use refusal belongs to the value-position readers.
 fn render_rust_shared_type_if_needed(n: Node, rendered: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> String {
-  // A container spelling (List<T>) renders the host container, not the alias name, so the alias's own
-  // right-hand-side layer is not in the spelling and the declaration hop below answers it.
-  let alias_name_spelled = !is_container_type(name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n)) && type_expr_names_user_alias(type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices)
-  let answer = if alias_name_spelled {
+  // A container spelling (List<T>) renders the host container, not an alias name, so the declaration's
+  // own SharedLayerAnswer is read as resolved: no alias hop (that hop judges a reference spelled AS the
+  // alias name) and no alias-to-non-container verdict (run 66: acc: Vec<i64> beside an Rc init).
+  let spelled = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+  let answer = if is_container_type(name: spelled) {
+    shared_layer_of_resolution(shared_types: shared_types, leaf: spelled, resolution: resolve_type_decl_routed(index: type_decl_items, type_expr: n, source_indices: source_indices).resolution, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+  } else if type_expr_names_user_alias(type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices) {
     SharedLayerAtValue
   } else {
     shared_layer_of_type_expr(shared_types: shared_types, type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices, generic_param_names: generic_param_names)
