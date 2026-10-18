@@ -141,6 +141,7 @@ import gunbc.runner.runner_host_file_converge {
   SlotFabricMemberNotARunner,
   SlotFabricMemberRunsARunner,
   classify_root_only_paths,
+  classify_runner_host_find_result,
   RunnerHostFileObservation,
   HostFileLeaveInPlace,
   HostFileWrite,
@@ -1593,7 +1594,7 @@ test fn an_identical_installed_sudoers_file_is_adopted_untouched() -> Bool {
 
 // REPLACE: a differing file is written (renamed over), and the decision is printed as `write`.
 test fn a_differing_installed_sudoers_file_is_replaced_and_the_decision_prints() -> Bool {
-  let a = action_of(content: HostFileDiffers, file_metadata: PathsNotApplicable, ancestors: PathsRootOnly)
+  let a = action_of(content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly)
   is_write(a: a) && runner_host_file_action_wire(action: a) == "write"
     && runner_host_file_action_wire(action: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly)) == "leave-in-place"
 }
@@ -1616,7 +1617,7 @@ test fn the_file_leg_asks_for_the_exact_desired_mode_not_merely_no_other_writer(
 // RED: identical bytes, root-owned, mode 0644 against a 0440 desire. find (exact -perm 440) does not
 // print the path, the classifier reads NotRootOnly, and the action is a repair WRITE -- never an adoption.
 test fn identical_bytes_at_the_wrong_mode_do_not_adopt() -> Bool {
-  match classify_root_only_paths(requested: ["/etc/sudoers.d/gunbc-ghrunner"], exit_code: 0, stdout: "", stderr: "") {
+  match classify_runner_host_find_result(requested: ["/etc/sudoers.d/gunbc-ghrunner"], exit_code: 0, stdout: "", stderr: "") {
     PathsNotRootOnly { paths: ps, detail: d } =>
       ps == ["/etc/sudoers.d/gunbc-ghrunner"]
         && is_write(a: action_of(content: HostFileIdentical, file_metadata: PathsNotRootOnly { paths: ps, detail: d }, ancestors: PathsRootOnly))
@@ -1628,7 +1629,7 @@ test fn identical_bytes_at_the_wrong_mode_do_not_adopt() -> Bool {
 
 // Positive: identical bytes at exactly 0440 (find prints the path) adopt.
 test fn identical_bytes_at_the_desired_mode_adopt() -> Bool {
-  match classify_root_only_paths(requested: ["/etc/sudoers.d/gunbc-ghrunner"], exit_code: 0, stdout: "/etc/sudoers.d/gunbc-ghrunner\n", stderr: "") {
+  match classify_runner_host_find_result(requested: ["/etc/sudoers.d/gunbc-ghrunner"], exit_code: 0, stdout: "/etc/sudoers.d/gunbc-ghrunner\n", stderr: "") {
     PathsRootOnly => is_leave(a: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
     PathsNotRootOnly { paths: _, detail: _ } => false
     PathsUnobservable { reason: _ } => false
@@ -1645,7 +1646,7 @@ test fn an_unavailable_mode_observation_refuses_rather_than_adopts_or_writes() -
 // RED: after a write whose bytes read back identical, a wrong or unreadable mode refuses at the
 // metadata readback; only a root-only-at-mode reading converges.
 test fn a_wrong_or_unreadable_mode_after_the_write_refuses_at_the_metadata_readback() -> Bool {
-  let refused = readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 0, stdout: "", stderr: ""))
+  let refused = readback_refused(m: classify_runner_host_find_result(requested: ["/p"], exit_code: 0, stdout: "", stderr: ""))
   refused
     && readback_refused(m: PathsUnobservable { reason: "x" })
     && !readback_refused(m: PathsRootOnly)
@@ -1656,4 +1657,40 @@ fn readback_refused(m: RunnerHostPathMetadata) -> Bool {
     Present { value: _ } => true
     Absent => false
   }
+}
+
+// ── A find that did not succeed observed nothing (review: exit=1 + empty stdout read as a mismatch) ──
+// Controls run the PROCESS RESULT through the result classifier and then the action fold, never a
+// supplied PathsUnobservable.
+
+fn result_action(content: RunnerHostFileStanding, exit_code: Int, stdout: String) -> RunnerHostFileAction {
+  action_of(
+    content: content,
+    file_metadata: classify_runner_host_find_result(requested: ["/p"], exit_code: exit_code, stdout: stdout, stderr: "find: '/p': Permission denied"),
+    ancestors: PathsRootOnly,
+  )
+}
+
+// RED: a nonzero exit refuses with an empty stdout (was: a repairable mismatch, so a write) and with a
+// stdout that names the path (was: a match, so an adoption), for identical AND differing content.
+test fn a_failed_find_neither_adopts_nor_repairs_nor_writes() -> Bool {
+  is_refused(a: result_action(content: HostFileIdentical, exit_code: 1, stdout: ""))
+    && is_refused(a: result_action(content: HostFileIdentical, exit_code: 1, stdout: "/p\n"))
+    && is_refused(a: result_action(content: HostFileDiffers, exit_code: 1, stdout: ""))
+    && is_refused(a: result_action(content: HostFileDiffers, exit_code: 255, stdout: "/p\n"))
+}
+
+// A successful read with a metadata mismatch takes the repair path; a successful read with matching
+// metadata and identical bytes adopts; a genuinely absent file stays the creation case.
+test fn only_a_successful_find_establishes_a_mismatch_or_a_match() -> Bool {
+  is_write(a: result_action(content: HostFileIdentical, exit_code: 0, stdout: ""))
+    && is_leave(a: result_action(content: HostFileIdentical, exit_code: 0, stdout: "/p\n"))
+    && is_write(a: action_of(content: HostFileAbsent, file_metadata: PathsNotApplicable, ancestors: PathsRootOnly))
+}
+
+// RED: the post-write readback of a failed find refuses; a successful matching one does not.
+test fn a_failed_post_write_metadata_read_refuses_at_the_metadata_readback() -> Bool {
+  readback_refused(m: classify_runner_host_find_result(requested: ["/p"], exit_code: 1, stdout: "/p\n", stderr: "boom"))
+    && readback_refused(m: classify_runner_host_find_result(requested: ["/p"], exit_code: 1, stdout: "", stderr: "boom"))
+    && !readback_refused(m: classify_runner_host_find_result(requested: ["/p"], exit_code: 0, stdout: "/p\n", stderr: ""))
 }
