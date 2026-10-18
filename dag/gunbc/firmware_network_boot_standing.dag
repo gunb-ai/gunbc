@@ -22,7 +22,7 @@ module gunbc.firmware_network_boot_standing
 // name what it covers, and no match in this module is ever on it.
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
-import std.algebra { length, fold_list, list_append, contains }
+import std.algebra { length, fold_list, list_append, contains, Cons, Empty }
 import std.optional { Optional, Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
 import extdeps.uri { uri_https }
@@ -1335,37 +1335,36 @@ type NetworkEntryStanding
   | NetworkEntriesPresent { head: RedfishBootSourceOverrideTarget, additional_count: Int }
 
 fn network_entries_in(entries: List<BootEntry>) -> NetworkEntryStanding {
-  match fold_list(
+  // ONE WALK collects the targets in the firmware's own order; ONE MATCH on that list produces the
+  // standing. The accumulator is a plain List rather than an Optional-of-record on purpose: this
+  // compiler decides a generic parameter's identity by its SPELLING, and an Optional-of-record
+  // accumulator collides with List's own element child -- documented in
+  // gunbc.recurring_failure_mode.generic_identity_decided_by_spelling, which records it as a known
+  // silent-failure shape. It resolves the accumulator to `T` and every field read fails to resolve.
+  // A List accumulator is what the corpus uses everywhere; the shape decision is then taken once,
+  // below, where the head is BOUND BY THE PATTERN rather than looked up.
+  let targets: List<RedfishBootSourceOverrideTarget> = fold_list(
     xs: entries,
-    empty: Absent,
+    empty: [],
     cons: fn(acc, entry) {
       match redfish_boot_target_network_standing(t: entry.kind) {
-        NetworkBootTarget { via: _ } =>
-          match acc {
-            Absent => Present { value: FirstNetworkTarget { head: entry.kind, more: [] } }
-            Present { value: seen } =>
-              Present {
-                value: FirstNetworkTarget {
-                  head: seen.head,
-                  more: list_append(left: seen.more, right: [entry.kind]),
-                },
-              }
-          }
+        NetworkBootTarget { via: _ } => list_append(left: acc, right: [entry.kind])
         NotNetworkBootTarget { why: _ } => acc
       }
     },
-  ) {
-    Absent => NoNetworkEntry { examined_count: length(xs: entries) }
-    Present { value: seen } =>
-      NetworkEntriesPresent { head: seen.head, additional_count: length(xs: seen.more) }
+  )
+  match targets {
+    // Nothing network-kind -- and the classifier reports how many entries it looked at. That count is
+    // what lets `decide` tell 'the enumeration reported four options, none of them network' (a real
+    // conflict with BootOrder, if the order names one) from 'the enumeration was empty' (an
+    // unconfigured board, which is NOT a conflict and must stay a preparation).
+    Empty => NoNetworkEntry { examined_count: length(xs: entries) }
+    // The head is bound here, so no caller can be handed 'present' without a target in hand. That is
+    // the whole point of this arm (review 81893): the earlier shape counted, then took `|> first`, and
+    // needed a refusal for the state where the two disagreed.
+    Cons { head: first_target, tail: rest } =>
+      NetworkEntriesPresent { head: first_target, additional_count: length(xs: rest) }
   }
-}
-
-// THE FOLD'S ACCUMULATOR: the first network target seen, plus everything that came after it. Private
-// to the classifier -- its existence is why the public arm can promise a head it never has to look up.
-type FirstNetworkTarget {
-  head: RedfishBootSourceOverrideTarget,
-  more: List<RedfishBootSourceOverrideTarget>,
 }
 
 // THE NIC QUESTION, ANSWERED THE SAME WAY. Three arms because three different things can be true and
@@ -1380,32 +1379,23 @@ type NicCandidateStanding
   | SeveralNicCandidates { count: Int }
 
 fn nic_candidates(nics: List<NonEmptyStr>) -> NicCandidateStanding {
-  match fold_list(
-    xs: nics,
-    empty: Absent,
-    cons: fn(acc, nic) {
-      match acc {
-        Absent => Present { value: FirstNic { first: nic, more: false } }
-        Present { value: seen } =>
-          Present { value: FirstNic { first: seen.first, more: true } }
+  // ONE MATCH, THREE SHAPES -- and the interfaces are already a List, so there is nothing to
+  // accumulate and nothing to infer. No `|> first` anywhere: the single-interface arm binds the name
+  // from the pattern, so 'counted exactly one but could not enumerate it' is not a state this
+  // function can return (review 81893: it used to be, and it surfaced as a refusal whose meaning was
+  // no more than 'my two measurements disagreed').
+  match nics {
+    Empty => NoNicCandidate
+    // `rest` decides only WHICH non-empty arm this is; the name comes from the pattern.
+    Cons { head: only, tail: rest } =>
+      if length(xs: rest) > 0 {
+        SeveralNicCandidates { count: length(xs: nics) }
+      } else {
+        OneNicCandidate { nic: only }
       }
-    },
-  ) {
-    Absent => NoNicCandidate
-    Present { value: seen } =>
-      if seen.more { SeveralNicCandidates { count: length(xs: nics) } } else { OneNicCandidate { nic: seen.first } }
   }
 }
 
-// The accumulator behind the NIC question: the first interface, and whether a second one turned up.
-// `more` is a Bool rather than a count because SEEING TWO is all the fold needs to stop deciding; the
-// count for the report is taken once, at the end, where it cannot create a state.
-type FirstNic {
-  first: NonEmptyStr,
-  more: Bool,
-}
-
-// WHICH CLIENT MODES THIS EDGE CAN SERVE, answered per arm rather than by a catch-all, and with
 // the refusal reason CARRIED BY THE ARM THAT DECIDES IT.
 //
 // (review 81789) The first version was `LegacyBiosPxe { .. } => true, _ => false`, and the `_ =>
