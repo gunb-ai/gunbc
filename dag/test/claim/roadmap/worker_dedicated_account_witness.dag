@@ -1,6 +1,7 @@
 module test.claim.roadmap.worker_dedicated_account_witness
 
 import std.types { Bool, NonEmptyStr, List, String, Int }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
 import std.optional { Present, Absent }
 import std.measure { kibibyte }
 import extdeps.systemd { systemd_service_unit_name, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong }
@@ -15,7 +16,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_git_worker_subtree_path, dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_directory_mode_is_granted, dashboard_git_worker_file_mode_is_granted,
   dashboard_git_worker_subtree_directory_mode_is_granted, dashboard_git_worker_subtree_needs_sticky,
-  dashboard_git_worker_granted_shared_directory_mode, posix_mode_sticky_bit,
+  dashboard_git_worker_granted_shared_directory_mode, dashboard_git_worker_granted_directory_mode,
+  dashboard_git_worker_interior_directory_mode_is_accepted, dashboard_git_worker_file_modes_are_equal,
   dashboard_git_worker_directory_mode_is_unmigrated,
   dashboard_git_maintenance_unit_stem, dashboard_git_maintenance_principal,
   dashboard_git_maintenance_timer_on_calendar, dashboard_git_maintenance_owned_config_keys,
@@ -338,15 +340,66 @@ test fn the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_
     ))
 }
 
-// THE STATE SRV1 MEASURED: 0775, the service user's own group, setgid MISSING. That is the RED CONTROL
-// for claim (2) -- the legs are right (rwxrwxr-x) but with no setgid a fan-out directory git creates
-// next inherits the creating process's primary group, and the attempt worker cannot write into it.
-// 509 == 0775 (256+128+64+32+16+8+4+1), and the decimal is the read; the octal is the spelling.
-data measured_srv1_unmigrated_mode: Int = 509
-data granted_directory_mode_expected: Int = 1533
-data granted_shared_directory_mode_expected: Int = 2045
-data granted_file_mode_expected: Int = 436
-data world_writable_file_mode: Int = 438
+// THE MODES, AS FileMode -- the type extdeps.access.posix owns (Open Group sys_stat.h). An earlier cut
+// of this claim compared hand-decoded DECIMALS (509, 1533, 2045, 436, 438, 292) against the model's own
+// decimal rows, which failed twice over: it minted a second authority for a concept that exists (§2), and
+// the "expected" values were the model's, so the claim could only ever check that a decoder agreed with an
+// encoder. Here the claim states the OBSERVATIONS IT ACTUALLY HAS -- what srv1 measured, and the four
+// counterexamples that make the predicates mean something -- as structured modes, and the model's rows are
+// compared against them rather than being handed back.
+//
+// THE RED CONTROL for claim (2) is 0775: every leg right (rwxrwxr-x) and no setgid, so a fan-out
+// directory git creates next inherits the creating process's primary group and the attempt worker cannot
+// write into it. The three counterexamples are what stop the predicates from being tautologies: 0666
+// (group-writable AND world-writable -- #13942 refuses it, so a "granted file" predicate that accepted it
+// would be asserting nothing about confinement), 0444 (a loose object, read-only even to its owner: git
+// writes it that way on purpose, so it is NOT a granted file and does not need to be -- nobody writes an
+// object after it is created), and 03775 offered as a plain-grant answer (the sticky shape belongs to
+// exactly one subtree; a predicate that accepted it everywhere would let refs/ drift to 03775, where +t
+// would EPERM the worker's own first `git add` against root's index/HEAD).
+data worker_mode_rwx: PermissionBits = PermissionBits { read: true, write: true, execute: true }
+data worker_mode_r_x: PermissionBits = PermissionBits { read: true, write: false, execute: true }
+data worker_mode_rw_: PermissionBits = PermissionBits { read: true, write: true, execute: false }
+data worker_mode_r__: PermissionBits = PermissionBits { read: true, write: false, execute: false }
+
+fn worker_mode(owner: PermissionBits, group: PermissionBits, other: PermissionBits, setgid: Bool, sticky: Bool) -> FileMode {
+  FileMode {
+    owner: owner,
+    group: group,
+    other: other,
+    setuid: false,
+    setgid: setgid,
+    sticky: sticky,
+  }
+}
+
+// What srv1 read on 2026-10-17, as the host read it: objects, refs and logs and their existing
+// subdirectories, briansrls:briansrls, 0775, no setgid.
+data measured_srv1_unmigrated_mode: FileMode = worker_mode(
+  owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode_r_x, setgid: false, sticky: false
+)
+data granted_directory_mode_expected: FileMode = worker_mode(
+  owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode_r_x, setgid: true, sticky: false
+)
+data granted_shared_directory_mode_expected: FileMode = worker_mode(
+  owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode_r_x, setgid: true, sticky: true
+)
+data granted_file_mode_expected: FileMode = worker_mode(
+  owner: worker_mode_rw_, group: worker_mode_rw_, other: worker_mode_r__, setgid: false, sticky: false
+)
+data world_writable_file_mode: FileMode = worker_mode(
+  owner: worker_mode_rw_, group: worker_mode_rw_, other: worker_mode_rw_, setgid: false, sticky: false
+)
+data loose_object_file_mode: FileMode = worker_mode(
+  owner: worker_mode_r__, group: worker_mode_r__, other: worker_mode_r__, setgid: false, sticky: false
+)
+// A DIRECTORY MODE OFFERED AS A FILE MODE: setgid and sticky are meaningless on a file (chmod accepts
+// them and the kernel ignores them), so the file predicate must not be satisfied by a mode that merely
+// carries them. Without this, a file predicate written as "group.write" alone would be green over a mode
+// nobody can observe on a regular file.
+data setgid_file_mode: FileMode = worker_mode(
+  owner: worker_mode_rw_, group: worker_mode_rw_, other: worker_mode_r__, setgid: true, sticky: false
+)
 
 // How many times one word appears in an argv list: the walk target must appear exactly twice across
 // the whole migration (once for the re-group, once for the modes), which is how this claim knows a
@@ -414,12 +467,20 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     ROOT maintenance job writes new packs into, and `repack -d` deletes packs from, a directory the
     //     worker chose. 03775 keeps the create bit and takes away the rename/unlink of entries the
     //     caller does not own. THE PREDICATE IS PER SUBTREE: objects/ must be 2045 and refs/ and logs/
-    //     must be 1533, because a global "is it 02775" would make the fix invisible to the model -- the
-    //     receipt would refuse the tree that is actually correct.
-    && dashboard_git_worker_subtree_directory_mode_is_granted(child: objects_child) == granted_shared_directory_mode_expected
-    && dashboard_git_worker_subtree_directory_mode_is_granted(child: refs_child) == granted_directory_mode_expected
-    && dashboard_git_worker_subtree_directory_mode_is_granted(child: logs_child) == granted_directory_mode_expected
+    //     must be 02775, because a global "is it 02775" would make the fix invisible to the model -- the
+    //     receipt would refuse the tree that is actually correct. AND A DIRECTORY GIT CREATES TOMORROW is
+    //     accepted at EITHER shape: mkdir inherits S_ISGID from the parent and not S_ISVTX, and git's
+    //     adjust_shared_perm adds only the group triple, so a fan-out directory born under the 03775
+    //     objects/ is 02775 -- a readback that demanded 03775 throughout would refuse a correctly
+    //     granted repository a day after it passed.
+    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_directory_mode_is_granted(child: objects_child), b: granted_shared_directory_mode_expected)
+    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_directory_mode_is_granted(child: refs_child), b: granted_directory_mode_expected)
+    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_directory_mode_is_granted(child: logs_child), b: granted_directory_mode_expected)
     && !dashboard_git_worker_directory_mode_is_granted(mode: granted_shared_directory_mode_expected)
+    && dashboard_git_worker_interior_directory_mode_is_accepted(mode: granted_directory_mode_expected)
+    && dashboard_git_worker_interior_directory_mode_is_accepted(mode: granted_shared_directory_mode_expected)
+    //     and the state srv1 measured is accepted by NEITHER shape -- it has no setgid at all.
+    && !dashboard_git_worker_interior_directory_mode_is_accepted(mode: measured_srv1_unmigrated_mode)
     && dashboard_git_worker_subtree_needs_sticky(child: objects_child)
     && !dashboard_git_worker_subtree_needs_sticky(child: refs_child)
     && !dashboard_git_worker_subtree_needs_sticky(child: logs_child)
@@ -428,7 +489,57 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     // that on purpose, so it is NOT a "granted file" and does not need to be -- nobody writes an
     // object after it is created. The claim says so explicitly rather than leaving the reader to
     // wonder why the file predicate refuses the very objects the commit writes.
-    && !dashboard_git_worker_file_mode_is_granted(mode: 292)
+    && !dashboard_git_worker_file_mode_is_granted(mode: loose_object_file_mode)
+    // THE OCTAL THE READBACK PRINTS PARSES TO THE MODE THE MODEL MEANS -- pinned at the PARSER, not at
+    // the renderer, and the asymmetry is the reason. `find -printf %m` and `stat %a` print the special
+    // digit ONLY WHEN IT IS NON-ZERO (extdeps.access.posix documents this: "660" and "0660" are one
+    // mode spelled two ways), while file_mode_octal always renders four digits. So a claim that compared
+    // the witness's text against the renderer's output would refuse a perfectly correct observation --
+    // my first cut of these legs did exactly that, and asserted `file_mode_octal(granted_file_mode) ==
+    // "664"` over a renderer that answers "0664". What has to hold is the direction the evidence
+    // actually travels: the TEXT find prints, parsed, equals the mode the model grants. Each leg below is
+    // the wet witness's own expected string entering through the one parser, which is also what makes
+    // the witness's literals checkable rather than decorative.
+    && match file_mode_of_octal_text(text: "2775") {
+      Present { value: m } => dashboard_git_worker_file_modes_are_equal(a: m, b: granted_directory_mode_expected)
+      Absent => false
+    }
+    && match file_mode_of_octal_text(text: "3775") {
+      Present { value: m } => dashboard_git_worker_file_modes_are_equal(a: m, b: granted_shared_directory_mode_expected)
+      Absent => false
+    }
+    && match file_mode_of_octal_text(text: "664") {
+      Present { value: m } => dashboard_git_worker_file_modes_are_equal(a: m, b: granted_file_mode_expected)
+      Absent => false
+    }
+    // THE MEASURED STATE, spelled the way `find` spells a directory with no special bits: three digits.
+    && match file_mode_of_octal_text(text: "775") {
+      Present { value: m } => dashboard_git_worker_directory_mode_is_unmigrated(mode: m)
+      Absent => false
+    }
+    // AND THE RENDERER IS FOUR DIGITS ALWAYS, which is the fact the legs above exist to route around --
+    // pinned so a change to the renderer's width cannot silently break the witness's string matching.
+    && file_mode_octal(mode: granted_directory_mode_expected) == "2775"
+    && file_mode_octal(mode: granted_shared_directory_mode_expected) == "3775"
+    && file_mode_octal(mode: granted_file_mode_expected) == "0664"
+    && file_mode_octal(mode: measured_srv1_unmigrated_mode) == "0775"
+    && match file_mode_of_octal_text(text: "2775") {
+      Present { value: m } => dashboard_git_worker_directory_mode_is_granted(mode: m)
+      Absent => false
+    }
+    && match file_mode_of_octal_text(text: "3775") {
+      Present { value: m } => dashboard_git_worker_interior_directory_mode_is_accepted(mode: m)
+        && !dashboard_git_worker_directory_mode_is_granted(mode: m)
+      Absent => false
+    }
+    // 664 with the setgid bit carried on a FILE is still a granted file: the bit is inert there, and a
+    // file predicate that refused it would refuse a mode chmod can produce.
+    && dashboard_git_worker_file_mode_is_granted(mode: setgid_file_mode)
+    // AND AN UNPARSEABLE OBSERVATION IS REFUSED, not treated as absent permission: `find` can print a
+    // mode we cannot read (a weird locale, a truncated line), and a readback that silently accepted
+    // that would report a granted tree.
+    && match file_mode_of_octal_text(text: "9999") { Absent => true, Present { value: parsed } => false }
+    && match file_mode_of_octal_text(text: "2778") { Absent => true, Present { value: parsed } => false }
     // (b) the migration covers EVERY granted subtree and only those -- one re-group plus one mode step
     //     per child, so an existing .git/objects/f9 is walked rather than only its parent.
     && length(steps) == 2 * length(dashboard_git_worker_directory_children)
@@ -446,6 +557,20 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     which word, or it tests the claim's own guess about the argv instead of the argv.
     && all(chgrp_steps, c => any(c.arguments, a => a == (fleet_posix_worker_shared_group_name as String)))
     && all(chgrp_steps, c => any(c.arguments, a => a == "--no-dereference"))
+    //     THE -EXEC ACTIONS ARE WELL-FORMED, counted rather than eyeballed. Every -exec must carry
+    //     exactly one {} placeholder and exactly one batch terminator, and the parenthesised -type d
+    //     groups must balance. This is the leg that the review round should have had before the first
+    //     push: when chgrp briefly owned its own "{}" "+" and find's action helper appended them again,
+    //     the argv ended `{} + {} +`, find refused it, and NOTHING in the dry set could see it -- every
+    //     leg asked "is chgrp present", "is --no-dereference present", all true of a command that cannot
+    //     run (DESIGN 5, again: a word-list claim green over an argv that fails). A count is the shape
+    //     of that check, because "exactly one" is the property and presence is not.
+    && all(steps, c => {
+      let actions = occurrences(words: c.arguments, wanted: "-exec")
+      occurrences(words: c.arguments, wanted: "{}") == actions
+        && occurrences(words: c.arguments, wanted: "+") == actions
+        && occurrences(words: c.arguments, wanted: "(") == occurrences(words: c.arguments, wanted: ")")
+    })
     && length(chgrp_steps) == length(dashboard_git_worker_directory_children)
     && !any(all_args, a => a == "chown")
     // (d) it asserts BOTH bits the commit needs, on the RIGHT steps: g+w on everything the walk reaches,
