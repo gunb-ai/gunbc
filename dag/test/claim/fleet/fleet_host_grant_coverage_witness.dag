@@ -6,9 +6,12 @@ import std.algebra { string_contains }
 import std.content_hash { serialize_content_hash }
 import gunbc.fleet.fleet_converge_scope { FullHost }
 import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FullyApplied, PartiallyApplied }
+import std.algebra { any, split, trim }
+import extdeps.sudo.nopasswd_decision { SudoDecisionAdmits, SudoDecisionDenied }
+import gunbc.fleet.fleet_host_grant_coverage { InstalledSudoersText }
 import gunbc.fleet.fleet_host_grant_coverage {
   HostGrantObservation,
-  host_grant_rows,
+  host_grant_awaiting_capability,
   host_grant_observation_unobserved_no_transaction,
 }
 import gunbc.fleet.fleet_converge_plan {
@@ -19,6 +22,8 @@ import gunbc.fleet.fleet_converge_plan {
   ApplyAwaitingCapability,
   ApplyMemberSetMismatch,
   fleet_converge_plan_artifact,
+  fleet_converge_host_grant_rows,
+  fleet_converge_apply_shell,
   fleet_converge_apply_artifact_admits,
   fleet_converge_member_set_fingerprint,
   fleet_converge_scope_wire,
@@ -32,8 +37,12 @@ import test.claim.fleet.fleet_host_grant_fixture {
   witness_grants_outside_the_model,
   witness_grants_listed_installed_unreadable,
   witness_grants_missing,
-  witness_grants_listing_unread,
+  witness_grants_decision_unobserved,
+  witness_grants_other_principal,
+  witness_grant_owner,
+  witness_grants_as,
   witness_grant_rules,
+  witness_grant_rendered_lines,
 }
 
 data grant_host: NonEmptyStr = "srv3" as NonEmptyStr
@@ -88,7 +97,7 @@ data specimen_rule: String = "/usr/bin/install -d -m 00755 -o ghrunner -g ghrunn
 test fn a_host_without_the_rule_refuses_awaiting_capability_naming_it() -> Bool {
   match grant_admission(grants: witness_grants_missing(host: grant_host)) {
     ApplyAwaitingCapability { capability: c } =>
-      string_contains(s: c, pattern: "missing sudoers rule: ")
+      string_contains(s: c, pattern: "missing sudoers rule (as ")
         && string_contains(s: c, pattern: specimen_rule)
     _ => false
   }
@@ -104,7 +113,7 @@ test fn a_host_with_the_rendered_rule_admits() -> Bool {
 
 // §5: a probe that cannot observe is unobserved, never covered.
 test fn an_unread_listing_refuses_as_unobserved_never_covered() -> Bool {
-  match grant_admission(grants: witness_grants_listing_unread()) {
+  match grant_admission(grants: witness_grants_decision_unobserved()) {
     ApplyAwaitingCapability { capability: c } => string_contains(s: c, pattern: "unobserved sudoers rule")
     _ => false
   } && match grant_admission(grants: host_grant_observation_unobserved_no_transaction) {
@@ -151,5 +160,52 @@ test fn the_plan_terminal_is_awaiting_capability_over_a_missing_rule() -> Bool {
 
 // Pairing: the fixture's rules are the renderer's, and srv3 has a host-wide rule set to cover.
 test fn the_specimen_rule_is_among_the_hosts_modeled_rules() -> Bool {
-  host_grant_rows(host: grant_host, observation: witness_grants_rendered(host: grant_host)) != []
+  fleet_converge_host_grant_rows(host: grant_host, grants: witness_grants_rendered(host: grant_host)) != []
+}
+
+fn witness_effect_lines(shell: String) -> Bool {
+  any(xs: split(s: shell, delimiter: "\n"), predicate: l => !trim(s: l).starts_with("#") && string_contains(s: l, pattern: "sudo"))
+}
+
+fn witness_blocked_shell(grants: HostGrantObservation) -> String {
+  let r = grant_request(grants: grants)
+  fleet_converge_apply_shell(request: r, terminal: AwaitingCapability { capability: "host-wide-sudo-grants" })
+}
+
+// GAP 3: a missing grant yields a refusal-only artifact: terminal AwaitingCapability AND an
+// executable body with no sudo line (the same request, rule installed, still carries them).
+test fn a_missing_grant_gives_an_artifact_with_no_sudo_line_and_an_awaiting_terminal() -> Bool {
+  let blocked = witness_blocked_shell(grants: witness_grants_missing(host: grant_host))
+  let covered = fleet_converge_apply_shell(request: grant_request(grants: witness_grants_rendered(host: grant_host)), terminal: FullyApplied)
+  !witness_effect_lines(shell: blocked)
+    && string_contains(s: blocked, pattern: "AwaitingCapability")
+    && string_contains(s: blocked, pattern: "REFUSED, NON-ACTUATING")
+    && witness_effect_lines(shell: covered)
+}
+
+// GAP 2: grants observed as an account that is not the lease owner are not the owner's grants.
+test fn grants_observed_as_another_principal_refuse_naming_both() -> Bool {
+  match grant_admission(grants: witness_grants_other_principal(host: grant_host)) {
+    ApplyAwaitingCapability { capability: c } =>
+      string_contains(s: c, pattern: "someone-else") && string_contains(s: c, pattern: witness_grant_owner() as String)
+    _ => false
+  }
+}
+
+// GAP 2 (baseline): the principal is a premise, so a plan observed as another account cannot be
+// applied as the owner without a re-plan.
+test fn the_observing_principal_moves_the_member_set_fingerprint() -> Bool {
+  fleet_converge_member_set_fingerprint(request: grant_request(grants: witness_grants_other_principal(host: grant_host)))
+    != fleet_converge_member_set_fingerprint(request: grant_request(grants: witness_grants_rendered(host: grant_host)))
+}
+
+// GAP 1: sudo's decision, not the text of a listing: a Denied decision (non-root-only, an overriding
+// later rule, a password-requiring match all exit 1) is a missing grant even though a line naming the
+// command may exist elsewhere in the listing.
+test fn a_denied_decision_is_missing_even_when_the_drop_in_names_the_rule() -> Bool {
+  let g = witness_grants_as(host: grant_host, login: witness_grant_owner(), decision: SudoDecisionDenied { reason: "overridden" }, installed: InstalledSudoersText { text: join(witness_grant_rendered_lines(host: grant_host), "\n") })
+  match grant_admission(grants: g) {
+    ApplyAwaitingCapability { capability: c } => string_contains(s: c, pattern: "missing sudoers rule (as ")
+    _ => false
+  }
 }

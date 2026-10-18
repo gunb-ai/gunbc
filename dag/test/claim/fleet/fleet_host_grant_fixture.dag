@@ -10,11 +10,15 @@ import gunbc.runner.runner_host_grants { runner_host_wide_refused_operations }
 import gunbc.runner.runner_host_deploy { RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for }
 import gunbc.fleet.fleet_host_grant_coverage {
   HostGrantObservation,
-  GrantListingRead,
-  GrantListingUnread,
+  HostGrantDecisionRead,
+  HostGrantPrincipalObserved,
+  HostGrantPrincipalUnobserved,
   InstalledSudoersText,
+  InstalledSudoersRead,
   InstalledSudoersUnreadable,
 }
+import gunbc.fleet.fleet_converge_plan { fleet_converge_host_grant_queries, fleet_converge_lease_owner }
+import extdeps.sudo.nopasswd_decision { SudoDecision, SudoDecisionAdmits, SudoDecisionDenied, SudoDecisionUnobserved }
 
 // SUPPLIED OBSERVATIONS (§3): each fixture is the text a host would return for the host's own
 // host-wide operations, so the witnesses decide the classifier over values and never run `sudo`.
@@ -36,41 +40,42 @@ fn witness_grant_rendered_lines(host: NonEmptyStr) -> List<String> {
   }
 }
 
-fn witness_grant_listing(host: NonEmptyStr) -> String {
-  join(map(witness_grant_rules(host: host), r => join(["    (root) NOPASSWD: ", r], "")), "\n")
+fn witness_grant_decisions(host: NonEmptyStr, decision: SudoDecision) -> List<HostGrantDecisionRead> {
+  map(fleet_converge_host_grant_queries(host: host), q => HostGrantDecisionRead { query: q, decision: decision })
+}
+
+fn witness_grant_owner() -> NonEmptyStr {
+  fleet_converge_lease_owner()
+}
+
+fn witness_grants_as(host: NonEmptyStr, login: NonEmptyStr, decision: SudoDecision, installed: InstalledSudoersRead) -> HostGrantObservation {
+  HostGrantObservation {
+    principal: HostGrantPrincipalObserved { login: login },
+    decisions: witness_grant_decisions(host: host, decision: decision),
+    installed: installed,
+  }
 }
 
 fn witness_grants_rendered(host: NonEmptyStr) -> HostGrantObservation {
-  HostGrantObservation {
-    listing: GrantListingRead { text: witness_grant_listing(host: host) },
-    installed: InstalledSudoersText { text: join(witness_grant_rendered_lines(host: host), "\n") },
-  }
+  witness_grants_as(host: host, login: witness_grant_owner(), decision: SudoDecisionAdmits, installed: InstalledSudoersText { text: join(witness_grant_rendered_lines(host: host), "\n") })
 }
 
 fn witness_grants_outside_the_model(host: NonEmptyStr) -> HostGrantObservation {
-  HostGrantObservation {
-    listing: GrantListingRead { text: witness_grant_listing(host: host) },
-    installed: InstalledSudoersText { text: "# a drop-in that renders none of this host's rules\n" },
-  }
+  witness_grants_as(host: host, login: witness_grant_owner(), decision: SudoDecisionAdmits, installed: InstalledSudoersText { text: "# a drop-in that renders none of this host's rules\n" })
 }
 
 fn witness_grants_listed_installed_unreadable(host: NonEmptyStr) -> HostGrantObservation {
-  HostGrantObservation {
-    listing: GrantListingRead { text: witness_grant_listing(host: host) },
-    installed: InstalledSudoersUnreadable { cause: "Permission denied (root:root 0440)" as NonEmptyStr },
-  }
+  witness_grants_as(host: host, login: witness_grant_owner(), decision: SudoDecisionAdmits, installed: InstalledSudoersUnreadable { cause: "Permission denied (root:root 0440)" as NonEmptyStr })
 }
 
 fn witness_grants_missing(host: NonEmptyStr) -> HostGrantObservation {
-  HostGrantObservation {
-    listing: GrantListingRead { text: "    (root) PASSWD: /usr/bin/unrelated" },
-    installed: InstalledSudoersText { text: "" },
-  }
+  witness_grants_as(host: host, login: witness_grant_owner(), decision: SudoDecisionDenied { reason: "Sorry, user may not run sudo" }, installed: InstalledSudoersText { text: "" })
 }
 
-fn witness_grants_listing_unread() -> HostGrantObservation {
-  HostGrantObservation {
-    listing: GrantListingUnread { cause: "sudo -n -l failed: a password is required" as NonEmptyStr },
-    installed: InstalledSudoersText { text: "" },
-  }
+fn witness_grants_decision_unobserved() -> HostGrantObservation {
+  witness_grants_as(host: "srv3" as NonEmptyStr, login: witness_grant_owner(), decision: SudoDecisionUnobserved { cause: "sudo -n -l exited 127: sudo not found" as NonEmptyStr }, installed: InstalledSudoersText { text: "" })
+}
+
+fn witness_grants_other_principal(host: NonEmptyStr) -> HostGrantObservation {
+  witness_grants_as(host: host, login: "someone-else" as NonEmptyStr, decision: SudoDecisionAdmits, installed: InstalledSudoersText { text: join(witness_grant_rendered_lines(host: host), "\n") })
 }
