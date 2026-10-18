@@ -1659,7 +1659,10 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
 // does not declare is a type variable or host spelling at this position and stays at the value
 // layer; the undeclared-use refusal belongs to the value-position readers.
 fn render_rust_shared_type_if_needed(n: Node, rendered: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> String {
-  let answer = if type_expr_names_user_alias(type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices) {
+  // A container spelling (List<T>) renders the host container, not the alias name, so the alias's own
+  // right-hand-side layer is not in the spelling and the declaration hop below answers it.
+  let alias_name_spelled = !is_container_type(name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n)) && type_expr_names_user_alias(type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices)
+  let answer = if alias_name_spelled {
     SharedLayerAtValue
   } else {
     shared_layer_of_type_expr(shared_types: shared_types, type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices, generic_param_names: generic_param_names)
