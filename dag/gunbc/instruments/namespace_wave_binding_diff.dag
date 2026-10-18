@@ -12,7 +12,7 @@ import v2.compiler.parse { PreparedGrammar }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { PreparedLexRules }
 import v2.std.diagnostic { Accepted, Rejected }
-import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, ModuleEvidence, occurrence_join_module, recompute_wave_text, rows_by_module, module_rows, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure }
+import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, ModuleEvidence, occurrence_join_module, recompute_wave_text, rows_proof_scope, rows_by_module, module_rows, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure }
 
 // THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
 // a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
@@ -321,7 +321,7 @@ fn formatter_control_failure() -> Optional<String> {
 // THE WAVE-1 JOIN CONTROLS ON THE REAL CENSUS ROUTE. Four roots the host censuses with the native census-infer: a
 // BASE module that still refuses resolve (`semver_version_parse` is declared nowhere) and uses `chars(s: ...)` unimported at
 // four sites -- the shape of a real wave-1 module -- and three HEADS. The admit HEAD IS THE GENERATOR'S OWN RECOMPUTATION from the
-// base text (wave_derived_head: roster_sweep_text_home + roster_applied to a fixed point), never typed by hand, so the byte-equality
+// base text (wave_derived_head: roster_sweep_text_scoped + roster_applied to a fixed point), never typed by hand, so the byte-equality
 // proof (gunbc.instruments.namespace_wave_occurrence_join edit_proof) holds for it and for nothing else:
 //   admit       the recomputation: all four sites must join to std.host_text.chars and the verdict is success;
 //   moved       a blank line added between the first two call lines: still four sites on each side, EQUAL COUNT, but the
@@ -638,7 +638,7 @@ fn read_proof(base_stdout: String, head_stdout: String, base_root: String, head_
     evidence: fold(evidence_modules(base_stdout: base_stdout, head_stdout: head_stdout), init: empty_map(), f: fn(m, name) { map_insert(m, name, read_module_evidence(base_root: base_root, head_root: head_root, module: name)) }),
     prepared: prepared,
     lex: lex,
-    home: wave_home()
+    home: rows_proof_scope(rows: ambient_name_homes())
   }
 }
 

@@ -1,7 +1,7 @@
 module gunbc.instruments.namespace_wave_occurrence_join
 
 import std.types { String, Bool, List, Int, Map }
-import std.algebra { empty_map, map_insert, list_at_optional, list_snoc_item, length, fold_list }
+import std.algebra { empty_map, map_insert, list_at_optional, list_snoc_item, length, fold_list, list_init }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.optional { Optional, Present, Absent }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable }
@@ -475,6 +475,16 @@ fn join_delta_unobserved(d: JoinDelta) -> Bool {
 //   covered            an edit step whose extent contains an occurrence: EditCoversOccurrence;
 //   not generated      a head that is not the recomputation: EditsNotGenerated; unreadable texts: Unobserved.
 
+// THE GENERATOR'S SCOPE FOR A WAVE, read off the ruled home row (`std.host_text.chars` -> `std.host_text`), so the
+// edit proof recomputes against the same fact the join resolves against. The first row's home; a roster of several
+// homes needs a per-row scope (declared frontier, trigger: wave 2 adds a row with another home).
+fn rows_proof_scope(rows: List<AmbientNameHome>) -> String {
+  match list_at_optional(xs: rows, index: 0) {
+    Present { value: row } => join(list_init(xs: split(s: row.home, delimiter: ".")), separator: ".")
+    Absent => ""
+  }
+}
+
 fn join_control_rows() -> List<AmbientNameHome> {
   [AmbientNameHome { name: "chars", home: "std.host_text.chars", table: PrimitiveAuthorityTable, origin: ExistingDeclaration }]
 }
@@ -545,7 +555,7 @@ fn head_rows_rows(h: HeadRows) -> List<String> {
 }
 
 fn join_control_case(name: String, base_rows: List<String>, head_rows: List<String>, evidence: ModuleEvidence, prepared: PreparedGrammar, lex: PreparedLexRules, want_admitted: Int, want_refused: List<String>) -> String {
-  let deltas = occurrence_join_module(rows: join_control_rows(), module: "m", base_rows: base_rows, head_rows: head_rows, evidence: Present { value: evidence }, prepared: prepared, lex: lex, home: "std.host_text")
+  let deltas = occurrence_join_module(rows: join_control_rows(), module: "m", base_rows: base_rows, head_rows: head_rows, evidence: Present { value: evidence }, prepared: prepared, lex: lex, home: rows_proof_scope(rows: join_control_rows()))
   join_control_verdict(name: name, deltas: deltas, want_admitted: want_admitted, want_refused: want_refused)
 }
 
@@ -561,7 +571,7 @@ fn join_control_verdict(name: String, deltas: List<JoinDelta>, want_admitted: In
 
 fn occurrence_join_controls_failure(prepared: PreparedGrammar, lex: PreparedLexRules) -> Optional<String> {
   let base_text = join_control_base_text()
-  let generated = recompute_wave_text(path: "m", base_text: base_text, prepared: prepared, lex: lex, home: "std.host_text")
+  let generated = recompute_wave_text(path: "m", base_text: base_text, prepared: prepared, lex: lex, home: rows_proof_scope(rows: join_control_rows()))
   let head_text = generated.text
   let evidence = ModuleEvidence { module: "m", base_text: base_text, head_text: head_text, readable: true }
   let base_rows = join_control_base_rows()
