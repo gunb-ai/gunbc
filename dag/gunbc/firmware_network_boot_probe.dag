@@ -113,9 +113,10 @@ fn route_for(row: FirmwareBootFamilyRow, request: ProbeRequest) -> RouteVerdict 
     // route, and its reason is the row's, so probe() never invents or drops one.
     ReadAxisRequest { axis: a } =>
       match row_coverage_of(row: row, axis: a) {
-        Absent => RequestRefused { why: "the family row neither claims nor disclaims this axis" }
-        Present { value: TransportCannotAnswer { axis: _, why: w } } => RequestRefused { why: w }
-        Present { value: TransportAnswers { axis: _ } } => Routed { route: row.route }
+        NoCoverage => RequestRefused { why: "the family row neither claims nor disclaims this axis" }
+        ConflictingCoverage => RequestRefused { why: "the family row both claims and disclaims this axis, or lists it twice; refusing to pick one" }
+        OneCoverage { coverage: TransportCannotAnswer { axis: _, why: w } } => RequestRefused { why: w }
+        OneCoverage { coverage: TransportAnswers { axis: _ } } => Routed { route: row.route }
       }
     SetBootOverrideRequest => RequestRefused { why: "a boot-override write has no read route; this instrument only reads" }
     ChangeBootOrderRequest => RequestRefused { why: "a boot-order change has no read route; this instrument only reads" }
@@ -186,26 +187,50 @@ type AxisResolution
   | AxisRefused { refusal: FirmwareReadRefusal }
   | AxisPayload { reply: AxisReply }
 
-fn row_coverage_of(row: FirmwareBootFamilyRow, axis: ObservationAxis) -> AxisCoverage? {
+// A SECOND MATCH IS A CONFLICT, NOT A TIE-BREAK. "First one wins" would let a row listing an axis
+// twice, or a BMC answering one axis twice, silently keep one fact and drop the other; the fold
+// therefore carries a closed three-state match, and a second hit lands in the conflict arm for the
+// caller to refuse. A future requirement to merge duplicate evidence would add a constructor here.
+type CoverageMatch
+  = NoCoverage
+  | OneCoverage { coverage: AxisCoverage }
+  | ConflictingCoverage
+
+type ReplyMatch
+  = NoReply
+  | OneReply { reply: AxisReply }
+  | ConflictingReplies
+
+fn row_coverage_of(row: FirmwareBootFamilyRow, axis: ObservationAxis) -> CoverageMatch {
   fold(
     row.coverage,
-    init: Absent,
+    init: NoCoverage,
     f: (acc, c) =>
-      match acc {
-        Present { value: _ } => acc
-        Absent => if coverage_axis(coverage: c) == axis { Present { value: c } } else { Absent }
+      if coverage_axis(coverage: c) == axis {
+        match acc {
+          NoCoverage => OneCoverage { coverage: c }
+          OneCoverage { coverage: _ } => ConflictingCoverage
+          ConflictingCoverage => ConflictingCoverage
+        }
+      } else {
+        acc
       }
   )
 }
 
-fn reply_for_axis(replies: List<AxisReply>, axis: ObservationAxis) -> AxisReply? {
+fn reply_for_axis(replies: List<AxisReply>, axis: ObservationAxis) -> ReplyMatch {
   fold(
     replies,
-    init: Absent,
+    init: NoReply,
     f: (acc, r) =>
-      match acc {
-        Present { value: _ } => acc
-        Absent => if reply_axis(reply: r) == axis { Present { value: r } } else { Absent }
+      if reply_axis(reply: r) == axis {
+        match acc {
+          NoReply => OneReply { reply: r }
+          OneReply { reply: _ } => ConflictingReplies
+          ConflictingReplies => ConflictingReplies
+        }
+      } else {
+        acc
       }
   )
 }
@@ -215,15 +240,20 @@ fn resolve_axis(row: FirmwareBootFamilyRow, replies: List<AxisReply>, axis: Obse
     RequestRefused { why: w } => AxisNotObserved { reason: w }
     Routed { route: _ } =>
       match reply_for_axis(replies: replies, axis: axis) {
-        Absent => AxisNotObserved { reason: no_reply_reason() }
-        Present { value: ReplyRefusedByBmc { axis: _, refusal: f } } => AxisRefused { refusal: f }
-        Present { value: r } => AxisPayload { reply: r }
+        NoReply => AxisNotObserved { reason: no_reply_reason() }
+        ConflictingReplies => AxisNotObserved { reason: conflicting_replies_reason() }
+        OneReply { reply: ReplyRefusedByBmc { axis: _, refusal: f } } => AxisRefused { refusal: f }
+        OneReply { reply: r } => AxisPayload { reply: r }
       }
   }
 }
 
 fn no_reply_reason() -> NonEmptyStr {
   "the BMC responded but returned nothing for this axis"
+}
+
+fn conflicting_replies_reason() -> NonEmptyStr {
+  "the BMC returned more than one reply for this axis; refusing to pick one"
 }
 
 fn mismatched_reply_reason() -> NonEmptyStr {

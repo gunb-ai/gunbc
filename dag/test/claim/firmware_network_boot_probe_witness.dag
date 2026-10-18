@@ -20,7 +20,7 @@ import gunbc.firmware_network_boot_probe {
   FamilyKey, FirmwareFamilyStack, RedfishOnlyStack, DedicatedManagementPort, SharedHostNic,
   RedfishGetRoute, MegaRacRestGetRoute, OpenBmcRedfishGetRoute,
   TransportAnswers, BootOrderAxis, SecureBootAxis, TransportCannotAnswer,
-  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc,
+  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc, ReplyBiosVersion, BiosVersionAxis,
   BmcResponded, BmcSilent, ConnectTimedOut,
   BmcUnreachable, BmcObserved, ProbeSubject,
   ReadAxisRequest, SetBootOverrideRequest, ChangeBootOrderRequest, PowerActionRequest,
@@ -180,4 +180,28 @@ test fn reader_frontier_is_pending_and_pinned_to_a_literal_ref() -> Bool {
     AxisReplyInhabitedByReader { observed: _ } => false
   }
   pending && fired && uninhabited
+}
+
+// A BMC answering one axis twice, with a payload and a refusal, is conflicting evidence: the axis
+// is Unobserved with the conflict named, never whichever reply came first.
+test fn conflicting_replies_for_one_axis_are_not_settled_by_order() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match probe(row: r, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: [boot_entry(kind: BootTargetPxe, label: "net0")] }, ReplyRefusedByBmc { axis: BootOrderAxis, refusal: AuthenticationRequired { detail: "403" } }] }) {
+        BmcObserved { subject: _, observation: o } => is_unobserved_boot_order(o: o)
+        BmcUnreachable { subject: _, attempt: _ } => false
+      }
+  }
+}
+
+// A row that both claims and disclaims one axis cannot route a read for it.
+test fn a_row_listing_an_axis_twice_routes_nothing() -> Bool {
+  let twice = firmware_boot_family_row(
+    family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: Present { value: "9.98" }, reach: DedicatedManagementPort },
+    authority: TranscribedUncited { read_obligation: "hypothetical row with a contradictory coverage list" },
+    route: OpenBmcRedfishGetRoute,
+    coverage: [TransportAnswers { axis: BiosVersionAxis }, TransportCannotAnswer { axis: BiosVersionAxis, why: "contradicts the line above" }]
+  )
+  is_refused(verdict: route_for(row: twice, request: ReadAxisRequest { axis: BiosVersionAxis }))
 }
