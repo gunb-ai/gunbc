@@ -264,9 +264,9 @@ test fn w_a_medium_read_back_with_another_digest_is_refused() -> Bool {
 test fn w_the_reset_and_boot_arms_each_decide_their_own_selection() -> Bool {
   managed_hosts() |> all(h => match boot_selection(evidence: committed_evidence(), host: h) {
     VirtualMediaBootSelectionRefused { cause: _ } => false
-    VirtualMediaBootSelectionAdmitted { selection: b } => match reset_boot_selection(evidence: committed_evidence(), host: h) {
+    VirtualMediaBootSelectionAdmitted { selection: b, capability_row: _ } => match reset_boot_selection(evidence: committed_evidence(), host: h) {
       VirtualMediaBootSelectionRefused { cause: _ } => false
-      VirtualMediaBootSelectionAdmitted { selection: _ } => match admit_boot_subject(evidence: committed_evidence(), host: h, medium: mtcollins1_boot_medium, execution_revision: revision) {
+      VirtualMediaBootSelectionAdmitted { selection: _, capability_row: _ } => match admit_boot_subject(evidence: committed_evidence(), host: h, medium: mtcollins1_boot_medium, execution_revision: revision) {
         BootSubjectAdmitted { subject: s } => (ipmi_boot_selection_label(selection: s.selection) as String) == (ipmi_boot_selection_label(selection: b) as String)
         BootSubjectRefused { host: _, cause: _ } => false
       }
@@ -285,9 +285,9 @@ test fn w_a_second_machine_with_the_same_profile_gets_the_same_selection() -> Bo
     let second = managed_host_fixture(host: "fixture-second-machine", access: h.access, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     match boot_selection(evidence: committed_evidence(), host: second) {
       VirtualMediaBootSelectionRefused { cause: _ } => false
-      VirtualMediaBootSelectionAdmitted { selection: second_sel } => match boot_selection(evidence: committed_evidence(), host: h) {
+      VirtualMediaBootSelectionAdmitted { selection: second_sel, capability_row: _ } => match boot_selection(evidence: committed_evidence(), host: h) {
         VirtualMediaBootSelectionRefused { cause: _ } => false
-        VirtualMediaBootSelectionAdmitted { selection: real_sel } => (ipmi_boot_selection_label(selection: second_sel) as String) == (ipmi_boot_selection_label(selection: real_sel) as String)
+        VirtualMediaBootSelectionAdmitted { selection: real_sel, capability_row: _ } => (ipmi_boot_selection_label(selection: second_sel) as String) == (ipmi_boot_selection_label(selection: real_sel) as String)
       }
     }
   }) && count(managed_hosts()) == 1
@@ -304,7 +304,7 @@ test fn w_a_reflash_resolves_the_new_builds_row_or_refuses_with_no_per_unit_edit
     // The unit observed at its catalogued build resolves and admits.
     let at_catalogued = match boot_selection(evidence: committed_evidence(), host: h) {
       VirtualMediaBootSelectionRefused { cause: _ } => false
-      VirtualMediaBootSelectionAdmitted { selection: _ } => true
+      VirtualMediaBootSelectionAdmitted { selection: _, capability_row: _ } => true
     }
     // The same unit observed at a build the catalog has not read refuses, with no per-unit edit.
     let new_build = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.9.9")
@@ -372,7 +372,7 @@ test fn w_the_observed_reflash_to_0_45_3_resolves_that_builds_row_and_still_admi
     let at_0_45_3 = committed_evidence()
     let admitted = match boot_selection(evidence: at_0_45_3, host: h) {
       VirtualMediaBootSelectionRefused { cause: _ } => false
-      VirtualMediaBootSelectionAdmitted { selection: _ } => true
+      VirtualMediaBootSelectionAdmitted { selection: _, capability_row: _ } => true
     }
     // the resolved row is the 0.45.3 build's own row, not 0.32's
     let resolves_the_new_row = match host_capability_row(evidence: at_0_45_3, access: h.access) {
@@ -617,7 +617,7 @@ test fn w_the_0_45_3_row_is_attested_and_never_rendered_as_machine_read() -> Boo
           },
         )
         match boot_selection(evidence: fixture_evidence_at(h, megarac_firmware_0_45_3), host: at_0_45_3) {
-          VirtualMediaBootSelectionAdmitted { selection: _ } => true
+          VirtualMediaBootSelectionAdmitted { selection: _, capability_row: _ } => true
           VirtualMediaBootSelectionRefused { cause: _ } => false
         }
       }) && count(managed_hosts()) == 1

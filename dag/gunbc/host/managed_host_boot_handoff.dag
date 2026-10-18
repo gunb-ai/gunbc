@@ -211,7 +211,7 @@ fn boot_handoff_admission_probe_of(host: ManagedHost) -> String? {
         Absent => OobHandoffRowUncatalogued { firmware: b.identity.firmware }
         Present { value: row } => oob_boot_handoff_admission_for_row(observation: b, capability_row: row)
       } {
-        OobHandoffAdmitted { route: _ } => true
+        OobHandoffAdmitted { route: _, capability_row: _ } => true
         OobHandoffRouteUnobserved => false
         OobHandoffBootSourceOverrideUnavailable => false
         OobHandoffPowerControlUnavailable => false
@@ -220,7 +220,7 @@ fn boot_handoff_admission_probe_of(host: ManagedHost) -> String? {
       }
       let unexercised = BmcFirmwareReleaseCapabilityRow { firmware: b.identity.firmware, capabilities: [] }
       let refused_without_capability = match oob_boot_handoff_admission_for_row(observation: b, capability_row: unexercised) {
-        OobHandoffAdmitted { route: _ } => false
+        OobHandoffAdmitted { route: _, capability_row: _ } => false
         OobHandoffRouteUnobserved => false
         OobHandoffBootSourceOverrideUnavailable => true
         OobHandoffPowerControlUnavailable => false
