@@ -3,7 +3,7 @@ module gunbc.fleet.fleet_converge_workflow
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
-  RunScopedMode, RunScopedMainRoute, MainUsesGrantedAccount, MainUsesFleetIdentity, run_scoped_modes_with_route, run_scoped_federation_named, run_scoped_modes,
+  RunScopedMode, RunScopedRouteKind, GrantedAccountRoute, FleetIdentityRoute, GrantOnlyRoute, run_scoped_account_id, run_scoped_route_kind, run_scoped_modes_with_route, run_scoped_federation_named, run_scoped_modes,
   branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
   BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
   RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
@@ -650,9 +650,9 @@ fn fleet_converge_modes_of_rows(rows: List<RunScopedMode>) -> List<FleetConverge
   filter(fleet_converge_workflow_modes, w => any(rows, r => (r.mode as String) == fleet_converge_workflow_mode_wire(mode: w)))
 }
 
-data fleet_converge_granted_account_modes: List<FleetConvergeWorkflowMode> = fleet_converge_modes_of_rows(rows: run_scoped_modes_with_route(route: MainUsesGrantedAccount))
+data fleet_converge_granted_account_modes: List<FleetConvergeWorkflowMode> = fleet_converge_modes_of_rows(rows: run_scoped_modes_with_route(route: GrantedAccountRoute))
 
-data fleet_converge_branch_granted_fleet_modes: List<FleetConvergeWorkflowMode> = fleet_converge_modes_of_rows(rows: run_scoped_modes_with_route(route: MainUsesFleetIdentity))
+data fleet_converge_branch_granted_fleet_modes: List<FleetConvergeWorkflowMode> = fleet_converge_modes_of_rows(rows: run_scoped_modes_with_route(route: FleetIdentityRoute))
 
 data fleet_converge_on_branch_step_if: String = join(["github.ref != 'refs/heads/", gunbc_default_branch_name, "'"], "")
 
@@ -4823,7 +4823,7 @@ fn fleet_converge_branch_run_grant_await_step() -> Step {
 // THE GRANT-ONLY ROWS' WAIT: a mode whose job holds no cloud credential still waits, off main, for the
 // approved grant before it runs the branch's code. It is placed in the mode's own executing job
 // (fleet_converge_mode_job_id), before that job's mutation.
-data fleet_converge_grant_only_step_if: String = join(["(", fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: run_scoped_modes_with_route(route: GrantOnlyNoAccount))), ") && ", fleet_converge_on_branch_step_if], "")
+data fleet_converge_grant_only_step_if: String = join(["(", fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: run_scoped_modes_with_route(route: GrantOnlyRoute))), ") && ", fleet_converge_on_branch_step_if], "")
 
 fn fleet_converge_grant_only_await_step() -> Step {
   fleet_converge_branch_run_grant_await_step_when(if_condition: fleet_converge_grant_only_step_if)
@@ -4861,16 +4861,16 @@ fn fleet_converge_granted_account_auth_step(row: RunScopedMode, email: String) -
 // empty service account. fleet_converge_unfederated_run_scoped_refusal refuses generation first, so the
 // omission is unreachable in an emitted workflow.
 fn fleet_converge_granted_account_auth_steps() -> List<Step> {
-  flat_map(run_scoped_modes_with_route(route: MainUsesGrantedAccount), r =>
+  flat_map(run_scoped_modes_with_route(route: GrantedAccountRoute), r =>
     map(fleet_converge_row_service_accounts(row: r), email => fleet_converge_granted_account_auth_step(row: r, email: email)))
 }
 
 fn fleet_converge_row_account_text(row: RunScopedMode) -> String {
-  match row.account_id { Present { value: id } => id as String  Absent => "(no account)" }
+  match run_scoped_account_id(m: row) { Present { value: id } => id as String  Absent => "(no account)" }
 }
 
 fn fleet_converge_row_service_accounts(row: RunScopedMode) -> List<String> {
-  match row.account_id {
+  match run_scoped_account_id(m: row) {
     Absent => []
     Present { value: id } => match run_scoped_federation_named(account_id: id as String) { Present { value: f } => [f.service_account as String]  Absent => [] }
   }
@@ -4879,11 +4879,11 @@ fn fleet_converge_row_service_accounts(row: RunScopedMode) -> List<String> {
 // A row owes a service account unless its route is grant-only, where an account would be a second
 // credential path beside the grant.
 fn fleet_converge_row_owes_account_without_one(row: RunScopedMode) -> Bool {
-  row.main_route != GrantOnlyNoAccount && fleet_converge_row_service_accounts(row: row).length() == 0
+  run_scoped_route_kind(m: row) != GrantOnlyRoute && fleet_converge_row_service_accounts(row: row).length() == 0
 }
 
 fn fleet_converge_row_grant_only_names_account(row: RunScopedMode) -> Bool {
-  row.main_route == GrantOnlyNoAccount && fleet_converge_row_service_accounts(row: row).length() != 0
+  run_scoped_route_kind(m: row) == GrantOnlyRoute && fleet_converge_row_service_accounts(row: row).length() != 0
 }
 
 fn fleet_converge_unfederated_run_scoped_refusal_of(rows: List<RunScopedMode>) -> String? {
@@ -4902,7 +4902,7 @@ fn fleet_converge_unfederated_run_scoped_refusal() -> String? {
 // account, except that a fleet-identity row's mode off main reads the branch pool and that row's
 // account, derived from the relation. Everything outside the relation reads the main pair.
 fn fleet_converge_branch_account_expression() -> String {
-  fold(run_scoped_modes_with_route(route: MainUsesFleetIdentity), init: "", f: (acc, r) =>
+  fold(run_scoped_modes_with_route(route: FleetIdentityRoute), init: "", f: (acc, r) =>
     join([acc, fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: [r])), "", join(map(fleet_converge_row_service_accounts(row: r), e => join([" && '", e, "' || "], "")), "")], ""))
 }
 

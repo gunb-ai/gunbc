@@ -19,7 +19,7 @@ import gunbc.auth.branch_dispatch_federation {
   mtcollins1_boot_run_scoped_federation, mtcollins1_boot_run_scoped_service_account_id, select_boot_credential_source,
   boot_credential_effect, boot_credential_source_from_selection, boot_credential_source_from_pattern,
   ReviewedMainDedicatedFederation, RunScopedApprovedGrant, BootCredentialSourceSelected, BootCredentialSourceRefused,
-  BootCredentialStanding, run_scoped_federation_named, run_scoped_modes, RunScopedMode, GrantOnlyNoAccount,
+  BootCredentialStanding, run_scoped_federation_named, run_scoped_modes, RunScopedMode, GrantOnlyRoute, run_scoped_account_id, run_scoped_route_kind,
 }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
@@ -213,15 +213,15 @@ test fn fleet_identity_modes_are_granted_off_main_only() -> Bool {
       && match run_scoped_mode_eligible(mode: mode, branch: "work/x") { Present { value: _ } => true  Absent => false })
     && match run_scoped_mode_named(mode: "plan") { Present { value: m } => (account_text(m: m)) == "fleet-cloud-convergence"  Absent => false }
     && match run_scoped_mode_named(mode: "apply") { Present { value: m } => (account_text(m: m)) == "fleet-apply-run"  Absent => false }
-    && match run_scoped_mode_named(mode: "dashboard_deploy") { Present { value: m } => m.main_route == GrantOnlyNoAccount && account_text(m: m) == "(none)"  Absent => false }
+    && match run_scoped_mode_named(mode: "dashboard_deploy") { Present { value: m } => run_scoped_route_kind(m: m) == GrantOnlyRoute && account_text(m: m) == "(none)"  Absent => false }
 }
 
 // RED: every row resolves to a federation (a row without one would be a grant nothing can plan), the
 // new accounts hold no standing impersonation and are converge targets, and the plan row's account is
 // not a second converge target.
 test fn every_row_resolves_and_the_new_accounts_have_no_standing_way_in() -> Bool {
-  all(run_scoped_modes(), r => match r.account_id {
-      Absent => r.main_route == GrantOnlyNoAccount
+  all(run_scoped_modes(), r => match run_scoped_account_id(m: r) {
+      Absent => run_scoped_route_kind(m: r) == GrantOnlyRoute
       Present { value: id } => match run_scoped_federation_named(account_id: id as String) { Present { value: _ } => true  Absent => false }
     })
     && match run_scoped_federation_named(account_id: "dashboard-deploy-run") { Present { value: _ } => false  Absent => true }
@@ -356,7 +356,7 @@ test fn red_a_non_admitted_pattern_is_a_refused_boot_credential_source() -> Bool
 }
 
 fn account_text(m: RunScopedMode) -> String {
-  match m.account_id { Present { value: id } => id as String  Absent => "(none)" }
+  match run_scoped_account_id(m: m) { Present { value: id } => id as String  Absent => "(none)" }
 }
 
 // A GRANT-ONLY ROW'S GRANT IS THE APPROVAL ALONE: it carries no account and no cell, its purpose says

@@ -146,27 +146,49 @@ data branch_run_key_variable: NonEmptyStr = "BRANCH_RUN_KEY"
 // job holds no cloud credential at all: off main it still waits for an approved grant (the approval is
 // the admission to run the branch's code in that job), it has no account, no federation and no secret
 // grant, and at main it needs no grant.
+//
+// THE ACCOUNT LIVES INSIDE THE ROUTE that uses one, so a grant-only row with an account and a credentialed
+// row without one have no constructor.
 type RunScopedMainRoute
-  = MainUsesGrantedAccount
-  | MainUsesFleetIdentity
-  | MainUsesSelectedSource
+  = MainUsesGrantedAccount { account_id: NonEmptyStr }
+  | MainUsesFleetIdentity { account_id: NonEmptyStr }
+  | MainUsesSelectedSource { account_id: NonEmptyStr }
   | GrantOnlyNoAccount
+
+type RunScopedRouteKind = GrantedAccountRoute | FleetIdentityRoute | SelectedSourceRoute | GrantOnlyRoute
 
 type RunScopedMode {
   mode: NonEmptyStr
-  account_id: NonEmptyStr?
   main_route: RunScopedMainRoute
+}
+
+fn run_scoped_account_id(m: RunScopedMode) -> NonEmptyStr? {
+  match m.main_route {
+    MainUsesGrantedAccount { account_id: a } => Present { value: a }
+    MainUsesFleetIdentity { account_id: a } => Present { value: a }
+    MainUsesSelectedSource { account_id: a } => Present { value: a }
+    GrantOnlyNoAccount => none
+  }
+}
+
+fn run_scoped_route_kind(m: RunScopedMode) -> RunScopedRouteKind {
+  match m.main_route {
+    MainUsesGrantedAccount { account_id: _ } => GrantedAccountRoute
+    MainUsesFleetIdentity { account_id: _ } => FleetIdentityRoute
+    MainUsesSelectedSource { account_id: _ } => SelectedSourceRoute
+    GrantOnlyNoAccount => GrantOnlyRoute
+  }
 }
 
 data mtcollins1_boot_mode_name: NonEmptyStr = "mtcollins1_boot"
 
 fn run_scoped_modes() -> List<RunScopedMode> {
   [
-    RunScopedMode { mode: "hetzner_cloud_server_read", account_id: Present { value: hetzner_cloud_control_service_account_id }, main_route: MainUsesGrantedAccount },
-    RunScopedMode { mode: mtcollins1_boot_mode_name, account_id: Present { value: mtcollins1_boot_run_scoped_service_account_id }, main_route: MainUsesSelectedSource },
-    RunScopedMode { mode: "plan", account_id: Present { value: fleet_plan_run_scoped_service_account_id }, main_route: MainUsesFleetIdentity },
-    RunScopedMode { mode: "apply", account_id: Present { value: fleet_apply_run_scoped_service_account_id }, main_route: MainUsesFleetIdentity },
-    RunScopedMode { mode: "dashboard_deploy", account_id: none, main_route: GrantOnlyNoAccount },
+    RunScopedMode { mode: "hetzner_cloud_server_read", main_route: MainUsesGrantedAccount { account_id: hetzner_cloud_control_service_account_id } },
+    RunScopedMode { mode: mtcollins1_boot_mode_name, main_route: MainUsesSelectedSource { account_id: mtcollins1_boot_run_scoped_service_account_id } },
+    RunScopedMode { mode: "plan", main_route: MainUsesFleetIdentity { account_id: fleet_plan_run_scoped_service_account_id } },
+    RunScopedMode { mode: "apply", main_route: MainUsesFleetIdentity { account_id: fleet_apply_run_scoped_service_account_id } },
+    RunScopedMode { mode: "dashboard_deploy", main_route: GrantOnlyNoAccount },
   ]
 }
 
@@ -182,8 +204,8 @@ fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
   match run_scoped_mode_named(mode: mode) {
     Absent => none
     Present { value: m } =>
-      if (m.main_route == MainUsesFleetIdentity || m.main_route == GrantOnlyNoAccount) && branch == (gunbc_default_branch_name as String) { none }
-      else if m.main_route != MainUsesSelectedSource { Present { value: m } } else {
+      if (run_scoped_route_kind(m: m) == FleetIdentityRoute || run_scoped_route_kind(m: m) == GrantOnlyRoute) && branch == (gunbc_default_branch_name as String) { none }
+      else if run_scoped_route_kind(m: m) != SelectedSourceRoute { Present { value: m } } else {
         match select_boot_credential_source(on_reviewed_main: branch == (gunbc_default_branch_name as String)) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
           BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => none
@@ -423,6 +445,6 @@ fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialStandi
 // ── the table, read as the workflow's coverage ───────────────────────────────────────────────
 // Which rows a fleet-converge job's shared prelude routes, by what each does at main. The workflow
 // generator reads these two and the table itself; it holds no per-mode list of its own.
-fn run_scoped_modes_with_route(route: RunScopedMainRoute) -> List<RunScopedMode> {
-  filter(run_scoped_modes(), m => m.main_route == route)
+fn run_scoped_modes_with_route(route: RunScopedRouteKind) -> List<RunScopedMode> {
+  filter(run_scoped_modes(), m => run_scoped_route_kind(m: m) == route)
 }
