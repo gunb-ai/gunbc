@@ -34,7 +34,6 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.grammar { parse_production_emitted_identity_optional, node_atom_identity_optional }
 import v2.std.node_query { find_named_child }
-import v2.lens.identity_captured_navigation.analyze { collect_direct_captures }
 import v2.std.node { Atom, Node, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol }
 import v2.std.provenance { RecordedSourceExtent, SourceExtentKnown, span_index_extent, span_index_textual_locus_optional, SpanIndex }
 import v2.std.namespace_alias { AliasBindingRow }
@@ -714,7 +713,7 @@ fn roster_label_plan(parse_root: Node, spans: SpanIndex, normalized_root: Node, 
       match acc {
         LabelsAmbiguous => LabelsAmbiguous
         LabelsSelected { edits: es } =>
-          fold_list(xs: list_reverse(xs: collect_direct_captures(n: head, emitted: ^dag_surface_arg, acc: Empty)), empty: LabelsSelected { edits: es }, cons: fn(inner, arg) {
+          fold_list(xs: list_reverse(xs: roster_direct_args(n: head, acc: Empty)), empty: LabelsSelected { edits: es }, cons: fn(inner, arg) {
             match inner {
               LabelsAmbiguous => LabelsAmbiguous
               LabelsSelected { edits: es2 } =>
@@ -738,6 +737,26 @@ fn roster_label_plan(parse_root: Node, spans: SpanIndex, normalized_root: Node, 
           })
       }
     })
+  }
+}
+
+// The DIRECT arguments of one call, in reverse source order: the walk stops at each ^dag_surface_arg and never descends into
+// one, so a nested call's arguments are not this call's (the stopping rule of v2.extdeps.languages.dag
+// dag_call_named_arg_value_optional). The lens collectors carry the same walk (v2.lens.identity_captured_navigation.analyze
+// collect_direct_captures), but that package does not resolve on the route this generator runs on, so it cannot be imported;
+// the three copies are one walk awaiting a shared home in v2.extdeps.languages.dag.
+fn roster_direct_args(n: Node, acc: List<Node>) -> List<Node> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == ^dag_surface_arg {
+        match parse_production_captured_child_optional(node: n) {
+          Present { value: c } => Cons { head: c, tail: acc }
+          Absent => acc
+        }
+      } else {
+        fold_list(xs: n.children, empty: acc, cons: fn(a, e) { roster_direct_args(n: e.target, acc: a) })
+      }
+    Absent => fold_list(xs: n.children, empty: acc, cons: fn(a, e) { roster_direct_args(n: e.target, acc: a) })
   }
 }
 
