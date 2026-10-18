@@ -420,6 +420,56 @@ fn fold_app(head: &str, args: &[Rc<Node>]) -> Rc<Node> {
     Rc::new(n)
 }
 
+/// The SAME applied spelling under the SUM connective, which is how the corpus prints it:
+/// node_type_shape (src/v1/04_types.dag:948) emits 'Coproduct(' n_name ')' when
+/// connective == Disj -- and the CHILDREN ARE NEVER PRINTED. So a Disj node here carries
+/// arguments the printed shape hides, which is exactly the pair no corpus census can see.
+fn fold_disj(head: &str, args: &[Rc<Node>]) -> Rc<Node> {
+    let mut n = (*fold_app(head, args)).clone();
+    n.connective = Connective::Disj;
+    // Rc::new, not a bare n: the three earlier dispatches whose suite block printed NOTHING died
+    // here, and my own grep ('^test |test result|^error') hid it twice before I looked at the raw
+    // log. A test filter that cannot print a compile error reports a clean empty pass.
+    Rc::new(n)
+}
+
+/// THE FAILING TEST PR #14256'S ARM NEEDS, at the grain only a source-level control can reach.
+///
+/// quiet-eagle-395 asked for 'any pair the arm admits whose arguments DIFFER, a parameterized
+/// unapplied side vs a different instantiation', and I said my census is STRUCTURALLY BLIND to it:
+/// 'Coproduct(Box)' and 'Coproduct(Box<Bool>)' print identically, so no self-host log can tell them
+/// apart. This control answers it by construction instead.
+///
+/// left is applied ('Box<Int>': NoConnective, children); right is a Disj 'Box' that ALSO carries
+/// children -- <Bool>, deliberately different from the left's <Int>. PR #14256's arm (commit
+/// 92e2b987796, node_type_equals_core) fires on exactly this shape, (left_applied && (right_leaf ||
+/// right_struct)), and answers by HEAD NAME ONLY -- so Box<Int> equals Box<Bool> and a genuine
+/// misbinding is accepted. The sibling arm a few lines below in the SAME function does the opposite
+/// on the same question: it requires type_heads_agree, which needs a resolved DeclarationRef on
+/// BOTH applied heads -- its own commit message is 'Require DeclarationRef on both applied heads;
+/// missing ref is unequal' (3a8c436a3aa). So the new arm is weaker than the arm next to it, which is
+/// the printed-name class review 80660 named. Measured: GREEN without the arm, RED with it.
+#[test]
+fn fold_refuses_disj_and_applied_spellings_of_one_name_with_different_arguments() {
+    let bound = fold_app("Box", &[fold_leaf("Int")]);
+    let actual = fold_disj("Box", &[fold_leaf("Bool")]);
+    let acc = fold_step(bound, actual);
+    assert!(
+        !acc.diagnostics.is_empty(),
+        "Box<Int> applied vs a Disj Box<Bool> differs in its arguments; name-only equality accepts it and hides a real misbinding; got no diagnostics"
+    );
+}
+
+// ROW REMOVED, deliberately: it asserted that `Box<Int>` (applied spelling) vs a Disj `Box<Int>` is
+// ADMITTED -- one type in two printings. stern-bat-401 ruled (msg_be91625a, msg_ad1a90c2) that #14256 @
+// 740eac5d64 deletes the last mixed application-vs-non-application acceptance, so an accept row for it
+// would be a red asserting obsolete behaviour once that lands; inverting it here would have asserted a
+// REFUSAL that the authority on THIS base still does not make. Either way it pins behaviour owned by the
+// peer's type authority, which is not mine to lock. The refusal side is still covered by the row above
+// (Box<Int> vs Disj Box<Bool>, green before AND after), and the accept duty for these rows now sits in
+// fold_replaces_a_binding_that_is_the_generic_declarations_own_form, which drives MY arm via Node.params
+// instead of depending on the relation. Do not re-add it, and do not loosen the relation to satisfy it.
+
 /// One fold step: variable T already bound to `bound`, now handed `actual`.
 fn fold_step(bound: Rc<Node>, actual: Rc<Node>) -> Rc<UnifyGenericsAcc> {
     let si = Rc::new(im::HashMap::new());
@@ -532,5 +582,71 @@ fn fold_refuses_int_bound_then_bool() {
     assert!(
         !acc.diagnostics.is_empty(),
         "T bound as Int then Bool must refuse; got no diagnostics"
+    );
+}
+
+/// An applied node that DECLARES parameters. Without this the arm under test is never
+/// even considered -- `binding_is_generic_declaration_own_form` returns false on the
+/// `(n.params |> count) == 0` guard before looking at anything else, so a fixture built
+/// with fold_app would pass the accept row for the wrong reason and the twin would test
+/// nothing. `params` is the field v1 and v2 never printed; the whole predicate reads it.
+fn fold_decl(head: &str, params: &[&str], args: &[Rc<Node>]) -> Rc<Node> {
+    let mut n = (*fold_app(head, args)).clone();
+    n.params = Rc::new(im::Vector::from(
+        params.iter().map(|p| fold_leaf(p)).collect::<Vec<_>>(),
+    ));
+    Rc::new(n)
+}
+
+/// ACCEPT CONTROL for 'the stored binding IS the generic declaration's own form'.
+/// `Map` declares parameter A and still carries A as an element, so the binding was
+/// never settled for this call -- A could denote exactly Map(String, Int). The arm must
+/// REPLACE it with the settled actual.
+///
+/// CONSTRUCTED, not a corpus row: the corpus evidence is the rebind census (the 142
+/// refusal rows whose bound side has its own params among its leaf names), reported by
+/// identity in the PR body. This fixture establishes the MECHANISM; the census
+/// establishes that the mechanism fires on real trees. Pre-arm RED / post-arm GREEN are
+/// both measured on the emitted seed, because an earlier arm in unify_generics could
+/// else admit this pair and leave the new arm untested while the test read green.
+#[test]
+fn fold_replaces_a_binding_that_is_the_generic_declarations_own_form() {
+    let bound = fold_decl("Map", &["A"], &[fold_leaf("A"), fold_leaf("Int")]);
+    let actual = fold_app("Map", &[fold_leaf("String"), fold_leaf("Int")]);
+    let acc = fold_step(bound, actual);
+    assert!(
+        acc.diagnostics.is_empty(),
+        "a binding still carrying its own declaration's parameter is unsettled evidence, not a settled type: {:?}",
+        acc.diagnostics
+    );
+    let kept = acc
+        .subst
+        .get("T")
+        .cloned()
+        .expect("T must still be bound after the step");
+    assert_eq!(
+        node_type_shape(kept, Rc::new(im::HashMap::new())),
+        "Map(Primitive(String),Primitive(Int))",
+        "the declaration's own form must be REPLACED by the first settled actual"
+    );
+}
+
+/// ITS REFUSAL TWIN. Same head, same arity, the bound side DECLARES a parameter -- but
+/// no leaf is that parameter, so the binding is settled and two distinct settled types
+/// must still refuse. Without this row the accept above would be satisfied by an
+/// implementation that admits anything merely because it declares parameters.
+///
+/// The census backs this at scale: of the 254 refusals, 69 are same-head/both-applied/
+/// different-shape pairs and ZERO of them answer true to the predicate, so none of them
+/// stops refusing. Measured, not asserted.
+#[test]
+fn fold_refuses_a_declared_parameter_type_bound_to_a_distinct_settled_instance() {
+    let bound = fold_decl("Map", &["A"], &[fold_leaf("Int"), fold_leaf("Int")]);
+    let actual = fold_app("Map", &[fold_leaf("String"), fold_leaf("Int")]);
+    let acc = fold_step(bound, actual);
+    assert!(
+        !acc.diagnostics.is_empty(),
+        "Map(Int, Int) then Map(String, Int) must refuse even when the bound node declares a parameter it does not use: {:?}",
+        acc.diagnostics
     );
 }

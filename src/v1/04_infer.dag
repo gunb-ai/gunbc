@@ -7955,6 +7955,66 @@ fn binding_has_type_variable_leaf(n: Node) -> Bool {
   }
 }
 
+// THE BINDING IS THE GENERIC DECLARATION'S OWN FORM, NOT A SETTLED ACTUAL (stern-bat-401
+// msg_ba79f3e3, APPROVED for build in msg_0b50238d with the predicate applied SEMANTICALLY, not
+// class-scoped -- "the class was only the evidence"). A binding can be stored in the substitution
+// still carrying the CALLEE'S DECLARED GENERIC FORM: its leaves are the parameters that declaration
+// itself introduced, never substituted for that call. Comparing one against a settled instance
+// refuses a slot that was never settled -- `FreeMonoid`'s `T` could BE that instance's element type.
+// This is the same family as the (c) arm above, which catches a binding that mentions one of THIS
+// callee's `generic_names` but misses one that mentions ANOTHER declaration's parameters: the bound
+// side here is a stored binding read back from the environment, not the written annotation.
+//
+// THE MEASUREMENT (whole-tree probe v3 at 40 hops, ZERO cap events; fresh clone at 59606870e8ba,
+// status clean, seed = the clone's own main mirrors, instrument from scratch commit 2dbfa1ec866):
+// of the 254 rebind refusals, 142 have a bound side whose own params are non-empty and one of whose
+// leaf names IS one of those params -- 122 in the conn class that produced the hypothesis (a Disj
+// naming the actual's head, `Coproduct(FreeMonoid)` vs `Container(FreeMonoid, X)` at
+// dag/std/algebra.dag:3706-3716) and 20 outside it. The predicate is reported by identity in the PR
+// body, both sides. THE REFUSAL TWINS SURVIVE: 69 same-head, both-applied, different-shape pairs --
+// `Map(Primitive(K),Primitive(V))` vs `Map(Primitive(String),Primitive(Symbol))`,
+// `Node(FreeMonoid<Primitive(Symbol)>)` vs `Node(QualifiedName<Primitive(Symbol)>)` -- answer false
+// for the predicate, because a settled instance's leaves are its substituted arguments, and none of
+// its own parameters; ZERO of the 69 fire.
+//
+// WHY THE WALK LOOKS THE WAY IT DOES. A parameter leaf is printed as `Primitive(T)` with the childless
+// node's NAME being the parameter, so the test is a CHILDLESS node's `name` -- NOT its printed shape,
+// and not a `Primitive(...)` special case: `Primitive` is one connective among several that can carry a
+// slot, so matching on it would under-admit a `Product(T)` or `Container(T, _)` slot. Children are
+// passed RAW, exactly as in binding_has_type_variable_leaf above and for the same documented reason:
+// child_type_node routes an inferred-bearing child through resolved_type, whose Absent and else arms
+// both mint error_type, which would erase the very leaf this looks for. Node.params is read directly --
+// the field v1 and v2 never printed, and the only mechanical reading of "its leaves are its own declared
+// parameters". The nested level mirrors the measured capture, which read a parameter's own parameters.
+// THE WALK MUST FOLLOW THE `inferred` RESOLVED HOP, NOT JUST RAW CHILDREN. Measured: of the 142 rows
+// this admits, ZERO have a parameter leaf among the raw children -- every witness sits one or two
+// `Present { Resolved }` hops below the root (witness paths like L010r: three raw children, then the
+// hop). A children-only walk admits nothing and looks like a clean no-op. The hop is BOUNDED at 3
+// because `inferred` can point back up the tree; 3 is headroom over the measured maximum of 2, and the
+// bound is what makes the recursion terminate, not a fuel budget on the tree itself.
+fn node_mentions_own_parameter(n: Node, declared: List<Node>, hops: Int) -> Bool {
+  let is_named_leaf = (n.children |> count) == 0 && (declared |> any(p => p.name == n.name))
+  let below = n.children |> any(c => node_mentions_own_parameter(n: c, declared: declared, hops: hops))
+  let beyond = if hops > 0 {
+    match n.inferred {
+      Present { value: Resolved { node: rt } } => node_mentions_own_parameter(n: rt, declared: declared, hops: hops - 1)
+      _ => false
+    }
+  } else {
+    false
+  }
+  is_named_leaf || below || beyond
+}
+
+fn binding_is_generic_declaration_own_form(n: Node) -> Bool {
+  if (n.params |> count) == 0 {
+    false
+  } else {
+    let declared = concat(n.params, n.params |> flat_map(p => p.params))
+    n.children |> any(c => node_mentions_own_parameter(n: c, declared: declared, hops: 3))
+  }
+}
+
 fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let name = expr_var_name_at(texpr: n, source_indices: source_indices)
   if string_length(s: name) == 0 { false }
@@ -14851,6 +14911,20 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
         } else if generic_binding_is_self(n: actual, bind_name: bind_name, source_indices: source_indices) {
           UnifyGenericsAcc { subst: acc, diagnostics: [] }
         } else if generic_types_unify(left: bound, right: actual, source_indices: source_indices, text: text) {
+          UnifyGenericsAcc { subst: acc, diagnostics: [] }
+        } else if binding_is_generic_declaration_own_form(n: bound) {
+          // THE STORED BINDING IS THE GENERIC DECLARATION'S OWN FORM: its leaves are still that
+          // declaration's own parameters, so it was never settled for this call and this actual is
+          // the first settled binding -- REPLACE, as the two unsettled arms above do. This arm sits
+          // AFTER generic_types_unify on purpose: only rows that reach the refusal below can be
+          // affected, and those 254 refusals are the rows the whole-tree probe measured. An arm
+          // placed earlier would also re-route bindings that unify today, whose behaviour is not
+          // in that measurement.
+          UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+        } else if binding_is_generic_declaration_own_form(n: actual) {
+          // SYMMETRIC: an actual that is still a declaration's own form carries unsubstituted
+          // slots, so it cannot falsify the stored binding -- the slot could denote exactly that
+          // binding. KEEP the first binding, as binding_has_type_variable_leaf(n: actual) does.
           UnifyGenericsAcc { subst: acc, diagnostics: [] }
         } else {
           UnifyGenericsAcc {
