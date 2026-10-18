@@ -1,7 +1,7 @@
 module std.types
 import std.optional { Absent, Present, optional_absent, optional_present }
 
-import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map }
+import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map, collection_map_shape }
 import std.unicode.types { unicode_scalar }
 
 data kernel_type_set: Map<String, Bool> = {
@@ -106,11 +106,10 @@ type Bool = True | False
 
 type Unit
 
-// THE UNINHABITED TYPE. An arm instantiated at Never has no constructor: the binding declares
-// that arm unreachable for that subject (std.goal_assessment AssessRefusal, an observe that cannot
-// fail). It lives beside Unit, not in v2.std.cardinality, so a dag-tree module may import it
-// (v2.std.cross_tree.import_model: dag may not import v2).
-type Never
+// THE UNINHABITED TYPE Never and the eliminator absurd live in std.error_primitives so
+// std.algebra can name them without importing this module (cycle: types → algebra). Citation
+// identity: std.primitive_projection never_type_declaration (a DeclarationRef, not a restated
+// path). Never has no producer.
 
 type Json
 type Bytes

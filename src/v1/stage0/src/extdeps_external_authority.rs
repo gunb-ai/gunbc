@@ -6,10 +6,12 @@ use self::ScopeDecision::*;
 use self::ScopeFinding::*;
 use crate::extdeps_uri::UriScheme::File;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_decl_ref::decl_ref;
-pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_count_shape, collection_map_shape,
+};
+pub use crate::std_decl_ref::declaration_ref_eq;
+pub use crate::std_decl_ref::{decl_ref, DeclarationRef};
 pub use crate::std_optional::Optional;
-pub use crate::std_roster_frontier::declaration_ref_eq;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

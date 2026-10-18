@@ -8,7 +8,7 @@ import std.resources { Network }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import extdeps.sudo.elevation { sudo_elevate }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_system_scope_command,
   systemd_run_option_words_refused_cause_detail,
 }
@@ -35,8 +35,8 @@ import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshCo
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root }
 import gunbc.live_deploy.release_locus {
-  approval_broker_release_dir,
-  approval_broker_release_binary_path,
+  release_locus_dir,
+  release_locus_binary_path,
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
   release_revision_execstart_text,
@@ -111,8 +111,8 @@ fn enrolment_code_issue_ssh_target(host: NonEmptyStr) -> SshTargetResolution {
 // joining would split one budget between the running broker and this run and put the broker at risk.
 fn enrolment_code_issue_scope_properties() -> List<SystemdRunProperty> {
   [
-    SystemdRunProperty { property: MemoryMax, value: to_string(byte_size_count(b: approval_broker_slice_memory_max)) as NonEmptyStr },
-    SystemdRunProperty { property: MemoryHigh, value: to_string(byte_size_count(b: approval_broker_slice_memory_high)) as NonEmptyStr },
+    NamedUnitSetting { property: MemoryMax, value: to_string(byte_size_count(b: approval_broker_slice_memory_max)) as NonEmptyStr },
+    NamedUnitSetting { property: MemoryHigh, value: to_string(byte_size_count(b: approval_broker_slice_memory_high)) as NonEmptyStr },
   ]
 }
 
@@ -123,13 +123,13 @@ fn enrolment_code_issue_scope_properties() -> List<SystemdRunProperty> {
 // still covers the whole verb.
 fn enrolment_code_issue_remote_command(revision: ReleaseRevisionBinding, base_url: NonEmptyStr) -> SystemdRunCommandReading {
   let root = srv1_gunbc_approval_broker_root as String
-  let release_dir = approval_broker_release_dir(root: root, revision: revision)
+  let release_dir = release_locus_dir(root: root, revision: revision)
   let account = fleet_posix_operator_user.name
   let verb = env_prefixed_argv(bindings: [
     EnvSet { name: gunbc_workspace_root_env_name, value: release_dir },
     EnvSet { name: approval_broker_base_url_env_name as String, value: base_url as String },
   ], command_argv: [
-    approval_broker_release_binary_path(root: root, revision: revision),
+    release_locus_binary_path(root: root, revision: revision),
     "run",
     "--source-root", release_dir + "/dag",
     "--source-root", release_dir + "/src/v2",

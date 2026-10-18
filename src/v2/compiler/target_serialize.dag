@@ -169,7 +169,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import std.algebra { Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional }
+import std.algebra { Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional, collection_concat_shape, collection_count_shape }
 import v2.std.text {
   String
 }
@@ -1107,6 +1107,21 @@ fn target_serialize_bodied_arrow_from_model(
   if count(type_param_names(n: emitted)) > 0 {
     outcome_rejected(d: translate_generic_arrow_not_rendered_diagnostic(arrow: emitted))
   } else {
+    target_serialize_bodied_arrow_with_scaffolded_header(target: target, emitted: emitted, tree: tree, declarations: declarations)
+  }
+}
+
+// THE SERIALIZATION AFTER THE GENERIC GUARD. The fixed-scaffold routes (the declared-gap callers that
+// reach target_serialize_bodied_arrow_from_model with the ground-row `add` scaffold) cannot render a
+// type-parameter list and keep the guard above; the produced-declaration route builds its scaffold
+// from the target's own rows, which may carry a type-parameter segment, so it enters here directly
+// (v2.compiler.emit_produced emit_produced_decl_with_target).
+fn target_serialize_bodied_arrow_with_scaffolded_header(
+  target: TargetModel,
+  emitted: Node,
+  tree: InferredTree,
+  declarations: SymbolIndex
+) -> Outcome<TargetText> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
@@ -1151,7 +1166,6 @@ fn target_serialize_bodied_arrow_from_model(
       )
     }
   )
-  }
 }
 
 fn target_serialize_relation_row_from_model_bounded(

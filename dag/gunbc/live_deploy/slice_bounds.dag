@@ -2,7 +2,7 @@ module gunbc.live_deploy.slice_bounds
 
 import std.types { NonEmptyStr, String, List, Bool }
 import std.optional { Present, Absent }
-import std.nat { Nat, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
+import std.nat { Nat, Succ, Zero, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
@@ -289,7 +289,7 @@ fn fci1_controls_slice_memory_high() -> ByteSize {
 
 data fci1_controls_slice_memory_swap_max: ByteSize = byte_size(0)
 
-// ── USER-MANAGER WORK (--user transients: gunbc test/run scopes, gunbc-attempt-*, gunbc-compute-*,
+// ── USER-MANAGER WORK (--user transients: gunbc test/run scopes, gunbc-compute-*,
 // gunbc-review-*, gunbc-audit-*, gunbc-supervisor-*) ─
 // THESE UNITS LEAVE EVERY SYSTEM SLICE. systemd-run --user starts them under
 // user@1000.service/app.slice, which is not sessions.slice and not gunbc-roadmap.slice. A pid
@@ -339,9 +339,29 @@ fn user_slice_backstop_memory_swap_max() -> ByteSize {
   user_work_slice_memory_swap_max
 }
 
+// SYSTEM-MANAGER ATTEMPT WORKERS (PID 1 transients via the attempt-system-unit launcher).
+// Naming Slice= without this file existing is systemd creating an unbounded slice on first use
+// (review 80576). Bounds live here; emit installs the unit under /etc/systemd/system. The name
+// shares no systemd hierarchy prefix with a serving slice (a dash is a parent edge).
+data attempt_worker_slice_unit_name: NonEmptyStr = "gunbc-attempt-worker.slice"
+
+// APPROPRIATION: two 22 GiB slots, the same function as user_work_slice_memory_max_of.
+// Operator decision 2026-10-15 (escalation msg_57614325): stack this 2 x 22 GiB with
+// user-work, srv1 CI width 7 to 5. Charge is served_deployment_slice_allowance, not the wrap.
+data attempt_worker_slice_charged_slots: Nat = Succ { prev: Succ { prev: Zero } }
+
+data attempt_worker_slice_memory_max: ByteSize = user_work_slice_memory_max_of(slots: attempt_worker_slice_charged_slots)
+
+fn attempt_worker_slice_memory_high() -> UserWorkSliceHigh {
+  user_work_slice_memory_high_of(memory_max: attempt_worker_slice_memory_max)
+}
+
 // SYSTEM SLICES THAT DECLARE MemoryMax on the deploy host that owns these rows. Wrap exemption
 // does not consume these magnitudes: membership is recognized_system_slice (names), and a skip
 // is only a live finite memory.max on that slice. user-work is a --user slice and is not here.
+// Attempt workers sit in attempt_worker_slice_unit_name, so that name is a row here: membership in
+// gunbc.compute.unit_bounds recognized_system_slice is read from this census rather than kept as a
+// second wrap policy, and the skip still needs the slice's live finite memory.max.
 type DeclaredSliceMemoryMax {
   unit: NonEmptyStr
   memory_max: ByteSize
@@ -356,6 +376,10 @@ fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
     DeclaredSliceMemoryMax {
       unit: approval_broker_slice_unit_name,
       memory_max: approval_broker_slice_memory_max,
+    },
+    DeclaredSliceMemoryMax {
+      unit: attempt_worker_slice_unit_name,
+      memory_max: attempt_worker_slice_memory_max,
     },
     DeclaredSliceMemoryMax {
       unit: fci1_controls_slice_unit_name,

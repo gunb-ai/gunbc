@@ -140,7 +140,7 @@ type ObservationAttempt<Observed, ObserveRefusal>
 // constructor that no longer exists and understate the arm's reach.
 //
 // Two bindings still reach it never, and that is a property of their subjects rather than of this
-// arm: gunbc.repo.repo_ruleset instantiates AssessRefusal at std.types Never because no state
+// arm: gunbc.repo.repo_ruleset instantiates AssessRefusal at std.error_primitives Never because no state
 // of that subject leaves its inputs incomparable, and the realization-selection witness never mints
 // it either. A parameter instantiated at Never is a binding declaring the arm unreachable FOR
 // ITSELF, which is the honest use of it.

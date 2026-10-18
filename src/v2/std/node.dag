@@ -3,7 +3,7 @@ module v2.std.node
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape }
 import std.optional { Present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -31,8 +31,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type Symbol
 
-// THE KERNEL HOST-TEXT TYPE, declared beside Symbol (the v2 kernel-types home, neat-boar-16's ruling
-// on #12549's successor). It is NOT v2.std.text String, which is the structural FreeMonoid<Char>:
+// THE MIGRATION-TIME PROJECTION OF HOST TEXT. Host text's one home is std.host_text HostText (operator
+// ruling H2, 2026-10-17): this declaration is no longer its semantic home, and v2.extdeps.languages.dag
+// lists both as the one String kernel value type until the String-to-HostText wave respells every
+// authored String and deletes this row. It was declared beside Symbol (the v2 kernel-types home,
+// neat-boar-16's ruling on #12549's successor). It is NOT v2.std.text String, which is the structural FreeMonoid<Char>:
 // the two are distinct representations, and a host-text value reaches the structural carrier only
 // through the declared unfold (gunbc.structural_realization_bindings literal_homomorphism_rows,
 // UnicodeScalarSequenceUnfold) or refuses. v2.extdeps.languages.dag binds the spelling `String` to
@@ -1870,9 +1873,10 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind =>
       edges_conform(children: children, d: PositionalPlusNamedMarkerEdges) && (positional_child_count(children: children) == 3)
+    // Scrutinee only is well-formed (Never eliminator). Exhaustiveness is infer, not shape.
     Match =>
       edges_conform(children: children, d: PositionalEdges)
-        && (positional_child_count(children: children) >= 2)
+        && (positional_child_count(children: children) >= 1)
         && match_arm_children_conform_skip_first(children: children, skipped_scrutinee: false)
   }
 }

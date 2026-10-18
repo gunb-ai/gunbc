@@ -1,0 +1,140 @@
+module test.claim.brand_mark_raster_witness
+
+import std.types { Int, List }
+import std.logic { Bool }
+import std.optional { Absent, Present }
+import extdeps.color.srgb { Srgb8 }
+import extdeps.w3c.png { PngIndexedImage, PngRelativeColorimetric, PngEncoded, PngRefused, png_encode }
+import gunbc.design.brand_mark { FaceMark, RobotMark, brand_mark }
+import gunbc.design.brand_mark_raster {
+  BrandRasterSpec, BrandRasterPlacement, BrandClearGround, BrandBadgeGround, BrandRastered, BrandRasterRefused,
+  BrandRasterSizeOutOfRange, BrandRasterCanvasEmpty, BrandRasterMarkOutsideGround, brand_mark_raster, brand_raster_index,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data raster_witness_ink: Srgb8 = Srgb8 { r: 15, g: 15, b: 15 }
+data raster_witness_stone: Srgb8 = Srgb8 { r: 244, g: 241, b: 236 }
+
+// The mark's frame filling a 120-unit canvas edge to edge, on a clear ground.
+fn raster_witness_clear(pixels: Int) -> BrandRasterSpec {
+  BrandRasterSpec { pixels: pixels, canvas: 120, ground: BrandClearGround, placement: BrandRasterPlacement { x: 0, y: 0, extent: 120 }, ink: raster_witness_ink, intent: PngRelativeColorimetric }
+}
+
+// The favicon's composition: the face at (10, 12), 108 across, on a 128 badge with corner 28.
+fn raster_witness_favicon(pixels: Int) -> BrandRasterSpec {
+  BrandRasterSpec { pixels: pixels, canvas: 128, ground: BrandBadgeGround { paint: raster_witness_stone, corner: 28 }, placement: BrandRasterPlacement { x: 10, y: 12, extent: 108 }, ink: raster_witness_ink, intent: PngRelativeColorimetric }
+}
+
+fn raster_witness_rows(spec: BrandRasterSpec, robot: Bool) -> List<List<Int>> {
+  match brand_mark_raster(mark: if robot { brand_mark(kind: RobotMark) } else { brand_mark(kind: FaceMark) }, spec: spec) {
+    BrandRastered { image } => image.rows
+    BrandRasterRefused { cause: _ } => []
+  }
+}
+
+fn raster_witness_at(rows: List<List<Int>>, x: Int, y: Int) -> Int {
+  match get(rows, y) {
+    Present { value } => match get(value, x) {
+      Present { value: v } => v
+      Absent => -1
+    }
+    Absent => -1
+  }
+}
+
+fn raster_witness_mirrored(rows: List<List<Int>>) -> Bool {
+  count(rows) > 0 && count(filter(rows, r => r != reverse(r))) == 0
+}
+
+// The mark is symmetric about the frame's vertical centre, and so is every row of its raster.
+test fn the_raster_is_left_right_symmetric() -> Bool {
+  raster_witness_mirrored(rows: raster_witness_rows(spec: raster_witness_clear(pixels: 24), robot: false))
+    && raster_witness_mirrored(rows: raster_witness_rows(spec: raster_witness_clear(pixels: 24), robot: true))
+    && raster_witness_mirrored(rows: raster_witness_rows(spec: raster_witness_favicon(pixels: 16), robot: false))
+}
+
+// At 12 pixels across a 120-unit frame each pixel is 100 frame tenths. Pixel (1, 7) spans frame
+// x 100..200, y 700..800: wholly inside the shell (x 0..1200, y 120..1080, corner 360 does not reach
+// it) and clear of every feature -- full ink, entry (16, 16). Pixel (3, 4) spans x 300..400,
+// y 400..500, inside the left eye's disc (centre (300, 456), radius 96) for most of its samples, so it
+// is mostly clear. Pixel (0, 0) is outside the shell: fully clear, entry (0, 0).
+test fn shell_eye_and_outside_pixels_take_their_coverage() -> Bool {
+  let rows = raster_witness_rows(spec: raster_witness_clear(pixels: 12), robot: false)
+  raster_witness_at(rows: rows, x: 1, y: 7) == brand_raster_index(a: 16, m: 16)
+    && raster_witness_at(rows: rows, x: 0, y: 0) == brand_raster_index(a: 0, m: 0)
+    && raster_witness_at(rows: rows, x: 3, y: 4) < brand_raster_index(a: 8, m: 8)
+}
+
+// On the badge the corner pixel is partly outside the rounded corner, so it is partly transparent,
+// while a pixel on the badge's edge midway down is fully opaque stone.
+test fn the_badge_corner_is_antialiased_and_its_edge_opaque() -> Bool {
+  let rows = raster_witness_rows(spec: raster_witness_favicon(pixels: 16), robot: false)
+  raster_witness_at(rows: rows, x: 0, y: 0) < brand_raster_index(a: 16, m: 0)
+    && raster_witness_at(rows: rows, x: 0, y: 8) == brand_raster_index(a: 16, m: 0)
+}
+
+test fn the_raster_encodes_as_a_png() -> Bool {
+  match brand_mark_raster(mark: brand_mark(kind: FaceMark), spec: raster_witness_favicon(pixels: 16)) {
+    BrandRastered { image } => match png_encode(image: image) {
+      PngEncoded { octets } => count(octets) > 0
+      PngRefused { cause: _ } => false
+    }
+    BrandRasterRefused { cause: _ } => false
+  }
+}
+
+fn raster_witness_refused_size() -> Bool {
+  match brand_mark_raster(mark: brand_mark(kind: FaceMark), spec: raster_witness_clear(pixels: 0)) {
+    BrandRasterRefused { cause } => match cause {
+      BrandRasterSizeOutOfRange { pixels } => pixels == 0
+      _ => false
+    }
+    BrandRastered { image: _ } => false
+  }
+}
+
+fn raster_witness_refused_extent() -> Bool {
+  match brand_mark_raster(mark: brand_mark(kind: FaceMark), spec: BrandRasterSpec { pixels: 8, canvas: 100, ground: BrandClearGround, placement: BrandRasterPlacement { x: 0, y: 0, extent: 120 }, ink: raster_witness_ink, intent: PngRelativeColorimetric }) {
+    BrandRasterRefused { cause } => match cause {
+      BrandRasterCanvasEmpty { canvas, extent } => canvas == 100 && extent == 120
+      _ => false
+    }
+    BrandRastered { image: _ } => false
+  }
+}
+
+// The mark shifted 20 units left of a badge with corner 60: at canvas (5, 20) the shell's ink is
+// outside the badge's corner circle (centre (60, 60), radius 60), so ink lands off its ground.
+fn raster_witness_refused_escape() -> Bool {
+  match brand_mark_raster(mark: brand_mark(kind: FaceMark), spec: BrandRasterSpec { pixels: 8, canvas: 120, ground: BrandBadgeGround { paint: raster_witness_stone, corner: 60 }, placement: BrandRasterPlacement { x: -20, y: 0, extent: 120 }, ink: raster_witness_ink, intent: PngRelativeColorimetric }) {
+    BrandRasterRefused { cause } => match cause {
+      BrandRasterMarkOutsideGround { row: _, column: _ } => true
+      _ => false
+    }
+    BrandRastered { image: _ } => false
+  }
+}
+
+// THE PER-SAMPLE RED (side-chat review of gunbc#14131 at 04fa70cad2). The face 30 units left of a
+// badge with corner 24, eight pixels: pixel (0, 0) has eight ground samples and four ink samples, one
+// of them outside the corner circle. Its totals say ink <= ground, so a check over totals admits it;
+// the escaped sample refuses it, at that pixel.
+fn raster_witness_refused_escape_beside_ground() -> Bool {
+  match brand_mark_raster(mark: brand_mark(kind: FaceMark), spec: BrandRasterSpec { pixels: 8, canvas: 128, ground: BrandBadgeGround { paint: raster_witness_stone, corner: 24 }, placement: BrandRasterPlacement { x: -30, y: 0, extent: 120 }, ink: raster_witness_ink, intent: PngRelativeColorimetric }) {
+    BrandRasterRefused { cause } => match cause {
+      BrandRasterMarkOutsideGround { row, column } => row == 0 && column == 0
+      _ => false
+    }
+    BrandRastered { image: _ } => false
+  }
+}
+
+test fn an_escaped_sample_refuses_though_ink_is_below_ground() -> Bool {
+  raster_witness_refused_escape_beside_ground()
+}
+
+test fn impossible_targets_refuse_with_their_cause() -> Bool {
+  raster_witness_refused_size() && raster_witness_refused_extent() && raster_witness_refused_escape()
+}

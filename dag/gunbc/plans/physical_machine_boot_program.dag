@@ -78,9 +78,9 @@ fn cuts() -> List<MarkdownBlock> {
 
 fn decisions() -> List<MarkdownBlock> {
   [
-    h2(text: "6. Open decisions"),
+    h2(text: "6. Decisions, settled and open"),
     ul(items: [
-      li(text: "**OS install mechanism for ASRock ALTRAD8UD-1L2T at OpenBMC 3.22:** extdeps.boards.asrock_rack asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog lists CapabilityNbdProxyVirtualMedia for 2.07.00 only; the 3.06.00 and 3.22.00 rows carry the base set. The candidates are a network-boot delivery strategy (cut 6) or a BMC firmware downgrade; choosing between them is an operator decision, recorded when made."),
+      li(text: "**OS install mechanism for ASRock ALTRAD8UD-1L2T at OpenBMC 3.22:** extdeps.boards.asrock_rack asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog lists CapabilityNbdProxyVirtualMedia for 2.07.00 only; the 3.06.00 and 3.22.00 rows carry the base set. The candidates were a network-boot delivery strategy (cut 6) or a BMC firmware downgrade. Decided 2026-10-16 by the operator, relayed through session royal-seal-46 (`pxe is usually preferred`): network boot (PXE or HTTP) as a cut 6 delivery strategy, which also avoids regressing the firmware of the just-recovered altrad8ud-1l2t-6. The downgrade route is not pursued."),
       li(text: "**BMC credential recovery through an in-band route:** a candidate to be qualified. Like any privileged operation it owes typed admission, refusal, effect progress and an independent readback; which convergence entry owns it is open."),
     ]),
     h3(text: "Onboarding bar"),

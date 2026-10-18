@@ -61,6 +61,7 @@ use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGrap
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
+use crate::v1_compiler_infer_types::node_declaration_identity;
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
 use crate::v1_compiler_resolve;
@@ -104,13 +105,14 @@ pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrate
 pub use emitted_crate_workspace_host::{write_emitted_workspace, EmittedWorkspace};
 pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
-    run_native_claim_program, run_native_process_memory_runs, run_native_serve_program,
-    run_required_v2_native, run_self_host, run_type_declaration_use_census_runs,
-    run_v2_demand_census, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
-    run_v2_native_cli_emit, run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute,
-    NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt,
-    NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns,
-    NativeRouteOutcome, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
+    run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
+    run_self_host, run_type_declaration_use_census_runs, run_v2_demand_census,
+    run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit,
+    run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
+    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
+    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
+    NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
     TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
     MEASURED_SPAWN_RECEIPT_ENV,
 };
@@ -16877,8 +16879,7 @@ fn refers_to_std_types_nonempty_str(
     if type_nodes_name_the_same_declaration(&resolved, decl) {
         return true;
     }
-    let decl_id =
-        v1_compiler_infer::node_declaration_identity(decl.clone(), ctx.source_indices.clone());
+    let decl_id = node_declaration_identity(decl.clone(), ctx.source_indices.clone());
     let ref_id = v1_compiler_infer::type_reference_identity(type_expr, ctx.source_indices.clone());
     !decl_id.is_empty() && ref_id == decl_id
 }

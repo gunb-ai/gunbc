@@ -11,14 +11,20 @@ module gunbc.rung_drop.standing
 // instead of the arm it came from.
 
 import std.types { List, Bool }
-import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded }
+import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved, dissolved_is_admissible }
 import gunbc.rung_drop.roster { rung_drop_roster }
 
 fn standing_rung_drops() -> List<RungDrop> {
-  filter(rung_drop_roster, d => match d.standing {
+  standing_rung_drops_of(ds: rung_drop_roster)
+}
+
+// Parameterized on the roster so a witness can hand it a Dissolved row that must NOT be erased.
+fn standing_rung_drops_of(ds: List<RungDrop>) -> List<RungDrop> {
+  filter(ds, d => match d.standing {
     Standing => true
     Retired { trigger_fired: _ } => false
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => dissolved_is_admissible(drop: d) == false
   })
 }
 
@@ -36,6 +42,7 @@ fn superseded_loss_holders_stand(drops: List<RungDrop>, roster: List<RungDrop>) 
     Standing => true
     Retired { trigger_fired: _ } => true
     Superseded { ruling: _, decision_record: _, loss_holder: h } => loss_holder_stands(holder: h as String, roster: roster)
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => true
   })
 }
 
@@ -45,5 +52,12 @@ fn loss_holder_stands(holder: String, roster: List<RungDrop>) -> Bool {
     Standing => true
     Retired { trigger_fired: _ } => false
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
   })) == 1
+}
+
+// EVERY ROW IS ADMISSIBLE: the roster-wide form of gunbc.rung_drop dissolved_is_admissible, which the
+// erasing consumers call per row.
+fn dissolved_populations_empty(drops: List<RungDrop>) -> Bool {
+  all(drops, d => dissolved_is_admissible(drop: d))
 }

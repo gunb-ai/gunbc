@@ -34,7 +34,8 @@ import std.measure { Measure, Count, One }
 import product.capacity.pool { Pool }
 import product.capacity.event_chain { PartitionId }
 import product.capacity.pool_events { SeatRequest }
-import product.capacity.lease { LeasePolicy, QuiescenceRequired, LeaseGrant }
+import product.capacity.lease { LeasePolicy, LeaseGrant }
+import std.resource_release_law { QuiescenceRequired }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.fabric.fabric_event_log { SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire, fabric_seat_release, seat_release_wire }

@@ -1,6 +1,6 @@
 module v2.compiler.dependency_demand_census
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length, empty_map, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length, empty_map, map_insert, map_lookup, collection_concat_shape }
 import v2.compiler.body_lowering_fold {
   body_lower_find_production_shell_optional,
   body_lower_param_binding_optional,
@@ -34,7 +34,6 @@ import v2.compiler.dependency_demand {
 import v2.compiler.resolve { ResolveContext, ResolvedTree, resolve_node }
 import v2.compiler.eval { eval_node_is_arrow, eval_transform_has_callee_reference }
 import v2.std.node_query { find_arrow_body_child, node_positional_child_targets }
-import v2.std.list_introduction { list_introduction_head_path_optional }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.extdeps.languages.dag {
   dag_node_is_fn_decl,
@@ -62,7 +61,7 @@ import v2.std.integer { Int }
 import std.types { Bool }
 import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_from_node, qualified_name_init, qualified_name_snoc, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
 import v2.std.text { String }
 
@@ -610,24 +609,36 @@ type DemandCensusUnboundLocus
   = UnboundNamed { name: Symbol }
   | UnboundShaped { kind: NodeKind, reference: Optional<QualifiedName> }
 
-// THE CANONICAL SHAPED REFERENCE OF A COMPOSITE MENTION, derived once: a marked declaration
-// reference path, else a list-introduction head path, else the first positional child's path.
+// THE CANONICAL SHAPED REFERENCE OF A COMPOSITE MENTION, derived once: the mention's own reference
+// path, else its first positional child's (an instantiation's head, a list introduction's head).
 // Census and CLI both render this; a second walk of the node would be a second authority.
 fn demand_census_shaped_reference_optional(node: Node) -> Optional<QualifiedName> {
+  match demand_census_reference_path_optional(node: node) {
+    Present { value: p } => optional_present(value: p)
+    Absent =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+        Absent => optional_absent()
+        Present { value: head } => demand_census_reference_path_optional(node: head)
+      }
+  }
+}
+
+// A REFERENCE IN EITHER FORM A REFUSED MENTION CAN CARRY: the marked declaration reference (a
+// compiler-generated head, or one resolve minted), or the qualified-name spine an AUTHORED qualified
+// name is before resolve binds it (`std.algebra.FreeMonoid<T>` written in a type ascription). The
+// census renders what the resolver refused, so it reads the pre-resolve spine as the path it spells;
+// this reads a name, it binds nothing.
+fn demand_census_reference_path_optional(node: Node) -> Optional<QualifiedName> {
   match declaration_reference_path_optional(node: node) {
     Present { value: p } => optional_present(value: p)
     Absent =>
-      match list_introduction_head_path_optional(head: node) {
-        Present { value: p } => optional_present(value: p)
-        Absent =>
-          match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-            Absent => optional_absent()
-            Present { value: head } =>
-              match declaration_reference_path_optional(node: head) {
-                Present { value: p } => optional_present(value: p)
-                Absent => list_introduction_head_path_optional(head: head)
-              }
-          }
+      if qualified_name_spine_shape_present(root: node) {
+        match qualified_name_from_node(root: node) {
+          Accepted { value: qn, diagnostics: _ } => optional_present(value: qn)
+          Rejected { diagnostics: _ } => optional_absent()
+        }
+      } else {
+        optional_absent()
       }
   }
 }

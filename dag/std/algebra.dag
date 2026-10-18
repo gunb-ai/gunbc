@@ -1208,14 +1208,12 @@ fn all_algebra_template_names() -> List<String> {
 // std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template
 // row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s)
 // requires explicit import std.algebra { trim } -- bare trim refuses via
-// closure_independent_bare_free_call registry in v1.compiler.infer_env even when std.algebra is
+// v1.compiler.infer_env bare_free_call_requires_listed_import registry even when std.algebra is
 // already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).
 
-// The seam diverges before producing anything; `s` is read in the condition so the declared
-// input reaches the result (wiring-liveness). Both arms are std.error_primitives
-// pure_dag_seam_unreachable_string, the named seam refusal, so whichever arm the condition selects
-// diverges by name rather than as an unnamed division by zero; the body is never reached because
-// resolution routes trim to free_call.trim.
+// Host realization routes to free_call.trim / v1_rt::trim. The declared body is the named
+// String seam, so if the host arm is absent the call refuses by that identity rather than
+// self-recursing. `s` is read so wiring-liveness holds.
 fn trim(s: String) -> String {
   if s == s { pure_dag_seam_unreachable_string() } else { pure_dag_seam_unreachable_string() }
 }

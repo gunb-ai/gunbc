@@ -13,7 +13,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init, collection_concat_shape, collection_count_shape }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.optional {
@@ -577,6 +577,33 @@ fn resolved_reference_spine_optional(node: Node, kind: ResolvedReferenceKind) ->
 
 fn declaration_reference_path_optional(node: Node) -> Optional<QualifiedName> {
   resolved_reference_path_optional(node: node, kind: DeclarationReferenceKind)
+}
+
+// THE ONE QUALIFIEDNAME AUTHORITY FOR THE OPTIONAL DECLARATION (ruling gunbc.design_ruling
+// optional_sugar_is_declaration_bound). Every v2 type reader that asks WHICH DECLARATION an optional
+// type denotes answers with this path: `std.optional.Optional`, the declaration `T?` and `Optional<T>`
+// are sugar for. A reader that needs more than the identity — the arguments the sugar carries — gets
+// them from the reading side, never from a second spelling of these three segments.
+// KEYED ON A QUALIFIEDNAME, NOT A BARE SPELLING: type readers already carry a QualifiedName, so a
+// String key would add a spelling-to-path conversion at each of them, and a conversion per consumer is
+// exactly where the two can disagree.
+// ONE AUTHORITY, SO NOTHING ELSE MAY SPELL IT. Any other place that must name this declaration — a
+// mint row, a realization binding, a consumer of the sugar — reads it from here rather than writing
+// the three segments again, because a copy can only be checked by hand and this path has to hold
+// across every module that touches optional-ness.
+// WHY THE READING BOUNDARY AND NOT THE WRAPPER: the Occupancy wrapper is itself on the retirement list
+// — the sugar is to denote the declaration and the wrapper is to dissolve into it. So nothing adds a
+// field to the wrapper or stores a declaration on it; the link lives where consumers ask, and shrinks
+// with the wrapper.
+// WHAT IS PINNED BY EXECUTION: v2.test.claim.optional_declaration_identity resolves this path in a tree
+// the production route assembled, and asks the route what an authored `T?` owes. An identity that named
+// no declaration, or not the coproduct, fails there.
+fn optional_declaration_identity() -> QualifiedName {
+  [
+    symbol_intern_lexeme(lexeme: "std"),
+    symbol_intern_lexeme(lexeme: "optional"),
+    symbol_intern_lexeme(lexeme: "Optional")
+  ]
 }
 
 // A PARAMETER REFERENCE READS AS ITS DECLARING PATH <fn path>.<label> OR AS NOTHING, under the same

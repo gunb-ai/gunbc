@@ -2,6 +2,7 @@ module test.claim.live_deploy.user_work_slice_witness
 
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLevel, CgroupMemoryLevelRead, CgroupMemoryUnlimited, parse_cgroup_memory_limit }
 import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.algebra { non_empty_to_list }
 import std.optional { Present, Absent }
 import std.measure { byte_size_count, kibibyte, byte_size }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -11,6 +12,7 @@ import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_user_scope_command,
   SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused, systemd_summary_printing_wait_argv,
+  systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
 }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
@@ -21,6 +23,7 @@ import gunbc.live_deploy.slice_bounds {
   repository_convergence_slice_memory_max, repository_convergence_slice_unit_name,
   fci1_controls_slice_unit_name, fci1_controls_slice_memory_max, fci1_controls_slice_memory_high, fci1_controls_slice_memory_swap_max,
   declared_system_slice_memory_maxes, modeled_system_slice_memory_max,
+  attempt_worker_slice_unit_name, attempt_worker_slice_memory_max,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, user_work_charged_slots }
 import gunbc.live_deploy.served_slice_charge {
@@ -85,7 +88,10 @@ data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_sc
 data claim_batch_bin_path: String = "src/v1/stage0/src/bin/claim_batch.rs"
 
 fn property_words(props: List<SystemdRunProperty>) -> List<String> {
-  props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
+  props |> map(p => match systemd_run_property_assignment(property: p) {
+    SystemdRunPropertyAssignmentReady { assignment: a } => a
+    SystemdRunPropertyAssignmentRefused { cause: _ } => ""
+  })
 }
 
 fn has_property(props: List<SystemdRunProperty>, needle: String) -> Bool {
@@ -155,7 +161,7 @@ test fn the_grant_launch_binds_the_declared_slice_once() -> Bool {
 
 test fn the_reviewer_launch_binds_the_declared_slice_once() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: none)
+  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr)
   !has_property(props: props, needle: slice_needle())
     && match gunbc_user_work_transient_command(unit: "gunbc-review-t.service" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
       SystemdRunCommandRefused { cause: _ } => false
@@ -495,6 +501,28 @@ test fn tree_sync_under_its_declared_slice_is_exempt() -> Bool {
   }
 }
 
+test fn an_attempt_worker_under_its_declared_slice_is_wrap_exempt() -> Bool {
+  let worker = "gunbc-attempt-n-k.service"
+  let cg = join(["0::/", attempt_worker_slice_unit_name as String, "/", worker], "")
+  match modeled_system_slice_memory_max(unit: attempt_worker_slice_unit_name as String) {
+    Absent => false
+    Present { value: max } =>
+      byte_size_count(b: max) == byte_size_count(b: attempt_worker_slice_memory_max)
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: max }) {
+          ExemptSystemUnit { unit, slice, bound } =>
+            unit == worker
+              && slice == (attempt_worker_slice_unit_name as String)
+              && byte_size_count(b: bound) == byte_size_count(b: max)
+              && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice, bound: bound }) {
+                SkipUserWorkScope { standing: ExemptSystemUnit { unit: eu, slice: es, bound: eb } } =>
+                  eu == unit && es == slice && byte_size_count(b: eb) == byte_size_count(b: bound)
+                _ => false
+              }
+          _ => false
+        }
+  }
+}
+
 test fn a_modeled_slice_without_a_live_memory_max_refuses() -> Bool {
   let cg = join([
     "0::/",
@@ -550,6 +578,8 @@ test fn declared_system_slice_caps_are_the_slice_bound_rows() -> Bool {
   any(rows, r => (r.unit as String) == (repository_convergence_slice_unit_name as String)
     && byte_size_count(b: r.memory_max) == byte_size_count(b: repository_convergence_slice_memory_max))
     && any(rows, r => byte_size_count(b: r.memory_max) == byte_size_count(b: approval_broker_slice_memory_max))
+    && any(rows, r => (r.unit as String) == (attempt_worker_slice_unit_name as String)
+      && byte_size_count(b: r.memory_max) == byte_size_count(b: attempt_worker_slice_memory_max))
 }
 
 test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
@@ -906,9 +936,9 @@ test fn slice_control_caps_include_sessions_and_broker_on_srv1_only() -> Bool {
     SliceControlNotOwed => false
     SliceControlRefused { cause: _ } => false
     SliceControlDerived { caps } =>
-      caps.length() == 2
-        && any(caps, c => c.unit as String == "sessions.slice" && byte_size_count(b: c.memory_max) == 137438953472)
-        && any(caps, c => c.unit as String == "gunbc-approval-broker.slice" && byte_size_count(b: c.memory_max) == 17179869184 && byte_size_count(b: c.memory_high) == 15032385536)
+      non_empty_to_list(xs: caps).length() == 2
+        && any(non_empty_to_list(xs: caps), c => c.unit as String == "sessions.slice" && byte_size_count(b: c.memory_max) == 137438953472)
+        && any(non_empty_to_list(xs: caps), c => c.unit as String == "gunbc-approval-broker.slice" && byte_size_count(b: c.memory_max) == 17179869184 && byte_size_count(b: c.memory_high) == 15032385536)
         && match slice_control_caps_for(host: operator_host_srv3) {
           SliceControlNotOwed => true
           SliceControlDerived { caps: _ } => false
@@ -1199,4 +1229,23 @@ test fn every_emitted_fci1_runner_pipes_the_unit_output_to_the_caller() -> Bool 
         && !string_contains(s: c, pattern: "--wait --collect")
     _ => false
   }
+}
+
+// THE SEED'S LIST IS THE DECLARED ROWS, IN BOTH DIRECTIONS. `RECOGNIZED_SYSTEM_SLICES` in the
+// hand-retained seed (a declared seed-retained row of v2.compiler.self_host.seed_retention_frontier,
+// so no stage0 regen rewrites it) must equal the capped rows of `declared_system_slice_memory_maxes`
+// followed by the sessions slice, byte for byte. The older mirror claim checks that each declared
+// capped unit appears in the seed; this one also refuses a seed literal no row declares, and any
+// reordering, so the two sources cannot drift apart in either direction.
+test fn the_seed_slice_list_equals_the_declared_capped_rows_plus_sessions() -> Bool {
+  let seed = filesystem_read(path: seed_user_work_scope_path).content
+  let capped = declared_system_slice_memory_maxes() |> filter(row => byte_size_count(b: row.memory_max) > 0)
+  let rendered = join(
+    concat(
+      map(capped, row => join(["    \"", row.unit as String, "\",\n"], "")),
+      [join(["    \"", gunbc_oomd_sessions_slice as String, "\",\n"], "")],
+    ),
+    "",
+  )
+  string_contains(s: seed, pattern: join(["const RECOGNIZED_SYSTEM_SLICES: &[&str] = &[\n", rendered, "];"], ""))
 }

@@ -1,0 +1,107 @@
+module gunbc.serving.serving_provision_derivation
+
+import std.types { String, NonEmptyStr, List, Port }
+import std.optional { Present, Absent }
+import std.content_hash { Sha256Digest }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import gunbc.serving.rented_ninfer_source { RentedArtifactSource, NinferEngineRelease }
+import extdeps.ninfer.ninfer_serve { NinferServeLaunch }
+import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
+import product.fabric.serving_recipe {
+  ServingRecipe, ServingEngine, EngineNinfer, EngineVllm, ServingStartSource, StartSourcePlaced, StartSourceObserved,
+  StartSourcePlacementMissing, StartSourceUnread, ServingWeightsSource, WeightsPlacedOnObjectStore, WeightsNamedUnpinned,
+  serving_start_source,
+}
+
+// THE RECIPE IS THE ONE AUTHORITY FOR WHAT A SERVING HOST INSTALLS AND STARTS. This derivation reads a
+// ServingRecipe and yields the inputs the S3c legs (gunbc.serving.serving_artifact_placement,
+// gunbc.serving.serving_launch) take, and keeps no copy of any of them: the engine pins are the recipe's
+// NinferEngineRelease, the artifact source is serving_start_source(recipe), the digest is the placed model
+// row's pin, the port is the recipe's published port and the served model id is the recipe's. The launch's
+// other flags have exactly one home, gunbc.harness.operator_pod_launch operator_pod_ninfer_launch, which the
+// recipe's own served_model_id already references; they are read from it field by field, with the model id
+// taken from the recipe, so a recipe naming another model id derives a launch for that id and not a stale copy.
+type ServingProvisionInputs {
+  engine: NinferEngineRelease
+  source: RentedArtifactSource
+  digest: Sha256Digest
+  launch: NinferServeLaunch
+  listen_port: Port
+}
+
+// EVERY REFUSAL IS TYPED AND NONE FALLS BACK. A vllm engine has no modeled launch argv, so deriving ninfer
+// inputs for it, or defaulting to the ninfer arm, would start the wrong engine; a start source that is not a
+// placed object is a route this phase has not read, so it is named and not guessed.
+type ServingProvisionDerivation
+  = ServingProvisionDerived { inputs: ServingProvisionInputs }
+  | ServingProvisionRefusedEngineVllm
+  | ServingProvisionRefusedStartSource { cause: NonEmptyStr }
+  | ServingProvisionRefusedNoServedModelId
+
+fn serving_provision_launch(model_id: NonEmptyStr) -> NinferServeLaunch {
+  NinferServeLaunch {
+    bind_host: operator_pod_ninfer_launch.bind_host,
+    model_id: model_id,
+    max_concurrency: operator_pod_ninfer_launch.max_concurrency,
+    max_context: operator_pod_ninfer_launch.max_context,
+    default_max_tokens: operator_pod_ninfer_launch.default_max_tokens,
+    kv_dtype: operator_pod_ninfer_launch.kv_dtype,
+    speculation: operator_pod_ninfer_launch.speculation,
+    device_state_slots: operator_pod_ninfer_launch.device_state_slots,
+    preserve_thinking: operator_pod_ninfer_launch.preserve_thinking,
+    host_context: operator_pod_ninfer_launch.host_context,
+    standing: operator_pod_ninfer_launch.standing,
+  }
+}
+
+fn serving_provision_from_ninfer(recipe: ServingRecipe, build: NinferEngineRelease) -> ServingProvisionDerivation {
+  match serving_start_source(recipe: recipe) {
+    StartSourcePlaced { source: s } =>
+      match recipe.model.source {
+        WeightsPlacedOnObjectStore { placement: p } =>
+          match recipe.model.served_model_id {
+            Present { value: id } =>
+              ServingProvisionDerived {
+                inputs: ServingProvisionInputs {
+                  engine: build,
+                  source: s,
+                  digest: p.model.container_sha256,
+                  launch: serving_provision_launch(model_id: id),
+                  listen_port: recipe.published_tcp_port,
+                },
+              }
+            Absent => ServingProvisionRefusedNoServedModelId
+          }
+        WeightsNamedUnpinned { weights: _, quantization: _ } =>
+          ServingProvisionRefusedStartSource { cause: "the recipe's weights are named and unpinned, so there is no digest to place" as NonEmptyStr }
+      }
+    StartSourceObserved { store: _, hub_fallback: _, standing: _ } =>
+      ServingProvisionRefusedStartSource { cause: "the start source is an observed object store, not a placed artifact; its fetch route is unmodeled" as NonEmptyStr }
+    StartSourcePlacementMissing =>
+      ServingProvisionRefusedStartSource { cause: "the recipe starts from placed weights but names none" as NonEmptyStr }
+    StartSourceUnread =>
+      ServingProvisionRefusedStartSource { cause: "the recipe's start route is unread" as NonEmptyStr }
+  }
+}
+
+fn serving_provision_derive(recipe: ServingRecipe) -> ServingProvisionDerivation {
+  match recipe.engine {
+    EngineNinfer { build: b } => serving_provision_from_ninfer(recipe: recipe, build: b)
+    EngineVllm { build: _ } => ServingProvisionRefusedEngineVllm
+  }
+}
+
+data serving_provision_derivation_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.serving_provision_derivation", decl_name: "ServingProvisionDerivation"),
+    reason: "an EngineVllm recipe refuses typed: no vllm launch argv is modeled, so the provision phase can neither verify, install nor start the lab vLLM build (extdeps.vllm.local_inference_lab_build local_inference_lab_vllm_release), and it never falls back to the ninfer arm",
+    dissolution: unbound_dissolution(description: "a vllm launch argv is modeled — sufficient for serving_provision_derive to yield vllm inputs for the lab release row and for ServingProvisionRefusedEngineVllm to be deleted"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.serving_provision_derivation", decl_name: "serving_provision_derive"),
+    reason: "serving_provision_derive has no executing production caller: the InferenceServingProvision spine row names it as an authority, but no converge-loop step evaluates it on a recipe a host is handed yet, so only test.claim.serving witnesses run it",
+    dissolution: unbound_dissolution(description: "a host-convergence step evaluates the InferenceServingProvision phase on the host's ServingRecipe and reads the placement back — sufficient to delete this row"),
+  ),
+]
