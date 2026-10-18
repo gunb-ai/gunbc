@@ -298,19 +298,20 @@ fn qwen_image() -> String {
 }
 
 test fn flex_template_is_the_recipes_realization() -> Bool {
-  match flex_serving_template(recipe: flex_serving_recipe) {
-    FlexTemplateResolved { template: t } =>
-      (t.image as String == "vastai/vllm:v0.30.0-cuda-13.0")
-        && t.published_tcp_port == 8000
-        && byte_size_count(b: t.disk) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 32)))
-        && (t.model_id as String == "qwen")
-    FlexTemplateImageUnread => false
-    FlexTemplateServedIdUnread => false
-  }
-    && match flex_serving_template(recipe: serving_recipe_flash_next_lab_vllm) {
-      FlexTemplateImageUnread => true
+  // Flash-Next: the image is read, the served model id is not (ruling flex_first_recipe_is_flash_next), so the
+  // template refuses to realize rather than invent an id. The 27B recipe stays modelled and realizes, and is not selected.
+  (match flex_serving_template(recipe: flex_serving_recipe) {
+    FlexTemplateServedIdUnread => true
+    _ => false
+  })
+    && (match flex_host_image(recipe: flex_serving_recipe) {
+      Present { value: i } => i as String == "ghcr.io/local-inference-lab/vllm@sha256:751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7"
+      Absent => false
+    })
+    && (match flex_serving_template(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+      FlexTemplateResolved { template: t } => t.model_id as String == "qwen"
       _ => false
-    }
+    })
 }
 
 test fn operator_template_and_policy_are_named_facts() -> Bool {

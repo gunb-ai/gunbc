@@ -549,6 +549,8 @@ fn flex_vast_offer_query(recipe: ServingRecipe) -> VastAiOfferQuery? {
         Present { value: f } =>
           Present {
             value: VastAiOfferQuery {
+              search_type: vast_ai_search_type_bid,
+              limit: vast_ai_search_limit_default,
               gpu_ram_min_mb: f.gpu_ram_min_mb,
               cuda_max_good_min: f.cuda_max_good_min,
               cpu_ram_min_mb: f.cpu_ram_min_mb,

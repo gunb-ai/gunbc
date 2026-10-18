@@ -490,7 +490,7 @@ data serving_recipe_frontier: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
-    reason: "Throughput and cache tiers are unread (unit cost is UnitCostThroughputUnread, not a guess); disk, cache and port settings are operator policy (flex_operator_template_v2). The driver floor 580 is TranscribedUncited, so serving_driver_verdict returns CardScreenedOnUncitedFloor rather than an established acceptance or refusal. The disk, cache and setting standings have no production reader: the derivation gunbc.serving.serving_provision_derivation reads the placement, engine release, port, start source and served model id but is itself run only by witnesses (see its frontier row), and nothing reads disk, cache sizes or settings.",
+    reason: "Throughput and cache tiers are unread (unit cost is UnitCostThroughputUnread, not a guess); disk, cache and port settings are operator policy (flex_operator_template_v2). The disk, cache and setting standings have no production reader: the derivation gunbc.serving.serving_provision_derivation reads the placement, engine release, port, start source and served model id but is itself run only by witnesses (see its frontier row), and nothing reads disk, cache sizes or settings.",
     dissolution: unbound_dissolution(description: "a consumer reads the recipe's cache sizes (serving_cache_bytes), disk and setting standings, plus an operator or measured throughput reading. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(
