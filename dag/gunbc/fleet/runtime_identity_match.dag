@@ -84,9 +84,11 @@ type RuntimeIdentityAxisRow {
 // THE AXIS TABLE, as authored evidence. Every row cites TWO declarations, each of which must (a) exist,
 // (b) resolve uniquely in the corpus, and (c) own the claim the row leans on it for -- a citation that
 // resolves but owns only part of the claim is a scope mismatch, worse than no citation because it looks
-// audited (DESIGN section 3b). Round 2 of review 38602 caught three rows doing exactly that, and the
-// witness's census test (`test_axis_table_citations_resolve_against_the_declaration_census`) is what caught
-// the replacement citations I first invented for it: a citation is only worth what the census says it is.
+// audited (DESIGN section 3b). That is why the census test --
+// `test_axis_table_citations_resolve_against_the_declaration_census` -- reads the citation pairs OUT OF
+// THESE ROWS instead of restating them: a restated list can keep passing over a row whose citation was
+// renamed or invented, and a citation that resolves to nothing is worse than none, because it reads as
+// audited.
 //
 // What each home is asked to own, and why that one:
 // - BoardSerial reads BoardSerialObservation (the field, its source, and that it may be absent) and binds
