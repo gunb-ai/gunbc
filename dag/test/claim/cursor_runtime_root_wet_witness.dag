@@ -1,0 +1,37 @@
+module test.claim.cursor_runtime_root_wet_witness
+
+import std.types { Bool, String, FilePath, NonEmptyStr }
+import std.env_binding { EnvSet }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.exec.command { LocalExec, env_prefixed_command }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.llm.cursor_cli { cursor_api_key_env_var }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
+import gunbc.dispatch_credential_acquisition { cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config }
+import gunbc.cursor_harness_credential {
+  cursor_bound_key_probe_command, cursor_key_probe_reading, CursorKeyProbeReading, CursorKeyRejected, CursorKeyAccepted, CursorKeyProbeUnreadable,
+}
+
+// WET, srv2 only (the pinned cursor-agent must be installed). Runs the real key probe with a deliberately
+// INVALID key under a fresh attempt root: no paid call, no valid key, and the operator's stored auth is never
+// read or written because HOME and XDG_CONFIG_HOME name the fresh root. Non-root, so run it on srv2 as the
+// belt user. The rejection must hold even when the operator's real home carries valid stored auth.
+test fn an_invalid_key_under_a_fresh_root_reads_rejected_and_persists_nothing() -> Bool {
+  let parent = shell.Mktemp.DirWithTemplate(template: "/tmp/cursor-root-wet.XXXXXX").path
+  let root = cursor_attempt_runtime_root(instance_root: parent, reference: "wet-attempt")
+  let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_home(root: root) as FilePath)
+  let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_config(root: root) as FilePath)
+  let command = env_prefixed_command(
+    bindings: [EnvSet { name: cursor_api_key_env_var as String, value: "gunbc-wet-invalid-key" }],
+    command: cursor_bound_key_probe_command(program: cursor_agent_pinned_program(), root: root),
+  )
+  let run = run_shell_command_observe(command: command, transport: LocalExec)
+  match cursor_key_probe_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr) {
+    CursorKeyRejected { detail: _ } =>
+      !Filesystem.Read(path: join([cursor_attempt_runtime_config(root: root), "cursor", "auth.json"], "/")).success
+    CursorKeyAccepted => false
+    CursorKeyProbeUnreadable { exit_code: _, detail: _ } => false
+  }
+}
