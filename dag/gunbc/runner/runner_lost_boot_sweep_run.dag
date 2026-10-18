@@ -7,7 +7,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { decl_ref }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.transports.rest { RestResult, RestAnswered }
 import product.host_identity { HostIdentity }
 import gunbc.actions_run_binding { actions_variable_trimmed }
@@ -22,8 +22,11 @@ import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, 
 import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
 import extdeps.github.effect { GitHubOrganizationRef }
-import extdeps.uuid { uuid_of }
-import gunbc.machine_intake.host_capture_envelope { KernelBootId }
+import gunbc.machine_intake.host_capture_envelope { KernelBootId, HistoricalAttemptOrdinal }
+import gunbc.runner.runner_host_medium {
+  runner_host_up_readback_of, runner_host_medium_volume_id, runner_host_up_refusal_text,
+  RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
+}
 import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, current_service_population, CurrentServicePopulation, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentServicePopulationRefusal, CurrentPopulationWidthUnresolved, CurrentPopulationHostNotControlled, CurrentPopulationSlotRefused, CurrentPopulationEmpty }
 import gunbc.github_effect_perform {
   ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token_with_key,
@@ -55,15 +58,19 @@ import gunbc.runner.runner_jit_deregistration {
 // with SlotLostBoot, which succeeds only on absence read back. Current, non-grammar and other-host
 // names are never deleted.
 //
-// THE CURRENT BOOT ID IS A DISPATCH INPUT, NEVER DEFAULTED: it is the admitted runner-host-up kernel
-// boot id, and an absent or blank one refuses before any credential is read.
+// THE CURRENT BOOT ID IS READ FROM THE HOST'S CAPTURE ENVELOPE, NEVER TYPED: the dispatch input is the
+// path of the sweep host's capture, and the boot id is the kernel boot id that
+// gunbc.runner.runner_host_medium runner_host_up_readback_of establishes from a closed envelope bound to
+// the sweep host and holding every runner-host-up section. A wrong, stale, absent, unreadable, open or
+// refused envelope refuses before any credential is read, so a well-formed UUID that the envelope does
+// not carry has no route to a deletion.
 //
 // THE CREDENTIAL IS THE RUN'S OWN: the gunbai-ci App key is staged from Secret Manager under the
 // run's federated identity, signs the installation-token mint and the control-plane observation, and
 // is removed on every arm. No host credential and no env token are read.
 
 data lost_boot_sweep_host_env_name: String = "FLEET_CONVERGE_LOST_BOOT_SWEEP_HOST"
-data lost_boot_sweep_current_boot_id_env_name: String = "FLEET_CONVERGE_CURRENT_BOOT_ID"
+data lost_boot_sweep_capture_path_env_name: String = "FLEET_CONVERGE_HOST_CAPTURE_PATH"
 data lost_boot_sweep_wif_access_token_env_name: String = "WIF_ACCESS_TOKEN"
 data lost_boot_sweep_runner_temp_env_name: String = "RUNNER_TEMP"
 data lost_boot_sweep_key_file_name: String = "lost-boot-sweep-app-key"
@@ -84,17 +91,31 @@ type LostBootCurrentInput
   = LostBootCurrentPresent { boot: ServiceBootId }
   | LostBootCurrentRefused { cause: String }
 
-fn lost_boot_current_input(raw: String) -> LostBootCurrentInput {
-  match uuid_of(text: raw) {
-    Absent => LostBootCurrentRefused { cause: join([
-      "lost-boot sweep: ", lost_boot_sweep_current_boot_id_env_name,
-      " is absent, blank or not a UUID; the current admitted boot id is a dispatch input and is never defaulted",
-    ], "") }
-    Present { value: u } =>
-      match service_boot_id_of(run: KernelBootId { boot_id: u }) {
-        Present { value: b } => LostBootCurrentPresent { boot: b }
-        Absent => LostBootCurrentRefused { cause: "lost-boot sweep: the current boot id is not a kernel boot identity" }
+fn lost_boot_current_from_capture(host: NonEmptyStr, capture: String) -> LostBootCurrentInput {
+  match runner_host_up_readback_of(capture: capture, machine: host, label: runner_host_medium_volume_id) {
+    RunnerHostUpPending { reason: r } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the host capture is not a closed envelope: ", r) }
+    RunnerHostUpRefused { refusals: rs } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the host capture does not establish runner-host-up: ", join(map(rs, x => runner_host_up_refusal_text(refusal: x)), "; ")) }
+    RunnerHostUpObserved { up: up } =>
+      match up.run {
+        HistoricalAttemptOrdinal { ordinal: _ } => LostBootCurrentRefused { cause: "lost-boot sweep: the host capture names a historical attempt ordinal, not a kernel boot id" }
+        KernelBootId { boot_id: u } =>
+          match service_boot_id_of(run: KernelBootId { boot_id: u }) {
+            Present { value: b } => LostBootCurrentPresent { boot: b }
+            Absent => LostBootCurrentRefused { cause: "lost-boot sweep: the current boot id is not a kernel boot identity" }
+          }
       }
+  }
+}
+
+fn lost_boot_current_input(host: String, capture_path: String) -> LostBootCurrentInput {
+  if host == "" || capture_path == "" {
+    LostBootCurrentRefused { cause: join(["lost-boot sweep: ", lost_boot_sweep_host_env_name, " and ", lost_boot_sweep_capture_path_env_name, " are required and never defaulted"], "") }
+  } else {
+    let read = Filesystem.Read(path: capture_path)
+    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+      FilesystemReadRefused { error: e } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the host capture is unreadable: ", e) }
+      FilesystemReadSucceeded { content: text } => lost_boot_current_from_capture(host: host as NonEmptyStr, capture: text)
+    }
   }
 }
 
@@ -169,7 +190,7 @@ fn write_sweep_receipt(lines: List<String>) -> ProcessExit {
 fn lost_boot_sweep_wet() -> ProcessExit
   uses net: Network
 {
-  match lost_boot_current_input(raw: actions_variable_trimmed(name: lost_boot_sweep_current_boot_id_env_name)) {
+  match lost_boot_current_input(host: actions_variable_trimmed(name: lost_boot_sweep_host_env_name), capture_path: actions_variable_trimmed(name: lost_boot_sweep_capture_path_env_name)) {
     LostBootCurrentRefused { cause } => exit_failure(reason: cause)
     LostBootCurrentPresent { boot } => {
       let host_name = actions_variable_trimmed(name: lost_boot_sweep_host_env_name)
