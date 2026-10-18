@@ -1208,7 +1208,7 @@ fn all_algebra_template_names() -> List<String> {
 // std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template
 // row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s)
 // requires explicit import std.algebra { trim } -- bare trim refuses via
-// closure_independent_bare_free_call registry in v1.compiler.infer_env even when std.algebra is
+// v1.compiler.infer_env bare_free_call_requires_listed_import registry even when std.algebra is
 // already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).
 
 // Host realization routes to free_call.trim / v1_rt::trim. The declared body is the named

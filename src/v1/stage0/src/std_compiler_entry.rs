@@ -9,6 +9,7 @@ use self::NativeDriverCostRowStanding::*;
 use self::NativeDriverExclusiveRowKey::*;
 use self::NativeEffectClass::*;
 use self::NativeEffectScope::*;
+pub use crate::std_algebra::collection_map_shape;
 pub use crate::std_decl_ref::{decl_ref, DeclarationRef};
 pub use crate::std_measure::{
     millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count, Nanosecond,
@@ -134,7 +135,7 @@ pub fn native_claim_route_denominator() -> Rc<NativeEffectDenominator> {
         route: CompilerEntryDriver::NativeClaimDriver,
         ruling: crate::std_decl_ref::decl_ref("std.compiler_entry".to_string(), "NativeClaimDriver".to_string()),
         scope: Rc::new(NativeEffectScope::NativeAdmitOnly {
-        admitted: Rc::new(vec![native_effect_declared("extdeps.filesystem.filesystem_io".to_string(), "Filesystem".to_string())]),
+        admitted: Rc::new(vec![native_effect_declared("extdeps.filesystem.filesystem_io".to_string(), "Filesystem".to_string()), native_effect_declared("std.realization_measurement".to_string(), "AllocationCounter".to_string())]),
     }),
     })
             };

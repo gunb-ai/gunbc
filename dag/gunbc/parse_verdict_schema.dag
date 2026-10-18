@@ -1,6 +1,6 @@
 module gunbc.parse_verdict_schema
 
-import std.types { Bool, String, List, Map, NonEmptyStr }
+import std.types { Bool, Int, String, List, Map, NonEmptyStr }
 import std.optional { Absent, Optional, Present }
 import std.algebra { map_lookup }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -107,3 +107,17 @@ fn parse_verdict_standing(
 // them from that directory, so publish, restore and read cannot disagree on a name.
 data parse_verdict_restore_identity_basename: String = "gunbc-parse-compiler-identity"
 data parse_verdict_restore_receipts_basename: String = "gunbc-parse-verdict-receipts.tsv"
+
+// THE ANCESTOR LOCATOR'S DECLARED BOUND. The restore key carries a commit sha, and the sha only LOCATES
+// an entry: reuse is decided per module by compiler identity plus source digest. The pull request's
+// base is main's tip, which moves faster than its push runs publish, so a key on the tip alone hits
+// only while main is idle. The locator therefore tries the first-parent ancestors of the base, newest
+// first, one exact key each, and the first with a published identity blob wins. These ordinals are
+// the whole bound: the workflow's locator, its gated restore chain and its record step are all
+// generated from this list, so they cannot disagree on how far back to look. No restore-keys prefix
+// is used anywhere, because a prefix hit is chosen by creation time, not ancestry.
+data parse_verdict_restore_ancestor_ordinals: List<Int> = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+
+// The record the restore chain leaves for the verb: the sha of the ancestor whose entry was restored
+// (one line, empty when none was), so the counts line can name the ancestor it used.
+data parse_verdict_restore_ancestors_basename: String = "gunbc-parse-ancestor"
