@@ -143,16 +143,19 @@ type MountinfoHolding
   = MountHolds { entry: MountinfoEntry }
   | MountHoldsNone
 
+fn mountinfo_visible_holder(acc: MountinfoEntry?, e: MountinfoEntry, path: String) -> MountinfoEntry? {
+  if mountinfo_holds_path(entry: e, path: path) {
+    match acc {
+      Absent => Present { value: e }
+      Present { value: a } => if string_length(s: e.mount_point) >= string_length(s: a.mount_point) { Present { value: e } } else { acc }
+    }
+  } else {
+    acc
+  }
+}
+
 fn mountinfo_mount_holding(entries: List<MountinfoEntry>, path: String) -> MountinfoHolding {
-  let best = fold(entries, init: none, f: (acc: MountinfoEntry?, e) =>
-    if mountinfo_holds_path(entry: e, path: path) {
-      match acc {
-        Absent => Present { value: e }
-        Present { value: a } => if length(xs: e.mount_point) >= length(xs: a.mount_point) { Present { value: e } } else { acc }
-      }
-    } else {
-      acc
-    })
+  let best = fold(entries, init: Absent, f: (acc, e) => mountinfo_visible_holder(acc: acc, e: e, path: path))
   match best {
     Present { value: e } => MountHolds { entry: e }
     Absent => MountHoldsNone

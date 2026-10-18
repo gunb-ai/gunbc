@@ -218,10 +218,10 @@ type ServiceSlotAdmission
 // (gunbc.runner.runner_host_unit_slot current_service_population_over), so an index outside it (999), a unit of
 // another boot, and a name nobody bound are each refused here and mint nothing. The admission is the only value
 // service_slot_pass takes the slot from.
-fn service_slot_admit(host: HostControlStanding, identity: HostIdentity, current_boot: ServiceBootId, population: CurrentServicePopulationStanding, unit: String) -> ServiceSlotAdmission
+fn service_slot_admit(current_boot: ServiceBootId, population: CurrentServicePopulationStanding, rebuilt: ServiceSlotRebuild, unit: String) -> ServiceSlotAdmission
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_admit_current"),
-    decl_ref(module_path: "test.claim.runner_service_slot_controller_witness", decl_name: "admit_over"),
+    decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admit_over"),
   ]
 {
   match population {
@@ -230,15 +230,20 @@ fn service_slot_admit(host: HostControlStanding, identity: HostIdentity, current
     CurrentServicePopulationDerived { population: pop } =>
       if (pop.boot.boot_id as String) != (current_boot.boot_id as String) {
         ServiceSlotAdmissionRefused { cause: "the population is of another boot than the one the kernel reports" }
-      } else if current_population_has_unit(population: pop, unit: unit) {
-        match service_slot_rebuild(host: host, identity: identity, boot: current_boot, unit: unit) {
-          ServiceSlotRebuilt { slot: s } => ServiceSlotAdmitted { admission: ServiceSlotMintAdmission { slot: s, boot: current_boot, population: pop } }
+      } else if !current_population_has_unit(population: pop, unit: unit) {
+        ServiceSlotAdmissionRefused { cause: join([unit, " is not a member of the current boot's service population"], "") }
+      } else {
+        match rebuilt {
+          ServiceSlotRebuilt { slot: s } =>
+            if (s.unit as String) == unit {
+              ServiceSlotAdmitted { admission: ServiceSlotMintAdmission { slot: s, boot: current_boot, population: pop } }
+            } else {
+              ServiceSlotAdmissionRefused { cause: join([unit, " rebuilds as ", s.unit as String], "") }
+            }
           ServiceSlotUnitUnparsed { unit: u } => ServiceSlotAdmissionRefused { cause: join([u, " is not a service-slot unit name"], "") }
           ServiceSlotNotBound { refusal: _ } => ServiceSlotAdmissionRefused { cause: "the slot is not bound" }
           ServiceSlotUnitNotRebuilt { listed: l, rebuilt: r } => ServiceSlotAdmissionRefused { cause: join([l, " rebuilds as ", r], "") }
         }
-      } else {
-        ServiceSlotAdmissionRefused { cause: join([unit, " is not a member of the current boot's service population"], "") }
       }
   }
 }
@@ -246,7 +251,12 @@ fn service_slot_admit(host: HostControlStanding, identity: HostIdentity, current
 fn service_slot_admit_current(host: HostControlStanding, identity: HostIdentity, current_boot: ServiceBootId, unit: String) -> ServiceSlotAdmission
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_controller_main")]
 {
-  service_slot_admit(host: host, identity: identity, current_boot: current_boot, population: current_service_population(host: host, boot: current_boot), unit: unit)
+  service_slot_admit(
+    current_boot: current_boot,
+    population: current_service_population(host: host, boot: current_boot),
+    rebuilt: service_slot_rebuild(host: host, identity: identity, boot: current_boot, unit: unit),
+    unit: unit,
+  )
 }
 
 // ── the App key is held, on a location that cannot swap ─────────────────────────────────────────
@@ -272,7 +282,7 @@ fn service_slot_path_cause(label: String, m: CustodyPathMetadata, legs: CustodyP
 fn service_slot_key_standing_of(row: HostCredentialCustodyRow, file: CustodyPathMetadata, dir: CustodyPathMetadata) -> ServiceSlotKeyStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_key_custody"),
-    decl_ref(module_path: "test.claim.runner_service_slot_controller_witness", decl_name: "key_over"),
+    decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "key_over"),
   ]
 {
   let causes = concat(
@@ -342,7 +352,7 @@ type ServiceSlotIsolation
 fn service_slot_isolate_listener_as(row: HostCredentialCustodyRow, user: NonEmptyStr) -> ServiceSlotIsolation
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_isolate_listener"),
-    decl_ref(module_path: "test.claim.runner_service_slot_controller_witness", decl_name: "isolate_as"),
+    decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "isolate_as"),
   ]
 {
   if custody_row_readable_by(row: row, principal: user as String) {
@@ -401,18 +411,6 @@ fn service_slot_listener_envelope(properties: List<SystemdRunProperty>) -> Memor
 
 // ── delivering the credential ───────────────────────────────────────────────────────────────────
 
-fn service_slot_credential_of(mint: JitMintPerformance) -> EncodedJitConfig? {
-  match mint {
-    JitMintReceived { delivery: d } =>
-      match d {
-        JitCredentialBoundToAttempt { bound: b } => Present { value: b.credential }
-        JitCredentialNotDispatched { refusal: _ } => none
-        JitCredentialMintNotCreated { outcome: _ } => none
-      }
-    _ => none
-  }
-}
-
 type ServiceSlotListenerCommand
   = ServiceSlotListenerReady { command: ArgvCommand }
   | ServiceSlotListenerUnbuilt { cause: NonEmptyStr }
@@ -463,8 +461,8 @@ type ServiceSlotPass
 // THE PASS TAKES THREE CARRIERS AND NOTHING ELSE: the admitted mint (this boot, a population member), the held
 // key (never its path) and the isolated listener user. It is reachable from the entry alone.
 fn service_slot_pass(admission: ServiceSlotMintAdmission, key: ServiceSlotKeyHeld, isolated: ServiceSlotListenerIsolated) -> ServiceSlotPass
-  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_controller_main")]
   uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_controller_main")]
 {
   let slot = admission.slot
   let binding = service_slot_mint_binding(slot: slot, key: key)

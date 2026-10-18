@@ -323,6 +323,7 @@ fn current_service_population(host: HostControlStanding, boot: ServiceBootId) ->
 fn current_service_population_over(host: HostControlStanding, width: RunnerWidthResolution, registration_labels: RunnerRegistrationLabelsResolution, boot: ServiceBootId) -> CurrentServicePopulationStanding admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_host_unit_slot", decl_name: "current_service_population"),
   decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "population_over_host"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "population_for"),
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "supplied_population"),
 ] {
   match host {
