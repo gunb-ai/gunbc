@@ -266,7 +266,7 @@ test fn a_population_refusal_renders_both_populations_not_only_its_name() -> Boo
     build_terminal: RegenStageBuildPassed
   })
   regen_stage_execution_admission_detail(admission: admission)
-    == "planned=[std_subject.rs] executed=[std_subject.rs std_dependent.rs]"
+    == "planned=[std.subject:std_subject.rs] executed=[std.subject:std_subject.rs std.dependent:std_dependent.rs]"
 }
 
 test fn an_admitted_stage_renders_no_refusal_detail() -> Bool {
@@ -944,4 +944,20 @@ test fn a_stage_execution_refusal_prints_variant_surfaces_and_ordinal() -> Bool 
     && string_contains(s: build, pattern: "StageSeedBuildRefused")
     && string_contains(s: build, pattern: "ordinal=3")
     && string_contains(s: build, pattern: "cargo failed")
+}
+
+// Equal paths, different declaring modules: admission compares module AND path, so the line must
+// carry both modules or the field that explains the refusal is lost.
+test fn a_population_refusal_with_equal_paths_names_both_declaring_modules() -> Bool {
+  let left = RegenSurfaceIdentity { declaring_module: "std.left", projected_path: "same.rs" }
+  let right = RegenSurfaceIdentity { declaring_module: "std.right", projected_path: "same.rs" }
+  let detail = regen_stage_execution_admission_detail(admission: regen_admit_stage_execution(observation: RegenStageExecutionObservation {
+    planned: [left],
+    executed: [right],
+    expected_candidate_digest: "candidate",
+    observed_candidate_digest: "candidate",
+    build_terminal: RegenStageBuildPassed
+  }))
+  string_contains(s: detail, pattern: "planned=[std.left:same.rs]")
+    && string_contains(s: detail, pattern: "executed=[std.right:same.rs]")
 }

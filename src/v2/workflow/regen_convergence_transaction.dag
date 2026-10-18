@@ -839,11 +839,11 @@ fn regen_stage_execution_admission_detail(admission: RegenStageExecutionAdmissio
     RegenStageExecutionAdmitted => ""
     RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: planned, executed: executed } } =>
       concat(
-        concat("planned=[", concat(regen_surface_identity_path_list(rows: planned), "] ")),
-        concat("executed=[", concat(regen_surface_identity_path_list(rows: executed), "]"))
+        concat("planned=[", concat(regen_surface_identity_text_list(rows: planned), "] ")),
+        concat("executed=[", concat(regen_surface_identity_text_list(rows: executed), "]"))
       )
     RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: surfaces, expected: expected, observed: observed } } =>
-      concat("surfaces=[", concat(regen_surface_identity_path_list(rows: surfaces), concat("] expected=", concat(expected, concat(" observed=", observed)))))
+      concat("surfaces=[", concat(regen_surface_identity_text_list(rows: surfaces), concat("] expected=", concat(expected, concat(" observed=", observed)))))
     RegenStageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: ordinal, reason: reason } } =>
       concat("ordinal=", concat(to_string(ordinal), concat(" build refused: ", reason)))
   }
