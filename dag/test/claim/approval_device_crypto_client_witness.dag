@@ -8,7 +8,7 @@ import extdeps.crypto.signature {
   VerifyingKeyMalformed, SignatureSuiteMismatch, VerifyingKeyUndecodable, SignatureUndecodable,
 }
 import gunbc.auth.approval_device_crypto_serve { signature_answer, attestation_answer, assertion_answer }
-import extdeps.apple.app_attest { AttestationVerification, AssertionVerification, AppAttestProduction, AttestKeyId, AttestationVerified, AttestationRefused, AssertionAuthentic, AssertionRefused,
+import extdeps.apple.app_attest { AttestationExpectation, AssertionExpectation, AttestationVerification, AssertionVerification, AppAttestProduction, AttestKeyId, AttestationVerified, AttestationRefused, AssertionAuthentic, AssertionRefused,
   AttestationRefusal, AttestationFormatUnexpected, AttestationChainUntrusted, AttestationNonceMismatch, AttestationKeyIdMismatch, AttestationAppIdMismatch,
   AttestationCounterNonZero, AttestationEnvironmentUnexpected, AttestationCredentialIdMismatch, AttestationValidationCategoryRefused,
   AttestationValidationCategoryAbsent, AttestationBundleVersionAbsent, AttestationBundleVersionUnexpected, AttestationUndecodable,
@@ -21,8 +21,9 @@ import gunbc.auth.approval_device_crypto_realization {
 }
 import std.decl_ref { decl_ref }
 import gunbc.auth.approval_device_crypto_wire {
-  DeviceCryptoAnswer, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, NoPayload, SignedPayload, AttestedPayload, AssertedPayload, RefusedPayload, NoFields, OneField, TwoFields,
+  DeviceCryptoAnswer, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, CryptoFinite, NoPayload, SignedPayload, AttestedPayload, AssertedPayload, RefusedPayload, NoFields, OneField, TwoFields,
   device_crypto_arm_signature_verified, device_crypto_arm_attestation_verified, device_crypto_arm_assertion_verified,
+  device_crypto_arm_infinity, device_crypto_arm_finite, device_crypto_arm_scalar_unrepresentable,
   device_crypto_answer_json, decode_device_crypto_answer,
 }
 import gunbc.auth.approval_device_crypto_client {
@@ -41,6 +42,18 @@ fn unavailable() -> DeviceCryptoAdmission {
 
 fn key() -> VerifyingKey {
   VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEY" }
+}
+
+fn request_message() -> NonEmptyStr {
+  "the message"
+}
+
+fn attestation_request() -> AttestationExpectation {
+  AttestationExpectation { key_id: "kid" as AttestKeyId, client_data: "cd", app_id: "TEAM.app", environment: AppAttestProduction, observed_at: "2026-10-18T00:00:00Z", admitted_validation_categories: [1], expected_bundle_version: "1" }
+}
+
+fn assertion_request() -> AssertionExpectation {
+  AssertionExpectation { key_id: "kid" as AttestKeyId, public_key_point_b64url: "BPK", client_data: "cd", app_id: "TEAM.app", admitted_validation_categories: [1], expected_bundle_version: "1" }
 }
 
 fn signed_answer() -> DeviceCryptoAnswer {
@@ -65,9 +78,13 @@ fn refused_answer() -> DeviceCryptoAnswer {
   DeviceCryptoAnswer { verdict: CryptoRefused, arm: "AttestationNonceMismatch", payload: RefusedPayload { fields: NoFields } }
 }
 
+fn order_answer(v: DeviceCryptoVerdict, arm: String) -> DeviceCryptoAnswer {
+  DeviceCryptoAnswer { verdict: v, arm: arm, payload: NoPayload }
+}
+
 // THE WIRE ROUND-TRIPS EVERY VERIFIED PAYLOAD: what the service writes is what the broker decodes.
 test fn witness_every_verified_payload_round_trips_the_wire() -> Bool {
-  [signed_answer(), attested_answer(), asserted_answer(), refused_answer()]
+  [signed_answer(), attested_answer(), asserted_answer(), refused_answer(), order_answer(v: CryptoInfinity, arm: device_crypto_arm_infinity), order_answer(v: CryptoFinite, arm: device_crypto_arm_finite), order_answer(v: CryptoRefused, arm: device_crypto_arm_scalar_unrepresentable)]
     |> all(a => match decode_device_crypto_answer(text: device_crypto_answer_json(a: a)) {
       WireDecoded { value: back } => device_crypto_answer_json(a: back) == device_crypto_answer_json(a: a)
       WireRefused { at: _, cause: _ } => false
@@ -99,22 +116,22 @@ fn assertion_failed(r: SidecarResult<AssertionVerification>) -> Bool {
 }
 
 test fn witness_decoding_without_an_admission_mints_nothing() -> Bool {
-  signature_failed(r: signature_from_answer(admission: unavailable(), answer: signed_answer()))
-    && attestation_failed(r: attestation_from_answer(admission: unavailable(), answer: attested_answer()))
-    && assertion_failed(r: assertion_from_answer(admission: unavailable(), answer: asserted_answer()))
+  signature_failed(r: signature_from_answer(admission: unavailable(), answer: signed_answer(), key: key(), message: request_message()))
+    && attestation_failed(r: attestation_from_answer(admission: unavailable(), answer: attested_answer(), expectation: attestation_request()))
+    && assertion_failed(r: assertion_from_answer(admission: unavailable(), answer: asserted_answer(), expectation: assertion_request()))
 }
 
 // THE CONTROL: under an admission the same answers mint the fold's own verified arms.
 test fn witness_decoding_under_an_admission_mints_the_verified_arms() -> Bool {
-  let signature = match signature_from_answer(admission: admitted(), answer: signed_answer()) {
+  let signature = match signature_from_answer(admission: admitted(), answer: signed_answer(), key: key(), message: request_message()) {
     SidecarAnswered { verification: SignatureVerified { verified: v } } => v.message == "the message"
     _ => false
   }
-  let attestation = match attestation_from_answer(admission: admitted(), answer: attested_answer()) {
+  let attestation = match attestation_from_answer(admission: admitted(), answer: attested_answer(), expectation: attestation_request()) {
     SidecarAnswered { verification: AttestationVerified { verified: _ } } => true
     _ => false
   }
-  let assertion = match assertion_from_answer(admission: admitted(), answer: asserted_answer()) {
+  let assertion = match assertion_from_answer(admission: admitted(), answer: asserted_answer(), expectation: assertion_request()) {
     SidecarAnswered { verification: AssertionAuthentic { authentic: a } } => a.counter == 3
     _ => false
   }
@@ -124,15 +141,15 @@ test fn witness_decoding_under_an_admission_mints_the_verified_arms() -> Bool {
 // EVERY REFUSAL ARM maps to the fold's refusal, never to a verified value.
 test fn witness_refused_and_invalid_answers_map_to_the_refusal_arms() -> Bool {
   let invalid = DeviceCryptoAnswer { verdict: CryptoInvalid, arm: "SignatureInvalid", payload: RefusedPayload { fields: NoFields } }
-  let signature = match signature_from_answer(admission: admitted(), answer: invalid) {
+  let signature = match signature_from_answer(admission: admitted(), answer: invalid, key: key(), message: request_message()) {
     SidecarAnswered { verification: SignatureInvalid { suite: _ } } => true
     _ => false
   }
-  let attestation = match attestation_from_answer(admission: admitted(), answer: refused_answer()) {
+  let attestation = match attestation_from_answer(admission: admitted(), answer: refused_answer(), expectation: attestation_request()) {
     SidecarAnswered { verification: AttestationRefused { cause: _ } } => true
     _ => false
   }
-  let assertion = match assertion_from_answer(admission: admitted(), answer: DeviceCryptoAnswer { verdict: CryptoRefused, arm: "AssertionAppIdMismatch", payload: RefusedPayload { fields: OneField { a: "TEAM.app" } } }) {
+  let assertion = match assertion_from_answer(admission: admitted(), answer: DeviceCryptoAnswer { verdict: CryptoRefused, arm: "AssertionAppIdMismatch", payload: RefusedPayload { fields: OneField { a: "TEAM.app" } } }, expectation: assertion_request()) {
     SidecarAnswered { verification: AssertionRefused { cause: _ } } => true
     _ => false
   }
@@ -141,8 +158,8 @@ test fn witness_refused_and_invalid_answers_map_to_the_refusal_arms() -> Bool {
 
 // A verdict that is not an answer to this route is a sidecar failure, not a verification result.
 test fn witness_an_unexpected_verdict_is_a_sidecar_failure() -> Bool {
-  let odd = DeviceCryptoAnswer { verdict: CryptoInfinity, arm: "PointAtInfinity", payload: NoPayload }
-  match signature_from_answer(admission: admitted(), answer: odd) {
+  let odd = DeviceCryptoAnswer { verdict: CryptoInfinity, arm: device_crypto_arm_infinity, payload: NoPayload }
+  match signature_from_answer(admission: admitted(), answer: odd, key: key(), message: request_message()) {
     SidecarFailed { cause: _ } => true
     _ => false
   }
@@ -196,7 +213,7 @@ fn signature_joined(v: SignatureVerification) -> Bool {
   match decode_device_crypto_answer(text: signature_answer(v: v).body) {
     WireRefused { at: _, cause: _ } => false
     WireDecoded { value: a } =>
-      match signature_from_answer(admission: admitted(), answer: a) {
+      match signature_from_answer(admission: admitted(), answer: a, key: key(), message: request_message()) {
         SidecarAnswered { verification: back } => back == v
         SidecarFailed { cause: _ } => false
       }
@@ -207,7 +224,7 @@ fn attestation_joined(r: AttestationRefusal) -> Bool {
   match decode_device_crypto_answer(text: attestation_answer(v: AttestationRefused { cause: r }).body) {
     WireRefused { at: _, cause: _ } => false
     WireDecoded { value: a } =>
-      match attestation_from_answer(admission: admitted(), answer: a) {
+      match attestation_from_answer(admission: admitted(), answer: a, expectation: attestation_request()) {
         SidecarAnswered { verification: back } => back == AttestationRefused { cause: r }
         SidecarFailed { cause: _ } => false
       }
@@ -218,7 +235,7 @@ fn assertion_joined(r: AssertionRefusal) -> Bool {
   match decode_device_crypto_answer(text: assertion_answer(v: AssertionRefused { cause: r }).body) {
     WireRefused { at: _, cause: _ } => false
     WireDecoded { value: a } =>
-      match assertion_from_answer(admission: admitted(), answer: a) {
+      match assertion_from_answer(admission: admitted(), answer: a, expectation: assertion_request()) {
         SidecarAnswered { verification: back } => back == AssertionRefused { cause: r }
         SidecarFailed { cause: _ } => false
       }
@@ -279,8 +296,78 @@ test fn witness_a_negative_with_the_wrong_members_or_verdict_is_a_sidecar_failur
   let extra = DeviceCryptoAnswer { verdict: CryptoRefused, arm: "AttestationNonceMismatch", payload: RefusedPayload { fields: OneField { a: "x" } } }
   let disagrees = DeviceCryptoAnswer { verdict: CryptoRefused, arm: "SignatureInvalid", payload: RefusedPayload { fields: NoFields } }
   let unknown = DeviceCryptoAnswer { verdict: CryptoRefused, arm: "NoSuchArm", payload: RefusedPayload { fields: NoFields } }
-  signature_failed(r: signature_from_answer(admission: admitted(), answer: no_members))
-    && attestation_failed(r: attestation_from_answer(admission: admitted(), answer: extra))
-    && signature_failed(r: signature_from_answer(admission: admitted(), answer: disagrees))
-    && assertion_failed(r: assertion_from_answer(admission: admitted(), answer: unknown))
+  signature_failed(r: signature_from_answer(admission: admitted(), answer: no_members, key: key(), message: request_message()))
+    && attestation_failed(r: attestation_from_answer(admission: admitted(), answer: extra, expectation: attestation_request()))
+    && signature_failed(r: signature_from_answer(admission: admitted(), answer: disagrees, key: key(), message: request_message()))
+    && assertion_failed(r: assertion_from_answer(admission: admitted(), answer: unknown, expectation: assertion_request()))
+}
+
+// THE ORDER ANSWERS ARE STRICT: each of infinity, finite and scalar-unrepresentable decodes only as exactly its (verdict, arm)
+// with no members; an unexpected member, another arm under the verdict, or the scalar arm under another verdict is refused.
+fn decode_refuses(text: String) -> Bool {
+  match decode_device_crypto_answer(text: text) {
+    WireRefused { at: _, cause: _ } => true
+    WireDecoded { value: _ } => false
+  }
+}
+
+test fn witness_an_order_answer_with_a_member_or_another_arm_is_refused() -> Bool {
+  decode_refuses(text: "\{\"verdict\": \"infinity\", \"arm\": \"Infinity\", \"f1\": \"x\"\}")
+    && decode_refuses(text: "\{\"verdict\": \"infinity\", \"arm\": \"Finite\"\}")
+    && decode_refuses(text: "\{\"verdict\": \"finite\", \"arm\": \"Infinity\"\}")
+    && decode_refuses(text: "\{\"verdict\": \"refused\", \"arm\": \"ScalarUnrepresentable\", \"f1\": \"x\"\}")
+    && decode_refuses(text: "\{\"verdict\": \"invalid\", \"arm\": \"ScalarUnrepresentable\"\}")
+}
+
+// THE REQUEST-TO-ANSWER JOIN, per verifier and per echoed field: a verified payload that differs from the request in any
+// one of its joined fields is a sidecar failure, and the unchanged payload mints (so each failure is the field, not the fixture).
+// The three routes' call sites (authenticated reads and redemption: assertion; enrolment: attestation; redemption and
+// enrolment key proof: signature) each hand their own request to these same three entries.
+test fn witness_a_verified_signature_for_another_request_is_a_sidecar_failure() -> Bool {
+  let other_key = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BOTHER" }
+  let other_key_answer = DeviceCryptoAnswer { verdict: CryptoVerified, arm: device_crypto_arm_signature_verified, payload: SignedPayload { key: other_key, message: "the message" } }
+  let other_message_answer = DeviceCryptoAnswer { verdict: CryptoVerified, arm: device_crypto_arm_signature_verified, payload: SignedPayload { key: key(), message: "another message" } }
+  let same = match signature_from_answer(admission: admitted(), answer: signed_answer(), key: key(), message: request_message()) {
+    SidecarAnswered { verification: SignatureVerified { verified: _ } } => true
+    _ => false
+  }
+  same
+    && signature_failed(r: signature_from_answer(admission: admitted(), answer: other_key_answer, key: key(), message: request_message()))
+    && signature_failed(r: signature_from_answer(admission: admitted(), answer: other_message_answer, key: key(), message: request_message()))
+}
+
+fn attested_with(id: String, env: AppAttestEnvironment, cd: String) -> DeviceCryptoAnswer {
+  DeviceCryptoAnswer {
+    verdict: CryptoVerified, arm: device_crypto_arm_attestation_verified,
+    payload: AttestedPayload { key_id: id as AttestKeyId, public_key_point_b64url: "BPK", receipt_b64: "RCPT", environment: env, client_data: cd as NonEmptyStr },
+  }
+}
+
+test fn witness_a_verified_attestation_for_another_request_is_a_sidecar_failure() -> Bool {
+  let same = match attestation_from_answer(admission: admitted(), answer: attested_with(id: "kid", env: AppAttestProduction, cd: "cd"), expectation: attestation_request()) {
+    SidecarAnswered { verification: AttestationVerified { verified: _ } } => true
+    _ => false
+  }
+  same
+    && attestation_failed(r: attestation_from_answer(admission: admitted(), answer: attested_with(id: "other", env: AppAttestProduction, cd: "cd"), expectation: attestation_request()))
+    && attestation_failed(r: attestation_from_answer(admission: admitted(), answer: attested_with(id: "kid", env: AppAttestDevelopment, cd: "cd"), expectation: attestation_request()))
+    && attestation_failed(r: attestation_from_answer(admission: admitted(), answer: attested_with(id: "kid", env: AppAttestProduction, cd: "other"), expectation: attestation_request()))
+}
+
+fn asserted_with(id: String, pk: String, cd: String) -> DeviceCryptoAnswer {
+  DeviceCryptoAnswer {
+    verdict: CryptoVerified, arm: device_crypto_arm_assertion_verified,
+    payload: AssertedPayload { key_id: id as AttestKeyId, public_key_point_b64url: pk as NonEmptyStr, counter: 3, client_data: cd as NonEmptyStr },
+  }
+}
+
+test fn witness_a_verified_assertion_for_another_request_is_a_sidecar_failure() -> Bool {
+  let same = match assertion_from_answer(admission: admitted(), answer: asserted_with(id: "kid", pk: "BPK", cd: "cd"), expectation: assertion_request()) {
+    SidecarAnswered { verification: AssertionAuthentic { authentic: _ } } => true
+    _ => false
+  }
+  same
+    && assertion_failed(r: assertion_from_answer(admission: admitted(), answer: asserted_with(id: "other", pk: "BPK", cd: "cd"), expectation: assertion_request()))
+    && assertion_failed(r: assertion_from_answer(admission: admitted(), answer: asserted_with(id: "kid", pk: "BOTHER", cd: "cd"), expectation: assertion_request()))
+    && assertion_failed(r: assertion_from_answer(admission: admitted(), answer: asserted_with(id: "kid", pk: "BPK", cd: "other"), expectation: assertion_request()))
 }

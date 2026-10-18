@@ -229,7 +229,7 @@ fn client_reading_failure(c: DeviceCryptoProbeCase, body: String) -> String {
       match decode_device_crypto_answer(text: body) {
         WireRefused { at: a, cause: x } => concat(c.identity, concat(": the client cannot decode the answer at ", concat(a as String, concat(": ", x as String))))
         WireDecoded { value: answer } =>
-          match signature_from_answer(admission: probe_admission(), answer: answer) {
+          match signature_from_answer(admission: probe_admission(), answer: answer, key: rfc6979_check(octets: rfc6979_a25_p256_sha256_sample_signature, message: m).key, message: m as NonEmptyStr) {
             SidecarAnswered { verification: SignatureVerified { verified: v } } =>
               if (v.message as String) == m { "" } else { concat(c.identity, ": the verified payload names another message") }
             _ => concat(c.identity, ": the client did not read a verified signature")
@@ -239,7 +239,7 @@ fn client_reading_failure(c: DeviceCryptoProbeCase, body: String) -> String {
       match decode_device_crypto_answer(text: body) {
         WireRefused { at: a, cause: x } => concat(c.identity, concat(": the client cannot decode the answer at ", concat(a as String, concat(": ", x as String))))
         WireDecoded { value: answer } =>
-          match signature_from_answer(admission: probe_admission(), answer: answer) {
+          match signature_from_answer(admission: probe_admission(), answer: answer, key: rfc6979_check(octets: rfc6979_a25_p256_sha256_sample_signature, message: rfc6979_a25_message_sample).key, message: rfc6979_a25_message_sample as NonEmptyStr) {
             SidecarAnswered { verification: SignatureInvalid { suite: _ } } => ""
             _ => concat(c.identity, ": the client did not read an invalid signature")
           }

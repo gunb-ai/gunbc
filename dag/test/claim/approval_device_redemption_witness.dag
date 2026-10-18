@@ -10,7 +10,7 @@ import extdeps.crypto.mac { MacKey, HmacSha256, mac_sign, MacSigned, MacKeyMater
 import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused }
 import extdeps.apple.apns { apns_send_outcome_of }
 import extdeps.apple.app_attest {
-  AppAttestProduction, AttestKeyId, AssertionRefused, AttestationVerification, AssertionVerification, AssertionSignatureInvalid, AttestationNonceMismatch,
+  AppAttestProduction, AttestKeyId, AssertionExpectation, AssertionRefused, AttestationVerification, AssertionVerification, AssertionSignatureInvalid, AttestationNonceMismatch,
   attestation_verification_from_implementation, assertion_verification_from_implementation,
 }
 import extdeps.crypto.signature {
@@ -34,8 +34,8 @@ import gunbc.auth.approval_device_redemption {
   enrolment_record_kind_generation, enrolment_record_kind_wire, enrolment_record_kind_of_wire, enrolment_record_kind_expectation,
   IssuedCodeRecord, EnrolledRecord, RevokedRecord, enrolment_readback_of,
 }
-import gunbc.auth.approval_device_crypto_realization { NativeDeviceCryptoBound, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations }
-import gunbc.auth.approval_device_crypto_client { SidecarAnswered, assertion_from_answer }
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoAdmission, NativeDeviceCryptoBound, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations }
+import gunbc.auth.approval_device_crypto_client { SidecarAnswered, SidecarFailed, assertion_from_answer }
 import gunbc.auth.approval_device_crypto_wire { DeviceCryptoAnswer, CryptoVerified, AssertedPayload, device_crypto_arm_assertion_verified }
 import gunbc.auth.approval_device_wire {
   EnrolmentStandingActive, EnrolmentStandingRevoked, enrolment_standing_wire,
@@ -522,32 +522,45 @@ test fn witness_device_admission_refuses_an_assertion_under_another_public_key()
   }
 }
 
-// THE SIDECAR'S ASSERTION ANSWER IS JUDGED BY THE EXISTING JOIN. gunbc.auth.approval_device_crypto_client mints an
-// AuthenticAssertion from the verified payload the sidecar wrote, and platform_proof_disagreement reads its key_id exactly
-// as it reads one the in-process fold minted: the client adds no comparison of its own. The control answers for the
-// enrolled key id and admits; the same payload under another key id is refused as the wrong key.
-fn fx_sidecar_assertion(key_id: String) -> AssertionVerification {
-  match assertion_from_answer(
-    admission: device_crypto_admission(r: NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture", exact_revision: "0000000", covered: device_crypto_obligations } }),
-    answer: DeviceCryptoAnswer {
-      verdict: CryptoVerified, arm: device_crypto_arm_assertion_verified,
-      payload: AssertedPayload { key_id: key_id as AttestKeyId, public_key_point_b64url: "BATTEST", counter: 1, client_data: device_redemption_signing_input(i: fx_good_input()) },
-    },
-  ) {
+// THE SIDECAR'S ASSERTION ANSWER IS JOINED TO ITS REQUEST BY THE CLIENT BEFORE ANY MINT (gunbc.auth.approval_device_crypto_client
+// assertion_from_answer): key id, public key and client data must be the request's own, so an answer for another key id is a
+// sidecar failure there, never a verification this module's join has to catch. The admitted case is the control: the same payload
+// for the enrolled key id mints, and platform_proof_disagreement then reads it as it reads one the in-process fold minted.
+fn fx_assertion_request() -> AssertionExpectation {
+  AssertionExpectation { key_id: "attest-1" as AttestKeyId, public_key_point_b64url: "BATTEST", client_data: device_redemption_signing_input(i: fx_good_input()), app_id: "TEAM.app", admitted_validation_categories: [1], expected_bundle_version: "1" }
+}
+
+fn fx_sidecar_answer(key_id: String) -> DeviceCryptoAnswer {
+  DeviceCryptoAnswer {
+    verdict: CryptoVerified, arm: device_crypto_arm_assertion_verified,
+    payload: AssertedPayload { key_id: key_id as AttestKeyId, public_key_point_b64url: "BATTEST", counter: 1, client_data: device_redemption_signing_input(i: fx_good_input()) },
+  }
+}
+
+fn fx_sidecar_admission() -> DeviceCryptoAdmission {
+  device_crypto_admission(r: NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture", exact_revision: "0000000", covered: device_crypto_obligations } })
+}
+
+fn fx_sidecar_assertion() -> AssertionVerification
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "witness_device_admission_admits_a_sidecar_assertion_for_the_enrolled_key_id"),
+  ]
+{
+  match assertion_from_answer(admission: fx_sidecar_admission(), answer: fx_sidecar_answer(key_id: "attest-1"), expectation: fx_assertion_request()) {
     SidecarAnswered { verification: v } => v
     _ => AssertionRefused { cause: AssertionSignatureInvalid }
   }
 }
 
-test fn witness_device_admission_refuses_a_sidecar_assertion_for_another_key_id() -> Bool {
-  match admit(input: fx_good_input(), signature: good_signature(), assertion: fx_sidecar_assertion(key_id: "attest-other")) {
-    DeviceNotAdmitted { outcome: DevicePlatformProofWrongKey } => true
+test fn witness_the_client_refuses_a_sidecar_assertion_for_another_key_id() -> Bool {
+  match assertion_from_answer(admission: fx_sidecar_admission(), answer: fx_sidecar_answer(key_id: "attest-other"), expectation: fx_assertion_request()) {
+    SidecarFailed { cause: _ } => true
     _ => false
   }
 }
 
 test fn witness_device_admission_admits_a_sidecar_assertion_for_the_enrolled_key_id() -> Bool {
-  match admit(input: fx_good_input(), signature: good_signature(), assertion: fx_sidecar_assertion(key_id: "attest-1")) {
+  match admit(input: fx_good_input(), signature: good_signature(), assertion: fx_sidecar_assertion()) {
     DeviceAdmitted { admitted: _ } => true
     _ => false
   }

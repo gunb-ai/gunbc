@@ -2,7 +2,7 @@ module gunbc.auth.approval_device_crypto_realization
 
 import std.types { NonEmptyStr, String, List, HttpStatus }
 import std.logic { Bool }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.native_realization_proof { NativeRealizationProof, native_realization_proof }
 
 // ── WHICH REALIZATION RUNS THE DEVICE VERIFIERS IS PART OF ROUTE ADMISSION ───────────────────
@@ -87,7 +87,12 @@ fn device_crypto_admission(r: DeviceCryptoRealization) -> DeviceCryptoAdmission 
 // THE STD PROOF, DERIVED ONLY FROM AN ADMISSION. The upstream interface modules mint their sole-constructed evidence
 // from a decoded native answer only when handed std.native_realization_proof NativeRealizationProof for their own fold;
 // this is the one function that yields it, and only from DeviceCryptoAdmitted, so a refused admission yields none.
-fn device_crypto_proof_of(admission: DeviceCryptoAdmission, fold: DeclarationRef) -> NativeRealizationProof? {
+fn device_crypto_proof_of(admission: DeviceCryptoAdmission, fold: DeclarationRef) -> NativeRealizationProof?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_crypto_client", decl_name: "proof_for"),
+    decl_ref(module_path: "test.claim.approval_device_crypto_client_witness", decl_name: "witness_the_native_realization_proof_is_derived_only_from_an_admission"),
+  ]
+{
   match admission {
     DeviceCryptoAdmitted { handler_identity: h, exact_revision: r } => Present { value: native_realization_proof(fold: fold, handler_identity: h, exact_revision: r) }
     DeviceCryptoRefused { status: _, reason: _ } => none

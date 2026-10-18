@@ -29,7 +29,7 @@ import gunbc.auth.approval_device_crypto_wire {
   DeviceCryptoAnswer, DeviceCryptoPayload, NoPayload, RefusedPayload, RefusalFields,
   signature_negative_wire_arm, signature_negative_wire_fields, attestation_refusal_wire_arm, attestation_refusal_wire_fields,
   assertion_refusal_wire_arm, assertion_refusal_wire_fields, assertion_refusal_verdict, signed_payload_of, attested_payload_of, asserted_payload_of,
-  device_crypto_arm_signature_verified, device_crypto_arm_attestation_verified, device_crypto_arm_assertion_verified, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, CryptoFinite,
+  device_crypto_arm_signature_verified, device_crypto_arm_attestation_verified, device_crypto_arm_assertion_verified, device_crypto_arm_infinity, device_crypto_arm_finite, device_crypto_arm_scalar_unrepresentable, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, CryptoFinite,
   device_crypto_answer_json, device_crypto_wire_refusal_body,
 }
 
@@ -99,10 +99,10 @@ fn assertion_answer(v: AssertionVerification) -> ServeWireResponse {
 
 fn order_answer(m: P256Multiple) -> ServeWireResponse {
   match p256_multiple_scalar(m: m) {
-    Absent => crypto_answered(verdict: CryptoRefused, arm: "ScalarUnrepresentable")
+    Absent => crypto_answered(verdict: CryptoRefused, arm: device_crypto_arm_scalar_unrepresentable)
     Present { value: scalar } =>
-      if p256_scalar_is_infinity(scalar: scalar) { crypto_answered(verdict: CryptoInfinity, arm: "Infinity") }
-      else { crypto_answered(verdict: CryptoFinite, arm: "Finite") }
+      if p256_scalar_is_infinity(scalar: scalar) { crypto_answered(verdict: CryptoInfinity, arm: device_crypto_arm_infinity) }
+      else { crypto_answered(verdict: CryptoFinite, arm: device_crypto_arm_finite) }
   }
 }
 
