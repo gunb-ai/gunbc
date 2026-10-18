@@ -11003,14 +11003,6 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.host_text_chars" { "chars" } =>
                     eval_host_text_chars(&$args),
             }
-            // std.machine_word machine_word_native_operate: a HostRealizedSeam reached by DECLARATION
-            // (same admission as std.host_text above). The operator rows are v1_rt's, the same table the
-            // emitted Rust runtime carries, so the seed and the emitted binary cannot disagree on a row.
-            family STD_MACHINE_WORD_BRIDGE_FNS "std.machine_word"
-                lookup_eval_call_bridge_std_machine_word eval_call_bridge__std_machine_word_arm {
-                arm "v4_bridge.machine_word_native_operate" { "machine_word_native_operate" } =>
-                    eval_machine_word_native_operate(&$args),
-            }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
@@ -11056,24 +11048,6 @@ fn eval_host_text_chars(args: &[(Option<String>, Value)]) -> InterpResult<Value>
     let text = expect_str_free_monoid(args.first().map(|(_, v)| v), "chars")?;
     let items: Vec<Value> = text.chars().map(|c| Value::Int(c as i64)).collect();
     Ok(list_value(items))
-}
-
-/// std.machine_word machine_word_native_operate: one operator row applied to residues; an operand or
-/// amount outside its range refuses (the runtime's panic is a typed InterpError here).
-fn eval_machine_word_native_operate(args: &[(Option<String>, Value)]) -> InterpResult<Value> {
-    let op = expect_str_free_monoid(
-        args.first().map(|(_, v)| v),
-        "machine_word_native_operate op",
-    )?;
-    let bits = expect_int(
-        args.get(1).map(|(_, v)| v),
-        "machine_word_native_operate bits",
-    )?;
-    let a = expect_int(args.get(2).map(|(_, v)| v), "machine_word_native_operate a")?;
-    let b = expect_int(args.get(3).map(|(_, v)| v), "machine_word_native_operate b")?;
-    v1_rt::machine_word_native_operate_checked(&op, bits, a, b)
-        .map(Value::Int)
-        .map_err(|msg| InterpError::TypeError { msg })
 }
 
 /// One guard for every bridge family.

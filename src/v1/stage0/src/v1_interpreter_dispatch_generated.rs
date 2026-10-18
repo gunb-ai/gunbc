@@ -615,24 +615,6 @@ macro_rules! eval_call_bridge__std_host_text_arm {
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EvalCallBridgeStdMachineWordArm {
-    V4BridgeMachineWordNativeOperate,
-}
-
-#[rustfmt::skip]
-pub fn lookup_eval_call_bridge_std_machine_word(spelling: &str) -> Option<EvalCallBridgeStdMachineWordArm> {
-    match spelling {
-        "machine_word_native_operate" => Some(EvalCallBridgeStdMachineWordArm::V4BridgeMachineWordNativeOperate),
-        _ => None,
-    }
-}
-
-#[rustfmt::skip]
-macro_rules! eval_call_bridge__std_machine_word_arm {
-    ("v4_bridge.machine_word_native_operate") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdMachineWordArm::V4BridgeMachineWordNativeOperate };
-}
-#[rustfmt::skip]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvalCallBridgeStdQualifiedNameArm {
     V4BridgeQualifiedNameFromDottedString,
 }
