@@ -884,12 +884,10 @@ test fn the_projection_carries_the_supplied_label_verbatim_and_never_invents_one
               match project_autoinstall_identity( seed: pair.seed, binding_hostname: "an-entirely-different-label" as NonEmptyStr, receipt: Present { value: receipt }, ) {
                 Absent => false
                 Present { value: second } =>
-                  eq_string(actual: first.hostname, expected: "unit-a-altra" as NonEmptyStr)
-                    && eq_string(
-                      actual: second.hostname,
-                      expected: "an-entirely-different-label" as NonEmptyStr,
-                    )
-                    && !eq_string(actual: first.hostname, expected: second.hostname)
+                  first.hostname == ("unit-a-altra" as NonEmptyStr)
+                    && second.hostname
+                      == ("an-entirely-different-label" as NonEmptyStr)
+                    && first.hostname != second.hostname
               }
           }
       }
