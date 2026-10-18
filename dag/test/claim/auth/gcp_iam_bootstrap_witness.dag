@@ -238,7 +238,8 @@ test fn grant_set_secrets_are_bound_per_secret_never_on_the_project() -> Bool {
     && all(gcp_iam_converge_grant_set_secrets(), x =>
       binding_present(bs: bs, b: iam_bootstrap_binding(resource: BootstrapSecret { secret: x }, role: BootstrapApplyRole { role: ConvergeSecretPolicyRole }, account: iam_converge_service_account))
         && binding_present(bs: bs, b: iam_bootstrap_binding(resource: BootstrapSecret { secret: x }, role: BootstrapObserveSecret, account: iam_observe_service_account)))
-    && all(filter(bs, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapProject)), b =>
+    && all(filter(bs, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapProject)
+        && b.cell.member == concat("serviceAccount:", iam_converge_service_account as String)), b =>
       b.cell.role == iam_converge_role_id(r: ConvergeCreateRole))
     && !any(iam_bootstrap_role_permissions(role: BootstrapApplyRole { role: ConvergeCreateRole }), p => starts_with(s: p, prefix: "secretmanager."))
 }

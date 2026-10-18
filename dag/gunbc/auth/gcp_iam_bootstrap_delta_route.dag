@@ -96,9 +96,9 @@ fn bootstrap_delta_requestable(subjects: List<SubjectNotBootstrapped>) -> Bootst
   let ceremony = filter(subjects, s => root_ceremony_subject(s: s.subject))
   if count(subjects) == 0 { BootstrapDeltaUnrequestable { reasons: ["the delta is empty; there is nothing to approve"] } }
   else if count(roots) > 0 || count(ceremony) > 0 {
-    BootstrapDeltaUnrequestable { reasons:
-      map(roots, s => concat(iam_bootstrap_resource_key(resource: s.subject), ": a trust root; only the first-time root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) writes it"))
-      + map(ceremony, s => concat(iam_bootstrap_resource_key(resource: s.subject), ": project cells are the root ceremony's; iam-bootstrap is denied the project's setIamPolicy")) }
+    let root_reasons = map(roots, s => concat(iam_bootstrap_resource_key(resource: s.subject), ": a trust root; only the first-time root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) writes it"))
+    let ceremony_reasons = map(ceremony, s => concat(iam_bootstrap_resource_key(resource: s.subject), ": project cells are the root ceremony's; iam-bootstrap is denied the project's setIamPolicy"))
+    BootstrapDeltaUnrequestable { reasons: root_reasons + ceremony_reasons }
   } else { BootstrapDeltaRequestAdmitted { body: BootstrapDeltaRequestBody { subjects: subjects } } }
 }
 
