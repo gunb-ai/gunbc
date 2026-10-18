@@ -41,8 +41,8 @@ pub use crate::std_types::{
     container_template_alias_algebra, container_template_alias_rows, is_container_type, SourceSpan,
 };
 pub use crate::v1_compiler_infer_env::{
-    alias_names_settled_agree, alias_settled_agree, settled_type, text_crossing_by_identity,
-    type_reference_declaration_ref, TypeBinding, TypeEnv,
+    alias_settled_agree, settled_type, text_crossing_by_identity, type_reference_declaration_ref,
+    TypeBinding, TypeEnv,
 };
 pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_rt;
@@ -2162,12 +2162,12 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn global_bare_callable_binding(binding: Rc<TypeBinding>) -> bool {
-    ((((((binding.resolved.clone().transport.clone() == std::option::Option::None)
-        && (binding.resolved.clone().expr_data.clone() == Rc::new(ExprData::NoExprData)))
-        && (binding.resolved.clone().connective.clone() == Connective::NoConnective))
-        && (binding.resolved.clone().inferred.clone() != std::option::Option::None))
-        && ((binding.resolved.clone().properties.clone().len() as i64) == 0))
-        && (binding.resolved.clone().type_annotation.clone() == std::option::Option::None))
+    ((((((binding.resolved.transport.clone() == std::option::Option::None)
+        && (binding.resolved.expr_data.clone() == Rc::new(ExprData::NoExprData)))
+        && (binding.resolved.connective.clone() == Connective::NoConnective))
+        && (binding.resolved.inferred.clone() != std::option::Option::None))
+        && ((binding.resolved.properties.clone().len() as i64) == 0))
+        && (binding.resolved.type_annotation.clone() == std::option::Option::None))
 }
 
 pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
@@ -2927,33 +2927,6 @@ pub fn alias_identity_in_judgment(
     match (*text.clone()).clone() {
         TextJudgment::TextJudgedIn { env: e, .. } => {
             crate::v1_compiler_infer_env::alias_settled_agree(
-                left.clone(),
-                right.clone(),
-                source_indices.clone(),
-                e.clone(),
-                |a, b| {
-                    applied_argument_agrees(
-                        child_type_node(a.clone()),
-                        child_type_node(b.clone()),
-                        source_indices.clone(),
-                        text.clone(),
-                    )
-                },
-            )
-        }
-        TextJudgment::TextNotAsked { reason: _, .. } => false,
-    }
-}
-
-pub fn alias_names_identity_in_judgment(
-    left: String,
-    right: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    text: Rc<TextJudgment>,
-) -> bool {
-    match (*text.clone()).clone() {
-        TextJudgment::TextJudgedIn { env: e, .. } => {
-            crate::v1_compiler_infer_env::alias_names_settled_agree(
                 left.clone(),
                 right.clone(),
                 source_indices.clone(),
@@ -3865,7 +3838,7 @@ pub fn infer_arithmetic_binop_type_node(
                     candidates.clone(),
                     source_indices.clone(),
                 ) {
-                    Some(m) => match m.field_node.clone().inferred.clone().as_deref().cloned() {
+                    Some(m) => match m.field_node.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
                             if ((rt.params.clone().len() as i64) > 0) {
                                 match rt.inferred.clone().as_deref().cloned() {
