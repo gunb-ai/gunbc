@@ -166,7 +166,7 @@ echo "SEED PROOF (before instrumentation): fold=$(grep -ac UnifyGenericsAcc src/
 echo "########## INJECT INSTRUMENTATION (throwaway; never committed) ##########"
 python3 $LOGS/patch_rebind_probe2.py src/v1/stage0/src/v1_compiler_infer.rs     || { echo "PROBE2 PATCH REFUSED"; exit 11; }
 echo "injected: v2=$(grep -ac rebind_probe_print2 src/v1/stage0/src/v1_compiler_infer.rs) tree=$(grep -ac "fn rebind_probe_tree" src/v1/stage0/src/v1_compiler_infer.rs) infer2=$(grep -ac "fn rebind_probe_infer2" src/v1/stage0/src/v1_compiler_infer.rs)"
-[ "$(grep -ac rebind_probe_print2 src/v1/stage0/src/v1_compiler_infer.rs) tree=$(grep -ac "fn rebind_probe_tree" src/v1/stage0/src/v1_compiler_infer.rs) infer2=$(grep -ac "fn rebind_probe_infer2" src/v1/stage0/src/v1_compiler_infer.rs)" -ge 2 ] || { echo "PROBE NOT IN THE EMITTED SEED -- a suite/probe run here would be meaningless"; exit 12; }
+[ "$(grep -ac rebind_probe_print2 src/v1/stage0/src/v1_compiler_infer.rs)" -ge 2 ] || { echo "PROBE NOT IN THE EMITTED SEED -- a suite/probe run here would be meaningless"; exit 12; }
 
 echo "########## SELF-HOST WITH THE PROBE ##########"
 cargo build --release -p v1-compiler --bin gunbc 2>&1 | grep -E "^error|error\[|warning: unused" | head -12
