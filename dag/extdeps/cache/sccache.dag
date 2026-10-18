@@ -350,20 +350,38 @@ data sccache_server_process_facts: SccacheServerProcessFacts = {
   ]
 }
 
-data sccache_fatal_error_log_fragment: String = "sccache: encountered fatal error"
+// THE ROSTER IS NON-EMPTY BY CONSTRUCTION, AND THAT IS THE POINT OF THE TYPE. Each fragment is a
+// NON-EMPTY STRING, so an empty fragment is a COMPILE ERROR rather than a state some validator has to
+// catch at claim time: `data probe: NonEmptyStr = ""` and `List<NonEmptyStr> = ["ok", ""]` are both
+// refused by the strict compile (measured, not assumed -- and the flows this depends on were measured
+// too: a NonEmptyStr satisfies a String parameter, a String? field, a String-returning match arm, a
+// join list, and `String == NonEmptyStr`). WHY THIS MATTERS HERE: the classifier is a fold whose
+// accumulator is `Optional`, and a fragment that matched everything would make a host with nothing
+// interesting in its output read as MISCONFIGURED -- a wrong verdict, not a crash. The empty fragment
+// was the only way to write that, and it is no longer writable.
+//
+// THIS REPLACES A VALIDATOR THAT COULD NOT FAIL. gunbc.host.host_effect_realize used to carry
+// `build_cache_fragment_words_are_shell_safe`, whose name promised a shell check; review 82053 found
+// its body had been repurposed to an emptiness check whose second conjunct (`string_contains(join
+// ["prefix", frag, "suffix"], frag)`) is true of every string, i.e. green by construction and cited as
+// coverage (DESIGN 3's name/obligation rule, DESIGN 4b's decoration rule). Deleting the check WITHOUT
+// typing the row would leave the invariant unenforced; typing the row is what makes the deletion safe
+// (DESIGN 5: unwritable beats validated). The shell-era reason the check existed -- fragments were
+// single-quoted into a word list -- died with the script this PR retired.
+data sccache_fatal_error_log_fragment: NonEmptyStr = "sccache: encountered fatal error"
 
-data sccache_rustc_wrapper_exit_254_log_fragment: String = "(exit status: 254)"
+data sccache_rustc_wrapper_exit_254_log_fragment: NonEmptyStr = "(exit status: 254)"
 
-data sccache_failed_to_execute_compile_log_fragment: String = "sccache: error: failed to execute compile"
+data sccache_failed_to_execute_compile_log_fragment: NonEmptyStr = "sccache: error: failed to execute compile"
 
 // The cited roster of stdout/stderr fragments that mean 'the daemon answered, but it is
 // misconfigured' — as a LIST, so a consumer classifying an observation folds over it. The three
 // rows above were previously read one-by-one by a hand-unrolled if/elif chain in the host-standup
 // provisioning emitter, which meant citing a fourth fragment here required an edit there too (the
 // emitter naming a concept it does not own). Consumers iterate this roster; adding a row costs zero
-// emitter edits.
-
-data sccache_misconfigured_log_fragments: List<String> = [
+// emitter edits. ORDER IS PRECEDENCE: the fold keeps the first hit, so this list's order is the
+// classifier's priority -- test.claim pins it, and a reordering is a behaviour change.
+data sccache_misconfigured_log_fragments: List<NonEmptyStr> = [
   sccache_fatal_error_log_fragment,
   sccache_rustc_wrapper_exit_254_log_fragment,
   sccache_failed_to_execute_compile_log_fragment,

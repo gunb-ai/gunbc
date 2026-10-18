@@ -3285,10 +3285,18 @@ fn realize_os_install_actuator_toolchain_ensure(
 
 // The misconfigured-fragment classifier is a FOLD over the cited roster
 // extdeps.cache.sccache.sccache_misconfigured_log_fragments, not one emitted branch per fragment.
-// The roster is data the loop iterates: adding a fragment upstream changes the emitted word list
-// and nothing else. Fragments are single-quoted as shell words, which is total only while no
-// fragment contains a single quote — build_cache_fragment_words_are_shell_safe() is the
-// construction check that keeps it so.
+// The roster is data the loop iterates: adding a fragment upstream changes the classifier's coverage
+// and nothing else. THE ONE HAZARD THIS SCAN USED TO GUARD, AND NO LONGER CAN: a fragment that
+// matches every capture. `string_contains(s:, pattern: "")` is true of everything, so an EMPTY entry
+// would classify every unresponsive host as misconfigured -- and that hazard is now closed where it is
+// writable, at the declaration: the roster is `List<NonEmptyStr>` upstream, so `""` is a compile error
+// (extdeps.cache.sccache). A runtime check for it would be green-by-construction, so there is none here;
+// the claims assert what can actually fail, and the classifier's own negative controls (a capture that
+// is empty, or that omits every fragment) are what pin the scan. THE EMITTED SHELL WORD LIST IS GONE:
+// fragments used to be single-quoted into `for frag in ...`, so a quote in one was a syntax error on the
+// host -- nothing splices these into a command any more, and the old shell-safety predicate retired with
+// the script that needed it (review 82053: its name promised a shell check while its body had become an
+// emptiness check that no input could fail).
 
 // THE READ-BACK FAILS CLOSED, ASSERTED ON THE TYPED ROUTE. What this predicate has always pinned is that a
 // post-ensure stats query which does NOT succeed cannot be reported as a converged daemon -- the property
@@ -3357,24 +3365,6 @@ fn build_cache_read_back_reports_answered_table(owned: BuildCacheServerPlacement
     DaemonPathShadowed { resolved: _, expected: _ } => false
     DaemonUnsupervised { unit: _, unit_state: _ } => false
   }
-}
-
-// THE CITED FRAGMENT ROW MUST NOT CONTAIN A FRAGMENT THAT MATCHES EVERYTHING. The retired script's version
-// of this check was shell-shaped: it asserted no fragment contained a single quote, because fragments were
-// spliced into a `for frag in ...` word list and single-quoted. That hazard went away with the shell --
-// nothing splices these into a command any more -- so keeping the old assertion would have pinned a
-// property that no longer protects anything. What the typed scan DOES depend on is the analogous invariant:
-// `string_contains(s:, pattern: "")` is true of every capture, so a single empty fragment in the cited row
-// would classify EVERY failing host as misconfigured on the empty fragment, in the loudest possible way
-// (an operator-visible `host_build_cache_provision: : ...`), and the scan could never report an
-// unresponsive host again. Empty fragments are not shell-dangerous; they are scan-dangerous, and this is
-// the check that keeps them out.
-fn build_cache_fragment_words_are_shell_safe() -> Bool {
-  fold(
-    sccache_misconfigured_log_fragments,
-    init: true,
-    f: (acc, frag) => acc && frag != "" && string_contains(s: join(["prefix", frag, "suffix"], ""), pattern: frag),
-  )
 }
 
 // THE INSTALL BRANCH STILL CITES THE RELEASE AND STILL DOES NOT REACH FOR A PACKAGE MANAGER -- asserted on

@@ -162,7 +162,10 @@ data zeroed_stats_table: String = "Compile requests                      0\nComp
 // much as to a plan: a claim that re-strings a policy string keeps passing when the policy changes, which
 // is how a scan can lose a fragment without any test noticing). contract_fatal_fragment is the alias, not
 // a second copy of the value.
-data contract_fatal_fragment: String = sccache_fatal_error_log_fragment
+// TYPED, NOT CAST: the row keeps the fragment's own declared type (`NonEmptyStr` upstream) rather than
+// widening it to String, so the value this witness asserts against is the value the route compares, and
+// a change to how the fragment is declared shows up here as a compile error instead of a silent widening.
+data contract_fatal_fragment: NonEmptyStr = sccache_fatal_error_log_fragment
 
 // THE TRANSPORT THE DRY ROUTES RUN AGAINST. `EmitArtifactThenThinRun` is the ONE arm that refuses without
 // touching a host: `host_effect_apply` turns any typed-argv use of it into EnsureTransportBlocked, reserved
