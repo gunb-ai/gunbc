@@ -912,11 +912,9 @@ fn compiler_gate_contract_stamp_evidence_case_count_is_declared() -> Bool {
     c => compiler_gate_contract_stamp_evidence_subject_is_fixture(s: c.subject)))
 }
 
-data compiler_gate_contract_stamp_evidence_step_name: String =
-  "Execute the contract-stamp guard against the recorded silent-green subject"
+data compiler_gate_contract_stamp_evidence_step_name: String = "Execute the contract-stamp guard against the recorded silent-green subject"
 
-data compiler_gate_contract_stamp_evidence_harness_path: String =
-  "test/compiler_gate_contract_stamp/run_evidence.sh"
+data compiler_gate_contract_stamp_evidence_harness_path: String = "test/compiler_gate_contract_stamp/run_evidence.sh"
 
 // THE CARRIER AND ITS DISSOLUTION. Same convention as the guard's own scaffold row and as the
 // fleet's "Isolate toolchain homes" step: a Scaffold bound by DeclarationRef to the thing that
@@ -930,11 +928,9 @@ data compiler_gate_contract_stamp_evidence_shell_emit_scaffold: Disposition = Sc
   }
 }
 
-data compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger: DissolutionCondition =
-  unbound_dissolution(description: "dissolve-on: compiler_gate_contract_stamp_evidence_statements -- the case TABLE, the expected exit codes and the expected findings are already modeled in .dag (compiler_gate_contract_stamp_evidence_cases); what remains here is SPAWNING the guard and reading its exit status and stdout, which has no capability in the substrate (dag/std/process.dag models an exit VALUE, not an exec). Dissolves when a .dag claim can execute a program and observe its exit code and output, at which point these rows become a `gunbc test` row in gunbc.instrument_targets and this runner dissolves into that row.")
+data compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compiler_gate_contract_stamp_evidence_statements -- the case TABLE, the expected exit codes and the expected findings are already modeled in .dag (compiler_gate_contract_stamp_evidence_cases); what remains here is SPAWNING the guard and reading its exit status and stdout, which has no capability in the substrate (dag/std/process.dag models an exit VALUE, not an exec). Dissolves when a .dag claim can execute a program and observe its exit code and output, at which point these rows become a `gunbc test` row in gunbc.instrument_targets and this runner dissolves into that row.")
 
-data compiler_gate_contract_stamp_evidence_emit_refused_poison: String =
-  "__GUNBC_ORCH_EMIT_REFUSED__ gunbc contract stamp evidence emission was rejected by v2.workflow.bash_emit: the case table's bash node tree could not be rendered. This literal must never reach a committed workflow; the generation gate refuses instead."
+data compiler_gate_contract_stamp_evidence_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ gunbc contract stamp evidence emission was rejected by v2.workflow.bash_emit: the case table's bash node tree could not be rendered. This literal must never reach a committed workflow; the generation gate refuses instead."
 
 // THE STEP AS NODES, not as joined strings, and one COMMAND NODE PER MODELLED CASE -- so the table
 // in this module is what the COMMITTED WORKFLOW CARRIES, not something the shell re-decides. The
@@ -1029,21 +1025,17 @@ fn compiler_gate_contract_stamp_evidence_subject_text(s: CompilerGateContractSta
   }
 }
 
-data compiler_gate_contract_stamp_evidence_transcript_path: String =
-  "/tmp/gunbc-contract-stamp-evidence.log"
+data compiler_gate_contract_stamp_evidence_transcript_path: String = "/tmp/gunbc-contract-stamp-evidence.log"
 
 // The harness creates this on ANY failing case. The step's refusal reads its EXISTENCE rather than
 // parsing its own verdict prose, so a harness that crashes mid-case -- or is deleted, or is never
 // enrolled -- still leaves a marker behind: absence of the marker is only green if the harness got
 // far enough to remove a stale one, which it does as its first act.
-data compiler_gate_contract_stamp_evidence_fail_marker_path: String =
-  "/tmp/gunbc-contract-stamp-evidence.fail"
+data compiler_gate_contract_stamp_evidence_fail_marker_path: String = "/tmp/gunbc-contract-stamp-evidence.fail"
 
-data compiler_gate_contract_stamp_evidence_verdict_ok: String =
-  "ALL ASSERTIONS HELD"
+data compiler_gate_contract_stamp_evidence_verdict_ok: String = "ALL ASSERTIONS HELD"
 
-data compiler_gate_contract_stamp_evidence_refusal: String =
-  "REFUSED gunbc contract stamp evidence: the harness did not report ALL ASSERTIONS HELD. See its output above."
+data compiler_gate_contract_stamp_evidence_refusal: String = "REFUSED gunbc contract stamp evidence: the harness did not report ALL ASSERTIONS HELD. See its output above."
 
 fn compiler_gate_contract_stamp_evidence_marker_line() -> String {
   concat("# ", concat(dissolution_description(condition: compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger), "\n"))
