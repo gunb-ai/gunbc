@@ -579,6 +579,7 @@ type EmitGraphInfo {
   type_decl_items: TypeDeclIndex
   data_variant_wire_spellings: Map<String, DataVariantWireSpelling>
   fn_decl_items: Map<String, Node>
+  fn_decl_identity_items: Map<String, Node>
   fn_map_key_bounds: Map<String, List<String>>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
@@ -616,6 +617,7 @@ type EmitInfoBuildState {
   type_summaries: TypeSummaryIndex
   type_decl_items: TypeDeclIndex
   fn_decl_items: Map<String, Node>
+  fn_decl_identity_items: Map<String, Node>
   structural_alias_fn_surface_names: Map<String, List<String>>
   structural_alias_direct_fn_names: Set<String>
 }
@@ -627,6 +629,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_decl_items: empty_type_decl_index(),
     data_variant_wire_spellings: empty_map(),
     fn_decl_items: empty_map(),
+    fn_decl_identity_items: empty_map(),
     fn_map_key_bounds: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
@@ -659,6 +662,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
@@ -690,6 +694,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
@@ -726,6 +731,7 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
@@ -1169,6 +1175,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
       type_summaries: state.type_summaries,
       type_decl_items: type_decl_index_insert(index: state.type_decl_items, owner_module: module_name, decl_name: decl_name, item: item),
       fn_decl_items: state.fn_decl_items,
+      fn_decl_identity_items: state.fn_decl_identity_items,
       structural_alias_fn_surface_names: structural_alias_fn_surface_names,
       structural_alias_direct_fn_names: structural_alias_direct_fn_names
     }
@@ -1180,6 +1187,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
       type_summaries: state.type_summaries,
       type_decl_items: state.type_decl_items,
       fn_decl_items: map_insert(state.fn_decl_items, decl_name, item),
+      fn_decl_identity_items: map_insert(state.fn_decl_identity_items, type_decl_identity(owner_module: module_name, decl_name: decl_name), item),
       structural_alias_fn_surface_names: state.structural_alias_fn_surface_names,
       structural_alias_direct_fn_names: state.structural_alias_direct_fn_names
     }
@@ -1224,6 +1232,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
         type_summaries: next_summaries,
         type_decl_items: state.type_decl_items,
         fn_decl_items: state.fn_decl_items,
+        fn_decl_identity_items: state.fn_decl_identity_items,
         structural_alias_fn_surface_names: state.structural_alias_fn_surface_names,
         structural_alias_direct_fn_names: state.structural_alias_direct_fn_names
       }
