@@ -32,12 +32,28 @@ REPLACEMENT = '''static S1B_MINT_ABSENT: std::sync::atomic::AtomicI64 = std::syn
 static S1B_MINT_ELSE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 static S1B_MINT_ALL: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 static S1B_DEPTH: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+// NON-VACUITY COUNTERS. A bracket that was never entered and a bracket that ran and genuinely saw no
+// minting BOTH read 0, and the difference is the entire answer: '0 therefore S1b stays parked' is only
+// sound if the instrument was live. TOTAL counts every resolved_type call, BRACKETED every call seen
+// while the depth was positive, and ENTERS every bracket. If TOTAL is large and BRACKETED is 0, the
+// 0 is real. If ENTERS is 0, the instrument never ran and the 0 means nothing.
+static S1B_TOTAL: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+static S1B_BRACKETED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+static S1B_ENTERS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 
 /// Bracket the fold's comparison. Minting is counted only while the depth is positive, which is what
 /// restricts the answer to calls reached THROUGH node_type_equals_core from the fold, and excludes every
 /// other resolved_type call in the compiler (which would make the number meaningless).
 pub fn s1b_enter() {
+    S1B_ENTERS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     S1B_DEPTH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+pub fn s1b_totals() -> (i64, i64, i64) {
+    (
+        S1B_TOTAL.load(std::sync::atomic::Ordering::Relaxed),
+        S1B_BRACKETED.load(std::sync::atomic::Ordering::Relaxed),
+        S1B_ENTERS.load(std::sync::atomic::Ordering::Relaxed),
+    )
 }
 pub fn s1b_exit() {
     S1B_DEPTH.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
@@ -52,7 +68,9 @@ pub fn s1b_mint_else() -> i64 {
     S1B_MINT_ELSE.load(std::sync::atomic::Ordering::Relaxed)
 }
 fn s1b_count_mint(is_absent: bool) {
+    S1B_TOTAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if S1B_DEPTH.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+        S1B_BRACKETED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         S1B_MINT_ALL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if is_absent {
             S1B_MINT_ABSENT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -103,7 +121,7 @@ def selftest():
         return 1
     out = open("/tmp/s1b_selftest_out.rs").read()
     for need in ("pub fn s1b_enter", "pub fn s1b_mint_snapshot", "s1b_count_mint(false)",
-                 "s1b_count_mint(true)"):
+                 "s1b_count_mint(true)", "pub fn s1b_totals", "S1B_BRACKETED.fetch_add"):
         if need not in out:
             print("SELFTEST FAIL: missing", need)
             return 1
