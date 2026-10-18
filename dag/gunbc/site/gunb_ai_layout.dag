@@ -15,8 +15,8 @@ import extdeps.languages.css.properties {
   GridTemplateColumns, LineHeight, MarginBottom, MarginLeft, MarginRight, MarginTop,
   MaxWidth, Padding, CustomProperty,
 }
-import extdeps.languages.css.selectors { SelectorSubject, ElementSelector, ClassSelector, PseudoSuffix }
-import extdeps.languages.css.media_queries { MediaCondition, MediaMaxWidth }
+import extdeps.languages.css.selectors { SelectorSubject, ElementSelector, ClassSelector, root_selector }
+import extdeps.languages.css.media_queries { MediaCondition, MediaMaxWidth, prefers_light }
 import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, decl, serialize_rules }
 import gunbc.design.scale {
   ScaleToken, scale_var, scale_border, scale_decl, border_1, named_length_token,
@@ -263,23 +263,24 @@ fn day_row_matches_night(role: String) -> Bool {
   fold(token_swatches, init: false, f: (acc, t) => acc || t.role == role)
 }
 
-// The scope class for the light variant. THE SCHEME GAP, stated not hidden:
-// extdeps.languages.css.media_queries' MediaCondition has NO prefers-color-scheme arm
-// (its bounded grain is pointer / max-width / prefers-reduced-motion, each cited to its
-// spec anchor), so this layer cannot emit an OS-following light block. The only code
-// that emits prefers-color-scheme today is gunbc.design.theme.theme_scoped_blocks, as
-// raw joined text beside the bounded grammar. The light option is therefore scoped to
-// a typed CLASS selector (modelled, checkable), and the OS-following wiring is a named
-// gap with a dissolution trigger: when MediaCondition grows a prefers-color-scheme arm
-// (Media Queries Level 5 already defines it), the class scope is replaced by MediaRule
-// and this comment, the ballot wording, and the witness's scope clause change together.
-data day_scope_class: String = "gunb-day"
-
-// Custom properties REBIND BY NAME inside a scope: the day block must define the SAME
-// names the rules read (role_var(t: …) emits var(--gunb-text) etc.), so descendants of
-// body.gunb-day inherit the light values. An earlier draft defined --gunb-text-DAY
-// names here — nothing read them, so the page stayed dark: a silent no-op the witness
-// below now refuses.
+// THE SCHEME GAP IS CLOSED. This scope used to be a class (data day_scope_class = "gunb-day")
+// because extdeps.languages.css.media_queries had no prefers-color-scheme arm; the arm is
+// modelled now (MediaPrefersColorScheme, MQ5 §12.5, in the upstream module), so the light
+// variant is an OS-following @media block over the SAME :root selector the tokens layer
+// declares, and there is no class to add to any element. That dissolves three things at once
+// and all three changed together, as the scaffold comment required: this comment, the ballot
+// wording in gunbc.site.gunb_ai_layout_review, and the witness's scope clause.
+//
+// CASCADE POSITION IS LOAD-BEARING AND IS THEREFORE TESTED, NOT ASSUMED: :root inside the
+// media block has the same specificity as the unconditional :root (0,1,0), so the light block
+// wins only because it comes LATER in the sheet. scheme_rules returns these last and
+// ballot_css puts the unconditional :root first; the witness asserts that order, so moving the
+// block above the unconditional :root — which would silently render dark forever — goes red.
+//
+// Custom properties REBIND BY NAME inside a scope: the day block must define the SAME names
+// the rules read (role_var(t: …) emits var(--gunb-text) etc.). An earlier draft defined
+// --gunb-text-DAY names here — nothing read them, so the page stayed dark: a silent no-op the
+// witness below now refuses.
 fn day_bindings() -> List<CssDecl> {
   map(day_bindings_rows, b =>
     decl(prop: CustomProperty { name: b.night.role }, value: swatch_paint(sw: b.day)))
@@ -371,9 +372,21 @@ fn response_rule(point: ResponsePoint) -> BuildRule {
 
 fn scheme_rules(scheme: SchemeChoice) -> List<BuildRule> {
   match scheme {
+    // Dark is the UNCONDITIONAL state: the tokens layer's :root already carries the night
+    // values, so "dark only" is the absence of an override, not an extra block. Nothing is
+    // emitted, and nothing is invented to look like work here (§2).
     DarkOnly => []
-    LightAlternative => [StaticRule {
-      selector: ClassSelector { name: day_scope_class },
+    // The override is emitted on extdeps.languages.css.selectors.root_selector — literally
+    // the SAME row gunbc.site.gunb_ai_tokens emits its unconditional custom properties on,
+    // not a second hand-typed PseudoSuffix that happens to match. Same selector means the
+    // same specificity, so this block wins by ORDER and nothing else; if the two ever name
+    // different subjects, the override silently becomes unwinnable, so the identity lives in
+    // the type rather than in a comment. The condition is the upstream modelled row
+    // prefers_light (MQ5 §12.5), not a string. The decls are the SAME day_bindings() rows the
+    // class-scoped draft used, so closing the scope gap changed no colour.
+    LightAlternative => [MediaRule {
+      condition: prefers_light,
+      selector: root_selector,
       decls: day_bindings(),
     }]
   }
@@ -464,7 +477,7 @@ fn layout_owned_tokens() -> List<ScaleToken> {
 fn ballot_css(req: BallotRequest) -> String {
   serialize_rules(rules: concat(
     [StaticRule {
-      selector: PseudoSuffix { base: "", pseudo: "root" },
+      selector: root_selector,
       decls: concat(token_root_decls(), layout_owned_decls())
     }],
     layout_rules(grid: req.grid, breakpoints: req.breakpoints, scheme: req.scheme)
@@ -499,7 +512,10 @@ fn ballot_page(req: BallotRequest) -> Fragment {
       el("title", [ txt(join(["gunb.ai layout — ", req.label], "")) ]),
       el("style", [ txt(ballot_css(req: req)) ]),
     ]),
-    Element { tag: "body", attributes: ballot_body_attrs(scheme: req.scheme), children: [
+    // No scheme attribute on either choice: the light variant is an @media block, so there is
+    // no class to attach. A leftover body class would be a second, dead scope — the layout
+    // witness asserts no class="gunb-day" survives anywhere in a rendered ballot page.
+    Element { tag: "body", attributes: [], children: [
       el("header", [
         el_class("div", "tag", [ txt(join(["axis: ", req.axis], "")) ]),
         el_class("div", "h1", [ txt(req.label) ]),
@@ -524,13 +540,6 @@ fn ballot_page(req: BallotRequest) -> Fragment {
       el("footer", [ txt("gunbc · gunbc.site.gunb_ai_layout · generated, not hand-maintained") ]),
     ] },
   ] }
-}
-
-fn ballot_body_attrs(scheme: SchemeChoice) -> List<Attribute> {
-  match scheme {
-    DarkOnly => []
-    LightAlternative => [ attr(name: "class", value: day_scope_class) ]
-  }
 }
 
 fn ballot_card(title: String, body: String) -> Fragment {

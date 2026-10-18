@@ -2,13 +2,12 @@ module gunbc.runner.runner_revision_job_launch
 
 import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
 import std.optional { Present, Absent }
-import std.measure { ByteSize, Mebibyte, mebibyte, mebibyte_count, mebibyte_ceiling, byte_size_count, gibibyte_to_byte_size, mebibyte_to_byte_size, HardwareThreadCount, hardware_thread_count_value }
+import std.measure { ByteSize, Mebibyte, mebibyte, mebibyte_count, byte_size_count, gibibyte_to_byte_size, mebibyte_to_byte_size, HardwareThreadCount, hardware_thread_count_value }
 import product.fabric.work { Work }
 import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellSnapshot }
 import gunbc.runner.runner_microvm_attempt { MicroVmAttempt, runner_microvm_attempt_jail_base, runner_microvm_attempt_slice_property }
 import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_allowance, jit_drive_newline_sector, jit_drive_utf8_size }
 import gunbc.runner.runner_microvm_network { runner_slot_network }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import gunbc.runner.runner_attempt_launch {
   LaunchWithdrawn, AttemptGround, GroundClear, GroundOccupied, AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedPriorResources,
   LaunchRefusedUnauthorized, LaunchAuthorizedByCellGrant, CellGrantAuthorization, CellGrantAuthorizes,
@@ -17,6 +16,7 @@ import gunbc.runner.runner_attempt_launch {
   attempt_unprivileged_uid, attempt_unprivileged_gid, host_busybox_bin, bounded_jailer_command,
 }
 import gunbc.runner.runner_revision_job_stage { RevisionJobStaged }
+import gunbc.runner.runner_revision_job_guest { revision_job_guest_memory }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig, FirecrackerBootSource, FirecrackerDrive, FirecrackerMachineConfig,
   firecracker_requires_kvm_device, firecracker_block_sector_size,
@@ -27,7 +27,7 @@ import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.busybox { busybox_dd_sparse_image_command }
 import extdeps.tools.e2fsprogs { mke2fs_format_command, Ext2 }
 import extdeps.systemd { MemoryMax, MemorySwapMax, CPUQuota }
-import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting }
 
 // THE REVISION JOB'S LAUNCH: A CELL-GRANTED VM WITH NO NETWORK AND EVERY INPUT ON A DRIVE.
 //
@@ -41,7 +41,7 @@ import extdeps.systemd.systemd_run { SystemdRunProperty }
 //   vdc  the tree archive, read-only;   vdd  the vendor archive, read-only;
 //   vde  the results drive, read-write, raw (never mounted by the host);
 //   vdf  a fresh, empty ext2 work disk, read-write, mounted at /work by the image.
-// Memory: the claims run under the CI slot's declared envelope (gunbc_runner_slot_memory_max, which
+// Memory: the claims run under the envelope the guest module derives from the CI slot's row (revision_job_claim_envelope, which
 // the guest unit also sets as its own MemoryMax=), the VM's RAM is that plus the guest-OS allowance,
 // and the jailer unit's MemoryMax= is the VM's RAM plus the realization allowance, swap 0.
 
@@ -49,7 +49,6 @@ import extdeps.systemd.systemd_run { SystemdRunProperty }
 // S4b-3b), which runs one job from spec to published receipt. TRIGGER: S4b-3b's stand-in inhabitance
 // claim, the light discriminating claim set run end to end over these staged inputs.
 
-data revision_job_guest_os_allowance: Mebibyte = mebibyte(count: 1024)
 data revision_job_work_disk: Mebibyte = mebibyte(count: 49152)
 data revision_job_spec_jail_path: FilePath = "/spec.env"
 data revision_job_tree_jail_path: FilePath = "/tree.tar"
@@ -59,12 +58,6 @@ data revision_job_results_jail_path: FilePath = "/results.bin"
 type RevisionJobGuestImage {
   kernel: String
   rootfs: String
-}
-
-// THE GUEST'S RAM: the claims' envelope, rounded up to whole MiB (std.measure mebibyte_ceiling), plus
-// the guest-OS allowance -- both typed, converted once.
-fn revision_job_guest_memory() -> Mebibyte {
-  mebibyte(count: mebibyte_count(m: mebibyte_ceiling(b: gunbc_runner_slot_memory_max)) + mebibyte_count(m: revision_job_guest_os_allowance))
 }
 
 
@@ -85,6 +78,12 @@ fn revision_job_vm_config(vcpus: HardwareThreadCount) -> FirecrackerVmConfig {
     network_interfaces: [],
     machine_config: FirecrackerMachineConfig { vcpu_count: hardware_thread_count_value(t: vcpus), mem_size_mib: mebibyte_count(m: revision_job_guest_memory()) },
   }
+}
+
+// The jailer unit'"'"'s MemoryMax=: the VM'"'"'s RAM plus the realization allowance. One function, read by the
+// plan and claimed against the slot row, so the property the plan emits is the one claimed.
+fn revision_job_jailer_memory_property() -> SystemdRunProperty {
+  NamedUnitSetting { property: MemoryMax, value: to_string(byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr }
 }
 
 fn revision_job_launch_plan(
@@ -122,9 +121,9 @@ fn revision_job_launch_plan(
           workspace_grant: mebibyte_to_byte_size(m: revision_job_work_disk),
           lease_expires_unix: none,
           runtime_properties: [
-            SystemdRunProperty { property: MemoryMax, value: to_string(byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr },
-            SystemdRunProperty { property: MemorySwapMax, value: "0" },
-            SystemdRunProperty { property: CPUQuota, value: concat(to_string(hardware_thread_count_value(t: admitted) * 100), "%") as NonEmptyStr },
+            revision_job_jailer_memory_property(),
+            NamedUnitSetting { property: MemorySwapMax, value: "0" },
+            NamedUnitSetting { property: CPUQuota, value: concat(to_string(hardware_thread_count_value(t: admitted) * 100), "%") as NonEmptyStr },
           ],
           tap_device: runner_slot_network(slot: attempt.slot).tap_device,
           guest_ip_boot_arg: "",
