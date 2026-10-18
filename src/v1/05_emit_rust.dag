@@ -13254,6 +13254,13 @@ fn rust_emit_length_on_host_string(call_target: CallTargetIdentity, func: String
 
 // The source spelling of a bare constructor argument, or "" for anything else (an expression, a call,
 // a variable that is not a variant constructor), so only a literal can select a lowering row.
+fn declared_param_position(params: List<Node>, name: String) -> Int {
+  match params |> enumerate |> filter(pair => pair.second.name == name) |> first {
+    Present { value: pair } => pair.first
+    Absent => 0 - 1
+  }
+}
+
 fn constructor_literal_parent(n: Node) -> String {
   match n.expr_data {
     ExprVar { binding_kind: bk } =>
@@ -13342,25 +13349,35 @@ fn declared_literal_match_result(owner_module: String, fn_name: String, parent: 
 // non-literal operator or width, or a declaration that does not fold, keeps the declared call.
 fn emit_machine_word_lowered_call(call_target: CallTargetIdentity, func: String, args: List<Node>, call_semantics: CallSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
   let owner = match call_target {
-    SourceDeclarationCall { owner_module_path: owner_path, decl_name: decl } => if decl == "machine_word_apply" { owner_path } else { "" }
+    SourceDeclarationCall { owner_module_path: owner_path, decl_name: decl } => if decl == rust_machine_word_lowering.apply_fn { owner_path } else { "" }
     _ => ""
   }
-  if owner != "std.machine_word" { none } else {
+  if owner != rust_machine_word_lowering.owner_module { none } else {
     let ordered = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
-    if ordered |> count != 4 { none } else {
+    let apply_params = match map_get(emit_info.fn_decl_identity_items, type_decl_identity(owner_module: owner, decl_name: rust_machine_word_lowering.apply_fn)) {
+      Present { value: apply_item } => function_value_params(params: apply_item.params)
+      Absent => []
+    }
+    let op_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.operator_param)
+    let width_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.width_param)
+    let a_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.a_param)
+    let b_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.b_param)
+    if (ordered |> count) != (apply_params |> count) || op_at < 0 || width_at < 0 || a_at < 0 || b_at < 0 { none } else {
       let si = scope.type_env.source_indices
-      let op_leaf = constructor_literal_leaf(n: arg_value(n: (ordered |> first).value), source_indices: si)
-      let width_leaf = constructor_literal_leaf(n: arg_value(n: (ordered |> skip(1) |> first).value), source_indices: si)
-      let op_parent = constructor_literal_parent(n: arg_value(n: (ordered |> first).value))
-      let width_parent = constructor_literal_parent(n: arg_value(n: (ordered |> skip(1) |> first).value))
+      let op_arg = arg_value(n: (ordered |> skip(op_at) |> first).value)
+      let width_arg = arg_value(n: (ordered |> skip(width_at) |> first).value)
+      let op_leaf = constructor_literal_leaf(n: op_arg, source_indices: si)
+      let width_leaf = constructor_literal_leaf(n: width_arg, source_indices: si)
+      let op_parent = constructor_literal_parent(n: op_arg)
+      let width_parent = constructor_literal_parent(n: width_arg)
       let label = if op_leaf == "" { none } else { declared_literal_match_result(owner_module: owner, fn_name: rust_machine_word_lowering.operator_label_fn, parent: op_parent, constructor: op_leaf, emit_info: emit_info, source_indices: si) }
       let bits = if width_leaf == "" { none } else { declared_literal_match_result(owner_module: owner, fn_name: rust_machine_word_lowering.width_bits_fn, parent: width_parent, constructor: width_leaf, emit_info: emit_info, source_indices: si) }
       match label {
         Present { value: label_text } =>
           match bits {
             Present { value: bits_text } =>
-              let a_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(2) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-              let b_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(3) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+              let a_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(a_at) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+              let b_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(b_at) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
               Present { value: apply_named_template(template: rust_machine_word_lowering.template, bindings: seed_bindings(key: "a", value: a_str) |> map_insert("b", b_str) |> map_insert("label", label_text) |> map_insert("bits", bits_text)) }
             Absent => none
           }
