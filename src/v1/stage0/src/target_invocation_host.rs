@@ -1936,10 +1936,12 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         Ok(head) => head,
         Err(cause) => return unreached(format!("head commit: {cause}")),
     };
-    let base = match run_base_ambient_name_census(&scratch, &base_ref, &head) {
+    let (base, base_tree) = match run_base_ambient_name_census(&scratch, &base_ref, &head) {
         Ok(base) => base,
         Err(cause) => return unreached(format!("base: {cause}")),
     };
+    // The base tree stays until the standing has read the texts the edit proof is computed from.
+    let _base_tree = BaseTreeGuard(base_tree.clone());
     let head_run = match run_head_ambient_name_census(&head) {
         Ok(run) => run,
         Err(cause) => return unreached(format!("head: {cause}")),
@@ -1985,6 +1987,11 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
             Some("wave_wrong_home_stdout".to_string()),
             text(&runs[5].stdout),
         ),
+        (Some("base_root".to_string()), text(&base_tree)),
+        (
+            Some("head_root".to_string()),
+            text(&cli_run::workspace_root().to_string_lossy()),
+        ),
     ];
     match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
@@ -1999,15 +2006,20 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
 
 /// Base's own `ambient-name-census`, run by base's own seed in a private worktree of the merge base of
 /// `head` and `base_ref`, handed head's commit as `GITHUB_SHA` so it reads the SAME rewritten modules
-/// head does. Returns that run's reading and status; removes the worktree it added.
+/// head does. Returns that run's reading and status and the worktree path, which the caller removes.
 fn run_base_ambient_name_census(
     scratch: &std::path::Path,
     base_ref: &str,
     head: &str,
-) -> Result<(String, Option<i32>), String> {
+) -> Result<((String, Option<i32>), String), String> {
     let merge_base = census_merge_base(head, base_ref)?;
     let tree = scratch.join("base_tree");
-    let tree_text = tree.to_string_lossy().into_owned();
+    std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
+    let tree_text = std::fs::canonicalize(scratch)
+        .map_err(|e| e.to_string())?
+        .join("base_tree")
+        .to_string_lossy()
+        .into_owned();
     let _ = git_text(&["worktree", "remove", "--force", &tree_text]);
     let _ = std::fs::remove_dir_all(&tree);
     std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
@@ -2031,12 +2043,25 @@ fn run_base_ambient_name_census(
         .env("CARGO_TARGET_DIR", &target_dir)
         .env("GITHUB_SHA", head)
         .output();
-    let removed = git_text(&["worktree", "remove", "--force", &tree_text]);
-    let output = run.map_err(|e| format!("spawning base's gunbc test: {e}"))?;
-    removed?;
+    let output = match run {
+        Ok(output) => output,
+        Err(e) => {
+            let _ = git_text(&["worktree", "remove", "--force", &tree_text]);
+            return Err(format!("spawning base's gunbc test: {e}"));
+        }
+    };
     // `gunbc test` writes its reading to STDERR (the verdict message), so that is what is read.
     let reading = String::from_utf8(output.stderr).map_err(|e| e.to_string())?;
-    Ok((reading, output.status.code()))
+    Ok(((reading, output.status.code()), tree_text))
+}
+
+/// Removes the base worktree the census left in place for the edit proof, whichever way the label ends.
+struct BaseTreeGuard(String);
+
+impl Drop for BaseTreeGuard {
+    fn drop(&mut self) {
+        let _ = git_text(&["worktree", "remove", "--force", &self.0]);
+    }
 }
 
 /// Head's `ambient-name-census`, run by this executable in its own process (one bounded census at a

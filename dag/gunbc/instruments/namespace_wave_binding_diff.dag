@@ -7,7 +7,12 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, KernelTypeSpellingTable, ambient_name_homes }
 import gunbc.instruments.ambient_name_census_reading { ambient_census_base_ref, census_observation_text }
-import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, occurrence_join_module, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.parse { PreparedGrammar }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { PreparedLexRules }
+import v2.std.diagnostic { Accepted, Rejected }
+import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, ModuleEvidence, occurrence_join_module, recompute_wave_text, rows_by_module, module_rows, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure }
 
 // THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
 // a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
@@ -315,45 +320,74 @@ fn formatter_control_failure() -> Optional<String> {
 // ---------------------------------------------------------------------------------------------------
 // THE WAVE-1 JOIN CONTROLS ON THE REAL CENSUS ROUTE. Four roots the host censuses with the native census-infer: a
 // BASE module that still refuses resolve (`semver_version_parse` is declared nowhere) and uses `chars(s: ...)` unimported at
-// four sites -- the shape of a real wave-1 module (two call lines are excerpted from test.claim.extdeps_version_semver) --
-// and three HEADS, each carrying the wave's own edits (the import inserted above every body, `s:` relabelled `text:` on the
-// SAME line, which is also what the same-line pair of sites exercises) plus one difference:
-//   admit       nothing else: all four sites must join to std.host_text.chars and the verdict is success;
+// four sites -- the shape of a real wave-1 module -- and three HEADS. The admit HEAD IS THE GENERATOR'S OWN RECOMPUTATION from the
+// base text (wave_derived_head: roster_sweep_text_home + roster_applied to a fixed point), never typed by hand, so the byte-equality
+// proof (gunbc.instruments.namespace_wave_occurrence_join edit_proof) holds for it and for nothing else:
+//   admit       the recomputation: all four sites must join to std.host_text.chars and the verdict is success;
 //   moved       a blank line added between the first two call lines: still four sites on each side, EQUAL COUNT, but the
-//               first site's coordinate moved, so it has no partner (Appeared + Vanished) and the verdict is 1;
-//   wrong home  the import points at examples.other.chars: four sites resolve, to the wrong declaration (TargetChanged),
-//               verdict 1.
-// The admit head is the positive control and also the coordinate-shift challenge: a count-only or ordinal-keyed join
-// would pass the moved head, and a coordinate that an import insertion or a same-line relabel moved would refuse admit.
+//               head is not the generator's output, so the verdict is 1 (EditsNotGenerated);
+//   wrong home  the import points at examples.other.chars: four sites resolve to the wrong declaration, not the generator's
+//               output either: verdict 1.
+// The same-line / equal-count wrong-CORRESPONDENCE controls (a relocated site, a wrong home on one of two sites of one line) are at the
+// join's own interface in occurrence_join_controls_failure, where a head TEXT that is the recomputation is paired with census rows
+// that disagree with it.
 
 fn wave_join_shared() -> List<BindingDiffFixtureFile> {
   [
     BindingDiffFixtureFile { path: "std/host_text.dag", content: "module std.host_text\n\nfn chars(text: String) -> Int {\n  1\n}\n" },
+    BindingDiffFixtureFile { path: "examples/anchor.dag", content: "module examples.anchor\n\nfn anchor() -> Int {\n  0\n}\n" },
     BindingDiffFixtureFile { path: "examples/other.dag", content: "module examples.other\n\nfn chars(text: String) -> Int {\n  2\n}\n" }
   ]
 }
 
-fn wave_join_module(import_line: String, label: String, gap: String) -> String {
-  "module examples.wave\n" + import_line
-    + "\nfn first() -> Int {\n  semver_version_parse(cps: chars(" + label + ": \"1.0.0\" as String))\n}\n" + gap
-    + "\nfn second() -> Int {\n  semver_version_parse(cps: chars(" + label + ": \"1.0.0-alpha\" as String))\n}\n"
-    + "\nfn same_line() -> Int {\n  pair(a: chars(" + label + ": \"a\"), b: chars(" + label + ": \"b\"))\n}\n"
+fn wave_base_text() -> String {
+  "module examples.wave\n\nimport examples.anchor { anchor }\n"
+    + "\nfn first() -> Int {\n  semver_version_parse(cps: chars(s: \"1.0.0\" as String))\n}\n"
+    + "\nfn second() -> Int {\n  semver_version_parse(cps: chars(s: \"1.0.0-alpha\" as String))\n}\n"
+    + "\nfn same_line() -> Int {\n  pair(a: chars(s: \"a\"), b: chars(s: \"b\"))\n}\n"
+}
+
+fn wave_home() -> String {
+  "std.host_text"
+}
+
+fn wave_derived_head_with(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  recompute_wave_text(path: "examples/wave.dag", base_text: wave_base_text(), prepared: prepared, lex: lex, home: wave_home()).text
+}
+
+fn wave_derived_head() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => ""
+    Accepted { value: prepared, diagnostics: _ } => wave_derived_head_with(prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn wave_moved_head() -> String {
+  replace(wave_derived_head(), "\nfn second()", "\n\nfn second()")
+}
+
+fn wave_wrong_home_head() -> String {
+  replace(wave_derived_head(), "import std.host_text { chars }", "import examples.other { chars }")
+}
+
+fn wave_files(head: String) -> List<BindingDiffFixtureFile> {
+  wave_join_shared() + [BindingDiffFixtureFile { path: "examples/wave.dag", content: head }]
 }
 
 fn binding_diff_wave_base_files() -> List<BindingDiffFixtureFile> {
-  wave_join_shared() + [BindingDiffFixtureFile { path: "examples/wave.dag", content: wave_join_module(import_line: "", label: "s", gap: "") }]
+  wave_files(head: wave_base_text())
 }
 
 fn binding_diff_wave_head_files() -> List<BindingDiffFixtureFile> {
-  wave_join_shared() + [BindingDiffFixtureFile { path: "examples/wave.dag", content: wave_join_module(import_line: "\nimport std.host_text { chars }\n", label: "text", gap: "") }]
+  wave_files(head: wave_derived_head())
 }
 
 fn binding_diff_wave_moved_head_files() -> List<BindingDiffFixtureFile> {
-  wave_join_shared() + [BindingDiffFixtureFile { path: "examples/wave.dag", content: wave_join_module(import_line: "\nimport std.host_text { chars }\n", label: "text", gap: "\n") }]
+  wave_files(head: wave_moved_head())
 }
 
 fn binding_diff_wave_wrong_home_head_files() -> List<BindingDiffFixtureFile> {
-  wave_join_shared() + [BindingDiffFixtureFile { path: "examples/wave.dag", content: wave_join_module(import_line: "\nimport examples.other { chars }\n", label: "text", gap: "") }]
+  wave_files(head: wave_wrong_home_head())
 }
 
 fn verdict_code(r: CliWireResponse) -> Int {
@@ -367,6 +401,18 @@ fn verdict_code(r: CliWireResponse) -> Int {
   }
 }
 
+// The texts a verdict joins by: supplied by the controls, read from the two roots by the standing.
+type WaveProof {
+  evidence: Map<String, ModuleEvidence>
+  prepared: PreparedGrammar
+  lex: PreparedLexRules
+  home: String
+}
+
+fn wave_proof(prepared: PreparedGrammar, lex: PreparedLexRules, head: String) -> WaveProof {
+  WaveProof { evidence: map_insert(empty_map(), "examples.wave", ModuleEvidence { module: "examples.wave", base_text: wave_base_text(), head_text: head, readable: true }), prepared: prepared, lex: lex, home: wave_home() }
+}
+
 // What the ambient census prints beside the infer rows for a rewritten module refused at resolve, and the status 2 it answers.
 fn wave_refused_row() -> String {
   "refused_rewritten\texamples.wave\tresolve\n"
@@ -374,42 +420,61 @@ fn wave_refused_row() -> String {
 
 // A SUCCESSFUL JOIN CLEARS ITS OWN MODULE'S INCOMPLETENESS and nothing else's: the admitted wave answers 0 despite the
 // census status 2 its refused module caused, but the same head with an unrelated unobserved_subject row stays 2.
-fn wave_other_incompleteness_control_failure(base: String, admit: String) -> Optional<String> {
-  let got = verdict_code(r: binding_diff_verdict(base_stdout: base + wave_refused_row(), head_stdout: admit + wave_refused_row() + "unobserved_subject\tsome subject\n", base_status: 2, head_status: 2))
+fn wave_other_incompleteness_control_failure(base: String, admit: String, proof: WaveProof) -> Optional<String> {
+  let got = verdict_code(r: binding_diff_verdict(base_stdout: base + wave_refused_row(), head_stdout: admit + wave_refused_row() + "unobserved_subject\tsome subject\n", base_status: 2, head_status: 2, proof: proof))
   if got == 2 { optional_absent() } else { optional_present(value: "a joined wave with another incomplete subject answered " + to_string(got) + ", not 2") }
 }
 
-fn wave_join_case(name: String, base: String, head: String, want: Int) -> String {
-  let got = verdict_code(r: binding_diff_verdict(base_stdout: base + wave_refused_row(), head_stdout: head + wave_refused_row(), base_status: 2, head_status: 2))
+fn wave_join_case(name: String, base: String, head: String, want: Int, proof: WaveProof) -> String {
+  let got = verdict_code(r: binding_diff_verdict(base_stdout: base + wave_refused_row(), head_stdout: head + wave_refused_row(), base_status: 2, head_status: 2, proof: proof))
   if got == want { "" } else { "wave-1 join " + name + ": verdict " + to_string(got) + ", want " + to_string(want) + "\n" }
 }
 
-// The route must actually have observed the fixture: four unbound sites on base, the module unreached, no binding_module.
-fn wave_join_route_failure(base: String, admit: String, moved: String, wrong_home: String) -> Optional<String> {
+// The route must actually have observed the fixture: four unbound sites on base, and the partial-module row the join requires.
+fn wave_join_route_failure(base: String, admit: String, moved: String, wrong_home: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> Optional<String> {
   let sites = count(rows_with_prefix(stdout: base, prefix: "binding_unbound\texamples.wave\tchars\t"))
   let report = (if sites == 4 { "" } else { "wave-1 join base fixture: " + to_string(sites) + " unbound chars sites, want 4 (the census route did not print the loci)\n" })
-    + wave_join_case(name: "admit (positive control)", base: base, head: admit, want: 0)
-    + wave_join_case(name: "equal-count moved site (RED)", base: base, head: moved, want: 1)
-    + wave_join_case(name: "wrong home (RED)", base: base, head: wrong_home, want: 1)
+    + wave_join_case(name: "admit (positive control)", base: base, head: admit, want: 0, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex)))
+    + wave_join_case(name: "equal-count moved site (RED)", base: base, head: moved, want: 1, proof: wave_proof(prepared: prepared, lex: lex, head: wave_moved_head()))
+    + wave_join_case(name: "wrong home (RED)", base: base, head: wrong_home, want: 1, proof: wave_proof(prepared: prepared, lex: lex, head: wave_wrong_home_head()))
   if report == "" { optional_absent() } else { optional_present(value: report) }
 }
 
 // UNOBSERVED IS 2, ON THE FULL VERDICT: a head that names a rewritten module its census could not read, over otherwise
 // admitted rows, must not answer success or 1.
-fn wave_unobserved_control_failure() -> Optional<String> {
+fn wave_unobserved_control_failure(prepared: PreparedGrammar, lex: PreparedLexRules) -> Optional<String> {
   let observed = "binding_module\texamples.uses\t1\t0\t0\t0\n"
   let base = observed + "binding\texamples.uses\tInt\t0\tdeclared\texamples.home.Int\n"
   let head = base + "unobserved_rewritten\texamples.wave\n"
-  let got = verdict_code(r: binding_diff_verdict(base_stdout: base, head_stdout: head, base_status: 0, head_status: 0))
+  let got = verdict_code(r: binding_diff_verdict(base_stdout: base, head_stdout: head, base_status: 0, head_status: 0, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex))))
   if got == 2 { optional_absent() } else { optional_present(value: "an unobserved rewritten module answered " + to_string(got) + ", not 2") }
 }
 
-// A BASE CENSUS OLDER THAN THE LOCUS ROWS is no observation: the same wave base with its binding_file rows removed,
-// against the admitted head, must answer 2 -- not 1 (an invented refusal) and not 0.
-fn base_without_line_count_control_failure(base: String, admit: String) -> Optional<String> {
-  let stripped = split(s: base, delimiter: "\n") |> filter(l => !starts_with(s: l, prefix: "binding_file\t")) |> join(separator: "\n")
-  let got = verdict_code(r: binding_diff_verdict(base_stdout: stripped, head_stdout: admit, base_status: 0, head_status: 0))
-  if got == 2 { optional_absent() } else { optional_present(value: "a base census with no line counts answered " + to_string(got) + ", not 2") }
+fn drop_prefixed(stdout: String, prefix: String) -> String {
+  split(s: stdout, delimiter: "\n") |> filter(l => !starts_with(s: l, prefix: prefix)) |> join(separator: "\n")
+}
+
+fn with_unreadable_partial(stdout: String) -> String {
+  split(s: stdout, delimiter: "\n")
+    |> map(l => if starts_with(s: l, prefix: "binding_partial_module\t") { field_at(line: l, index: 0) + "\t" + field_at(line: l, index: 1) + "\t" + field_at(line: l, index: 2) + "\t" + field_at(line: l, index: 3) + "\t1" } else { l })
+    |> join(separator: "\n")
+}
+
+// THE JOIN'S OWN OBSERVATION GUARDS, on the full verdict over the admitted wave: a base with no partial-module row (a census
+// older than the partial rows), a head whose partial observation recorded an unreadable spelling, and an unreadable text
+// each answer 2 -- never 1 (an invented refusal) and never 0.
+fn unobserved_guards_control_failure(base: String, admit: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> Optional<String> {
+  let proof = wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex))
+  let unreadable_text = WaveProof { evidence: map_insert(empty_map(), "examples.wave", ModuleEvidence { module: "examples.wave", base_text: "", head_text: "", readable: false }), prepared: prepared, lex: lex, home: wave_home() }
+  let report = wave_guard_case(name: "base without a partial-module row", base: drop_prefixed(stdout: base, prefix: "binding_partial_module\t"), head: admit, proof: proof)
+    + wave_guard_case(name: "head with an unreadable spelling", base: base, head: with_unreadable_partial(stdout: admit), proof: proof)
+    + wave_guard_case(name: "unreadable base/head text", base: base, head: admit, proof: unreadable_text)
+  if report == "" { optional_absent() } else { optional_present(value: report) }
+}
+
+fn wave_guard_case(name: String, base: String, head: String, proof: WaveProof) -> String {
+  let got = verdict_code(r: binding_diff_verdict(base_stdout: base + wave_refused_row(), head_stdout: head + wave_refused_row(), base_status: 2, head_status: 2, proof: proof))
+  if got == 2 { "" } else { "wave-1 guard " + name + ": verdict " + to_string(got) + ", want 2\n" }
 }
 
 // THE VERDICT. An incomplete side never yields success: a census that answered 2 (a rewritten module
@@ -423,7 +488,7 @@ fn binding_diff_exit(refused: Int, unobserved: Int, outside: Int, unobserved_bot
   } else if outside != 0 {
     ExitFailure { code: 2, reason: to_string(outside) + " module(s) observed on one side only (outside_other_population rows above): not compared" }
   } else if unobserved_both != 0 {
-    ExitFailure { code: 2, reason: "no refusal among the observed modules, but " + to_string(unobserved_both) + " module(s) neither census reached (unobserved rows above)" }
+    ExitFailure { code: 2, reason: "no refusal among the observed modules, but " + to_string(unobserved_both) + " module(s) neither census reached or the join could not observe (unobserved rows above)" }
   } else if base_status == 2 {
     ExitFailure { code: 2, reason: "base: the base census answered 2 (base_incomplete rows above), so the diff is incomplete" }
   } else if head_status == 2 {
@@ -462,14 +527,27 @@ type JoinedModule {
   module: String
   deltas: List<JoinDelta>
   conflicting: Bool
+  unusable: Bool
+}
+
+fn partial_rows(module: String, stdout: String) -> List<String> {
+  rows_with_prefix(stdout: stdout, prefix: "binding_partial_module\t" + module + "\t")
 }
 
 // A refused module's partial observation is unusable when either side recorded one occurrence with two different
 // bindings (binding_partial_module's conflicting field, v2.compiler.occurrence_binding_census occurrence_binding_partial).
 fn partial_conflicting(module: String, base_stdout: String, head_stdout: String) -> Bool {
-  count(split(s: base_stdout + "\n" + head_stdout, delimiter: "\n")
-    |> filter(l => starts_with(s: l, prefix: "binding_partial_module\t" + module + "\t"))
+  count((partial_rows(module: module, stdout: base_stdout) + partial_rows(module: module, stdout: head_stdout))
     |> filter(l => field_at(line: l, index: 3) != "0")) != 0
+}
+
+// ... and no observation when a side printed no partial-module row at all (a census older than the partial rows) or recorded a
+// spelling it could not read (field 4): an absent or incomplete partial observation is never an empty one.
+fn partial_unusable(module: String, base_stdout: String, head_stdout: String) -> Bool {
+  (count(partial_rows(module: module, stdout: base_stdout)) == 0)
+    || (count(partial_rows(module: module, stdout: head_stdout)) == 0)
+    || (count((partial_rows(module: module, stdout: base_stdout) + partial_rows(module: module, stdout: head_stdout))
+      |> filter(l => field_at(line: l, index: 4) != "0")) != 0)
 }
 
 // A census answers 2 while any rewritten module it reached was refused at resolve. A module the join judged at
@@ -482,24 +560,39 @@ fn side_status_after_join(status: Int, stdout: String, joined_ok: List<String>) 
   if (status == 2) && (count(refused) != 0) && (other == 0) && (count(refused |> filter(m => count(joined_ok |> filter(j => j == m)) == 0)) == 0) { 0 } else { status }
 }
 
-fn binding_diff_verdict(base_stdout: String, head_stdout: String, base_status: Int, head_status: Int) -> CliWireResponse {
+fn join_one_module(m: String, base_stdout: String, head_stdout: String, base_grouped: Map<String, List<String>>, head_grouped: Map<String, List<String>>, proof: WaveProof) -> JoinedModule {
+  JoinedModule {
+    module: m,
+    deltas: occurrence_join_module(rows: ambient_name_homes(), module: m, base_rows: module_rows(grouped: base_grouped, module: m), head_rows: module_rows(grouped: head_grouped, module: m), evidence: map_get(proof.evidence, m), prepared: proof.prepared, lex: proof.lex, home: proof.home),
+    conflicting: partial_conflicting(module: m, base_stdout: base_stdout, head_stdout: head_stdout),
+    unusable: partial_unusable(module: m, base_stdout: base_stdout, head_stdout: head_stdout)
+  }
+}
+
+fn joined_clean(j: JoinedModule) -> Bool {
+  !j.conflicting && !j.unusable && (count(j.deltas |> filter(d => !join_delta_admitted(d: d))) == 0)
+}
+
+fn binding_diff_verdict(base_stdout: String, head_stdout: String, base_status: Int, head_status: Int, proof: WaveProof) -> CliWireResponse {
   let diff = binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: ambient_name_homes())
   // A MODULE REFUSED ON BOTH SIDES is compared at occurrence grain by the verified join
-  // (gunbc.instruments.namespace_wave_occurrence_join) over its partial and unbound rows. It leaves the unobserved
-  // list only when its partial observation is usable on both sides (no conflicting record) and nothing refused.
-  let joined = diff.unobserved_both_sides |> map(m => JoinedModule { module: m, deltas: occurrence_join_module(rows: ambient_name_homes(), module: m, base_stdout: base_stdout, head_stdout: head_stdout), conflicting: partial_conflicting(module: m, base_stdout: base_stdout, head_stdout: head_stdout) })
-  // A module with no line count on a side was never observed there (a census older than the locus rows): that is
-  // no observation (it stays in still_unobserved, exit 2), never a refusal.
+  // (gunbc.instruments.namespace_wave_occurrence_join) over its partial and unbound rows, positions defined by the
+  // generator's recomputed edit map. It leaves the unobserved list only when its partial observation is usable on both
+  // sides (a row printed, nothing conflicting or unreadable), the proof held, and nothing refused.
+  let base_grouped = rows_by_module(stdout: base_stdout)
+  let head_grouped = rows_by_module(stdout: head_stdout)
+  let joined = diff.unobserved_both_sides |> map(m => join_one_module(m: m, base_stdout: base_stdout, head_stdout: head_stdout, base_grouped: base_grouped, head_grouped: head_grouped, proof: proof))
   let join_refused = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => !join_delta_admitted(d: d) && !join_delta_unobserved(d: d))) })
   let join_admitted = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => join_delta_admitted(d: d))) })
+  let join_unobserved = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => join_delta_unobserved(d: d))) })
   let conflicting = joined |> filter(j => j.conflicting) |> map(j => j.module)
-  let still_unobserved = joined |> filter(j => j.conflicting || (count(j.deltas |> filter(d => !join_delta_admitted(d: d))) != 0)) |> map(j => j.module)
-  let joined_ok = joined |> filter(j => !j.conflicting && (count(j.deltas |> filter(d => !join_delta_admitted(d: d))) == 0)) |> map(j => j.module)
+  let still_unobserved = joined |> filter(j => !joined_clean(j: j)) |> map(j => j.module)
+  let joined_ok = joined |> filter(j => joined_clean(j: j)) |> map(j => j.module)
   let unobserved = unobserved_rewritten_either(base_stdout: base_stdout, head_stdout: head_stdout)
   let outside = outside_other_population(base_stdout: base_stdout, head_stdout: head_stdout)
   let bytes = ((diff.admitted + diff.refused) |> map(d => delta_line(d: d)) |> join(separator: "\n")) + "\n"
     + (diff.unreached_one_side |> map(m => "refused\tUnreachedOnOneSide\t" + m) |> join(separator: "\n")) + "\n"
-    + ((join_admitted + join_refused) |> map(d => join_delta_line(d: d)) |> join(separator: "\n")) + "\n"
+    + ((join_admitted + join_refused + join_unobserved) |> map(d => join_delta_line(d: d)) |> join(separator: "\n")) + "\n"
     + (conflicting |> map(m => "refused\tPartialConflicting\t" + m) |> join(separator: "\n")) + "\n"
     + (still_unobserved |> map(m => "unobserved\t" + m) |> join(separator: "\n")) + "\n"
     + (unobserved |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
@@ -518,6 +611,37 @@ fn binding_diff_verdict(base_stdout: String, head_stdout: String, base_status: I
   }
 }
 
+// ---------------------------------------------------------------------------------------------------
+// THE TEXTS THE PROOF IS COMPUTED FROM, read in .dag from the two roots the host leaves in place (the base worktree and the
+// head tree): module `a.b.c` is at `<root>/dag/a/b/c.dag`, a `v2.*` module at `<root>/src/v2/...` (gunbc.source_layout).
+fn module_file(root: String, module: String) -> String {
+  let rel = replace(module, ".", "/") + ".dag"
+  if starts_with(s: module, prefix: "v2.") { root + "/src/" + rel } else { root + "/dag/" + rel }
+}
+
+fn read_module_evidence(base_root: String, head_root: String, module: String) -> ModuleEvidence {
+  let b = Filesystem.Read(path: module_file(root: base_root, module: module))
+  let h = Filesystem.Read(path: module_file(root: head_root, module: module))
+  ModuleEvidence { module: module, base_text: b.content, head_text: h.content, readable: b.success && h.success }
+}
+
+// Only a module both sides reached whose rows DIFFER needs its texts: identical rows are no change and need no proof.
+fn evidence_modules(base_stdout: String, head_stdout: String) -> List<String> {
+  let base_grouped = rows_by_module(stdout: base_stdout)
+  let head_grouped = rows_by_module(stdout: head_stdout)
+  binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: []).unobserved_both_sides
+    |> filter(m => join(module_rows(grouped: base_grouped, module: m), separator: "\n") != join(module_rows(grouped: head_grouped, module: m), separator: "\n"))
+}
+
+fn read_proof(base_stdout: String, head_stdout: String, base_root: String, head_root: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> WaveProof {
+  WaveProof {
+    evidence: fold(evidence_modules(base_stdout: base_stdout, head_stdout: head_stdout), init: empty_map(), f: fn(m, name) { map_insert(m, name, read_module_evidence(base_root: base_root, head_root: head_root, module: name)) }),
+    prepared: prepared,
+    lex: lex,
+    home: wave_home()
+  }
+}
+
 fn binding_diff_standing(
   rebind_base_stdout: String,
   rebind_head_stdout: String,
@@ -528,12 +652,36 @@ fn binding_diff_standing(
   wave_base_stdout: String,
   wave_admit_stdout: String,
   wave_moved_stdout: String,
-  wave_wrong_home_stdout: String
+  wave_wrong_home_stdout: String,
+  base_root: String,
+  head_root: String
+) -> CliWireResponse {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 2, reason: "the dag grammar could not be prepared, so no edit proof can be computed: not observed" } }
+    Accepted { value: prepared, diagnostics: _ } => binding_diff_standing_prepared(rebind_base_stdout: rebind_base_stdout, rebind_head_stdout: rebind_head_stdout, base_stdout: base_stdout, base_status: base_status, head_stdout: head_stdout, head_status: head_status, wave_base_stdout: wave_base_stdout, wave_admit_stdout: wave_admit_stdout, wave_moved_stdout: wave_moved_stdout, wave_wrong_home_stdout: wave_wrong_home_stdout, base_root: base_root, head_root: head_root, prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn binding_diff_standing_prepared(
+  rebind_base_stdout: String,
+  rebind_head_stdout: String,
+  base_stdout: String,
+  base_status: Int,
+  head_stdout: String,
+  head_status: Int,
+  wave_base_stdout: String,
+  wave_admit_stdout: String,
+  wave_moved_stdout: String,
+  wave_wrong_home_stdout: String,
+  base_root: String,
+  head_root: String,
+  prepared: PreparedGrammar,
+  lex: PreparedLexRules
 ) -> CliWireResponse {
   match rebind_red_failure(base_stdout: rebind_base_stdout, head_stdout: rebind_head_stdout) {
     Present { value: why } => CliWirePrintable { bytes: rebind_base_stdout + "\n" + rebind_head_stdout + "\n", exit: ExitFailure { code: 1, reason: "re-bind RED: " + why } }
     Absent =>
-      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), occurrence_join_controls_failure(), wave_unobserved_control_failure(), base_without_line_count_control_failure(base: wave_base_stdout, admit: wave_admit_stdout), wave_other_incompleteness_control_failure(base: wave_base_stdout, admit: wave_admit_stdout), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout)]) {
+      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), occurrence_join_controls_failure(prepared: prepared, lex: lex), wave_unobserved_control_failure(prepared: prepared, lex: lex), unobserved_guards_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, prepared: prepared, lex: lex), wave_other_incompleteness_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex))), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout, prepared: prepared, lex: lex)]) {
         Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
           if (base_status != 0) && (base_status != 2) {
@@ -545,7 +693,7 @@ fn binding_diff_standing(
           } else if count(binding_lines(stdout: head_stdout)) == 0 {
             CliWirePrintable { bytes: head_stdout + "\n", exit: ExitFailure { code: 2, reason: "head: the head census printed no binding row, so head was not observed; an empty side is no observation, never an empty diff" } }
           } else {
-            binding_diff_verdict(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status)
+            binding_diff_verdict(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status, proof: read_proof(base_stdout: base_stdout, head_stdout: head_stdout, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex))
           }
       }
   }
