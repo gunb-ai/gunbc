@@ -1037,16 +1037,14 @@ fn reset_write_admitted_after_ledger(
       } {
         ResetWriteRefused { cause: "the ruling's interlock is not rostered against this site, so no standing discharges it" as NonEmptyStr }
       } else if match recovery_reset_warrant(sighting: recovery_policy_sighted_on_controller(route: route)) {
-        // THE WARRANT IS MATCHED ONCE. The two refusal arms each carry what was seen (the reading nobody
-        // measured, or the release key that will not resolve), so the refusal below is the ARM'S words and
-        // not a string this gate invents about a state it did not inspect.
+        // THE WARRANT IS MATCHED ONCE, over ALL FOUR ARMS. Every refusal arm carries what was seen (the
+        // reading nobody measured, the two rows that disagreed, or the release key that will not resolve),
+        // so the refusal below is the ARM'S words and not a string this gate invents about a state it did
+        // not inspect. The ambiguity arm refuses like the other two: a reading the catalog answers twice
+        // warrants nothing, and it sends the operator to de-duplicate the catalog rather than to measure.
         WarrantedOnMeasuredRefusal { refusal: _, observed: _ } => false
         NeverMeasuredOnThisController { observed: _ } => true
         CatalogAmbiguousForThisController { observed: _, matched: _ } => true
-    CatalogAmbiguousForThisController { observed: _, matched: matched } =>
-      "the catalog holds "
-        + to_string(value: list_length(items: matched))
-        + " refusal rows for one Get Device ID reading, so no single refusal can warrant wiping this controller: de-duplicate the catalog"
         ReleaseKeyUnresolvableInCatalog { firmware: _, observed: _ } => true
       } {
         ResetWriteRefused {
@@ -1161,6 +1159,8 @@ fn recovery_reset_warrant_refusal_text(warrant: RecoveryResetWarrant) -> NonEmpt
   match warrant {
     NeverMeasuredOnThisController { observed: _ } =>
       "no refusal was ever measured on this controller: the Get Device ID reading on this route matches no measured row, so a ResetAll is not warranted"
+    CatalogAmbiguousForThisController { observed: _, matched: _ } =>
+      "this board's catalog answers the reading on this route with more than one refusal row, so no single measured refusal warrants a ResetAll: the catalog has to be de-duplicated before the reset can be admitted"
     ReleaseKeyUnresolvableInCatalog { firmware: _, observed: _ } =>
       "the measured row's release key does not resolve in this board's capability catalog, so the reset would rest on a release nobody can name"
     WarrantedOnMeasuredRefusal { refusal: _, observed: _ } =>
@@ -2223,6 +2223,7 @@ test fn a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset() 
               _ => false
             }
         RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
+        CatalogAmbiguousForController { observed: _, matched: _ } => false
         CatalogIndexesDisagree { firmware: _, observed: _ } => false
       }
     _ => false
@@ -2244,6 +2245,7 @@ test fn the_sighting_carries_both_readings_so_a_refusal_is_locatable() -> Bool {
           Absent => false
         }
     ControllerNeverMeasured { observed: _ } => false
+    CatalogAmbiguousForController { observed: _, matched: _ } => false
     CatalogIndexesDisagree { firmware: _, observed: _ } => false
   }
 }

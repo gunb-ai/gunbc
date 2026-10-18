@@ -248,9 +248,12 @@ fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
               capture: _,
               measured_under: _,
             } =>
+              // Compared STRUCTURALLY against the release the row itself names: the lookup above is keyed
+              // on that same BmcFirmwareVersion, so asking it back which release it is about would be
+              // asking a question the index already answered, and would let a row whose key resolved to a
+              // DIFFERENT row's body pass as agreeing.
               if match asrock_altrad8ud_published_factory_password_write_policy_for(firmware: f) {
-                FirmwareRefusesPublishedPassword { firmware: g, completion_code: _, capture: _, measured_under: _ } =>
-                  policy_names_firmware(policy: g, firmware: f)
+                FirmwareRefusesPublishedPassword { firmware: g, completion_code: _, capture: _, measured_under: _ } => g == f
                 NotMeasured { firmware: _ } => false
               } {
                 RefusalMeasuredOnThisController { refusal: row, observed: observed }
