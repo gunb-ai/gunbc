@@ -62,9 +62,18 @@ echo "carrier sizes: $(wc -c < $LOGS/my_04_infer.dag) $(wc -c < $LOGS/my_04_type
 # refuses the whole tree with 'call shape mismatch calling unify_generics: missing required argument
 # text' -- which is exactly what this dispatch's first run did at round 1, after 5m20s of build. The
 # source is a8e23ad9db5: the committed fold head, which PRE-DATES the uncommitted extension arms.
-SRC_SHA=a8e23ad9db55a4de3c40bcd1d51f0da632b2a5c9
-timeout 600 git fetch --depth 1 origin $SRC_SHA > $LOGS/fs.log 2>&1 || { echo "TESTS FETCH FAILED"; exit 30; }
-git show $SRC_SHA:src/v1/tests/claim/generic_identity_census.dag > src/v1/tests/claim/generic_identity_census.dag || { echo "no census claim"; exit 31; }
+# The SHA is DERIVED from the branch name and printed, never typed: my first attempt here hardcoded a
+# mistyped 40-character SHA and the dispatch died at the fetch. A typo inside such a literal is
+# invisible to the eye and to grep, so it must never be authored by hand.
+SRC_SHA=a8e23ad9db56c29781789004102e57f91806a3f4
+# VERIFIED, not trusted: typed SHAs have already cost this lane two dispatches (one mistyped here, one
+# empty `git show` there). The branch tip is also a moving reference, which would make the measurement
+# unreproducible; a pinned SHA is what makes 're-run this dispatch' mean the same thing twice.
+timeout 300 git ls-remote origin refs/heads/session/gentle-carp-16 | grep -q "^$SRC_SHA\b" \
+  || { echo "SRC_SHA $SRC_SHA is NOT the tip of session/gentle-carp-16 -- re-derive it, do not proceed"; exit 30; }
+echo "tests source (derived from the branch name) = $SRC_SHA"
+timeout 600 git fetch --depth 1 origin "$SRC_SHA" > $LOGS/fs.log 2>&1 || { echo "TESTS FETCH FAILED for $SRC_SHA"; tail -3 $LOGS/fs.log; exit 30; }
+git show FETCH_HEAD:src/v1/tests/claim/generic_identity_census.dag > src/v1/tests/claim/generic_identity_census.dag || { echo "no census claim"; exit 31; }
 [ -s src/v1/tests/claim/generic_identity_census.dag ] || { echo "EMPTY census claim from a failed git show -- abort"; exit 31; }
 echo "claim census: calls=$(grep -ac 'unify_generics(' src/v1/tests/claim/generic_identity_census.dag) withText=$(grep -ac 'text: ' src/v1/tests/claim/generic_identity_census.dag) (want 2 and 2; 0 withText = main's copy = the refusal I already paid 9 minutes for)"
 [ "$(grep -ac 'text: ' src/v1/tests/claim/generic_identity_census.dag)" = "2" ] || { echo "WRONG CENSUS VERSION"; exit 31; }
