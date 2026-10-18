@@ -468,7 +468,7 @@ type CompilerDiagnostic
   // its own reason). The specimen is extdeps.systemd systemd_run SystemdRunProperty, which #13942
   // changed from a record to NamedUnitSetting | EmptyCapabilityBoundingSet while its call sites
   // kept constructing the old record shape -- accepted at authoring and refused only at eval
-  // (recurring_failure_mode/unbounded_resource_lifecycle_refusals_2).
+  // (gunbc.recurring_failure_mode.a_record_literal_naming_a_union_type_is_accepted_at_typecheck).
   | TypeNameCarriesNoRecordConstructor {
       type_name: String,
       declared_variants: List<String>,
