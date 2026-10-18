@@ -141,7 +141,7 @@ test fn a_mode_outside_the_relation_gets_no_branch_pool_signin() -> Bool {
 // RED: a row whose account_id names no federation makes generation refuse, naming its mode and account;
 // the real relation is admitted (positive control), so the refusal is the row's, not a blanket one.
 test fn a_row_with_an_unknown_account_refuses_generation_naming_mode_and_account() -> Bool {
-  let bad = RunScopedMode { mode: "apply", main_route: MainUsesFleetIdentity { account_id: "no-such-run-account" } }
+  let bad = RunScopedMode { mode: "apply", account_id: "no-such-run-account", main_route: MainUsesFleetIdentity }
   (match fleet_converge_unfederated_run_scoped_refusal_of(rows: concat(run_scoped_modes(), [bad])) {
     Present { value: r } => r.contains("mode apply account_id no-such-run-account")
     Absent => false

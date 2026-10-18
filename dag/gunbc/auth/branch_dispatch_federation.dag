@@ -150,43 +150,26 @@ data branch_run_key_variable: NonEmptyStr = "BRANCH_RUN_KEY"
 // without it. Trigger to add it: an enforcement point outside the branch's workflow text (a main-side
 // gate, or a verified environment protection on srv1-production).
 //
-// THE ACCOUNT LIVES INSIDE THE ROUTE, so every row carries exactly one account and no row can omit it.
-type RunScopedMainRoute
-  = MainUsesGrantedAccount { account_id: NonEmptyStr }
-  | MainUsesFleetIdentity { account_id: NonEmptyStr }
-  | MainUsesSelectedSource { account_id: NonEmptyStr }
-
-type RunScopedRouteKind = GrantedAccountRoute | FleetIdentityRoute | SelectedSourceRoute
+type RunScopedMainRoute = MainUsesGrantedAccount | MainUsesFleetIdentity | MainUsesSelectedSource
 
 type RunScopedMode {
   mode: NonEmptyStr
+  account_id: NonEmptyStr
   main_route: RunScopedMainRoute
 }
 
 fn run_scoped_account_id(m: RunScopedMode) -> NonEmptyStr {
-  match m.main_route {
-    MainUsesGrantedAccount { account_id: a } => a
-    MainUsesFleetIdentity { account_id: a } => a
-    MainUsesSelectedSource { account_id: a } => a
-  }
-}
-
-fn run_scoped_route_kind(m: RunScopedMode) -> RunScopedRouteKind {
-  match m.main_route {
-    MainUsesGrantedAccount { account_id: _ } => GrantedAccountRoute
-    MainUsesFleetIdentity { account_id: _ } => FleetIdentityRoute
-    MainUsesSelectedSource { account_id: _ } => SelectedSourceRoute
-  }
+  m.account_id
 }
 
 data mtcollins1_boot_mode_name: NonEmptyStr = "mtcollins1_boot"
 
 fn run_scoped_modes() -> List<RunScopedMode> {
   [
-    RunScopedMode { mode: "hetzner_cloud_server_read", main_route: MainUsesGrantedAccount { account_id: hetzner_cloud_control_service_account_id } },
-    RunScopedMode { mode: mtcollins1_boot_mode_name, main_route: MainUsesSelectedSource { account_id: mtcollins1_boot_run_scoped_service_account_id } },
-    RunScopedMode { mode: "plan", main_route: MainUsesFleetIdentity { account_id: fleet_plan_run_scoped_service_account_id } },
-    RunScopedMode { mode: "apply", main_route: MainUsesFleetIdentity { account_id: fleet_apply_run_scoped_service_account_id } },
+    RunScopedMode { mode: "hetzner_cloud_server_read", account_id: hetzner_cloud_control_service_account_id, main_route: MainUsesGrantedAccount },
+    RunScopedMode { mode: mtcollins1_boot_mode_name, account_id: mtcollins1_boot_run_scoped_service_account_id, main_route: MainUsesSelectedSource },
+    RunScopedMode { mode: "plan", account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
+    RunScopedMode { mode: "apply", account_id: fleet_apply_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
   ]
 }
 
@@ -202,9 +185,9 @@ fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
   match run_scoped_mode_named(mode: mode) {
     Absent => none
     Present { value: m } => match m.main_route {
-      MainUsesGrantedAccount { account_id: _ } => Present { value: m }
-      MainUsesFleetIdentity { account_id: _ } => if branch == (gunbc_default_branch_name as String) { none } else { Present { value: m } }
-      MainUsesSelectedSource { account_id: _ } =>
+      MainUsesGrantedAccount => Present { value: m }
+      MainUsesFleetIdentity => if branch == (gunbc_default_branch_name as String) { none } else { Present { value: m } }
+      MainUsesSelectedSource =>
         match select_boot_credential_source(on_reviewed_main: branch == (gunbc_default_branch_name as String)) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
           BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => none
@@ -444,6 +427,6 @@ fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialStandi
 // ── the table, read as the workflow's coverage ───────────────────────────────────────────────
 // Which rows a fleet-converge job's shared prelude routes, by what each does at main. The workflow
 // generator reads these two and the table itself; it holds no per-mode list of its own.
-fn run_scoped_modes_with_route(route: RunScopedRouteKind) -> List<RunScopedMode> {
-  filter(run_scoped_modes(), m => run_scoped_route_kind(m: m) == route)
+fn run_scoped_modes_with_route(route: RunScopedMainRoute) -> List<RunScopedMode> {
+  filter(run_scoped_modes(), m => m.main_route == route)
 }
