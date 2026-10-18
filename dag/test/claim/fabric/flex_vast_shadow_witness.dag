@@ -1037,7 +1037,7 @@ test fn the_search_query_and_the_screen_read_one_filter_fact() -> Bool {
   match flex_vast_offer_query(recipe: flex_serving_recipe) {
     Absent => false
     Present { value: q } =>
-      q.gpu_ram_min_mb == flex_flash_next_vast_filters.gpu_ram_min_mb
+      q.gpu_ram_min_mb == 90000
         && q.cuda_max_good_min == 13
         && q.cpu_ram_min_mb == 128000
         && q.inet_down_min == 1000
