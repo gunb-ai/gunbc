@@ -37,8 +37,20 @@ def census_from(logpath, name):
     if not os.path.exists(logpath):
         return None, "log missing: %s" % logpath
     txt = open(logpath, errors='replace').read()
-    m = re.search(r'=== BEGIN-TAR ===\s*(.*?)\s*=== END-TAR ===', txt, re.S)
-    if not m:
+    # ALL tars, not the first. The script ships an EARLY tar before the long self-host (so a timeout still
+    # leaves the census) and a FINAL tar after it; only the late one is guaranteed to carry census_<mode>.json,
+    # and reading whichever happens to come first would report "tar lacks census" for a perfectly good run.
+    ms = re.findall(r'=== BEGIN-TAR ===\s*(.*?)\s*=== END-TAR ===', txt, re.S)
+    m = None
+    for cand in ms:
+        try:
+            probe_tf = tarfile.open(fileobj=io.BytesIO(base64.b64decode(''.join(cand.split()))))
+        except Exception:
+            continue
+        if 'census_%s.json' % name in probe_tf.getnames():
+            m = type('M', (), {'group': staticmethod(lambda i, c=cand: c)})
+            break
+    if m is None:
         # Distinguish 'the run died before shipping' from 'the run shipped nothing' -- both look like an
         # absent tar, and conflating them would let a failed build pass as an empty census.
         died = re.findall(r'NO CANDIDATE[^\n]*|rpc DeadlineExceeded|CLONE FAILED|FETCH FAILED|abort \(', txt)

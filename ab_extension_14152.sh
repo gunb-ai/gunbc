@@ -31,6 +31,17 @@ set -uo pipefail
 export PATH="/opt/cargo/bin:/usr/local/bin:/usr/local/sbin:$PATH"
 MODE=${1:-}
 case "$MODE" in A|B) ;; (*) echo "usage: $0 A|B"; exit 2;; esac
+
+# Gates ship their artifacts and exit 0. ctrl-build reads a NON-ZERO exit as a TRANSIENT failure and re-runs
+# the whole dispatch -- which is how a 28-minute run became an hour and a second attempt started behind my
+# back -- and a void measurement is deterministic, so retrying it costs an hour and returns the same void.
+void_out() {
+  echo "=== DISPATCH VOID: $* ==="
+  ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ) | sed 's/^/=== BEGIN-TAR ===\n/;s/$/\n=== END-TAR ===/'
+  echo "AB_${MODE}_VOID"
+  exit 0
+}
+
 export MODE            # the census python heredoc below reads it; unexported it read '' and produced a
                        # census for a file named census_.json -- a missing value that looks like a zero.
 URL=https://github.com/gunb-ai/gunbc.git
@@ -106,8 +117,7 @@ for m in $(grep -oE '^mod [a-z0-9_]+' src/v1/tests/src/lib.rs | awk '{print $2}'
 done
 if [ -n "$MISSING" ]; then
   echo "TEST MODULES DECLARED BUT NOT OBTAINABLE:$MISSING"; 
-  echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="
-  exit 8
+  void_out "gate exit 8"
 fi
 echo "test modules installed: $(grep -cE '^mod [a-z0-9_]+' src/v1/tests/src/lib.rs) declared, all present on disk"
 S3=$(fetch_at "$CARRIER_SHA" $LOGS/fc.log)
@@ -147,8 +157,7 @@ if [ -n "$ORPHANS" ]; then
   echo "PAIRED FILES ARE FROM DIFFERENT GENERATIONS -- 04_infer.dag calls functions 04_types.dag does not define:"
   for fn in $ORPHANS; do echo "   MISSING: $fn"; done
   echo "   (this is the pre-S0-carrier bug: A must use the SAME 04_types as B; fix the source pair, do not proceed)"
-  echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="
-  exit 6
+  void_out "gate exit 6"
 fi
 echo "pairing check: every function called by the installed 04_infer.dag is defined by the installed 04_types.dag"
 cp $LOGS/src_04_infer.dag src/v1/04_infer.dag
@@ -165,8 +174,7 @@ while [ $ROUND -le 3 ] && [ "$INST" != "0" ]; do
   if [ ! -d target/stage0-regen-candidate/src ]; then
     echo "NO CANDIDATE: the receipt is the answer. Hard diagnostics verbatim:"
     grep -aE "^type mismatch|^call shape|arm decides|not found in|no field|effect summary" $LOGS/rr_${MODE}_${ROUND}.log | head -14 | cut -c1-300
-    echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="
-    exit 7
+    void_out "gate exit 7"
   fi
   INST=0
   for f in $(ls target/stage0-regen-candidate/src 2>/dev/null); do
@@ -214,8 +222,7 @@ timeout 1200 cargo test -p v1-compiler-tests --lib cross_coproduct_generic_locat
 if [ ! -s $LOGS/suite_${MODE}.txt ]; then
   echo "SUITE PRODUCED NO OUTPUT: FAILURE, not a pass"
   tail -15 $LOGS/tb_${MODE}.log
-  echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="
-  exit 8
+  void_out "gate exit 8"
 fi
 OKN=$(grep -c 'ok$' $LOGS/suite_${MODE}.txt)
 BADN=$(grep -c FAILED $LOGS/suite_${MODE}.txt)
@@ -227,8 +234,7 @@ echo "suite passed=$OKN failed=$BADN"
 if [ "$((OKN + BADN))" -eq 0 ]; then
   echo "SUITE RAN ZERO TESTS -- VOID, not a pass. Is 'mod cross_coproduct_generic_locate_test' declared in src/v1/tests/src/lib.rs? (in this tree: $(grep -ac 'mod cross_coproduct_generic_locate_test' src/v1/tests/src/lib.rs))"
   tail -8 $LOGS/tb_${MODE}.log
-  echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="
-  exit 8
+  void_out "gate exit 8"
 fi
 grep FAILED $LOGS/suite_${MODE}.txt | cut -c1-100 | sed 's/^/   FAIL /'
 grep -aE '^test result' $LOGS/suite_${MODE}.txt | head -3 | cut -c1-170
@@ -246,7 +252,11 @@ grep -aE '^test result' $LOGS/suite_${MODE}.txt | head -3 | cut -c1-170
 for t in fold_replaces_a_binding_that_is_the_generic_declarations_own_form \
          fold_refuses_a_declared_parameter_type_bound_to_a_distinct_settled_instance \
          fold_refuses_an_applied_spelling_against_a_non_application_spelling_of_one_name; do
-  L=$(grep -a "^test $t" $LOGS/suite_${MODE}.txt | head -1)
+  # The suite file is written through `sed -E 's/^test cross_coproduct_generic_locate_test:://'`, so each
+  # line begins with the BARE test name, not 'test <name>'. An earlier revision grepped for '^test ' and so
+  # reported every control as MISSING -- including one that had actually FAILED, which was the expected
+  # RED-before it was meant to record. Match the name at line start, and accept either outcome spelling.
+  L=$(grep -aE "^$t( |\.)" $LOGS/suite_${MODE}.txt | head -1)
   echo "  CONTROL $t -> ${L:-ROW ABSENT FROM THE SUITE OUTPUT}"
   case "$t" in
     fold_replaces_a_binding_that_is_the_generic_declarations_own_form)
@@ -292,16 +302,14 @@ echo "--- SELF-HOST ---"
 cargo build --release -p v1-compiler --bin gunbc 2>&1 | grep -E "^error|error\[|Finished" | tail -2
 if [ ! -x target/release/gunbc ]; then
   echo "gunbc MISSING after build -- self-host cannot run; shipping logs"
-  echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="
-  exit 9
+  void_out "gate exit 9"
 fi
 timeout 3000 target/release/gunbc test //gunbc/instruments:self-host > $LOGS/sh_${MODE}.log 2>&1
 RC=$?
 echo "self-host rc=$RC rebind=$(grep -ac 'bound as' $LOGS/sh_${MODE}.log) files=$(grep -aoE 'src/[a-z0-9/_.]+\.dag' $LOGS/sh_${MODE}.log | sort -u | wc -l)"
 if [ ! -s $LOGS/sh_${MODE}.log ]; then
   echo "SELF-HOST LOG EMPTY at rc=$RC -- nothing to census; shipping logs"
-  echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="
-  exit 9
+  void_out "gate exit 9"
 fi
 bash $LOGS/rebind_census.sh $LOGS/sh_${MODE}.log --json $LOGS/census_${MODE}.json > $LOGS/census_${MODE}.txt 2>&1
 echo "census rc=$?"
