@@ -1,5 +1,6 @@
 module gunbc.instruments.native_crypto_vectors
 
+import std.measure { nanosecond_count }
 import std.types { Int, List, String, Bool }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
@@ -11,6 +12,7 @@ import extdeps.crypto.nist_p384 { p384_curve, p384_on_curve, p384_point_octets_o
 import extdeps.crypto.nist_prime_curve { jacobian_is_infinity, curve_affine, curve_double, curve_add, curve_negate, curve_jacobian_on_curve }
 import extdeps.apple.app_attest { attestation_parts, AttestationPartsOk, AttestationPartsRefused, app_attest_certificate, app_attest_root }
 import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets }
+import gunbc.instruments.native_crypto_cost { CostRow, native_crypto_cost_rows, native_crypto_cost_expected_identities }
 import extdeps.standards.fips_180 { Fips180DigestVector, fips180_sha256_vectors, fips180_sha384_vectors }
 import extdeps.standards.rfc_6979 {
   rfc6979_a25_p256_public_key, rfc6979_a25_message_sample, rfc6979_a25_message_test,
@@ -211,10 +213,14 @@ fn curve_parameter_cases() -> List<NativeCryptoCase> {
   ]
 }
 
+fn cost_case(r: CostRow) -> NativeCryptoCase {
+  NativeCryptoCase { identity: r.identity, held: r.held, observed: concat("nanos:", to_string(nanosecond_count(n: r.nanos))) }
+}
+
 fn native_crypto_cases() -> List<NativeCryptoCase> {
   concat(
     concat(fips180_sha256_vectors |> flat_map(v => sha256_cases(v: v)), fips180_sha384_vectors |> flat_map(v => sha384_cases(v: v))),
-    concat(concat(p256_cases(), order_n_cases()), curve_parameter_cases())
+    concat(concat(concat(p256_cases(), order_n_cases()), curve_parameter_cases()), native_crypto_cost_rows() |> map(r => cost_case(r: r)))
   )
 }
 
@@ -230,7 +236,7 @@ fn case_row(c: NativeCryptoCase) -> String {
 // Growing the program means adding the case AND its identity here; a case computed but not rostered
 // is an extra row, which refuses the same way. It is monotone by review: removing an identity is
 // retiring a check and is visible as a deleted line here.
-data native_crypto_expected_identities: List<String> = [
+data native_crypto_vector_identities: List<String> = [
   "sha256_empty",
   "sha256_empty_red_one_octet_appended",
   "sha256_abc",
@@ -265,9 +271,13 @@ data native_crypto_expected_identities: List<String> = [
   "p384_apples_ca_and_root_keys_are_on_the_curve"
 ]
 
+fn native_crypto_expected_identities() -> List<String> {
+  concat(native_crypto_vector_identities, native_crypto_cost_expected_identities)
+}
+
 fn native_claim_report() -> NativeClaimReport {
   let cases = native_crypto_cases()
-  let roster = concat("roster ", concat(native_crypto_expected_identities |> join(separator: ","), "\n"))
+  let roster = concat("roster ", concat(native_crypto_expected_identities() |> join(separator: ","), "\n"))
   let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
   let terminal = if (failed |> count) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", failed |> join(separator: ","))) }
   NativeClaimReport { stdout: concat(roster, cases |> map(c => case_row(c: c)) |> join(separator: "")), terminal: terminal }
