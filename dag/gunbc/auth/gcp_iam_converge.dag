@@ -392,17 +392,27 @@ fn gcp_iam_converge_grant_set_secrets() -> List<NonEmptyStr> {
 data grant_set_payload_permissions: List<String> = ["secretmanager.versions.access", "secretmanager.versions.add"]
 
 fn grant_set_bindings() -> List<ResourceLocalBinding> {
-  map(gcp_iam_converge_grant_set_secrets(), id => ResourceLocalBinding {
+  grant_set_bindings_over(secrets: gcp_iam_converge_grant_set_secrets())
+}
+
+fn grant_set_bindings_over(secrets: List<NonEmptyStr>) -> List<ResourceLocalBinding> {
+  map(secrets, id => ResourceLocalBinding {
     resource: gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: id),
     role: ConvergeSecretPolicyRole,
   })
 }
 
 fn iam_converge_bindings() -> List<ResourceLocalBinding> {
+  iam_converge_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+}
+
+// THE BINDINGS AS A FUNCTION OF THE TWO DECLARED INPUTS, so the reach a roster edit WOULD produce is
+// computable without making the edit (test.claim.gcp_iam_bootstrap_self_grant_witness).
+fn iam_converge_bindings_over(targets: List<DedicatedFederation>, grant_set_secrets: List<NonEmptyStr>) -> List<ResourceLocalBinding> {
   distinct_by_key(
     xs: concat(
-      concat([ResourceLocalBinding { resource: project_resource(), role: ConvergeCreateRole }], flat_map(gcp_iam_converge_targets, f => federation_bindings(f: f))),
-      grant_set_bindings(),
+      concat([ResourceLocalBinding { resource: project_resource(), role: ConvergeCreateRole }], flat_map(targets, f => federation_bindings(f: f))),
+      grant_set_bindings_over(secrets: grant_set_secrets),
     ),
     key: b => binding_key(b: b),
   )
@@ -423,7 +433,11 @@ fn iam_converge_own_trust_resources() -> List<String> {
 }
 
 fn iam_converge_reach_excludes_its_own_trust() -> Bool {
-  let bound = map(iam_converge_bindings(), b => b.resource)
+  iam_converge_reach_excludes_its_own_trust_over(bindings: iam_converge_bindings())
+}
+
+fn iam_converge_reach_excludes_its_own_trust_over(bindings: List<ResourceLocalBinding>) -> Bool {
+  let bound = map(bindings, b => b.resource)
   all(iam_converge_own_trust_resources(), r => !string_member(xs: bound, x: r))
 }
 

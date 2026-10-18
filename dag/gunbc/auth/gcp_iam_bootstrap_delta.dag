@@ -1,0 +1,217 @@
+module gunbc.auth.gcp_iam_bootstrap_delta
+
+import std.types { String, NonEmptyStr, List, Bool, Secret }
+import std.list { distinct_by_key }
+import std.optional { Present, Absent }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpIamBindingCell, gcp_cell_in, gcp_policy_cells, gcp_policy_from_wire }
+import extdeps.cloud.gcp.errors { gcp_permission_denied_decides_existence }
+import extdeps.transports.rest { RestRefusal, RestAnswered, RestRefused }
+import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.secret_manager
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
+import gunbc.auth.heal_publisher_provision { outcome_is_not_found, outcome_is_forbidden, rest_refusal_text }
+import gunbc.auth.gcp_iam_converge { same_key_set }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  IamBootstrapRole, BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret, iam_bootstrap_role_permissions,
+  IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
+  iam_bootstrap_capability_bindings, iam_bootstrap_resource_key,
+}
+
+// ── WHICH ROSTERED BOOTSTRAP CELLS THE OBSERVER CANNOT SEE IN PLACE ──────────────────────────
+// The GCP IAM converge cannot grant itself rights over a subject it has never been bound on: its roles
+// are resource-local (gunbc.auth.gcp_iam_converge iam_converge_bindings) and the project deny policy
+// blocks self-escalation. Every subject in the bootstrap roster
+// (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_capability_bindings) therefore needs its cells
+// bound by a stronger identity before the converge can act on it. This module answers, for the WHOLE
+// roster at once, which cells are not established. It is the one classification of "not yet
+// bootstrapped": the delta is the roster minus what the observer reads, so nothing here lists a subject.
+//
+// WHAT THE OBSERVER CAN TELL is a consequence of where it is bound, read from its own roles rather than
+// restated: iam-observe holds getIamPolicy on accounts and secrets, only get on pools, and nothing on
+// the project. An absent resource answers NOT_FOUND only to a caller that can read its parent's
+// children (extdeps.cloud.gcp.errors gcp_permission_denied_decides_existence, google.aip.dev/211), and
+// iam-observe holds nothing on the project, so a PERMISSION_DENIED it sees is "absent OR unbound": a
+// typed cannot-tell, never a raw 403 and never a guess at either.
+
+type ObserverReach
+  = ObserverReadsPolicy
+  | ObserverReadsSubjectOnly
+  | ObserverHoldsNothing
+
+fn observer_role_for(subject: IamBootstrapResource) -> IamBootstrapRole? {
+  match subject {
+    BootstrapProject => none
+    BootstrapPool { pool: _ } => Present { value: BootstrapObservePool }
+    BootstrapAccount { account: _ } => Present { value: BootstrapObserveAccount }
+    BootstrapSecret { secret: _ } => Present { value: BootstrapObserveSecret }
+  }
+}
+
+fn observer_reach(subject: IamBootstrapResource) -> ObserverReach {
+  match observer_role_for(subject: subject) {
+    Absent => ObserverHoldsNothing
+    Present { value: role } =>
+      if any(iam_bootstrap_role_permissions(role: role), p => ends_with(s: p, suffix: ".getIamPolicy")) { ObserverReadsPolicy } else { ObserverReadsSubjectOnly }
+  }
+}
+
+// THE OBSERVER HOLDS NOTHING ON THE PROJECT, the parent of every rostered subject.
+fn observer_reads_project_children() -> Bool {
+  match observer_reach(subject: BootstrapProject) {
+    ObserverHoldsNothing => false
+    ObserverReadsSubjectOnly => true
+    ObserverReadsPolicy => true
+  }
+}
+
+// ONE SUBJECT AS THE OBSERVER READ IT.
+type BootstrapSubjectReading
+  = SubjectPolicyRead { policy: GcpPolicy }
+  | SubjectAnswered
+  | SubjectPermissionDenied { cause: String }
+  | SubjectNotFound
+  | SubjectUnreadable { cause: String }
+  | SubjectUnobservable
+
+type BootstrapSubjectObservation {
+  subject: IamBootstrapResource
+  reading: BootstrapSubjectReading
+}
+
+type BootstrapSubjectStanding
+  = SubjectUnbound
+  | SubjectAbsent
+  | SubjectAbsentOrUnboundCannotTell { cause: String }
+
+// THE CLASSIFICATION, with exactly the cells it is missing: every roster cell on the subject that the
+// observer did not read in place. For a cannot-tell or an absent subject that is all of them.
+type SubjectNotBootstrapped {
+  subject: IamBootstrapResource
+  standing: BootstrapSubjectStanding
+  missing: List<IamBootstrapBinding>
+}
+
+// A CELL THE OBSERVER CANNOT READ IS NOT CLAIMED EITHER WAY: a pool's policy and the project's lie
+// outside iam-observe's reach, so their cells are carried as unverified, never as converged.
+type BootstrapDelta
+  = BootstrapObserved { unverified: List<IamBootstrapBinding> }
+  | BootstrapDeltaRequired { subjects: List<SubjectNotBootstrapped>, unverified: List<IamBootstrapBinding> }
+  | BootstrapDeltaRefused { reasons: List<String> }
+
+fn binding_subject_key(b: IamBootstrapBinding) -> String {
+  iam_bootstrap_resource_key(resource: b.resource)
+}
+
+fn roster_subjects(roster: List<IamBootstrapBinding>) -> List<IamBootstrapResource> {
+  map(distinct_by_key(xs: roster, key: b => binding_subject_key(b: b)), b => b.resource)
+}
+
+fn subject_cells(roster: List<IamBootstrapBinding>, subject: IamBootstrapResource) -> List<IamBootstrapBinding> {
+  let k = iam_bootstrap_resource_key(resource: subject)
+  filter(roster, b => binding_subject_key(b: b) == k)
+}
+
+type SubjectClassification
+  = SubjectEstablished
+  | SubjectUnverified { cells: List<IamBootstrapBinding> }
+  | SubjectMissing { classified: SubjectNotBootstrapped }
+  | SubjectRefused { reason: String }
+
+fn classify_bootstrap_subject(roster: List<IamBootstrapBinding>, o: BootstrapSubjectObservation) -> SubjectClassification {
+  let cells = subject_cells(roster: roster, subject: o.subject)
+  let key = iam_bootstrap_resource_key(resource: o.subject)
+  match o.reading {
+    SubjectPolicyRead { policy } => {
+      let missing = filter(cells, b => !gcp_cell_in(c: b.cell, xs: gcp_policy_cells(p: policy)))
+      if count(missing) == 0 { SubjectEstablished }
+      else { SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectUnbound, missing: missing } } }
+    }
+    SubjectAnswered => match observer_reach(subject: o.subject) {
+      ObserverReadsSubjectOnly => SubjectUnverified { cells: cells }
+      ObserverReadsPolicy => SubjectRefused { reason: concat(key, ": answered without its policy, though the observer reads policies here") }
+      ObserverHoldsNothing => SubjectRefused { reason: concat(key, ": answered to an observer that holds nothing on it") }
+    }
+    SubjectUnobservable => match observer_reach(subject: o.subject) {
+      ObserverHoldsNothing => SubjectUnverified { cells: cells }
+      ObserverReadsSubjectOnly => SubjectRefused { reason: concat(key, ": not observed, though the observer is bound on it") }
+      ObserverReadsPolicy => SubjectRefused { reason: concat(key, ": not observed, though the observer is bound on it") }
+    }
+    SubjectNotFound => SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectAbsent, missing: cells } }
+    SubjectPermissionDenied { cause } =>
+      if gcp_permission_denied_decides_existence(caller_reads_parent_children: observer_reads_project_children()) {
+        SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectUnbound, missing: cells } }
+      } else {
+        SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectAbsentOrUnboundCannotTell { cause: cause }, missing: cells } }
+      }
+    SubjectUnreadable { cause } => SubjectRefused { reason: join([key, ": unreadable: ", cause], "") }
+  }
+}
+
+// THE PURE DELTA OVER A SUPPLIED ROSTER. The observations must cover exactly the roster's subjects, by
+// identity: a missing or extra one refuses, because a delta over part of the roster shown as the whole
+// would let a subject stay unbound with nothing reporting it.
+fn bootstrap_delta_over(roster: List<IamBootstrapBinding>, observations: List<BootstrapSubjectObservation>) -> BootstrapDelta {
+  let declared = map(roster_subjects(roster: roster), s => iam_bootstrap_resource_key(resource: s))
+  let observed = map(observations, o => iam_bootstrap_resource_key(resource: o.subject))
+  if !same_key_set(a: declared, b: observed) {
+    BootstrapDeltaRefused { reasons: ["the subject observations are not exactly the bootstrap roster's subjects"] }
+  } else {
+    let classes = map(observations, o => classify_bootstrap_subject(roster: roster, o: o))
+    let refusals = flat_map(classes, c => match c { SubjectRefused { reason } => [reason]  SubjectEstablished => []  SubjectUnverified { cells: _ } => []  SubjectMissing { classified: _ } => [] })
+    let missing = flat_map(classes, c => match c { SubjectMissing { classified } => [classified]  SubjectEstablished => []  SubjectUnverified { cells: _ } => []  SubjectRefused { reason: _ } => [] })
+    let unverified = flat_map(classes, c => match c { SubjectUnverified { cells } => cells  SubjectEstablished => []  SubjectMissing { classified: _ } => []  SubjectRefused { reason: _ } => [] })
+    if count(refusals) > 0 { BootstrapDeltaRefused { reasons: refusals } }
+    else if count(missing) > 0 { BootstrapDeltaRequired { subjects: missing, unverified: unverified } }
+    else { BootstrapObserved { unverified: unverified } }
+  }
+}
+
+fn bootstrap_delta(observations: List<BootstrapSubjectObservation>) -> BootstrapDelta {
+  bootstrap_delta_over(roster: iam_bootstrap_capability_bindings(), observations: observations)
+}
+
+fn subject_standing_text(s: BootstrapSubjectStanding) -> String {
+  match s {
+    SubjectUnbound => "present, cells absent from its policy"
+    SubjectAbsent => "absent"
+    SubjectAbsentOrUnboundCannotTell { cause: _ } => "absent or unbound (PERMISSION_DENIED to a caller that cannot read the project; google.aip.dev/211)"
+  }
+}
+
+fn subject_not_bootstrapped_text(s: SubjectNotBootstrapped) -> String {
+  join(["SubjectNotBootstrapped ", iam_bootstrap_resource_key(resource: s.subject), " (", subject_standing_text(s: s.standing), "): ",
+    to_string(count(s.missing)), " missing cell(s): ", join(map(s.missing, b => concat(b.cell.role, concat(" to ", b.cell.member))), "; ")], "")
+}
+
+// ── Observation (effectful; the delta above is the pure half) ────────────────────────────────
+fn subject_reading_of_refusal(refusal: RestRefusal) -> BootstrapSubjectReading {
+  if outcome_is_not_found(o: refusal) { SubjectNotFound }
+  else if outcome_is_forbidden(o: refusal) { SubjectPermissionDenied { cause: rest_refusal_text(o: refusal) } }
+  else { SubjectUnreadable { cause: rest_refusal_text(o: refusal) } }
+}
+
+fn observe_bootstrap_subject(subject: IamBootstrapResource, token: Secret) -> BootstrapSubjectObservation {
+  let reading = match subject {
+    BootstrapProject => SubjectUnobservable
+    BootstrapPool { pool } =>
+      match gcp.IamAdmin.GetWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool) {
+        RestAnswered { answer: _ } => SubjectAnswered
+        RestRefused { refusal } => subject_reading_of_refusal(refusal: refusal)
+      }
+    BootstrapAccount { account } =>
+      match gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: account) {
+        RestAnswered { answer: r } => SubjectPolicyRead { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+        RestRefused { refusal } => subject_reading_of_refusal(refusal: refusal)
+      }
+    BootstrapSecret { secret } =>
+      match gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: secret) {
+        RestAnswered { answer: r } => SubjectPolicyRead { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+        RestRefused { refusal } => subject_reading_of_refusal(refusal: refusal)
+      }
+  }
+  BootstrapSubjectObservation { subject: subject, reading: reading }
+}
+
+fn observe_bootstrap_delta(token: Secret) -> BootstrapDelta {
+  bootstrap_delta(observations: map(roster_subjects(roster: iam_bootstrap_capability_bindings()), s => observe_bootstrap_subject(subject: s, token: token)))
+}

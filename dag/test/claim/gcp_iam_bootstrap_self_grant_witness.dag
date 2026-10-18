@@ -1,0 +1,58 @@
+module test.claim.gcp_iam_bootstrap_self_grant_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, heal_publisher_dedicated_federation }
+import gunbc.auth.github_gcp_federation { federated_service_account_member }
+import gunbc.auth.gcp_iam_converge {
+  gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets,
+  iam_converge_bindings_over, iam_converge_reach_excludes_its_own_trust_over, iam_converge_reach_excludes_its_own_trust,
+}
+import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, iam_bootstrap_service_account_id, gcp_iam_bootstrap_wif_pool_id }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── CONVERGE-ONLY AUTHORITY CANNOT SELF-GRANT ────────────────────────────────────────────────
+// The RED the brief asks for: a roster edit made by the converge's own inputs alone must not obtain
+// the bootstrap's rights. The converge's reach is derived from its roster
+// (gunbc.auth.gcp_iam_converge iam_converge_bindings_over), so the attack is a roster edit that names
+// the bootstrap identity's own account or pool as a converge target: the derived reach would then
+// carry the account-policy or provider role on the bootstrap's trust, and the next approved converge
+// could make the converge job a principal of iam-bootstrap. These claims compute the reach such an
+// edit WOULD produce and require the model to refuse it. They were run RED before the bootstrap trust
+// joined iam_converge_own_trust_resources.
+
+fn target_naming(account: String, pool: NonEmptyStr) -> DedicatedFederation {
+  let base = heal_publisher_dedicated_federation()
+  DedicatedFederation { label: "roster edit naming the bootstrap trust", pool_id: pool, pool_display_name: base.pool_display_name,
+    provider_id: base.provider_id, attribute_mapping: base.attribute_mapping, attribute_condition: base.attribute_condition,
+    impersonation: base.impersonation, service_account: account as ServiceAccountEmail, service_account_id: iam_bootstrap_service_account_id,
+    service_account_display_name: base.service_account_display_name,
+    service_account_member: federated_service_account_member(email: account as ServiceAccountEmail), secret_grants: [] }
+}
+
+fn reach_with(extra: DedicatedFederation) -> Bool {
+  iam_converge_reach_excludes_its_own_trust_over(bindings: iam_converge_bindings_over(targets: gcp_iam_converge_targets + [extra], grant_set_secrets: gcp_iam_converge_grant_set_secrets()))
+}
+
+// POSITIVE CONTROL: the declared roster's reach excludes the trust it must exclude.
+test fn the_declared_roster_reach_excludes_every_trust_root() -> Bool {
+  iam_converge_reach_excludes_its_own_trust()
+}
+
+// RED: a target naming iam-bootstrap's own account.
+test fn a_roster_edit_naming_the_bootstrap_account_cannot_reach_it() -> Bool {
+  !reach_with(extra: target_naming(account: iam_bootstrap_service_account as String, pool: "an-unrelated-pool"))
+}
+
+// RED: a target naming iam-bootstrap's own pool, whose principal set is the one path to the account.
+test fn a_roster_edit_naming_the_bootstrap_pool_cannot_reach_it() -> Bool {
+  !reach_with(extra: target_naming(account: "unrelated@gunbai-secrets.iam.gserviceaccount.com", pool: gcp_iam_bootstrap_wif_pool_id))
+}
+
+// DISCRIMINATION CONTROL: an ordinary new target is admitted, so the two REDs above are not the
+// reach check refusing everything.
+test fn an_ordinary_roster_edit_is_admitted() -> Bool {
+  reach_with(extra: target_naming(account: "unrelated@gunbai-secrets.iam.gserviceaccount.com", pool: "an-unrelated-pool"))
+}

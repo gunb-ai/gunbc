@@ -81,8 +81,12 @@ type IamBootstrapIdentity { federation: DedicatedFederation, own_trust: Bool }
 // The identities stage's creation population, in execution order. The stage folds these rows, and the
 // plan, the apply's pre-token refusal, the observe bindings and the trust bindings read the same rows.
 fn iam_bootstrap_identity_population() -> List<IamBootstrapIdentity> {
+  iam_bootstrap_identity_population_over(targets: gcp_iam_converge_targets)
+}
+
+fn iam_bootstrap_identity_population_over(targets: List<DedicatedFederation>) -> List<IamBootstrapIdentity> {
   map([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], f => IamBootstrapIdentity { federation: f, own_trust: true })
-    + map(gcp_iam_converge_targets, f => IamBootstrapIdentity { federation: f, own_trust: false })
+    + map(targets, f => IamBootstrapIdentity { federation: f, own_trust: false })
 }
 
 fn iam_bootstrap_identity_federations() -> List<DedicatedFederation> {
@@ -106,16 +110,22 @@ fn iam_bootstrap_binding(resource: IamBootstrapResource, role: IamBootstrapRole,
 // Apply rights are projected from the same target roster as ongoing convergence. Observer rights
 // use the same subjects plus the job's own trust; no project-wide metadata reader is introduced.
 fn iam_bootstrap_capability_bindings() -> List<IamBootstrapBinding> {
+  iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+}
+
+// THE ROSTER AS A FUNCTION OF ITS TWO DECLARED INPUTS, so the population the delta classifies is the
+// one these inputs derive and a witness can add a subject to either input and read what it costs.
+fn iam_bootstrap_capability_bindings_over(targets: List<DedicatedFederation>, grant_set_secrets: List<NonEmptyStr>) -> List<IamBootstrapBinding> {
   let apply = [iam_bootstrap_binding(resource: BootstrapProject, role: BootstrapApplyRole { role: ConvergeCreateRole }, account: iam_converge_service_account)]
-    + flat_map(gcp_iam_converge_targets, f => [
+    + flat_map(targets, f => [
       iam_bootstrap_binding(resource: BootstrapPool { pool: f.pool_id }, role: BootstrapApplyRole { role: ConvergeProviderRole }, account: iam_converge_service_account),
       iam_bootstrap_binding(resource: BootstrapAccount { account: f.service_account }, role: BootstrapApplyRole { role: ConvergeAccountPolicyRole }, account: iam_converge_service_account),
     ] + map(f.secret_grants, g => iam_bootstrap_binding(resource: BootstrapSecret { secret: g.target.secret }, role: BootstrapApplyRole { role: ConvergeSecretPolicyRole }, account: iam_converge_service_account)))
-  let observe = flat_map(iam_bootstrap_identity_federations(), f => [
+  let observe = flat_map(map(iam_bootstrap_identity_population_over(targets: targets), i => i.federation), f => [
     iam_bootstrap_binding(resource: BootstrapPool { pool: f.pool_id }, role: BootstrapObservePool, account: iam_observe_service_account),
     iam_bootstrap_binding(resource: BootstrapAccount { account: f.service_account }, role: BootstrapObserveAccount, account: iam_observe_service_account),
   ] + map(f.secret_grants, g => iam_bootstrap_binding(resource: BootstrapSecret { secret: g.target.secret }, role: BootstrapObserveSecret, account: iam_observe_service_account)))
-  let custody = flat_map(gcp_iam_converge_grant_set_secrets(), id => [
+  let custody = flat_map(grant_set_secrets, id => [
     iam_bootstrap_binding(resource: BootstrapSecret { secret: id }, role: BootstrapApplyRole { role: ConvergeSecretPolicyRole }, account: iam_converge_service_account),
     iam_bootstrap_binding(resource: BootstrapSecret { secret: id }, role: BootstrapObserveSecret, account: iam_observe_service_account),
   ])
