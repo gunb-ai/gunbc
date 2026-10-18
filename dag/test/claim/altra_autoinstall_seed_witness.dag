@@ -46,6 +46,7 @@ import gunbc.machine_intake.subject {
   UnitKeyBound,
   UnitKeyRefused,
   UnitKeyStanding,
+  UnitKeyUnbound,
 }
 import gunbc.provisioning.altra_autoinstall_seed {
   AddressingIsInstallerManaged,
@@ -529,6 +530,19 @@ test fn matching_serial_on_a_non_persistent_disk_is_refused() -> Bool {
 test fn unread_serial_is_reported_as_unexamined_not_as_no_match() -> Bool {
   match select_target_disk(selector: serial_selector, observed: [serial_unread_disk]) {
     SelectionRefused { cause: CandidateIdentityUnobserved { part_number: _ } } => true
+    _ => false
+  }
+}
+
+// THE UNREAD DISK BEHIND A CLEAN ONE. The unread case above is a one-element list, so an implementation that
+// looked only at the head and never scanned the tail would still refuse it, and would then silently install
+// onto the disk whose serial nobody read — the exact disk this rule exists to stop. With a readable disk
+// first, only a full scan reaches the refusal, and the cause must still name the UNREAD disk by part number,
+// not the one at the head.
+test fn an_unread_disk_behind_a_readable_one_is_still_caught() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: [unique_disk, serial_unread_disk]) {
+    SelectionRefused { cause: CandidateIdentityUnobserved { part_number: number } } =>
+      number == ("WDS200T2X0E" as NonEmptyStr)
     _ => false
   }
 }

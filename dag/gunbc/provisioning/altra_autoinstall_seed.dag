@@ -52,6 +52,7 @@ import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
   content_hash_combine_structural,
+  content_hash_eq_structural,
   content_hash_tagged_structural,
 }
 import extdeps.external_authority { ExternalAuthority }
@@ -810,26 +811,21 @@ fn candidate_identity_label(device: StorageDevice) -> NonEmptyStr {
 // matches": the fix is different (re-probe) and the blame is different (the observation, not the rule).
 // This is checked BEFORE the count, because a board whose only candidate has no readable serial must not
 // be reported as "zero matches" — that would tell the operator to change the rule when the rule is fine.
+// ONE PASS, ONE VERDICT PER DEVICE. Recursive over the list so `unexamined_candidate` is asked exactly once
+// per device and the first refusal found is what comes back. It used to filter through a Bool predicate and
+// then call unexamined_candidate again on the winner: the same verdict computed twice, with room for the two
+// to disagree, and every device paid for the question twice.
 fn first_unexamined_candidate(
   selector: TargetDiskSelector,
   observed: List<StorageDevice>,
 ) -> Optional<DiskSelectionRefusalCause> {
-  match observed
-    .filter(device => candidate_identity_is_unexamined(selector: selector, device: device))
-    .first() {
-    Present { value: device } => unexamined_candidate(selector: selector, device: device)
-    Absent => Absent
-  }
-}
-
-// THE FILTER PREDICATE FOR THE ABOVE, a total match over the classifier's own result rather than a Bool
-// stored anywhere: it exists because the search has to say "keep this device", and a new StorageDevice or
-// TargetDiskSelector member has to land on one side of it. The decision itself stays in unexamined_candidate;
-// this function reports only whether that decision is a refusal worth surfacing.
-fn candidate_identity_is_unexamined(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
-  match unexamined_candidate(selector: selector, device: device) {
-    Present { value: _ } => true
-    Absent => false
+  match observed {
+    Empty => Absent
+    Cons { head: device, tail: rest } =>
+      match unexamined_candidate(selector: selector, device: device) {
+        Present { value: cause } => Present { value: cause }
+        Absent => first_unexamined_candidate(selector: selector, observed: rest)
+      }
   }
 }
 
