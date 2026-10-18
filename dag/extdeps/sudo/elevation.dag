@@ -134,3 +134,22 @@ fn sudo_preserve_environment_command(command: List<String>) -> ArgvCommand {
     arguments: list_append(left: [sudo_preserve_environment_flag as String], right: command),
   )
 }
+
+// THE LISTING FORM, NOT AN ELEVATION: `sudo -n -l -u USER COMMAND...` asks sudo for ITS OWN decision on
+// whether the invoking principal may run COMMAND as USER, and sudo(8) states the command is not executed:
+// "-l, --list ... If a command is specified and is permitted by the security policy, the fully-qualified
+// path to the command is displayed along with any command line arguments. If a command is specified but
+// not permitted by the policy, sudo will exit with a status value of 1." Sudo evaluates the run-as, the
+// NOPASSWD tag and sudoers' last-match order, so the answer is the effective authorization rather than
+// a reconstruction from the display text (gunbc.fleet.fleet_host_grant_coverage consumes it).
+data sudo_list_flag: NonEmptyStr = "-l"
+
+fn sudo_list_command_as(user: NonEmptyStr, command: List<String>) -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: list_append(
+      left: [sudo_non_interactive_flag as String, sudo_list_flag as String, sudo_run_as_user_flag as String, user as String],
+      right: command,
+    ),
+  )
+}

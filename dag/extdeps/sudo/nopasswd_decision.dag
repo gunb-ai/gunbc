@@ -1,0 +1,86 @@
+module extdeps.sudo.nopasswd_decision
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.algebra { trim, length }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.shell.exec { ProcessObservation, ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
+import extdeps.sudo.elevation { sudo_list_command_as }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sudo.ws/docs/man/sudo.man/"
+  }
+}
+
+// SUDO'S OWN DECISION FOR ONE (PRINCIPAL, RUN-AS, ARGV), asked rather than reconstructed. The earlier
+// reader (extdeps.sudo.nopasswd_execute_probe_check_op sudo_nopasswd_grant_list_admits_probe) parsed the
+// text of `sudo -n -l` line by line, which cannot see two facts sudoers decides: the RUN-AS of an entry
+// (`(nobody) NOPASSWD: cmd` is no grant to run cmd as root) and the ORDER of entries (the last match wins,
+// so a later entry that denies or requires a password overrides an earlier NOPASSWD). Here sudo evaluates
+// both: `sudo -n -l -u RUNAS ARGV...` (sudo_list_command_as) lists the command only when the policy permits
+// it as RUNAS, and -n makes a match that still needs a password fail instead of prompt. The command is
+// never executed by a listing.
+//
+// THE ANSWER IS THREE-VALUED AND ONLY ONE ARM IS COVERAGE (§5). Admits: sudo exited 0 AND its output names
+// the exact argv. Denied: sudo exited 1, which sudo(8) documents for a command the policy does not permit;
+// a password-requiring match fails the same way under -n, and the stderr is carried. Unobserved: everything
+// else -- a program that did not spawn, any other status, an exit 0 whose output does not name the command,
+// and a binary that is absent (sudo resolves the command, so asking for one that is not installed would read
+// as a missing grant when the cause is the missing binary; it is typed as its own cause instead).
+type SudoDecisionQuery {
+  runas: NonEmptyStr
+  argv: List<NonEmptyStr>
+}
+
+type SudoDecision
+  = SudoDecisionAdmits
+  | SudoDecisionDenied { reason: String }
+  | SudoDecisionUnobserved { cause: NonEmptyStr }
+
+fn sudo_decision_command(query: SudoDecisionQuery) -> ArgvCommand {
+  sudo_list_command_as(user: query.runas, command: map(query.argv, w => w as String))
+}
+
+fn sudo_decision_displayed_command(query: SudoDecisionQuery) -> String {
+  join(map(query.argv, w => w as String), " ")
+}
+
+fn sudo_decision_binary_absent(query: SudoDecisionQuery) -> SudoDecision {
+  match query.argv.first() {
+    Present { value: program } =>
+      SudoDecisionUnobserved { cause: join(["binary ", program as String, " is not present, so sudo's decision for it was not asked"], "") as NonEmptyStr }
+    Absent =>
+      SudoDecisionUnobserved { cause: "the query names no command" as NonEmptyStr }
+  }
+}
+
+fn sudo_decision_exit_cause(code: Int, stderr: String) -> NonEmptyStr {
+  join(["sudo -n -l exited ", to_string(code), ": ", trim(s: stderr)], "") as NonEmptyStr
+}
+
+fn sudo_decision_from_run(query: SudoDecisionQuery, outcome: ProcessRunOutcome) -> SudoDecision {
+  match outcome {
+    ProcessNotSpawned { program: p, cause: why } =>
+      SudoDecisionUnobserved { cause: join(["sudo was not run (", p as String, "): ", why as String], "") as NonEmptyStr }
+    ProcessRan { observation: o } => sudo_decision_from_observation(query: query, observation: o)
+  }
+}
+
+fn sudo_decision_from_observation(query: SudoDecisionQuery, observation: ProcessObservation) -> SudoDecision {
+  if observation.exit_code == 0 {
+    if any(xs: split(s: observation.stdout, delimiter: "\n"), predicate: l => trim(s: l) == sudo_decision_displayed_command(query: query)) {
+      SudoDecisionAdmits
+    } else {
+      SudoDecisionUnobserved { cause: "sudo -n -l exited 0 but its output does not name the command, so the decision is not established" as NonEmptyStr }
+    }
+  } else {
+    if observation.exit_code == 1 {
+      SudoDecisionDenied { reason: trim(s: observation.stderr) }
+    } else {
+      SudoDecisionUnobserved { cause: sudo_decision_exit_cause(code: observation.exit_code, stderr: observation.stderr) }
+    }
+  }
+}
