@@ -242,9 +242,37 @@ step_marker="$(step_arg fail-marker)"
 # grepped for a variable nothing had set and its own fail-closed -z arm refused every run. A claim would
 # have caught it too -- but no claim is evaluated on the required path, so the check lives HERE, in the
 # thing that actually runs.
-if ! grep -q 'GUNBC_CONTRACT_STAMP_RUN_TOKEN=' "$tmpdir/evidence_step.sh"; then
-  bail "the modelled evidence step counts GUNBC_CONTRACT_STAMP_RUN_TOKEN but never assigns it -- the step cannot tell one run from a stale transcript"
-fi
+token_assign="$(grep -m1 'GUNBC_CONTRACT_STAMP_RUN_TOKEN=' "$tmpdir/evidence_step.sh" || true)"
+[ -n "$token_assign" ] || bail "the modelled evidence step counts GUNBC_CONTRACT_STAMP_RUN_TOKEN but never assigns it -- the step cannot tell one run from a stale transcript"
+# AND IT MUST EXPAND. The serializer single-quotes LITERAL words and leaves var words bare: an
+# assignment whose value was built from literal words would render as a quoted string, the token would
+# be the literal text '$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT', non-empty so the -z arm would not fire, and
+# the count would then be satisfiable by ANY transcript containing that constant -- exactly the hole the
+# token exists to close, reopened by a rendering choice rather than by a logic error.
+case "$token_assign" in
+  *'$GITHUB_RUN_ID'*) : ;;
+  *) bail "the step assigns GUNBC_CONTRACT_STAMP_RUN_TOKEN without expanding GITHUB_RUN_ID: '$token_assign'" ;;
+esac
+case "$token_assign" in
+  *'$GITHUB_RUN_ATTEMPT'*) : ;;
+  *) bail "the step assigns GUNBC_CONTRACT_STAMP_RUN_TOKEN without expanding GITHUB_RUN_ATTEMPT: '$token_assign'" ;;
+esac
+# SINGLE QUOTES ARE THE FAIL-OPEN HERE. A double-quoted value still expands, and the serializer wraps
+# assignment values in double quotes, so rejecting those would refuse every correct step -- a check that
+# is strict by accident is not a check anyone keeps. SINGLE quotes make a dollar sign literal: the token
+# would be the fixed text '$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT', non-empty so the step's -z arm stays
+# silent, and the count would be satisfiable by any transcript carrying that constant -- the exact hole
+# the token exists to close, reopened by a rendering choice rather than a logic error.
+token_value="$(printf '%s' "$token_assign" | awk '{print substr($0, index($0,"=")+1, 1)}')"
+case "$token_value" in
+  "'"*) bail "the token assignment is single-quoted, so its dollar signs are literal and every run shares one token: '$token_assign'" ;;
+esac
+# THE MODEL'S CASE COUNT MUST MATCH WHAT THE STEP INVOKES, checked before anything runs. If the model
+# gained a case and the artifact predates it, the step's own count would refuse at the END of a run;
+# saying so here names the real cause instead of reporting a harness failure.
+model_cases="$(grep -c -- "--case" "$tmpdir/evidence_step.sh" || true)"
+echo "== modelled case invocations in the step: $model_cases"
+[ "$model_cases" -gt 0 ] || bail "the extracted evidence step invokes no --case at all"
 [ -n "$step_marker" ]     || bail "the modelled evidence step declares no --fail-marker path; the verdict channel is missing"
 if [ "$step_transcript" != "$transcript" ]; then
   echo "FAIL: the step writes its transcript to '$step_transcript' but this harness counts '$transcript'." >&2
