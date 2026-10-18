@@ -171,16 +171,21 @@ fn http_entry() -> BootOrderEntry { entry(reference: ref_http(), label: "UEFI IP
 fn pxe_entry() -> BootOrderEntry { entry(reference: ref_pxe(), label: "ALTRAD8UD-1L2T") }
 fn disk_entry() -> BootOrderEntry { entry(reference: ref_disk(), label: "NVMe0") }
 
-// The happy unit's order: the HTTP option first, then the disk. Every unit that boots normally has
-// the disk first, and those fixtures now exist explicitly rather than being the happy path in
-// disguise -- which is what the two orderings below are for.
-fn network_then_disk() -> List<BootOrderEntry> { [http_entry(), disk_entry()] }
-fn disk_then_network() -> List<BootOrderEntry> { [disk_entry(), http_entry()] }
+// THE HAPPY UNIT'S ORDER, and it is now a self-consistent unit rather than the contradiction merry
+// found. Cut 6's fleet path is PXE (the pinned snponly.efi chainloader), so the head is the PXE
+// reference and the enumeration backs that reference with an ENABLED PXE option. The old fixture had
+// devices [PXE stack, NVMe0] against options [UefiHttp] -- an order naming a PXE entry and an
+// enumeration that contains no PXE option at all -- which read Ready only because the fold asked each
+// list the same vague question. A unit that boots normally has the DISK first, and that fixture exists
+// explicitly (disk_then_network) rather than being the happy path in disguise; it is what the
+// false-Ready witnesses are built from.
+fn network_then_disk() -> List<BootOrderEntry> { [pxe_entry(), disk_entry()] }
+fn disk_then_network() -> List<BootOrderEntry> { [disk_entry(), pxe_entry()] }
 
-// THE ENUMERATION the happy unit answers with: http and disk both enabled and present. Note the
-// PXE option is NOT in this list -- fixtures that need it ask for it by name, so a fixture cannot
-// accidentally become Ready by having an option it never claimed.
-fn good_options() -> List<BootOption> { [opt_http(ref_http()), opt_disk(ref_disk())] }
+// THE ENUMERATION the happy unit answers with: the PXE option the head names, and the disk, both
+// enabled. The HTTP option is deliberately NOT in this list -- fixtures that need it ask for it by
+// name, so a fixture cannot drift into a Ready by gaining an option it never claimed.
+fn good_options() -> List<BootOption> { [opt_pxe(ref_pxe()), opt_disk(ref_disk())] }
 
 // SYNTHETIC OBSERVATIONS. Fully-answered, network-bootable: the only input shape that may
 // produce a Ready.
