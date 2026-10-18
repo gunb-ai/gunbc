@@ -193,17 +193,24 @@ fn cursor_standing_from_key(key: CursorKeyProbeReading) -> ProviderStanding {
   }
 }
 
-// The sandbox arms that stop the line: the key probe is not reached for any of them.
-fn cursor_standing_from_sandbox_refusal(sandbox: CursorSandboxPreflightReading) -> ProviderStanding {
-  match sandbox {
-    CursorSandboxReady => ProviderStandingUnobserved { reason: "the sandbox is ready; this is not a refusal" as NonEmptyStr }
-    CursorSandboxUnavailable { detail } =>
+// The sandbox arms that stop the line: the key probe is not reached for any of them. The payloads are
+// CursorSandboxPreflightReading's own; the split exists so that Ready has no constructor here (DESIGN §4b,
+// structurally impossible beats a fail-closed placeholder reason for an arm no caller can reach). The one
+// consumer builds this directly in the three stopping arms of cursor_observed_standing_for_program.
+type CursorSandboxRefusal
+  = CursorSandboxRefusedUnavailable { detail: String }
+  | CursorSandboxRefusedNotEntered { detail: String }
+  | CursorSandboxRefusedUnreadable { exit_code: Int, detail: String }
+
+fn cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusal) -> ProviderStanding {
+  match refusal {
+    CursorSandboxRefusedUnavailable { detail } =>
       ProviderStandingUnobserved { reason: concat(cursor_sandbox_unavailable_reason_prefix, detail) as NonEmptyStr }
-    CursorSandboxNotEntered { detail } =>
+    CursorSandboxRefusedNotEntered { detail } =>
       ProviderStandingUnobserved {
         reason: join(["the cursor sandbox preflight exited 0 but its command did not read CURSOR_SANDBOX=native from inside, so the CLI may have run it unsandboxed: ", detail], "") as NonEmptyStr,
       }
-    CursorSandboxPreflightUnreadable { exit_code, detail } =>
+    CursorSandboxRefusedUnreadable { exit_code, detail } =>
       ProviderStandingUnobserved {
         reason: join(["the cursor sandbox preflight exited ", to_string(value: exit_code), " without naming its unsupported-sandbox error (on 124 the bound may have fired or the CLI returned 124 itself): ", detail], "") as NonEmptyStr,
       }
@@ -306,10 +313,10 @@ fn cursor_observed_standing_for_program(program: ProgramIdentity, presence: File
     FilesystemEntryListed { directory: _, name: _ } =>
       match cursor_sandbox_preflight_observe(program: program, root: root) {
         CursorSandboxReady => cursor_key_probe_observe(program: program, root: root, snapshot: snapshot)
-        CursorSandboxUnavailable { detail } => cursor_standing_from_sandbox_refusal(sandbox: CursorSandboxUnavailable { detail: detail })
-        CursorSandboxNotEntered { detail } => cursor_standing_from_sandbox_refusal(sandbox: CursorSandboxNotEntered { detail: detail })
+        CursorSandboxUnavailable { detail } => cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedUnavailable { detail: detail })
+        CursorSandboxNotEntered { detail } => cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedNotEntered { detail: detail })
         CursorSandboxPreflightUnreadable { exit_code, detail } =>
-          cursor_standing_from_sandbox_refusal(sandbox: CursorSandboxPreflightUnreadable { exit_code: exit_code, detail: detail })
+          cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedUnreadable { exit_code: exit_code, detail: detail })
       }
   }
 }

@@ -52,6 +52,9 @@ import gunbc.cursor_harness_credential {
 import gunbc.worker_turn_standing {
   cursor_standing_from_key,
   cursor_standing_from_sandbox_refusal,
+  CursorSandboxRefusedUnavailable,
+  CursorSandboxRefusedNotEntered,
+  CursorSandboxRefusedUnreadable,
   cursor_entitlement_trip_pending_reason,
   cursor_sandbox_unavailable_reason_prefix,
 }
@@ -190,6 +193,16 @@ data observed_srv2_sandbox_unsupported_stderr: String = "Error: command failed u
 data supplied_sandbox_entered_stdout: String = "Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\nSandbox policy: {\n  \"type\": \"workspace_readwrite\"\n}\nnative\n"
 data supplied_sandbox_not_entered_stdout: String = "Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\nSandbox policy: {\n  \"type\": \"workspace_readwrite\"\n}\n"
 
+// The production fold builds the refusal in its three stopping arms; the controls reach it from a supplied reading.
+fn standing_of_stopping_reading(reading: CursorSandboxPreflightReading) -> ProviderStanding {
+  match reading {
+    CursorSandboxReady => ProviderStandingUnobserved { reason: "ready is not a stopping reading" as NonEmptyStr }
+    CursorSandboxUnavailable { detail } => cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedUnavailable { detail: detail })
+    CursorSandboxNotEntered { detail } => cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedNotEntered { detail: detail })
+    CursorSandboxPreflightUnreadable { exit_code, detail } => cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedUnreadable { exit_code: exit_code, detail: detail })
+  }
+}
+
 fn sandbox_ready() -> CursorSandboxPreflightReading {
   cursor_sandbox_preflight_reading(exit_code: 0, stdout: supplied_sandbox_entered_stdout, stderr: "")
 }
@@ -227,7 +240,7 @@ test fn the_srv2_sandbox_capture_refuses_the_accepted_key_with_the_host_cause() 
     CursorSandboxNotEntered { detail: _ } => false
     CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
   }
-  let standing = cursor_standing_from_sandbox_refusal(sandbox: sandbox_unsupported_on_srv2())
+  let standing = standing_of_stopping_reading(reading: sandbox_unsupported_on_srv2())
   let host_cause = match standing {
     ProviderStandingUnobserved { reason } =>
       string_contains(s: reason as String, pattern: cursor_sandbox_unavailable_reason_prefix)
@@ -247,7 +260,7 @@ test fn a_preflight_exit_0_without_the_in_sandbox_read_is_not_ready() -> Bool {
     CursorSandboxUnavailable { detail: _ } => false
     CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
   }
-  let refused = match cursor_standing_from_sandbox_refusal(sandbox: reading) {
+  let refused = match standing_of_stopping_reading(reading: reading) {
     ProviderStandingUnobserved { reason } => string_contains(s: reason as String, pattern: "CURSOR_SANDBOX=native")
     ProviderStandingFromFact { fact: _ } => false
   }
