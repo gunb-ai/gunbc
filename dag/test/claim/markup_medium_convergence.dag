@@ -36,6 +36,7 @@ import extdeps.languages.html {
   html_comment_close_sequence,
 }
 import std.markup { CommentGrammar, DeclaresDocument, NoDocumentGrammar }
+import std.types { NonEmptyStr }
 import std.languages { html_format, markdown_format }
 import std.optional { Present, Absent }
 import std.markdown {
@@ -78,7 +79,10 @@ fn md_medium_underscore() -> MarkupMedium {
       terminator: "-->",
       trailing_dash_closes: true,
     },
-    document_grammar: DeclaresDocument { open: "<!DOCTYPE " },
+    document_grammar: DeclaresDocument {
+    open: "<!DOCTYPE ",
+    name_end_whitespace: " " as NonEmptyStr,
+    },
   }
 }
 
@@ -117,7 +121,10 @@ fn single_quote_medium() -> MarkupMedium {
       terminator: "-->",
       trailing_dash_closes: true,
     },
-    document_grammar: DeclaresDocument { open: "<!DOCTYPE " },
+    document_grammar: DeclaresDocument {
+    open: "<!DOCTYPE ",
+    name_end_whitespace: " " as NonEmptyStr,
+    },
   }
 }
 

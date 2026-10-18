@@ -111,7 +111,15 @@ type CommentGrammar {
 }
 
 type DocumentGrammar
-  = DeclaresDocument { open: NonEmptyStr }
+  = DeclaresDocument {
+    open: NonEmptyStr
+    // The character that ENDS the token after the doctype keyword (HTML §13.1.1 "before the name" state).
+    // It rides here rather than being spelled in std/ because which character that is belongs to the
+    // language that declares a document type -- the same reason CommentGrammar carries `terminator`, and
+    // the shape review 82268 asked for. The angle brackets that also end the token are NOT duplicated
+    // here: the walk reads them off MarkupBracket, the pair the serializer writes.
+    name_end_whitespace: NonEmptyStr
+  }
   | NoDocumentGrammar
 
 type MarkupMedium {
@@ -242,6 +250,26 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
   }
 }
 
+fn attr_is_url_attr(name: String) -> Bool {
+  name == "href" || name == "src"
+}
+
+fn attribute_escape_context(name: String) -> EscapeContext {
+  if attr_is_url_attr(name: name) {
+    UrlContext
+  } else {
+    AttributeContext
+  }
+}
+
+fn attr(name: String, value: String) -> Attribute {
+  Attribute {
+    name: name,
+    ctx: attribute_escape_context(name: name),
+    value: value,
+  }
+}
+
 // THE ONLY WAY A DOCUMENT IS SERIALIZED. Returns a TYPED RESULT rather than a String for one reason: a
 // medium with NoDocumentGrammar has no spelling for a document-type declaration, so there is no string to
 // return, and the alternative (a labelled-unreachable seam) was measured to diverge. Review 82244 on
@@ -267,7 +295,7 @@ fn serialize_document_with(doc: MarkupDocument, medium: MarkupMedium) -> MarkupS
 // else. No "does this medium allow documents" test: serialize_document_with owns that refusal, and asking
 // twice is how two answers get to disagree (§3).
 fn document_hazard(doc: MarkupDocument, medium: MarkupMedium) -> MarkupHazard {
-  match doctype_name_hazard(keyword: doc.doctype) {
+  match doctype_name_hazard(keyword: doc.doctype, grammar: medium.document_grammar, bracket: medium.bracket) {
     HazardFound { reason: rs } => HazardFound { reason: rs }
     HazardFree => fragment_hazard(node: doc.root, medium: medium)
   }
@@ -342,15 +370,35 @@ fn comment_body_hazard(body: String, grammar: CommentGrammar) -> MarkupHazard {
 }
 
 // A <!DOCTYPE> name is a production, not free text: the tokenizer reads at most ONE token after the
-// keyword, so a name holding whitespace or angle brackets makes the declaration swallow text and the
+// keyword, so a name holding whitespace or an angle bracket makes the declaration swallow text and the
 // document parse in the wrong mode (a page can silently land in quirks mode).
 //
-// NO EMPTINESS CHECK, because there is nothing to check: the name is NonEmptyStr and an empty literal
-// does not resolve against it (measured). What remains are the three characters that change how the
-// document parses, which a length bound cannot express and so stays a check rather than a type.
-fn doctype_name_hazard(keyword: NonEmptyStr) -> MarkupHazard {
-  if string_contains(s: keyword as String, pattern: "<") || string_contains(s: keyword as String, pattern: ">") || string_contains(s: keyword as String, pattern: " ") {
-    HazardFound { reason: join(["doctype name '", keyword as String, "' is not a single bare token — the tokenizer reads one token after the doctype keyword; anything else changes how the document parses"], "") }
+// WHICH CHARACTERS, AND WHERE THEY COME FROM. Review 82268 on #14351: this read "<", ">" and " " as
+// literals inside std/, which is twice wrong -- which characters end that token is a fact about the
+// tokenizer of the language that declares a doctype (§4: "a new target language is rows in
+// extdeps/languages/, never an edit to the fold"), and the two angle brackets were a SECOND home for a
+// spelling the medium already carries, since MarkupBracket.tag_open / tag_close are what
+// serialize_fragment_with writes for every tag. So the brackets are READ off the bracket, and the
+// whitespace boundary rides DocumentGrammar.DeclaresDocument, the same way CommentGrammar carries
+// `terminator`. No language's character is spelled as a literal in this module.
+//
+// NO EMPTINESS CHECK on the name: NonEmptyStr has no empty inhabitant (measured against the checker), so
+// asserting a refusal of one would be asserting an invalid value as expected.
+fn doctype_name_hazard(keyword: NonEmptyStr, grammar: DocumentGrammar, bracket: MarkupBracket) -> MarkupHazard {
+  let s = keyword as String
+  // Read off the grammar that DECLARES a document type, so a medium with no document grammar can never
+  // supply a boundary by accident. The NoDocumentGrammar arm answers "no boundary" because it is never
+  // consulted: serialize_document_with refuses that grammar before this runs, which is claimed by
+  // witness_a_document_medium_refuses_to_write_a_document. Being total here and returning a clean value
+  // beats a divergent seam whose reachability was the last finding.
+  let whitespace_ends_name = match grammar {
+    DeclaresDocument { name_end_whitespace: w } => w as String
+    NoDocumentGrammar => ""
+  }
+  if string_contains(s: s, pattern: bracket.tag_open)
+    || string_contains(s: s, pattern: bracket.tag_close)
+    || (whitespace_ends_name != "" && string_contains(s: s, pattern: whitespace_ends_name)) {
+    HazardFound { reason: join(["doctype name '", s, "' is not a single bare token — the tokenizer reads one token after the doctype keyword; anything else changes how the document parses"], "") }
   } else {
     HazardFree
   }
@@ -391,7 +439,13 @@ fn fragment_hazard(node: Fragment, medium: MarkupMedium) -> MarkupHazard {
     MarkupComment { body: b } => comment_body_hazard(body: b, grammar: medium.comment_grammar)
     Element { tag: t, attributes: _, children: kids } =>
       if tag_in_set(tag: t, tags: medium.raw_text_tags) {
-        if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {
+        // THE SEQUENCE THE EMITTER WILL ACTUALLY WRITE, read from the same medium: bracket.end_tag_open
+        // is what serialize_fragment_with puts before the tag name, so a medium that spells an end tag
+        // differently gets a guard that looks for THAT spelling. Hardcoding "</" here was review 82268's
+        // first finding -- the comment grammar had already been made one value read by both emitter and
+        // checker, and this line had been left behind as the second home. §3: "Minimization holds only if
+        // each fact lives in exactly one place."
+        if string_contains(s: raw_text_children_text(children: kids), pattern: concat(medium.bracket.end_tag_open, t)) {
           HazardFound { reason: join(["raw-text element <", t, "> content contains its own close sequence '</", t, "' — refusing to serialize (corruption otherwise); restructure the content"], "") }
         } else {
           first_hazard_in(children: kids, medium: medium)

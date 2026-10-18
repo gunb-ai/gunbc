@@ -12,6 +12,7 @@ import extdeps.languages.html {
   html_doctype_open_sequence,
   html_comment_terminator,
   html_comment_trailing_dash_closes,
+  html_doctype_name_end_whitespace,
 }
 import extdeps.languages.html_fragment { serialize_fragment }
 import extdeps.uri_validation {
@@ -169,7 +170,10 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
       terminator: html_comment_terminator,
       trailing_dash_closes: html_comment_trailing_dash_closes,
     },
-    document_grammar: DeclaresDocument { open: html_doctype_open_sequence },
+    document_grammar: DeclaresDocument {
+      open: html_doctype_open_sequence,
+      name_end_whitespace: html_doctype_name_end_whitespace,
+    },
   }
 }
 

@@ -67,6 +67,13 @@ data html_doctype_open_sequence: NonEmptyStr = "<!DOCTYPE " as NonEmptyStr
 // fragment_hazard runs it on the way down, so a page cannot be serialized with a malformed declaration.
 data html_doctype_name: NonEmptyStr = "html" as NonEmptyStr
 
+// The character that ends the token after "<!DOCTYPE" (HTML Living Standard §13.1.1, the "before the
+// name" state: a space moves the tokenizer out of the keyword and into the name). A doctype name holding
+// it would end the declaration early and push the document's first text into the declaration. The two
+// angle brackets that also end it are NOT restated here -- the walk reads those off MarkupBracket, the
+// same pair the serializer writes, so there is nothing here for them to drift from.
+data html_doctype_name_end_whitespace: NonEmptyStr = " " as NonEmptyStr
+
 data canonical_html_spellings: MarkupBracket = MarkupBracket {
   tag_open: "<",
   end_tag_open: "</",
@@ -330,7 +337,10 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
       terminator: html_comment_terminator,
       trailing_dash_closes: html_comment_trailing_dash_closes,
     },
-    document_grammar: DeclaresDocument { open: html_doctype_open_sequence },
+    document_grammar: DeclaresDocument {
+      open: html_doctype_open_sequence,
+      name_end_whitespace: html_doctype_name_end_whitespace,
+    },
   }
 }
 

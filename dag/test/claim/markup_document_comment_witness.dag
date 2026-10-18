@@ -77,7 +77,7 @@ import std.optional { Absent, Present }
 import gunbc.auth.approval_broker_marker {
   approval_broker_marker_comment, BrokerMarkerComment, MarkerCommentRendered, MarkerCommentRefused,
 }
-import std.types { List, Bool, String }
+import std.types { List, Bool, String, NonEmptyStr }
 
 // A medium that spells comments the way JSX does, so the HTML delimiters cannot be hiding in the
 // serializer. Declared here rather than imported from extdeps.languages.react_jsx so the two media
@@ -111,7 +111,10 @@ data jsx_like_medium: MarkupMedium = MarkupMedium {
   },
   // Declares a doctype ON PURPOSE, unlike the real JSX medium: a claim serializes a Document through this
   // medium to show the keyword comes from the medium too. The real jsx_markup_medium says NoDocumentGrammar.
-  document_grammar: DeclaresDocument { open: "<!DOCTYPE " },
+  document_grammar: DeclaresDocument {
+    open: "<!DOCTYPE ",
+    name_end_whitespace: " " as NonEmptyStr,
+    },
 }
 
 fn comment_node(body: String) -> Fragment {
@@ -342,10 +345,13 @@ test fn witness_doctype_name_rejects_non_token_names() -> Bool {
   // Asserting a refusal of it here would be asserting an invalid value as expected output -- a claim
   // that can only pass is not a claim. The type is the guarantee. What remains are the characters a
   // length bound cannot exclude.
-  all(["html system", "html>", "<html"],
-    k => match doctype_name_hazard(keyword: k) {
-      HazardFound { reason: _ } => true
-      HazardFree => false
+  // Asserted through the ROUTE, not by calling doctype_name_hazard directly: the refusal only matters if
+  // a page carrying such a name is actually refused, and going through the route also pins the wiring
+  // (a hazard function that nobody calls would keep these claims green otherwise).
+  all([("html system" as NonEmptyStr), ("html>" as NonEmptyStr), ("<html" as NonEmptyStr)],
+    k => match try_serialize_html_document(doc: MarkupDocument { doctype: k, root: empty_html() }) {
+      EmitRejected { reason: _ } => true
+      EmitOk { html: _ } => false
     })
 }
 
