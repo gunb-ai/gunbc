@@ -811,59 +811,70 @@ fn plan_marker_count(text: String, marker: String) -> Int {
 // FRAMING IS EXACT, NEVER CHOSEN. Free text (a cap's content) enters the plan body unescaped, so a
 // marker-looking line inside it is indistinguishable from a boundary. The producer emits each boundary
 // exactly once, so any other count (an injected copy, a missing one, or an end before its start) is
-// refused by name; no occurrence is ever selected. Empty string is "framed".
-fn plan_section_framing_fault(plan_body: String, section: String) -> String {
+// refused by name; no occurrence is ever selected. The verdict is a declared sum, never a sentinel.
+type PlanFramingVerdict
+  = PlanFramed
+  | PlanFramingFaulted { cause: String }
+
+fn plan_section_framing_fault(plan_body: String, section: String) -> PlanFramingVerdict {
   let start = concat("\n", section, ":\n")
   let end = concat("\n", fleet_converge_plan_section_end_marker(section: section))
   let starts = plan_marker_count(text: plan_body, marker: start)
   let ends = plan_marker_count(text: plan_body, marker: end)
   if starts == 0 {
-    concat("plan.txt carries no ", section, ": section")
+    PlanFramingFaulted { cause: concat("plan.txt carries no ", section, ": section") }
   } else if ends == 0 {
-    concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)")
+    PlanFramingFaulted { cause: concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)") }
   } else if starts != 1 {
-    concat("plan.txt carries ", starts as String, " ", section, ": boundaries (framing must be exact; embedded or duplicated boundary)")
+    PlanFramingFaulted { cause: concat("plan.txt carries ", starts as String, " ", section, ": boundaries (framing must be exact; embedded or duplicated boundary)") }
   } else if ends != 1 {
-    concat("plan.txt carries ", ends as String, " ", fleet_converge_plan_section_end_marker(section: section), " boundaries (framing must be exact; embedded or duplicated boundary)")
+    PlanFramingFaulted { cause: concat("plan.txt carries ", ends as String, " ", fleet_converge_plan_section_end_marker(section: section), " boundaries (framing must be exact; embedded or duplicated boundary)") }
   } else {
     match list_head(xs: reverse(split(s: plan_body, delimiter: start))) {
-      Absent => concat("plan.txt ", section, " section is empty")
+      Absent => PlanFramingFaulted { cause: concat("plan.txt ", section, " section is empty") }
       Present { value: after_start } =>
         if string_contains(s: after_start, pattern: end) {
-          ""
+          PlanFramed
         } else {
-          concat("plan.txt ", section, " end boundary precedes its start (misordered)")
+          PlanFramingFaulted { cause: concat("plan.txt ", section, " end boundary precedes its start (misordered)") }
         }
     }
   }
 }
 
-fn plan_framing_fault(plan_body: String) -> String {
-  let faults = filter(
-    map(
+fn plan_framing_fault_cause(v: PlanFramingVerdict) -> String? {
+  match v {
+    PlanFramed => Absent
+    PlanFramingFaulted { cause: c } => Present { value: c }
+  }
+}
+
+fn plan_framing_fault(plan_body: String) -> String? {
+  list_head(
+    xs: flat_map(
       [fleet_converge_plan_baseline_section, fleet_converge_plan_observed_only_section, fleet_converge_plan_monotone_section],
-      sec => plan_section_framing_fault(plan_body: plan_body, section: sec),
+      sec => match plan_framing_fault_cause(v: plan_section_framing_fault(plan_body: plan_body, section: sec)) {
+        Absent => []
+        Present { value: c } => [c]
+      },
     ),
-    f => f != "",
   )
-  match list_head(xs: faults) { Absent => ""  Present { value: f } => f }
 }
 
 fn fleet_converge_planned_section_rows(plan_body: String, section: String) -> PlannedBaselineRows {
   let start = concat("\n", section, ":\n")
   let end = concat("\n", fleet_converge_plan_section_end_marker(section: section))
-  let fault = plan_framing_fault(plan_body: plan_body)
-  if fault != "" {
-    PlannedBaselineRowsUnavailable { cause: fault }
-  } else {
-    match plan_text_before(text: plan_body, marker: end) {
-      Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
-      Present { value: through_rows } =>
-        match plan_text_after_last(text: through_rows, marker: start) {
-          Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
-          Present { value: block } => PlannedBaselineRowsRead { rows: plan_text_lines(text: block) }
-        }
-    }
+  match plan_framing_fault(plan_body: plan_body) {
+    Present { value: fault } => PlannedBaselineRowsUnavailable { cause: fault }
+    Absent =>
+      match plan_text_before(text: plan_body, marker: end) {
+        Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
+        Present { value: through_rows } =>
+          match plan_text_after_last(text: through_rows, marker: start) {
+            Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
+            Present { value: block } => PlannedBaselineRowsRead { rows: plan_text_lines(text: block) }
+          }
+      }
   }
 }
 
@@ -924,23 +935,23 @@ fn retirement_unit_planned(rows: List<String>, unit: String) -> Bool {
   match retirement_row_for_unit(rows: rows, unit: unit) { Absent => false  Present { value: _ } => true }
 }
 
-fn retirement_undecodable_line(unit: String, wire: String) -> String {
-  concat("retirement undecodable: ", unit, " has wire standing '", wire, "' that no standing renders to")
+fn retirement_undecodable_line(unit: String, wire: String) -> String? {
+  Present { value: concat("retirement undecodable: ", unit, " has wire standing '", wire, "' that no standing renders to") }
 }
 
-fn retirement_decoded_drift_line(unit: String, planned: RunnerRetirementStanding, observed: RunnerRetirementStanding, planned_wire: String, observed_wire: String) -> String {
+fn retirement_decoded_drift_line(unit: String, planned: RunnerRetirementStanding, observed: RunnerRetirementStanding, planned_wire: String, observed_wire: String) -> String? {
   if retirement_standing_admits_drift(planned: planned, observed: observed) {
-    ""
+    Absent
   } else {
-    concat("retirement drift: ", unit, " planned ", planned_wire, ", now ", observed_wire)
+    Present { value: concat("retirement drift: ", unit, " planned ", planned_wire, ", now ", observed_wire) }
   }
 }
 
-fn retirement_standing_drift_line(planned: String, observed: String?) -> String {
+fn retirement_standing_drift_line(planned: String, observed: String?) -> String? {
   let unit = retirement_row_unit(row: planned)
   let planned_wire = retirement_row_standing(row: planned)
   match observed {
-    Absent => concat("retirement drift: ", unit, " planned ", planned_wire, ", now unobserved (absent from the observation)")
+    Absent => Present { value: concat("retirement drift: ", unit, " planned ", planned_wire, ", now unobserved (absent from the observation)") }
     Present { value: o } => {
       let observed_wire = retirement_row_standing(row: o)
       if retirement_row_field_count(row: planned) != 2 {
@@ -948,36 +959,65 @@ fn retirement_standing_drift_line(planned: String, observed: String?) -> String 
       } else if retirement_row_field_count(row: o) != 2 {
         retirement_undecodable_line(unit: unit, wire: observed_wire)
       } else {
-      match retirement_standing_from_wire(unit: unit, wire: planned_wire) {
-        RetirementWireUndecodable { unit: u, wire: w } => retirement_undecodable_line(unit: u, wire: w)
-        RetirementWireDecoded { standing: p } =>
-          match retirement_standing_from_wire(unit: unit, wire: observed_wire) {
-            RetirementWireUndecodable { unit: u, wire: w } => retirement_undecodable_line(unit: u, wire: w)
-            RetirementWireDecoded { standing: q } =>
-              retirement_decoded_drift_line(unit: unit, planned: p, observed: q, planned_wire: planned_wire, observed_wire: observed_wire)
-          }
-      }
+        match retirement_standing_from_wire(unit: unit, wire: planned_wire) {
+          RetirementWireUndecodable { unit: u, wire: w } => retirement_undecodable_line(unit: u, wire: w)
+          RetirementWireDecoded { standing: p } =>
+            match retirement_standing_from_wire(unit: unit, wire: observed_wire) {
+              RetirementWireUndecodable { unit: u, wire: w } => retirement_undecodable_line(unit: u, wire: w)
+              RetirementWireDecoded { standing: q } =>
+                retirement_decoded_drift_line(unit: unit, planned: p, observed: q, planned_wire: planned_wire, observed_wire: observed_wire)
+            }
+        }
       }
     }
   }
 }
 
-fn fleet_converge_retirement_drift_text(plan_body: String, observed: FleetConvergeRequest) -> String {
+// Admitted, or refused with at least one located line: an empty refusal is unwritable.
+type RetirementDriftVerdict
+  = RetirementDriftAdmitted
+  | RetirementDriftRefused { first: String, rest: List<String> }
+
+fn retirement_drift_verdict_of(lines: List<String>) -> RetirementDriftVerdict {
+  match list_head(xs: lines) {
+    Absent => RetirementDriftAdmitted
+    Present { value: f } => RetirementDriftRefused { first: f, rest: skip(lines, 1) }
+  }
+}
+
+fn retirement_drift_present_lines(opts: List<String?>) -> List<String> {
+  flat_map(opts, o => match o {
+    Absent => []
+    Present { value: l } => [l]
+  })
+}
+
+fn fleet_converge_retirement_drift_text(plan_body: String, observed: FleetConvergeRequest) -> RetirementDriftVerdict {
   let observed_rows = monotone_premise_rows(request: observed)
   match fleet_converge_planned_section_rows(plan_body: plan_body, section: fleet_converge_plan_monotone_section) {
     PlannedBaselineRowsUnavailable { cause: why } =>
-      concat("retirement drift: planned standings unavailable: ", why)
+      RetirementDriftRefused { first: concat("retirement drift: planned standings unavailable: ", why), rest: [] }
     PlannedBaselineRowsRead { rows: block } => {
       let planned_rows = filter(block, r => r != "")
-      let lines = concat(
-        map(planned_rows, p => retirement_standing_drift_line(planned: p, observed: retirement_row_for_unit(rows: observed_rows, unit: retirement_row_unit(row: p)))),
-        map(
-          filter(observed_rows, o => !retirement_unit_planned(rows: planned_rows, unit: retirement_row_unit(row: o))),
-          o => concat("retirement drift: ", retirement_row_unit(row: o), " not planned, now ", retirement_row_standing(row: o)),
+      retirement_drift_verdict_of(
+        lines: concat(
+          retirement_drift_present_lines(
+            opts: map(planned_rows, p => retirement_standing_drift_line(planned: p, observed: retirement_row_for_unit(rows: observed_rows, unit: retirement_row_unit(row: p)))),
+          ),
+          map(
+            filter(observed_rows, o => !retirement_unit_planned(rows: planned_rows, unit: retirement_row_unit(row: o))),
+            o => concat("retirement drift: ", retirement_row_unit(row: o), " not planned, now ", retirement_row_standing(row: o)),
+          ),
         ),
       )
-      join(filter(lines, l => l != ""), "\n")
     }
+  }
+}
+
+fn retirement_drift_verdict_text(v: RetirementDriftVerdict) -> String {
+  match v {
+    RetirementDriftAdmitted => ""
+    RetirementDriftRefused { first: f, rest: r } => join(concat([f], r), "\n")
   }
 }
 
@@ -2176,18 +2216,15 @@ fn monotone_family_rows(f: BaselineFamily) -> List<String> {
   }
 }
 
-fn observed_baseline_families(request: FleetConvergeRequest) -> List<BaselineFamily> {
-  match request {
-    FullHostConverge {
-      host: host,
-      observed_timers: observed_timers,
-      observed_caps: observed_caps,
-      observed_slots: observed_slots,
-      observed_fabric_cells: observed_fabric_cells,
-      observed_activation_readiness: _,
-      observed_unit_standings: standings,
-      observed_retirement: retirement_evidence,
-    } =>
+fn full_host_baseline_families(
+  host: NonEmptyStr,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  standings: RunnerUnitStandings,
+  retirement_evidence: SlotRetirementEvidence,
+) -> List<BaselineFamily> {
       [
         BaselineFamily {
           standing: PremiseOfActuation,
@@ -2221,6 +2258,29 @@ fn observed_baseline_families(request: FleetConvergeRequest) -> List<BaselineFam
           rows: retirement_unit_standing_rows(evidence: retirement_evidence),
         },
       ]
+}
+
+fn observed_baseline_families(request: FleetConvergeRequest) -> List<BaselineFamily> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: _,
+      observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
+    } =>
+      full_host_baseline_families(
+        host: host,
+        observed_timers: observed_timers,
+        observed_caps: observed_caps,
+        observed_slots: observed_slots,
+        observed_fabric_cells: observed_fabric_cells,
+        standings: standings,
+        retirement_evidence: retirement_evidence,
+      )
     _ => [BaselineFamily { standing: PremiseOfActuation, rows: split(s: observed_scoped_baseline_text(request: request), delimiter: "\n") }]
   }
 }
@@ -2248,15 +2308,30 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
 fn observed_scoped_baseline_text(request: FleetConvergeRequest) -> String {
   match request {
     FullHostConverge {
-      host: _,
-      observed_timers: _,
-      observed_caps: _,
-      observed_slots: _,
-      observed_fabric_cells: _,
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: _,
-      observed_unit_standings: _,
-      observed_retirement: _,
-    } => ""
+      observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
+    } =>
+      join(
+        flat_map(
+          full_host_baseline_families(
+            host: host,
+            observed_timers: observed_timers,
+            observed_caps: observed_caps,
+            observed_slots: observed_slots,
+            observed_fabric_cells: observed_fabric_cells,
+            standings: standings,
+            retirement_evidence: retirement_evidence,
+          ),
+          f => premise_family_rows(f: f),
+        ),
+        "\n",
+      )
     LaunchEnvironmentConverge { host: host, observed_timers: observed_timers } =>
       join(
         concat(

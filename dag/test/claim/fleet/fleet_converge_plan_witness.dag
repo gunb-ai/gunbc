@@ -25,6 +25,7 @@ import std.algebra { string_contains }
 import gunbc.fleet.fleet_converge_plan {
   fleet_converge_member_set_drift_text,
   fleet_converge_retirement_drift_text,
+  retirement_drift_verdict_text,
   fleet_converge_member_set_fingerprint,
 }
 import gunbc.runner.runner_slot_retirement { RetirementPendingDrain, RetirementUnobserved }
@@ -2886,14 +2887,14 @@ fn witness_unobserved() -> RunnerRetirementStanding {
 }
 
 fn witness_retirement_drift(planned: RunnerRetirementStanding, observed: RunnerRetirementStanding) -> String {
-  fleet_converge_retirement_drift_text(
+  retirement_drift_verdict_text(v: fleet_converge_retirement_drift_text(
     plan_body: witness_retirement_plan_body(planned: witness_srv1_evidence(standings: [planned])),
     observed: witness_identity_request(
       slots: [],
       standings: runner_unit_standings_unobserved_no_transaction,
       retirement: witness_srv1_evidence(standings: [observed]),
     ),
-  )
+  ))
 }
 
 // CHURN-ONLY: a runner unit going active then idle changes the observation but not the identity.
@@ -2978,14 +2979,14 @@ test fn retirement_pending_plan_renders_no_teardown_for_the_unit() -> Bool {
 // An unknown wire text in plan.txt is undecodable, never read as drift and never defaulted.
 test fn retirement_unknown_wire_in_plan_refuses_as_undecodable_not_drift() -> Bool {
   let body = witness_retirement_plan_body(planned: witness_srv1_evidence(standings: [witness_open_transition_delta_complete_standing()]))
-  let t = fleet_converge_retirement_drift_text(
+  let t = retirement_drift_verdict_text(v: fleet_converge_retirement_drift_text(
     plan_body: join(split(s: body, delimiter: "=complete"), "=bogus"),
     observed: witness_identity_request(
       slots: [],
       standings: runner_unit_standings_unobserved_no_transaction,
       retirement: witness_srv1_evidence(standings: [witness_open_transition_delta_complete_standing()]),
     ),
-  )
+  ))
   string_contains(s: t, pattern: "retirement undecodable: ")
     && string_contains(s: t, pattern: "'bogus'")
     && !string_contains(s: t, pattern: "retirement drift: ")
@@ -3009,14 +3010,14 @@ fn witness_retirement_plan_body_with_cap(planned: SlotRetirementEvidence, cap_co
 }
 
 fn witness_drift_against_body(body: String, observed: RunnerRetirementStanding) -> String {
-  fleet_converge_retirement_drift_text(
+  retirement_drift_verdict_text(v: fleet_converge_retirement_drift_text(
     plan_body: body,
     observed: witness_identity_request(
       slots: [],
       standings: runner_unit_standings_unobserved_no_transaction,
       retirement: witness_srv1_evidence(standings: [observed]),
     ),
-  )
+  ))
 }
 
 fn witness_forged_monotone_section() -> String {

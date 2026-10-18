@@ -165,6 +165,8 @@ import gunbc.fleet.fleet_converge_plan {
   fleet_converge_member_set_fingerprint_matches,
   fleet_converge_member_set_drift_text,
   fleet_converge_retirement_drift_text,
+  RetirementDriftAdmitted,
+  RetirementDriftRefused,
   fleet_converge_plan_subject_scope_path,
   fleet_converge_apply_artifact_admits,
   ApplyAdmitted,
@@ -1135,9 +1137,12 @@ fn fleet_converge_apply_ordinary_bound_wet(
                 observed: observed_request,
               ) {
                 exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
-              } else if fleet_converge_retirement_drift_text(plan_body: read_plan.content, observed: observed_request) != "" {
-                exit_failure(reason: concat("fleet_converge_apply: RetirementStandingDrift — a retirement premise changed since plan\n", fleet_converge_retirement_drift_text(plan_body: read_plan.content, observed: observed_request)))
-              } else if !fleet_converge_plan_bundle_matches(
+              } else {
+              match fleet_converge_retirement_drift_text(plan_body: read_plan.content, observed: observed_request) {
+              RetirementDriftRefused { first: drift_first, rest: drift_rest } =>
+                exit_failure(reason: concat("fleet_converge_apply: RetirementStandingDrift — a retirement premise changed since plan\n", join(concat([drift_first], drift_rest), "\n")))
+              RetirementDriftAdmitted =>
+              if !fleet_converge_plan_bundle_matches(
                 plan_body: read_plan.content,
                 apply_shell: read_apply.content,
                 claimed_hex: read_hash.content,
@@ -1211,6 +1216,7 @@ fn fleet_converge_apply_ordinary_bound_wet(
                     }
                   }
                 }
+              }
               }
               }
               }
