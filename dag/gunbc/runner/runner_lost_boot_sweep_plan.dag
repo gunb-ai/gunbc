@@ -72,13 +72,14 @@ fn sweep_listing_of_roster(report: OrganizationRunnerRosterReport) -> SweepListi
   }
 }
 
-// THE PLAN IS THE ONLY WAY TO A DELETION. sweep_plan reads a roster report and answers either a
-// refusal or a SweepSelection, and SweepSelection is sole_constructor with its one mint admitted to
-// sweep_plan, so deregister_selection (the only function that deletes) cannot be handed a selection
-// that skipped the observed-roster conversion, the sweep's own refusals or the ceiling. ZERO DELETION
-// REQUESTS ON PARTIAL COVERAGE OR AN OVER-CEILING SELECTION IS ESTABLISHED AT THIS PLAN BOUNDARY, BY
-// CONSTRUCTION, NOT OBSERVED AT THE EFFECT: no hermetic route supplies a REST exchange to the page
-// operation or to the gh deletion (see lost_boot_sweep_effect_pairing_frontier).
+// WHAT THE SEAL ESTABLISHES, AND WHAT IT DOES NOT. A SweepSelection minted by sweep_plan satisfies its
+// listing and ceiling checks: the record is sole_constructor and its one mint is admitted to sweep_plan.
+// The production wiring (sweep_and_deregister) consumes that selection and passes it to
+// deregister_selection, AS ESTABLISHED BY SOURCE REVIEW. It is NOT unwritable to skip the plan: the shared
+// lost_boot_sweep and ensure_jit_runner_deregistered stay unrestricted entry points, so a change inside
+// sweep_and_deregister could select with the former and delete with the latter, omitting the ceiling.
+// Zero deletion requests on a partial roster or over-ceiling selection is established at this plan
+// boundary, not observed at the effect (see lost_boot_sweep_effect_pairing_frontier).
 type SweepSelection sole_constructor {
   subjects: List<JitDeregistrationSubject>
   untouched: List<String>
@@ -89,7 +90,7 @@ type SweepPlan
   | SweepPlanSelected { selection: SweepSelection }
 
 data lost_boot_sweep_effect_pairing_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: sweep_and_deregister, which deletes only registrations of a SweepSelection minted by sweep_plan. POPULATION: this sweep deletion route (the org roster page read and ensure_jit_runner_deregistered's gh delete). WHAT IS NOT ESTABLISHED: that the page requests are the ones made and that zero deletion requests leave the process on a partial roster or an over-ceiling selection; both are established at the plan boundary, not observed at the effect. TRIGGER: the capability authenticated REST exchange replay in extdeps.transports.rest, blocked today on RestExchangeFixture input_digest (limbs content_hash_service_inputs derives through the host value_hash, not reproducible from .dag) for an operation carrying a Secret Bearer; when it exists, a hermetic control supplies the page responses and the delete boundary and observes the requests."
+  description: "NAMED CONSUMER: sweep_and_deregister, which consumes sweep_plan and deletes through deregister_selection. POPULATION: this sweep deletion route (the typed ListOrganizationRunnersPage REST read and ensure_jit_runner_deregistered's typed DeleteOrganizationRunner effect). NOT ESTABLISHED, deferred: (1) that the page requests are the ones made and that zero deletion requests leave the process on a partial roster or an over-ceiling selection; (2) that the plan call in sweep_and_deregister cannot be bypassed or replaced by a constant refusal, or selection and deletion done through the unrestricted shared lost_boot_sweep and ensure_jit_runner_deregistered, which is writable today and unobserved by any control. TRIGGER: the capability authenticated REST exchange replay in extdeps.transports.rest, blocked today on RestExchangeFixture input_digest (limbs content_hash_service_inputs derives through the host value_hash, not reproducible from .dag) for an operation carrying a Secret Bearer; with it, a hermetic control runs sweep_and_deregister over supplied page responses and observes the requests, including the constant-refusal mutation, which stays green today."
 )
 
 fn mint_sweep_selection(subjects: List<JitDeregistrationSubject>, untouched: List<String>) -> SweepSelection admit_callers: [

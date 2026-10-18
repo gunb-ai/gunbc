@@ -535,29 +535,34 @@ type ControllerKeyStaging
   | ControllerKeyNotStaged { cause: String }
 
 // A FAILED CREATE-NEW WRITE IS NOT NOTHING HAVING BEEN WRITTEN (the place_netrc_binding finding): the
-// O_EXCL create precedes write_all, so an error after the create leaves a 0600 file holding a prefix
-// of the App key. The staging therefore clears the path first (a stale file would also make the
-// create refuse) and removes it again when the write fails. The cause names three states and never
-// the path: partial material removed or never created (no key on disk); material the cleanup could
-// not remove (residue, requires cleanup); and a path that could not be cleared BEFORE the write, so
-// the refusal was the O_EXCL of a file this attempt did not create and whose origin is unknown.
-fn controller_key_write_refusal(write_error: String, before: FilesystemDelete, after: FilesystemDelete) -> String {
-  match after {
-    FilesystemDeleted { path: _ } => concat("ControllerAppKeyUnstaged: the key could not be written and the partial file was removed: ", write_error)
-    FilesystemDeleteTargetAbsent { path: _ } => concat("ControllerAppKeyUnstaged: the key could not be written and no file was created: ", write_error)
-    FilesystemDeleteRefused { path: _, kind: _, error: why } => controller_key_residue_cause(before: before, why: why)
-    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: why } => controller_key_residue_cause(before: before, why: why)
+// O_EXCL create precedes write_all, so an error after the create can leave a 0600 file holding a prefix
+// of the App key. The staging therefore clears the path first and removes it again when the write fails.
+// The cause REPORTS OBSERVATIONS ONLY and never the path: what the pre-clear observed, what the cleanup
+// observed. It asserts no origin: a path that was absent at cleanup does not show that no file was ever
+// created, and a file that could not be removed is not shown to be this attempt's or a prior one's.
+fn controller_key_delete_observation(d: FilesystemDelete) -> String {
+  match d {
+    FilesystemDeleted { path: _ } => "a file was removed"
+    FilesystemDeleteTargetAbsent { path: _ } => "the path was absent"
+    FilesystemDeleteRefused { path: _, kind: _, error: why } => concat("removal was refused: ", why)
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: why } => concat("removal failed with an unrecognized kind: ", why)
   }
 }
 
-fn controller_key_residue_cause(before: FilesystemDelete, why: String) -> String {
-  match before {
-    FilesystemDeleted { path: _ } => concat("ControllerAppKeyResidueRemains: the key could not be written and the partial file could not be removed, so key material may remain and requires cleanup: ", why)
-    FilesystemDeleteTargetAbsent { path: _ } => concat("ControllerAppKeyResidueRemains: the key could not be written and the partial file could not be removed, so key material may remain and requires cleanup: ", why)
-    FilesystemDeleteRefused { path: _, kind: _, error: _ } => concat("ControllerAppKeyPreexistingPathUnremovable: a pre-existing file could not be removed before the write, which is why the O_EXCL create refused, and it could not be removed afterwards either, so material of unknown origin remains and requires cleanup: ", why)
-    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: _ } => concat("ControllerAppKeyPreexistingPathUnremovable: a pre-existing file could not be removed before the write, which is why the O_EXCL create refused, and it could not be removed afterwards either, so material of unknown origin remains and requires cleanup: ", why)
+fn controller_key_write_refusal(write_error: String, before: FilesystemDelete, after: FilesystemDelete) -> String {
+  match after {
+    FilesystemDeleted { path: _ } => concat("ControllerAppKeyUnstaged: the key write refused (", concat(write_error, concat("); pre-clear: ", concat(controller_key_delete_observation(d: before), "; cleanup: a file was removed"))))
+    FilesystemDeleteTargetAbsent { path: _ } => concat("ControllerAppKeyUnstaged: the key write refused (", concat(write_error, concat("); pre-clear: ", concat(controller_key_delete_observation(d: before), "; cleanup: the path was absent"))))
+    FilesystemDeleteRefused { path: _, kind: _, error: _ } => controller_key_residue_cause(write_error: write_error, before: before, cleanup: controller_key_delete_observation(d: after))
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: _ } => controller_key_residue_cause(write_error: write_error, before: before, cleanup: controller_key_delete_observation(d: after))
   }
 }
+
+fn controller_key_residue_cause(write_error: String, before: FilesystemDelete, cleanup: String) -> String {
+  concat("ControllerAppKeyResidueUnconfirmed: the key write refused (", concat(write_error, concat("); pre-clear: ", concat(controller_key_delete_observation(d: before), concat("; cleanup: ", concat(cleanup, "; a file may remain at the path and requires cleanup"))))))
+}
+
+data lost_boot_key_staging_partial_write_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: stage_key_file, called by stage_controller_app_key on the lost-boot sweep route. POPULATION: a Filesystem.WriteOwnerOnly that creates the O_EXCL file and then fails mid-write, leaving a partial 0600 file. NOT ESTABLISHED: that the cleanup Filesystem.Delete call runs after such a failure (dropping it is invisible to every control: the supplied-outcome tests fix only the cause text per observation, and the real-filesystem control reaches only a missing parent and an unremovable existing path). TRIGGER: a filesystem fault-injection capability in extdeps.filesystem that fails a write after its create, so the partial-file state is authorable." as NonEmptyStr)
 
 // THE FILE HALF OF THE STAGING, split out so the pre-clear, the O_EXCL write and the cleanup run in a
 // witness against a real filesystem with no Secret Manager exchange.

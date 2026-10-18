@@ -235,40 +235,38 @@ data ck_removed: FilesystemDelete = FilesystemDeleted { path: "k" }
 data ck_absent: FilesystemDelete = FilesystemDeleteTargetAbsent { path: "k" }
 data ck_refused: FilesystemDelete = FilesystemDeleteRefused { path: "k", kind: FilesystemPermissionDenied, error: "denied" }
 
-// The partial 0600 file left by a failed create-new write is removed, and the refusal says so
-// without claiming nothing was written.
-test fn a_failed_key_write_whose_partial_file_was_removed_names_the_removal() -> Bool {
-  string_contains(s: controller_key_write_refusal(write_error: "disk full", before: ck_absent, after: ck_removed), pattern: "partial file was removed")
+// Observations only: a cleanup that removed a file reports a removal, never "the partial file".
+test fn a_failed_key_write_whose_cleanup_removed_a_file_reports_the_observation() -> Bool {
+  let c = controller_key_write_refusal(write_error: "disk full", before: ck_absent, after: ck_removed)
+  string_contains(s: c, pattern: "cleanup: a file was removed") && string_contains(s: c, pattern: "pre-clear: the path was absent") && !string_contains(s: c, pattern: "partial")
 }
 
-// Nothing created is a distinct, weaker claim than removed.
-test fn a_failed_key_write_that_created_nothing_says_no_file_was_created() -> Bool {
-  string_contains(s: controller_key_write_refusal(write_error: "no dir", before: ck_absent, after: ck_absent), pattern: "no file was created")
+// Absence at cleanup is not "no file was created": the claim is not made.
+test fn an_absent_path_at_cleanup_does_not_claim_nothing_was_created() -> Bool {
+  let c = controller_key_write_refusal(write_error: "no dir", before: ck_absent, after: ck_absent)
+  string_contains(s: c, pattern: "cleanup: the path was absent") && !string_contains(s: c, pattern: "no file was created")
 }
 
-// Cleanup refusal after a clean start is residue of this attempt's own partial write.
-test fn a_partial_file_that_cannot_be_removed_is_a_residue_refusal() -> Bool {
-  string_contains(s: controller_key_write_refusal(write_error: "disk full", before: ck_absent, after: ck_refused), pattern: "ControllerAppKeyResidueRemains")
-}
-
-// A path that could not be cleared before the write is a pre-existing file the attempt did not
-// create: its own refusal, never the residue arm.
-test fn an_unclearable_preexisting_path_is_not_reported_as_this_attempts_residue() -> Bool {
-  let c = controller_key_write_refusal(write_error: "exists", before: ck_refused, after: ck_refused)
-  string_contains(s: c, pattern: "ControllerAppKeyPreexistingPathUnremovable") && !string_contains(s: c, pattern: "ControllerAppKeyResidueRemains")
+// A cleanup refusal is unconfirmed residue whatever the pre-clear saw; it asserts no origin.
+test fn a_cleanup_refusal_is_unconfirmed_residue_for_every_preclear_observation() -> Bool {
+  let a = controller_key_write_refusal(write_error: "disk full", before: ck_absent, after: ck_refused)
+  let r = controller_key_write_refusal(write_error: "exists", before: ck_refused, after: ck_refused)
+  string_contains(s: a, pattern: "ControllerAppKeyResidueUnconfirmed") && string_contains(s: a, pattern: "requires cleanup")
+    && string_contains(s: r, pattern: "ControllerAppKeyResidueUnconfirmed") && string_contains(s: r, pattern: "pre-clear: removal was refused")
+    && !string_contains(s: a, pattern: "pre-existing") && !string_contains(s: r, pattern: "pre-existing")
 }
 
 // THE PRODUCTION PATH, REAL FILESYSTEM: stage_key_file (the function stage_controller_app_key calls)
-// against paths whose write must fail. A parent that does not exist creates nothing; /proc/self cannot be
-// removed by the pre-clear and exists, so O_EXCL refuses it. NOT REACHABLE: a file left PARTIALLY written
-// (a mid-write failure cannot be authored), so dropping the cleanup call itself is covered only by the
-// supplied-outcome tests above.
+// against paths whose write must fail. A missing parent leaves the path absent at cleanup; /proc/self
+// cannot be removed and exists, so the cleanup is refused. The supplied-outcome tests above fix the
+// cause text per observation; they do NOT cover a dropped cleanup call, and a mid-write partial file
+// cannot be authored, so that is deferred (lost_boot_key_staging_partial_write_frontier).
 test fn a_real_filesystem_write_refusal_names_what_became_of_the_path() -> Bool {
   (match stage_key_file(key: "k" as Secret, key_path: "/tmp/gunbc_ck_no_such_parent/x/key" as NonEmptyStr) {
-    ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyUnstaged") && string_contains(s: c, pattern: "no file was created")
+    ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyUnstaged") && string_contains(s: c, pattern: "cleanup: the path was absent")
     ControllerKeyStaged { key: _ } => false
   }) && (match stage_key_file(key: "k" as Secret, key_path: "/proc/self" as NonEmptyStr) {
-    ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyPreexistingPathUnremovable")
+    ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyResidueUnconfirmed")
     ControllerKeyStaged { key: _ } => false
   })
 }
