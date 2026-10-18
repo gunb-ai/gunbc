@@ -76,7 +76,7 @@ import product.fabric.serving_recipe {
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
-  vast_ai_search_type_bid, vast_ai_quote_currency, vast_ai_keyset_page_limit,
+  vast_ai_search_type_bid, vast_ai_search_type_ondemand, vast_ai_quote_currency, vast_ai_keyset_page_limit,
   vast_ai_ingest_search_offer_driver, vast_ai_driver_version_from_search_offers_text,
   VastAiDriverVersionStanding, VastAiDriverVersionUnread, VastAiDriverVersionRead, VastAiDriverVersionMalformed,
 }
@@ -249,6 +249,7 @@ fn t_charge(start: Int, end: Int, desc: String) -> VastAiCharge {
     source: "vast",
     description: desc,
     amount: ExactDecimal { units: 1, fraction_digits: 0 },
+    metadata: none,
     items: [],
   }
 }
@@ -485,8 +486,14 @@ fn flex_offer_accepted_by_recipe(offer: VastAiOffer, recipe: ServingRecipe) -> B
   }
 }
 
+// A bid search answered is_bid false on every offer (live, 2026-10-18), so the observed shape of a bid
+// candidate is is_bid false: membership follows the search type, and is_bid is not read.
 fn field_member(offer: VastAiOffer) -> Bool {
-  match flex_offer_in_shadow_field(offer: offer) {
+  field_member_from(offer: offer, search_type: flex_search_type)
+}
+
+fn field_member_from(offer: VastAiOffer, search_type: String) -> Bool {
+  match flex_offer_in_shadow_field(offer: offer, search_type: search_type) {
     ShadowEntryEstablished => true
     ShadowEntryEstimated { provisional_member: m, standings: _ } => m
     ShadowEntryExcluded => false
@@ -547,7 +554,8 @@ test fn supported_gpu_classes_screen_offers() -> Bool {
       recipe: serving_recipe_flash_next_lab_vllm,
     )
     && field_member(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true))
-    && !field_member(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: false, rentable: true))
+    && field_member(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: false, rentable: true))
+    && !field_member_from(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true), search_type: vast_ai_search_type_ondemand)
     && !field_member(offer: wire_offer(name: "RTX 4090", ram: 24576, bid: true, rentable: true))
     && host_driver_screens_the_serving_unit()
 }

@@ -207,17 +207,30 @@ fn flex_quote_wall(quote: ServingSelectionQuote) -> List<FlexCreateRefusal> {
   }
 }
 
-// The money spent so far on the account, summed from a COMPLETE charge walk. An incomplete walk or a
-// charge that does not convert refuses: the ceiling is never checked against a guess.
+// The money WE have spent, summed from a COMPLETE charge walk over the rows carrying our label. ctrl shares
+// the account, so its rows are not ours to count (the same isolation as the roster): a row is ours only
+// when its metadata names our label, and an unlabelled row is nobody's. An incomplete walk or a charge
+// of ours that does not convert refuses: the ceiling is never checked against a guess.
 type FlexSpentStanding
   = FlexSpentRead { spent: MoneyAmountMicro }
   | FlexSpentUnreadable
 
-fn flex_spent(charges: FlexChargesStanding) -> FlexSpentStanding {
+fn flex_charge_ours(charge: VastAiCharge, ours: FlexOwnerLabel) -> Bool {
+  match charge.metadata {
+    Absent => false
+    Present { value: m } =>
+      match m.label {
+        Absent => false
+        Present { value: l } => l == (ours as String)
+      }
+  }
+}
+
+fn flex_spent(charges: FlexChargesStanding, ours: FlexOwnerLabel) -> FlexSpentStanding {
   match charges {
     FlexChargesComplete { roster: complete } =>
       fold(
-        complete.results,
+        complete.results |> filter(c => flex_charge_ours(charge: c, ours: ours)),
         init: FlexSpentRead { spent: money_amount_micro(count: 0) },
         f: (acc, row) =>
           match acc {
@@ -235,7 +248,7 @@ fn flex_spent(charges: FlexChargesStanding) -> FlexSpentStanding {
 
 // The reservation of one rental is the bid held for the acquisition horizon.
 fn flex_budget_wall(policy: FlexPolicy, charges: FlexChargesStanding, bid: MoneyPerHour) -> List<FlexCreateRefusal> {
-  match flex_spent(charges: charges) {
+  match flex_spent(charges: charges, ours: policy.owner) {
     FlexSpentUnreadable => [FlexRefusedChargesUnreadable]
     FlexSpentRead { spent: spent } =>
       let reservation = flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon)

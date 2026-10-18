@@ -622,15 +622,17 @@ fn flex_offer_screen_with_tolerance(offer: VastAiOffer, recipe: ServingRecipe, v
   }
 }
 
-fn flex_interruptible_rentable(offer: VastAiOffer) -> Bool {
-  match offer.is_bid {
-    Absent => false
-    Present { value: bid } => bid && offer.rentable && !offer.rented
-  }
+// INTERRUPTIBLE IS THE SEARCH THAT FOUND THE OFFER, NOT is_bid. A live read-only search from srv1 on
+// 2026-10-18 (type bid) answered 63 offers, every one with is_bid false, and a running interruptible
+// rental under ctrl-bidder also read is_bid false; so is_bid does not mark an offer as rentable at a bid
+// price, and screening on it excluded every bid offer. search_type is the query the offer was returned for
+// (extdeps.cloud.vast_ai VastAiOfferQuery); only a bid search's offers are interruptible candidates.
+fn flex_interruptible_rentable(offer: VastAiOffer, search_type: String) -> Bool {
+  (search_type == vast_ai_search_type_bid) && offer.rentable && !offer.rented
 }
 
-fn flex_offer_in_shadow_field(offer: VastAiOffer) -> FlexShadowFieldEntry {
-  if flex_interruptible_rentable(offer: offer) {
+fn flex_offer_in_shadow_field(offer: VastAiOffer, search_type: String) -> FlexShadowFieldEntry {
+  if flex_interruptible_rentable(offer: offer, search_type: search_type) {
     flex_offer_screen_by_recipe(offer: offer, recipe: flex_serving_recipe)
   } else {
     ShadowEntryExcluded
