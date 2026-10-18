@@ -4091,7 +4091,32 @@ fn build_cache_fold_op_executed(
   plan: List<BuildCacheEnsureOp>,
   digest: Digest,
 ) -> BuildCacheEnsureFold {
-  // NO GUARD HERE, DELIBERATELY. "A leg has stopped the sequence, so this leg does not happen" is a rule about
+  // THE DIGEST GATE, AT THE POINT THE READ ANSWERED. The line the host printed is not itself permission: it is
+// handed to `build_cache_ensure_run`, the single authority in the module that owns this effect, and that
+// authority either admits the rest of the plan or refuses it carrying BOTH digests. Repeating its rule here
+// would be the DESIGN 3 defect this lane exists to remove -- a second copy could pass every witness while the
+// route that actually runs disagreed -- so this site asks, and acts on the answer.
+//
+// Keeping the ask HERE, at the leg where the host answered, rather than in the transport loop or in the
+// executor's pass boundary, is what makes the decision auditable without a host: a witness can hand the fold a
+// successful fetch, a read that answered with the wrong digest, and every install leg succeeding as well, and
+// still see that no install leg was reached.
+fn build_cache_read_leg_gate(
+  o: ShellExecObserved,
+  plan: List<BuildCacheEnsureOp>,
+  digest: Digest,
+) -> BuildCacheEnsureFold {
+  let read_line = Present { value: o.stdout }
+  match build_cache_ensure_run(ops: plan, digest: digest, observed_digest_line: read_line) {
+    Runs { legs: _ } => BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: read_line }
+    RefusedBeforeInstall { legs: _, op: gate, refusal: why } => BuildCacheEnsureFold {
+      executed: EnsureDigestRefused { op: gate, refusal: why },
+      digest_line: read_line,
+    }
+  }
+}
+
+// NO GUARD HERE, DELIBERATELY. "A leg has stopped the sequence, so this leg does not happen" is a rule about
   // the SEQUENCE, and it is asked once by each route that walks one -- by `build_cache_run_ensure_ops` before
   // it starts a transport, and by `build_cache_fold_ensure_ops_with_outcomes` before it applies a supplied
   // answer. Both ask the same predicate, `build_cache_ensure_fold_is_progressing`; a third copy inside the step
@@ -4120,22 +4145,11 @@ fn build_cache_fold_op_executed(
         LegPassed =>
           if op.kind == ReadDigest {
             // THE DIGEST GATE, AT THE POINT THE READ ANSWERED, AND IN THE ONE PLACE BOTH ROUTES PASS THROUGH.
-            // The line the host printed is not itself permission: it is handed to `build_cache_ensure_run`, the
-            // single authority in the module that owns this effect, and that authority either admits the rest
-            // of the plan or refuses it carrying both digests. Repeating its rule here would be the DESIGN 3
-            // defect this lane exists to remove -- a second copy could pass every witness while the route that
-            // runs disagreed -- so this site asks, and acts. Keeping it HERE rather than in the loop or in the
-            // executor's pass boundary is what makes the decision auditable dry: a claim can hand the fold a
-            // successful fetch, a read that answered with the wrong digest, and every install leg succeeding,
-            // and still see that no install leg was reached.
-            let read_line = Present { value: o.stdout }
-            match build_cache_ensure_run(ops: plan, digest: digest, observed_digest_line: read_line) {
-              Runs { legs: _ } => BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: read_line }
-              RefusedBeforeInstall { legs: _, op: gate, refusal: why } => BuildCacheEnsureFold {
-                executed: EnsureDigestRefused { op: gate, refusal: why },
-                digest_line: read_line,
-              }
-            }
+            // The gate is a function of its own rather than an expression here, and not for tidiness: the
+            // decision needs to bind the line before it can ask the authority about it, and a binding in an
+            // arm's expression position is not something this grammar accepts (the compiler refuses it with
+            // `expected expression, found Eq`). As its own fn it is also the thing a witness can name.
+            build_cache_read_leg_gate(o: o, plan: plan, digest: digest)
           } else {
             BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: acc.digest_line }
           }
