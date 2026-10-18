@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, List }
 import std.logic { Bool }
 import std.algebra { list_append }
 import std.optional { Present }
-import gunbc.auth.approval_device_wire { EnrolmentRefusalWire, enrolment_refusal_wire_label }
+import gunbc.auth.approval_device_wire { EnrolmentRefusalWire, EnrolmentRefusalCodeExpired, EnrolmentRefusalCodeNotIssued, enrolment_refusal_wire_label }
 import gunbc.approve_ios_enrolment_machine {
   EnrolmentPhase, EnrolmentAnswer, AnswerGranted, AnswerRefused, AnswerUnanswered,
   PhaseUnenrolled, PhaseSubmissionUnknown, PhaseEnrolled,
@@ -12,7 +12,8 @@ import gunbc.approve_ios_enrolment_machine {
 }
 import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftPattern, SwiftSwitchCase, SwiftStaticModifier, SwiftImportDecl, SwiftAttribute,
-  SwiftFinalModifier, SwiftClassDecl, SwiftTuplePattern,
+  SwiftFinalModifier, SwiftClassDecl, SwiftTuplePattern, SwiftNotEqualOperator,
+  sw_tuple, sw_if, sw_cond, sw_op,
   sw_t, sw_tel, sw_id, sw_dot, sw_mem, sw_path, sw_call, sw_calln, sw_pos, sw_arg, sw_str, sw_strs, sw_arr, sw_eq, sw_ternary,
   sw_expr, sw_ret, sw_let, sw_let_typed, sw_for, sw_switch, sw_case, sw_default, sw_pexpr,
   sw_cases, sw_case_payload, sw_param, sw_func, sw_enum, sw_doc, sw_cmt, sw_import, sw_tg
