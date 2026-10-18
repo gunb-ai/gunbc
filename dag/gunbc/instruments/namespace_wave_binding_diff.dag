@@ -367,8 +367,20 @@ fn verdict_code(r: CliWireResponse) -> Int {
   }
 }
 
+// What the ambient census prints beside the infer rows for a rewritten module refused at resolve, and the status 2 it answers.
+fn wave_refused_row() -> String {
+  "refused_rewritten\texamples.wave\tresolve\n"
+}
+
+// A SUCCESSFUL JOIN CLEARS ITS OWN MODULE'S INCOMPLETENESS and nothing else's: the admitted wave answers 0 despite the
+// census status 2 its refused module caused, but the same head with an unrelated unobserved_subject row stays 2.
+fn wave_other_incompleteness_control_failure(base: String, admit: String) -> Optional<String> {
+  let got = verdict_code(r: binding_diff_verdict(base_stdout: base + wave_refused_row(), head_stdout: admit + wave_refused_row() + "unobserved_subject\tsome subject\n", base_status: 2, head_status: 2))
+  if got == 2 { optional_absent() } else { optional_present(value: "a joined wave with another incomplete subject answered " + to_string(got) + ", not 2") }
+}
+
 fn wave_join_case(name: String, base: String, head: String, want: Int) -> String {
-  let got = verdict_code(r: binding_diff_verdict(base_stdout: base, head_stdout: head, base_status: 0, head_status: 0))
+  let got = verdict_code(r: binding_diff_verdict(base_stdout: base + wave_refused_row(), head_stdout: head + wave_refused_row(), base_status: 2, head_status: 2))
   if got == want { "" } else { "wave-1 join " + name + ": verdict " + to_string(got) + ", want " + to_string(want) + "\n" }
 }
 
@@ -460,6 +472,16 @@ fn partial_conflicting(module: String, base_stdout: String, head_stdout: String)
     |> filter(l => field_at(line: l, index: 3) != "0")) != 0
 }
 
+// A census answers 2 while any rewritten module it reached was refused at resolve. A module the join judged at
+// occurrence grain on both sides, admitted, is observed, so its refusal alone no longer makes the side incomplete.
+// Any other cause of the 2 (an unobserved_subject or unobserved_rewritten row, a refused module the join did not
+// admit, or no refused_rewritten row at all) keeps it.
+fn side_status_after_join(status: Int, stdout: String, joined_ok: List<String>) -> Int {
+  let refused = rows_with_prefix(stdout: stdout, prefix: "refused_rewritten\t") |> map(l => field_at(line: l, index: 1))
+  let other = count(rows_with_prefix(stdout: stdout, prefix: "unobserved_subject\t")) + count(rows_with_prefix(stdout: stdout, prefix: "unobserved_rewritten\t"))
+  if (status == 2) && (count(refused) != 0) && (other == 0) && (count(refused |> filter(m => count(joined_ok |> filter(j => j == m)) == 0)) == 0) { 0 } else { status }
+}
+
 fn binding_diff_verdict(base_stdout: String, head_stdout: String, base_status: Int, head_status: Int) -> CliWireResponse {
   let diff = binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: ambient_name_homes())
   // A MODULE REFUSED ON BOTH SIDES is compared at occurrence grain by the verified join
@@ -472,6 +494,7 @@ fn binding_diff_verdict(base_stdout: String, head_stdout: String, base_status: I
   let join_admitted = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => join_delta_admitted(d: d))) })
   let conflicting = joined |> filter(j => j.conflicting) |> map(j => j.module)
   let still_unobserved = joined |> filter(j => j.conflicting || (count(j.deltas |> filter(d => !join_delta_admitted(d: d))) != 0)) |> map(j => j.module)
+  let joined_ok = joined |> filter(j => !j.conflicting && (count(j.deltas |> filter(d => !join_delta_admitted(d: d))) == 0)) |> map(j => j.module)
   let unobserved = unobserved_rewritten_either(base_stdout: base_stdout, head_stdout: head_stdout)
   let outside = outside_other_population(base_stdout: base_stdout, head_stdout: head_stdout)
   let bytes = ((diff.admitted + diff.refused) |> map(d => delta_line(d: d)) |> join(separator: "\n")) + "\n"
@@ -489,8 +512,8 @@ fn binding_diff_verdict(base_stdout: String, head_stdout: String, base_status: I
       unobserved: count(unobserved),
       outside: count(outside),
       unobserved_both: count(still_unobserved),
-      base_status: base_status,
-      head_status: head_status
+      base_status: side_status_after_join(status: base_status, stdout: base_stdout, joined_ok: joined_ok),
+      head_status: side_status_after_join(status: head_status, stdout: head_stdout, joined_ok: joined_ok)
     )
   }
 }
@@ -510,7 +533,7 @@ fn binding_diff_standing(
   match rebind_red_failure(base_stdout: rebind_base_stdout, head_stdout: rebind_head_stdout) {
     Present { value: why } => CliWirePrintable { bytes: rebind_base_stdout + "\n" + rebind_head_stdout + "\n", exit: ExitFailure { code: 1, reason: "re-bind RED: " + why } }
     Absent =>
-      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), occurrence_join_controls_failure(), wave_unobserved_control_failure(), base_without_line_count_control_failure(base: wave_base_stdout, admit: wave_admit_stdout), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout)]) {
+      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), occurrence_join_controls_failure(), wave_unobserved_control_failure(), base_without_line_count_control_failure(base: wave_base_stdout, admit: wave_admit_stdout), wave_other_incompleteness_control_failure(base: wave_base_stdout, admit: wave_admit_stdout), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout)]) {
         Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
           if (base_status != 0) && (base_status != 2) {
