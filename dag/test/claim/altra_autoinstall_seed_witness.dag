@@ -1380,6 +1380,27 @@ test fn a_relocated_credential_moves_the_digest() -> Bool {
   }
 }
 
+// THE PASSWORD STANZA STATES THE POSTURE, IN BOTH DIRECTIONS. The posture is a two-member sum and the token is
+// the ONLY thing a boot log carries about it, so both spellings are pinned: an implementation that rendered the
+// same token for both postures ("always handle") is the failure this module was asked to make unrepresentable —
+// "the operator forgot the credential" and "the operator decided on key-only entry" would be indistinguishable
+// after the fact, when the remedies are opposite. Pinning the spelling rather than only digest-inequality is
+// what makes the collapse go red even if some other token happens to differ.
+test fn the_password_stanza_states_which_posture_was_chosen() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: PasswordUnset, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: unset_seed } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: handle_seed } =>
+          render_altra_autoinstall_seed(seed: unset_seed).contains("password=unset")
+            && !render_altra_autoinstall_seed(seed: unset_seed).contains("password=handle")
+            && !render_altra_autoinstall_seed(seed: handle_seed).contains("password=unset")
+            && render_altra_autoinstall_seed(seed: handle_seed).contains("password=locator=")
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
 // THE MODULE AXIS REACHES THE DIGEST, ON ITS OWN. Two seeds that differ only in which kernel modules they
 // demand are different configurations — one may not be able to see its disk at all — so the digest must move
 // when the module list moves while every package list stays identical. Without this the module axis would be

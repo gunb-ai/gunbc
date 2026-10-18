@@ -1449,13 +1449,13 @@ fn install_driver_list_diagnostic(drivers: List<AltraInstallDriver>) -> NonEmpty
 fn loadable_module_list_diagnostic(modules: List<AltraLoadableModule>) -> NonEmptyStr {
   render_sorted_names(
     names: modules
-      .map(module =>
+      .map(loaded =>
         concat(
           concat(
-            concat("mod:", altra_loadable_module(driver: module)),
-            concat("=", loadable_module_kconfig_symbol(driver: module)),
+            concat("mod:", altra_loadable_module(driver: loaded)),
+            concat("=", loadable_module_kconfig_symbol(driver: loaded)),
           ),
-          concat("@", loadable_module_kconfig_path(driver: module)),
+          concat("@", loadable_module_kconfig_path(driver: loaded)),
         ) as String),
   )
 }
