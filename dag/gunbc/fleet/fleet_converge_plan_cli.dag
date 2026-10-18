@@ -17,6 +17,15 @@ import gunbc.workspace_commissioning_directive { workspace_commissioning_directi
 import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_text }
 import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied }
 import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.sudo.nopasswd_execute_probe_check_op
+import gunbc.fleet.fleet_host_grant_coverage {
+  HostGrantObservation,
+  GrantListingRead,
+  GrantListingUnread,
+  InstalledSudoersText,
+  InstalledSudoersUnreadable,
+  host_grant_installed_sudoers_path,
+}
 import std.types { CommitSha }
 
 
@@ -440,6 +449,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                   let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
                   let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
                   let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
+                  let observed_host_grants = observe_host_grants_wet()
                   FleetConvergeRequestObserved {
                     request: FullHostConverge {
                       host: host,
@@ -450,6 +460,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
                       observed_unit_standings: observed_unit_standings,
                       observed_retirement: observed_retirement,
+                      observed_host_grants: observed_host_grants,
                     },
                   }
                 }
@@ -458,6 +469,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                   let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
                   let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
                   let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
+                  let observed_host_grants = observe_host_grants_wet()
                   FleetConvergeRequestObserved {
                     request: FullHostConverge {
                       host: host,
@@ -468,6 +480,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
                       observed_unit_standings: observed_unit_standings,
                       observed_retirement: observed_retirement,
+                      observed_host_grants: observed_host_grants,
                     },
                   }
                 }
@@ -549,6 +562,29 @@ fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
             },
           }
       }
+  }
+}
+
+// THE HOST-GRANT HALF OF THE OBSERVATION TRANSACTION. `sudo -n -l` lists, it never runs a granted
+// command; a non-zero exit is an UNREAD listing (never an empty one, which would read as every rule
+// missing -- or, worse, an unread file as every rule covered). The installed drop-in is read
+// separately: it is normally root:root 0440, so an unreadable file is its own typed outcome and
+// the classifier never infers "rendered" from "listed plus unreadable".
+fn observe_host_grants_wet() -> HostGrantObservation
+{
+  let listing = sudo.NopasswdGrantList.Read()
+  let installed = Filesystem.Read(path: host_grant_installed_sudoers_path)
+  HostGrantObservation {
+    listing: if listing.success {
+      GrantListingRead { text: listing.stdout }
+    } else {
+      GrantListingUnread { cause: join(["sudo -n -l failed: ", trim(s: listing.stderr)], "") as NonEmptyStr }
+    },
+    installed: if installed.success {
+      InstalledSudoersText { text: installed.content }
+    } else {
+      InstalledSudoersUnreadable { cause: join(["read of ", host_grant_installed_sudoers_path as String, " failed"], "") as NonEmptyStr }
+    },
   }
 }
 
