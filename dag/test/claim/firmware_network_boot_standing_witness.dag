@@ -79,7 +79,10 @@ import gunbc.firmware_network_boot_standing {
   RedfishOneShotOverride,
   BootEntry,
   boot_entry,
-  has_network_entry,
+  network_entries_in,
+  NetworkEntryStanding,
+  NoNetworkEntry,
+  NetworkEntriesPresent,
   firmware_network_boot_probe_frontier,
   firmware_network_boot_standing_consumer_frontier,
   firmware_network_boot_probe_producer_ref,
@@ -93,7 +96,7 @@ import gunbc.firmware_network_boot_standing {
   authority_of,
   route_prose,
   route_is_admissible_for,
-  procedure_requires_existing_option,
+  procedure_demands_existing_option,
   route_requires,
   ProcedureRequires,
   RequiresExistingBootOption,
@@ -205,14 +208,51 @@ fn with_bios(bios_version: BiosVersionObservation) -> FirmwareBootObservation {
 
 test fn the_happy_unit_is_ready_and_carries_every_ready_field() -> Bool {
   match standing_of(observation: good_observation()) {
-    Ready { firmware_mode: mode, network_interface: nic, evidence: ev } =>
-      match mode {
-        UefiPxe { tftp_root: _ } =>
-          nic == "eth0"
-            && match ev.observation.bios_version {
-                 BiosVersionObserved { version: v } => v == "1.08"
-                 _ => false
-               }
+    Ready { firmware_mode: mode, network_interface: nic, boot_target: target, evidence: ev } =>
+      // THE HEAD, NOT JUST 'SOMETHING NETWORK' (review 81853). The fixture's boot order is
+      // [PXE stack, NVMe0], so the target the verdict names must be the PXE entry -- the kind the
+      // classifier produced for the entry the unit will actually boot. A fold that collapsed the
+      // classification to a Bool could not produce this assertion at all.
+      match target {
+        BootTargetPxe =>
+          match mode {
+            UefiPxe { tftp_root: _ } =>
+              nic == "eth0"
+                && match ev.observation.bios_version {
+                     BiosVersionObserved { version: v } => v == "1.08"
+                     _ => false
+                   }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE ORDER IS THE ANSWER. Two units, same two network options, opposite boot order: the verdicts
+// must name DIFFERENT targets. If the classifier returned a set, or the fold picked the option list's
+// first entry rather than the boot order's, both units report the same target and this fails -- and
+// the operator is told the wrong thing will boot.
+test fn the_ready_names_the_boot_order_head_not_the_first_option() -> Bool {
+  let http_first = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [http_option(), pxe_stack()] },
+    boot_options: BootOptionsObserved { options: [pxe_stack(), http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  let pxe_first = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [pxe_stack(), http_option()] },
+    boot_options: BootOptionsObserved { options: [pxe_stack(), http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  match standing_of(observation: http_first) {
+    Ready { firmware_mode: _, network_interface: _, boot_target: BootTargetUefiHttp, evidence: _ } =>
+      match standing_of(observation: pxe_first) {
+        Ready { firmware_mode: _, network_interface: _, boot_target: BootTargetPxe, evidence: _ } => true
         _ => false
       }
     _ => false
@@ -365,7 +405,7 @@ test fn the_readiness_fn_is_total_over_a_mixed_observation_matrix() -> Bool {
 
 fn is_standing(standing: FirmwareNetworkBootStanding) -> Bool {
   match standing {
-    Ready { firmware_mode: _, network_interface: _, evidence: _ } => true
+    Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => true
     NeedsPreparation { route: _, blocking: _ } => true
     Unobserved { unanswered: _ } => true
     Refused { cause: _, gaps: _ } => true
@@ -414,6 +454,15 @@ fn route_matches_the_catalog_row(
   }
 }
 
+// COMPARES WHAT THE EXECUTOR READS, NEVER THE CITATION. The fold is handed the catalog row's
+// authority and has no business rewriting it, so comparing citations would test the copy rather than
+// the decision -- which is why the fallback used to be whole-value equality and silently failed for
+// every arm not spelled out above it: whole-value equality includes `authority`, and the row's
+// citation is the module's while the test builds its route with the witness's.
+//
+// ALL EIGHT ARMS ARE NAMED (no `_ =>`, per the rule this module applies to itself): a new arm or a
+// renamed executor field is a compile error here instead of a comparison that quietly returns false
+// and points the reader at the fold.
 fn field_pairs_agree(route_a: FirmwareNetworkBootPreparationRoute, route_b: FirmwareNetworkBootPreparationRoute) -> Bool {
   match route_a {
     EnableNetworkStack { service_root: sa, attribute: aa, authority: _ } =>
@@ -421,12 +470,41 @@ fn field_pairs_agree(route_a: FirmwareNetworkBootPreparationRoute, route_b: Firm
         EnableNetworkStack { service_root: sb, attribute: ab, authority: _ } => sa == sb && aa == ab
         _ => false
       }
+    PointUefiBootNext { service_root: sa, boot_option: ba, authority: _ } =>
+      match route_b {
+        PointUefiBootNext { service_root: sb, boot_option: bb, authority: _ } => sa == sb && ba == bb
+        _ => false
+      }
+    RedfishOneShotOverride { service_root: sa, authority: _ } =>
+      match route_b {
+        RedfishOneShotOverride { service_root: sb, authority: _ } => sa == sb
+        _ => false
+      }
+    IpmiOneShotOverride { channel: ca, authority: _ } =>
+      match route_b {
+        IpmiOneShotOverride { channel: cb, authority: _ } => ca == cb
+        _ => false
+      }
+    SelectNicBoot { service_root: sa, attribute: aa, authority: _ } =>
+      match route_b {
+        SelectNicBoot { service_root: sb, attribute: ab, authority: _ } => sa == sb && aa == ab
+        _ => false
+      }
     SetSecureBootAttribute { service_root: sa, attribute: aa, authority: _ } =>
       match route_b {
         SetSecureBootAttribute { service_root: sb, attribute: ab, authority: _ } => sa == sb && aa == ab
         _ => false
       }
-    _ => route_a == route_b
+    UefiShellOverSol { sol_channel: ca, shell_script: xa, authority: _ } =>
+      match route_b {
+        UefiShellOverSol { sol_channel: cb, shell_script: xb, authority: _ } => ca == cb && xa == xb
+        _ => false
+      }
+    HumanConsole { instruction: ia, authority: _ } =>
+      match route_b {
+        HumanConsole { instruction: ib, authority: _ } => ia == ib
+        _ => false
+      }
   }
 }
 
@@ -581,7 +659,7 @@ test fn ready_evidence_preserves_the_observation_it_was_computed_from() -> Bool 
     observed_at: witness_epoch,
     boot_mode: UefiHttpBoot,
   ) {
-    Ready { firmware_mode: UefiHttpBoot, network_interface: _, evidence: ev } =>
+    Ready { firmware_mode: UefiHttpBoot, network_interface: _, boot_target: _, evidence: ev } =>
       ev.observed_at == witness_epoch
         && match ev.observation.bios_version {
              BiosVersionObserved { version: v } => v == "1.08"
@@ -604,14 +682,14 @@ test fn the_seam_carries_the_edge_mode_it_was_given_and_adds_none_of_its_own() -
     observed_at: witness_epoch,
     boot_mode: UefiHttpBoot,
   ) {
-    Ready { firmware_mode: UefiHttpBoot, network_interface: _, evidence: _ } =>
+    Ready { firmware_mode: UefiHttpBoot, network_interface: _, boot_target: _, evidence: _ } =>
       match firmware_network_boot_standing(
         observation: good_observation(),
         authority: witness_authority,
         observed_at: witness_epoch,
         boot_mode: UefiPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") },
       ) {
-        Ready { firmware_mode: UefiPxe { tftp_root: _ }, network_interface: _, evidence: _ } => true
+        Ready { firmware_mode: UefiPxe { tftp_root: _ }, network_interface: _, boot_target: _, evidence: _ } => true
         _ => false
       }
     _ => false
@@ -638,7 +716,7 @@ test fn a_legacy_bios_unit_is_refused_because_the_edge_cannot_serve_it() -> Bool
 // never said.
 test fn the_ready_names_the_firmware_spelled_interface_verbatim() -> Bool {
   match standing_of(observation: with_nics(nics: NicsObserved { nics: ["NIC-Port-1"] })) {
-    Ready { firmware_mode: _, network_interface: nic, evidence: _ } => nic == "NIC-Port-1"
+    Ready { firmware_mode: _, network_interface: nic, boot_target: _, evidence: _ } => nic == "NIC-Port-1"
     _ => false
   }
 }
@@ -909,8 +987,16 @@ test fn an_absent_option_gets_the_authoring_route_and_never_a_redirect() -> Bool
 test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guessed() -> Bool {
   match standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [disk("NVMe0"), disk("NVMe1")] })) {
     Refused { cause: BootOrderNamesUnenumeratedNetworkOption { why: _ }, gaps: _ } => true
+    // EVERY OTHER REFUSAL NAMED, so a wrong cause cannot satisfy this test. A `_ => false` here
+    // would pass on Refused { cause: NoSuchUnit } -- which is a refusal, so the test would report
+    // 'the conflict is named' while the seam named something else entirely.
+    Refused { cause: TransportRefusedVendorCommand { refusal: _ }, gaps: _ } => false
+    Refused { cause: FirmwareModeUnsupportedByEdge { why: _ }, gaps: _ } => false
+    Refused { cause: RefusedByOperatorPolicy { policy: _ }, gaps: _ } => false
+    Refused { cause: NoNetworkInterfacePresent { why: _ }, gaps: _ } => false
+    Refused { cause: NoRouteOwnsThisBlocking { why: _ }, gaps: _ } => false
     NeedsPreparation { route: _, blocking: _ } => false
-    Ready { firmware_mode: _, network_interface: _, evidence: _ } => false
+    Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
     Unobserved { unanswered: _ } => false
   }
     // ...and the empty-list neighbour must stay a preparation, which is the guard that keeps this
@@ -942,8 +1028,20 @@ test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
   ]
   let honestly_network_label: BootEntry = boot_entry(kind: BootTargetPxe, label: "ALTRAD8UD-1L2T")
   length(xs: misleadingly_network_labels) == 6
-    && !has_network_entry(entries: misleadingly_network_labels)
-    && has_network_entry(entries: [honestly_network_label])
+    // THE ARMS, NOT A BOOL (review 81853). The classifier's answer is matched, and the count is
+    // asserted too: a NoNetworkEntry that did not know how many it examined could not tell a
+    // conflict from an unconfigured board, which is the branch `decide` depends on.
+    && match network_entries_in(entries: misleadingly_network_labels) {
+         NoNetworkEntry { examined_count: examined } => examined == 6
+         NetworkEntriesPresent { head: _, additional_count: _ } => false
+       }
+    && match network_entries_in(entries: [honestly_network_label]) {
+         // THE HEAD, IN THE ARM (review 81893): there is no `|> first` left to fail, which is the
+         // point -- the classifier walked to the head and is obliged to hand it over.
+         NetworkEntriesPresent { head: BootTargetPxe, additional_count: extra } => extra == 0
+         NetworkEntriesPresent { head: _, additional_count: _ } => false
+         NoNetworkEntry { examined_count: _ } => false
+       }
     && match redfish_boot_target_network_standing(t: BootTargetUefiHttp) {
          NetworkBootTarget { via: _ } => true
          NotNetworkBootTarget { why: _ } => false
@@ -979,11 +1077,27 @@ test fn an_all_disk_boot_order_with_network_shaped_labels_is_not_ready() -> Bool
   ) {
     NeedsPreparation { route: r, blocking: b } =>
       is_a_fleet_route(route: r)
+        // THE BLOCKER THIS UNIT IS REALLY UNDER. Its BootOptions DOES list an HTTP option, and its
+        // BootOrder names none of them -- so this is 'exists, not selected' (a redirect), not
+        // 'absent' (the authoring write). An earlier version of this test asserted Absent, which was
+        // the OLD fold's answer: it tested BootOrder first and called a miss 'no network stack',
+        // sending a one-boot redirect case to a persistent BIOS write. The label-independence claim
+        // this test exists to make does not depend on which blocker is named -- a false Ready still
+        // fails it either way -- so the honest expectation wins over the convenient one.
         && match b {
-             NetworkBootOptionAbsent => true
+             NetworkBootOptionNotSelected =>
+               match r {
+                 PointUefiBootNext { service_root: _, boot_option: _, authority: _ } => true
+                 RedfishOneShotOverride { service_root: _, authority: _ } => true
+                 IpmiOneShotOverride { channel: _, authority: _ } => true
+                 // The persistent authoring route reaching this unit is the defect this whole split
+                 // exists to stop, so naming it here turns 'wrong remedy' into a failure rather than a
+                 // pass with a different plan attached.
+                 _ => false
+               }
              _ => false
            }
-    Ready { firmware_mode: _, network_interface: _, evidence: _ } => false
+    Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
     _ => false
   }
 }
@@ -1187,11 +1301,26 @@ fn procedure_asks(
   ) > 0
 }
 
+// MATCHES THE ARM, NOT A FABRICATED VALUE. `procedure_asks` compares by ==, which is right for the
+// payload-free arms and WRONG for RequiresOperatorConsent: a record union with a `reason` field is
+// only equal to itself, so comparing against a made-up reason returned false for every route and the
+// consent claim was being carried by nothing. Matching the arm shape is the only correct question --
+// 'does this procedure demand consent', not 'does it demand consent for exactly this wording'.
 fn demands_consent(route: FirmwareNetworkBootPreparationRoute) -> Bool {
-  procedure_asks(
-    route: route,
-    requirement: RequiresOperatorConsent { reason: "anything" },
-  )
+  length(
+    xs: filter(
+      route_requires(route: route),
+      requirement =>
+        match requirement {
+          RequiresOperatorConsent { reason: _ } => true
+          RequiresPersistentChange => false
+          RequiresOneShotOnly => false
+          RequiresReset => false
+          RequiresReadbackOf { property: _ } => false
+          RequiresExistingBootOption => false
+        },
+    ),
+  ) > 0
 }
 
 // THE ADMISSIBILITY GATE IS NOT DECORATION: it is the reason the split cannot be undone quietly.
@@ -1206,15 +1335,15 @@ test fn a_redirect_is_never_admissible_for_the_blocker_that_means_no_option_exis
   // THE CLAUSE ITSELF, PINNED ON ITS OWN INPUTS, so the gate is not being carried by the blocker_of
   // equality alone: a redirect really does declare the precondition and the authoring route really
   // does not. Invert either answer and the fold's own outputs below go red.
-  procedure_requires_existing_option(route: redirect)
-    && !procedure_requires_existing_option(route: authoring)
+  procedure_demands_existing_option(route: redirect)
+    && !procedure_demands_existing_option(route: authoring)
     // Nothing in the catalog may be admissible for the absent blocker while declaring that it needs
     // an option to exist -- the implication a mis-keyed row would violate.
     && for_all(
       xs: firmware_network_boot_preparation_routes,
       predicate: route =>
         !route_is_admissible_for(route: route, blocker: NetworkBootOptionAbsent)
-          || !procedure_requires_existing_option(route: route),
+          || !procedure_demands_existing_option(route: route),
     )
     // The gate agrees with the catalog in both directions, per blocker.
     && !route_is_admissible_for(route: redirect, blocker: NetworkBootOptionAbsent)
@@ -1277,9 +1406,44 @@ test fn a_frontier_fires_only_for_the_declaration_it_names() -> Bool {
     && frontier_status(condition: firmware_network_boot_probe_frontier, present_decls: lookalike_present) == DissolutionPending
     && frontier_status(
          condition: firmware_network_boot_standing_consumer_frontier,
-         present_decls: [ firmware_network_boot_standing_consumer_ref() ],
+         // THE LITERAL AGAIN, NOT THE MODULE FN (review 81884). Handing the frontier its own ref
+         // back would let it be satisfied by ANY name -- including the one this frontier used to
+         // carry, a real declaration in a module that never reads this standing. Pinning the
+         // expected spelling here means a drift to a name no branch owns goes red, and the
+         // lookalike arm below proves a name in the right module is not enough.
+         present_decls: [
+           decl_ref(
+             module_path: "gunbc.provisioning.network_boot_actuation",
+             decl_name: "network_boot_arm_actuator_steps",
+           ),
+         ],
        )
        == DissolutionFired
+    // THE MODULE AND THE EXPECTATION MUST AGREE, AND THE EXPECTATION IS THE AUTHORITY. A module fn
+    // checked only against itself is self-consistent, never correct -- that is how the old
+    // provisioning_arm_derive ref passed every test while naming a non-consumer.
+    declaration_ref_eq(
+      a: firmware_network_boot_standing_consumer_ref(),
+      b: decl_ref(
+        module_path: "gunbc.provisioning.network_boot_actuation",
+        decl_name: "network_boot_arm_actuator_steps",
+      ),
+    )
+    // A REAL DECLARATION THAT DOES NOT CONSUME THIS STANDING MUST NOT DISCHARGE IT. This is the
+    // exact defect review 81884 found: the old ref named provisioning_arm_derive, which exists on
+    // #14284 and takes (strategy, evidence, attempt) -- never a FirmwareNetworkBootStanding. If a
+    // future edit retargets the frontier to it, or to any other real-but-non-consuming name, the
+    // frontier would report Fired and stop anyone asking whether anything executes the seam.
+    && frontier_status(
+         condition: firmware_network_boot_standing_consumer_frontier,
+         present_decls: [
+           decl_ref(
+             module_path: "gunbc.provisioning.provisioning_arm",
+             decl_name: "provisioning_arm_derive",
+           ),
+         ],
+       )
+       == DissolutionPending
 }
 
 // THE INHABITATION CLAIM IS HONEST ABOUT ITS OWN STATUS. Right now no real producer has ever emitted
