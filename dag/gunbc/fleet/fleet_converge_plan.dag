@@ -30,7 +30,7 @@ import gunbc.workspace_allocation_store { WorkspaceReleased }
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.measure { byte_size_count }
-import std.algebra { trim, contains, skip }
+import std.algebra { trim, contains, skip, list_head }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_key }
@@ -791,7 +791,7 @@ type PlannedBaselineRows
   | PlannedBaselineRowsUnavailable { cause: String }
 
 fn fleet_converge_planned_section_rows(plan_body: String, section: String) -> PlannedBaselineRows {
-  match skip(xs: split(s: plan_body, delimiter: concat("\n", section, ":\n")), n: 1).first() {
+  match list_head(xs: skip(xs: split(s: plan_body, delimiter: concat("\n", section, ":\n")), n: 1)) {
     Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt carries no ", section, ": section") }
     Present { value: tail } => {
       let parts = split(s: tail, delimiter: concat("\n", fleet_converge_plan_section_end_marker(section: section)))
@@ -800,7 +800,7 @@ fn fleet_converge_planned_section_rows(plan_body: String, section: String) -> Pl
           cause: concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)"),
         }
       } else {
-        match parts.first() {
+        match list_head(xs: parts) {
           Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
           Present { value: block } => PlannedBaselineRowsRead { rows: split(s: block, delimiter: "\n") }
         }
@@ -846,15 +846,15 @@ fn fleet_converge_member_set_drift_text(plan_body: String, observed: FleetConver
 // including a unit that appears or vanishes, refuses naming the unit and both standings. The empty
 // string is "admitted"; any text is the located refusal.
 fn retirement_row_unit(row: String) -> String {
-  match split(s: row, delimiter: "=").first() { Absent => row  Present { value: u } => u }
+  match list_head(xs: split(s: row, delimiter: "=")) { Absent => row  Present { value: u } => u }
 }
 
 fn retirement_row_standing(row: String) -> String {
-  match skip(xs: split(s: row, delimiter: "="), n: 1).first() { Absent => ""  Present { value: t } => t }
+  match list_head(xs: skip(xs: split(s: row, delimiter: "="), n: 1)) { Absent => ""  Present { value: t } => t }
 }
 
 fn retirement_row_for_unit(rows: List<String>, unit: String) -> String? {
-  filter(rows, r => retirement_row_unit(row: r) == unit).first()
+  list_head(xs: filter(rows, r => retirement_row_unit(row: r) == unit))
 }
 
 fn retirement_unit_planned(rows: List<String>, unit: String) -> Bool {
