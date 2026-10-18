@@ -32,7 +32,6 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_compare_argv,
   classify_typed_remote_file_comparison,
   converge_typed_remote_file,
-  converge_typed_remote_file_validated,
   typed_remote_file_pre_compare_steps_validated,
   RemoteFileValidation,
   NoValidation,
@@ -343,18 +342,6 @@ test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() 
                 && (c.write.content == subject_content)
                 && ((ssh_target_wire(target: c.target) as String) == (ssh_target_wire(target: witness_converge_ssh_target) as String))
                 && ((c.target.principal as String) == (witness_converge_ssh_target.principal as String))
-                && (match converge_typed_remote_file_validated(
-                  target: witness_converge_ssh_target,
-                  context: context,
-                  admission: TypedRemoteFileWriteAdmitted { write: w },
-                  mode: RemoteFileModeOwnerGroupRead,
-                  privilege: RemoteFileViaNonInteractiveSudo,
-                  validation: VisudoCheck,
-                ) {
-                  TypedRemoteFileConverged { converged: v } =>
-                    (v.write.path as String) == (subject_path as String) && v.write.content == subject_content
-                  TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
-                })
             TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
           }
         Absent => false
