@@ -10,7 +10,7 @@
 module test.claim.live_deploy.live_deploy_retract_run_witness
 
 import std.types { Bool, String, Int }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, non_empty_singleton }
 import std.types { NonEmptyStr, List }
 import std.realization_reconcile { Reconciliation }
 import std.optional { Optional, Present, Absent }
@@ -49,7 +49,7 @@ import gunbc.host.host_effect_realize {
 import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import gunbc.membership_reconcile { ApplyRefused, EffectsReady, MemberRefusal, MemberNotOwned }
-import gunbc.live_deploy.retract_legs { DeployRetractLeg, deploy_retract_plan_legs, deploy_retract_membership_plan, RetractPlanReady, RetractPlanRefused }
+import gunbc.live_deploy.retract_legs { RetractRemoveForce, RetractRemoveEmptyDirectory, RetractRemoveRecursive, DeployRetractLeg, deploy_retract_plan_legs, deploy_retract_membership_plan, RetractPlanReady, RetractPlanRefused }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.spec { DeploymentStep }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
@@ -296,4 +296,26 @@ test fn a_mid_run_refusal_through_the_orchestration_is_not_converged() -> Bool {
     NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "refused at step")
     Converged { evidence: _, applied: _ } => false
   }
+}
+
+// EACH REMOVE LEG KIND REACHES THE C2 REMOVAL PORT. A leg run alone against a removal that refuses must
+// stop the run at that leg with the removal's own reason; a dispatch arm that skips the removal (or
+// answers for it) reports RetractRunOk and fails these.
+fn a_refused_removal_stops_a_run_of(leg: DeployRetractLeg) -> Bool {
+  match live_deploy_retract_run_legs(legs: [leg], ports: ports_remove_refuses()) {
+    RetractRunFailed { step: _, reason: r, legs_run: n } => n == 0 && string_contains(s: r, pattern: "host_remove: refused")
+    RetractRunOk { legs_run: _ } => false
+  }
+}
+
+test fn remove_force_reaches_the_c2_removal() -> Bool {
+  a_refused_removal_stops_a_run_of(leg: RetractRemoveForce { paths: non_empty_singleton(item: "/etc/gunbc-a" as NonEmptyStr) })
+}
+
+test fn remove_empty_directory_reaches_the_c2_removal() -> Bool {
+  a_refused_removal_stops_a_run_of(leg: RetractRemoveEmptyDirectory { path: "/var/lib/gunbc-a" as NonEmptyStr })
+}
+
+test fn remove_recursive_reaches_the_c2_removal() -> Bool {
+  a_refused_removal_stops_a_run_of(leg: RetractRemoveRecursive { path: "/var/lib/gunbc-b" as NonEmptyStr })
 }
