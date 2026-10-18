@@ -13,10 +13,9 @@ import gunbc.emit_state_threading_specimen { spec_build, spec_walk_tokens }
 // NativeEffectRealizationAdmission). `gunbc test //gunbc/instruments:native-allocation-observation`
 // emits this closure, builds it and runs it in one process; nothing is interpreted.
 //
-// THIS READING IS BLIND TO COPY WIDTH: it counts allocator operations and bytes requested, so a repair that
-// trades an allocation for a wider by-value copy lowers both counts while raising the cost of every
-// container slot that holds the record. That was measured, not hypothesized: gunbc.recurring_failure_mode
-// by_value_record_widens_container_slots.
+// F lowered this specimen's allocation readings while a separate runtime comparison regressed on
+// container-held records. Allocation counts do not measure copy work or establish a runtime win
+// (gunbc.recurring_failure_mode by_value_record_widens_container_slots).
 //
 // FOUR ANSWERS, NOT ONE VERDICT, because a bound that reds when the repair succeeds punishes the repair:
 //   AVAILABILITY  the selecting main registered the counting allocator before any read
