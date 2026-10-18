@@ -17394,7 +17394,7 @@ pub fn record_lit_union_name_is_not_an_arm(
     type_name: String,
     scope: Rc<InferScope>,
 ) -> Option<Rc<Node>> {
-    if has_child_named(
+    if crate::v1_std_core::has_child_named(
         decl.clone(),
         type_name.clone(),
         scope.type_env.clone().source_indices.clone(),
@@ -17414,21 +17414,16 @@ pub fn record_lit_name_declares_union(
         type_name.clone(),
     ) {
         std::option::Option::None => std::option::Option::None,
-        Some(binding) => {
-            let decl = binding.resolved.clone();
-            if (decl.connective.clone() == Connective::Disj) {
-                record_lit_union_name_is_not_an_arm(
-                    decl.clone(),
-                    type_name.clone(),
-                    scope.clone(),
-                )
-            } else {
-                record_lit_expansion_declares_union(decl.clone(), scope.clone())
-            }
-        }
+        Some(binding) => match binding.resolved.clone().connective.clone() {
+            Connective::Disj => record_lit_union_name_is_not_an_arm(
+                binding.resolved.clone(),
+                type_name.clone(),
+                scope.clone(),
+            ),
+            _ => record_lit_expansion_declares_union(binding.resolved.clone(), scope.clone()),
+        },
     }
 }
-
 
 pub fn record_lit_expansion_declares_union(
     decl: Rc<Node>,
