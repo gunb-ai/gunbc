@@ -7,18 +7,20 @@ import std.optional { Optional, Present, Absent }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable }
 import v2.compiler.parse { PreparedGrammar }
 import v2.compiler.tokenize { PreparedLexRules }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.workflow.roster_import_sweep {
   RosterApplied,
   RosterApplyRefused,
   RosterApplyWritten,
   RosterClean,
   RosterEdit,
+  OneHome,
   RosterLabelEdit,
   RosterLabelEdits,
   RosterOutcome,
   RosterRefused,
   roster_applied,
-  roster_sweep_text_home
+  roster_sweep_text_scoped
 }
 
 // THE VERIFIED OCCURRENCE JOIN, one path for a module's complete rows and its partial rows. The census prints, per
@@ -29,7 +31,7 @@ import v2.workflow.roster_import_sweep {
 //   binding_unbound <module> <spelling> <line>:<col>                               an occurrence it refused as unbound
 //
 // THE CORRESPONDENCE IS THE GENERATOR'S OWN EDIT MAP, NOT A GUESS (tidy-ant-251's ruling on PR #14324). A wave's edits
-// are those of the roster sweep (v2.workflow.roster_import_sweep roster_sweep_text_home): an import inserted and an
+// are those of the roster sweep (v2.workflow.roster_import_sweep roster_sweep_text_scoped): an import inserted and an
 // argument label renamed. The join RECOMPUTES them from the module's base text with that pure planning function, applies
 // them with the generator's own splice (roster_applied), and requires the result to be BYTE-EQUAL to the head text. A head
 // that differs by any other byte is not this wave's rewrite and REFUSES (EditsNotGenerated); a text that cannot be read, or
@@ -142,7 +144,7 @@ fn proof_round(state: ProofState, path: String, prepared: PreparedGrammar, lex: 
   if state.done || (state.stuck != "") {
     state
   } else {
-    let outcome = roster_sweep_text_home(path: path, text: state.text, prepared: prepared, lex: lex, home: home)
+    let outcome = roster_sweep_text_scoped(path: path, text: state.text, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: home) })
     match outcome {
       RosterClean => ProofState { text: state.text, rounds: state.rounds, done: true, stuck: "" }
       RosterRefused { reason: _ } => ProofState { text: state.text, rounds: state.rounds, done: false, stuck: "the sweep generator refused the module" }
