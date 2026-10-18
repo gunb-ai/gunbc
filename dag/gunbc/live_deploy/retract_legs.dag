@@ -5,7 +5,7 @@ import std.optional { Absent, Optional, Present }
 import std.algebra { Cons, Empty, FreeSemigroup, list_append, non_empty_append, non_empty_singleton }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, ScopedRemovalSupported, ScopedRemovalUnsupported, ScopedRemovalUnobserved }
 import extdeps.version.semver { semver_version_label }
-import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove, EffectsReady, ApplyRefused, membership_effects }
+import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove, EffectsReady, ApplyRefused, EffectsOrRefusal, membership_effects }
 import gunbc.owned_directory { owned_directory_path, owned_directory_member }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
 import gunbc.live_deploy.lab_host_plan { LabPlanReady, LabPlanRefused, lab_plan_refusal_reason }
@@ -229,9 +229,21 @@ fn deploy_retract_effects_plan(effects: List<MemberEffect<DeploymentStep>>, spec
   }
 }
 
-// THE RETRACT PLAN, in the order the script ran: lab plan, then the tailscale client capability, then the
-// wholesale membership refusal, then each effect's legs in retract order. Every arm the script answered
-// with a poison line answers a RetractPlanRefused naming its step.
+// The membership fold's verdict as a plan: any member teardown-refusal refuses the WHOLE retract.
+fn deploy_retract_membership_plan(membership: EffectsOrRefusal<DeploymentStep>, spec: DeploymentSpec) -> DeployRetractPlan {
+  match membership {
+    ApplyRefused { refusals: rs } =>
+      RetractPlanRefused {
+        step: "wholesale",
+        reason: join(["live-deploy retract refused WHOLESALE: the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown); the entire fold is refused rather than partially applied. refused-member-count=", to_string(count(rs))], ""),
+      }
+    EffectsReady { effects: es } => deploy_retract_effects_plan(effects: es, spec: spec, legs: [])
+  }
+}
+
+// THE RETRACT PLAN: lab plan, then the tailscale client capability, then the wholesale membership
+// refusal, then each effect's legs in retract order. Every refusal answers a RetractPlanRefused naming
+// its step.
 fn deploy_retract_plan_legs(spec: DeploymentSpec) -> DeployRetractPlan {
   match spec.target.lab_plan {
     LabPlanRefused { cause: c } =>
@@ -252,14 +264,7 @@ fn deploy_retract_plan_legs(spec: DeploymentSpec) -> DeployRetractPlan {
             reason: join(["live-deploy retract refused: this target's tailscale client version is UNOBSERVED (", r, "), so whether scoped `serve <flags> off` exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)"], ""),
           }
         ScopedRemovalSupported { observed: _ } =>
-          match membership_effects(plan: deployment_retract_plan(spec: spec)) {
-            ApplyRefused { refusals: rs } =>
-              RetractPlanRefused {
-                step: "wholesale",
-                reason: join(["live-deploy retract refused WHOLESALE: the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown); the entire fold is refused rather than partially applied. refused-member-count=", to_string(count(rs))], ""),
-              }
-            EffectsReady { effects: es } => deploy_retract_effects_plan(effects: es, spec: spec, legs: [])
-          }
+          deploy_retract_membership_plan(membership: membership_effects(plan: deployment_retract_plan(spec: spec)), spec: spec)
       }
   }
 }

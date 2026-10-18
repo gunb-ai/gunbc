@@ -10,6 +10,7 @@
 module test.claim.live_deploy.live_deploy_retract_run_witness
 
 import std.types { Bool, String, Int }
+import std.algebra { Cons, Empty }
 import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
 import gunbc.host.host_effect { HostEffectIntent, HostOs, SshShell, LiveDeployRetract, host_effect_identity_evidence }
@@ -35,8 +36,10 @@ import gunbc.host.host_effect_realize {
 }
 import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
-import gunbc.live_deploy.retract_legs { deploy_retract_plan_legs, RetractPlanReady, RetractPlanRefused }
+import gunbc.membership_reconcile { ApplyRefused, EffectsReady, MemberRefusal, MemberNotOwned }
+import gunbc.live_deploy.retract_legs { deploy_retract_plan_legs, deploy_retract_membership_plan, RetractPlanReady, RetractPlanRefused }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec { DeploymentStep }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 
 fn observed(code: Int, err: String) -> RunArgvTransportOutcome {
@@ -157,6 +160,28 @@ test fn the_real_retract_route_refuses_a_remote_locus_typed() -> Bool {
 test fn the_srv1_retract_plan_is_ready_typed_legs() -> Bool {
   match deploy_retract_plan_legs(spec: deployment_spec_srv1()) {
     RetractPlanReady { legs: ls } => count(ls) > 0
+    RetractPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// THE RED for the wholesale arm: one member teardown-refusal refuses the WHOLE retract and names the
+// count; a refusal-free membership proceeds to its (here empty) legs.
+test fn a_member_teardown_refusal_refuses_the_retract_wholesale() -> Bool {
+  let spec = deployment_spec_srv1()
+  match spec.steps {
+    Cons { head: member, tail: _ } =>
+      match deploy_retract_membership_plan(membership: ApplyRefused { refusals: [MemberRefusal { member: member, cause: MemberNotOwned }] }, spec: spec) {
+        RetractPlanRefused { step: s, reason: r } =>
+          s == "wholesale" && string_contains(s: r, pattern: "refused-member-count=1")
+        RetractPlanReady { legs: _ } => false
+      }
+    Empty => false
+  }
+}
+
+test fn a_refusal_free_membership_is_ready() -> Bool {
+  match deploy_retract_membership_plan(membership: EffectsReady { effects: [] }, spec: deployment_spec_srv1()) {
+    RetractPlanReady { legs: ls } => count(ls) == 0
     RetractPlanRefused { step: _, reason: _ } => false
   }
 }
