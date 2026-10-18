@@ -187,6 +187,12 @@ type EnrolmentRefusalWire
   | EnrolmentRefusalAttestationForOtherBytes
   | EnrolmentRefusalAndroidUnrealized
 
+// The closed list of arms, one place, so a fixture or a state machine that must cover every arm
+// iterates this and cannot silently miss a new one.
+fn enrolment_refusal_kinds() -> List<EnrolmentRefusalWire> {
+  [EnrolmentRefusalCodeNotIssued, EnrolmentRefusalCodeAlreadyUsed, EnrolmentRefusalCodeExpired, EnrolmentRefusalStoreUnreadable, EnrolmentRefusalAttestationRefused, EnrolmentRefusalAttestationForOtherBytes, EnrolmentRefusalAndroidUnrealized]
+}
+
 fn enrolment_refusal_wire_label(k: EnrolmentRefusalWire) -> NonEmptyStr {
   match k {
     EnrolmentRefusalCodeNotIssued => "code_not_issued" as NonEmptyStr

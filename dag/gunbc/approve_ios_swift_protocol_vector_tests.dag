@@ -267,6 +267,26 @@ fn at_tests() -> List<SwiftDecl> {
     ]),
     at_test(
       doc: [
+        "One envelope per arm of the enrol route's typed refusal (enrolment_refusal_<label>): the arms the",
+        "vectors cover are exactly the arms the app spells, and each decodes to the arm its name carries, so an",
+        "arm added to the wire without a vector (or renamed) reds here.",
+      ],
+      n: "testEveryEnrolmentRefusalArmDecodes", th: true,
+      b: [
+        sw_let(n: "prefix", e: sw_str(s: "enrolment_refusal_")),
+        sw_let(n: "arms", e: sw_callt(f: sw_mem(b: sw_mem(b: at_load(), m: "envelope"), m: "filter"), a: [], c: sw_cloe(e: sw_call(f: sw_mem(b: sw_path(b: "$0", m: "name"), m: "hasPrefix"), a: [sw_pos(v: sw_id(n: "prefix"))])))),
+        at_assert(n: "XCTAssertEqual", a: [
+          sw_calln(f: "Set", a: [sw_pos(v: sw_callt(f: sw_path(b: "arms", m: "map"), a: [], c: sw_cloe(e: sw_calln(f: "String", a: [sw_pos(v: sw_call(f: sw_mem(b: sw_path(b: "$0", m: "name"), m: "dropFirst"), a: [sw_pos(v: sw_mem(b: sw_id(n: "prefix"), m: "count"))]))]))))]),
+          sw_calln(f: "Set", a: [sw_pos(v: sw_callt(f: sw_mem(b: sw_path(b: "EnrolmentRefusalKind", m: "allCases"), m: "map"), a: [], c: sw_cloe(e: sw_path(b: "$0", m: "rawValue"))))]),
+        ]),
+        sw_for(n: "a", e: sw_id(n: "arms"), s: [
+          sw_let(n: "kind", e: at_decode(decoder: "enrolmentRefusal", e: at_data_utf8(e: sw_path(b: "a", m: "body")))),
+          at_assert(n: "XCTAssertEqual", a: [sw_add(l: sw_id(n: "prefix"), r: sw_path(b: "kind", m: "rawValue")), sw_path(b: "a", m: "name")]),
+        ]),
+      ]
+    ),
+    at_test(
+      doc: [
         "The detail screen's strict read, joined to the store's own rendering: every stored_request",
         "vector (stored_request_json over the witness's input) decodes to exactly that input. No",
         "rendering is typed here.",
