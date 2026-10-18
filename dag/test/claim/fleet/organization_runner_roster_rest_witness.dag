@@ -139,8 +139,8 @@ test fn a_two_page_offset_walk_that_closes_is_observed() -> Bool {
 // total_count DISAGREEMENT ACROSS PAGES IS PARTIAL ON THE REST WALK TOO: same classifier, no copy.
 test fn offset_pages_disagreeing_on_total_count_are_partial_not_observed() -> Bool {
   match rest_report(pages: [
-    wire_page(total: 2, runners: [entry(id: 11, name: "a", status: "online")]),
-    wire_page(total: 3, runners: [entry(id: 12, name: "b", status: "offline")]),
+    wire_page(total: 3, runners: [entry(id: 11, name: "a", status: "online")]),
+    wire_page(total: 2, runners: [entry(id: 12, name: "b", status: "offline")]),
   ]).evidence {
     RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => true
     _ => false
