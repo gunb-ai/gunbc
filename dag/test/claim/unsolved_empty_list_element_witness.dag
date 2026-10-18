@@ -13,9 +13,9 @@ data unsolved_element_source: String = "module test.claim.unsolved_element_probe
 
 data declared_element_source: String = "module test.claim.declared_element_probe\nimport std.types { List, Int }\nimport std.algebra { fold_list }\nimport std.optional { Absent, Present }\ntype UeItem { v: Int }\nfn seed() -> List<UeItem> { [] }\nfn probe(xs: List<UeItem>) -> Int {\n  let kept = fold_list(xs: xs, empty: seed(), cons: fn(acc, m) { acc })\n  match kept |> first {\n    Present { value: e } => e.v\n    Absent => 0\n  }\n}\n"
 
-data lambda_unsolved_source: String = "module test.claim.lambda_unsolved_probe\nimport std.types { List, Int }\nimport std.algebra { fold_list, map }\ntype UeItem { v: Int }\nfn probe(xs: List<UeItem>) -> List<Int> {\n  let kept = fold_list(xs: xs, empty: [], cons: fn(acc, m) { acc })\n  kept |> map(e => e.v)\n}\n"
+data lambda_unsolved_source: String = "module test.claim.lambda_unsolved_probe\nimport std.types { List, Int }\nimport std.algebra { fold_list }\ntype UeItem { v: Int }\nfn probe(xs: List<UeItem>) -> List<Int> {\n  let kept = fold_list(xs: xs, empty: [], cons: fn(acc, m) { acc })\n  kept |> map(e => e.v)\n}\n"
 
-data lambda_declared_source: String = "module test.claim.lambda_declared_probe\nimport std.types { List, Int }\nimport std.algebra { fold_list, map }\ntype UeItem { v: Int }\nfn seed() -> List<UeItem> { [] }\nfn probe(xs: List<UeItem>) -> List<Int> {\n  let kept = fold_list(xs: xs, empty: seed(), cons: fn(acc, m) { acc })\n  kept |> map(e => e.v)\n}\n"
+data lambda_declared_source: String = "module test.claim.lambda_declared_probe\nimport std.types { List, Int }\nimport std.algebra { fold_list }\ntype UeItem { v: Int }\nfn seed() -> List<UeItem> { [] }\nfn probe(xs: List<UeItem>) -> List<Int> {\n  let kept = fold_list(xs: xs, empty: seed(), cons: fn(acc, m) { acc })\n  kept |> map(e => e.v)\n}\n"
 
 // CALLABLE-PATH RED: the lambda parameter keeps the unsolved identity, so `e.v` refuses.
 // Goes red if the ExprLambda arm collapses empty_list_element to callable_param.
