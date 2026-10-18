@@ -335,9 +335,16 @@ fn an_imported_variant_name_is_accepted_under_a_pool_collision() {
         .iter()
         .map(|d| diagnostic_to_message(d.diagnostic.clone()))
         .collect();
-    // Asserted by CLASS, not by emptiness: the two constructions are legal, and the only thing that
-    // may not appear is THIS refusal. A pool-resolved wall would have refused them and named
-    // UnitPropertyValue / UnitPropertyInvisible -- the variants of a union this module never names.
+    // Asserted EMPTY, not by string-absence: these two constructions are legal, so NO gate-blocking
+    // diagnostic may exist. A control that only denies one class is green for any unrelated blocking
+    // refusal; the acceptance it certifies is total acceptance (side-chat ruling on #14258). The two
+    // attribution asserts below still say WHICH refusal must not be the one that appears.
+    assert_eq!(
+        blocking(&r),
+        Vec::<String>::new(),
+        "importing an arm by name must compile clean even when its name is an unrelated union \
+         elsewhere in the pool: {messages:?}"
+    );
     assert!(
         !messages
             .iter()
