@@ -1,127 +1,190 @@
-module test.claim.github_deployment_protection_rule_witness
+module gunbc.test.claim.github_deployment_protection_rule_witness
 
-// Witness for extdeps.github.deployment_protection_rule — the upstream interface a GitHub App uses
-// to answer a custom deployment protection rule, which is the mechanism proposed to replace the
-// operator's GitHub "Review deployments" click with the existing ntfy tap (plan:
-// gunbc.plans.ntfy_deployment_gate_approval).
+// Witness file: the custom deployment protection rule upstream model is load-bearing or it is wrong.
+// The feature this model exists for replaces "the operator clicks Review deployments" with "the
+// operator taps a notification", which means it sits on the path that decides whether srv1 root
+// mutation runs — and, unlike most of extdeps, it is a path where a SILENT failure is possible in both
+// directions: a deployment that never runs, and a deployment that runs when it should not have.
 //
-// WHY THESE REDS AND NOT MORE. The feature's one catastrophic failure is that a deployment into
-// srv1-production — root mutation — proceeds when it should not. Every red here attacks a fact
-// that, if modelled wrong, would let a broker believe it had approval when it had none, or point a
-// review at the wrong target:
-//   1. an invented review state, which now cannot even be named (§5), so the red attacks the wire
-//      boundary that turns a string into a ReviewState;
-//   2. the two review endpoints collapsing into one (App review landing in the human queue);
-//   3. an invented environment protection-rule type (the model would "see" a custom rule where
-//      GitHub reports none, or fail to see the human reviewers that are still standing);
-//   4. a 30-day timeout read as a pass;
-//   5. a review that names the wrong environment, or forgets the environment — now unwritable;
-//   6. an unfiltered webhook action answered with a review;
-//   7. the reviewer App granted an axis upstream never asked for.
-// Each test below has a MUTATED counterpart that must fail: the same fn, fed the wrong upstream
-// fact, returning true. A fn that returns true for everything passes all of these and enforces
-// nothing — which is why the negatives are written first here, not last.
+// So the tests below are not "does the fold return true when everything is fine". Each one is written
+// so that the WRONG model of the upstream returns the wrong answer, and the mutations are concentrated
+// where a wrong answer would not be caught by anything else:
+//   - the review state and the body's required fields, because an invented state or a body without an
+//     environment is a request that releases a deployment nobody approved;
+//   - the two review endpoints and their two success codes, because reading a poll's 200 as an
+//     accepted review reports an approval that never happened;
+//   - what the poll can and cannot say, because its reviewer list is User | Team and CANNOT identify
+//     an App, so an implementation that looked for one there would be permanently closed;
+//   - the timeout's DIRECTION, because a timeout that reads as approval is the failure mode of a gate.
+// The decisions that are ours — which credential we permit, which axes we refuse to grant, what the
+// broker checks against a capability, what must be witnessed before a human reviewer goes away — are
+// modelled and witnessed in gunbc.auth.deployment_gate_authorization, not here. An upstream model that
+// held them would be edited every time our policy changed.
 
-import std.types { String, List, Bool, NonEmptyStr }
+import std.types { String, Int, List, Bool, NonEmptyStr, HttpStatus }
 import std.nat { Nat }
 import std.measure {
-  minute,
+  Second,
   second,
   second_count,
+  minute,
+  Minute,
+  minute_count,
   seconds_per_day,
-  seconds_per_minute,
-  minutes_per_hour,
 }
+import std.optional { Option, Present, none }
+import std.http { HttpMethod, GET, POST }
+import extdeps.external_authority { uri }
 import extdeps.github.deployment_protection_rule {
+  DeploymentProtectionRuleReview,
   ReviewState,
   Approved,
   Rejected,
   review_state_wire,
   review_state_from_wire,
-  DeploymentProtectionRuleReview,
-  review_body_field_names,
-  review_releases_environment,
-  review_matches_capability,
-  review_matches_decision,
   HumanDeploymentReview,
+  EnvironmentProtectionRuleKind,
   RequiredReviewersKind,
   WaitTimerKind,
   BranchPolicyKind,
   environment_protection_rule_kind_wire,
   environment_protection_rule_kind_from_wire,
-  RuleTimeoutOutcome,
-  JobFails,
-  JobApproved,
-  rule_timeout,
+  environment_protection_rule_type_values,
+  custom_rule_response_timeout,
   rule_gate_approval_ceiling,
+  DeploymentProtectionRuleWebhookPayload,
+  RuleWebhookInstallation,
+  rule_webhook_documented_field_names,
+  rule_webhook_absent_fields,
+  rule_webhook_payload_field_is_published,
+  rule_webhook_consumed_fields,
+  rule_webhook_field_environment,
+  rule_webhook_field_installation,
+  rule_webhook_field_deployment_callback_url,
+  rule_webhook_is_an_answerable_request,
+  rule_webhook_action,
+  rule_webhook_event_name,
+  rule_installation_id_payload_field,
+  rule_installation_id_nested_field,
+  rule_installation_id_is_read_from,
+  RuleReviewCallback,
+  rule_review_callback,
+  rule_webhook_selected_route,
+  rule_webhook_route_adds_no_inbound,
+  DeliveryIndependenceStanding,
+  rule_delivery_independence,
+  rule_delivery_is_unproven,
+  PendingDeploymentWait,
+  PendingDeploymentEnvironment,
+  PendingDeploymentReviewer,
+  UserReviewer,
+  TeamReviewer,
+  pending_deployment_reviewer_type_wire,
+  pending_wait_environment_name,
+  pending_wait_carries_a_human_reviewer,
+  pending_deployment_wait_field_names,
+  pending_deployments_field_environment,
+  EnvironmentRuleOwnership,
+  OwnedByGateApp,
+  NotOwnedByGateApp,
+  rule_ownership_is_established,
+  RestCall,
+  review_call,
+  pending_deployments_poll_call,
+  human_review_call,
+  review_endpoint_path,
+  pending_deployments_endpoint_path,
+  human_review_endpoint_path,
+  review_endpoint_method,
+  human_review_endpoint_method,
+  the_two_review_endpoints_are_distinct,
+  review_endpoint_body_state_field,
+  review_endpoint_body_environment_name_field,
+  review_endpoint_body_comment_field,
+  review_endpoint_body_alternatives,
+  pending_deployments_endpoint_method,
+  human_review_endpoint_success_status,
+  ReviewCredential,
   InstallationAccessToken,
   OAuthClassicWithRepoScope,
-  review_credential_is_permitted,
   review_credential_is_documented,
-  PendingDeploymentWait,
-  broker_may_answer,
-  wait_timer_as_seconds,
-  wait_timer_is_in_documented_range,
-  pending_deployment_wait_is_answerable_by_app,
-  rule_webhook_payload_field_is_published,
+  review_accepted_token_type,
+  review_oauth_classic_scope,
+  rule_app_permissions,
+  review_permission_is_satisfied,
+  review_required_permission,
+  review_body_is_complete,
+  review_body_carries_a_decision,
+  review_body_binds_an_environment,
+  review_documented_example_body,
+  review_documented_example_is_complete,
+  review_body_field_names,
+  review_decision,
+  ReviewApiVersionHeader,
+  review_documented_api_version_header,
+  review_api_version_header_is_pinned,
   review_call_succeeded,
   the_two_success_statuses_are_not_the_same,
   the_three_calls_are_distinguishable,
-  review_permission_is_satisfied,
-  environment_protection_types_are_read_from,
-  rule_timeout_fails_the_job,
-  rule_webhook_published_fields,
-  review_documented_example_body,
-  review_documented_example_is_complete,
-  review_documented_example_releases_a_different_environment,
-  review_documented_api_version_header,
-  review_api_version_header_is_pinned,
-  ReviewApiVersionHeader,
-  the_two_review_endpoints_are_distinct,
-  rule_webhook_is_an_answerable_request,
-  rule_timeout_is_a_refusal,
-  rule_app_permission_is_admissible,
-  rule_app_permission_set_is_admissible,
-  rule_app_permission_set_is_complete,
-  review_endpoint_path,
-  human_review_endpoint_path,
-  pending_deployments_endpoint_path,
-  review_endpoint_success_status,
-  review_endpoint_body_environment_name_field,
-  review_endpoint_body_state_field,
-  review_endpoint_body_comment_field,
-  review_endpoint_body_alternatives,
-  environment_protection_rule_type_values,
-  rule_webhook_action,
-  rule_webhook_event_name,
   rule_incompatible_job_setting,
-  rule_app_permissions,
-  rule_app_forbidden_axes,
+  environment_protection_types_are_read_from,
+  deployment_protection_rule_fact_citations,
+  deployment_protection_rule_live_fact_names,
+  every_citation_names_a_live_declaration,
+  deployment_protection_rule_citation_count,
+  extdeps_model_scope,
+  extdeps_external_authority_anchor,
+  rule_authority,
+  rest_authority,
+  webhook_authority,
+  environment_authority,
+  openapi_authority,
+  enablement_authority,
+  limits_authority,
+  spec_authority,
+  spec_pinned_commit,
+  spec_pinned_path,
+  spec_is_pinned_to_a_commit,
 }
 import extdeps.github.app {
   GitHubAppPermission,
-  ContentsAxis,
+  GitHubPermissionAxis,
+  ActionsAxis,
   DeploymentsAxis,
+  ContentsAxis,
   AdministrationAxis,
-  SecurityEventsAxis,
   IdTokenAxis,
   AppAccessRead,
   AppAccessWrite,
 }
-import gunbc.plan { plans_all_have_retirement, plans_all_titled }
+import extdeps.github.actions_runs { RunConclusion, RunFailure, RunSuccess }
+import std.uri { Https, Uri }
 import gunbc.plan_registry { all_plans }
 
 // Two fixed environments, named rather than spelled at each call site: the one the gate protects and
-// one that is NOT the gate. Every binding red is "would this review have released the boundary?"
+// one that is NOT the gate. Upstream's example uses prod-eus; these two are what makes the field
+// ordering and the "one environment, not a path segment" claims checkable.
 data srv1_env: NonEmptyStr = "srv1-production"
 data other_env: NonEmptyStr = "gcp-iam-converge"
 
-// The review the operator actually authorised: srv1-production, approved, with a reason.
+// The review a rule would post: srv1-production, approved, with a reason.
 fn sanctioned_review() -> DeploymentProtectionRuleReview {
   DeploymentProtectionRuleReview {
     environment_name: srv1_env,
     state: Approved,
     comment: Present { value: "tapped on the phone" },
+  }
+}
+
+// A wait as the poll reports it: the gated environment as an OBJECT, a short configured timer, and a
+// reviewer list. Built once; each red below mutates one part of it.
+fn waiting_wait(reviewers: List<PendingDeploymentReviewer>) -> PendingDeploymentWait {
+  PendingDeploymentWait {
+    environment: PendingDeploymentEnvironment { id: 160000001, name: srv1_env },
+    wait_timer: minute(count: 30),
+    wait_timer_started_at: Present { value: "2026-10-18T00:00:00Z" },
+    current_user_can_approve: true,
+    reviewers: reviewers,
   }
 }
 
@@ -137,11 +200,11 @@ test fn review_state_admits_exactly_the_documented_pair() -> Bool {
     && review_state_from_wire(name: "rejected") == Present { value: Rejected }
 }
 
-// The discriminating red: an approval that was never tapped must not be expressible. Where the model
-// used a List<NonEmptyStr> plus a String->Bool membership predicate, a broker could hand that
-// predicate "approved_by_operator" and get a Bool back; now the only way to obtain a ReviewState is
-// Approved, Rejected, or a parse that returns nothing for every invented spelling. `true` here means:
-// for each invented spelling, there is NO ReviewState to build a request with.
+// THE DISCRIMINATING RED for an invented state. Where the model had a List<NonEmptyStr> plus a
+// String->Bool membership predicate, a caller could hand that predicate "approved_by_operator" and get
+// a Bool back. Now the only ways to obtain a ReviewState are Approved, Rejected, or a parse that
+// returns nothing for every invented spelling — so `true` here means: for each invented spelling, there
+// is NO ReviewState to build a request with.
 test fn review_state_refuses_every_invented_variant() -> Bool {
   review_state_from_wire(name: "approved_by_operator") == none
     && review_state_from_wire(name: "APPROVED") == none
@@ -154,8 +217,8 @@ test fn review_state_refuses_every_invented_variant() -> Bool {
     && review_state_from_wire(name: "approved ") == none
 }
 
-// The sum has exactly two constructors and the wire map is injective over them. A third arm would
-// mean a third outcome nobody approved.
+// The sum has exactly two constructors and the wire map is injective over them. A third arm would mean
+// a third outcome nobody approved.
 test fn review_state_wire_is_injective_and_total() -> Bool {
   (review_state_wire(state: Approved) as String) != (review_state_wire(state: Rejected) as String)
     && review_state_from_wire(name: review_state_wire(state: Approved)) == Present { value: Approved }
@@ -163,485 +226,479 @@ test fn review_state_wire_is_injective_and_total() -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-// 2. The two review endpoints, and the two bodies, stay distinct
+// 2. The request body: the shape that releases a deployment
 // ---------------------------------------------------------------------------
 
-// POST .../deployment_protection_rule is the App's own-rule endpoint. POST .../pending_deployments
-// is the human/team reviewer endpoint. They differ by one path segment, so a typo or a fold that
-// reused a constant silently sends an App review to the human queue — where, on srv1-production
-// today, the operator is the reviewer. That is the double-authority failure in a different costume.
-test fn the_app_and_human_review_endpoints_do_not_collapse() -> Bool {
-  the_two_review_endpoints_are_distinct()
-    && (review_endpoint_path as String).contains("/deployment_protection_rule")
-    && (human_review_endpoint_path as String).contains("pending_deployments")
-    && pending_deployments_endpoint_path == human_review_endpoint_path
+// The environment binding is a BODY FIELD, not a path segment. The path is .../actions/runs/{run_id}/
+// deployment_protection_rule with NO environment in it, so a review aimed at another environment is
+// invisible in the URL and visible only in the body. This is the single highest-consequence fact in the
+// module, and it is why the body is a record with a required environment field rather than a bag.
+test fn the_environment_binding_is_a_body_field_not_a_path_segment() -> Bool {
+  review_body_binds_an_environment(review: sanctioned_review())
+    && (review_endpoint_path |> contains("{environment_name}")) == false
+    && (review_endpoint_path |> contains("runs"))
+    && (review_endpoint_body_environment_name_field as String) == "environment_name"
 }
 
-// The two authorities take different body TYPES, so the mix-up is a type error rather than a 422.
-// The human body names environments by numeric id and requires a comment; the App's names one by
-// name and takes the comment optionally. Neither value converts into the other.
-test fn the_two_review_bodies_are_different_types_with_different_fields() -> Bool {
-  (review_body_field_names(review: sanctioned_review()) |> count) == 3
-    // The names come from the model's own rows, not from string literals repeated here: if the
-    // upstream renames the field, the model and this red move together.
+// THE CONSTRUCTION GUARANTEE. This is what a record buys over a list of names: there is no value of
+// DeploymentProtectionRuleReview that lacks an environment or a state, so the validators that used to
+// check for them are gone rather than merely uncalled. The red is the human body, which upstream
+// REQUIRES environment_ids and state and comment TOGETHER — a different set, which is why it is a
+// different type; a fold that conflated the two would accept a body GitHub rejects, or post a human
+// body that releases the deployment while reading as an approval.
+test fn a_review_without_an_environment_or_a_state_cannot_be_built() -> Bool {
+  review_body_is_complete(review: sanctioned_review())
+    && (review_body_field_names(review: sanctioned_review()) |> count) == 3
     && (review_body_field_names(review: sanctioned_review())
         |> any(f => f == review_endpoint_body_environment_name_field))
     && (review_body_field_names(review: sanctioned_review())
         |> any(f => f == review_endpoint_body_state_field))
-    && (review_body_field_names(review: sanctioned_review())
-        |> any(f => f == review_endpoint_body_comment_field))
-    && !(review_body_field_names(review: sanctioned_review())
-         |> any(f => (f as String) == "environment_ids"))
+    // The two required body alternatives upstream lists: one needing environment_name+state, one
+    // needing environment_name+comment. Neither is satisfied by a body with only "comment".
     && (review_endpoint_body_alternatives |> count) == 2
-    // The human record's environment field is a LIST OF IDS, not a name — so a reviewer identity
-    // cannot be reused as an App identity by smuggling a name into the ids slot.
-    && HumanDeploymentReview {
-         environment_ids: [22766227517],
-         state: Approved,
-         comment: "a human typed this",
-       }.state
-       == Approved
 }
 
-// ---------------------------------------------------------------------------
-// 3. The environment binding: the discriminating red the implementation PR inherits
-// ---------------------------------------------------------------------------
-
-// The environment a review releases is NOT a function of the URL: the path carries owner, repo and
-// run_id only. So the only thing that can catch a review aimed at the wrong environment is a check
-// on the record — and this red is what the stage-2 broker red must reproduce against a real call.
-test fn the_environment_binding_is_a_body_field_not_a_path_segment() -> Bool {
-  !(review_endpoint_path as String).contains("environment_name")
-    && (review_releases_environment(review: sanctioned_review()) as String) == "srv1-production"
-    && review_matches_capability(review: sanctioned_review(), capability_environment: srv1_env)
-    // THE mutation: same run, same decision, wrong environment. The gate that opens is not the one
-    // the operator tapped.
-    && !review_matches_capability(review: sanctioned_review(), capability_environment: other_env)
-}
-
-// The decision is checked against the capability the same way, so "tapped reject, sent approve"
-// fails the comparison rather than being caught downstream by a GitHub response.
-test fn the_decision_is_checked_against_the_capability() -> Bool {
-  review_matches_decision(review: sanctioned_review(), capability_state: Approved)
-    && !review_matches_decision(review: sanctioned_review(), capability_state: Rejected)
-}
-
-// A review with no reason is still a legal request (comment is optional upstream). A model that made
-// it required would push a broker to stuff the field with something untrue to satisfy its own check.
-test fn a_review_without_a_comment_is_still_sendable() -> Bool {
-  (review_body_field_names(review: sanctioned_review()) |> count) == 3
-    && (review_body_field_names(review: DeploymentProtectionRuleReview {
+// The decision, as the value the body carries — not as a search for the word "state". Both arms are
+// constructible, so "the review said the opposite of what was tapped" is a mutation that can be
+// exercised rather than described.
+test fn the_review_carries_a_decision_and_it_can_be_a_refusal() -> Bool {
+  review_decision(review: sanctioned_review()) == Approved
+    && review_decision(review: DeploymentProtectionRuleReview {
          environment_name: srv1_env,
-         state: Approved,
+         state: Rejected,
          comment: none,
-       })
-        |> count) == 2
+       }) == Rejected
+}
+
+// A comment is optional upstream (maxLength 65535). A body without one is still sendable, so the model
+// must not require it — a model that did would reject GitHub-legal requests.
+test fn a_review_without_a_comment_is_still_sendable() -> Bool {
+  review_body_carries_a_decision(
+    review: DeploymentProtectionRuleReview {
+      environment_name: srv1_env,
+      state: Approved,
+      comment: none,
+    }
+  )
+}
+
+// GitHub's worked example, verbatim from the REST reference. Transcribed as a value of the type, so
+// "the example is a complete request" is a computation and not a claim about a comment.
+test fn the_documented_example_is_a_value_of_the_type() -> Bool {
+  review_documented_example_is_complete()
+    && (review_documented_example_body.environment_name as String) == "prod-eus"
+    && review_decision(review: review_documented_example_body) == Approved
+    && review_documented_example_body.comment != none
 }
 
 // ---------------------------------------------------------------------------
-// 4. Protection-rule types: GitHub reports three; a fourth is invented
+// 3. The two review endpoints do not collapse
 // ---------------------------------------------------------------------------
 
+// THE CONFLATION RED. GitHub's HUMAN reviewer endpoint (/environments/{environment_name}/
+// deployments/{deployment_id}/statuses/{status_id}) takes environment_ids, state, comment and answers
+// 200. The App rule endpoint takes environment_name, state, comment and answers 204. Both are "review a
+// deployment", and a wrong model would merge them into one call. Merged, the wrong one silently does
+// the wrong thing: the human endpoint cannot be called by an App, and a 200 read as an accepted rule
+// review reports an approval that was never given.
+test fn the_app_and_human_review_endpoints_do_not_collapse() -> Bool {
+  the_two_review_endpoints_are_distinct()
+    && review_endpoint_method == POST
+    && human_review_endpoint_method == POST
+    && (review_endpoint_path as String) != (human_review_endpoint_path as String)
+    && (human_review_endpoint_path |> contains("statuses"))
+    && (review_endpoint_path |> contains("deployment_protection_rule"))
+    && (pending_deployments_endpoint_path |> contains("pending_deployments"))
+}
+
+// THE TWO BODIES ARE DIFFERENT TYPES WITH DIFFERENT FIELDS, not one optional-field bag. The App's body
+// names ONE environment by name; the human body takes a LIST of environment ids. A single record with
+// all five fields optional would accept a request that has environment_name and environment_ids and no
+// comment, which GitHub rejects — and it would let the human body's "no decision in the path" property
+// leak into the rule body, where it is a lie.
+test fn the_two_review_bodies_are_different_types_with_different_fields() -> Bool {
+  review_body_is_complete(review: sanctioned_review())
+    && ((review_documented_example_body.comment as Option<NonEmptyStr>) != none)
+    && (review_body_field_names(review: sanctioned_review())
+        |> any(f => f == review_endpoint_body_environment_name_field))
+    // The human body's field names, spelled as upstream spells them, are NOT the rule body's.
+    && (review_endpoint_body_environment_name_field as String) == "environment_name"
+    && (review_endpoint_body_state_field as String) == "state"
+    && (review_endpoint_body_comment_field as String) == "comment"
+    && pending_deployments_endpoint_method == GET
+}
+
+// ---------------------------------------------------------------------------
+// 4. What the pending_deployments read can and cannot say
+// ---------------------------------------------------------------------------
+
+// THE FACT THAT CLOSED A GUARD. The pinned blob gives pending-deployment.environment as an OBJECT
+// ({id, node_id, name, url, html_url}) and each reviewer as a structured object whose `type` is
+// exactly User | Team. So the projection is an object here and a closed sum there, and an App is
+// NOT REPRESENTABLE among the reviewers. Before this was read, this model carried
+// reviewers: List<NonEmptyStr> and asked whether an installation id appeared in it — a question that
+// can only ever be answered "no", which is how a guard ends up permanently closed while looking active.
+test fn reviewers_are_users_or_teams_and_never_an_app() -> Bool {
+  (pending_deployment_reviewer_type_wire(reviewer: UserReviewer { login: "mtcollins1" }) as String)
+    == "User"
+    && (pending_deployment_reviewer_type_wire(
+         reviewer: TeamReviewer { name: "infra-approvers" }
+       ) as String) == "Team"
+    && pending_wait_carries_a_human_reviewer(
+         wait: waiting_wait(
+           reviewers: [UserReviewer { login: "mtcollins1" }] as List<PendingDeploymentReviewer>
+         )
+       )
+    && pending_wait_carries_a_human_reviewer(
+         wait: waiting_wait(
+           reviewers: [TeamReviewer { name: "infra-approvers" }] as List<PendingDeploymentReviewer>
+         )
+       )
+    // The empty list is the shape a custom-rule wait has: nobody is listed, because the gate is a
+    // rule, not a person. It is NOT "the App is listed".
+    && !pending_wait_carries_a_human_reviewer(wait: waiting_wait(
+         reviewers: [] as List<PendingDeploymentReviewer>
+       ))
+}
+
+// The environment name is reached THROUGH the object. The discriminating part is the field census: the
+// projection has exactly the five fields upstream marks required, so a consumer cannot ask for an
+// `app` or an `installation_id` and get one.
+test fn the_wait_names_its_environment_through_the_object() -> Bool {
+  pending_wait_environment_name(wait: waiting_wait(
+    reviewers: [] as List<PendingDeploymentReviewer>
+  )) == srv1_env
+    && (pending_deployment_wait_field_names |> count) == 5
+    && (pending_deployment_wait_field_names
+        |> any(f => f == pending_deployments_field_environment))
+    && (pending_deployment_wait_field_names
+        |> any(f => f == "current_user_can_approve"))
+    && !(pending_deployment_wait_field_names |> any(f => f == "app"))
+    && !(pending_deployment_wait_field_names |> any(f => f == "installation_id"))
+}
+
+// WHO MAY ANSWER is a separate read, not a field of the wait. Ownership comes from the environment's
+// enabled-rule readback matched against this installation, and "we did not check" is a value.
+test fn ownership_is_a_separate_fact_with_two_arms() -> Bool {
+  rule_ownership_is_established(
+    ownership: OwnedByGateApp {
+      rule_id: 900000001,
+      installation_id: 1900000001,
+      environment_name: srv1_env,
+    }
+  )
+    && !rule_ownership_is_established(
+         ownership: NotOwnedByGateApp { because: "the readback never ran" }
+       )
+    && (available_rule_readback_path_mentions("deployment_protection_rules/apps"))
+    && available_rule_readback_is_a_get()
+}
+
+fn available_rule_readback_path_mentions(fragment: NonEmptyStr) -> Bool {
+  extdeps.github.deployment_protection_rule.available_rule_readback_endpoint_path
+    |> contains(fragment as String)
+}
+
+fn available_rule_readback_is_a_get() -> Bool {
+  extdeps.github.deployment_protection_rule.available_rule_readback_endpoint_method == GET
+}
+
+// ---------------------------------------------------------------------------
+// 5. The wait timer is a configured duration in MINUTES, and not an age
+// ---------------------------------------------------------------------------
+
+// THE UNIT RED. GitHub's environments REST reference counts wait_timer in MINUTES ("The time (in
+// minutes) must be an integer between 0 and 43,200 (30 days)"), and the pinned blob carries the field
+// with example 30. Read as SECONDS the documented maximum is twelve hours, so a ceiling check written
+// against a seconds reading waves through a job that has waited a month. The two clauses below differ
+// only in unit: the first is what minutes gives, the second is what seconds would have given.
+test fn the_wait_timer_is_minutes_and_not_seconds() -> Bool {
+  let wait = waiting_wait(reviewers: [] as List<PendingDeploymentReviewer>)
+  minute_count(m: wait.wait_timer) == 30
+    && second_count(s: extdeps.github.deployment_protection_rule.wait_timer_as_seconds(wait: wait))
+        == 1800
+    // The documented ceiling, at both scales. 43,200 MINUTES is 30 days; 43,200 SECONDS is twelve
+    // hours. Only one of these is the truth, and this test fails if the field is ever re-typed to
+    // carry seconds.
+    && second_count(s: extdeps.github.deployment_protection_rule.wait_minutes_as_seconds(
+         minutes: minute(count: 43200)
+       )) == 30 * seconds_per_day()
+    && second_count(s: extdeps.github.deployment_protection_rule.wait_minutes_as_seconds(
+         minutes: minute(count: 43200)
+       )) != 43200
+}
+
+// The documented range, checked rather than described: 0 and 43,200 are the boundaries upstream gives,
+// and one past either is not in range.
+test fn the_configured_timer_cannot_exceed_the_documented_range() -> Bool {
+  extdeps.github.deployment_protection_rule.wait_timer_is_in_documented_range(minutes: 0 as Nat)
+    && extdeps.github.deployment_protection_rule.wait_timer_is_in_documented_range(
+         minutes: 43200 as Nat
+       )
+    && !extdeps.github.deployment_protection_rule.wait_timer_is_in_documented_range(
+         minutes: 43201 as Nat
+       )
+}
+
+// ---------------------------------------------------------------------------
+// 6. Environment protection types and the incompatible job setting
+// ---------------------------------------------------------------------------
+
+// The three environment protection types, from the upstream reference, not invented. A fourth value
+// here means someone added a protection kind GitHub does not implement — which would let us assert a
+// gate that does not exist.
 test fn environment_protection_types_are_the_three_documented_kinds() -> Bool {
   (environment_protection_rule_type_values |> count) == 3
-    && (environment_protection_rule_kind_wire(kind: RequiredReviewersKind) as String) == "required_reviewers"
-    && (environment_protection_rule_type_values
-        |> any(t => (t as String) == environment_protection_rule_kind_wire(kind: RequiredReviewersKind)))
-    && (environment_protection_rule_type_values
-        |> any(t => (t as String) == environment_protection_rule_kind_wire(kind: WaitTimerKind)))
-    && (environment_protection_rule_type_values
-        |> any(t => (t as String) == environment_protection_rule_kind_wire(kind: BranchPolicyKind)))
+    && (environment_protection_rule_type_values |> any(v => v == "required_reviewers"))
+    && (environment_protection_rule_type_values |> any(v => v == "wait_timer"))
+    && (environment_protection_rule_type_values |> any(v => v == "branch_policy"))
 }
 
-// An invented type value must not parse. "custom_deployment_protection_rules" is the name that would
-// make the model SEE a custom rule where GitHub reports none — the read-back that gates activation.
+// The sum is derived, not a second list: the census of arms and the census of values are the same
+// number, and an invented member cannot be parsed in. That is the difference between a list someone
+// can extend and a type someone cannot.
 test fn environment_protection_types_refuse_invented_members() -> Bool {
-  environment_protection_rule_kind_from_wire(value: "custom_deployment_protection_rules") == none
-    && environment_protection_rule_kind_from_wire(value: "required_reviewer") == none
-    && environment_protection_rule_kind_from_wire(value: "deployment_protection_rule") == none
-    && environment_protection_rule_kind_from_wire(value: "wait-timer") == none
-    && environment_protection_rule_kind_from_wire(value: "RequiredReviewersKind") == none
-    && environment_protection_rule_kind_from_wire(
-         value: environment_protection_rule_kind_wire(kind: RequiredReviewersKind)
-       ) == Present { value: RequiredReviewersKind }
-}
-
-// ---------------------------------------------------------------------------
-// 5. The timeout is a refusal, and is not provable by searching prose
-// ---------------------------------------------------------------------------
-
-// A timeout must fail the job. The previous model stored the upstream SENTENCE and asserted
-// outcome.contains("fails") && !outcome.contains("approved") — a grep over English, which passes for
-// "the job fails over and is approved later". Now the only two readings are typed, and the wrong one
-// is a different value, not a different word.
-test fn the_rule_timeout_reads_as_a_refusal() -> Bool {
-  rule_timeout_is_a_refusal(outcome: JobFails)
-    && !rule_timeout_is_a_refusal(outcome: JobApproved)
-}
-
-// THE STALL IS A DURATION, NOT A NUMBER WHOSE UNIT LIVES IN ITS NAME. Read as an Int, 30 would
-// still print 30 if someone meant 30 hours, and `== 30` could not tell the difference. Here the
-// quantity is compared against 30 DAYS BUILT FROM THE SAME CARRIER, so a unit slip — days to hours,
-// hours to minutes — changes the value and reddens this. The precedent is
-// extdeps.cache.github_actions' gha_actions_cache_idle_release() = second(count: 7 * seconds_per_day()).
-test fn the_rule_timeout_is_a_duration_in_days() -> Bool {
-  second_count(s: rule_timeout()) == 30 * seconds_per_day()
-    // A unit slip is the mutation this red exists to catch: an hour is not a day, and neither is a
-    // minute, and neither is the 30-day ceiling expressed in some other unit.
-    && second_count(s: rule_timeout()) != 30 * seconds_per_minute() * minutes_per_hour()
-    && second_count(s: rule_timeout()) != 30
-    && second_count(s: rule_timeout()) != 30 * seconds_per_minute()
-    // The ceiling that also governs the gate we are replacing IS the ceiling above — one fact, not
-    // two that must be kept in step.
-    && second_count(s: rule_gate_approval_ceiling()) == second_count(s: rule_timeout())
-}
-
-// The fail-closed arms are all the same shape: nothing was approved. A fold that mapped the timeout
-// onto the approved state is refused by the type's own arms, not by a string comparison.
-test fn a_timeout_never_produces_an_approval() -> Bool {
-  !rule_timeout_is_a_refusal(outcome: JobApproved)
-    && rule_timeout_is_a_refusal(outcome: rule_timeout_outcome_reading())
-    && second_count(s: rule_timeout()) > 0
-}
-
-fn rule_timeout_outcome_reading() -> RuleTimeoutOutcome {
-  JobFails
-}
-
-// ---------------------------------------------------------------------------
-// 6. The webhook is answered only for the action that asks for an answer
-// ---------------------------------------------------------------------------
-
-test fn the_rule_webhook_is_answerable_only_when_requested() -> Bool {
-  rule_webhook_is_an_answerable_request(event: "deployment_protection_rule", action: "requested")
-    && !rule_webhook_is_an_answerable_request(event: "deployment_protection_rule", action: "created")
-    && !rule_webhook_is_an_answerable_request(event: "deployment_protection_rule", action: "")
-    && !rule_webhook_is_an_answerable_request(event: "deployment", action: "created")
-    && !rule_webhook_is_an_answerable_request(event: "workflow_run", action: "requested")
-    && (rule_webhook_action as String) == "requested"
-    && (rule_webhook_event_name as String) == "deployment_protection_rule"
-}
-
-// ---------------------------------------------------------------------------
-// 7. The reviewer App holds exactly the axes upstream asked for
-// ---------------------------------------------------------------------------
-
-// Two axes, both at the documented level, and no forbidden axis among them. Compared as
-// GitHubPermissionAxis values: a description that merely omits the widening cannot satisfy this.
-test fn the_gate_app_carries_only_the_rule_axes() -> Bool {
-  (rule_app_permissions |> count) == 2
-    && rule_app_permission_set_is_complete()
-    && rule_app_permission_set_is_admissible()
-    && (rule_app_forbidden_axes |> count) == 6
-}
-
-// THE discriminating red for the App registration: grant Contents (or IdToken, which would let a
-// reviewer identity federate into a cloud role) and admissibility goes false. This is the red a
-// widened registration must trip.
-test fn a_widened_app_is_refused_by_axis_not_by_prose() -> Bool {
-  !rule_app_permission_is_admissible(
-    permission: GitHubAppPermission { name: ContentsAxis, access: AppAccessWrite }
-  )
-    && !rule_app_permission_is_admissible(
-         permission: GitHubAppPermission { name: IdTokenAxis, access: AppAccessWrite }
-       )
-    && !rule_app_permission_is_admissible(
-         permission: GitHubAppPermission { name: AdministrationAxis, access: AppAccessRead }
-       )
-    && rule_app_permission_is_admissible(
-         permission: GitHubAppPermission { name: DeploymentsAxis, access: AppAccessWrite }
-       )
-    && !rule_app_permission_is_admissible(
-         permission: GitHubAppPermission { name: SecurityEventsAxis, access: AppAccessRead }
+  (environment_protection_rule_type_values |> count) == 3
+    && environment_protection_rule_kind_from_wire(name: "custom_rules") == none
+    && environment_protection_rule_kind_from_wire(name: "required_reviewers")
+        == Present { value: RequiredReviewersKind }
+    && environment_protection_rule_kind_wire(kind: WaitTimerKind) == "wait_timer"
+    && environment_protection_rule_kind_wire(kind: BranchPolicyKind) == "branch_policy"
+    && environment_protection_types_are_read_from(
+         field: extdeps.github.deployment_protection_rule.environment_protection_type_field
        )
 }
 
-// ---------------------------------------------------------------------------
-// 8. Success signal, and the job setting that cannot be gated
-// ---------------------------------------------------------------------------
-
-// 204 with no body is the ONLY success signal. A fold that treated 200-with-json, or "no exception",
-// as success would report an approval it did not receive.
-test fn the_review_call_has_exactly_one_success_signal() -> Bool {
-  review_endpoint_success_status == 204
-}
-
-// A job whose environment is `deployment: false` is incompatible with a custom rule. If this were
-// modelled wrong, a job could be gated by a rule GitHub never invokes for it — waiting forever, or
-// silently ungated.
+// A job whose environment is `deployment: false` is incompatible with a custom rule. Modelled wrong, a
+// job could be gated by a rule GitHub never invokes for it — waiting forever, or silently ungated.
 test fn an_environmentless_job_setting_stays_incompatible_with_a_rule() -> Bool {
   (rule_incompatible_job_setting as String) == "deployment: false"
 }
 
 // ---------------------------------------------------------------------------
-// 10. The broker's pre-answer verification: the submission is CONFIRMED, not trusted
+// 7. The timeout: one ceiling from one authority, one outcome that is not an approval
 // ---------------------------------------------------------------------------
 
-// A wait as the poll reports it for THIS run: the gated environment, a short timer, and the App as
-// the reviewer. Built once; every red below mutates one part of it.
-data app_installation: NonEmptyStr = "installation-123"
-
-fn waiting_for_the_app() -> PendingDeploymentWait {
-  PendingDeploymentWait {
-    environment: srv1_env,
-    wait_timer: minute(count: 1),
-    wait_timer_started_at: Present { value: "2026-10-18T00:00:00Z" },
-    current_user_can_approve: true,
-    reviewers: [app_installation],
-  }
+// THE DIRECTION THE GATE DEPENDS ON. The custom-rule page states one consequence, and it is not a
+// choice: the job FAILS. Modelled the other way — an outcome that could read as an approval — the
+// broker would see success where nothing was approved. There is no private "JobApproved" arm here to
+// reject: the consequence is typed in GitHub's own run-conclusion vocabulary, so the only values it can
+// take are GitHub's, and the one it takes is the failing one.
+test fn a_rule_timeout_concludes_the_run_as_a_failure() -> Bool {
+  extdeps.github.deployment_protection_rule.custom_rule_timeout_run_conclusion == RunFailure
+    && extdeps.github.deployment_protection_rule.custom_rule_timeout_run_conclusion != RunSuccess
 }
 
-// THE PRE-ANSWER CHECK, red-first. The environment named by the submission AND by the capability AND
-// reported by GitHub must be one environment, and the wait must belong to this App. Each conjunct is
-// exercised by a mutation, so the fold cannot be satisfied by "everything is fine" reading.
-test fn the_broker_confirms_before_it_answers() -> Bool {
-  broker_may_answer(
-    wait: waiting_for_the_app(),
-    submitted_environment: srv1_env,
-    capability_environment: srv1_env,
-    app_installation_id: app_installation
+// THE CEILING AS A DURATION, not an Int whose unit lives in its name. 30 days, counted in seconds, and
+// the same magnitude from the two independent upstream statements — the limits reference for the
+// general gate-approval ceiling, the custom-rule page for this feature's wait. A divergence between the
+// two citations would show up here.
+test fn the_gate_wait_is_thirty_days_from_both_authorities() -> Bool {
+  second_count(s: rule_gate_approval_ceiling()) == 30 * seconds_per_day()
+    && second_count(s: custom_rule_response_timeout()) == second_count(s: rule_gate_approval_ceiling())
+    && second_count(s: custom_rule_response_timeout()) == 2592000
+}
+
+// ---------------------------------------------------------------------------
+// 8. The webhook payload, as the fallback route's fact — with the invented fields refused
+// ---------------------------------------------------------------------------
+
+// THE NEGATIVE RED. Plain sense gives this payload a run_id, a run_url, an app_id and a top-level
+// installation_id, and an implementation reaches for exactly those names. NONE OF THEM EXIST, and this
+// module previously asserted they did. Each is refused on its own, so a regression that adds one back
+// to the published set is caught by that row rather than by a reader.
+test fn an_invented_payload_field_is_never_published() -> Bool {
+  (rule_webhook_absent_fields |> count) == 4
+    && !rule_webhook_payload_field_is_published(name: "run_id")
+    && !rule_webhook_payload_field_is_published(name: "run_url")
+    && !rule_webhook_payload_field_is_published(name: "app_id")
+    && !rule_webhook_payload_field_is_published(name: "installation_id")
+}
+
+// The fields upstream does carry, including the ones this route does NOT consume. The claim is
+// deliberately weaker than the record: this file asserts these exist, and asserts nothing about the
+// rest of the payload's shape (deployment, pull_requests, repository, organization, sender are
+// deliberately untyped because nobody reads them).
+test fn the_documented_payload_fields_are_published() -> Bool {
+  (rule_webhook_documented_field_names |> count) == 12
+    && rule_webhook_payload_field_is_published(name: "environment")
+    && rule_webhook_payload_field_is_published(name: "deployment_callback_url")
+    && rule_webhook_payload_field_is_published(name: "installation")
+    && rule_webhook_payload_field_is_published(name: "sender")
+    && (rule_webhook_consumed_fields |> count) == 3
+}
+
+// The trigger that makes a rule answerable at all, from the webhook page. Without this event name the
+// App never sees the request, and a broker that never receives it looks identical to one that is down.
+test fn the_rule_webhook_is_answerable_only_when_requested() -> Bool {
+  rule_webhook_is_an_answerable_request(
+    action: rule_webhook_action,
+    event: rule_webhook_event_name
   )
-    // THE SUBMISSION LIES ABOUT THE ENVIRONMENT: GitHub reports srv1-production waiting, the workflow
-    // asked about another environment. Refused — and this is the conjunct that stops a workflow from
-    // choosing which environment its own tap unlocks.
-    && !broker_may_answer(
-         wait: waiting_for_the_app(),
-         submitted_environment: other_env,
-         capability_environment: srv1_env,
-         app_installation_id: app_installation
-       )
-    // THE CAPABILITY AND THE WAIT DISAGREE. A redeemed capability naming gcp-iam-converge cannot
-    // release srv1-production, however the run is parked.
-    && !broker_may_answer(
-         wait: waiting_for_the_app(),
-         submitted_environment: srv1_env,
-         capability_environment: other_env,
-         app_installation_id: app_installation
-       )
-    // THE WAIT IS A HUMAN'S. If `reviewers` names someone other than this App, it is a
-    // required-reviewer wait, and an App may only review its OWN rule — so answering it is refused
-    // even though every environment matches.
-    && !broker_may_answer(
-         wait: PendingDeploymentWait {
-           environment: srv1_env,
-           wait_timer: minute(count: 1),
-           wait_timer_started_at: none,
-           current_user_can_approve: true,
-           reviewers: ["mtcollins1"],
-         },
-         submitted_environment: srv1_env,
-         capability_environment: srv1_env,
-         app_installation_id: app_installation
-       )
+    && !rule_webhook_is_an_answerable_request(action: "completed", event: "deployment_protection_rule")
+    && !rule_webhook_is_an_answerable_request(action: "requested", event: "deployment")
 }
 
-// `current_user_can_approve` is the field a BROKER MUST NOT ACT ON: it is human-facing, and it reads
-// true in the operator's own session. A wait that says the user can approve but names no App in
-// `reviewers` is unanswerable by the App — this is the conjunct a careless broker would drop.
-test fn a_human_facing_approval_field_is_not_the_signal() -> Bool {
-  !pending_deployment_wait_is_answerable_by_app(
-    wait: PendingDeploymentWait {
-      environment: srv1_env,
-      wait_timer: minute(count: 0),
-      wait_timer_started_at: none,
-      current_user_can_approve: true,
-      reviewers: [],
-    },
-    app_installation_id: app_installation
-  )
-    && pending_deployment_wait_is_answerable_by_app(
-         wait: waiting_for_the_app(), app_installation_id: app_installation
-       )
+// THE TOKEN IDENTITY IS READ FROM THE PAYLOAD'S installation OBJECT — not a top-level key, and not a
+// configured constant. Both halves of the path are named values, so renaming either reddens the fold.
+test fn the_token_identity_is_read_from_the_payload_object() -> Bool {
+  rule_installation_id_is_read_from(payload_field: rule_webhook_field_installation)
+    && !rule_installation_id_is_read_from(payload_field: "installation_id")
+    && (rule_installation_id_nested_field as String) == "id"
+    && (rule_webhook_field_installation as String) == "installation"
 }
 
-// A wait past the ceiling. The timer is a DURATION on both sides, so this compares 30 days against
-// 30 days rather than a bare number against a bare number.
-// THE UNIT RED. `wait_timer` is MINUTES — this module's own environment_authority says "The time (in
-// minutes) must be an integer between 0 and 43,200 (30 days)". The discrimination is the conversion
-// identity, not a threshold: the legal maximum 43,200 MINUTES converts to exactly 30 days of
-// SECONDS. Read the same wire value straight in as seconds and it is 43,200 seconds — 12 hours — and
-// the identity fails, so a mistyped field cannot pass this red by looking plausible.
-fn wait_at_documented_maximum(minutes: Nat) -> PendingDeploymentWait {
-  PendingDeploymentWait {
-    environment: srv1_env,
-    wait_timer: minute(count: minutes),
-    wait_timer_started_at: none,
-    current_user_can_approve: false,
-    reviewers: [app_installation],
-  }
-}
-
-test fn the_wait_timer_is_minutes_and_not_seconds() -> Bool {
-  // 43,200 minutes IS 30 days. This single equation is the two-unit discriminator: it holds only if
-  // the field is read as minutes and converted through the declared minute_to_second.
-  second_count(s: wait_timer_as_seconds(wait: wait_at_documented_maximum(minutes: 43200)))
-    == 30 * seconds_per_day()
-    // The same 43,200 read as SECONDS would be 12 hours, not 30 days. Written out so the factor of
-    // 60 that was silently missing is visible as a value, not implied by a type name.
-    && second_count(s: second(count: 43200)) != 30 * seconds_per_day()
-    && second_count(s: second(count: 43200)) == 43200
-    // Upstream's documented bounds, and the example value from the pending-deployment schema.
-    && wait_timer_is_in_documented_range(wait: wait_at_documented_maximum(minutes: 43200))
-    && wait_timer_is_in_documented_range(wait: wait_at_documented_maximum(minutes: 30))
-    && wait_timer_is_in_documented_range(wait: wait_at_documented_maximum(minutes: 0))
-    && !wait_timer_is_in_documented_range(wait: wait_at_documented_maximum(minutes: 43201))
-    // A seconds-scaled read would blow past the documented maximum by exactly the missing factor.
-    && !wait_timer_is_in_documented_range(
-         wait: wait_at_documented_maximum(minutes: 43200 * seconds_per_minute())
-       )
-}
-
-// WHY THERE IS NO LONGER A "wait past the ceiling" FOLD. The maximum value upstream will return,
-// 43,200 minutes, converts to EXACTLY the 30-day rule timeout — so a `>` comparison between the two
-// is unreachable for every value GitHub can send, and the fold that used to do it was decoration
-// rather than a guard. Asserting the equality is what proves the old predicate vacuous; if upstream
-// ever lets a configured timer exceed the ceiling, this red goes first and the guard can come back
-// with something to detect. The elapsed-time question this fold pretended to answer belongs to
-// `wait_timer_started_at` against a clock, which is a stage-2 seam, not a fold over a config value.
-test fn the_configured_timer_cannot_exceed_the_rule_timeout() -> Bool {
-  second_count(s: wait_timer_as_seconds(wait: wait_at_documented_maximum(minutes: 43200)))
-    == second_count(s: rule_timeout())
-    && !(second_count(s: wait_timer_as_seconds(wait: wait_at_documented_maximum(minutes: 43200)))
-         > second_count(s: rule_timeout()))
-}
-
-// ---------------------------------------------------------------------------
-// 11. The rejected credential alternative stays rejected, as a value
-// ---------------------------------------------------------------------------
-
-// The REST reference ALLOWS an operator's OAuth/PAT with the repo scope; this design does not. The
-// rejected alternative is therefore modelled as a value the fold REFUSES — naming it is what keeps it
-// out, rather than a paragraph hoping nobody implements the second credential kind.
-test fn the_operators_own_token_is_refused_even_though_github_allows_it() -> Bool {
-  review_credential_is_permitted(credential: InstallationAccessToken)
-    && !review_credential_is_permitted(credential: OAuthClassicWithRepoScope)
-    && review_credential_is_documented(token_type: "GitHub App installation access tokens")
-    && !review_credential_is_documented(token_type: "personal access token (classic)")
-}
-
-// ---------------------------------------------------------------------------
-// 12. The callback and the installation id are READ FROM THE PAYLOAD, not chosen
-// ---------------------------------------------------------------------------
-
-// The broker posts to the URL GitHub put in `deployment_callback_url`, to the endpoint that field
-// addresses. Aimed anywhere else, or read from a field GitHub does not publish, it is refused — which
-// is what keeps a review from being posted at a DIFFERENT run's callback.
+// THE CALLBACK PAIR IS CHECKABLE. On the webhook route a review posted where the payload points cannot
+// aim itself at a different run; on the selected route there is no payload and the URL is built from a
+// verified run id. The mutation: a callback naming some other path is refused.
 test fn the_review_is_posted_only_where_the_payload_points() -> Bool {
-  rule_review_is_answerable_at(
-    payload_field: "deployment_callback_url",
-    target_path: review_endpoint_path
-  )
-    && !rule_review_is_answerable_at(
-         payload_field: "run_url",
-         target_path: review_endpoint_path
-       )
-    && !rule_review_is_answerable_at(
-         payload_field: "deployment_callback_url",
-         target_path: human_review_endpoint_path
-       )
-    && !rule_review_is_answerable_at(payload_field: "html_url", target_path: review_endpoint_path)
-    // The installation identity comes from the payload field, not from a configured constant or a
-    // different field.
-    && rule_installation_id_is_read_from(payload_field: "installation_id")
-    && !rule_installation_id_is_read_from(payload_field: "app_id")
-    && !rule_installation_id_is_read_from(payload_field: "sender")
+  rule_review_callback.payload_field == rule_webhook_field_deployment_callback_url
+    && rule_review_callback.addresses == review_endpoint_path
+    && rule_webhook_payload_field_is_published(name: rule_review_callback.payload_field)
 }
 
-// A receiver coded against an undocumented payload field is refused before it reads anything.
-test fn an_undocumented_payload_field_is_not_published() -> Bool {
-  rule_webhook_payload_field_is_published(name: "deployment_callback_url")
-    && rule_webhook_payload_field_is_published(name: "installation_id")
-    && !rule_webhook_payload_field_is_published(name: "callback_url")
-    && !rule_webhook_payload_field_is_published(name: "installation")
-    && (rule_webhook_published_fields |> count) == 8
+// THE SELECTED ROUTE ADDS NO INBOUND EXPOSURE, and the bet that makes it work is typed as an open
+// standing rather than asserted as a fact. The broker is tailnet-only, so a public GitHub webhook would
+// be a new exposure; the route therefore reads nothing from a delivery, and the inference that GitHub
+// accepts a review for a run whose delivery was never received is carried with its read obligation.
+test fn the_selected_route_is_the_no_webhook_one_and_the_bet_is_still_open() -> Bool {
+  rule_webhook_route_adds_no_inbound(route: rule_webhook_selected_route)
+    && !rule_webhook_route_adds_no_inbound(route: "public-webhook")
+    && rule_delivery_is_unproven(standing: rule_delivery_independence)
 }
 
 // ---------------------------------------------------------------------------
-// 13. Success is one status, on the right call
+// 9. Credentials, permissions, and the calls
 // ---------------------------------------------------------------------------
 
-// The App's review call answers 204 and nothing else; the poll and the human review answer 200. A
-// broker that read "2xx" as success would report an approval from a poll's body. Path, method and
-// status are one fact per call, so the three calls cannot be confused by a fold.
+// Upstream ACCEPTS both credential kinds at this endpoint, and this model says so. What gunbc permits is
+// a separate decision, witnessed in gunbc.auth.deployment_gate_authorization; an upstream model that
+// quietly omitted the operator-token arm would be stating something false about GitHub.
+test fn both_documented_credential_kinds_are_representable() -> Bool {
+  review_credential_is_documented(token_type: review_accepted_token_type)
+    && review_credential_is_documented(token_type: "OAuth app tokens and personal access tokens")
+    && (review_oauth_classic_scope as String) == "repo"
+    && (review_credential_is_documented(token_type: "a token kind GitHub has never heard of") == false)
+}
+
+// The permission the endpoint requires, in the upstream's own words: "Deployments" repository
+// permissions (write), and installation access tokens only. The discriminating half is the ACCESS
+// LEVEL — a model that recorded Deployments at read would still satisfy a name-only check.
+test fn the_call_needs_deployments_write_and_checks_it() -> Bool {
+  review_permission_is_satisfied(permission: review_required_permission)
+    && review_required_permission.name == DeploymentsAxis
+    && review_required_permission.access == AppAccessWrite
+    && !review_permission_is_satisfied(
+         permission: GitHubAppPermission { name: DeploymentsAxis, access: AppAccessRead }
+       )
+    && !review_permission_is_satisfied(
+         permission: GitHubAppPermission { name: ActionsAxis, access: AppAccessRead }
+       )
+}
+
+// The documented App permission set, as an upstream fact: Actions read-only AND Deployments read+write,
+// which is two rows and no more. (That the App is REFUSED anything else is gunbc policy, and is
+// witnessed where that policy lives.)
+test fn the_documented_permission_set_is_exactly_two_rows() -> Bool {
+  (rule_app_permissions |> count) == 2
+    && (rule_app_permissions |> any(p => p.name == ActionsAxis && p.access == AppAccessRead))
+    && (rule_app_permissions
+        |> any(p => p.name == DeploymentsAxis && p.access == AppAccessWrite))
+}
+
+// THE SUCCESS SIGNAL, and the three calls that must not be confused. 204 with no body is the only
+// success the rule review can produce; the poll and the human endpoint answer 200. The three
+// RestCall values are distinguishable by path AND by status, so a caller cannot select one by asking
+// "was it a 2xx".
 test fn success_is_one_status_on_the_right_call() -> Bool {
-  review_call_succeeded(status: 204)
-    && !review_call_succeeded(status: 200)
-    && !review_call_succeeded(status: 201)
-    && !review_call_succeeded(status: 422)
-    && !review_call_succeeded(status: 302)
+  review_call.success_status == 204 as HttpStatus
+    && human_review_call.success_status == human_review_endpoint_success_status
     && the_two_success_statuses_are_not_the_same()
     && the_three_calls_are_distinguishable()
+    && review_call_succeeded(status: review_call.success_status)
+    && !review_call_succeeded(status: human_review_call.success_status)
+    && !review_call_succeeded(status: pending_deployments_poll_call.success_status)
+    && review_call.method == POST
+    && pending_deployments_poll_call.method == GET
+    && (review_call.path |> contains("deployment_protection_rule"))
+    && (pending_deployments_poll_call.path |> contains("pending_deployments"))
 }
 
-// ---------------------------------------------------------------------------
-// 14. GitHub's own worked example, and the citation table
-// ---------------------------------------------------------------------------
-
-// The docs' example review is a complete, three-field request — and it names prod-eus, which is NOT
-// this repository's gated environment. Copying the example verbatim into a broker would release
-// nothing we care about, so the difference is asserted rather than assumed.
-test fn the_documented_example_is_complete_but_not_our_gate() -> Bool {
-  review_documented_example_is_complete()
-    && review_documented_example_releases_a_different_environment(gated: srv1_env)
-    && !review_matches_capability(
-         review: review_documented_example_body,
-         capability_environment: srv1_env
-       )
-}
-
-// The pinned API-version header the reference sends, checked as name and value rather than as one
-// string matched by eye.
+// The version header the reference sends, as a typed value rather than a name. The mutation is a
+// plausible-looking header that is not the pinned one.
 test fn the_api_version_header_is_the_pinned_one() -> Bool {
   review_api_version_header_is_pinned(header: review_documented_api_version_header)
     && !review_api_version_header_is_pinned(
-         header: ReviewApiVersionHeader {
-           name: "X-GitHub-Api-Version",
-           value: "2022-11-28",
-         }
+         header: ReviewApiVersionHeader { name: "x-github-api-version", value: "2022-11-28" }
        )
     && !review_api_version_header_is_pinned(
-         header: ReviewApiVersionHeader { name: "Accept", value: "application/vnd.github+json" }
+         header: ReviewApiVersionHeader { name: "accept", value: "application/vnd.github+json" }
        )
 }
 
-// Every fact above points at a declaration that still exists. A rename that strands a citation
-// reddens this instead of quietly leaving a module with five authority rows and no facts covered.
+// ---------------------------------------------------------------------------
+// 10. Citations, the pinned spec, and the scope rows
+// ---------------------------------------------------------------------------
+
+// THE CITATION CENSUS. Every fact the module claims from upstream is paired with an authority, and the
+// live-name census is what catches a citation orphaned by a rename. Counting equal is not enough on its
+// own, which is why the fold also requires every cited decl_name to be in the census and every citation
+// to point at THIS module — a citation aimed at a sibling module's name would otherwise keep the table
+// looking complete while covering nothing.
 test fn the_citation_table_names_only_live_declarations() -> Bool {
   every_citation_names_a_live_declaration()
+    && deployment_protection_rule_citation_count() == 12
+    && (deployment_protection_rule_fact_citations |> count) == (
+         deployment_protection_rule_live_fact_names |> count
+       )
 }
 
-// The permission the call needs, as one typed row (axis + level). An App without Deployments:write
-// cannot answer, and the activation check reads THIS rather than a description of the App.
-test fn the_call_needs_deployments_write_and_checks_it() -> Bool {
-  review_permission_is_satisfied(
-    permissions: [
-      GitHubAppPermission { name: DeploymentsAxis, access: AppAccessWrite },
-    ]
-  )
-    // A read-only Deployments grant is not enough for a review, however the App is described.
-    && !review_permission_is_satisfied(
-         permissions: [GitHubAppPermission { name: DeploymentsAxis, access: AppAccessRead }]
-       )
-    && !review_permission_is_satisfied(
-         permissions: [GitHubAppPermission { name: ContentsAxis, access: AppAccessWrite }]
-       )
-    && environment_protection_types_are_read_from(key: "type")
-    && !environment_protection_types_are_read_from(key: "protection_type")
-    && rule_timeout_fails_the_job()
+// THE SPEC IS READ AT A COMMIT, NOT A BRANCH. blob/main moves under the model, and every "the schema
+// requires ..." claim in this file is about one revision. The red is the branch locator: an authority
+// that points at main is not a pinned authority, however well the rest of the row reads.
+test fn the_openapi_is_pinned_to_a_commit_and_not_to_a_branch() -> Bool {
+  spec_is_pinned_to_a_commit(commit: spec_pinned_commit)
+    && !spec_is_pinned_to_a_commit(commit: "main")
+    && !spec_is_pinned_to_a_commit(commit: "blob/main")
+    && (uri(authority: spec_authority).locator |> contains(spec_pinned_commit as String))
+    && (uri(authority: spec_authority).locator |> contains("blob/"))
+    && !(uri(authority: spec_authority).locator |> contains("/main/"))
+    && (spec_pinned_path |> contains("api.github.com.json"))
+}
+
+// Every authority this module cites is one it publishes, and every one is an https URI. A fact cited to
+// an authority that is not in the anchor is a fact nobody is accountable for.
+test fn every_cited_authority_is_published_by_this_module() -> Bool {
+  (extdeps_external_authority_anchor |> count) == 8
+    && (uri(authority: rule_authority).scheme == Https)
+    && (uri(authority: rest_authority).locator |> contains("rest/api/actions"))
+    && (uri(authority: webhook_authority).locator |> contains("webhooks-and-events/webhooks"))
+    && (uri(authority: environment_authority).locator |> contains("rest/api/deployments"))
+    && (uri(authority: limits_authority).locator |> contains("limits"))
+    && (uri(authority: enablement_authority).locator
+        |> contains("configure-custom-protection-rules"))
+}
+
+// The scope rows, and the rule that extdeps models no product surface. This is the boundary the module
+// has to keep to be in extdeps at all.
+test fn the_model_scope_says_upstream_and_names_its_own_carriers() -> Bool {
+  (extdeps_model_scope.subject as String) == "custom deployment protection rule review interface"
+    && extdeps_model_scope.surface == none
+    && (extdeps_model_scope.modelled_carriers |> count) == 14
+    && (extdeps_model_scope.unmodelled_carriers |> count) == 3
 }
 
 // ---------------------------------------------------------------------------
-// 9. The plan is in the registry, not loose
+// 11. The plan is registered, because a plan that is not findable is a plan that was not written
 // ---------------------------------------------------------------------------
 
-// Without this red a plan can sit in dag/gunbc/plans/ unread by the lens, the doc graph and every
-// governance claim over all_plans — which is how a plan becomes prose nobody enforces.
-fn plan_slug_is_registered(slug: String) -> Bool {
-  fold(all_plans, init: false, f: (acc, p) => acc || p.slug == slug)
-}
-
+// The plan carrier this model implements has to be reachable through the registry authority. This fails
+// if it is unregistered, if its name changes, or if it is registered twice.
 test fn the_plan_is_registered_in_the_authority_registry() -> Bool {
-  plan_slug_is_registered(slug: "ntfy-deployment-gate-approval")
-    && (plans_all_have_retirement(plans: all_plans))
-    && (plans_all_titled(plans: all_plans))
+  (all_plans |> all(p => p.plan.name != "ntfy-deployment-gate-approval")) == false
+    && (all_plans |> filter(p => p.plan.name == "ntfy-deployment-gate-approval") |> count) == 1
+    && ((all_plans |> filter(p => p.plan.name == "ntfy-deployment-gate-approval")
+         |> first
+         |> map(p => p.plan.owner)
+         |> or_else("nobody")) as String) == "fleet-converge"
 }
