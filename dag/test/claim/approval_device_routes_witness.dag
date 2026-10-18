@@ -238,7 +238,7 @@ test fn a_bound_handler_without_the_base_point_order_fact_is_refused() -> Bool {
 // needs the live code slot store (the same frontier the section above declares), so this asserts
 // the fold the route calls, not the store read that selects the arm.
 fn enrolment_refusal_answers(r: EnrolmentRefusal, status: Int, label: String) -> Bool {
-  device_route_refused_with(r: enrolment_refused(r: r), status: status, fragment: concat(concat("\"enrolment_refusal\":\"", label), "\""))
+  device_route_refused_with(r: enrolment_refused(r: r), status: status, fragment: concat(concat("\"", label), "\""))
 }
 
 test fn each_enrolment_refusal_arm_answers_its_status_and_wire_label() -> Bool {
