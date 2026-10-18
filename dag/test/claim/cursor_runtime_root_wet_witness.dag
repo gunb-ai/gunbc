@@ -1,37 +1,146 @@
 module test.claim.cursor_runtime_root_wet_witness
 
-import std.types { Bool, String, FilePath, NonEmptyStr }
+import std.types { Bool, String, FilePath }
+import std.algebra { trim }
 import std.env_binding { EnvSet }
-import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.exec.command { LocalExec, env_prefixed_command }
+import extdeps.exec.program { ProgramIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.llm.cursor_cli { cursor_api_key_env_var }
 import gunbc.command_runner { run_shell_command_observe }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
-import gunbc.dispatch_credential_acquisition { cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config }
+import gunbc.dispatch_credential_acquisition {
+  CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config,
+}
 import gunbc.cursor_harness_credential {
-  cursor_bound_key_probe_command, cursor_key_probe_reading, CursorKeyProbeReading, CursorKeyRejected, CursorKeyAccepted, CursorKeyProbeUnreadable,
+  cursor_bound_key_probe_command, cursor_key_probe_reading, CursorKeyProbeReading, CursorKeyRejected, CursorKeyAccepted,
+  CursorKeyProbeUnreadable, cursor_sandbox_discriminating_preflight_command, cursor_sandbox_preflight_reading,
+  CursorSandboxReady,
 }
 
-// WET, srv2 only (the pinned cursor-agent must be installed). Runs the real key probe with a deliberately
-// INVALID key under a fresh attempt root: no paid call, no valid key, and the operator's stored auth is never
-// read or written because HOME and XDG_CONFIG_HOME name the fresh root. Non-root, so run it on srv2 as the
-// belt user. The rejection must hold even when the operator's real home carries valid stored auth.
-test fn an_invalid_key_under_a_fresh_root_reads_rejected_and_persists_nothing() -> Bool {
-  let parent = shell.Mktemp.DirWithTemplate(template: "/tmp/cursor-root-wet.XXXXXX").path
-  let root = cursor_attempt_runtime_root(instance_root: parent, reference: "wet-attempt")
+// WET, srv2 only, NON-ROOT. Four self-contained controls over FRESH attempt roots, so no operator file is ever in
+// reach: every invocation binds HOME and XDG_CONFIG_HOME to a root made here, and the operator's real
+// ~/.config/cursor/auth.json is neither read nor written, nor asserted. Each control is parameterized by the
+// ProgramIdentity so the side chat's ruling (pinned path vs a same-build stand-in) is a call-site choice, and the
+// valid key is read from a 0600 file at RUN time (key_path), never from source. The nullary tests below bind the
+// pinned program and cursor_wet_key_file; they are NOT to be run with a real key until that ruling lands.
+// Roots hold tokens after (a) and (c): wet_shred_root overwrites every regular file then removes the tree.
+data cursor_wet_key_file: String = "/run/gunbc-wet/cursor-key"
+
+fn wet_fresh_root(label: String) -> CursorAttemptRuntimeRoot {
+  let parent = shell.Mktemp.DirWithTemplate(template: join(["/tmp/cursor-wet-", label, ".XXXXXX"], "")).path
+  let root = cursor_attempt_runtime_root(instance_root: parent, reference: label)
   let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_home(root: root) as FilePath)
   let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_config(root: root) as FilePath)
-  let command = env_prefixed_command(
-    bindings: [EnvSet { name: cursor_api_key_env_var as String, value: "gunbc-wet-invalid-key" }],
-    command: cursor_bound_key_probe_command(program: cursor_agent_pinned_program(), root: root),
+  root
+}
+
+fn wet_auth_file(root: CursorAttemptRuntimeRoot) -> String {
+  join([cursor_attempt_runtime_config(root: root), "cursor", "auth.json"], "/")
+}
+
+fn wet_auth_under_home(root: CursorAttemptRuntimeRoot) -> String {
+  join([cursor_attempt_runtime_home(root: root), ".config", "cursor", "auth.json"], "/")
+}
+
+fn wet_auth_inside_config(root: CursorAttemptRuntimeRoot) -> Bool {
+  Filesystem.Read(path: wet_auth_file(root: root)).success
+}
+
+fn wet_shred_root(root: CursorAttemptRuntimeRoot) -> Bool {
+  let _ = Filesystem.Write(path: wet_auth_file(root: root), content: "")
+  let _ = Filesystem.Write(path: wet_auth_under_home(root: root), content: "")
+  shell.Remove.RecursiveForce(path: join([root.base, "..", ".."], "/") as FilePath).success
+}
+
+fn wet_probe(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, key: String) -> CursorKeyProbeReading {
+  let run = run_shell_command_observe(
+    command: env_prefixed_command(
+      bindings: [EnvSet { name: cursor_api_key_env_var as String, value: key }],
+      command: cursor_bound_key_probe_command(program: program, root: root),
+    ),
+    transport: LocalExec,
   )
-  let run = run_shell_command_observe(command: command, transport: LocalExec)
-  match cursor_key_probe_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr) {
-    CursorKeyRejected { detail: _ } =>
-      !Filesystem.Read(path: join([cursor_attempt_runtime_config(root: root), "cursor", "auth.json"], "/")).success
-    CursorKeyAccepted => false
+  cursor_key_probe_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
+}
+
+fn wet_is_accepted(r: CursorKeyProbeReading) -> Bool {
+  match r {
+    CursorKeyAccepted => true
+    CursorKeyRejected { detail: _ } => false
     CursorKeyProbeUnreadable { exit_code: _, detail: _ } => false
   }
+}
+
+fn wet_is_rejected(r: CursorKeyProbeReading) -> Bool {
+  match r {
+    CursorKeyAccepted => false
+    CursorKeyRejected { detail: _ } => true
+    CursorKeyProbeUnreadable { exit_code: _, detail: _ } => false
+  }
+}
+
+fn wet_valid_key(key_path: String) -> String {
+  trim(s: Filesystem.Read(path: key_path).content)
+}
+
+// (a) PERSISTENCE: a valid key under fresh root A reads Accepted and persisted auth INSIDE A/config, and not
+// under A/home. Shreds A.
+fn wet_valid_key_persists_inside_the_root(program: ProgramIdentity, key_path: String) -> Bool {
+  let root = wet_fresh_root(label: "a")
+  let accepted = wet_is_accepted(r: wet_probe(program: program, root: root, key: wet_valid_key(key_path: key_path)))
+  let verdict = accepted && wet_auth_inside_config(root: root) && !Filesystem.Read(path: wet_auth_under_home(root: root)).success
+  let _ = wet_shred_root(root: root)
+  verdict
+}
+
+// (b) An invalid key under a fresh root B reads Rejected and B holds no auth.json.
+fn wet_invalid_key_under_a_fresh_root_is_rejected(program: ProgramIdentity) -> Bool {
+  let root = wet_fresh_root(label: "b")
+  let verdict = wet_is_rejected(r: wet_probe(program: program, root: root, key: "gunbc-wet-invalid-key")) && !wet_auth_inside_config(root: root)
+  let _ = wet_shred_root(root: root)
+  verdict
+}
+
+// (c) THE DISCRIMINATOR: an invalid key with HOME/XDG = root A after A holds the valid key's stored auth. The
+// result is RECORDED in the verdict: true means ambient stored auth decided (Accepted), which proves the fresh
+// root is what makes (b) Rejected. Shreds A.
+fn wet_stored_auth_decides_an_invalid_key(program: ProgramIdentity, key_path: String) -> Bool {
+  let root = wet_fresh_root(label: "c")
+  let _ = wet_probe(program: program, root: root, key: wet_valid_key(key_path: key_path))
+  let ambient_decides = wet_is_accepted(r: wet_probe(program: program, root: root, key: "gunbc-wet-invalid-key"))
+  let _ = wet_shred_root(root: root)
+  ambient_decides
+}
+
+// (d) With the sandbox unavailable the preflight is not Ready, so the standing's ordered fold
+// (worker_turn_standing cursor_observed_standing_from_snapshot, whose arm order the pure witness fixes) never
+// reaches the key probe; no key is supplied here, and no auth.json appears under the root.
+fn wet_unavailable_sandbox_creates_no_auth(program: ProgramIdentity) -> Bool {
+  let root = wet_fresh_root(label: "d")
+  let run = run_shell_command_observe(command: cursor_sandbox_discriminating_preflight_command(program: program, root: root), transport: LocalExec)
+  let ready = match cursor_sandbox_preflight_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr) {
+    CursorSandboxReady => true
+    _ => false
+  }
+  let verdict = !ready && !wet_auth_inside_config(root: root) && !Filesystem.Read(path: wet_auth_under_home(root: root)).success
+  let _ = wet_shred_root(root: root)
+  verdict
+}
+
+test fn a_valid_key_persists_auth_inside_its_fresh_root_only() -> Bool {
+  wet_valid_key_persists_inside_the_root(program: cursor_agent_pinned_program(), key_path: cursor_wet_key_file)
+}
+
+test fn an_invalid_key_under_a_fresh_root_reads_rejected_and_persists_nothing() -> Bool {
+  wet_invalid_key_under_a_fresh_root_is_rejected(program: cursor_agent_pinned_program())
+}
+
+test fn stored_auth_in_the_root_is_what_would_accept_an_invalid_key() -> Bool {
+  wet_stored_auth_decides_an_invalid_key(program: cursor_agent_pinned_program(), key_path: cursor_wet_key_file)
+}
+
+test fn an_unavailable_sandbox_reads_not_ready_and_creates_no_auth() -> Bool {
+  wet_unavailable_sandbox_creates_no_auth(program: cursor_agent_pinned_program())
 }
