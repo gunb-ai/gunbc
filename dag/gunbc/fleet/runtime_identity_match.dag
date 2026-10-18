@@ -37,7 +37,12 @@ import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
 import gunbc.machine_intake.subject { UnitKey }
-import extdeps.network.mac { Eui48Address, mac_is_permanent_interface_identity, render_mac_address }
+import extdeps.network.mac {
+  Eui48Address,
+  mac_addresses_are_equal,
+  mac_is_permanent_interface_identity,
+  render_mac_address,
+}
 
 // ---------------------------------------------------------------------------
 // THE AXES
@@ -718,18 +723,7 @@ fn examine_screened_addresses(
 // review 81890 caught: two derivations of one thing, free to disagree. What remains is the one claim
 // this axis makes: the two sides share at least one of the addresses they both hold as permanent.
 fn mac_sets_share_an_address(pre: List<Eui48Address>, post: List<Eui48Address>) -> Bool {
-  pre.any(a => post.any(b => same_mac_address(left: a, right: b)))
-}
-
-// Addresses compared octet by octet, so the comparison is about the address and not about how it was
-// rendered -- render_mac_address is for reporting, never for deciding.
-fn same_mac_address(left: Eui48Address, right: Eui48Address) -> Bool {
-  left.octet1 == right.octet1
-    && left.octet2 == right.octet2
-    && left.octet3 == right.octet3
-    && left.octet4 == right.octet4
-    && left.octet5 == right.octet5
-    && left.octet6 == right.octet6
+  pre.any(a => post.any(b => mac_addresses_are_equal(left: a, right: b)))
 }
 
 // ---------------------------------------------------------------------------

@@ -195,6 +195,22 @@ fn mac_is_permanent_interface_identity(addr: Eui48Address) -> Bool {
   }
 }
 
+// TWO ADDRESSES ARE THE SAME ADDRESS WHEN ALL SIX OCTETS AGREE, and that is a fact about the address
+// type, not about any consumer that compares sightings of one. It lives beside the flag axes and the null
+// test for the same reason those do: a consumer that re-derives it at its own call site can derive it
+// differently. Octets are compared rather than the record rendered to text and the strings compared,
+// because the rendering is a projection -- two addresses that differ can render to strings that differ only
+// in a separator a future renderer changes, and a comparison whose truth depends on a display spelling is a
+// comparison that can silently widen.
+fn mac_addresses_are_equal(left: Eui48Address, right: Eui48Address) -> Bool {
+  left.octet1 == right.octet1
+    && left.octet2 == right.octet2
+    && left.octet3 == right.octet3
+    && left.octet4 == right.octet4
+    && left.octet5 == right.octet5
+    && left.octet6 == right.octet6
+}
+
 type MacOctetResult =
     MacOctetOk { value: UInt8 }
   | MacOctetErr { error: MacParseError }
