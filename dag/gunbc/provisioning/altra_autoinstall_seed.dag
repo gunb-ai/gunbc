@@ -886,7 +886,12 @@ type SeedInteractiveCause
   | PackagePromptingUnclassified { name: NonEmptyStr }
   | AddressingIsInstallerManaged
   | ArchiveMirrorAbsent
-  | NoEntrypointAtAll { keys: Int, console_entry: ConsoleEntryAuthorisation }
+  // NO PAYLOAD, DELIBERATELY. This arm is built only where the key list is empty AND the console is locked,
+  // so a `keys: Int` could hold only 0 and a `console_entry` only ConsoleEntryLocked: two fields restating the
+  // arm's name, each a second copy of a fact the constructor already guarantees. A future requirement that
+  // distinguishes WHY there is no entrypoint (say, an unlocked-but-unclaimed console) adds a NEW arm, not a
+  // field here.
+  | NoEntrypointAtAll
 
 // THE PROOF, AS DATA. The audit's green arm is neither unit nor Bool: it carries WHY it is green, in the
 // same parts the refusal names, so an auditor reading a rendered seed later can re-check the claim without
@@ -901,31 +906,31 @@ type NonInteractiveProof {
 // change about the seed, and its being derived is the point: a stored "no console" flag beside a strategy
 // field is two facts that can disagree, and when they disagree the seed promises something about a console
 // the transport cannot honour.
-type NonInteractiveConsoleStanza = ConsoleSuppressed | ConsoleAnsweredByUnattended { reason: NonEmptyStr }
+// ConsoleAnsweredByUnattended carries NO payload: what the arm means is a property of the transport, not a
+// per-instance fact, and a String there would be commentary stored as data — copied by hand into every arm
+// that builds it, and discarded by the render that consumes it. The rationale belongs in this comment.
+type NonInteractiveConsoleStanza = ConsoleSuppressed | ConsoleAnsweredByUnattended
 
 // THE STANZA IS DERIVED BY MATCHING THE TRANSPORT, NEVER BY RE-READING A BOOL THAT ALREADY FLATTENED IT.
 // The two arms are the two things the seed says on the kernel command line: either a console exists and is
 // answered by the unattended answer file, or there is no console to answer at all.
 fn console_stanza_for(strategy: SeedDeliveryStrategy) -> NonInteractiveConsoleStanza {
   match strategy {
-    PxeStrategy { boot_mode: UefiPxe { tftp_root: _ } } =>
-      ConsoleAnsweredByUnattended {
-        reason: "a reachable SOL console is still nobody at the panel; prompts stay suppressed" as NonEmptyStr,
-      }
-    PxeStrategy { boot_mode: UefiHttpBoot } =>
-      ConsoleAnsweredByUnattended {
-        reason: "a reachable SOL console is still nobody at the panel; prompts stay suppressed" as NonEmptyStr,
-      }
+    // UEFI reaches a console the installer will print to, so the seed must ANSWER rather than suppress: a
+    // reachable SOL console is still nobody at the panel.
+    PxeStrategy { boot_mode: UefiPxe { tftp_root: _ } } => ConsoleAnsweredByUnattended
+    PxeStrategy { boot_mode: UefiHttpBoot } => ConsoleAnsweredByUnattended
     PxeStrategy { boot_mode: LegacyBiosPxe { tftp_root: _ } } => ConsoleSuppressed
     VirtualMediaStrategy { media_stem: _ } => ConsoleSuppressed
   }
 }
 
-// THE AUDIT, IN THE ORDER THE FAILURES MATTER. The entrypoint check runs FIRST because a seed nobody can use
-// after install is worse than a seed that asks a question: a prompt can sometimes be answered by someone
-// watching SOL, a locked-out owner cannot. It runs LAST as a guarantee rather than a check, because the
-// constructor already made the both-empty case unnameable — reaching this arm requires a caller that
-// bypassed the constructor, which is the value of having both guards.
+// THE AUDIT, IN THE ORDER THE FAILURES MATTER. The entrypoint check is evaluated BEFORE the package questions
+// because a seed nobody can use after install is worse than a seed that asks a question: a prompt can
+// sometimes be answered by someone watching SOL, a locked-out owner cannot. It is also the arm that can
+// barely be reached at all — admit_admin_access_authorisation already made "no keys and locked console"
+// unnameable — so it is a second line of defence against a caller that bypassed that constructor, not the
+// primary guard. That redundancy is intentional: this is the failure the module exists to make impossible.
 fn audit_altra_autoinstall_seed(
   network: SeedNetworkPosture,
   install_packages: List<PackageIntent>,
@@ -939,7 +944,7 @@ fn audit_altra_autoinstall_seed(
       match list_length(items: entry.authorised_keys) {
         0 =>
           SeedRefused {
-            cause: NoEntrypointAtAll { keys: 0, console_entry: entry.console_entry },
+            cause: NoEntrypointAtAll,
           }
         n => audit_seed_interactivity(
           network: network,
@@ -1347,7 +1352,7 @@ fn rtl8125_device_id() -> PciDeviceId {
 fn console_stanza_diagnostic(stanza: NonInteractiveConsoleStanza) -> NonEmptyStr {
   match stanza {
     ConsoleSuppressed => "suppressed"
-    ConsoleAnsweredByUnattended { reason: _ } => "unattended-answer"
+    ConsoleAnsweredByUnattended => "unattended-answer"
   }
 }
 
@@ -1405,7 +1410,15 @@ fn int_diagnostic(count: Int) -> NonEmptyStr {
 fn entrypoint_diagnostic(entry: AdminAccessAuthorisation) -> NonEmptyStr {
   let keys = to_string(authorised_key_count(authorisation: entry)) as NonEmptyStr
   match entry.console_entry {
-    ConsoleEntryUnlocked { reason: _ } => concat("console=unlocked,keys=", keys) as NonEmptyStr
+    // THE UNLOCK REASON IS RENDERED, NOT DISCARDED. "Unlocked" alone cannot be acted on: a serial getty open
+    // at the panel and a BMC SOL console open over the network are different exposures with different fixes,
+    // and on this fleet only one of them is reachable at all. Deriving the spelling from the closed reason
+    // (rather than storing a string beside it) means a new unlock kind must be stated in the type before it
+    // can appear in a seed, and it moves the digest.
+    ConsoleEntryUnlocked { reason: SerialConsoleGettyUnlocked } =>
+      concat("console=unlocked-serial-getty,keys=", keys) as NonEmptyStr
+    ConsoleEntryUnlocked { reason: BmcSolConsoleUnlocked } =>
+      concat("console=unlocked-bmc-sol,keys=", keys) as NonEmptyStr
     ConsoleEntryLocked => concat("console=locked,keys=", keys) as NonEmptyStr
   }
 }
@@ -1534,7 +1547,10 @@ type AltraAutoinstallSeedBinding sole_constructor {
 // post-incident question ("what did that install write to?") is answerable from this record alone; a
 // binding that stored only the selector would require re-running the probe to reconstruct an event that
 // already happened.
-type BoundDiskEvidence = BoundDisk { serial: NonEmptyStr } | BoundDiskUnread { note: NonEmptyStr }
+// The unread arm carries NO payload: what it asserts is that the probe gave us no serial for the disk we
+// bound, and that is a property of the probe's answer, not a per-instance fact needing a sentence. A note
+// field here would be commentary stored as data — written in one place, read in none.
+type BoundDiskEvidence = BoundDisk { serial: NonEmptyStr } | BoundDiskUnread
 
 // WHY THE REFUSAL IS A UNION AND NOT A BARE Absent. A caller who is handed nothing cannot tell whether the
 // board was never admissible or whether eight disks matched the rule — and those are different pages of the
@@ -1586,7 +1602,7 @@ fn bind_altra_autoinstall_seed(
 fn bound_disk_evidence(device: StorageDevice) -> BoundDiskEvidence {
   match storage_device_serial(d: device) {
     Present { value: serial } => BoundDisk { serial: serial }
-    Absent => BoundDiskUnread { note: "probe observed no serial for the selected disk" as NonEmptyStr }
+    Absent => BoundDiskUnread
   }
 }
 
@@ -1597,7 +1613,11 @@ fn bound_disk_evidence(device: StorageDevice) -> BoundDiskEvidence {
 type BindingVerdict
   = BootedThisSeed
   | BootedADifferentSeed
-  | BindingIsForeign { note: NonEmptyStr }
+  // NO PAYLOAD: the arm asserts that the binding does not name the unit and attempt being asked about, which
+  // is fully determined by the two comparisons below. A note there would be prose stored as data, constructed
+  // once and read by nobody. A future need to distinguish WHICH identity mismatched adds a field with a real
+  // consumer, or a new arm.
+  | BindingIsForeign
 
 fn check_binding_against_seed(
   binding: AltraAutoinstallSeedBinding,
@@ -1606,9 +1626,7 @@ fn check_binding_against_seed(
   attempt: IntakeAttemptId,
 ) -> BindingVerdict {
   match binding.unit_key == unit_key && binding.attempt == attempt {
-    False => BindingIsForeign {
-      note: "binding names a different unit or attempt than the question asked" as NonEmptyStr,
-    }
+    False => BindingIsForeign
     True =>
       match content_hash_eq_structural(
         left: binding.seed_digest,

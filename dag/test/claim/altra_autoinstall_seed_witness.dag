@@ -60,6 +60,7 @@ import gunbc.provisioning.altra_autoinstall_seed {
   BmcSolConsoleUnlocked,
   BootedADifferentSeed,
   BootedThisSeed,
+  BindingIsForeign,
   BoundDisk,
   CandidateIdentityUnobserved,
   ConsoleEntryAuthorisation,
@@ -398,7 +399,7 @@ fn audit_refuses_naming_one_of_its_own_packages(
           named == "some-fleet-exporter" as NonEmptyStr
         AddressingIsInstallerManaged => false
         ArchiveMirrorAbsent => false
-        NoEntrypointAtAll { keys: _, console_entry: _ } => false
+        NoEntrypointAtAll => false
       }
   }
 }
@@ -437,6 +438,12 @@ data same_stem_virtual_media: SeedDeliveryStrategy = VirtualMediaStrategy {
 
 data unlocked_console: ConsoleEntryAuthorisation = ConsoleEntryUnlocked {
   reason: BmcSolConsoleUnlocked,
+}
+
+// THE OTHER UNLOCK KIND. Same posture, different exposure: a getty on the panel serial versus SOL over the
+// BMC network. On a headless board only the second is reachable, which is why the distinction is worth a type.
+data unlocked_serial_console: ConsoleEntryAuthorisation = ConsoleEntryUnlocked {
+  reason: SerialConsoleGettyUnlocked,
 }
 
 // THE SAME SECRET, IN A DIFFERENT STORE. A credential's version moving within one store and the store itself
@@ -609,7 +616,7 @@ test fn an_unlocked_console_is_not_refused_as_having_no_entrypoint() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
     Present { value: entry } =>
       match audit_altra_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
-        SeedRefused { cause: NoEntrypointAtAll { keys: _, console_entry: _ } } => false
+        SeedRefused { cause: NoEntrypointAtAll } => false
         _ => true
       }
     Absent => false
@@ -837,10 +844,10 @@ test fn the_console_stanza_is_derived_from_the_transport() -> Bool {
   match console_stanza_for(strategy: virtual_media_strategy) {
     ConsoleSuppressed =>
       match console_stanza_for(strategy: pxe_strategy) {
-        ConsoleAnsweredByUnattended { reason: _ } => true
+        ConsoleAnsweredByUnattended => true
         ConsoleSuppressed => false
       }
-    ConsoleAnsweredByUnattended { reason: _ } => false
+    ConsoleAnsweredByUnattended => false
   }
 }
 
@@ -861,9 +868,9 @@ test fn two_transports_sharing_a_console_stanza_do_not_share_a_digest() -> Bool 
                     left: altra_autoinstall_seed_digest(seed: via_bios),
                     right: altra_autoinstall_seed_digest(seed: via_media),
                   )
-                ConsoleAnsweredByUnattended { reason: _ } => false
+                ConsoleAnsweredByUnattended => false
               }
-            ConsoleAnsweredByUnattended { reason: _ } => false
+            ConsoleAnsweredByUnattended => false
           }
         Absent => false
       }
@@ -1004,12 +1011,16 @@ test fn a_binding_for_another_unit_or_attempt_is_foreign() -> Bool {
   match built_seed_and_binding() {
     Present { value: pair } =>
       match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_b_key, attempt: attempt_one, ) {
-        BootedThisSeed => false
-        _ =>
+        // THE ARM IS NAMED, NOT WILDCARDED. Accepting "anything but BootedThisSeed" would also accept a
+        // missing-arm defect that routed a foreign binding to BootedADifferentSeed -- the two verdicts have
+        // opposite remedies (wrong machine vs same machine, stale seed), so only the foreign verdict proves
+        // the identity check ran.
+        BindingIsForeign =>
           match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_a_key, attempt: attempt_two, ) {
-            BootedThisSeed => false
-            _ => true
+            BindingIsForeign => true
+            _ => false
           }
+        _ => false
       }
     Absent => false
   }
@@ -1258,14 +1269,14 @@ test fn each_transport_states_its_own_console_story() -> Bool {
 fn console_stanza_is_suppressed(stanza: NonInteractiveConsoleStanza) -> Bool {
   match stanza {
     ConsoleSuppressed => true
-    ConsoleAnsweredByUnattended { reason: _ } => false
+    ConsoleAnsweredByUnattended => false
   }
 }
 
 fn console_stanza_is_answered(stanza: NonInteractiveConsoleStanza) -> Bool {
   match stanza {
     ConsoleSuppressed => false
-    ConsoleAnsweredByUnattended { reason: _ } => true
+    ConsoleAnsweredByUnattended => true
   }
 }
 
@@ -1461,12 +1472,34 @@ fn entrypoint_tokens_are_distinguishable(
 ) -> Bool {
   let console_render = render_altra_autoinstall_seed(seed: console_seed)
   let keys_render = render_altra_autoinstall_seed(seed: keys_seed)
-  console_render.contains("console=unlocked,keys=0")
+  console_render.contains("console=unlocked-bmc-sol,keys=0")
     && keys_render.contains("console=locked,keys=1")
     && !content_hash_eq_structural(
       left: altra_autoinstall_seed_digest(seed: console_seed),
       right: altra_autoinstall_seed_digest(seed: keys_seed),
     )
+}
+
+// WHICH CONSOLE IS OPEN IS NOT DECORATIVE. A serial getty at the panel and a BMC SOL console over the network
+// are different exposures with different remedies, and on a headless board only one is reachable — so a seed
+// that renders both identically hides the thing an operator would act on. Both must render, differently, and
+// both must move the digest.
+test fn the_two_unlock_kinds_are_distinguishable_in_the_render() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: sol } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_serial_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: getty } =>
+          render_altra_autoinstall_seed(seed: sol).contains("console=unlocked-bmc-sol")
+            && render_altra_autoinstall_seed(seed: getty).contains("console=unlocked-serial-getty")
+            && !render_altra_autoinstall_seed(seed: sol).contains("console=unlocked-serial-getty")
+            && !content_hash_eq_structural(
+              left: altra_autoinstall_seed_digest(seed: sol),
+              right: altra_autoinstall_seed_digest(seed: getty),
+            )
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 fn list_length_is(candidates: List<NonEmptyStr>, expected: Int) -> Bool {
