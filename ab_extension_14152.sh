@@ -52,9 +52,7 @@ CARRIER_SHA=$A_SHA                                        # same commit carries 
 # The old NOEXT_SHA line is gone: it referenced a variable this block no longer defines, and under
 # `set -u` a stale reference aborts the script at once rather than silently using an empty value.
 if [ "$MODE" = "A" ]; then SRC_SHA=$A_SHA; else SRC_SHA=$B_SHA; fi
-echo "CONFIG $MODE: 04_infer.dag from $SRC_SHA ; tests from $EXT_SHA (identical in both configs)"
-echo "BASE: origin/main at the S0 merge (cca99de010f is an ancestor), so the mixed application-vs-
-non-application acceptance is GONE and the inverted refusal control is meaningful in BOTH configs."
+echo "CONFIG $MODE: 04_infer.dag from $SRC_SHA ; 04_types/tests/census from $B_SHA (IDENTICAL in both configs, so the ONLY difference between A and B is the two arms in 04_infer.dag)"
 D=/tmp/ab_$MODE
 rm -rf $D; mkdir -p $D/logs; LOGS=$D/logs; export LOGS   # the census heredoc below reads os.environ['LOGS']
 cd $D
@@ -97,7 +95,7 @@ git show "$S2":src/v1/tests/src/lib.rs > src/v1/tests/src/lib.rs || { echo "no t
   || { echo "lib.rs does not declare the fold test module -- the suite would silently run zero tests"; exit 31; }
 S3=$(fetch_at "$CARRIER_SHA" $LOGS/fc.log)
 echo "fetched carriers $S3 (want $CARRIER_SHA)"; [ "$S3" = "$CARRIER_SHA" ] || { echo "WRONG CARRIER"; exit 32; }
-git show "$S3":carriers/my_04_types_backup.dag > $LOGS/my_04_types.dag || { echo "no 04_types carrier"; exit 32; }
+git show "$S2":src/v1/04_types.dag > $LOGS/my_04_types.dag || { echo "no 04_types from B"; exit 32; }
 git show "$S3":tools/rebind_census.sh > $LOGS/rebind_census.sh || { echo "no census tool"; exit 32; }
 for f in $LOGS/src_04_infer.dag $LOGS/my_04_types.dag $LOGS/rebind_census.sh \
          src/v1/tests/claim/generic_identity_census.dag \
@@ -116,6 +114,26 @@ echo "arms in the installed source=$ARMS (want $WANT)"
 echo "tests: fold_decl=$(grep -ac 'fn fold_decl' src/v1/tests/src/cross_coproduct_generic_locate_test.rs) acceptControl=$(grep -ac 'fn fold_replaces_a_binding_that_is_the_generic_declarations_own_form' src/v1/tests/src/cross_coproduct_generic_locate_test.rs) twin=$(grep -ac 'fn fold_refuses_a_declared_parameter_type_bound_to_a_distinct_settled_instance' src/v1/tests/src/cross_coproduct_generic_locate_test.rs) deletedRow=$(grep -ac 'fn fold_accepts_disj_and_applied_spellings' src/v1/tests/src/cross_coproduct_generic_locate_test.rs) (want 1/1/1/0)"
 echo "claim census: calls=$(grep -ac 'unify_generics(' src/v1/tests/claim/generic_identity_census.dag) withText=$(grep -ac 'text: ' src/v1/tests/claim/generic_identity_census.dag) (want 2 and 2; 0 withText = main's copy = the regen refusal I already paid 9 minutes for)"
 
+# PAIRING CHECK, before any build. For every function main's 04_types.dag defines, if the 04_infer.dag we
+# are about to install CALLS it, the 04_types.dag we are about to install must DEFINE it. This is the class
+# of error that just cost 9 minutes: a main-merged 04_infer under a pre-S0 04_types, which the regen only
+# reports as 81 'not found in scope' diagnostics after claim_executor has been built. Generic over S0's
+# additions rather than naming them, so the next function main adds is caught the same way.
+git show "$BASE_SHA":src/v1/04_types.dag > $LOGS/base_04_types.dag 2>/dev/null || git show HEAD:src/v1/04_types.dag > $LOGS/base_04_types.dag
+ORPHANS=""
+for fn in $(grep -oE '^fn [a-z0-9_]+' $LOGS/base_04_types.dag | awk '{print $2}' | sort -u); do
+  if grep -qE "(^|[^A-Za-z0-9_])$fn\\(" $LOGS/src_04_infer.dag; then
+    grep -qE "^fn $fn\\(" $LOGS/my_04_types.dag || ORPHANS="$ORPHANS $fn"
+  fi
+done
+if [ -n "$ORPHANS" ]; then
+  echo "PAIRED FILES ARE FROM DIFFERENT GENERATIONS -- 04_infer.dag calls functions 04_types.dag does not define:"
+  for fn in $ORPHANS; do echo "   MISSING: $fn"; done
+  echo "   (this is the pre-S0-carrier bug: A must use the SAME 04_types as B; fix the source pair, do not proceed)"
+  echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="
+  exit 6
+fi
+echo "pairing check: every function called by the installed 04_infer.dag is defined by the installed 04_types.dag"
 cp $LOGS/src_04_infer.dag src/v1/04_infer.dag
 cp $LOGS/my_04_types.dag src/v1/04_types.dag
 git checkout -q -f -- src/v1/stage0 2>/dev/null || true
