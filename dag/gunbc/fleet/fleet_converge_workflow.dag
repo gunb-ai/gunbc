@@ -4882,14 +4882,10 @@ fn fleet_converge_row_owes_account_without_one(row: RunScopedMode) -> Bool {
   run_scoped_route_kind(m: row) != GrantOnlyRoute && fleet_converge_row_service_accounts(row: row).length() == 0
 }
 
-fn fleet_converge_row_grant_only_names_account(row: RunScopedMode) -> Bool {
-  run_scoped_route_kind(m: row) == GrantOnlyRoute && fleet_converge_row_service_accounts(row: row).length() != 0
-}
-
 fn fleet_converge_unfederated_run_scoped_refusal_of(rows: List<RunScopedMode>) -> String? {
-  let bad = filter(rows, r => fleet_converge_row_owes_account_without_one(row: r) || fleet_converge_row_grant_only_names_account(row: r))
+  let bad = filter(rows, r => fleet_converge_row_owes_account_without_one(row: r))
   if bad.length() == 0 { Absent } else {
-    Present { value: join(["REFUSED gunbc.fleet.fleet_converge_workflow: run_scoped_modes row(s) name an account with no federation (gunbc.auth.branch_dispatch_federation run_scoped_federation_named), or a grant-only row names one, so the sign-in would carry no service account or a second credential path: ",
+    Present { value: join(["REFUSED gunbc.fleet.fleet_converge_workflow: run_scoped_modes row(s) name an account with no federation (gunbc.auth.branch_dispatch_federation run_scoped_federation_named), so the sign-in would carry no service account or a second credential path: ",
       join(map(bad, r => join(["mode ", r.mode as String, " account_id ", fleet_converge_row_account_text(row: r)], "")), "; "), ". No workflow yaml was emitted."], "") }
   }
 }

@@ -203,15 +203,17 @@ fn run_scoped_mode_named(mode: String) -> RunScopedMode? {
 fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
   match run_scoped_mode_named(mode: mode) {
     Absent => none
-    Present { value: m } =>
-      if (run_scoped_route_kind(m: m) == FleetIdentityRoute || run_scoped_route_kind(m: m) == GrantOnlyRoute) && branch == (gunbc_default_branch_name as String) { none }
-      else if run_scoped_route_kind(m: m) != SelectedSourceRoute { Present { value: m } } else {
+    Present { value: m } => match m.main_route {
+      MainUsesGrantedAccount { account_id: _ } => Present { value: m }
+      MainUsesFleetIdentity { account_id: _ } => if branch == (gunbc_default_branch_name as String) { none } else { Present { value: m } }
+      GrantOnlyNoAccount => if branch == (gunbc_default_branch_name as String) { none } else { Present { value: m } }
+      MainUsesSelectedSource { account_id: _ } =>
         match select_boot_credential_source(on_reviewed_main: branch == (gunbc_default_branch_name as String)) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
           BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => none
           BootCredentialSourceRefused { cause: _ } => none
         }
-      }
+    }
   }
 }
 
