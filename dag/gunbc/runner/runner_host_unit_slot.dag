@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.decimal { decimal_digits_only }
 import std.decl_ref { decl_ref }
+import extdeps.uuid { Uuid, uuid_of }
 import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.github.actions_runner {
@@ -81,7 +82,7 @@ type HostUnitSlotPurpose
 // producer is service_boot_id_of over a HostCaptureRunIdentity, so a population or a sweep's current
 // boot cannot be minted from a bare string, a historical attempt ordinal, or a name read off a listing.
 type ServiceBootId sole_constructor {
-  boot_id: NonEmptyStr
+  boot_id: Uuid
 }
 
 type HostUnitSlotStanding
@@ -161,7 +162,7 @@ fn purpose_spelling(host: HostIdentity, purpose: HostUnitSlotPurpose, registrati
   }
 }
 
-fn service_purpose_spelling(host: HostIdentity, boot_id: NonEmptyStr, index: Int, registration_labels: RunnerRegistrationLabelsResolution) -> PurposeSpelling {
+fn service_purpose_spelling(host: HostIdentity, boot_id: Uuid, index: Int, registration_labels: RunnerRegistrationLabelsResolution) -> PurposeSpelling {
   match registration_labels {
     RegistrationLabelsRefused { host: h, cause: c } => PurposeLabelsRefused { host: h, cause: c }
     RegistrationLabelsResolved { labels: ls } =>
@@ -200,8 +201,9 @@ fn host_unit_slot_attempt(slot: HostUnitSlot) -> NonEmptyStr? {
 // gunbc-service-<host>-<incarnation>-<index>.service. The name is the unit name is the runner name
 // (gunbc.runner.jit_registration_subject), so an orphaned registration is attributable to the boot that
 // minted it by reading the name alone. The index is the LAST dash-separated field and decimal; the
-// incarnation is everything between the host and it, so an incarnation that itself contains dashes
-// (a kernel boot id does) parses. The parse is only a candidate: admission is the rebuild through
+// incarnation is the canonical 36-character kernel boot id (extdeps.uuid Uuid) between the host and it,
+// and the text before it must equal the host exactly (the prefix), so another host whose name extends
+// this one (mtcollins1-backup) does not parse as this host's. The parse is only a candidate: admission is the rebuild through
 // host_unit_slot_for and an exact round trip (gunbc.runner.runner_jit_deregistration).
 fn service_slot_unit_prefix(host: HostIdentity) -> String {
   join(["gunbc-service-", host as String, "-"], "")
@@ -213,7 +215,7 @@ fn service_slot_unit(host: HostIdentity, boot: ServiceBootId, index: Int) -> Non
   service_slot_unit_spelled(host: host, boot_id: boot.boot_id, index: index)
 }
 
-fn service_slot_unit_spelled(host: HostIdentity, boot_id: NonEmptyStr, index: Int) -> NonEmptyStr {
+fn service_slot_unit_spelled(host: HostIdentity, boot_id: Uuid, index: Int) -> NonEmptyStr {
   join([service_slot_unit_prefix(host: host), boot_id as String, "-", to_string(index), service_slot_unit_suffix], "") as NonEmptyStr
 }
 
@@ -221,7 +223,7 @@ fn service_slot_unit_spelled(host: HostIdentity, boot_id: NonEmptyStr, index: In
 // ServiceBootId: nothing says that boot was ever admitted, so it cannot enter a population or be
 // compared as a current boot, only rebuilt as a RecoveredServiceSlot and round-tripped.
 type ServiceSlotName {
-  boot_id: NonEmptyStr
+  boot_id: Uuid
   index: Int
 }
 
@@ -248,7 +250,10 @@ fn service_slot_split(body: String, tail: Int) -> ServiceSlotName? {
       match parse_int(s: digits) {
         Absent => none
         Present { value: i } =>
-          Present { value: ServiceSlotName { boot_id: substring(s: body, start: 0, end: n - tail - 1) as NonEmptyStr, index: i } }
+          match uuid_of(text: substring(s: body, start: 0, end: n - tail - 1)) {
+            Absent => none
+            Present { value: u } => Present { value: ServiceSlotName { boot_id: u, index: i } }
+          }
       }
     }
   } else {
@@ -307,6 +312,7 @@ fn current_service_population(host: HostControlStanding, boot: ServiceBootId) ->
 fn current_service_population_over(host: HostControlStanding, width: RunnerWidthResolution, registration_labels: RunnerRegistrationLabelsResolution, boot: ServiceBootId) -> CurrentServicePopulationStanding admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_host_unit_slot", decl_name: "current_service_population"),
   decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "population_over_host"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "supplied_population"),
 ] {
   match host {
     HostControlRefused { refusal: r } => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: r } }
@@ -335,25 +341,6 @@ fn current_service_population_over(host: HostControlStanding, width: RunnerWidth
 // MEMBERSHIP: is this name one of the sealed population's bound units.
 fn current_population_has_unit(population: CurrentServicePopulation, unit: String) -> Bool {
   population.units |> any(u => (u as String) == unit)
-}
-
-// A LISTED NAME'S CANONICAL SPELLING, WITHOUT A SLOT. Recovery needs only the unit name the grammar
-// rebuilds (and the registration labels' refusal, carried unchanged), so it reuses the spelling
-// derivation (service_purpose_spelling) and stops there: no HostUnitSlot, hence nothing launch- or
-// mint-capable, is built from a name read off a listing.
-type RecoveredServiceUnit
-  = RecoveredUnitSpelled { unit: NonEmptyStr }
-  | RecoveredUnitRefused { refusal: HostUnitSlotRefusal }
-
-fn recovered_service_unit(host: HostControlStanding, parsed: ServiceSlotName, registration_labels: RunnerRegistrationLabelsResolution) -> RecoveredServiceUnit {
-  match host {
-    HostControlRefused { refusal: r } => RecoveredUnitRefused { refusal: HostUnitSlotHostNotControlled { refusal: r } }
-    HostControlled { controlled: b } =>
-      match service_purpose_spelling(host: b.host, boot_id: parsed.boot_id, index: parsed.index, registration_labels: registration_labels) {
-        PurposeLabelsRefused { host: h, cause: c } => RecoveredUnitRefused { refusal: HostUnitSlotRegistrationLabelsRefused { host: h, cause: c } }
-        PurposeSpelled { unit: u, labels: _ } => RecoveredUnitSpelled { unit: u }
-      }
-  }
 }
 
 fn service_slot_indices(from: Int, count: Int) -> List<Int> {

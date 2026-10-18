@@ -1,6 +1,7 @@
 module extdeps.uuid
 
-import std.types { String, NonEmptyStr, Int, List, brand }
+import std.types { String, NonEmptyStr, Int, List, Bool, brand }
+import std.optional { Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
@@ -41,3 +42,27 @@ type Uuid = NonEmptyStr where brand("Uuid")
 
 data uuid_canonical_length: Int = 36
 data uuid_canonical_group_lengths: List<Int> = [8, 4, 4, 4, 12]
+
+// DECODE: a text is a Uuid exactly when it is the canonical 8-4-4-4-12 form of RFC 9562 section 4, in
+// the lowercase output spelling the RFC requires of a producer (proc(5) /proc/sys/kernel/random/boot_id
+// is written in it). A text of any other shape is no Uuid: the brand alone never checked the layout, so
+// a consumer that reads a Uuid from text goes through here and refuses on Absent.
+fn uuid_lower_hex_digit(c: String) -> Bool {
+  (c >= "0" && c <= "9") || (c >= "a" && c <= "f")
+}
+
+fn uuid_group_holds(t: String, start: Int, length: Int, i: Int) -> Bool {
+  if i >= length { true } else { uuid_lower_hex_digit(c: char_at(s: t, pos: start + i)) && uuid_group_holds(t: t, start: start, length: length, i: i + 1) }
+}
+
+fn uuid_canonical_text(t: String) -> Bool {
+  string_length(s: t) == uuid_canonical_length
+    && char_at(s: t, pos: 8) == "-" && char_at(s: t, pos: 13) == "-" && char_at(s: t, pos: 18) == "-" && char_at(s: t, pos: 23) == "-"
+    && uuid_group_holds(t: t, start: 0, length: 8, i: 0) && uuid_group_holds(t: t, start: 9, length: 4, i: 0)
+    && uuid_group_holds(t: t, start: 14, length: 4, i: 0) && uuid_group_holds(t: t, start: 19, length: 4, i: 0)
+    && uuid_group_holds(t: t, start: 24, length: 12, i: 0)
+}
+
+fn uuid_of(text: String) -> Uuid? {
+  if uuid_canonical_text(t: text) { Present { value: text as Uuid } } else { none }
+}

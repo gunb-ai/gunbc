@@ -15,7 +15,8 @@ import std.measure {
   mebibyte_count,
   mebibyte_to_byte_size,
 }
-import std.optional { Present }
+import std.optional { Present, Absent }
+import extdeps.uuid { Uuid, uuid_of }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
@@ -303,7 +304,7 @@ fn host_capture_program(
 
 type HostCaptureRunIdentity
   = HistoricalAttemptOrdinal { ordinal: NonEmptyStr }
-  | KernelBootId { boot_id: NonEmptyStr }
+  | KernelBootId { boot_id: Uuid }
 
 fn host_capture_run_identity_value(run: HostCaptureRunIdentity) -> String {
   match run {
@@ -318,7 +319,10 @@ fn host_capture_run_identity_of(field: String) -> HostCaptureRunIdentity? {
     if rest.length() == 0 { none } else { Present { value: HistoricalAttemptOrdinal { ordinal: rest as NonEmptyStr } } }
   } else if starts_with(s: field, prefix: host_capture_run_token) {
     let rest = substring(s: field, start: host_capture_run_token.length(), end: field.length())
-    if rest.length() == 0 { none } else { Present { value: KernelBootId { boot_id: rest as NonEmptyStr } } }
+    match uuid_of(text: rest) {
+      Absent => none
+      Present { value: u } => Present { value: KernelBootId { boot_id: u } }
+    }
   } else {
     none
   }
@@ -567,7 +571,7 @@ fn host_capture_bind_transcript(capture: String, machine: NonEmptyStr) -> HostCa
 fn host_capture_bind_text(capture: HostCaptureText, machine: NonEmptyStr) -> HostCaptureBinding {
   let scan = fold(
     host_capture_lines(capture: capture),
-    init: HostCaptureScan { begun: false, closed: false, restarted: false, machine: machine, run: KernelBootId { boot_id: "unbound" }, body: [] },
+    init: HostCaptureScan { begun: false, closed: false, restarted: false, machine: machine, run: KernelBootId { boot_id: "00000000-0000-0000-0000-000000000000" }, body: [] },
     f: (acc, line) => host_capture_scan_line(acc: acc, line: line, machine: machine),
   )
   if scan.begun == false {
