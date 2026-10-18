@@ -27,7 +27,7 @@ import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceO
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
 import v2.std.symbol_index { ExcludedCandidate, symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of, EligibleLookup, ExcludedByCategory, LexicalEligibility, symbol_index_lexical_eligibility }
 import v2.std.node { positional_child_target_nodes, BinderTypeEdge, core_edge, Occupancy, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge }
-import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names, type_binder_target_of }
 import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction { MapIntroductionEntryNodes, MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, MapLiteralEntriesMalformed, MapLiteralEntriesNone, MapLiteralEntriesPresent, map_literal_entries, lower_map_introduction, map_introduction_duplicate_key, map_introduction_expected_head_is_map }
@@ -4485,45 +4485,51 @@ fn resolve_kind_declaring_path_optional(ctx: ResolveContext, from: QualifiedName
       }
   }
 }
-
 // WHETHER A FORWARDED PARAMETER'S OWN DECLARED KIND IS THE KIND THE POSITION ASKS FOR.
 //
-// WHERE THE PARAMETER'S KIND COMES FROM, and why no reading of the scope alone could give it: the
-// type-parameter frame records a kinded binder as <declaring path>.<name> and nothing else
-// (type_param_value_binders folds kinded_type_param_names), and v2.compiler.symbol_index_fill
-// symbol_index_fill_kinded_type_params indexes THAT SAME PATH with the binder's annotation node. So
-// the frame's own entry is the address of the parameter's declared kind, and the lookup below reads
-// it through the index every other resolve judgment uses -- no new fact, no second registry, no span
-// computed from source text. A binder missing from the map is an UNKINDED one (an unkinded binder is
-// never inserted), and the answer is a refusal: the parameter was declared without a kind, so it
-// establishes nothing about the inhabitants it may stand for.
-// THE REQUIRED KIND IS RESOLVED FROM THE APPLIED DECLARATION'S POSITION (required_from), not
-// from the module being resolved: the kind a declaration asks for is authored where THAT declaration
-// is, so re-looking it up by spelling here could fail or bind a different same-named coproduct -- the
+// WHY THE FRAME ALONE CANNOT ANSWER THIS, and where the answer actually lives. A type-parameter
+// frame records a name and nothing else (v2.compiler.resolve resolve_type_param_frame maps each
+// declared name to itself and carries no binder node), so the binder -- the one place a kind is
+// written -- has to be reached through the index rather than read off the frame. v2.compiler
+// .symbol_index_fill indexes each generic declaration's binder conj at its declaring path, and
+// v2.std.symbol_index symbol_index_declared_binders_at reads exactly that back. So the chain is:
+// the parameter's identity -> the declaration whose header binds it -> its binder conj -> the one
+// binder for that name -> the kind that binder declares. Each link is a declaration looked up in
+// the index; no span is computed from source text and no second registry is opened.
+//
+// AN UNKINDED BINDER REFUSES, it is not waved through: type_param_kind_optional answers Absent
+// when the binder declares no kind, and a parameter declared without a kind establishes nothing
+// about the inhabitants it may stand for, so there is nothing to admit on.
+//
+// THE REQUIRED KIND IS RESOLVED FROM THE APPLIED DECLARATION'S POSITION (required_from), not from
+// the module being resolved: the kind a declaration asks for is authored where THAT declaration is,
+// so re-looking it up by spelling here could fail or bind a different same-named coproduct -- the
 // identity-by-spelling hazard DESIGN section 3 keeps out. The parameter's own kind is resolved from
-// where IT was declared, which is the symmetric reading, not a second opinion on the first.
+// the declaration that binds it, which is the symmetric reading, not a second opinion on the first.
 fn resolve_forwarded_parameter_kind_matches(ctx: ResolveContext, required_from: QualifiedName, argument: Node, kind: Node) -> Bool {
   match type_binder_atom_identity_optional(n: argument) {
     Absent => false
     Present { value: id } =>
-      match resolve_type_parameter_binder_path(ctx: ctx, identity: id) {
+      match resolve_type_parameter_owning_declaration(ctx: ctx, name: id) {
         Absent => false
-        Present { value: binder_path } =>
-          // The parameter's kind annotation, read where it is indexed: fill stores the binder's
-          // annotation node under exactly this path. An UNKINDED binder is never inserted there, so
-          // Absent is the honest "declared with no kind" and the answer is a refusal -- there is no
-          // node to resolve and nothing to admit on.
-          match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: binder_path) {
+        Present { value: owner_path } =>
+          match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: owner_path) {
             Absent => false
-            Present { value: supplied_annotation } =>
-              // <declaring path>.<name>: strip the name to get back to where the parameter was
-              // declared, which is the position its kind annotation must be read from.
-              match resolve_kind_declaring_path_optional(ctx: ctx, from: qualified_name_init(qn: binder_path), kind: supplied_annotation) {
+            Present { value: binders } =>
+              match type_binder_target_of(binders: binders, name: id) {
                 Absent => false
-                Present { value: supplied_kind_path } =>
-                  match resolve_kind_declaring_path_optional(ctx: ctx, from: required_from, kind: kind) {
+                Present { value: binder } =>
+                  match type_param_kind_optional(binder: binder) {
                     Absent => false
-                    Present { value: required_kind_path } => supplied_kind_path == required_kind_path
+                    Present { value: supplied_kind } =>
+                      match resolve_kind_declaring_path_optional(ctx: ctx, from: owner_path, kind: supplied_kind) {
+                        Absent => false
+                        Present { value: supplied_kind_path } =>
+                          match resolve_kind_declaring_path_optional(ctx: ctx, from: required_from, kind: kind) {
+                            Absent => false
+                            Present { value: required_kind_path } => supplied_kind_path == required_kind_path
+                          }
+                      }
                   }
               }
           }
@@ -4531,37 +4537,54 @@ fn resolve_forwarded_parameter_kind_matches(ctx: ResolveContext, required_from: 
   }
 }
 
-// The frame entry for a type parameter, by its binder path -- the address its declared kind is
-// indexed at. BOTH scopes are consulted, because that is where the binders actually live: a
-// declaration's header pushes its frame onto ctx.scope (resolve_type_param_frame at the module-item
-// and arrow-admitted sites) while an Arrow's own header pushes onto ctx.type_scope, and
+// WHERE A FORWARDED PARAMETER IS BOUND: the declaring path of the declaration whose type-parameter
+// header binds this name. BOTH scopes are consulted, because that is where the binders actually
+// live -- a declaration's header pushes its frame onto ctx.scope (resolve_type_param_frame at the
+// module-item site) while an Arrow's own header pushes onto ctx.type_scope, and
 // resolve_argument_is_type_parameter already reads both for exactly this reason. Reading only one
 // would make the judgment answer differently depending on which kind of declaration forwarded the
-// parameter, which is the same defect in a new costume. Absent when no type-parameter frame binds
-// the name in either.
-fn resolve_type_parameter_binder_path(ctx: ResolveContext, identity: Symbol) -> Optional<QualifiedName> {
-  match resolve_scope_type_parameter_binder_path(s: ctx.type_scope, name: identity) {
-    Present { value: found_path } => optional_present(value: found_path)
-    Absent => resolve_scope_type_parameter_binder_path(s: ctx.scope, name: identity)
+// parameter, which is the same defect in a new costume.
+//
+// The frame says a name IS a bound type parameter; ctx.declaring says which declaration is being
+// resolved around it, which is the address its binder conj is indexed at. A frame hit with no
+// declaring position answers Absent -- without a declaring path there is no binder to look up and
+// therefore no kind to judge, and refusing is the honest answer (DESIGN section 2: an unproven
+// claim refuses rather than admits).
+fn resolve_type_parameter_owning_declaration(ctx: ResolveContext, name: Symbol) -> Optional<QualifiedName> {
+  match resolve_scope_type_parameter_frame(s: ctx.type_scope, name: name) {
+    true => resolve_declaring_path_optional(declaring: ctx.declaring)
+    false => match resolve_scope_type_parameter_frame(s: ctx.scope, name: name) {
+      true => resolve_declaring_path_optional(declaring: ctx.declaring)
+      false => optional_absent()
+    }
   }
 }
 
-fn resolve_scope_type_parameter_binder_path(s: Scope, name: Symbol) -> Optional<QualifiedName> {
+fn resolve_scope_type_parameter_frame(s: Scope, name: Symbol) -> Bool {
   match lookup_chain(s: s, name: name) {
     Accepted { value: found, diagnostics: _ } =>
       match found {
-        BoundInFrame { canonical: canonical, kind: k } =>
+        BoundInFrame { canonical: _, kind: k } =>
           match k {
-            TypeParameterFrame { binders: binders } => map_lookup(m: binders, key: canonical)
-            ParameterFrame { arrow_path: _ } => optional_absent()
-            LexicalFrame { binders: _ } => optional_absent()
+            TypeParameterFrame => true
+            ParameterFrame { arrow_path: _ } => false
+            LexicalFrame { binders: _ } => false
           }
-        BoundAtRoot { canonical: _ } => optional_absent()
-        ScopeUnbound => optional_absent()
+        BoundAtRoot { canonical: _ } => false
+        ScopeUnbound => false
       }
-    Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => false
   }
 }
+
+fn resolve_declaring_path_optional(declaring: DeclaringPosition) -> Optional<QualifiedName> {
+  match declaring {
+    DeclaringAt { path: path } => optional_present(value: path)
+    DeclaringInSpine { path: path, body: _ } => optional_present(value: path)
+    NotDeclaring => optional_absent()
+  }
+}
+
 
 fn resolve_argument_is_type_parameter(ctx: ResolveContext, argument: Node) -> Bool {
   match type_binder_atom_identity_optional(n: argument) {
