@@ -67,7 +67,19 @@ import extdeps.tools.gnu_coreutils {
 }
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
 import extdeps.sudo.elevation { sudo_elevate_argv }
-import extdeps.posix.test_utility { test_exists_command }
+import extdeps.posix.test_utility {
+  test_exists_command,
+  test_executable_command,
+  PathExistenceReading,
+  PathPresent,
+  PathAbsentOrUnstattable,
+  PathExistenceUnreadable,
+  ContainedExistence,
+  ContainedAbsent,
+  ContainedPresent,
+  ContainedUnreadable,
+  contained_existence,
+}
 import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.tools.findutils { find_untrusted_entries_command, find_other_children_exec_command }
@@ -5322,20 +5334,60 @@ fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -
 // each leg in retract order. The first failing leg stops the fold and names its step. There is no
 // script body, no stage directory of its own and no EXIT trap: the preamble owns its scratch and
 // removes it on both branches, and no other leg stages anything.
+//
+// THE ORCHESTRATION IS ONE PURE FUNCTION OVER PORTS (live_deploy_retract_orchestrate). The transport has
+// no mock arm (ruling 2026-08-23), so what is effectful -- the preamble, the argv dispatch, the C2
+// removal and the LoadState read -- enters as function values: production builds them over the real
+// transport here, and a control supplies outcomes through the same orchestration and the same per-leg
+// dispatch, so a runner that reports success without executing a leg is observable.
 fn realize_live_deploy_retract_on_host(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match live_deploy_retract_candidate_locus_refusal(transport: transport) {
+  live_deploy_retract_orchestrate(
+    locus_refusal: live_deploy_retract_candidate_locus_refusal(transport: transport),
+    plan: deploy_retract_plan_legs(spec: spec),
+    principal: spec.names.publication_principal,
+    preamble: fn(principal) { live_deploy_apply_preamble_on_host(access: access, principal: principal) },
+    ports: deploy_retract_ports_on_host(transport: transport),
+    host: spec.target.host.identity,
+    intent: intent,
+  )
+}
+
+type DeployRetractPorts {
+  command: fn(ArgvCommand) -> RunArgvTransportOutcome
+  remove: fn(HostRemoveTarget) -> Reconciliation<HostRemoveTarget, HostRemoveEvidence>
+  load: fn(NonEmptyStr) -> SystemdPropertyCapture
+}
+
+fn deploy_retract_ports_on_host(transport: HostEffectTransport) -> DeployRetractPorts {
+  DeployRetractPorts {
+    command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
+    remove: fn(t) { host_remove_on_host(target: t, transport: transport) },
+    load: fn(u) { systemctl_show_load_state_read(transport: transport, unit: u) },
+  }
+}
+
+fn live_deploy_retract_orchestrate(
+  locus_refusal: Optional<String>,
+  plan: DeployRetractPlan,
+  principal: NonEmptyStr,
+  preamble: fn(NonEmptyStr) -> LiveDeployPreambleVerdict,
+  ports: DeployRetractPorts,
+  host: NonEmptyStr,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match locus_refusal {
     Present { value: why } => NotConverged { reason: why, applied: intent }
     Absent =>
-      match deploy_retract_plan_legs(spec: spec) {
+      match plan {
         RetractPlanRefused { step: s, reason: r } =>
           NotConverged { reason: join(["live_deploy retract refused at step ", s, ": ", r], ""), applied: intent }
         RetractPlanReady { legs: legs } =>
-          match live_deploy_apply_preamble_on_host(access: access, principal: spec.names.publication_principal) {
+          match preamble(principal) {
             PreambleRefused { step: ps, reason: pr, legs_consumed: _ } =>
               NotConverged {
                 reason: join(["live_deploy retract refused at preamble step ", live_deploy_preamble_step_name(step: ps), ": ", pr], ""),
@@ -5343,8 +5395,8 @@ fn realize_live_deploy_retract_on_host(
               }
             PreambleConverged { principal: _, dropin: _, legs_consumed: _ } =>
               live_deploy_retract_verdict(
-                run: live_deploy_retract_run_legs(legs: legs, transport: transport),
-                host: spec.target.host.identity,
+                run: live_deploy_retract_run_legs(legs: legs, ports: ports),
+                host: host,
                 intent: intent,
               )
           }
@@ -5433,52 +5485,49 @@ fn deploy_retract_gone_failure(load: RetractLoadState) -> Optional<String> {
   }
 }
 
-fn live_deploy_retract_run_leg(leg: DeployRetractLeg, transport: HostEffectTransport) -> Optional<String> {
+fn live_deploy_retract_run_leg(leg: DeployRetractLeg, ports: DeployRetractPorts) -> Optional<String> {
+  let command = ports.command
+  let remove = ports.remove
+  let load_of = ports.load
   match leg {
     RetractServeOff { endpoint: e } =>
-      deploy_retract_command_failure(outcome: run_argv_over_host_effect_transport(
-        command: sudo_elevate_command(command: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e))),
-        transport: transport,
-      ))
+      deploy_retract_command_failure(outcome: command(sudo_elevate_command(command: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))))
     RetractDisableIfLoaded { unit: u } => {
-      let load = deploy_retract_load_state_of(capture: systemctl_show_load_state_read(transport: transport, unit: u))
+      let load = deploy_retract_load_state_of(capture: load_of(u))
       match load {
         RetractUnitLoaded =>
           deploy_retract_disable_failure(
             load: load,
-            disable: run_argv_over_host_effect_transport(
-              command: sudo_elevate_command(command: systemctl_disable_now_argv(unit: u)),
-              transport: transport,
-            ),
+            disable: command(sudo_elevate_command(command: systemctl_disable_now_argv(unit: u))),
           )
         RetractUnitNotFound => Absent
         RetractLoadStateUnreadable { reason: _ } => deploy_retract_disable_failure(load: load, disable: RunArgvTransportRefused { reason: "disable not attempted" })
       }
     }
     RetractRemoveForce { paths: ps } =>
-      deploy_retract_remove_failure(verdict: host_remove_on_host(target: RemoveForce { paths: ps }, transport: transport))
+      deploy_retract_remove_failure(verdict: remove(RemoveForce { paths: ps }))
     RetractRemoveEmptyDirectory { path: p } =>
-      deploy_retract_remove_failure(verdict: host_remove_on_host(target: RemoveEmptyDirectory { path: p }, transport: transport))
+      deploy_retract_remove_failure(verdict: remove(RemoveEmptyDirectory { path: p }))
     RetractRemoveRecursive { path: p } =>
-      deploy_retract_remove_failure(verdict: host_remove_on_host(target: RemoveForceRecursive { path: p }, transport: transport))
+      deploy_retract_remove_failure(verdict: remove(RemoveForceRecursive { path: p }))
     RetractDaemonReload =>
-      deploy_retract_command_failure(outcome: run_argv_over_host_effect_transport(command: extdeps.systemd.systemctl.systemctl_daemon_reload_command(), transport: transport))
+      deploy_retract_command_failure(outcome: command(extdeps.systemd.systemctl.systemctl_daemon_reload_command()))
     RetractUnitGoneReadback { unit: u } =>
-      deploy_retract_gone_failure(load: deploy_retract_load_state_of(capture: systemctl_show_load_state_read(transport: transport, unit: u)))
+      deploy_retract_gone_failure(load: deploy_retract_load_state_of(capture: load_of(u)))
   }
 }
 
-fn live_deploy_retract_run_legs(legs: List<DeployRetractLeg>, transport: HostEffectTransport) -> DeployRetractRun {
-  live_deploy_retract_run_legs_from(legs: legs, transport: transport, done: 0)
+fn live_deploy_retract_run_legs(legs: List<DeployRetractLeg>, ports: DeployRetractPorts) -> DeployRetractRun {
+  live_deploy_retract_run_legs_from(legs: legs, ports: ports, done: 0)
 }
 
-fn live_deploy_retract_run_legs_from(legs: List<DeployRetractLeg>, transport: HostEffectTransport, done: Int) -> DeployRetractRun {
+fn live_deploy_retract_run_legs_from(legs: List<DeployRetractLeg>, ports: DeployRetractPorts, done: Int) -> DeployRetractRun {
   match legs {
     Empty => RetractRunOk { legs_run: done }
     Cons { head: leg, tail: rest } =>
-      match live_deploy_retract_run_leg(leg: leg, transport: transport) {
+      match live_deploy_retract_run_leg(leg: leg, ports: ports) {
         Present { value: why } => RetractRunFailed { step: deploy_retract_leg_step(leg: leg), reason: why, legs_run: done }
-        Absent => live_deploy_retract_run_legs_from(legs: rest, transport: transport, done: done + 1)
+        Absent => live_deploy_retract_run_legs_from(legs: rest, ports: ports, done: done + 1)
       }
   }
 }
@@ -7583,6 +7632,46 @@ fn host_remove_reason(
 //                                                    idempotent)
 fn host_remove_verdict(
   target: HostRemoveTarget,
+  pre_state: List<HostRemovePathState>,
+  outcome: RunArgvTransportOutcome,
+  post_state: List<HostRemovePathState>,
+) -> Reconciliation<HostRemoveTarget, HostRemoveEvidence> {
+  match host_remove_unreadable_reason(states: pre_state) {
+    Present { value: why } =>
+      NotConverged {
+        reason: host_remove_reason(
+          target: target,
+          verb: "refused",
+          detail: join(["the pre-removal state of a path could not be read, so absence is not established: ", why], ""),
+          pathfield: host_remove_path_field(target: target),
+        ),
+        applied: target,
+      }
+    Absent =>
+      match host_remove_unreadable_reason(states: post_state) {
+        Present { value: why } =>
+          NotConverged {
+            reason: host_remove_reason(
+              target: target,
+              verb: "did not converge",
+              detail: join(["the post-removal state of a path could not be read, so convergence is unproven: ", why], ""),
+              pathfield: host_remove_path_field(target: target),
+            ),
+            applied: target,
+          }
+        Absent =>
+          host_remove_outcome_verdict(
+            target: target,
+            pre_present: list_map(xs: pre_state, f: fn(st) { host_remove_state_present(state: st) }),
+            outcome: outcome,
+            post_present: list_map(xs: post_state, f: fn(st) { host_remove_state_present(state: st) }),
+          )
+      }
+  }
+}
+
+fn host_remove_outcome_verdict(
+  target: HostRemoveTarget,
   pre_present: List<Bool>,
   outcome: RunArgvTransportOutcome,
   post_present: List<Bool>,
@@ -7669,31 +7758,14 @@ fn host_remove_verdict(
             applied: target,
           }
         } else if !o.success {
-          // Distinguish the NON-EMPTY dir (the loud refusal — the RED) from an ABSENT dir. Both
-          // `rm -d` outcomes exit 1, so the exit status alone cannot name the cause; the
-          // pre-observation carries the distinction. Widening to -rf here would turn a loud
-          // refusal into silent destruction.
-          let was_present = fold_list(xs: pre_present, empty: false, cons: (acc, b) => acc || b)
-          if was_present {
-            NotConverged {
-              reason: host_remove_reason(
-                target: target,
-                verb: "refused",
-                detail: join([p_s, " is not empty; rm -d failed (loud refusal, never widened to -rf)"], ""),
-                pathfield: p_s,
-              ),
-              applied: target,
-            }
-          } else {
-            NotConverged {
-              reason: host_remove_reason(
-                target: target,
-                verb: "refused",
-                detail: "no such path",
-                pathfield: p_s,
-              ),
-              applied: target,
-            }
+          NotConverged {
+            reason: host_remove_reason(
+              target: target,
+              verb: "refused",
+              detail: join(["rm -d failed (exit ", to_string(o.exit_code), "): ", o.stderr, " (never widened to -rf)"], ""),
+              pathfield: p_s,
+            ),
+            applied: target,
           }
         } else {
           let still = fold_list(xs: post_present, empty: false, cons: (acc, b) => acc || b)
@@ -7782,49 +7854,109 @@ fn host_remove_verdict(
   }
 }
 
-type HostRemoveProbeOutcome
-  = HostRemoveProbeObserved { present: Bool }
-  | HostRemoveProbeRefused { reason: String }
+// A PATH'S STATE AS THE UNPRIVILEGED PROBE CAN ESTABLISH IT. `test -e` exits 1 both for an absent path
+// and for a path it cannot stat (a parent without search permission), so a false is not absence; only
+// containment under a searchable parent is (extdeps.posix.test_utility contained_existence). Any other
+// status, or a refused transport, is Unreadable, and Unreadable never folds into Absent.
+type HostRemovePathState
+  = HostRemovePathPresent
+  | HostRemovePathAbsent
+  | HostRemovePathUnreadable { reason: String }
 
-// THE READ-BACK PROBE. Unprivileged `test -e path`: exit 0 => present, non-zero => absent. A
-// transport refusal is carried as its own refusal, not as "absent" — an unprobed path is NOT an
-// absent path (fail-closed).
-fn host_remove_probe_present(path: NonEmptyStr, transport: HostEffectTransport) -> HostRemoveProbeOutcome {
-  match run_argv_over_host_effect_transport(
-    command: test_exists_command(path: path as String),
-    transport: transport,
-  ) {
-    RunArgvTransportRefused { reason: why } => HostRemoveProbeRefused { reason: why }
-    RunArgvTransportObserved { observed: o } => HostRemoveProbeObserved { present: o.success }
+fn host_remove_state_present(state: HostRemovePathState) -> Bool {
+  match state {
+    HostRemovePathPresent => true
+    HostRemovePathAbsent => false
+    HostRemovePathUnreadable { reason: _ } => false
   }
 }
 
-type HostRemoveProbeFold
-  = HostRemoveProbeFoldDone { present: List<Bool> }
-  | HostRemoveProbeFoldRefused { reason: String }
-
-// Probe every target path in order; the FIRST refusal stops the fold.
-fn host_remove_probe_fold(paths: List<NonEmptyStr>, transport: HostEffectTransport) -> HostRemoveProbeFold {
+fn host_remove_unreadable_reason(states: List<HostRemovePathState>) -> Optional<String> {
   fold_list(
-    xs: paths,
-    empty: HostRemoveProbeFoldDone { present: Empty },
-    cons: fn(acc, path) {
+    xs: states,
+    empty: Absent,
+    cons: fn(acc, st) {
       match acc {
-        HostRemoveProbeFoldRefused { reason: _ } => acc
-        HostRemoveProbeFoldDone { present: ps } =>
-          match host_remove_probe_present(path: path, transport: transport) {
-            HostRemoveProbeObserved { present: b } =>
-              HostRemoveProbeFoldDone { present: list_snoc_item(xs: ps, item: b) }
-            HostRemoveProbeRefused { reason: why } => HostRemoveProbeFoldRefused { reason: why }
+        Present { value: _ } => acc
+        Absent =>
+          match st {
+            HostRemovePathUnreadable { reason: r } => Present { value: r }
+            HostRemovePathPresent => Absent
+            HostRemovePathAbsent => Absent
           }
       }
     },
   )
 }
 
+// PURE: the test status as a reading. Exit 0 present, 1 absent-or-unstattable, anything else (or a
+// refused transport) unreadable.
+fn host_remove_reading(path: String, outcome: RunArgvTransportOutcome) -> PathExistenceReading {
+  match outcome {
+    RunArgvTransportRefused { reason: why } =>
+      PathExistenceUnreadable { reason: join(["`test` on ", path, " was refused: ", why], "") as NonEmptyStr }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code == 0 {
+        PathPresent
+      } else if o.exit_code == 1 {
+        PathAbsentOrUnstattable
+      } else {
+        PathExistenceUnreadable { reason: join(["`test` on ", path, " exited ", to_string(o.exit_code), ": ", o.stderr], "") as NonEmptyStr }
+      }
+  }
+}
+
+// PURE: the state a path reading plus its searchable-parent reading establish.
+fn host_remove_state_of(path: String, parent: String, reading: PathExistenceReading, parent_reading: PathExistenceReading) -> HostRemovePathState {
+  match contained_existence(path: path, parent: parent, parent_reading: parent_reading, child_reading: reading) {
+    ContainedPresent => HostRemovePathPresent
+    ContainedAbsent => HostRemovePathAbsent
+    ContainedUnreadable { reason: r } => HostRemovePathUnreadable { reason: r as String }
+  }
+}
+
+fn host_remove_parent_of(path: String) -> String {
+  fold_list(
+    xs: tree_path_prefixes(path: path),
+    empty: "/",
+    cons: fn(acc, part) { if part == "" { "/" } else { part } },
+  )
+}
+
+// THE READ-BACK PROBE. Unprivileged `test -e path`; a false is only trusted as absence when the parent
+// is searchable (`test -x parent`). The parent is probed only when the path's own reading is false.
+fn host_remove_probe_state(path: NonEmptyStr, transport: HostEffectTransport) -> HostRemovePathState {
+  let p = path as String
+  let reading = host_remove_reading(
+    path: p,
+    outcome: run_argv_over_host_effect_transport(command: test_exists_command(path: p), transport: transport),
+  )
+  match reading {
+    PathPresent => HostRemovePathPresent
+    PathExistenceUnreadable { reason: r } => HostRemovePathUnreadable { reason: r as String }
+    PathAbsentOrUnstattable => {
+      let parent = host_remove_parent_of(path: p)
+      host_remove_state_of(
+        path: p,
+        parent: parent,
+        reading: reading,
+        parent_reading: host_remove_reading(
+          path: parent,
+          outcome: run_argv_over_host_effect_transport(command: test_executable_command(path: parent), transport: transport),
+        ),
+      )
+    }
+  }
+}
+
+// Probe every target path in order. A transport refusal is a path's Unreadable state, never absence.
+fn host_remove_probe_states(paths: List<NonEmptyStr>, transport: HostEffectTransport) -> List<HostRemovePathState> {
+  list_map(xs: paths, f: fn(path) { host_remove_probe_state(path: path, transport: transport) })
+}
+
 // THE LEAF — the thin impure leg over the host-effect transport. Ordered: pre-observe
-// (unprivileged test -e per path), dispatch the elevated rm, read back (test -e), verdict. The
-// first refusal stops the caller's fold; nothing here absorbs one.
+// (unprivileged test per path), dispatch the elevated rm, read back, verdict. An unreadable
+// pre-observation refuses BEFORE the rm is dispatched; the post-removal read is judged by the verdict.
 fn host_remove_on_host(
   target: HostRemoveTarget,
   transport: HostEffectTransport,
@@ -7838,40 +7970,28 @@ fn host_remove_on_host(
     RemoveEmptyDirectory { path: p } => [p]
     RemoveForceRecursive { path: p } => [p]
   }
-  {
-    match host_remove_probe_fold(paths: paths, transport: transport) {
-      HostRemoveProbeFoldRefused { reason: why } =>
-        NotConverged {
-          reason: join(
-            ["host_remove: pre-observation read-back refused (unprivileged test -e), so no removal was dispatched: ", why],
-            "",
-          ),
-          applied: target,
-        }
-      HostRemoveProbeFoldDone { present: pre_present } => {
-      let dispatch = run_argv_over_host_effect_transport(
-        command: sudo_elevate_command(command: host_remove_target_inner_argv(target: target)),
-        transport: transport,
+  let pre_state = host_remove_probe_states(paths: paths, transport: transport)
+  match host_remove_unreadable_reason(states: pre_state) {
+    Present { value: why } =>
+      NotConverged {
+        reason: host_remove_reason(
+          target: target,
+          verb: "refused",
+          detail: join(["the pre-removal state of a path could not be read, so no removal was dispatched: ", why], ""),
+          pathfield: host_remove_path_field(target: target),
+        ),
+        applied: target,
+      }
+    Absent =>
+      host_remove_verdict(
+        target: target,
+        pre_state: pre_state,
+        outcome: run_argv_over_host_effect_transport(
+          command: sudo_elevate_command(command: host_remove_target_inner_argv(target: target)),
+          transport: transport,
+        ),
+        post_state: host_remove_probe_states(paths: paths, transport: transport),
       )
-      match host_remove_probe_fold(paths: paths, transport: transport) {
-        HostRemoveProbeFoldRefused { reason: why } =>
-          NotConverged {
-            reason: join(
-              ["host_remove: read-back after the removal refused (unprivileged test -e), so convergence is unproven: ", why],
-              "",
-            ),
-            applied: target,
-          }
-        HostRemoveProbeFoldDone { present: post_present } =>
-          host_remove_verdict(
-            target: target,
-            pre_present: pre_present,
-            outcome: dispatch,
-            post_present: post_present,
-          )
-      }
-      }
-    }
   }
 }
 
