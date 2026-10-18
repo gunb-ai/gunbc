@@ -1250,14 +1250,14 @@ fn rust_witness_carrier_from_type_node(type_node: Node, shared_types: Set<String
     match rust_witness_applied_type_arg_node(type_node: peeled, source_indices: source_indices) {
       Present { value: arg_node } =>
         rust_witness_type_arg_admit_rendered(
-          rendered: render_rust_type(n: arg_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info),
+          rendered: render_rust_declaration_position(n: arg_node, spelled: render_rust_type(n: arg_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info), shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names),
           emit_info: emit_info
         )
       Absent => none
     }
   } else {
     rust_witness_type_arg_admit_rendered(
-      rendered: render_rust_type(n: peeled, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info),
+      rendered: render_rust_declaration_position(n: peeled, spelled: render_rust_type(n: peeled, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info), shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names),
       emit_info: emit_info
     )
   }
@@ -1571,6 +1571,11 @@ fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: Lis
 }
 
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, width_position: Bool, type_decl_items: TypeDeclIndex) -> String {
+  let spelled = render_rust_applied_type_arg_spelled(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: width_position, type_decl_items: type_decl_items)
+  render_rust_declaration_position(n: n, spelled: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+}
+
+fn render_rust_applied_type_arg_spelled(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, width_position: Bool, type_decl_items: TypeDeclIndex) -> String {
   if rust_type_node_is_arrow(n: n) {
     render_rust_arrow_type_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
   } else if rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: width_position) != none {
@@ -1584,7 +1589,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
       _ =>
         match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
           Present { value: scalar } => scalar
-          Absent => render_rust_declaration_position(n: n, spelled: render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+          Absent => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
         }
     }
   }
@@ -15834,7 +15839,29 @@ fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, 
   }
 }
 
+// The declared field node comes from the declaration the type-decl index holds for the struct's leaf --
+// the item the struct definition itself iterates -- so the constructor's box decision and the struct's
+// stored layer judge ONE node (run 80: the binding-resolved copy answered NeedsBox for a field the
+// struct stores unboxed). A leaf with no single declaration falls to the binding lookup below.
 fn rust_struct_field_type_node_variant_aware(scope: InferScope, emit_info: EmitGraphInfo, struct_name: String, field_name: String) -> Node? {
+  let identities = type_decl_identities_of_leaf(index: emit_info.type_decl_items, leaf: qualified_last_segment(name: struct_name))
+  let declared = if (identities |> count) == 1 {
+    match identities |> first {
+      Present { value: identity } =>
+        match map_get(emit_info.type_decl_items.by_identity, identity) {
+          Present { value: item } => rust_struct_field_type_node_from_container(container: item, field_name: field_name, source_indices: scope.type_env.source_indices)
+          Absent => none
+        }
+      Absent => none
+    }
+  } else { none }
+  match declared {
+    Present { value: n } => Present { value: n }
+    Absent => rust_struct_field_type_node_binding_aware(scope: scope, emit_info: emit_info, struct_name: struct_name, field_name: field_name)
+  }
+}
+
+fn rust_struct_field_type_node_binding_aware(scope: InferScope, emit_info: EmitGraphInfo, struct_name: String, field_name: String) -> Node? {
   match rust_struct_field_type_node(scope: scope, struct_name: struct_name, field_name: field_name) {
     Present { value: n } => Present { value: n }
     Absent =>
