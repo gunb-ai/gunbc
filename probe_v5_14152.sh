@@ -28,7 +28,12 @@
 # sessions' uncommitted .dag edits (sharp-boar-42).
 set -uo pipefail
 export PATH="/opt/cargo/bin:/usr/local/bin:/usr/local/sbin:$PATH"
-BASE_SHA=59606870e8ba3001a845627696509e8aa16bb0f0    # main, pinned
+# DERIVED from the ref, never typed: a hand-written 40-char literal has cost this lane four dispatches.
+URL0=https://github.com/gunb-ai/gunbc.git
+BASE_SHA=$(timeout 300 git ls-remote $URL0 refs/heads/main | cut -f1)
+B_SHA=$(timeout 300 git ls-remote $URL0 refs/heads/session/gentle-carp-16 | cut -f1)
+[ -n "$BASE_SHA" ] && [ -n "$B_SHA" ] || { echo "could not resolve main / the WIP branch"; exit 20; }
+echo "BASE(main, includes S0)=$BASE_SHA"; echo "WIP=$B_SHA"
 CARRIER_SHA=ef64c3fd645ece80e5f6827a52cf3e5aac72cebb  # scratch head: probe v4 patcher WITH lconn/rconn/lname/rname
 URL=https://github.com/gunb-ai/gunbc.git
 D=/tmp/probeV4; rm -rf $D; mkdir -p $D
@@ -47,8 +52,14 @@ timeout 900 git fetch --depth 1 origin $CARRIER_SHA > $LOGS/fc.log 2>&1 || { ech
 CAR=$(git rev-parse FETCH_HEAD); echo "carriers=$CAR (want $CARRIER_SHA)"
 [ "$CAR" = "$CARRIER_SHA" ] || { echo "WRONG CARRIER"; exit 28; }
 # Every carrier path is ASSERTED (a missing one used to yield an empty file and a silent wrong answer).
-git show $CAR:carriers/my_04_infer.dag       > $LOGS/my_04_infer.dag       || { echo "no my_04_infer"; exit 29; }
-git show $CAR:carriers/my_04_types_backup.dag > $LOGS/my_04_types.dag       || { echo "no my_04_types"; exit 29; }
+# THE TREE IS CONFIG A'S, AT THE S0 BASE: 04_infer.dag WITHOUT the two new arms (so every rebind refusal
+# still reaches the fold's refusal site, which is where the probe prints -- measuring with the arms in place
+# would silently drop exactly the rows under study) and 04_types.dag FROM THE WIP BRANCH. The pairing matters:
+# a pre-S0 04_types under a main-merged 04_infer produced 81 'not found in scope' diagnostics and cost 9
+# minutes. Same merge base and same theirs side as the merge, so this is the tree under test, not an edit.
+git show $CAR:carriers/A_infer_merged.dag     > $LOGS/my_04_infer.dag       || { echo "no A_infer_merged"; exit 29; }
+git fetch --depth 1 origin $B_SHA > $LOGS/fb2.log 2>&1 || { echo "WIP FETCH FAILED"; exit 29; }
+git show FETCH_HEAD:src/v1/04_types.dag       > $LOGS/my_04_types.dag       || { echo "no 04_types from the WIP"; exit 29; }
 git show $CAR:tools/rebind_census.sh         > $LOGS/rebind_census.sh      || { echo "no census"; exit 29; }
 git show $CAR:patch_rebind_probe4.py         > $LOGS/patch_rebind_probe4.py || { echo "no probe4 patcher"; exit 29; }
 git show $CAR:patch_s1b_counter.py           > $LOGS/patch_s1b_counter.py   || { echo "no s1b patcher"; exit 29; }
@@ -83,10 +94,24 @@ git show FETCH_HEAD:src/v1/tests/claim/generic_identity_census.dag > src/v1/test
 [ -s src/v1/tests/claim/generic_identity_census.dag ] || { echo "EMPTY census claim from a failed git show -- abort"; exit 31; }
 echo "claim census: calls=$(grep -ac 'unify_generics(' src/v1/tests/claim/generic_identity_census.dag) withText=$(grep -ac 'text: ' src/v1/tests/claim/generic_identity_census.dag) (want 2 and 2; 0 withText = main's copy = the refusal I already paid 9 minutes for)"
 [ "$(grep -ac 'text: ' src/v1/tests/claim/generic_identity_census.dag)" = "2" ] || { echo "WRONG CENSUS VERSION"; exit 31; }
+# THE TEST MODULE MUST BE INSTALLED TOO: config A ran '0 passed; 52 filtered out' because the module is
+# declared in src/v1/tests/src/lib.rs and main has no such line. A census run does not need the suite, but a
+# missing lib.rs line here also means the seed's test surface differs from the WIP's.
+git show FETCH_HEAD:src/v1/tests/src/lib.rs > src/v1/tests/src/lib.rs || { echo "no tests lib.rs"; exit 31; }
+[ "$(grep -ac 'mod cross_coproduct_generic_locate_test' src/v1/tests/src/lib.rs)" = "1" ] || { echo "lib.rs lacks the module declaration"; exit 31; }
 
 # Pre-extension source guard: the fold must be present, the NEW ARMS must NOT be.
 echo "source guard: fold=$(grep -ac UnifyGenericsAcc $LOGS/my_04_infer.dag) rawChildrenFix=$(grep -ac 'any(c => binding_has_type_variable_leaf(n: c))' $LOGS/my_04_infer.dag) ownFormArms=$(grep -ac 'binding_is_generic_declaration_own_form(n: bound)' $LOGS/my_04_infer.dag) (want >0, 1, 0)"
 [ "$(grep -ac 'binding_is_generic_declaration_own_form(n: bound)' $LOGS/my_04_infer.dag)" = "0" ] || { echo "SOURCE HAS THE EXTENSION ARMS -- the probe would lose every admitted row. ABORT"; exit 32; }
+# PAIRING CHECK (the class of error that cost 9 minutes): every function main's 04_types defines that this
+# 04_infer CALLS must be DEFINED by the 04_types we are installing.
+git show $BASE_SHA:src/v1/04_types.dag > $LOGS/base_04_types.dag
+ORPH=""
+for fn in $(grep -oE '^fn [a-z0-9_]+' $LOGS/base_04_types.dag | awk '{print $2}' | sort -u); do
+  grep -qE "(^|[^A-Za-z0-9_])$fn\\(" $LOGS/my_04_infer.dag && ! grep -qE "^fn $fn\\(" $LOGS/my_04_types.dag && ORPH="$ORPH $fn"
+done
+[ -z "$ORPH" ] || { echo "PAIRED FILES FROM DIFFERENT GENERATIONS, missing:$ORPH"; exit 36; }
+echo "pairing check passed (04_infer and 04_types are the same generation)"
 
 cp $LOGS/my_04_infer.dag src/v1/04_infer.dag
 cp $LOGS/my_04_types.dag src/v1/04_types.dag
