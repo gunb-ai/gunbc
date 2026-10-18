@@ -501,7 +501,7 @@ fn fatal_gaps(examined: List<AxisExamination>) -> List<RuntimeIdentityGap> {
     AxisUnanswered { axis: _, gaps: gs, weight: w } => gs.flat_map(g => match w {
       DecisiveAxis => [g]
       CorroboratingAxis => []
-    }))
+    })
     AxisCompared { axis: _, pair: _, weight: _ } => []
   })
 }
