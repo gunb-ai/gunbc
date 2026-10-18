@@ -2716,11 +2716,11 @@ fn drift_populated_standing() -> RunnerRetirementStanding {
 }
 
 // THE DISCRIMINATING RED: complete at plan time, populated at apply time, everything else equal. The
-// fingerprints must differ, so apply refuses before the locked script runs.
+// standing left the hashed identity (it is a monotone premise, not a churn fact), so the refusal is
+// the located per-unit retirement drift apply runs before the locked script, not a fingerprint change.
 test fn retirement_drift_between_plan_and_apply_changes_the_subject() -> Bool {
-  let planned = fleet_converge_member_set_fingerprint(request: drift_request(standings: [witness_open_transition_delta_complete_standing()]))
-  let reobserved = fleet_converge_member_set_fingerprint(request: drift_request(standings: [drift_populated_standing()]))
-  serialize_content_hash(hash: planned) != serialize_content_hash(hash: reobserved)
+  let t = witness_retirement_drift(planned: witness_open_transition_delta_complete_standing(), observed: drift_populated_standing())
+  string_contains(s: t, pattern: "retirement drift: ") && string_contains(s: t, pattern: "planned complete, now pending")
 }
 
 // AND THE POSITIVE CONTROL: an unchanged subject must still admit, or the row above is satisfied by a
