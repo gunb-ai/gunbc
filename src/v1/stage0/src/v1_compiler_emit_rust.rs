@@ -43718,25 +43718,6 @@ pub fn native_entry_function_name(modules: Rc<Vec<Rc<TypedModule>>>) -> Option<S
     }
 }
 
-pub fn native_serve_startup_function() -> String {
-    "native_serve_startup".to_string()
-}
-
-pub fn native_serve_declares_startup(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    pipeline_module: String,
-) -> bool {
-    ((native_effect_decl_sites(
-        modules.clone(),
-        ParsedModuleItemKind::ModuleItemFunction,
-        native_serve_startup_function(),
-    )
-    .iter()
-    .filter(|site| site.module_name.clone() == pipeline_module.clone())
-    .count() as i64)
-        > 0)
-}
-
 pub fn native_serve_entry_function() -> String {
     thread_local! {
         static CACHED: String = {
@@ -43744,6 +43725,39 @@ pub fn native_serve_entry_function() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn native_serve_startup_function() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "native_serve_startup".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn native_serve_declares_startup(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    pipeline_module: String,
+) -> bool {
+    ((Rc::new({
+        let mut __result = Vec::new();
+        for site in native_effect_decl_sites(
+            modules.clone(),
+            ParsedModuleItemKind::ModuleItemFunction,
+            native_serve_startup_function(),
+        )
+        .iter()
+        .cloned()
+        {
+            if (site.module_name.clone() == pipeline_module.clone()) {
+                __result.push(site);
+            }
+        }
+        __result
+    })
+    .len() as i64)
+        > 0)
 }
 
 pub fn native_cli_entry_function() -> String {
@@ -44403,37 +44417,6 @@ pub fn emit_native_serve_driver_main_rs(
         let pipeline_mod =
             crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module.clone());
         let effectful = ((bindings.clone().len() as i64) > 0);
-        let startup_import = if startup.clone() {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat("use ".to_string(), crate_name.clone()),
-                                        "::".to_string(),
-                                    ),
-                                    pipeline_mod.clone(),
-                                ),
-                                "::native_serve_startup;".to_string(),
-                            ),
-                            "\n".to_string(),
-                        ),
-                        "use ".to_string(),
-                    ),
-                    crate_name.clone(),
-                ),
-                "::gunbc_native_serve::{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};\n".to_string(),
-            )
-        } else {
-            "".to_string()
-        };
-        let startup_run = if startup.clone() {
-            "    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.\n    match std::fs::read(\"/proc/self/exe\") {\n        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) {\n            NativeServeStartup::NativeServeStartupPassed { note } => println!(\"{}\", native_serve_startup_passed_line(note.clone())),\n            NativeServeStartup::NativeServeStartupRefused { reason } => {\n                eprintln!(\"{}\", native_serve_startup_refusal_line(reason.clone()));\n                std::process::exit(native_serve_startup_refused_exit_code() as i32);\n            }\n        },\n        Err(cause) => {\n            eprintln!(\"{}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: {}\", cause)));\n            std::process::exit(native_serve_startup_refused_exit_code() as i32);\n        }\n    }\n".to_string()
-        } else {
-            "".to_string()
-        };
         let binding_lines = Rc::new({
             let mut __result = Vec::new();
             for b in bindings.iter().cloned() {
@@ -44452,6 +44435,16 @@ pub fn emit_native_serve_driver_main_rs(
         .join(&"".to_string());
         let effect_failed_import = if effectful.clone() {
             " native_serve_effect_failed,".to_string()
+        } else {
+            "".to_string()
+        };
+        let startup_import = if startup.clone() {
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("use ".to_string(), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_serve_startup;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_native_serve::{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};".to_string()), "\n".to_string())
+        } else {
+            "".to_string()
+        };
+        let startup_run = if startup.clone() {
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.".to_string(), "\n".to_string()), "    match std::fs::read(\"/proc/self/exe\") {".to_string()), "\n".to_string()), "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) {".to_string()), "\n".to_string()), "            NativeServeStartup::NativeServeStartupPassed { note } => println!(\"{}\", native_serve_startup_passed_line(note.clone())),".to_string()), "\n".to_string()), "            NativeServeStartup::NativeServeStartupRefused { reason } => {".to_string()), "\n".to_string()), "                eprintln!(\"{}\", native_serve_startup_refusal_line(reason.clone()));".to_string()), "\n".to_string()), "                std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"{}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: {}\", cause)));".to_string()), "\n".to_string()), "            std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string())
         } else {
             "".to_string()
         };
