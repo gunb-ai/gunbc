@@ -12441,19 +12441,12 @@ fn emit_typed_field_access_as(base: Node, field: String, summary: FieldSummary?,
               emit_rust_compile_error_expr(message: concat("field access '.", field, "': the base expression's type names '", seal_undecided_leaf, "', which more than one module of this closure declares, and carries no declaration identity -- whether the field is read directly or through a sealed accessor is not decided"))
             } else if sealed {
               concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
-<<<<<<< HEAD
-=======
-            } else if field_is_boxed {
-              apply_type_template1(template: sharing.deref_clone, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
-            } else if base_is_owned || as_receiver {
-              concat(base_str, ".", emit_ident(name: field, target: Rust))
->>>>>>> origin/main
             } else {
               match field_box {
                 NeedsBoxRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
                 NeedsBox => apply_type_template1(template: sharing.deref_clone, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
                 NeedsNoBox =>
-                  if base_is_owned {
+                  if base_is_owned || as_receiver {
                     concat(base_str, ".", emit_ident(name: field, target: Rust))
                   } else {
                     apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
