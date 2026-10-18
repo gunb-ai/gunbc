@@ -126,10 +126,13 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership
 // greens before it.
 import gunbc.witness.compiler_gate_contract_stamp {
   compiler_gate_contract_stamp_env_key,
+  compiler_gate_contract_stamp_evidence_script_is_renderable,
+  compiler_gate_contract_stamp_evidence_step,
   compiler_gate_contract_stamp_guard_step,
   compiler_gate_contract_stamp_guard_script_is_renderable,
   compiler_gate_contract_stamp_is_derived,
   compiler_gate_contract_stamp_underived_reason,
+  compiler_gate_contract_stamp_evidence_step_name,
   compiler_gate_contract_stamp_step_name,
   compiler_gate_contract_stamp_yaml_value
 }
@@ -291,6 +294,18 @@ fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
       step: compiler_gate_contract_stamp_guard_step(),
       role: capability_neutral,
       step_name: compiler_gate_contract_stamp_step_name,
+    },
+    // THE EVIDENCE RUNS IN THE GATE, not in a terminal I happened to open. Review 82145 filed this
+    // as blocking and correct: `git grep -n run_evidence` matched only my own fixtures/README.md, so
+    // the RED and its controls were ATTESTED, not enrolled -- while DESIGN section 4b(4) requires the
+    // discriminating RED and its positive control to STAY ENROLLED. Placement is deliberate: right
+    // behind the guard it exercises, still before any binary is built, so it costs seconds and it
+    // still runs on a checkout that the guard alone would already have refused... which is why the
+    // harness reads the COMMITTED artifact rather than a working-tree edit.
+    CompilerGateBoundStep {
+      step: compiler_gate_contract_stamp_evidence_step(),
+      role: capability_neutral,
+      step_name: compiler_gate_contract_stamp_evidence_step_name,
     },
     CompilerGateBoundStep {
       step: toolchain_home_isolation_step(),
@@ -693,7 +708,8 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
           if compiler_gate_emit_build_capability_closure_holds() && compiler_gate_emit_build_scripts_are_renderable() && compiler_gate_merge_path_runs_on_the_fleet() && required_ci_contract_epoch_is_derived() && compiler_gate_contract_stamp_is_derived()
-            && compiler_gate_contract_stamp_guard_script_is_renderable() {
+            && compiler_gate_contract_stamp_guard_script_is_renderable()
+            && compiler_gate_contract_stamp_evidence_script_is_renderable() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
               YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness.compiler_gate_workflow", path: p, reason: r) }

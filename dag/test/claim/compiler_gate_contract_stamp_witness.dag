@@ -5,6 +5,9 @@ import std.algebra { for_all, length, list_map, string_contains }
 import std.optional { Present, Absent }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_required_job }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { dissolution_description }
 import gunbc.witness.compiler_gate_contract_stamp {
   CompilerGateContractStampReading,
   StampAbsent,
@@ -15,6 +18,17 @@ import gunbc.witness.compiler_gate_contract_stamp {
   compiler_gate_contract_stamp_awk_program,
   compiler_gate_contract_stamp_compare,
   compiler_gate_contract_stamp_env_key,
+  compiler_gate_contract_stamp_evidence_case_proceeds,
+  compiler_gate_contract_stamp_evidence_cases,
+  compiler_gate_contract_stamp_evidence_emit_refused_poison,
+  compiler_gate_contract_stamp_evidence_fail_marker_path,
+  compiler_gate_contract_stamp_evidence_harness_path,
+  compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger,
+  compiler_gate_contract_stamp_evidence_shell_emit_scaffold,
+  compiler_gate_contract_stamp_evidence_step_name,
+  compiler_gate_contract_stamp_evidence_subject_text,
+  compiler_gate_contract_stamp_evidence_subject_is_fixture,
+  compiler_gate_contract_stamp_evidence_table_discriminates,
   compiler_gate_contract_stamp_guard_script,
   compiler_gate_contract_stamp_is_derived,
   compiler_gate_contract_stamp_read_from,
@@ -504,4 +518,121 @@ test fn the_guard_step_depends_on_nothing_the_checkout_does_not_give_holds() -> 
     && !string_contains(s: body, pattern: "curl")
     && !string_contains(s: body, pattern: "wget")
     && !string_contains(s: body, pattern: "actions/cache")
+}
+
+// ================================================================================================
+// THE EVIDENCE IS ENROLLED. Review 82145 (claude/opus[1m], REQUEST_CHANGES) filed, correctly, that
+// the behavioural evidence was run by nothing: `git grep -n run_evidence` matched only my own
+// fixtures/README.md. DESIGN section 4b(4) requires the discriminating RED and its positive control
+// to STAY ENROLLED, and section 5 requires "a real consumer green by execution plus a discriminating
+// input that goes red". The claims below are what keep that enrolment from decaying back into prose
+// I once ran in a terminal.
+// ================================================================================================
+
+test fn the_evidence_step_is_enrolled_in_the_required_gate_holds() -> Bool {
+  let names = list_map(compiler_gate_required_job().steps, step_name_text)
+  // EXACTLY ONE, and IMMEDIATELY BEHIND THE GUARD IT EXERCISES -- still before the first step that
+  // invokes a built binary, so it costs seconds and runs on a checkout the guard would already have
+  // refused.
+  length(filter(names, n => n == compiler_gate_contract_stamp_evidence_step_name)) == 1
+    && guard_index(names) == 1
+    && evidence_index(names) == guard_index(names) + 1
+    && first_invoking_index(compiler_gate_required_job().steps) > 1
+}
+
+test fn the_evidence_step_carries_the_dissolution_marker_and_refuses_on_the_marker_holds() -> Bool {
+  let body = evidence_step_body()
+  string_contains(s: body, pattern: "dissolve-on: ")
+    && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_harness_path)
+    && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_fail_marker_path)
+    && string_contains(s: body, pattern: "exit 1")
+    // THE VERDICT CHANNEL IS THE MARKER, not parsed prose: `[ -e marker ]` is a shape the bash node
+    // serializer supports, while `if ! <command>` has no node representation at all
+    // (bash_fold_serialize_negation_inner admits only or_else/and_then/pipe/negation).
+    && string_contains(s: body, pattern: "'[' '-e' ")
+    && !string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_emit_refused_poison)
+}
+
+// CONSTRUCTION, NOT VALIDATION. Every label, subject symbol, expected exit code and expected finding
+// in the MODEL must appear in the EMITTED bytes. A row that exists only in the model, or only in the
+// shell, goes red here -- which is the case that would otherwise be silent: the model and the runner
+// drifting apart is exactly how "the tests pass" and "the behaviour is tested" stop meaning the same
+// thing, and it is the same shape as the class row this PR answers.
+test fn every_modelled_case_survives_into_the_emitted_step_holds() -> Bool {
+  let body = evidence_step_body()
+  let cases = compiler_gate_contract_stamp_evidence_cases()
+  for_all(cases, c =>
+    string_contains(s: body, pattern: c.label)
+      && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_subject_text(s: c.subject))
+      && string_contains(s: body, pattern: c.expected_exit)
+      && string_contains(s: body, pattern: c.expected_finding)
+  )
+    && length(cases) > 0
+}
+
+// THE TABLE DISCRIMINATES, AND THE GATE SAYS SO. A table of "must refuse" rows is satisfied by a guard
+// that refuses EVERYTHING -- which is what the fused `-v key=` render did while refusing correct trees
+// too, and its four RED cases still exited 1 with the expected word. So the requirement that at least
+// one case must PROCEED is not a nicety, and it is asserted here as well as in the generation gate,
+// so that deleting every control reds a claim and not only the workflow.
+test fn the_evidence_table_has_both_a_refusal_and_a_proceeding_control_holds() -> Bool {
+  compiler_gate_contract_stamp_evidence_table_discriminates()
+    && 1 == length(filter(compiler_gate_contract_stamp_evidence_cases(),
+         c => compiler_gate_contract_stamp_evidence_subject_is_fixture(s: c.subject)))
+    && 0 < length(filter(compiler_gate_contract_stamp_evidence_cases(),
+         c => compiler_gate_contract_stamp_evidence_case_proceeds(c: c)))
+}
+
+// THE HARNESS CARRIES ITS OWN DISSOLUTION MARKER ON THE CARRIER, the way the guard's scaffold row does.
+// A second authority without a named trigger is the more severe case under DESIGN section 6.
+test fn the_evidence_carrier_declares_its_scaffold_and_trigger_holds() -> Bool {
+  let trigger = dissolution_description(
+    condition: compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger
+  )
+  string_contains(s: trigger, pattern: "dissolve-on: compiler_gate_contract_stamp_evidence_statements")
+    && string_contains(s: trigger, pattern: "instrument_targets")
+    // MATCH, NOT `as String`: this is the corpus idiom (approval_ntfy_converge_witness.dag:158),
+    // and it also pins WHICH KIND of disposition the carrier is -- a Scaffold dissolving to a single
+    // authority, bound by DeclarationRef to the fn that emits the shell. Terminal would mean the
+    // residual was declared permanent, which is a different claim and a different policy.
+    match compiler_gate_contract_stamp_evidence_shell_emit_scaffold {
+      Scaffold { dissolves_to: SingleAuthority,
+                 bind: DeclarationRef { module_path: "gunbc.witness.compiler_gate_contract_stamp",
+                                        decl_name: "compiler_gate_contract_stamp_evidence_statements",
+                                        field: WholeDeclaration } } => true
+      _ => false
+    }
+}
+
+type EvidencePosition {
+  index: Int
+  found: Int
+}
+
+data evidence_position: EvidencePosition = EvidencePosition { index: 0, found: -1 }
+
+fn evidence_position_step(acc: EvidencePosition, name: String) -> EvidencePosition {
+  if acc.found >= 0 {
+    EvidencePosition { index: acc.index + 1, found: acc.found }
+  } else if name == compiler_gate_contract_stamp_evidence_step_name {
+    EvidencePosition { index: acc.index + 1, found: acc.index }
+  } else {
+    EvidencePosition { index: acc.index + 1, found: -1 }
+  }
+}
+
+fn evidence_index(names: List<String>) -> Int {
+  fold(names, init: evidence_position, f: evidence_position_step).found
+}
+
+fn evidence_step_body() -> String {
+  let steps = compiler_gate_required_job().steps
+  let hits = filter(steps, s => step_name_text(step: s) == compiler_gate_contract_stamp_evidence_step_name)
+  // `.first()` yields Present/Absent; there is no list_get in this substrate. Anything other than
+  // exactly one such step yields "", so the claims above fail on a missing OR duplicated step rather
+  // than reading a slice the model never emitted.
+  match hits.first() {
+    Present { value: s0 } => step_run_text(step: s0)
+    Absent => ""
+  }
 }

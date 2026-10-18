@@ -33,7 +33,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits,
   bash_build_command_with_words,
   bash_build_exit,
+  bash_build_negation,
   bash_build_if_from_stmts,
+  bash_build_pipe,
   bash_build_or_else,
   bash_build_test_bracket,
   bash_build_word_cmdsubst,
@@ -762,6 +764,329 @@ fn compiler_gate_contract_stamp_guard_step() -> Step {
     name: Present { value: compiler_gate_contract_stamp_step_name },
     id: none,
     run: compiler_gate_contract_stamp_guard_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// ================================================================================================
+// THE EVIDENCE IS ENROLLED, NOT ANECDOTAL.
+//
+// Review 82145 (claude/opus[1m], REQUEST_CHANGES) filed two blocking findings against
+// test/compiler_gate_contract_stamp/run_evidence.sh, and both are correct as filed:
+//
+//   (1) it is new hand-written shell with no modeled `.dag` authority and no dissolution marker;
+//   (2) NOTHING RUNS IT -- `git grep -n run_evidence` matched only my own fixtures/README.md, so
+//       the RED and the five controls existed only as something I ran by hand and reported.
+//
+// Finding (2) is the more serious of the two and it indicts my own reporting: DESIGN section 4b(4)
+// says the discriminating RED and its positive control must STAY ENROLLED, and section 5 says done
+// means "a real consumer green by execution plus a discriminating input that goes red when the
+// behavior is wrong". Evidence I executed once in a terminal and then described in prose is
+// ATTESTED, not enrolled -- and attestation is precisely the thing the class row this PR answers was
+// full of ("no silent wrongness here"). The fix is not a better write-up.
+//
+// WHAT IS NOW MODELED, AND WHAT IS NOT. The case table -- which cases exist, which subject each
+// reads, what exit code and which diagnostic each must produce -- is derived here, in .dag, and is
+// the SINGLE AUTHORITY for it (section 3: interface, realization, policy). The emitted step (below)
+// carries those expectations INTO the job, and a witness claim reads the committed runner back and
+// refuses if its run_case lines have drifted from these rows. What remains in bash is the act of
+// SPAWNING A PROCESS and reading its exit code and stdout: no capability for that exists in the
+// substrate (src/v2 and dag/ expose no process-exec surface -- dag/std/process.dag models an exit
+// VALUE, not an exec), so that part is not "semantics expressible in .dag" that was skipped; it is a
+// missing capability, which is what the trigger below names.
+//
+// THE SUBJECT IS A SYMBOL, NOT A PATH, on purpose. `fixture` / `committed` / `rewritten` / `demoted`
+// name WHERE THE TREE COMES FROM; the runner binds each to a real file. A path in the model would be
+// a second spelling of the same fact and could disagree with the runner in silence.
+// ================================================================================================
+
+type CompilerGateContractStampEvidenceSubject
+  = SubjectFixture            // the committed silent-green head's own witnesses.yml
+  | SubjectCommitted          // the committed artifact, unchanged
+  | SubjectRewritten          // its stamp member moved, as a contract-changing PR would
+  | SubjectDemoted            // the member demoted into a step-level env, structurally absent
+
+type CompilerGateContractStampEvidenceCase {
+  label: String
+  subject: CompilerGateContractStampEvidenceSubject
+  running: String             // the running-side value substituted for ${{ env.X }}; "" = absent
+  expected_exit: String       // compared against the guard's exit status
+  expected_finding: String    // a substring the diagnostic must contain
+}
+
+// THE FOUR MEASURED SILENT-GREEN RUNS share one committed workflow artifact, so ONE SubjectFixture
+// row stands for all four; fixtures/README.md carries the run ids and each run's measurements. The
+// expected finding is asserted as well as the exit code because a guard that dies for an unrelated
+// reason also exits 1 -- that is exactly how the fused `-v key=` defect passed every RED case.
+fn compiler_gate_contract_stamp_evidence_cases() -> List<CompilerGateContractStampEvidenceCase> {
+  [
+    CompilerGateContractStampEvidenceCase {
+      label: "RED silent-green head 5003782716",
+      subject: SubjectFixture,
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampAbsent"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "CONTROL paired (head carries the stamp)",
+      subject: SubjectCommitted,
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "0",
+      expected_finding: "paired"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "CONTROL mismatch (running != tree)",
+      subject: SubjectCommitted,
+      running: "deadbeefcafe0123",
+      expected_exit: "1",
+      expected_finding: "StampMismatch"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "CONTROL unreadable (no running stamp)",
+      subject: SubjectCommitted,
+      running: "",
+      expected_exit: "1",
+      expected_finding: "StampUnreadable"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "CONTROL contract-changing PR (both new)",
+      subject: SubjectRewritten,
+      running: "0123456789abcdef",
+      expected_exit: "0",
+      expected_finding: "paired"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "CONTROL step-level env is not the read",
+      subject: SubjectDemoted,
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampAbsent"
+    }
+  ]
+}
+
+// THE RUNNING SIDE AS A PROBE, never a literal copy of the stamp. Cases that must agree read the
+// value the generated workflow actually declares; if that member is missing or malformed, those
+// cases cannot silently compare against a stale constant and pass.
+data compiler_gate_contract_stamp_running_probe: String = "__FROM_WORKFLOW__"
+
+fn compiler_gate_contract_stamp_evidence_case_is_red(c: CompilerGateContractStampEvidenceCase) -> Bool {
+  c.expected_exit == "1"
+}
+
+fn compiler_gate_contract_stamp_evidence_case_proceeds(c: CompilerGateContractStampEvidenceCase) -> Bool {
+  c.expected_exit == "0"
+}
+
+// THE DISCRIMINATING PAIR, derived rather than asserted. A guard that refuses EVERYTHING passes any
+// table of "must refuse" rows -- which is what the fused `-v key=` render did while it was dead. The
+// table is therefore only evidence if it holds at least one refusal AND at least one case that must
+// PROCEED; this is what the emitted step refuses on, so a future edit that drops every control reds
+// the GATE, not a reviewer's attention.
+fn compiler_gate_contract_stamp_evidence_table_discriminates() -> Bool {
+  let cases = compiler_gate_contract_stamp_evidence_cases()
+  let reds = filter(cases, compiler_gate_contract_stamp_evidence_case_is_red)
+  let proceeds = filter(cases, compiler_gate_contract_stamp_evidence_case_proceeds)
+  0 < length(reds) && 0 < length(proceeds)
+}
+
+// ONE RED AND ONLY ONE. Two RED rows against the same fixture would double the cost without doubling
+// the information, and four rows copied from four heads would suggest the heads differ in workflow
+// text when they do not.
+fn compiler_gate_contract_stamp_evidence_subject_is_fixture(s: CompilerGateContractStampEvidenceSubject) -> Bool {
+  match s {
+    SubjectFixture => true
+    SubjectCommitted => false
+    SubjectRewritten => false
+    SubjectDemoted => false
+  }
+}
+
+fn compiler_gate_contract_stamp_evidence_case_count_is_declared() -> Bool {
+  1 == length(filter(compiler_gate_contract_stamp_evidence_cases(),
+    c => compiler_gate_contract_stamp_evidence_subject_is_fixture(s: c.subject)))
+}
+
+data compiler_gate_contract_stamp_evidence_step_name: String =
+  "Execute the contract-stamp guard against the recorded silent-green subject"
+
+data compiler_gate_contract_stamp_evidence_harness_path: String =
+  "test/compiler_gate_contract_stamp/run_evidence.sh"
+
+// THE CARRIER AND ITS DISSOLUTION. Same convention as the guard's own scaffold row and as the
+// fleet's "Isolate toolchain homes" step: a Scaffold bound by DeclarationRef to the thing that
+// produces the shell, and a trigger named as a CAPABILITY rather than a file, a date, or a count.
+data compiler_gate_contract_stamp_evidence_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.witness.compiler_gate_contract_stamp",
+    decl_name: "compiler_gate_contract_stamp_evidence_statements",
+    field: WholeDeclaration
+  }
+}
+
+data compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger: DissolutionCondition =
+  unbound_dissolution(description: "dissolve-on: compiler_gate_contract_stamp_evidence_statements -- the case TABLE, the expected exit codes and the expected findings are already modeled in .dag (compiler_gate_contract_stamp_evidence_cases); what remains here is SPAWNING the guard and reading its exit status and stdout, which has no capability in the substrate (dag/std/process.dag models an exit VALUE, not an exec). Dissolves when a .dag claim can execute a program and observe its exit code and output, at which point these rows become a `gunbc test` row in gunbc.instrument_targets and this runner dissolves into that row.")
+
+data compiler_gate_contract_stamp_evidence_emit_refused_poison: String =
+  "__GUNBC_ORCH_EMIT_REFUSED__ gunbc contract stamp evidence emission was rejected by v2.workflow.bash_emit: the case table's bash node tree could not be rendered. This literal must never reach a committed workflow; the generation gate refuses instead."
+
+// THE STEP AS NODES, not as joined strings, and one COMMAND NODE PER MODELLED CASE -- so the table
+// in this module is what the COMMITTED WORKFLOW CARRIES, not something the shell re-decides. The
+// renderable predicate below refuses generation if any modelled label is missing from the emitted
+// bytes, so a row that exists only in the model or only in the runner stops the workflow generating.
+// That is construction over validation (DESIGN section 5): the emitted script is required to agree
+// with the model, rather than being checked against it afterwards.
+//
+// `set -e` is OFF (set_e: false) deliberately: every case must RUN even when an earlier one fails,
+// because a partial table is not evidence, and the step must be able to read the transcript before
+// deciding. Under -e the first failing case would abort the step with no diagnostic -- the
+// silent-green shape, one level up.
+//
+// ONLY SHAPES THE GUARD ALREADY PROVES ARE SERIALIZABLE are used: command words, test_bracket, if,
+// printf, exit. In particular the final refusal is `[ -e marker ]` rather than `if ! grep ...`,
+// because bash_fold_serialize_negation_inner admits only or_else / and_then / pipe / negation, so an
+// `if ! <command>` cond has no node representation -- the same constraint that shaped the guard's
+// capture. The verdict is therefore carried by a MARKER FILE the harness creates on any failure.
+fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
+  let case_nodes = list_map(
+    compiler_gate_contract_stamp_evidence_cases(),
+    compiler_gate_contract_stamp_evidence_case_command
+  )
+  // FIRST STATEMENT, and it is the reason a reused runner cannot inherit someone else's verdict:
+  // the marker lives in /tmp, which survives between steps on one runner. Clearing it here means the
+  // step's own `[ -e marker ]` speaks only about THIS run.
+  let prepare = [
+    bash_build_command_with_words(
+      words: [
+        bash_build_word_lit(text: "bash"),
+        bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_harness_path),
+        bash_build_word_lit(text: "--prepare"),
+        bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_path)
+      ]
+    )
+  ]
+  let summary = [
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(
+        words: [
+          bash_build_word_lit(text: "-e"),
+          bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_path)
+        ]
+      ),
+      then_stmts: [
+        bash_build_command_with_words(
+          words: [
+            bash_build_word_lit(text: "printf"),
+            bash_build_word_lit(text: "%s\n"),
+            bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_refusal)
+          ]
+        ),
+        bash_build_exit(code: "1")
+      ]
+    )
+  ]
+  list_append(left: prepare, right: list_append(left: case_nodes, right: summary))
+}
+
+// ONE CASE INVOCATION: `bash <harness> --case <label> <subject> <running> <expected-exit> <finding>`.
+// Every argument is a WORD, so quoting is the serializer's problem and not ours: nothing here is
+// spliced into shell syntax, and a label containing parentheses or spaces survives as data.
+fn compiler_gate_contract_stamp_evidence_case_command(c: CompilerGateContractStampEvidenceCase) -> Node {
+  bash_build_command_with_words(
+    words: [
+      bash_build_word_lit(text: "bash"),
+      bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_harness_path),
+      bash_build_word_lit(text: "--case"),
+      bash_build_word_lit(text: c.label),
+      bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_subject_text(s: c.subject)),
+      bash_build_word_lit(text: c.running),
+      bash_build_word_lit(text: c.expected_exit),
+      bash_build_word_lit(text: c.expected_finding),
+      bash_build_word_lit(text: "--transcript"),
+      bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_transcript_path),
+      bash_build_word_lit(text: "--fail-marker"),
+      bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_path)
+    ]
+  )
+}
+
+// THE SUBJECT SYMBOL AS DATA, not as a path. The runner owns the mechanical step of turning a symbol
+// into a file (copying the committed artifact, moving the stamp member, demoting it into a step-level
+// env); the MODEL owns which subjects exist and what each one is supposed to prove. A path in the
+// model would be a second spelling of the same fact, free to disagree in silence.
+fn compiler_gate_contract_stamp_evidence_subject_text(s: CompilerGateContractStampEvidenceSubject) -> String {
+  match s {
+    SubjectFixture => "fixture"
+    SubjectCommitted => "committed"
+    SubjectRewritten => "rewritten"
+    SubjectDemoted => "demoted"
+  }
+}
+
+data compiler_gate_contract_stamp_evidence_transcript_path: String =
+  "/tmp/gunbc-contract-stamp-evidence.log"
+
+// The harness creates this on ANY failing case. The step's refusal reads its EXISTENCE rather than
+// parsing its own verdict prose, so a harness that crashes mid-case -- or is deleted, or is never
+// enrolled -- still leaves a marker behind: absence of the marker is only green if the harness got
+// far enough to remove a stale one, which it does as its first act.
+data compiler_gate_contract_stamp_evidence_fail_marker_path: String =
+  "/tmp/gunbc-contract-stamp-evidence.fail"
+
+data compiler_gate_contract_stamp_evidence_verdict_ok: String =
+  "ALL ASSERTIONS HELD"
+
+data compiler_gate_contract_stamp_evidence_refusal: String =
+  "REFUSED gunbc contract stamp evidence: the harness did not report ALL ASSERTIONS HELD. See its output above."
+
+fn compiler_gate_contract_stamp_evidence_marker_line() -> String {
+  concat("# ", concat(dissolution_description(condition: compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger), "\n"))
+}
+
+fn compiler_gate_contract_stamp_evidence_script_outcome() -> Outcome<String> {
+  match bash_emit_stmts(statements: compiler_gate_contract_stamp_evidence_statements(), set_e: false) {
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Accepted { value: body, diagnostics: ds } =>
+      Accepted {
+        value: concat(compiler_gate_contract_stamp_evidence_marker_line(), body),
+        diagnostics: ds
+      }
+  }
+}
+
+// FAIL CLOSED AT GENERATION, in the same shape as the guard's gate predicate: an unrenderable tree
+// stops the workflow generating at all, and the marker plus the refusal must SURVIVE rendering, so a
+// refactor cannot quietly drop either.
+fn compiler_gate_contract_stamp_evidence_script_is_renderable() -> Bool {
+  match compiler_gate_contract_stamp_evidence_script_outcome() {
+    Accepted { value: script, diagnostics: _ } =>
+      !string_contains(s: script, pattern: compiler_gate_contract_stamp_evidence_emit_refused_poison)
+        && string_contains(s: script, pattern: "dissolve-on: ")
+        && string_contains(s: script, pattern: compiler_gate_contract_stamp_evidence_verdict_ok)
+        && string_contains(s: script, pattern: compiler_gate_contract_stamp_evidence_harness_path)
+        && string_contains(s: script, pattern: "exit 1")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn compiler_gate_contract_stamp_evidence_script() -> String {
+  match compiler_gate_contract_stamp_evidence_script_outcome() {
+    Accepted { value: script, diagnostics: _ } => script
+    Rejected { diagnostics: _ } => compiler_gate_contract_stamp_evidence_emit_refused_poison
+  }
+}
+
+fn compiler_gate_contract_stamp_evidence_step() -> Step {
+  RunStep {
+    name: Present { value: compiler_gate_contract_stamp_evidence_step_name },
+    id: none,
+    run: compiler_gate_contract_stamp_evidence_script(),
     shell: none,
     env: none,
     working_directory: none,
