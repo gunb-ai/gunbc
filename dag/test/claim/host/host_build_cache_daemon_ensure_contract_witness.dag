@@ -1163,3 +1163,42 @@ test fn a_fold_that_never_read_a_digest_is_never_permitted_the_whole_plan() -> B
          Runs { legs: _ } => false
        }
 }
+
+// AN EMPTY CAPTURE IS NEVER A FRAGMENT HIT -- THE HAZARD THE DELETED DECORATION POINTED AT.
+// gunbc.host.host_effect_realize used to carry `build_cache_fragment_words_are_shell_safe`, which review
+// 82053 found had kept a shell-era name over a body that checked for empty fragments -- half of which
+// (`string_contains(join ["prefix", frag, "suffix"], frag)`) is true of EVERY string, so no input could
+// have failed it (DESIGN 4b: a check whose forbidden state is expressible nowhere it runs is a
+// decoration, green by construction and later cited as coverage). The invariant it was reaching for is
+// real: `string_contains(s:, pattern: "")` is true of everything, so an empty fragment in the cited roster
+// would match every capture and a host that said NOTHING would be reported MISCONFIGURED -- a wrong
+// verdict with an operator-visible reason, not a crash, which is the class of failure DESIGN 5 refuses to
+// leave catchable-but-not-unwritable.
+//
+// THE HALF THAT IS NO LONGER WRITABLE IS NOT ASSERTED HERE. The roster is `List<NonEmptyStr>` upstream in
+// extdeps.cache.sccache, so `""` as a fragment is a compile error (measured: 1 blocking); a claim that
+// "verifies" what the compiler already refuses would itself be the decoration, so there is none.
+//
+// THE HALF THAT CAN STILL FAIL IS THIS: the CAPTURE is only `String` (it is the host's bytes, and a host
+// may genuinely print nothing), so the empty-pattern hazard lives on this side of the boundary. The
+// presence probe exits zero -- that is what lets the stats query run at all -- and the stats read answers
+// with an empty merged capture and a non-zero exit, which is the loudest nothing a host can say. It must
+// classify as UNRESPONSIVE, and the detail must be the host's own (empty) bytes: not `ObserveMisconfigured`,
+// which would name a fragment no scan ever matched. The positive half of the same scan -- a capture that
+// DOES carry the cited fragment comes back naming exactly that fragment, even beside a well-formed-looking
+// zeroed table -- is `a_fragment_still_classifies_over_a_zeroed_table` above, so the pair pins both
+// directions of one fold.
+test fn empty_capture_is_never_a_fragment_hit() -> Bool {
+  match build_cache_observe_observed(
+    presence: build_cache_presence_ran(),
+    stats: Present {
+      value: Ran {
+        observed: BuildCacheHostRunObserved { exit_code: 3, stdout: "", stderr: "" },
+      },
+    },
+  ) {
+    ObserveUnresponsive { detail: detail } => detail == ""
+    ObserveMisconfigured { matched_fragment: _, stats: _ } => false
+    anything => false
+  }
+}

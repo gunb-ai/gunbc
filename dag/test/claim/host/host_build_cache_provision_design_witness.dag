@@ -444,26 +444,3 @@ test fn design_witness_known_arch_host_does_not_refuse_for_arch() -> Bool {
     Absent => false
   }
 }
-
-// THE HAZARD THE DELETED DECORATION CLAIMED TO COVER, NOW ON THE ROUTE, WHERE IT CAN ACTUALLY FAIL.
-// What mattered was never "is this word shell-safe" (the shell is gone, and the name had outlived the
-// obligation -- review 82053). What mattered is that a capture reaching the fragment fold can be EMPTY,
-// and `string_contains(s:, pattern: "")` is true of every fragment, so an empty capture -- which says
-// nothing at all about the daemon -- could come back `:misconfigured` and hide an unresponsive host
-// behind a wrong diagnosis. THE OTHER HALF IS NO LONGER WRITABLE: the roster is `List<NonEmptyStr>`
-// upstream, so an empty FRAGMENT is a compile error, and a runtime check over it would be green by
-// construction (DESIGN 4b) -- there is none. This is the half that can fail, and it fails closed: the
-// empty capture classifies as unresponsive with NotConverged, naming no fragment.
-test fn design_witness_empty_capture_is_never_a_fragment_hit() -> Bool {
-  match build_cache_classify_daemon_state(
-    stats_status: 3,
-    stats_stdout: "",
-    stats_stderr: "",
-    ensure_status: 0,
-    readback_status: 0,
-    readback_stdout: "Stats summary for the sccache daemon",
-  ) {
-    DaemonUnresponsive { status: status, detail: detail } => status == 3 && build_cache_detail_has_readback(detail: detail)
-    anything => false
-  }
-}
