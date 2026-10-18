@@ -1,8 +1,9 @@
 module test.claim.roadmap.worker_dedicated_account_witness
 
-import std.types { Bool, NonEmptyStr, List, String, Int }
+import std.types { Bool, NonEmptyStr, List, String, Int, FilePath }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
 import std.optional { Present, Absent }
+import std.algebra { trim }
 import std.measure { kibibyte }
 import extdeps.systemd { systemd_service_unit_name, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -27,6 +28,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_git_maintenance_exec_commands,
   dashboard_instance_dispatch_worktree_root,
   DashboardInstanceProvisionOp, DashboardEnsureGitSharedRepositoryPosture,
+  DashboardMigrateGitWorkerSubtree,
   DashboardVerifyProviderAuth, dashboard_instance_provision_plan,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -969,9 +971,43 @@ test fn the_shared_repository_posture_runs_before_the_attempt_worktree_is_added(
     DashboardEnsureGitSharedRepositoryPosture { repo } => repo == lab.repo_root
     _ => false
   })) == 1
-    // (b) ...and the plan carries exactly one provider-verification op, which is the boundary the
-    //     posture precedes: it is the last thing the apply does before the instance is servable, so by
-    //     then the repository is configured and no attempt can be admitted against an unshared repo.
+    // (b) POSITIONS, NOT PRESENCE. "The posture is somewhere in the plan and the provider check is the
+    //     last op" does not order anything: a plan with the posture appended AFTER the verification ops
+    //     would satisfy presence and keep the last-op test green, while configuring the repository only
+    //     after the instance is already servable -- and an attempt admitted in between would add its
+    //     worktree against a repo without core.sharedRepository=group, which is the exact failure this
+    //     follow-up exists to close. So the claim takes the two positions out of ONE fold, in a single
+    //     left-to-right pass, and compares them: the posture must be seen, the provider verification must
+    //     be seen, and the posture's index must be the smaller. The one-time subtree migration is pinned
+    //     into the same chain -- it must come after the posture (its chmods inherit the group from a
+    //     repository git has been told to share) and before the verification ops for the same reason the
+    //     posture does.
+    && (match first_plan_index(plan: plan, predicate: op => match op {
+        DashboardEnsureGitSharedRepositoryPosture { repo } => repo == lab.repo_root
+        _ => false
+      }) {
+        Absent => false
+        Present { value: posture_at } =>
+          match first_plan_index(plan: plan, predicate: op => match op {
+            DashboardMigrateGitWorkerSubtree { repo } => repo == lab.repo_root
+            _ => false
+          }) {
+            Absent => false
+            Present { value: migration_at } =>
+              match first_plan_index(plan: plan, predicate: op => match op {
+                DashboardVerifyProviderAuth { executable: _, state_root: _ } => true
+                _ => false
+              }) {
+                Absent => false
+                Present { value: verified_at } =>
+                  posture_at < migration_at && migration_at < verified_at
+              }
+          }
+      })
+    // (b2) the plan carries EXACTLY ONE op of each kind, so the position compared above is the only
+    //      one and a duplicated posture cannot hide a second, later one.
+    && exactly_one_posture(plan: plan, repo: lab.repo_root)
+    && exactly_one_migration(plan: plan, repo: lab.repo_root)
     && last_is_provider_verification(plan: plan)
     // (c) the staged arm declares NO posture op at all: prod's worker is the service user and owns every
     //     byte, so git's shared-repository behaviour would be a no-op written into a production config.
@@ -979,6 +1015,84 @@ test fn the_shared_repository_posture_runs_before_the_attempt_worktree_is_added(
       DashboardEnsureGitSharedRepositoryPosture { repo: _ } => true
       _ => false
     })
+}
+
+// PROD CARRIES NONE OF IT, on every channel. The lab arm's three steps -- the shared-repository
+// posture, the one-time subtree migration, and the owner-run maintenance unit -- are all answers to the
+// worker being a DIFFERENT uid than the repo owner. On the staged arm the worker runs as the service
+// user itself (DashboardExecutionMode.WorkerIsServiceUser), so it owns every byte git writes: a
+// group-writable subtree there would widen the exposure of a production repository to buy nothing, and a
+// shared-repository config would be a no-op written into a production configuration. The claim reads the
+// declared plan for both arms, so adding any of these to the prod arm fails here rather than on the
+// host, and it reads the maintenance unit's principal from the instance so the two authorities for
+// "who owns the repo" cannot drift apart.
+test fn the_production_instance_carries_none_of_the_worker_writable_git_steps() -> Bool {
+  let prod_plan = dashboard_instance_provision_plan(instance: srv1_live_dashboard_instance())
+  let lab_plan = dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance())
+  let carries_posture = any(xs: prod_plan, predicate: op => match op {
+    DashboardEnsureGitSharedRepositoryPosture { repo: _ } => true
+    _ => false
+  })
+  let carries_migration = any(xs: prod_plan, predicate: op => match op {
+    DashboardMigrateGitWorkerSubtree { repo: _ } => true
+    _ => false
+  })
+  let lab_posture = count(filter(xs: lab_plan, predicate: op => match op {
+    DashboardEnsureGitSharedRepositoryPosture { repo } => repo == srv1_lab_dashboard_instance().repo_root
+    _ => false
+  }))
+  let lab_migration = count(filter(xs: lab_plan, predicate: op => match op {
+    DashboardMigrateGitWorkerSubtree { repo } => repo == srv1_lab_dashboard_instance().repo_root
+    _ => false
+  }))
+  // The maintenance step runs as the repo owner, named from the instance -- never as the worker, and
+  // never as a uid the model did not derive.
+  let principal = dashboard_git_maintenance_principal(instance: srv1_lab_dashboard_instance())
+  !carries_posture && !carries_migration
+    && lab_posture == 1 && lab_migration == 1
+    && principal == srv1_lab_dashboard_instance().directory_owner.user
+}
+
+// THE ONE LEFT-TO-RIGHT PASS THAT SAYS WHERE AN OP SITS: `found` is the index of the FIRST op the
+// predicate names, and an accumulator that has already found one never moves, so no later op can
+// displace it. `none` means the plan does not contain it at all -- which the caller must handle as a
+// refusal, not as "less than zero".
+type PlanIndexScan {
+  next: Int
+  found: Int?
+}
+
+fn first_plan_index(
+  plan: List<DashboardInstanceProvisionOp>,
+  predicate: fn(DashboardInstanceProvisionOp) -> Bool,
+) -> Int? {
+  fold(plan, init: PlanIndexScan { next: 0, found: none }, f: fn(acc: PlanIndexScan, op: DashboardInstanceProvisionOp) -> PlanIndexScan {
+    match acc.found {
+      Present { value: _ } => acc
+      Absent =>
+        if predicate(op) {
+          PlanIndexScan { next: acc.next + 1, found: Present { value: acc.next } }
+        } else {
+          PlanIndexScan { next: acc.next + 1, found: none }
+        }
+    }
+  }).found
+}
+
+// Exactly one op of each kind, for the same repo, so the position the ordering leg compares is the only
+// position there is.
+fn exactly_one_posture(plan: List<DashboardInstanceProvisionOp>, repo: FilePath) -> Bool {
+  count(filter(xs: plan, predicate: op => match op {
+    DashboardEnsureGitSharedRepositoryPosture { repo: r } => r == repo
+    _ => false
+  })) == 1
+}
+
+fn exactly_one_migration(plan: List<DashboardInstanceProvisionOp>, repo: FilePath) -> Bool {
+  count(filter(xs: plan, predicate: op => match op {
+    DashboardMigrateGitWorkerSubtree { repo: r } => r == repo
+    _ => false
+  })) == 1
 }
 
 // The provider-verification op is the boundary the posture must precede: it is the last thing the apply
