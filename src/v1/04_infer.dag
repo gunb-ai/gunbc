@@ -6349,7 +6349,8 @@ fn callable_signature_substitution(
   actual: Node,
   generic_names: List<String>,
   source_indices: Map<String, NewlineIndex>,
-  acc: Map<String, Node>
+  acc: Map<String, Node>,
+  env: TypeEnv
 ) -> UnifyGenericsAcc {
   let f_params = callable_value_params(arrow: formal, source_indices: source_indices)
   let a_params = callable_value_params(arrow: actual, source_indices: source_indices)
@@ -6358,13 +6359,13 @@ fn callable_signature_substitution(
       Present { value: ap } =>
         let step = callable_leaf_substitution(
           formal_part: callable_param_type(p: pair.second), actual_part: callable_param_type(p: ap),
-          generic_names: generic_names, source_indices: source_indices, acc: st.subst)
+          generic_names: generic_names, source_indices: source_indices, acc: st.subst, env: env)
         UnifyGenericsAcc { subst: step.subst, diagnostics: concat(st.diagnostics, step.diagnostics) }
       Absent => st
     })
   let ret = callable_leaf_substitution(
     formal_part: resolved_type(n: formal), actual_part: resolved_type(n: actual),
-    generic_names: generic_names, source_indices: source_indices, acc: after_params.subst)
+    generic_names: generic_names, source_indices: source_indices, acc: after_params.subst, env: env)
   UnifyGenericsAcc { subst: ret.subst, diagnostics: concat(after_params.diagnostics, ret.diagnostics) }
 }
 
@@ -6373,14 +6374,28 @@ fn callable_leaf_substitution(
   actual_part: Node,
   generic_names: List<String>,
   source_indices: Map<String, NewlineIndex>,
-  acc: Map<String, Node>
+  acc: Map<String, Node>,
+  env: TypeEnv
 ) -> UnifyGenericsAcc {
   if (formal_part.connective == Arrow) && (actual_part.connective == Arrow) {
     callable_signature_substitution(formal: formal_part, actual: actual_part,
-      generic_names: generic_names, source_indices: source_indices, acc: acc)
+      generic_names: generic_names, source_indices: source_indices, acc: acc, env: env)
   } else {
+    // NO LABEL WAS INVENTED HERE, and the earlier version of this line is the reason. This call originally
+    // passed `text: TextNotAsked { reason: TextNotAskedForCallableComponentResidue }`: this branch added the
+    // `text` parameter to unify_generics and filled it with a variant #14287 had DELETED on purpose, which
+    // the merge hid (git auto-merged my whole-function rewrite against main's deletion; the remote regen was
+    // what refused, with a hard diagnostic). stern-bat-401 ruled the restore out (msg_be5cfde7: restoring it
+    // "re-mints a deleted authority under a merge"), so this is re-derived on top of main's version instead:
+    // #14287's own answer at the sibling site in this module (callable_component_ground_mismatch, the
+    // non-Arrow arm) was not to ask-less but to ask -- it passes `TextJudgedIn { env: env }`, threading the
+    // environment main added for exactly that. env is already in scope here because
+    // callable_signature_mismatch takes it, so the truthful judgment at this site is the one main itself
+    // uses for the same class of comparison, and no fourth reason is needed. If measurement later shows this
+    // site genuinely needs a reason no surviving variant states, that name goes in the PR body rather than
+    // into the enum.
     unify_generics(formal: actual_part, actual: formal_part, generic_names: generic_names,
-      source_indices: source_indices, acc: acc, text: TextNotAsked { reason: TextNotAskedForCallableComponentResidue }, module_name: "")
+      source_indices: source_indices, acc: acc, text: TextJudgedIn { env: env }, module_name: "")
   }
 }
 
@@ -6430,7 +6445,7 @@ fn callable_signature_mismatch(formal: Node, actual: Node, env: TypeEnv, source_
   else {
     let generic_names = callable_generic_names(arrow: a, source_indices: source_indices)
     let step = callable_signature_substitution(formal: f, actual: a, generic_names: generic_names,
-      source_indices: source_indices, acc: empty_map())
+      source_indices: source_indices, acc: empty_map(), env: env)
     // MERGE RESOLUTION (both sides changed these two lines for different reasons, so this is a union):
     //  - this side retyped callable_signature_substitution to return UnifyGenericsAcc {subst, diagnostics},
     //    so the substitution result is `step.subst` and a diagnostic raised while substituting a signature
