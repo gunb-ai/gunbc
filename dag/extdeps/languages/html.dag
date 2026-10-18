@@ -25,6 +25,24 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// Comment and document-type SPELLINGS of this language. They live here, not in whichever module
+// emits a comment, because they are facts about HTML (§4: "a new target language is rows in
+// extdeps/languages/, never an edit to the fold"). std.languages already records a language's block
+// comment delimiters for the text-generation path; these are the same characters, read once and
+// placed on the medium, which is the object a serializer is allowed to consult.
+data html_comment_open_sequence: String = "<!-- "
+data html_comment_close_sequence: String = " -->"
+// The sequence the TOKENIZER ends a comment at has no leading space. The delimiter we EMIT does, for
+// readability. They are deliberately two rows: a body must not contain the former, and what we write
+// is the latter. Collapsing them would let a body ending in "--" close the comment while a guard
+// looking only for " -->" found nothing.
+data html_comment_terminator: String = "-->"
+// "<!DOCTYPE " with the trailing space the tokenizer requires between keyword and name.
+data html_doctype_open_sequence: String = "<!DOCTYPE "
+// The document type every HTML page in this repo declares. "html" is the only name a conforming
+// parser understands; anything else puts the document in quirks mode, which doctype_hazard refuses.
+data html_doctype_name: String = "html"
+
 data canonical_html_spellings: MarkupBracket = MarkupBracket {
   tag_open: "<",
   end_tag_open: "</",
@@ -279,6 +297,9 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
     void_tags: html5_void_tags,
     void_rendering: OmitClose,
     raw_text_tags: html5_raw_text_tags,
+    comment_open: html_comment_open_sequence,
+    comment_close: html_comment_close_sequence,
+    doctype_open: html_doctype_open_sequence,
   }
 }
 
@@ -315,6 +336,11 @@ fn raw_text_children_text(children: List<Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
     FragmentText { content: t } => concat(acc, t)
     RawNode { content: t } => concat(acc, t)
+    // A comment is not character data of the raw-text element, and a Document inside one is not
+    // legitimate HTML; neither contributes text to the close-sequence check, which is about what the
+    // raw-text element's own content would terminate early.
+    MarkupComment { body: _ } => acc
+    Document { doctype: _, root: _ } => acc
     Element { tag: _, attributes: _, children: _ } => acc
   })
 }
@@ -323,6 +349,12 @@ fn raw_text_hazard(node: Fragment) -> String {
   match node {
     FragmentText { content: _ } => ""
     RawNode { content: _ } => ""
+    // A comment is opaque text that decodes nothing, so it has no close sequence to collide with a
+    // raw-text element's; its OWN early-termination hazard is a different check (comment_hazard).
+    MarkupComment { body: _ } => ""
+    // Walked, not skipped: same reason as find_first_rejected_url — a page reaches these guards as a
+    // Document, and skipping it would certify an unchecked page.
+    Document { doctype: _, root: r } => raw_text_hazard(node: r)
     Element { tag: t, attributes: _, children: kids } =>
       if tag_in_set(tag: t, tags: html5_raw_text_tags) {
         if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {
@@ -333,6 +365,62 @@ fn raw_text_hazard(node: Fragment) -> String {
       } else {
         raw_text_children_hazard(children: kids)
       }
+  }
+}
+
+// A comment ends at the first "-->" ("comment state": the tokenizer consumes to the first terminator
+// and decodes nothing), so a body holding that sequence closes the comment early and the remainder
+// is parsed as MARKUP in the served page — the same defect class raw_text_hazard refuses for
+// <script>. Refused, never filtered: escaping cannot help (a comment decodes nothing) and stripping
+// the sequence would change what the comment says.
+// Returns the OFFENDING TEXT, or "" when clean. The "" sentinel is not a fail-open risk and not a
+// second path beside the typed refusals: a hazard can only be reported by the caller that refuses,
+// and refusals are each consumer's own closed sum (std.markup's Rejected, a page module's own). One
+// shared refusal type here would put every consumer's causes in the language module and make this
+// module depend on them. So these fns answer one question — "would serializing corrupt the output,
+// and what text is at fault" — and return the text the consumer must quote, which no consumer can
+// misread as clean because no hazard message is empty.
+fn comment_hazard(body: String) -> String {
+  if string_contains(s: body, pattern: html_comment_terminator) {
+    join(["markup comment body contains the comment terminator '", html_comment_terminator, "' — refusing to serialize (the remainder would be parsed as markup); restructure the comment"], "")
+  } else if ends_with(s: body, suffix: "-") {
+    // The other abrupt-close the tokenizer accepts: "--" immediately before the delimiter's own "-"
+    // also ends a comment (comment end state). Named separately because its remedy differs — shorten
+    // the body, rather than remove a sequence from the middle of it.
+    join(["markup comment body ends in '-' — adjacent to the close delimiter this forms an abrupt '-->' close; restructure the comment"], "")
+  } else {
+    ""
+  }
+}
+
+// A <!DOCTYPE> name is a production, not free text: the tokenizer reads at most ONE token after the
+// keyword, so a name holding whitespace or angle brackets makes the declaration swallow text and the
+// document parse in the wrong mode (a page can silently land in quirks mode). Refusing anything but a
+// single bare token is construction-side, so a malformed doctype cannot be written.
+fn doctype_hazard(keyword: String) -> String {
+  if keyword == "" {
+    "doctype declares no document type — the name after <!DOCTYPE is what selects the parsing mode"
+  } else if string_contains(s: keyword, pattern: "<") || string_contains(s: keyword, pattern: ">") || string_contains(s: keyword, pattern: " ") {
+    join(["doctype name '", keyword, "' is not a single bare token — the tokenizer reads one token after <!DOCTYPE; anything else changes how the document parses"], "")
+  } else {
+    ""
+  }
+}
+
+fn comment_children_hazard(children: List<Fragment>) -> String {
+  fold(children, init: "", f: (acc, c) => if acc == "" { comment_hazard_in(node: c) } else { acc })
+}
+
+fn comment_hazard_in(node: Fragment) -> String {
+  match node {
+    MarkupComment { body: b } => comment_hazard(body: b)
+    Document { doctype: d, root: r } => {
+      let bad_doctype = doctype_hazard(keyword: d)
+      if bad_doctype == "" { comment_hazard_in(node: r) } else { bad_doctype }
+    }
+    FragmentText { content: _ } => ""
+    RawNode { content: _ } => ""
+    Element { tag: _, attributes: _, children: kids } => comment_children_hazard(children: kids)
   }
 }
 
@@ -347,7 +435,16 @@ fn try_serialize_html_source(node: Fragment) -> HtmlEmitResult {
     Absent => {
       let hazard = raw_text_hazard(node: node)
       if hazard == "" {
-        EmitOk { html: serialize_html_source(node: node) }
+        // Comment and doctype checks run last, not first, and the order is deliberate: a comment body
+        // may legitimately contain a URL-looking string ("<!-- see https://x -->") and must not be
+        // accused of carrying a reference it does not (find_first_rejected_url already skips comments),
+        // while anything the URL pass rejects is refused before its text is examined at all.
+        let comment_bad = comment_hazard_in(node: node)
+        if comment_bad == "" {
+          EmitOk { html: serialize_html_source(node: node) }
+        } else {
+          EmitRejected { reason: comment_bad }
+        }
       } else {
         EmitRejected { reason: hazard }
       }

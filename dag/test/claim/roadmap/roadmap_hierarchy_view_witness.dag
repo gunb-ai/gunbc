@@ -316,6 +316,8 @@ fn hv_nav_hrefs(node: Fragment) -> List<String> {
   match node {
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
+    MarkupComment { body: _ } => []
+    Document { doctype: _, root: _ } => []
     Element { tag, attributes, children } =>
       concat(
         if tag == "a" { map(filter(attributes, a => a.name == "href"), a => a.value) } else { [] },

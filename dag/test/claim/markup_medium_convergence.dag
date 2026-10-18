@@ -60,6 +60,9 @@ fn md_medium_underscore() -> MarkupMedium {
     void_tags: [],
     void_rendering: OmitClose,
     raw_text_tags: [],
+    comment_open: "<!-- ",
+    comment_close: " -->",
+    doctype_open: "<!DOCTYPE ",
   }
 }
 
@@ -92,6 +95,9 @@ fn single_quote_medium() -> MarkupMedium {
     void_tags: [],
     void_rendering: OmitClose,
     raw_text_tags: [],
+    comment_open: "<!-- ",
+    comment_close: " -->",
+    doctype_open: "<!DOCTYPE ",
   }
 }
 

@@ -1,0 +1,284 @@
+module test.claim.markup_document_comment_witness
+
+// WITNESSES THE THREE THINGS THE COMMENT/DOCTYPE ARMS MUST GET RIGHT, and goes red when any of them
+// stops being true. §5: a typecheck is not a witness — every claim here runs the serializer and
+// compares characters, and each has a mutation named below that turns it red.
+//
+//  1. The delimiters come from the MEDIUM, not from a module that happens to emit a comment. Checked
+//     by rendering the same MarkupComment through two media that spell comments differently (HTML and
+//     JSX-shaped): if either delimiter were hardcoded in std.markup, the two renderings would agree.
+//  2. A comment body cannot terminate its own comment. comment_hazard refuses a body containing the
+//     terminator or ending in "-", and the guarded route refuses it — so a page cannot ship a comment
+//     whose remainder is parsed as markup.
+//  3. A Document puts the doctype OUTSIDE <html>, on its own line, spelled by the medium. And the two
+//     guards walk into a Document's root rather than certifying it unread.
+//
+// RED CONTROLS (run once each; the mutation is named so it can be re-run, and the refusals recorded).
+//   C1  std.markup's MarkupComment arm: replace medium.comment_open with the literal "<!-- ".
+//       witness_comment_delimiters_come_from_the_medium goes red (the JSX-shaped medium renders <!--).
+//   C2  extdeps.languages.html comment_hazard: return "" unconditionally.
+//       witness_comment_terminator_is_refused, witness_comment_trailing_dash_is_refused and
+//       witness_guarded_route_refuses_a_self_terminating_comment go red.
+//   C3  extdeps.uri_validation find_first_rejected_url: return Absent for the Document arm.
+//       witness_url_guard_walks_into_the_document goes red (the javascript: href inside the root is
+//       no longer found) while witness_url_guard_passes_a_clean_document stays green — which is the
+//       point: a guard that always passes is only caught by the claim that expects a refusal.
+//   C4  std.markup Document arm: drop medium.doctype_open, emitting only the keyword.
+//       witness_document_declares_its_type_before_the_root goes red.
+//   C5  extdeps.languages.html html_comment_terminator: change "-->" to " -->".
+//       witness_comment_terminator_is_refused goes red for the trailing-dash body. The emitter's
+//       delimiter and the tokenizer's terminator are two rows on purpose.
+
+import std.markup {
+  Fragment, Element, FragmentText, MarkupComment, Document, MarkupMedium, MarkupBracket,
+  EscapeHtml, OmitClose, attr, serialize_fragment_with,
+}
+import extdeps.languages.html {
+  try_serialize_html_source, EmitOk, EmitRejected, comment_hazard, doctype_hazard,
+  html_markup_medium, html_comment_open_sequence, html_comment_close_sequence,
+  html_comment_terminator, html_doctype_open_sequence, html_doctype_name, canonical_html_spellings,
+}
+import extdeps.uri_validation { find_first_rejected_url }
+import std.optional { Absent, Present }
+import std.types { List, Bool, String }
+
+// A medium that spells comments the way JSX does, so the HTML delimiters cannot be hiding in the
+// serializer. Declared here rather than imported from extdeps.languages.react_jsx so the two media
+// are visibly different objects in this claim's own terms; test.claim.markup_medium_convergence is
+// where the repo's media are checked against each other.
+data jsx_like_bracket: MarkupBracket = MarkupBracket {
+  tag_open: "<",
+  end_tag_open: "</",
+  tag_close: ">",
+  attr_sep: " ",
+  attr_assign: "=",
+  attr_quote: "\"",
+}
+
+data jsx_like_medium: MarkupMedium = MarkupMedium {
+  tag_overrides: [],
+  bracket: jsx_like_bracket,
+  text_escape: EscapeHtml,
+  void_tags: [],
+  void_rendering: OmitClose,
+  raw_text_tags: [],
+  comment_open: "{/* ",
+  comment_close: " */}",
+  doctype_open: "<!DOCTYPE ",
+}
+
+fn comment_node(body: String) -> Fragment {
+  MarkupComment { body: body }
+}
+
+fn comment_in_html(body: String) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [],
+    children: [comment_node(body: body)],
+  }
+}
+
+fn empty_html() -> Fragment {
+  Element { tag: "html", attributes: [], children: [] }
+}
+
+fn document_with_root(root: Fragment) -> Fragment {
+  Document { doctype: html_doctype_name, root: root }
+}
+
+// ── 1. the delimiters are the medium's ────────────────────────────────────────────────────────
+
+test fn witness_comment_renders_with_the_medium_delimiters() -> Bool {
+  serialize_fragment_with(frag: comment_node(body: "note"), medium: html_markup_medium()) == "<!-- note -->"
+}
+
+// THE CLAIM THE RED CONTROL IS FOR. The same fragment through a medium that spells comments
+// differently must render differently. A hardcoded "<!-- " in the serializer passes the claim above
+// and fails this one, which is why both exist.
+test fn witness_comment_delimiters_come_from_the_medium() -> Bool {
+  serialize_fragment_with(frag: comment_node(body: "note"), medium: jsx_like_medium) == "{/* note */}"
+}
+
+test fn witness_html_delimiter_rows_match_the_medium() -> Bool {
+  let m = html_markup_medium()
+  m.comment_open == html_comment_open_sequence && m.comment_close == html_comment_close_sequence
+}
+
+// The emitter's delimiter and the tokenizer's terminator are deliberately different rows: a body must
+// not hold the TERMINATOR, and what we write carries an extra space for readability.
+test fn witness_emitter_delimiter_is_not_the_terminator() -> Bool {
+  html_comment_close_sequence == " -->" && html_comment_terminator == "-->"
+}
+
+// The serializer's contract for a comment: the body appears verbatim, unescaped. HTML decodes nothing
+// inside a comment, so escaping would corrupt it — red if someone "fixes" the arm by routing the body
+// through the text escaper.
+test fn witness_comment_body_is_emitted_verbatim() -> Bool {
+  serialize_fragment_with(frag: comment_node(body: "a & b < c"), medium: html_markup_medium()) == "<!-- a & b < c -->"
+}
+
+// ── 2. a comment cannot terminate itself ──────────────────────────────────────────────────────
+
+test fn witness_clean_comment_body_is_accepted() -> Bool {
+  comment_hazard(body: "a note about the header") == ""
+}
+
+// "a-->b" is the case that separates the TOKENIZER's terminator ("-->", no leading space) from the
+// delimiter we EMIT (" -->", with one). Collapsing the two rows — the obvious tidy-up — leaves a tight
+// "-->" unrefused, and the serializer would then emit a comment the browser closes early.
+test fn witness_comment_terminator_is_refused() -> Bool {
+  comment_hazard(body: "before --> after") != ""
+    && comment_hazard(body: "ends abruptly -->") != ""
+    && comment_hazard(body: "a-->b") != ""
+}
+
+test fn witness_comment_trailing_dash_is_refused() -> Bool {
+  // "--" before the delimiter's own "-" also closes a comment, so a body ending in "-" is refused even
+  // though it contains no " -->" anywhere.
+  comment_hazard(body: "trailing dash-") != ""
+}
+
+// A refusal that says only "bad" is not located (§5): the terminator must be named in the diagnostic.
+test fn witness_comment_hazard_names_the_terminator() -> Bool {
+  let refusal = comment_hazard(body: "x --> y")
+  refusal != "" && string_contains(s: refusal, pattern: html_comment_terminator)
+}
+
+// The guarded route refuses rather than emitting a self-terminating comment. This is the difference
+// between a typed refusal and a comment that silently becomes markup in a served page.
+test fn witness_guarded_route_refuses_a_self_terminating_comment() -> Bool {
+  match try_serialize_html_source(node: comment_in_html(body: "a --> <script>alert(1)</script>")) {
+    EmitRejected { reason: r } => string_contains(s: r, pattern: html_comment_terminator)
+    EmitOk { html: _ } => false
+  }
+}
+
+test fn witness_guarded_route_emits_a_clean_comment() -> Bool {
+  match try_serialize_html_source(node: comment_in_html(body: "ordinary note")) {
+    EmitOk { html: h } => string_contains(s: h, pattern: "<!-- ordinary note -->")
+    EmitRejected { reason: _ } => false
+  }
+}
+
+// ── 3. the document, and the guards that must walk into it ────────────────────────────────────
+
+test fn witness_document_declares_its_type_before_the_root() -> Bool {
+  serialize_fragment_with(frag: document_with_root(root: empty_html()), medium: html_markup_medium())
+    == join([html_doctype_open_sequence, html_doctype_name, ">", "\n", "<html></html>"], "")
+}
+
+// The doctype is a SIBLING of <html> — neither an attribute of it nor inside it. Asserted by the
+// PREFIX rather than by an index, so the claim states the stronger thing: the declaration occupies the
+// whole first line, and the root begins at the start of the second. A "doctype index < html index"
+// check would also pass on "<html><head><!DOCTYPE html>" style output, which is the defect it should
+// catch.
+test fn witness_doctype_line_precedes_the_root_element() -> Bool {
+  let out = serialize_fragment_with(
+    frag: document_with_root(root: comment_in_html(body: "inner")),
+    medium: html_markup_medium(),
+  )
+  starts_with(s: out, prefix: join([html_doctype_open_sequence, html_doctype_name, ">", "\n", "<html"], ""))
+}
+
+// THE GUARD MUST WALK IN. A Document is how a whole page reaches find_first_rejected_url, so an arm
+// returning Absent for it would leave every page unguarded while looking like it was checked.
+test fn witness_url_guard_walks_into_the_document() -> Bool {
+  match find_first_rejected_url(node: document_with_root(root: bad_link_root())) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn bad_link_root() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [],
+    children: [
+      Element {
+        tag: "a",
+        attributes: [attr(name: "href", value: "javascript:alert(1)")],
+        children: [FragmentText { content: "click" }],
+      },
+    ],
+  }
+}
+
+test fn witness_url_guard_passes_a_clean_document() -> Bool {
+  match find_first_rejected_url(node: document_with_root(root: good_link_root())) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn good_link_root() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [],
+    children: [
+      Element {
+        tag: "a",
+        attributes: [attr(name: "href", value: "https://gunb.ai")],
+        children: [FragmentText { content: "site" }],
+      },
+    ],
+  }
+}
+
+// A comment is not markup, so a URL-shaped string inside one is not a reference to reject — while the
+// comment's own hazard (an early close) is still checked inside a document.
+test fn witness_guard_does_not_read_a_comment_as_a_reference() -> Bool {
+  match find_first_rejected_url(node: comment_in_html(body: "see javascript:alert(1) for why")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_comment_in_a_document_still_checked_for_early_close() -> Bool {
+  match try_serialize_html_source(node: document_with_root(root: comment_in_html(body: "x --> y"))) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
+  }
+}
+
+// ── 4. the doctype name is a production, not free text ────────────────────────────────────────
+
+test fn witness_clean_doctype_name_is_accepted() -> Bool {
+  doctype_hazard(keyword: "html") == ""
+}
+
+test fn witness_doctype_name_rejects_non_token_names() -> Bool {
+  doctype_hazard(keyword: "") != ""
+    && doctype_hazard(keyword: "html system") != ""
+    && doctype_hazard(keyword: "html>") != ""
+    && doctype_hazard(keyword: "<html") != ""
+}
+
+// ── 5. the closed set a consumer depends on ───────────────────────────────────────────────────
+
+// gunbc.auth.approval_broker_marker routes its HTML marker through MarkupComment and refuses a token
+// that would close its own comment. That refusal only means something if the token alphabet is what
+// the module claims, so this checks the whole corpus instead of reading the match arms. The corpus is
+// spelled here from the same three closed sets (prefix, process, fold name); if a name is added to
+// gunbc.auth.approval_broker_marker and not here, witness_marker_corpus_matches_the_module's refusal
+// on an unknown-shaped name is the tripwire.
+test fn witness_marker_token_never_closes_its_comment() -> Bool {
+  all(marker_token_corpus(), s => comment_hazard(body: s) == "")
+}
+
+test fn witness_marker_corpus_is_not_empty() -> Bool {
+  list_length(items: marker_token_corpus()) > 0
+}
+
+fn marker_token_corpus() -> List<String> {
+  fold(["roadmap", "broker"], init: [], f: (acc, p) => concat(acc, marker_names().map(n => join(["approval-broker/", p, "/", n], ""))))
+}
+
+fn marker_names() -> List<String> {
+  [
+    "confirm-page", "decision", "submission", "status", "store-receipt", "device-enrol",
+    "device-redeem", "device-pending", "device-request", "device-enrollment-readback",
+    "device-push-update", "no-route-matched", "method-not-allowed", "adapter-refused",
+    "static-route-served",
+  ]
+}

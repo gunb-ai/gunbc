@@ -1,6 +1,8 @@
 module gunbc.auth.approval_broker_marker
 
 import std.types { String, NonEmptyStr, List }
+import std.markup { MarkupComment, serialize_fragment_with }
+import extdeps.languages.html { comment_hazard, html_markup_medium }
 import extdeps.http.server { MediaType }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 
@@ -144,6 +146,27 @@ fn approval_broker_served_token(p: ApprovalServingProcess, m: ApprovalBrokerMark
   ], "") as NonEmptyStr
 }
 
+// The HTML marker, built as the markup it is rather than as the characters around it. Spelling
+// "<!-- " + token + " -->" here put a language's comment delimiters in an auth module (a second copy
+// beside extdeps.languages.html's rows, §3) and interpolated an unvalidated value into the middle of
+// them: a token containing "-->" would close the comment early and the rest would be parsed as markup
+// in a confirmation page. Building a MarkupComment and asking the serializer for the characters takes
+// the delimiters out of this module; the hazard check is kept explicit because the serializer's own
+// guarded route is a whole-document route and this is a fragment appended to an existing body.
+// The refusal is not decorative: approval_broker_served_token is a join of three closed token sets
+// (lowercase, digits, "/", "-"), so comment_hazard cannot fire on it today; the claim
+// witness_marker_token_never_closes_its_comment runs the check over every inhabitant of both closed
+// sets, which is what makes that a checked fact rather than a reading of the match arms. If a future marker name ever contained the terminator, this
+// returns the diagnostic instead of shipping a page whose marker is markup.
+fn approval_broker_marker_comment(body: String) -> String {
+  let refused = comment_hazard(body: body)
+  if refused == "" {
+    serialize_fragment_with(frag: MarkupComment { body: body }, medium: html_markup_medium())
+  } else {
+    refused
+  }
+}
+
 // ── HOW IT IS CARRIED, WHICH IS A FACT ABOUT THE MEDIA TYPE AND NOT ABOUT THE HANDLER ───────
 // AN HTML COMMENT IN HTML AND A TRAILING LINE IN TEXT. The confirmation page is read by a person on
 // a phone, so the marker must not render; `<!-- ... -->` is invisible there and still a substring of
@@ -165,7 +188,7 @@ fn approval_broker_served_token(p: ApprovalServingProcess, m: ApprovalBrokerMark
 fn approval_broker_marked_body(content_type: MediaType, body: String, m: ApprovalBrokerMarker, process: ApprovalServingProcess) -> String {
   let token = approval_broker_served_token(p: process, m: m) as String
   if content_type.subtype == "html" {
-    join([body, "\n<!-- ", token, " -->\n"], "")
+    join([body, "\n", approval_broker_marker_comment(body: token), "\n"], "")
   } else if content_type.subtype == "javascript" {
     join([body, "\n// x-approval-broker: ", token, "\n"], "")
   } else {

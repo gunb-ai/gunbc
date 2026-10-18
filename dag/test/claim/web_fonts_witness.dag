@@ -87,9 +87,13 @@ fn head_children(page: Fragment) -> List<Fragment> {
         Element { tag, attributes: _, children: kids } => if tag == "head" { kids } else { [] }
         FragmentText { content: _ } => []
         RawNode { content: _ } => []
+        MarkupComment { body: _ } => []
+        Document { doctype: _, root: _ } => []
       })
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
+    MarkupComment { body: _ } => []
+    Document { doctype: _, root: _ } => []
   }
 }
 
@@ -98,6 +102,8 @@ fn attribute_values(nodes: List<Fragment>, name: String) -> List<String> {
     Element { tag: _, attributes, children: _ } => map(filter(attributes, a => a.name == name), a => a.value)
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
+    MarkupComment { body: _ } => []
+    Document { doctype: _, root: _ } => []
   })
 }
 

@@ -882,6 +882,8 @@ fn collect_script_violations(node: Fragment, known_src: String) -> List<PageScri
   match node {
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
+    MarkupComment { body: _ } => []
+    Document { doctype: _, root: _ } => []
     Element { tag, attributes, children } =>
       if tag == "script" {
         let inline = script_inline_text(children: children)
@@ -3298,6 +3300,8 @@ fn issue_mention_fragment(f: Fragment, profiles: List<PrincipalProfile>) -> Frag
   match f {
     FragmentText { content: _ } => f
     RawNode { content: _ } => f
+    MarkupComment { body: _ } => f
+    Document { doctype: _, root: _ } => f
     Element { tag, attributes, children } =>
       let href = fold(attributes, init: "", f: (acc, a) => if a.name == "href" { a.value } else { acc })
       match principal_mention_read(uri: href) {

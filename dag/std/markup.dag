@@ -1,5 +1,7 @@
 module std.markup
 
+import std.layout { DocLine, LayoutProtocol, render }
+
 
 type EscapeContext = TextContext | AttributeContext | UrlContext
 
@@ -13,6 +15,26 @@ type Fragment
   = Element { tag: String, attributes: List<Attribute>, children: List<Fragment> }
   | FragmentText { content: String }
   | RawNode { content: String }
+  // A markup comment. The BODY is carried, never assembled: the delimiters are the medium's
+  // comment_open / comment_close, so "<!-- " exists once per language model instead of once per
+  // author — which is the whole reason this arm exists (three sites in this repo spelled the
+  // delimiters by hand, and one of them interpolated a value into the middle of them).
+  // The body is emitted as-written, like a raw-text element's content: HTML defines no escape syntax
+  // inside a comment ("comment state" consumes to the first "-->" and decodes nothing), so escaping
+  // would corrupt it rather than protect it. What a body must never do is terminate early, and that
+  // is refused rather than filtered — see extdeps.languages.html comment_hazard, which every
+  // guarded route consults before serializing.
+  | MarkupComment { body: String }
+  // A whole document: the document-type declaration and the root element. This is the HTML parser's
+  // own node ("the Document node is the root node, with the doctype and <html> as children", HTML
+  // Living Standard §13.2.4), and it is why the doctype is an ARM and not a Fragment variant: a
+  // doctype is not an element and is not inside <html>, so Element or FragmentText could only model
+  // it wrongly. It is also why it is not spelled at the call site — the two sites that emit one
+  // today concatenate "<!DOCTYPE html>\n" OUTSIDE the serializer, so they cannot be guarded, and
+  // they no longer do.
+  // The keyword is the NAME after <!DOCTYPE ("html" selects standards mode); the "<!DOCTYPE " prefix
+  // is the medium's doctype_open spelling, so a document cannot carry its own punctuation.
+  | Document { doctype: String, root: Fragment }
 
 fn escape_text(s: String) -> String {
   replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
@@ -80,6 +102,21 @@ type MarkupMedium {
   void_tags: List<String>
   void_rendering: VoidTagRendering
   raw_text_tags: List<String>
+  // Comment delimiters, required on every medium. They are spellings OF the language, so they live
+  // with its other spellings (bracket) rather than in whichever module emits a comment: std.languages
+  // already records a language's block comment delimiters for the text-generation path, and a markup
+  // medium is the object a serializer is allowed to consult. Requiring the field (rather than
+  // defaulting to "<!-- ") is deliberate — JSX's comment is {/* … */} and an HTML comment inside JSX
+  // is parsed as text, so a default would be wrong for a real medium in this repo.
+  comment_open: String
+  comment_close: String
+  // The keyword that introduces a document-type declaration, "<!DOCTYPE " with the trailing space
+  // the tokenizer requires between keyword and name. The declaration's terminator is
+  // bracket.tag_close like every other tag's — one spelling for ">" — so it is not repeated here.
+  // Required, not Optional: the keyword is one spelling across the languages that have a doctype at
+  // all (HTML, XML, and CommonMark, which passes "<!DOCTYPE" through as an HTML block), so every
+  // medium here answers correctly; a medium that never builds the fragment still answers the question.
+  doctype_open: String
 }
 
 fn tag_in_set(tag: String, tags: List<String>) -> Bool {
@@ -122,6 +159,12 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
   match frag {
     FragmentText { content: c } => escape_text_for(mode: medium.text_escape, s: c)
     RawNode { content: c } => c
+    MarkupComment { body: b } => join([medium.comment_open, b, medium.comment_close], "")
+    Document { doctype: d, root: r } =>
+      join(
+        [medium.doctype_open, d, medium.bracket.tag_close, document_line_ending(), serialize_fragment_with(frag: r, medium: medium)],
+        "",
+      )
     Element { tag: t, attributes: attrs, children: kids } => {
       let attrs_str = serialize_attributes_with(attrs: attrs, bracket: medium.bracket)
       if is_void_tag(tag: t, void_tags: medium.void_tags) {
@@ -133,7 +176,7 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
         }
       } else {
         let child_medium = if tag_in_set(tag: t, tags: medium.raw_text_tags) {
-          MarkupMedium { tag_overrides: medium.tag_overrides, bracket: medium.bracket, text_escape: EscapeRaw, void_tags: medium.void_tags, void_rendering: medium.void_rendering, raw_text_tags: medium.raw_text_tags }
+          MarkupMedium { tag_overrides: medium.tag_overrides, bracket: medium.bracket, text_escape: EscapeRaw, void_tags: medium.void_tags, void_rendering: medium.void_rendering, raw_text_tags: medium.raw_text_tags, comment_open: medium.comment_open, comment_close: medium.comment_close, doctype_open: medium.doctype_open }
         } else {
           medium
         }
@@ -176,6 +219,14 @@ fn attr(name: String, value: String) -> Attribute {
     ctx: attribute_escape_context(name: name),
     value: value,
   }
+}
+
+// The line break between a document's doctype line and its root element. NOT spelled as a literal
+// here: derived from std.layout, which already renders a line break for every generated document in
+// the repo, so markup and layout cannot disagree about what ends a line. The protocol is the flat
+// one, because a lone DocLine never consults indent_unit (nesting is what reads it).
+fn document_line_ending() -> String {
+  render(doc: DocLine, proto: LayoutProtocol { indent_unit: "" })
 }
 
 type MarkupSerializeResult

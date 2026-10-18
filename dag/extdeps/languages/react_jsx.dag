@@ -56,6 +56,14 @@ fn jsx_markup_medium() -> MarkupMedium {
     void_tags: html5_void_tags,
     void_rendering: SelfClose,
     raw_text_tags: [],
+    // Inside JSX the comment form is {/* … */}. An HTML comment there is parsed as TEXT, which is
+    // exactly why the medium requires the field instead of defaulting it to the HTML spelling.
+    comment_open: "{/* ",
+    comment_close: " */}",
+    // A JSX module declares no document type, so nothing builds the fragment for this medium. The row
+    // is still correct: there is one document-type keyword across markup languages, and inventing a
+    // JSX-specific one to mark "not applicable" would be a spelling no parser accepts.
+    doctype_open: "<!DOCTYPE ",
   }
 }
 

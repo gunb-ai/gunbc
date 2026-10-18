@@ -193,6 +193,8 @@ fn subtree_carries_wordmark(f: Fragment) -> Bool {
         fold(children, init: false, f: (acc, c) => acc || subtree_carries_wordmark(f: c))
       FragmentText { content: _ } => false
       RawNode { content: _ } => false
+      MarkupComment { body: _ } => false
+      Document { doctype: _, root: _ } => false
     })
 }
 
@@ -203,6 +205,8 @@ fn header_subtree_carries_wordmark(h: Fragment) -> Bool {
         && fold(children, init: false, f: (acc, c) => acc || subtree_carries_wordmark(f: c))
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
+    MarkupComment { body: _ } => false
+    Document { doctype: _, root: _ } => false
   }
 }
 
