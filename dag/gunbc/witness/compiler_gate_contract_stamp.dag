@@ -2,7 +2,7 @@ module gunbc.witness.compiler_gate_contract_stamp
 
 import std.types { Bool, FilePath, List, String }
 import std.optional { Absent, Optional, Present }
-import std.algebra { fold, filter, length, list_append, list_map, string_contains, trim }
+import std.algebra { length, list_append, list_map, string_contains, trim }
 import std.contract_identity { ContractEpoch }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
