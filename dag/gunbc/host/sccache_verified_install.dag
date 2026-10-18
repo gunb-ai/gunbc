@@ -1,11 +1,18 @@
 module gunbc.host.sccache_verified_install
 
 import std.types { NonEmptyStr, String }
+import std.dissolution { DissolutionCondition, retires_dissolution }
+import std.decl_ref { decl_ref }
 
 import extdeps.crypto.hash { Digest }
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_installed_binary_path }
 import gunbc.host.verified_binary_install {
+  // VerifiedBinaryInstallPlan is the return type of `verified_binary_install_digest_mismatch_refusal`
+  // below. It was used un-imported until review 81885 (3): my strict closure compile of THIS module
+  // reported blocking=0 / unresolved=0 with the import absent, so this is a compiler gap and not a
+  // missed gate — the type is named here so the module is honestly self-describing.
   VerifiedBinaryInstallParams,
+  VerifiedBinaryInstallPlan,
   verified_binary_install_shell,
   verified_binary_install_admitted_plan,
 }
@@ -73,8 +80,31 @@ fn sccache_verified_install_params(
   }
 }
 
+// THE DEBT THIS SHELL FORM STILL CARRIES (DESIGN §4b; restored at review 81885 together with
+// `verified_binary_install_shell_dissolution_trigger`, which records the full rung history). The
+// deleted `sccache_install_script` trigger asked for the verified-download-plus-install effect to be
+// bound WITHOUT THE SHELL LEAF. The build-cache site meets that; this function exists only for the
+// runner's P1 prereq, which still hands a rendered string to `HostEffect { effect: Shell }`.
+//   previous rung   — `extdeps.cache.sccache.sccache_install_script`, deleted by this PR
+//   temporary rung  — this function, which delegates to `verified_binary_install_shell`
+//   reason          — the runner prereq is realized as a Shell host effect and is not a
+//                     `retained_srvn` site, so retyping it is a different unit of work
+//   bounded pop.    — one consumer, named: `runner_host_sccache_provision_script` and its aarch64
+//                     sibling in gunbc/runner/runner_host_deploy.dag. Nothing else calls this.
+//   trigger         — the runner provisioning binds `verified_binary_install_admitted_plan` through
+//                     typed argv, WITHOUT THE SHELL LEAF; then this function is deleted rather than
+//                     edited, together with `verified_binary_install_shell`.
+data sccache_verified_install_script_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "gunbc.host.sccache_verified_install",
+    decl_name: "sccache_verified_install_script",
+  )
+)
+
 // THE FULL SHELL FORM, for a consumer that runs the install as its own script (the runner host
-// deploy P1 prereq step, which provisions sccache as a prerequisite and nothing else).
+// deploy P1 prereq step, which provisions sccache as a prerequisite and nothing else). It is the
+// runner prereq ONLY: the build-cache site does not reach it, and its continued existence is
+// tracked by `sccache_verified_install_script_dissolution_trigger` above.
 fn sccache_verified_install_script(
   rel: SccacheBinaryRelease,
   arch: NonEmptyStr,
@@ -86,9 +116,11 @@ fn sccache_verified_install_script(
 // THE RED'S ENTRY POINT, AND WHY IT IS HERE RATHER THAN IN THE GENERIC MODULE. The claim "a digest
 // mismatch refuses and nothing gets installed" is about sccache's digest, so the test supplies
 // sccache's boundary values with the digest swapped and reads back the refusal: the plan is refused,
-// its reason names both digests, and `verified_binary_install_plan_steps` on it is empty. Same shape
-// for the positive control: with the release row's own digest the plan is Planned with the five
-// install steps (extract, move, mode, and the two staging removals).
+// its reason names both digests, and the plan itself is in its RefusedToInstall ARM rather than in a
+// Planned arm with an empty list — there is deliberately no accessor that renders a refusal as "no
+// steps", because a refusal that looks like nothing-to-do is the silent default DESIGN §5 forbids.
+// Same shape for the positive control: with the release row's own digest the plan is Planned with the
+// five install steps (extract, move, mode, and the two staging removals).
 fn sccache_verified_install_admitted_plan(
   rel: SccacheBinaryRelease,
   arch: NonEmptyStr,

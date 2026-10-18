@@ -12,8 +12,18 @@ import gunbc.build_cache.build_cache_provision_verdict {
   DaemonStatsOk,
   DaemonUnresponsive,
 }
+// THE IMPORTS BELOW ARE NOT COSMETIC, AND TWO GAPS IN THE COMPILER ARE WHY THEY ARE SPELLED OUT.
+// `EnsureDigestRefused` and `DigestRefused` were used by claims in this module from the day they were
+// written without ever appearing here, and the strict closure compile of this exact file reported
+// blocking=0 unresolved=0 (same gap as `VerifiedBinaryInstallPlan` in gunbc.host.sccache_verified_install,
+// reported by review 81885 on this PR). They are named now because a claim that resolves only by accident
+// is a claim that can silently stop resolving. Anything new in this module is imported explicitly for the
+// same reason; do not read the list as noise.
 import gunbc.host.build_cache_daemon_ensure {
   BuildCacheDigestRefusal,
+  BuildCacheEnsureFold,
+  DigestRefused,
+  EnsureDigestRefused,
   BuildCacheEnsureExecuted,
   BuildCacheEnsureOp,
   BuildCacheHostRunObserved,
@@ -47,8 +57,20 @@ import gunbc.host.build_cache_daemon_ensure {
   build_cache_ensure_is_needed,
   build_cache_matched_stats_fragment,
   build_cache_observe_observed,
+  build_cache_ensure_fold_digest_line,
   build_cache_read_back_observation,
 }
+// THE REALIZING SIDE OF THE DIGEST GATE. Importing the realizing module here is deliberate and is the only
+// name taken from it: the fold that ACTUATES the plan lives there, and the executing pairing below has to
+// drive that fold rather than a copy of it. Nothing in this module runs a transport that could touch a
+// host — see the `EmitArtifactThenThinRun` choice.
+import gunbc.host.host_effect {
+  BootstrapFragment,
+  EmitArtifactThenThinRun,
+  HostEffectTransport,
+  ThinInvocation,
+}
+import gunbc.host.host_effect_realize { build_cache_run_ensure_ops }
 import gunbc.host.verified_binary_install { AlreadyInstalled, InstallNeeded, VerifiedBinaryInstallPresence }
 import gunbc.shell_command_text { shell_command_text_of_argv }
 import extdeps.exec.command { argv_words }
@@ -112,11 +134,16 @@ test fn binary_present_with_daemon_absent_runs_the_ensure_legs_and_converges() -
     // (2) CONTROL, true today: the ensure's operations ARE derivable for this host, in the right order. The
     // refusal is therefore not a plan that cannot be built; it is a decision not to run a plan that can be.
     && build_cache_contract_plan_derives_the_ensure_legs()
-    // (3) CONTROL, true today: given a completed ensure and an answering read-back the classifier converges,
-    // carrying the table the host printed as its evidence. So the tail of the pipeline works; only the front
-    // of it refuses to enter it.
-    && build_cache_contract_converges_on_an_answering_read_back()
-    // (4) THE DEFECT, false today: on this host -- binary installed, daemon down -- the ensure IS needed.
+    // (3) THE CLASSIFIER, ASKED ABOUT THE SAME HOST THE CONTRACT IS ABOUT. Not the fall-through host:
+    // review 81885 / stern-bat-401 (1) caught that this conjunct previously supplied an
+    // `ObserveUnresponsive` observation while the contract's own host is `ObserveStatsOk`, so the tail
+    // control could hold while production still refused — and an edit that flipped ONLY the skip predicate
+    // in `build_cache_ensure_is_needed` would have greened this claim without touching the classifier arm
+    // that actually short-circuits. Now the SAME `observe` value is carried through the decision AND the
+    // post-ensure classification, so both halves of the defect must be fixed for this claim to pass. False
+    // today, like (4).
+    && build_cache_same_observation_converges_on_an_answering_read_back(observe: observe)
+    // (4) THE DECISION, false today: on this host -- binary installed, daemon down -- the ensure IS needed.
     // Avoiding a restart of a server that is SERVING is the only good reason not to bounce; this host has
     // nothing to drain. Every outcome other than "the daemon answered" already requires the ensure; this is
     // the one that does not, and it is the one the fleet is made of.
@@ -144,6 +171,9 @@ test fn control_the_ensure_operations_are_derivable_in_the_right_order() -> Bool
   build_cache_contract_plan_derives_the_ensure_legs()
 }
 
+// THE FALL-THROUGH TAIL, on a host that already reaches the ensure (an unresponsive daemon). Green today
+// and deliberately NOT the contract's host: it proves the tail of the pipeline works, which is why the
+// contract's red is a refusal to ENTER the tail rather than a broken tail.
 test fn control_a_completed_ensure_with_an_answering_read_back_converges() -> Bool {
   build_cache_contract_converges_on_an_answering_read_back()
 }
@@ -234,6 +264,34 @@ fn build_cache_contract_converges_on_an_answering_read_back() -> Bool {
     // the interesting one: it is the state the contract claim is about, and if this control ever reported
     // it the observer would be misreading its own captures. Listing the variants is what makes that
     // visible instead of quietly absorbed.
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
+  }
+}
+
+// THE CONTRACT'S OWN CLASSIFICATION CHECK: the host named by `observe` (binary present, rc-0 zeroes table,
+// placement absent) given a completed ensure and an answering read-back MUST converge. Today it returns
+// `DaemonUnresponsive` carrying the pinned short-circuit text, because the classifier's
+// `ObserveStatsOk` arm never consults the ensure or the read-back. Together with
+// `build_cache_ensure_is_needed(observe:)` this is what makes the contract non-trivial: neither half can be
+// satisfied by an edit to the other half, so the follow-up fix must change BOTH the skip predicate and the
+// classifier arm (see the recurring-failure-mode row's trigger).
+fn build_cache_same_observation_converges_on_an_answering_read_back(observe: BuildCacheObserve) -> Bool {
+  match build_cache_daemon_ensure_observation(
+    observe: observe,
+    ensure: Present { value: EnsureCompleted },
+    read_back: Present {
+      value: Ran {
+        observed: BuildCacheHostRunObserved { exit_code: 0, stdout: zeroed_stats_table, stderr: "" },
+      },
+    },
+    placement: build_cache_contract_placement(),
+  ) {
+    DaemonStatsOk { stats_line: line, placement: _ } =>
+      string_contains(s: line, pattern: "Compile requests")
+    DaemonUnresponsive { detail: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
     DaemonAbsent => false
     DaemonPathShadowed { resolved: _, expected: _ } => false
     DaemonUnsupervised { unit: _, unit_state: _ } => false
@@ -508,24 +566,74 @@ fn build_cache_refusal_detail(ensure: Optional<BuildCacheEnsureExecuted>, read_b
   }
 }
 
-// THE WORDS A REFUSAL PRODUCED MUST CONTAIN EVERYTHING IT IS SUPPOSED TO. Words are
-// carried as Optional<String> rather than Bool so a red can distinguish 'this arm
-// refused with thin words' from 'this arm refused with no words at all' — the second is
-// the silent default, and it is the one an empty-detail edit produces.
+// THE WORDS A REFUSAL PRODUCED MUST CONTAIN EVERYTHING IT IS SUPPOSED TO — EVERY ONE OF
+// THEM (stern-bat-401 (2)). Words are carried as Optional<String> rather than Bool so a red can
+// distinguish 'this arm refused with thin words' from 'this arm refused with no words at all' — the
+// second is the silent default, and it is the one an empty-detail edit produces.
+//
+// THE DEFECT THIS FUNCTION HAD: it folded `must_say` looking for the FIRST phrase it could find and
+// returned true on that hit, so it was an ANY-of. A refusal that carried one of three promised
+// phrases passed, which meant a claim written as "the refusal tells the operator X, Y and Z" was in
+// fact pinning only whichever phrase happened to survive — the exact shape of a check that cannot
+// fail when the wording is trimmed. Now the fold starts at true and ANDs every phrase, so a single
+// missing phrase reddens the claim. `Absent => false` is kept unchanged: a refusal with no words
+// carried nothing, and that is never a pass.
+//
+// The all-of is itself pinned below, per phrase, by five control claims — one positive and one
+// negative per phrase — so this combinator cannot quietly revert to an any-of (which would make the
+// four refusal claims above pass on a single surviving phrase), nor collapse to an always-false fold
+// that would be caught by the positive control.
 fn build_cache_words_say(words: Optional<String>, must_say: List<String>) -> Bool {
   match words {
     Absent => false
-    Present { value: text } => match fold(must_say, init: Absent, f: (acc, want) => match acc {
-      Present { value: _ } => acc
-      Absent => match string_contains(s: text, pattern: want) {
-        true => Present { value: want }
-        false => acc
-      }
-    }) {
-      Present { value: _ } => true
-      Absent => false
-    }
+    Present { value: text } =>
+      fold(must_say, init: true, f: (acc, want) => acc && string_contains(s: text, pattern: want))
   }
+}
+
+// THE THREE PHRASES THE COMBINATOR IS PINNED WITH, in the order the fold walks them. Synthetic rather
+// than lifted from a refusal detail: these claims test the COMBINATOR, so they must not rise and fall
+// with the wording of a production string.
+data build_cache_probe_phrases: List<String> = ["alpha", "beta", "gamma"]
+
+// POSITIVE CONTROL: with every phrase present the all-of must hold. Without this, an all-of that had
+// been broken into an always-false fold would look identical to a correctly-refusing system.
+test fn control_words_say_holds_when_every_phrase_is_present() -> Bool {
+  build_cache_words_say(
+    words: Present { value: "alpha and beta and gamma, all of them" },
+    must_say: build_cache_probe_phrases,
+  )
+}
+
+// NEGATIVES, ONE PER PHRASE. Separate claims rather than conjuncts for the same reason the contract's
+// controls are: inside a single expression `&&` reports one verdict, so a red could not say WHICH
+// phrase stopped being required. Each claim drops exactly one phrase and requires the check to refuse.
+test fn control_words_say_refuses_when_the_first_phrase_is_missing() -> Bool {
+  !build_cache_words_say(
+    words: Present { value: "beta and gamma, but not the first" },
+    must_say: build_cache_probe_phrases,
+  )
+}
+
+test fn control_words_say_refuses_when_the_middle_phrase_is_missing() -> Bool {
+  !build_cache_words_say(
+    words: Present { value: "alpha and gamma, but not the middle" },
+    must_say: build_cache_probe_phrases,
+  )
+}
+
+test fn control_words_say_refuses_when_the_last_phrase_is_missing() -> Bool {
+  !build_cache_words_say(
+    words: Present { value: "alpha and beta, but not the last" },
+    must_say: build_cache_probe_phrases,
+  )
+}
+
+// THE KEPT REFUSAL: no words at all is still false. Stern-bat-401 asked for the all-of; the
+// Absent => false arm that predates it is preserved rather than folded into the new logic, and this
+// claim is what notices if a rewrite drops it.
+test fn control_words_say_refuses_when_no_words_were_carried() -> Bool {
+  !build_cache_words_say(words: Absent, must_say: build_cache_probe_phrases)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -689,4 +797,136 @@ test fn a_digest_that_was_never_read_never_admits_an_install_leg() -> Bool {
     // progressing rather than stopped: reporting a digest refusal for a read that has not happened would
     // accuse a download of being corrupt before it was downloaded.
     && list_length(items: permitted) < list_length(items: ops)
+}
+
+// --------------------------------------------------------------------------------
+// THE EXECUTING PAIRING FOR THE DIGEST GATE (stern-bat-401, item 5).
+//
+// WHY THIS IS HERE AT ALL. Everything above decides what the plan PERMITS; none of it opens a transport.
+// DESIGN's interface/realization/policy rule asks that a policy decision be witnessed on the route that
+// ACTUATES it too, so deleting the integration between the gate and the sequence that runs must turn
+// something red. These two claims are that pairing.
+//
+// WHAT THEY CANNOT DO, STATED RATHER THAN PAPERED OVER. The full executor
+// `gunbc.host.host_effect_realize.build_cache_ensure_executed` cannot be driven hermetically from a claim:
+// its first act is to run the fetch through `run_argv_over_host_effect_transport`, and that function has NO
+// mock arm — `shell.Exec.RunArgv` is a real execution, and the mock arm was deleted by operator ruling
+// 2026-08-23 (see the comment above `shell.Exec` in dag/extdeps/shell/exec.dag: a mock "allows production
+// callers to silently get hermetic simulated results"). The only transport arm that refuses without
+// touching anything is `EmitArtifactThenThinRun`, so a hermetic fold stops at LEG ONE — before the read,
+// before the digest line exists, and therefore before the gate can be consulted. That is why the fold is
+// driven directly here rather than the executor, and why a claim of the form "the executor refused to
+// install on a mismatch" is NOT shipped: it would be true only because nothing could run at all, which is
+// the silent default this lane exists to remove. What covers the executor's gate instead is measured and
+// reported in the PR body, and it is asserted at the seam the executor itself calls — the fold's stop rule.
+// --------------------------------------------------------------------------------
+
+data ensure_refusal_transport: HostEffectTransport = EmitArtifactThenThinRun {
+  bootstrap: BootstrapFragment { script: "true" },
+  invocation: ThinInvocation { argv: ["true"] },
+}
+
+test fn the_fold_runs_no_leg_after_a_leg_has_stopped_the_sequence() -> Bool {
+  // THE `set -e` SHARE OF THE FOLD, ON THE ROUTE THAT RUNS THINGS. Every leg of a host-that-installs plan is
+  // offered to the fold at once — deliberately more than the executor's first pass would hand it — so the
+  // only thing that can keep the install and the unit legs from running is the fold's own guard: once a leg
+  // has stopped the sequence, the legs after it are not offered to the transport again.
+  //
+  // THE OBSERVABLE IS WHICH LEG THE FOLD REPORTS, not merely that it reported something. With the guard in
+  // place that is the FIRST leg, the fetch. Delete the guard (or let the fold carry on after a stopped
+  // carrier) and the terminal arm becomes the LAST leg, a unit step, which is exactly what the retired
+  // script did with `set +e` in its final phase: the report you got was whatever failed last. A claim that
+  // only matched the arm name would stay green through that edit; this one does not.
+  let ops = build_cache_contract_install_plan()
+  let stopped = build_cache_run_ensure_ops(
+    state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+    ops: ops,
+    unit_bytes: "",
+    transport: ensure_refusal_transport,
+  )
+  // There has to BE a later leg for this to mean anything.
+  list_length(items: ops) > 1
+    && match stopped.executed {
+         EnsureTransportBlocked { op: blocked, reason: why } =>
+           // The leg that stopped the sequence is the fetch, and only the fetch — and the fold handed back
+           // the transport's own text rather than inventing one.
+           blocked.kind == FetchArchive
+             && string_contains(s: shell_command_text_of_argv(command: blocked.argv), pattern: "curl")
+             && string_contains(s: why, pattern: "EmitArtifactThenThinRun")
+             // AND THE READ NEVER GOT A LINE, so no digest could have been admitted.
+             && match build_cache_ensure_fold_digest_line(fold_state: stopped) {
+                  Absent => true
+                  Present { value: _ } => false
+                }
+         EnsureCompleted => false
+         EnsureSkipped => false
+         EnsurePlanRefused { reason: _ } => false
+         EnsureFailed { op: _, observed: _ } => false
+         EnsureDigestRefused { op: _, refusal: _ } => false
+       }
+}
+
+test fn a_fold_that_never_read_a_digest_is_never_permitted_the_whole_plan() -> Bool {
+  // THE ANTI-FAIL-OPEN, ON THE REALIZING SIDE. The second pass is driven by the digest line the fold carries
+  // back, and a fold that lost its read carries `Absent` — which the run decision reads as "not admitted".
+  // Both readings of that rule are asserted, because the one that is not asserted is the one that can rot:
+  //
+  //   (i) a line that WAS read and does not match -> the refused shape, carrying exactly the two prefix legs
+  //       and both digests, so a caller can never mistake it for the empty list a "nothing to do" produces;
+  //   (ii) a line that was never read -> only the prefix, and never an install leg.
+  //
+  // THE PAIRING IS WHAT MAKES IT A CHECK AND NOT A TAUTOLOGY. Both halves feed the SAME plan and the SAME
+  // expected digest, and differ in exactly one input, `observed_digest_line`: Absent vs a well-formed line
+  // for a different image. Flip the Absent default to admit and (ii) goes red — the install legs appear.
+  // Break the comparator so it admits everything and (i) goes red — the refusal disappears. Neither half can
+  // be satisfied by the edit that satisfies the other.
+  let ops = build_cache_contract_install_plan()
+  let unread = build_cache_ensure_run(
+    ops: ops,
+    digest: sccache_release_0_15_0.digest_x86_64,
+    observed_digest_line: build_cache_ensure_fold_digest_line(
+      fold_state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+    ),
+  )
+  let mismatch = build_cache_ensure_run(
+    ops: ops,
+    digest: sccache_release_0_15_0.digest_x86_64,
+    observed_digest_line: Present {
+      // A syntactically valid sha256sum line that is NOT this release's digest: the comparator has to run,
+      // not merely notice that a line exists.
+      value: "0000000000000000000000000000000000000000000000000000000000000000  /tmp/sccache-download/sccache",
+    },
+  )
+  list_length(items: ops) > 2
+    && match unread {
+         // NOTHING WAS REFUSED, so this must not be the refused arm — but it is still not permission.
+         Runs { legs: legs } =>
+           list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: InstallStep)) == 0
+             && list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: UnitStep)) == 0
+             && list_length(items: legs) < list_length(items: ops)
+             // THE PREFIX IS THE PREFIX: the fetch is not silently dropped along with the install legs, or
+             // "only the prefix ran" would be satisfiable by running nothing.
+             && list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: FetchArchive))
+               == list_length(items: build_cache_plan_legs_of_kind(ops: ops, kind: FetchArchive))
+             && list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: ReadDigest))
+               == list_length(items: build_cache_plan_legs_of_kind(ops: ops, kind: ReadDigest))
+         RefusedBeforeInstall { legs: _, op: _, refusal: _ } => false
+       }
+    && match mismatch {
+         RefusedBeforeInstall { legs: legs, op: gate, refusal: why } =>
+           // NOTHING INSTALLABLE IS PERMITTED, the gate is the digest read itself, and BOTH digests are
+           // carried -- the expected one and the one the host reported.
+           list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: InstallStep)) == 0
+             && list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: UnitStep)) == 0
+             && gate.kind == ReadDigest
+             && match why {
+                  DigestRefused { reason: why_text, expected_hex: expected, observed_line: read } =>
+                    string_contains(s: why_text, pattern: "digest")
+                      && expected == sccache_release_0_15_0.digest_x86_64.hex as String
+                      && string_contains(s: read, pattern: "0000000000000000000000000000000000000000000000000000000000000000")
+                }
+         // THE DISCRIMINATOR: an admitted mismatch is a silent default, so the positive arm here must not
+         // be reachable on a line that disagrees with the pin.
+         Runs { legs: _ } => false
+       }
 }

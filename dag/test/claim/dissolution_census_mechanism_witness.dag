@@ -12,6 +12,10 @@ import extdeps.bmc.serial_console { sol_console_send_bash_emit_dissolution_trigg
 import extdeps.storage.nbd { nbd_server_config_render_dissolution_trigger }
 import extdeps.container.docker_ce { docker_ce_install_dissolution_trigger }
 import extdeps.standards.rfc_8118 { project_navigable_uri_fragment_decompose_dissolve_on }
+// THE TWO ROWS W7 ADDED. They are imported from the modules that CARRY them, not from a fixture:
+// the obligation has to live on the declaration that still ships the shell leaf, or it is prose.
+import gunbc.host.verified_binary_install { verified_binary_install_shell_dissolution_trigger }
+import gunbc.host.sccache_verified_install { sccache_verified_install_script_dissolution_trigger }
 import gunbc.dissolution_observation {
   DissolutionCensusAnswered,
   DissolutionCensusRefused,
@@ -112,30 +116,59 @@ test fn a_retirement_trigger_fires_once_its_declaration_is_gone() -> Bool {
 // the dead vocabulary this repository removes. Recorded here rather than silently
 // dropped: a census row that vanishes unexplained cannot be told from one never measured.
 //
-// FOUR OBLIGATIONS REMAIN, NOT FIVE: the sccache installer's obligation (named by
-// `sccache_install_dissolution_trigger`) was DISCHARGED by W7 on the same terms. Its
-// trigger's own text set the condition -- "It dissolves when host_effect_apply binds a
-// verified-download-plus-install effect (FetchAndVerify then InstallBinary) without the
-// shell leaf, at which point `sccache_install_script` is deleted rather than edited" --
-// and that is what landed: gunbc.host.verified_binary_install is the generic effect
-// (FetchAndVerify = `curl_download_command` then the `sha256sum_file_command` digest
-// observation gated by `verified_binary_install_admission`, which returns an EMPTY plan on
-// a mismatch; InstallBinary = `tar_extract_command` then the cited move/mode/cleanup, the
-// binary-presence precondition kept as a `test -x` observation), and
-// gunbc.host.sccache_verified_install supplies sccache's url, digest, member, destination,
-// mode and privilege as PARAMETERS. `sccache_install_script` is deleted, its trigger went
-// with it, and the discharge is recorded where the trigger stood
-// (dag/extdeps/cache/sccache.dag). The trigger could not have been kept: required-ci
-// refuses CITED-DECLARATION-ABSENT, and a bound answer on a name nothing defines is the
-// dead vocabulary this repository removes. WHAT THE NEXT ROW IS: the four live triggers
-// above now include docker_ce, whose installer is the same effect shape with
-// apt-keyring bytes as the archive member -- the lane rule says it is a later consumer, so
-// it is NOT migrated here and its trigger stays live and bound.
+// SIX OBLIGATIONS, NOT FOUR -- AND THE FIFTH AND SIXTH ARE THE POINT. The sccache
+// installer's obligation (once named by `sccache_install_dissolution_trigger`) was PARTLY
+// discharged by W7, and an earlier revision of this comment said DISCHARGED, full stop. That
+// word was wrong and review 81885 caught it: the trigger's own text set the condition as
+// "host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then
+// InstallBinary) WITHOUT THE SHELL LEAF", and only half of that happened.
+//
+//   WHAT IS DISCHARGED: the build-cache consumer. gunbc.host.verified_binary_install is the
+//   generic effect (FetchAndVerify = `curl_download_command` then the `sha256sum_file_command`
+//   digest observation, gated by `verified_binary_install_admission`, which on a mismatch
+//   returns the `RefusedToInstall` arm carrying BOTH digests -- not an empty plan: the two
+//   helpers that flattened a refusal to "nothing to do" are deleted in this change, because a
+//   fabricated nothing-to-do is a silent default; InstallBinary = `tar_extract_command` then
+//   the cited move/mode/cleanup, the binary-presence precondition kept as a `test -x`
+//   observation), gunbc.host.sccache_verified_install supplies sccache's url, digest, member,
+//   destination, mode and privilege as PARAMETERS, and gunbc.host.build_cache_daemon_ensure
+//   sequences it through the typed plan with no shell leaf anywhere. `sccache_install_script`
+//   is deleted and its trigger went with it -- required-ci refuses CITED-DECLARATION-ABSENT, so
+//   a bound answer on a name nothing defines would be the dead vocabulary this removes.
+//
+//   WHAT IS STILL CARRIED: the runner prerequisite. `runner_host_sccache_provision_script` and
+//   `runner_host_sccache_provision_aarch64` (gunbc.runner.runner_host_deploy) still hand a
+//   `set -e` string down through `sccache_verified_install_script` into
+//   `verified_binary_install_shell`, including the hand-built `echo ... | sha256sum -c -`
+//   pipeline. The typed plan is not on that path. Deleting the trigger there would have turned
+//   tracked debt into untracked debt (DESIGN 4b: a rung is lowered only by declaring previous
+//   rung, temporary rung, reason, bounded population and restoration trigger), so the
+//   obligation is now carried on the two declarations that actually hold it -- the two rows
+//   asserted below, whose population is exactly those three consumers, and whose trigger is the
+//   runner provisioning binding `verified_binary_install_admitted_plan` through typed argv.
+//   Routing it there is out of this change's scope (runner_host_deploy is not a retained_srvn
+//   site), which is precisely why it needs a tracked trigger rather than a paragraph.
+//
+// WHAT THE NEXT ROW IS: the four older triggers above include docker_ce, whose installer is the
+// same effect shape with apt-keyring bytes as the archive member -- the lane rule says it is a
+// later consumer, so it is NOT migrated here and its trigger stays live and bound.
 test fn migrated_production_retirement_conditions_are_bound() -> Bool {
   dissolution_is_bound(condition: sol_console_send_bash_emit_dissolution_trigger)
     && dissolution_is_bound(condition: nbd_server_config_render_dissolution_trigger)
     && dissolution_is_bound(condition: docker_ce_install_dissolution_trigger)
     && dissolution_is_bound(condition: project_navigable_uri_fragment_decompose_dissolve_on)
+    // THE TWO CARRIED ROWS, and they are the only ones in this list that were minted by the
+    // change being reviewed. What `dissolution_is_bound` proves here is the CONSTRUCTOR, exactly
+    // as the authority defines it: it calls `dissolution_status` with `present_decls: []`, so
+    // BoundDissolution is Pending and an UnboundDissolution is Unbound -- the predicate answers
+    // "is this a trigger at all", NOT "does the retired declaration resolve". Deleting either
+    // `data` declaration below reddens this claim (the module no longer compiles), and rewriting
+    // either into `unbound_dissolution` reddens it by verdict; renaming the retired declaration
+    // does NOT, and the reason is stated rather than assumed: firing needs a real
+    // `present_decls`, which is the roster's job and lives in
+    // dag/test/claim/long/dissolution_census_witness.dag, not here.
+    && dissolution_is_bound(condition: verified_binary_install_shell_dissolution_trigger)
+    && dissolution_is_bound(condition: sccache_verified_install_script_dissolution_trigger)
 }
 
 // THE LIVE DISCRIMINATOR, AND IT IS DELIBERATELY NOT A COUNT.

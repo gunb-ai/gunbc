@@ -22,8 +22,11 @@ module test.claim.host.verified_binary_install_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String }
 import std.optional { Absent, Present }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.exec.command { ArgvCommand, argv_words, shell_command_render }
 import extdeps.crypto.hash { Digest }
+import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
+import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.cache.sccache { sccache_installed_binary_path, sccache_release_0_15_0 }
 import gunbc.host.verified_binary_install {
   AlreadyInstalled,
@@ -36,9 +39,7 @@ import gunbc.host.verified_binary_install {
   verified_binary_install_admitted_plan,
   verified_binary_install_destination_present,
   verified_binary_install_install_steps,
-  verified_binary_install_plan_is_planned,
   verified_binary_install_plan_refusal_reason,
-  verified_binary_install_plan_steps,
   verified_binary_install_shell,
   verified_binary_install_verify_line,
 }
@@ -153,7 +154,13 @@ test fn positive_control_a_matching_digest_admits_the_install() -> Bool {
          RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => false
          Planned { steps: s } => count(s) == 5
        }
-    && verified_binary_install_plan_is_planned(plan: plan)
+    // The plan's OWN arms say it is admitted, and the refusal accessor agrees there is no refusal: no
+    // boolean or list accessor can turn a RefusedToInstall into a pass, because the only way to read a
+    // plan in this claim is to name which arm you are in.
+    && match plan {
+         RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => false
+         Planned { steps: s } => count(s) == 5
+       }
     && match verified_binary_install_plan_refusal_reason(plan: plan) {
          Present { value: _ } => false
          Absent => true
@@ -181,9 +188,19 @@ test fn red_a_digest_mismatch_refuses_and_nothing_is_installed() -> Bool {
            string_contains(s: why, pattern: sccache_release_0_15_0.digest_x86_64.hex as String)
            && string_contains(s: why, pattern: sccache_release_0_15_0.digest_aarch64.hex as String)
        }
-    // (3) nothing gets installed: the steps this refusal yields are NONE.
-    && count(verified_binary_install_plan_steps(plan: plan)) == 0
-    && !verified_binary_install_plan_is_planned(plan: plan)
+    // (3) nothing gets installed, asserted from the ARM rather than from an accessor that renders a
+    // refusal as an empty list: an empty list is exactly what a fabricated 'nothing to do' looks like, so
+    // the claim names the arm and the absence of any install step inside it.
+    && match plan {
+         Planned { steps: _ } => false
+         RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } =>
+           count(verified_binary_install_install_steps(p: p)) == 5
+       }
+    // No install leg is ACTUATED by the refusal: the plan the consumer holds carries no steps to actuate.
+    && match verified_binary_install_plan_refusal_reason(plan: plan) {
+         Absent => false
+         Present { value: _ } => true
+       }
     // (4) the refusal names the destination it declined to write and the url it declined to trust.
     && match plan {
          Planned { steps: _ } => false
@@ -226,7 +243,10 @@ test fn an_unreadable_line_refuses_and_says_the_line_was_unreadable() -> Bool {
            string_contains(s: why, pattern: "<html>404 Not Found</html>")
            && string_contains(s: why, pattern: sccache_release_0_15_0.digest_aarch64.hex as String)
        }
-    && count(verified_binary_install_plan_steps(plan: plan)) == 0
+    && match verified_binary_install_plan_refusal_reason(plan: plan) {
+         Absent => false
+         Present { value: _ } => true
+       }
 }
 
 // THE ADAPTER SUPPLIES BOUNDARY VALUES, IT DOES NOT INVENT THEM. Every parameter comes from the cited
@@ -355,12 +375,63 @@ test fn a_second_products_own_values_produce_a_privilege_free_install() -> Bool 
 // contract the elevation witness pins, asserted here too so the two cannot drift apart.
 test fn the_privilege_lever_puts_sudo_in_front_of_the_move_and_mode() -> Bool {
   let steps = verified_binary_install_install_steps(p: sccache_params(digest: sccache_release_0_15_0.digest_aarch64))
+  // Both privileged legs are the AUTHORITY's argv with sudo in front, which is visible in two places a
+  // hand-written leg could not reproduce: `mv` carries the authority's `-T` (the exact-destination move,
+  // which refuses a directory destination), and `chmod` is the authority's absolute program path rather
+  // than a bare `chmod` whose mode was hard-coded rather than taken from `exec_mode`.
   rendered_step_at_exists_and_equals(
     steps: steps,
     index: 1,
-    expect: "'/usr/bin/sudo' '-n' 'mv' '/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' '/usr/local/bin/sccache'",
+    expect: "'/usr/bin/sudo' '-n' 'mv' '-T' '/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' '/usr/local/bin/sccache'",
   )
-    && rendered_step_at_exists_and_starts_with(steps: steps, index: 2, prefix: "'/usr/bin/sudo' '-n' 'chmod' '+x' ")
+    && rendered_step_at_exists_and_starts_with(steps: steps, index: 2, prefix: "'/usr/bin/sudo' '-n' '/bin/chmod' '+x' ")
+}
+
+// THE PRIVILEGED LEGS ARE THE AUTHORITY'S ARGV WITH SUDO PREFIXED (stern-bat-401 (4)), pinned as an
+// IDENTITY rather than as two expected strings: each privileged step must render exactly as its own
+// unprivileged authority renders, with `'/usr/bin/sudo' '-n' ` in front of it. This is the claim that
+// fails if someone hand-writes a privileged argv again — the old code did exactly that, and it dropped
+// `mv`'s `-T` (so the privileged move was not the exact-destination move the unprivileged one was) and
+// rendered a bare `chmod` instead of the authority's program path. Asserting equality-with-the-authority
+// rather than two literals means the authority can change and this stays correct, while a divergent
+// privileged leg can never match.
+test fn control_the_privileged_arms_are_the_authority_argv_prefixed_with_sudo() -> Bool {
+  let p = sccache_params(digest: sccache_release_0_15_0.digest_aarch64)
+  let priv_steps = verified_binary_install_install_steps(p: p)
+  let priv_move = get(xs: priv_steps, index: 1)
+  let priv_mode = get(xs: priv_steps, index: 2)
+  // The unprivileged rendering of the same two operations, from the same authorities, is the baseline.
+  let plain_move = shell_command_render(
+    command: mv_exact_destination_command(source: p.staged_binary_path, destination: p.dest_path),
+  )
+  let plain_mode = shell_command_render(
+    command: chmod_set_mode_command(chmod_program: chmod_binary_path, mode: p.exec_mode, path: p.dest_path),
+  )
+  let sudo_prefix = "'/usr/bin/sudo' '-n' "
+  match priv_move {
+    Absent => false
+    Present { value: mv_step } => match priv_mode {
+      Absent => false
+      Present { value: mode_step } =>
+        shell_command_render(command: mv_step) == join([sudo_prefix, plain_move], "")
+          && shell_command_render(command: mode_step) == join([sudo_prefix, plain_mode], "")
+          // The elevation is real, not a prefix glued onto an unprivileged argv that lacks it.
+          && starts_with(s: shell_command_render(command: mv_step), prefix: sudo_prefix)
+          && string_contains(s: plain_move, pattern: "'mv' '-T' ")
+          && string_contains(s: plain_mode, pattern: "/bin/chmod")
+          // Elevating the authority's argv means the authority's OWN words survive inside it.
+          && string_contains(s: shell_command_render(command: mv_step), pattern: plain_move)
+          && string_contains(s: shell_command_render(command: mode_step), pattern: plain_mode)
+          // sudo_elevate_command over argv_words is the only shape that puts -n before the program.
+          && shell_command_render(
+               command: sudo_elevate_command(command: argv_words(command: mv_exact_destination_command(
+                 source: p.staged_binary_path,
+                 destination: p.dest_path,
+               ))),
+             )
+             == shell_command_render(command: mv_step)
+    }
+  }
 }
 
 // THE STAGING IS CLEANED UP. An install that leaves a world-writable archive and an extracted tree in

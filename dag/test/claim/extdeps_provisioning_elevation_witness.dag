@@ -40,7 +40,7 @@ test fn witness_sccache_mv_is_non_interactive() -> Bool {
   string_contains(
     s: rendered_sccache_install(),
     pattern: join([
-      "\n'/usr/bin/sudo' '-n' 'mv' '/tmp/sccache-",
+      "\n'/usr/bin/sudo' '-n' 'mv' '-T' '/tmp/sccache-",
       sccache_release_0_15_0.version as String,
       "-aarch64-unknown-linux-musl/sccache' '",
       sccache_installed_binary_path,
@@ -49,11 +49,20 @@ test fn witness_sccache_mv_is_non_interactive() -> Bool {
   )
 }
 
+// '-T' on the move and the absolute `/bin/chmod` are the fingerprints that the privileged legs are the
+// extdeps authority's argv with `sudo -n` prefixed, rather than a second argv hand-written beside it
+// (stern-bat-401 (4)): `chmod_set_mode_command` renders `chmod_binary_path` as the program, and a
+// hand-written `["chmod", …]` rendered a bare word. Written as two conjuncts because the pattern must
+// be a literal, not a composed expression.
 test fn witness_sccache_chmod_is_non_interactive() -> Bool {
   string_contains(
     s: rendered_sccache_install(),
-    pattern: "\n'/usr/bin/sudo' '-n' 'chmod' '+x' ",
+    pattern: "\n'/usr/bin/sudo' '-n' '/bin/chmod' '+x' ",
   )
+    && string_contains(
+      s: rendered_sccache_install(),
+      pattern: "'mv' '-T' ",
+    )
 }
 
 test fn witness_docker_install_keyrings_is_non_interactive() -> Bool {

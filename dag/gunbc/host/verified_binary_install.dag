@@ -3,7 +3,7 @@ module gunbc.host.verified_binary_install
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { list_append }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.exec.command { ArgvCommand, argv_words, shell_command_render }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command, rm_recursive_force_command }
@@ -11,6 +11,8 @@ import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.posix.test_utility { test_executable_command }
 import extdeps.crypto.hash { Digest, sha256sum_file_command, sha256sum_line_digest, digest_shell_verify_line }
+import std.dissolution { DissolutionCondition, retires_dissolution }
+import std.decl_ref { decl_ref }
 
 // THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT.
 //
@@ -173,12 +175,31 @@ fn verified_binary_install_admission(
 fn verified_binary_install_install_steps(p: VerifiedBinaryInstallParams) -> List<ArgvCommand> {
   let extract =
     tar_extract_command(archive: p.download_path, into_directory: p.extract_root, strip_components: 0)
+  // THE MOVE AND THE MODE COME FROM THEIR AUTHORITIES, AND ELEVATION IS APPLIED TO THAT ARGV
+  // (stern-bat-401 (4)). Both arms start from the SAME operation the unprivileged path uses —
+  // `mv_exact_destination_command` and `chmod_set_mode_command` in extdeps — and the privileged arm
+  // wraps that argv with `sudo_elevate_command` rather than hand-writing a second argv beside it.
+  //
+  // WHY THIS MATTERS, NOT STYLE: the hand-written pair silently differed from the authority it was
+  // imitating. `mv_exact_destination_command` renders `mv -T src dest`; the old elevated branch built
+  // `["mv", src, dest]` with NO `-T`, and `chmod_set_mode_command` renders the program path plus
+  // `p.exec_mode` while the old branch rendered a bare `chmod` plus a hard-coded `+x` that was not even
+  // `p.exec_mode`. So the same declared effect meant two different things depending on whether the
+  // caller had said `elevated: true` — a mode that ignored the parameter, and a move that was atomic
+  // when unprivileged and not when privileged. `mv -T` is the approved move semantics: it refuses to
+  // move onto a directory destination instead of dropping the binary inside it, which is precisely the
+  // case an attacker who pre-created `/usr/local/bin/sccache` as a directory would want to win. Losing
+  // it on the privileged path only is the worst possible split. Taking the argv from the authority
+  // makes the split unrepresentable, and `control_the_privileged_arms_are_the_authority_argv_prefixed_with_sudo`
+  // pins it so a future hand-authored leg cannot creep back.
+  let move_op = mv_exact_destination_command(source: p.staged_binary_path, destination: p.dest_path)
+  let mode_op = chmod_set_mode_command(chmod_program: chmod_binary_path, mode: p.exec_mode, path: p.dest_path)
   let move =
-    if p.elevated { sudo_elevate_command(command: ["mv", p.staged_binary_path, p.dest_path]) }
-    else { mv_exact_destination_command(source: p.staged_binary_path, destination: p.dest_path) }
+    if p.elevated { sudo_elevate_command(command: argv_words(command: move_op)) }
+    else { move_op }
   let mode =
-    if p.elevated { sudo_elevate_command(command: ["chmod", p.exec_mode as String, p.dest_path]) }
-    else { chmod_set_mode_command(chmod_program: chmod_binary_path, mode: p.exec_mode, path: p.dest_path) }
+    if p.elevated { sudo_elevate_command(command: argv_words(command: mode_op)) }
+    else { mode_op }
   let cleanup_archive = rm_recursive_force_command(path: p.download_path)
   let cleanup_staging = rm_recursive_force_command(path: p.staged_root)
   [extract, move, mode, cleanup_archive, cleanup_staging]
@@ -203,25 +224,6 @@ fn verified_binary_install_admitted_plan(
         source_url: p.url,
       }
     Verified { observed: _ } => Planned { steps: verified_binary_install_install_steps(p: p) }
-  }
-}
-
-// The steps of an admitted plan, or nothing when the check refused. Callers that want the refusal must
-// match on `verified_binary_install_admitted_plan` themselves; this exists so a caller that has already
-// admitted the install can hand its steps to a transport without re-matching.
-fn verified_binary_install_plan_steps(plan: VerifiedBinaryInstallPlan) -> List<ArgvCommand> {
-  match plan {
-    Planned { steps: s } => s
-    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => []
-  }
-}
-
-// Whether the plan carries an install at all. A caller that reports to a human should use
-// `verified_binary_install_plan_refusal_reason` on the false branch rather than reporting success.
-fn verified_binary_install_plan_is_planned(plan: VerifiedBinaryInstallPlan) -> Bool {
-  match plan {
-    Planned { steps: _ } => true
-    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => false
   }
 }
 
@@ -256,6 +258,38 @@ fn verified_binary_install_destination_present(
   if test_executable_exit == 0 { AlreadyInstalled { dest_path: p.dest_path } }
   else { InstallNeeded { dest_path: p.dest_path } }
 }
+
+// THE DEBT THIS SHELL BUILDER STILL CARRIES (DESIGN §4b, restored at review 81885 — it was deleted with
+// `sccache_install_script` and that was wrong). `sccache_install_script`'s retirement condition was
+// "host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then InstallBinary)
+// WITHOUT THE SHELL LEAF". The build-cache site meets that condition — it drives
+// `verified_binary_install_admitted_plan` and the five typed install steps through the typed argv
+// transport, with no script string anywhere on the path — but the RUNNER PREREQ does not:
+// `runner_host_sccache_provision_script` / `_aarch64` (gunbc/runner/runner_host_deploy.dag) still render
+// this function's string and hand it to `HostEffect { effect: Shell, … }`. Routing that prereq through the
+// typed plan is OUT OF THIS PR'S SCOPE (runner_host_deploy is not a `retained_srvn` site, so it is not
+// this lane's effect-grain swap), and deleting the trigger instead would have made a TRACKED obligation
+// untracked — the exact deficit DESIGN §5 forbids hiding. So the obligation stays on the carrier that
+// still needs it, with the fields §4b requires:
+//   previous rung   — the string left `extdeps.cache.sccache.sccache_install_script` (deleted by this PR)
+//   temporary rung  — this renderer plus `sccache_verified_install_script`, reached only from the runner
+//                     prereq; nothing in the build-cache path renders a script
+//   reason          — the runner's P1 prereq is realized as `HostEffect { effect: Shell }` and cannot be
+//                     retyped here without taking over another lane's site
+//   bounded pop.    — the two declarations named in `ref` below, and their callers, enumerated:
+//                     runner_host_sccache_provision_script, runner_host_sccache_provision_aarch64,
+//                     sccache_verified_install_script. Nothing else calls this function; the generic
+//                     typed plan is what every other consumer drives.
+//   trigger         — the runner provisioning binds `verified_binary_install_admitted_plan` through typed
+//                     argv, WITHOUT THE SHELL LEAF, at which point this function and
+//                     `sccache_verified_install_script` are deleted rather than edited.
+data verified_binary_install_shell_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "gunbc.host.verified_binary_install",
+    decl_name: "verified_binary_install_shell",
+  )
+)
+
 
 // THE SHELL REALIZATION. `set -e` first, then one line per typed step in the typed order: fetch,
 // verify, extract, move, mode, cleanup. The verify line is the only line that is not the render of
