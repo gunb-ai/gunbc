@@ -4340,7 +4340,6 @@ mod compiler_tests {
             connective: crate::v1_std_core::Connective::NoConnective,
             params: std::rc::Rc::new(im::Vector::new()),
             inferred: None,
-            return_cardinality: crate::v1_std_core::Cardinality::Required,
             uses: std::rc::Rc::new(im::Vector::new()),
             body: None,
             transport: None,
@@ -4853,7 +4852,6 @@ mod compiler_tests {
                 connective: crate::v1_std_core::Connective::NoConnective,
                 params: std::rc::Rc::new(im::Vector::new()),
                 inferred: None,
-                return_cardinality: crate::v1_std_core::Cardinality::Required,
                 uses: std::rc::Rc::new(im::Vector::new()),
                 body: None,
                 transport: None,
@@ -4926,8 +4924,7 @@ mod compiler_tests {
     fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {
         let optional_type = shaped_type_node("Node", Vec::new());
         let optional_type = std::rc::Rc::new(crate::v1_std_core::Node {
-            return_cardinality: crate::v1_std_core::Cardinality::CardOptional,
-            ..(*optional_type).clone()
+            ..(*crate::v1_std_core::optional_of(optional_type.clone())).clone()
         });
         let arg = named_type_node("child");
         std::rc::Rc::new(crate::v1_std_core::Node {

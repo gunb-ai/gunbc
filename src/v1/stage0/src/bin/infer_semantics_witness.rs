@@ -131,7 +131,6 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::Resolved { node: element })),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
             transport: None,
@@ -148,7 +147,6 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -187,7 +185,6 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
                 inferred: Some(Rc::new(InferredNode::Resolved { node: key })),
-                return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: None,
                 transport: None,
@@ -208,7 +205,6 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
                 inferred: Some(Rc::new(InferredNode::Resolved { node: value })),
-                return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: None,
                 transport: None,
@@ -223,7 +219,6 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -781,7 +776,6 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: leaf_node("Int".to_string()),
             })),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
             transport: None,
@@ -798,7 +792,6 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         connective: Connective::Conj,
         params: Rc::new(vec![]),
         inferred: None,
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -918,7 +911,6 @@ fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -1026,7 +1018,6 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
             leaf_node("Absent".to_string()),
             leaf_node("Present".to_string()),
         ],
-        Cardinality::CardOptional,
     );
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_sum);
 
@@ -1156,7 +1147,6 @@ fn sample_qualified_coproduct() -> Rc<Node> {
             qualified_coproduct_variant_leaf("fixture.probe.Alpha"),
             qualified_coproduct_variant_leaf("fixture.probe.Beta"),
         ],
-        Cardinality::Required,
     )
 }
 
@@ -1233,7 +1223,6 @@ fn resolve_node_uses_node_name_for_lookup() {
         connective: v1_compiler::v1_std_core::Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -1953,7 +1942,6 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         inferred: Some(Rc::new(InferredNode::Resolved {
             node: t_param.clone(),
         })),
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -1979,7 +1967,6 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         connective: Connective::Conj,
         params: Rc::new(vec![t_param]),
         inferred: None,
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
         transport: None,

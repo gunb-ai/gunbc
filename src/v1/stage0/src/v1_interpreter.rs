@@ -70,7 +70,7 @@ use crate::v1_std_core::{
     match_scrutinee, method_arg_nodes, method_receiver, param_node_default_value,
     param_node_name_at, param_node_type_expr, qualified_last_segment, record_lit_type_name_at,
     return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
-    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
+    unaryop_operand, CallSemantics, Connective, ErrorNode, ExprData, FieldAccessStyle,
     FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
     SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
@@ -18689,7 +18689,10 @@ fn map_shell_outputs(
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
-        let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
+        let is_optional_field = child
+            .children
+            .first()
+            .map_or(false, |t| crate::v1_std_core::type_is_optional(t.clone()));
         if is_optional_field
             && result.exit_code != 0
             && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
@@ -21110,7 +21113,10 @@ fn rest_output_child_is_list(child: &Rc<Node>, ctx: &InterpContext) -> bool {
 }
 
 fn rest_output_child_is_optional(child: &Rc<Node>) -> bool {
-    child.return_cardinality == Cardinality::CardOptional
+    child
+        .children
+        .first()
+        .map_or(false, |t| crate::v1_std_core::type_is_optional(t.clone()))
 }
 
 fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> BTreeSet<String> {
@@ -27845,8 +27851,8 @@ mod map_shell_outputs_optional_stream_tests {
 
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{
-        make_field_init_node, make_field_node, make_text_part_node, no_span, Cardinality,
-        Connective, ExprData, InferredNode, Node,
+        make_field_init_node, make_field_node, make_text_part_node, no_span, Connective, ExprData,
+        InferredNode, Node,
     };
 
     use super::bounded_shell_host_drain::CapturedStreamEvidence;
@@ -27874,7 +27880,6 @@ mod map_shell_outputs_optional_stream_tests {
             connective: Connective::NoConnective,
             params: Rc::new(im_vec![]),
             inferred: None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(im_vec![]),
             body: None,
             transport: None,
@@ -27919,7 +27924,6 @@ mod map_shell_outputs_optional_stream_tests {
             Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             from_key.to_string(),
             str_type,
-            Cardinality::CardOptional,
             None,
             Rc::new(vec![].into()),
             span.clone(),
@@ -27956,7 +27960,6 @@ mod map_shell_outputs_optional_stream_tests {
             connective: Connective::NoConnective,
             params: Rc::new(im_vec![]),
             inferred: None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(im_vec![]),
             body: None,
             transport: None,
@@ -27982,7 +27985,6 @@ mod map_shell_outputs_optional_stream_tests {
             connective: Connective::NoConnective,
             params: Rc::new(im_vec![]),
             inferred: Some(Rc::new(InferredNode::Resolved { node: return_type })),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(im_vec![]),
             body: None,
             transport: None,

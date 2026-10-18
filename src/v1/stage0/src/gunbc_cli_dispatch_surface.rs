@@ -16,6 +16,7 @@ pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_measure::{millisecond_count, Millisecond};
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, CommitSha, List, Port};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

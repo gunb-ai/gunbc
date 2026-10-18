@@ -13,8 +13,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved};
 pub use crate::v1_std_core::{
-    authored_name_at, diagnostic_to_message, int_type, make_error_node, string_type, unit_type,
-    with_optional_cardinality, CompilerDiagnostic, ErrorNode, InferredNode, NewlineIndex, Node,
+    authored_name_at, diagnostic_to_message, int_type, make_error_node, optional_of, string_type,
+    unit_type, CompilerDiagnostic, ErrorNode, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -151,7 +151,7 @@ pub fn check_index_access_node(
                         Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name.clone())])
                     };
                     access_result(
-                        crate::v1_std_core::with_optional_cardinality(parts.value_type.clone()),
+                        crate::v1_std_core::optional_of(parts.value_type.clone()),
                         key_diags.clone(),
                         span.clone(),
                         "invalid keyed collection index access".to_string(),
@@ -193,7 +193,7 @@ pub fn check_index_access_node(
                                         source_indices.clone(),
                                     );
                                 access_result(
-                                    crate::v1_std_core::with_optional_cardinality(elem.clone()),
+                                    crate::v1_std_core::optional_of(elem.clone()),
                                     Rc::new(vec![]),
                                     span.clone(),
                                     "list index access".to_string(),

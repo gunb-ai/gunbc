@@ -23,7 +23,6 @@ pub use crate::v1_compiler_infer_resolve::{
 pub use crate::v1_compiler_infer_types::{child_type_node, extract_optional_inner_node};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{FieldNotFound, NonExhaustiveMatch, VariantNotFound};
 use crate::v1_std_core::Connective::{Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -35,9 +34,9 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
     find_child_named, generic_param_name_at, is_compiler_error, kernel_span, make_error_node,
-    match_pattern_is_irrefutable, no_span, none_type, qualified_last_segment,
-    with_optional_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
-    ErrorNode, ExprData, InferredNode, MatchPattern, NewlineIndex, Node,
+    match_pattern_is_irrefutable, no_span, none_type, optional_of, qualified_last_segment,
+    type_is_optional, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
+    InferredNode, MatchPattern, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -242,7 +241,7 @@ pub fn expand_scrut_type_for_variant_lookup(
             crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrut_node.clone());
         let is_disj = (scrut_node.connective.clone() == Connective::Disj);
         let is_witness = is_witness_type_name(name.clone());
-        let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = crate::v1_std_core::type_is_optional(scrut_node.clone());
         if ((is_optional.clone() || is_disj.clone()) || is_witness.clone()) {
             break scrut_node.clone();
         } else {
@@ -316,7 +315,6 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: inner.clone(),
             })),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -340,7 +338,6 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -376,7 +373,6 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: inner.clone(),
             })),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -400,7 +396,6 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -429,7 +424,6 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -455,7 +449,6 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: diagnostic_type.clone(),
             })),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -479,7 +472,6 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -658,8 +650,7 @@ pub fn lookup_variant_in_type(
                 {
                     let scrut_node =
                         expand_scrut_type_for_variant_lookup(scrut_node.clone(), env.clone());
-                    let scrut_opt =
-                        (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
+                    let scrut_opt = crate::v1_std_core::type_is_optional(scrut_node.clone());
                     if (((scrut_node.connective.clone() == Connective::NoConnective)
                         && ((scrut_node.children.clone().len() as i64) == 0))
                         && (scrut_opt.clone() == false))
@@ -901,7 +892,7 @@ pub struct PatternWitnessRow {
 
 pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     {
-        let scrut_is_optional = (type_node.return_cardinality.clone() == Cardinality::CardOptional);
+        let scrut_is_optional = crate::v1_std_core::type_is_optional(type_node.clone());
         let has_structure = (type_node.connective.clone() != Connective::NoConnective);
         let resolved_raw = if has_structure.clone() {
             type_node.clone()
@@ -912,7 +903,7 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
             }
         };
         if scrut_is_optional.clone() {
-            crate::v1_std_core::with_optional_cardinality(resolved_raw.clone())
+            crate::v1_std_core::optional_of(resolved_raw.clone())
         } else {
             resolved_raw.clone()
         }
@@ -923,8 +914,7 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
     {
         let resolved = resolve_scrutinee_type(type_node.clone(), env.clone());
         let is_coproduct = (resolved.connective.clone() == Connective::Disj);
-        let resolved_is_optional =
-            (resolved.return_cardinality.clone() == Cardinality::CardOptional);
+        let resolved_is_optional = crate::v1_std_core::type_is_optional(resolved.clone());
         let resolved_is_witness = (is_witness_type_name(crate::v1_std_core::authored_name_at(
             env.source_indices.clone(),
             resolved.clone(),

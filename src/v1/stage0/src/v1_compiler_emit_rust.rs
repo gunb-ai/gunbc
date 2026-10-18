@@ -24,16 +24,17 @@ pub use crate::gunbc_stage0_stage0_crate_partition_generated::{GeneratedPartitio
 pub use crate::gunbc_stage0_stage0_emitted_population_manifest::{emitted_population_manifest_basename, emitted_population_manifest_line_prefix, emitted_population_manifest_line_separator};
 pub use crate::gunbc_stage0_stage0_executable_assembly_generated::{generated_host_shell_partition_dependencies};
 pub use crate::gunbc_stage0_stage0_partition_package_graph::{stage0_partition_row_is_module_bearing_package};
-pub use crate::gunbc_structural_realization_bindings::{structural_ordering_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name};
+pub use crate::gunbc_structural_realization_bindings::{structural_ordering_rows, kernel_grounding_rows, optional_declaration_ref};
 pub use crate::std_algebra::{trim, AlgebraFieldTemplate};
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
 pub use crate::std_compiler_entry::{NativeEffectDenominator, native_compiler_route_denominator, native_service_route_denominator, native_claim_route_denominator};
 pub use crate::std_decl_ref::{decl_ref, DeclarationRef, declaration_ref_in_list, declaration_ref_eq, DeclField};
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership, kernel_mint_declaration_for, LiteralSourceKind, KernelGroundingLookup, KernelMintOwnership, KernelMintDeclarationLookup};
+pub use crate::std_literal_elaboration::{kernel_grounding_for, LiteralSourceKind, KernelGroundingLookup};
 pub use crate::std_measure::{millisecond_count};
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity};
 pub use crate::std_operator_realization::{OperatorRealization, OperandRealization, OperandShapeFacts, OperandDeclaration, StructuralOrderingBinding, OrderingTest, OperandDemand, operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label, HostRealizationReason};
+pub use crate::std_optional::{Optional};
 pub use crate::std_primitive_projection::{primitive_identity_runtime_name, primitive_projection_row_for_declaration, never_type_declaration, never_eliminator_declaration};
 pub use crate::std_repair_input_origin::{repair_input_origin_candidates, repair_input_origin_compatibility_names, qualified_item_emit_surface_compatibility_names};
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
@@ -66,7 +67,7 @@ pub use crate::v1_compiler_resolve::{get_exported_names};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
 pub use crate::v1_compiler_trait_bound_witness::{v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names, v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name};
 pub use crate::v1_compiler_trait_derive_emit::{v1_emit_enum_derives, v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls, v1_fn_signature_set_element_param_names, v1_set_element_bound_spellings, v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds, v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement, v1_map_key_head_names_in_type_expr, v1_wf_child_type_node, v1_type_expr_wf_needs_clone_param, v1_map_key_nested_names_in_type_expr, v1_map_key_bounded_type_params, v1_item_map_key_bounded_param_names, v1_emit_type_params_with_map_key_bounds, v1_clone_impl_required_type_params, v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal, trait_derive_emit_fn_clone_bound_keyed_carrier_module, rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible};
-pub use crate::v1_std_core::{expr_literal_int_optional, call_semantics_target, ParsedModuleItemKind, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, ExprData, make_expr_node, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, is_error_diagnostic, resource_use_resource, UnaryOpKind, unaryop_operand, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, transport_base_path, empty_intern_table, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
+pub use crate::v1_std_core::{type_is_optional, optional_payload, expr_literal_int_optional, call_semantics_target, ParsedModuleItemKind, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, ExprData, make_expr_node, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, is_error_diagnostic, resource_use_resource, UnaryOpKind, unaryop_operand, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, Connective, is_rest_transport, transport_base_path, empty_intern_table, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 use crate::gunbc_cli_dispatch_surface::CliArmRealization::{CliDelegatesToHostFn, CliInvokesBootstrapDagOperation, CliInvokesBoundTargetProducer, CliKnownOperationNoRealization, CliRefusesUnwired, CliRetainedHostKernel};
 use crate::gunbc_cli_dispatch_surface::CliBootstrapExecutionClass::{BootstrapSuccessorOperation};
 use crate::gunbc_cli_dispatch_surface::CliOptionArity::{CliAtMostOne, CliRepeated, CliRequired};
@@ -78,8 +79,6 @@ use crate::std_coercion::TypeRealizationDecision::*;
 use crate::std_decl_ref::DeclField::{WholeDeclaration};
 use crate::std_induction::SubValueRelation::{SubValueUnknown};
 use crate::std_literal_elaboration::KernelGroundingLookup::{KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous};
-use crate::std_literal_elaboration::KernelMintDeclarationLookup::{KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous};
-use crate::std_literal_elaboration::KernelMintOwnership::{DeclarationOwnsTheMint, DeclarationDoesNotOwnTheMint, KernelMintOwnershipAmbiguous};
 use crate::std_literal_elaboration::LiteralSourceKind::{KernelIntLiteral};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{OccurrenceSynthetic};
 use crate::std_operator_realization::HostRealizationReason::{KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType, HostTextCarrier};
@@ -120,7 +119,6 @@ use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, I
 use crate::v1_compiler_languages::VisibilitySpec::{KeywordVisibility};
 use crate::v1_std_core::CallSemantics::{PlainCallSemantics, ResolvedDirectCallSemantics, LookupCallSemantics, FunctionValueCallSemantics};
 use crate::v1_std_core::CallTargetIdentity::{RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall};
-use crate::v1_std_core::Cardinality::{Required, CardOptional};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v1_std_core::DeclarationMarker::{Unmarked};
@@ -794,17 +792,14 @@ pub fn rust_declaration_realizes_as_native_alias(module_path: String, decl_name:
 }
 
 pub fn declaration_owns_host_option(module_path: String, decl_name: String) -> bool {
-    match (*crate::std_literal_elaboration::kernel_mint_ownership(
-        kernel_mint_declaration_rows(),
-        kernel_optional_mint_name(),
+    crate::std_decl_ref::declaration_ref_eq(
+        optional_declaration_ref(),
         crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
-    ))
-    .clone()
-    {
-        KernelMintOwnership::DeclarationOwnsTheMint => true,
-        KernelMintOwnership::DeclarationDoesNotOwnTheMint => false,
-        KernelMintOwnership::KernelMintOwnershipAmbiguous { row_count: _, .. } => false,
-    }
+    )
+}
+
+pub fn optional_declaration_leaf() -> String {
+    optional_declaration_ref().decl_name.clone()
 }
 
 pub fn unstamped_reference_is_host_option(
@@ -838,24 +833,7 @@ pub fn unstamped_reference_is_host_option(
                         env.clone(),
                     ))
             }
-            BareOccurrenceBinding::BareOccurrenceIsKernelName => {
-                match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
-                    kernel_mint_declaration_rows(),
-                    leaf.clone(),
-                ))
-                .clone()
-                {
-                    KernelMintDeclarationLookup::KernelMintDeclarationFound {
-                        declaration: d,
-                        ..
-                    } => declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone()),
-                    KernelMintDeclarationLookup::KernelMintDeclarationAbsent => false,
-                    KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous {
-                        row_count: _,
-                        ..
-                    } => false,
-                }
-            }
+            BareOccurrenceBinding::BareOccurrenceIsKernelName => false,
             BareOccurrenceBinding::BareOccurrenceUndecided => false,
         }
     }
@@ -2566,7 +2544,7 @@ pub fn rust_carrier_is_at_shared_layer(
         let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
         ((((leaf.clone() != "".to_string())
             && !rust_carrier_realizes_as_machine_scalar(n.clone(), leaf.clone()))
-            && (n.return_cardinality.clone() != Cardinality::CardOptional))
+            && !crate::v1_std_core::type_is_optional(n.clone()))
             && v1_rt::set_contains(&shared_types, leaf.clone()))
     }
 }
@@ -2983,7 +2961,7 @@ pub fn rust_fn_sig_preserves_authored_alias_leaf(
 
 pub fn rust_carrier_optional_wrap(n: Rc<Node>, rendered: String) -> String {
     {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = crate::v1_std_core::type_is_optional(n.clone());
         if is_optional.clone() {
             v1_rt::concat(
                 v1_rt::concat("Option<".to_string(), rendered.clone()),
@@ -3753,7 +3731,6 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -8120,11 +8097,11 @@ pub fn emit_inferred_type_leaf_name(
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+            let is_optional = crate::v1_std_core::type_is_optional(rt.clone());
             if is_optional.clone() {
                 crate::v1_std_core::authored_name_at(
                     source_indices.clone(),
-                    crate::v1_std_core::with_required_cardinality(rt.clone()),
+                    crate::v1_std_core::optional_payload(rt.clone()),
                 )
             } else {
                 crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone())
@@ -9288,10 +9265,9 @@ pub fn collect_value_emit_type_surface_names(
             _ => {
                 let from_inferred_list = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
-                        let is_optional =
-                            (rt.return_cardinality.clone() == Cardinality::CardOptional);
+                        let is_optional = crate::v1_std_core::type_is_optional(rt.clone());
                         let peeled_rt = if is_optional.clone() {
-                            crate::v1_std_core::with_required_cardinality(rt.clone())
+                            crate::v1_std_core::optional_payload(rt.clone())
                         } else {
                             rt.clone()
                         };
@@ -16483,10 +16459,10 @@ pub fn needs_box_wrapping(
                         break v1_rt::set_contains(&recursive_types, name.clone());
                     }
                 } else {
-                    let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+                    let is_optional = crate::v1_std_core::type_is_optional(n.clone());
                     if is_optional.clone() {
                         {
-                            let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
+                            let __tco_0 = crate::v1_std_core::optional_payload(n);
                             let __tco_1 = recursive_types;
                             let __tco_2 = shared_types;
                             let __tco_3 = source_indices;
@@ -20758,7 +20734,7 @@ pub fn emit_rust_fn_body_expr(
 pub fn inferred_expr_is_optional(texpr: Rc<Node>) -> bool {
     match texpr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            (rt.return_cardinality.clone() == Cardinality::CardOptional)
+            crate::v1_std_core::type_is_optional(rt.clone())
         }
         _ => false,
     }
@@ -22391,7 +22367,7 @@ pub fn is_optional_like_parent_name(name: String) -> bool {
                 ))
         }
     } else {
-        ((name.clone() == kernel_optional_mint_name())
+        ((name.clone() == optional_declaration_leaf())
             || is_host_diagnostics_carrier_alias(name.clone()))
     }
 }
@@ -22570,7 +22546,6 @@ pub enum HostOptionArmReading {
     HostOptionArmIsHostOption,
     HostOptionArmIsNot,
     HostOptionArmSpelledWithoutIdentity,
-    HostOptionArmBindingAmbiguous,
 }
 
 pub fn host_option_arm_reading(
@@ -22581,35 +22556,21 @@ pub fn host_option_arm_reading(
 ) -> HostOptionArmReading {
     {
         let inferred_is_kernel_optional =
-            (inferred_parent.clone().as_deref() == Some(kernel_optional_mint_name()).as_deref());
+            (inferred_parent.clone().as_deref() == Some(optional_declaration_leaf()).as_deref());
         match (*identity.clone()).clone() {
             VariantParentIdentity::VariantParentIdentified { key: key, .. } => match (*key.clone())
                 .clone()
             {
                 VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
-                    match (*crate::std_literal_elaboration::kernel_mint_ownership(
-                        kernel_mint_declaration_rows(),
-                        kernel_optional_mint_name(),
-                        d.clone(),
-                    ))
-                    .clone()
+                    if (declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone())
+                        || crate::std_decl_ref::declaration_ref_in_list(
+                            d.clone(),
+                            rust_host_option_carrier_declarations(),
+                        ))
                     {
-                        KernelMintOwnership::KernelMintOwnershipAmbiguous {
-                            row_count: _, ..
-                        } => HostOptionArmReading::HostOptionArmBindingAmbiguous,
-                        KernelMintOwnership::DeclarationOwnsTheMint => {
-                            HostOptionArmReading::HostOptionArmIsHostOption
-                        }
-                        KernelMintOwnership::DeclarationDoesNotOwnTheMint => {
-                            if crate::std_decl_ref::declaration_ref_in_list(
-                                d.clone(),
-                                rust_host_option_carrier_declarations(),
-                            ) {
-                                HostOptionArmReading::HostOptionArmIsHostOption
-                            } else {
-                                HostOptionArmReading::HostOptionArmIsNot
-                            }
-                        }
+                        HostOptionArmReading::HostOptionArmIsHostOption
+                    } else {
+                        HostOptionArmReading::HostOptionArmIsNot
                     }
                 }
                 VariantParentKey::VariantParentKernelType { kernel_name: _, .. } => {
@@ -22697,11 +22658,6 @@ pub fn emit_resolved_variant_pattern(
             parent_enum.clone(),
             resolved_parent.clone(),
         );
-        let binding_ambiguous =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmBindingAmbiguous);
-        if binding_ambiguous.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: more than one gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds the kernel optional, so the owner of the pattern arm `".to_string(), bare_name.clone()), "` cannot be decided; the arm is refused rather than lowered".to_string()));
-        }
         let spelled_without_identity =
             (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
         if spelled_without_identity.clone() {
@@ -23242,7 +23198,7 @@ pub fn analyze_rc_match(
         });
         let scrutinee_is_optional = match scrutinee.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
-                (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                crate::v1_std_core::type_is_optional(rt.clone())
             }
             _ => false,
         };
@@ -23280,7 +23236,7 @@ pub fn analyze_rc_match(
                 ((is_optional_like_parent_name(crate::v1_std_core::authored_name_at(
                     source_indices.clone(),
                     rt.clone(),
-                )) && (rt.return_cardinality.clone() != Cardinality::CardOptional))
+                )) && !crate::v1_std_core::type_is_optional(rt.clone()))
                     && rust_carrier_is_at_shared_layer(
                         rt.clone(),
                         source_indices.clone(),
@@ -23406,11 +23362,6 @@ pub fn emit_resolved_variant_pattern_rc_aware(
             parent_enum.clone(),
             resolved_parent.clone(),
         );
-        let binding_ambiguous =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmBindingAmbiguous);
-        if binding_ambiguous.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: more than one gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds the kernel optional, so the owner of the pattern arm `".to_string(), bare_name.clone()), "` cannot be decided; the arm is refused rather than lowered".to_string()));
-        }
         let spelled_without_identity =
             (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
         if spelled_without_identity.clone() {
@@ -23962,7 +23913,6 @@ pub fn field_binding_with_pattern(field_binding: Rc<Node>, pattern: Rc<MatchPatt
         connective: field_binding.connective.clone(),
         params: field_binding.params.clone(),
         inferred: field_binding.inferred.clone(),
-        return_cardinality: field_binding.return_cardinality.clone(),
         uses: field_binding.uses.clone(),
         body: field_binding.body.clone(),
         transport: field_binding.transport.clone(),
@@ -24308,7 +24258,7 @@ pub fn explicit_record_struct_name(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
-        let is_optional = (inferred_node.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = crate::v1_std_core::type_is_optional(inferred_node.clone());
         if is_optional.clone() {
             {
                 let result = type_name.clone();
@@ -24541,27 +24491,26 @@ pub fn effective_variant_parent_from_resolved(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    match rt.return_cardinality.clone() {
-        Cardinality::CardOptional => {
-            if is_optional_variant_name(leaf_name.clone()) {
-                Some("Optional".to_string())
-            } else {
-                effective_variant_parent_from_enum_lookup(
-                    leaf_name.clone(),
-                    rt.clone(),
-                    binding_kind.clone(),
-                    emit_info.clone(),
-                    source_indices.clone(),
-                )
-            }
+    if crate::v1_std_core::type_is_optional(rt.clone()) {
+        if is_optional_variant_name(leaf_name.clone()) {
+            Some("Optional".to_string())
+        } else {
+            effective_variant_parent_from_enum_lookup(
+                leaf_name.clone(),
+                rt.clone(),
+                binding_kind.clone(),
+                emit_info.clone(),
+                source_indices.clone(),
+            )
         }
-        _ => effective_variant_parent_from_enum_lookup(
+    } else {
+        effective_variant_parent_from_enum_lookup(
             leaf_name.clone(),
             rt.clone(),
             binding_kind.clone(),
             emit_info.clone(),
             source_indices.clone(),
-        ),
+        )
     }
 }
 
@@ -24660,16 +24609,17 @@ pub fn emit_value_ref_ident(
 
 pub fn emit_none_keyword_for_resolved_type(resolved_type: Option<Rc<InferredNode>>) -> String {
     match resolved_type.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => match rt.return_cardinality.clone() {
-            Cardinality::CardOptional => {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            if crate::v1_std_core::type_is_optional(rt.clone()) {
                 crate::v1_compiler_emit::emit_keyword("null".to_string(), RenderTarget::Rust)
+            } else {
+                crate::v1_compiler_emit::emit_error_expr(
+                    "none/None with non-optional resolved carrier — refuse fail-open null default"
+                        .to_string(),
+                    RenderTarget::Rust,
+                )
             }
-            _ => crate::v1_compiler_emit::emit_error_expr(
-                "none/None with non-optional resolved carrier — refuse fail-open null default"
-                    .to_string(),
-                RenderTarget::Rust,
-            ),
-        },
+        }
         _ => crate::v1_compiler_emit::emit_error_expr(
             "none/None with undetermined carrier — refuse fail-open null default".to_string(),
             RenderTarget::Rust,
@@ -27063,25 +27013,24 @@ pub fn contextual_variant_parent_absent(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    match resolved_type.return_cardinality.clone() {
-        Cardinality::CardOptional => {
-            if is_optional_variant_name(variant_name.clone()) {
-                Some("Optional".to_string())
-            } else {
-                contextual_variant_parent_from_type_name(
-                    variant_name.clone(),
-                    resolved_type.clone(),
-                    emit_info.clone(),
-                    source_indices.clone(),
-                )
-            }
+    if crate::v1_std_core::type_is_optional(resolved_type.clone()) {
+        if is_optional_variant_name(variant_name.clone()) {
+            Some("Optional".to_string())
+        } else {
+            contextual_variant_parent_from_type_name(
+                variant_name.clone(),
+                resolved_type.clone(),
+                emit_info.clone(),
+                source_indices.clone(),
+            )
         }
-        _ => contextual_variant_parent_from_type_name(
+    } else {
+        contextual_variant_parent_from_type_name(
             variant_name.clone(),
             resolved_type.clone(),
             emit_info.clone(),
             source_indices.clone(),
-        ),
+        )
     }
 }
 
@@ -27436,8 +27385,7 @@ pub fn rust_call_arg_fail_closed_unwrap(
         {
             Some(param) => {
                 let param_type = crate::v1_std_core::param_node_type_expr(param.clone());
-                let param_required = (((param_type.return_cardinality.clone()
-                    != Cardinality::CardOptional)
+                let param_required = ((!crate::v1_std_core::type_is_optional(param_type.clone())
                     && !is_host_optional_carrier_type(
                         param_type.clone(),
                         source_indices.clone(),
@@ -27447,11 +27395,9 @@ pub fn rust_call_arg_fail_closed_unwrap(
                         param_type.clone(),
                         source_indices.clone(),
                     ));
-                let arg_optional = ((crate::v1_compiler_infer_types::resolved_type(arg.clone())
-                    .return_cardinality
-                    .clone()
-                    == Cardinality::CardOptional)
-                    && !rust_call_arg_is_function_value(arg.clone()));
+                let arg_optional = (crate::v1_std_core::type_is_optional(
+                    crate::v1_compiler_infer_types::resolved_type(arg.clone()),
+                ) && !rust_call_arg_is_function_value(arg.clone()));
                 if (param_required.clone() && arg_optional.clone()) {
                     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(arg_str.clone(), ".expect(\"fail-closed: an optional value flowed into non-optional parameter ".to_string()), crate::v1_compiler_emit_core_support::to_string(idx.clone())), " of ".to_string()), func.clone()), " (empty Optional at runtime)\")".to_string())
                 } else {
@@ -30031,7 +29977,7 @@ pub fn emit_rust_map_method_call(
         );
         let recv_is_optional = match receiver.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
-                (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                crate::v1_std_core::type_is_optional(rt.clone())
             }
             _ => false,
         };
@@ -30833,11 +30779,9 @@ pub fn emit_typed_method_call(
                         let optional_param_set = Rc::new({
                             let mut __result = Vec::new();
                             for p in op_params.iter().cloned() {
-                                if (crate::v1_std_core::param_node_type_expr(p.clone())
-                                    .return_cardinality
-                                    .clone()
-                                    == Cardinality::CardOptional)
-                                {
+                                if crate::v1_std_core::type_is_optional(
+                                    crate::v1_std_core::param_node_type_expr(p.clone()),
+                                ) {
                                     __result.push(p);
                                 }
                             }
@@ -31159,7 +31103,7 @@ pub fn emit_typed_method_call(
                                                                     emit_info.clone(),
                                                                     1024,
                                                                 );
-                                                                let recv_is_optional = (crate::v1_compiler_infer_types::resolved_type(receiver.clone()).return_cardinality.clone() == Cardinality::CardOptional);
+                                                                let recv_is_optional = crate::v1_std_core::type_is_optional(crate::v1_compiler_infer_types::resolved_type(receiver.clone()));
                                                                 let recv_str = if recv_is_optional
                                                                     .clone()
                                                                 {
@@ -32950,11 +32894,11 @@ pub fn emit_typed_match(
         );
         let scrut_type = match scrutinee.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
-                let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+                let is_optional = crate::v1_std_core::type_is_optional(rt.clone());
                 if is_optional.clone() {
                     crate::v1_std_core::authored_name_at(
                         scope.type_env.clone().source_indices.clone(),
-                        crate::v1_std_core::with_required_cardinality(rt.clone()),
+                        crate::v1_std_core::optional_payload(rt.clone()),
                     )
                 } else {
                     crate::v1_std_core::authored_name_at(
@@ -33977,12 +33921,11 @@ pub fn is_already_optional(
                     } else {
                         match texpr.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved { node: rt, .. }) => {
-                                (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                                crate::v1_std_core::type_is_optional(rt.clone())
                             }
                             _ => match v1_rt::map_get(&scope.locals.clone(), n.clone()) {
                                 Some(binding) => {
-                                    (binding.resolved.clone().return_cardinality.clone()
-                                        == Cardinality::CardOptional)
+                                    crate::v1_std_core::type_is_optional(binding.resolved.clone())
                                 }
                                 std::option::Option::None => false,
                             },
@@ -34035,7 +33978,7 @@ pub fn is_already_optional(
                             } else {
                                 match texpr.inferred.clone().as_deref().cloned() {
                                     Some(InferredNode::Resolved { node: rt, .. }) => {
-                                        (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                                        crate::v1_std_core::type_is_optional(rt.clone())
                                     }
                                     _ => false,
                                 }
@@ -34043,7 +33986,7 @@ pub fn is_already_optional(
                         }
                         _ => match texpr.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved { node: rt, .. }) => {
-                                (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                                crate::v1_std_core::type_is_optional(rt.clone())
                             }
                             _ => false,
                         },
@@ -34052,7 +33995,7 @@ pub fn is_already_optional(
             }
             _ => match texpr.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
-                    (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                    crate::v1_std_core::type_is_optional(rt.clone())
                 }
                 _ => false,
             },
@@ -35195,8 +35138,7 @@ pub fn emit_typed_record_lit(
                 let optional_variant = (is_optional_variant_name(variant_surface_name.clone())
                     && ((is_optional_parent(bare_parent_enum.clone())
                         || is_optional_parent(effective_parent.clone()))
-                        || (resolved_type.return_cardinality.clone()
-                            == Cardinality::CardOptional)));
+                        || crate::v1_std_core::type_is_optional(resolved_type.clone())));
                 let rust_tn = if optional_variant.clone() {
                     rust_optional_variant_spelling(variant_surface_name.clone())
                 } else {
@@ -36235,7 +36177,7 @@ pub fn emit_rust_host_bin_op(
 pub fn expr_realizes_as_refusing_int(e: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            if (rt.return_cardinality.clone() == Cardinality::CardOptional) {
+            if crate::v1_std_core::type_is_optional(rt.clone()) {
                 false
             } else {
                 {
@@ -36307,7 +36249,7 @@ pub fn expr_realizes_as_refusing_int(e: Rc<Node>, env: Rc<TypeEnv>) -> bool {
 pub fn is_optional_typed_expr(e: Rc<Node>) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            (rt.return_cardinality.clone() == Cardinality::CardOptional)
+            crate::v1_std_core::type_is_optional(rt.clone())
         }
         _ => false,
     }
@@ -36317,7 +36259,7 @@ pub fn type_node_is_ordered_element_run(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((((n.return_cardinality.clone() != Cardinality::CardOptional)
+    (((!crate::v1_std_core::type_is_optional(n.clone())
         && crate::v1_compiler_infer_types::node_is_element_collection(
             n.clone(),
             source_indices.clone(),
@@ -36423,9 +36365,9 @@ pub fn is_string_typed_expr(
 ) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+            let is_optional = crate::v1_std_core::type_is_optional(rt.clone());
             let inner = if is_optional.clone() {
-                crate::v1_std_core::with_required_cardinality(rt.clone())
+                crate::v1_std_core::optional_payload(rt.clone())
             } else {
                 rt.clone()
             };
@@ -36441,9 +36383,9 @@ pub fn is_host_text_typed_expr(
 ) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+            let is_optional = crate::v1_std_core::type_is_optional(rt.clone());
             let inner = if is_optional.clone() {
-                crate::v1_std_core::with_required_cardinality(rt.clone())
+                crate::v1_std_core::optional_payload(rt.clone())
             } else {
                 rt.clone()
             };
@@ -37159,11 +37101,11 @@ pub fn tco_match_scrut_type_name(
 ) -> String {
     match scrutinee.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+            let is_optional = crate::v1_std_core::type_is_optional(rt.clone());
             if is_optional.clone() {
                 crate::v1_std_core::authored_name_at(
                     si.clone(),
-                    crate::v1_std_core::with_required_cardinality(rt.clone()),
+                    crate::v1_std_core::optional_payload(rt.clone()),
                 )
             } else {
                 crate::v1_std_core::authored_name_at(si.clone(), rt.clone())
@@ -39370,10 +39312,11 @@ let raw = match ch.inferred.clone().as_deref().cloned() {
                                         },
     _ => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let ".to_string(), field_name.clone()), " = compile_error!(\"unresolved type for mock field: ".to_string()), ch_name.clone()), "\");".to_string()),
 };
-match ch.return_cardinality.clone() {
-    Cardinality::CardOptional => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(raw.clone(), "\nlet ".to_string()), field_name.clone()), " = Some(".to_string()), field_name.clone()), ");".to_string()),
-    _ => raw.clone(),
-}
+if crate::v1_std_core::type_is_optional(ch.clone()) {
+                                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(raw.clone(), "\nlet ".to_string()), field_name.clone()), " = Some(".to_string()), field_name.clone()), ");".to_string())
+                                        } else {
+                                            raw.clone()
+                                        }
 }); } __result });
 let field_names = Rc::new({ let mut __result = Vec::new(); for ch in children.iter().cloned() { __result.push(crate::v1_compiler_emit::emit_ident(crate::v1_std_core::authored_name_at(source_indices.clone(), ch.clone()), RenderTarget::Rust)); } __result });
 let result_body = v1_rt::concat(v1_rt::concat("(".to_string(), field_names.clone().join(&", ".to_string())), ")".to_string());
@@ -40871,11 +40814,9 @@ pub fn emit_shell_call(
         let optional_params = Rc::new({
             let mut __result = Vec::new();
             for p in op_node.params.clone().iter().cloned() {
-                if (crate::v1_std_core::param_node_type_expr(p.clone())
-                    .return_cardinality
-                    .clone()
-                    == Cardinality::CardOptional)
-                {
+                if crate::v1_std_core::type_is_optional(crate::v1_std_core::param_node_type_expr(
+                    p.clone(),
+                )) {
                     __result.push(p);
                 }
             }
@@ -42485,7 +42426,7 @@ pub fn data_row_type_forbids_deserialize(
 }
 
 pub fn data_row_declares_optional(type_node: Rc<Node>) -> bool {
-    (type_node.return_cardinality.clone() == Cardinality::CardOptional)
+    crate::v1_std_core::type_is_optional(type_node.clone())
 }
 
 pub fn emit_data_def_body(
@@ -44914,5 +44855,3 @@ pub struct HostOptionArmIsHostOption;
 pub struct HostOptionArmIsNot;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HostOptionArmSpelledWithoutIdentity;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HostOptionArmBindingAmbiguous;

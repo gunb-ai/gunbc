@@ -26,6 +26,7 @@ use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_optional::Optional;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
@@ -47,7 +48,6 @@ pub use crate::v1_compiler_infer_env::{
 pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AlgebraApplicationEvidenceUnavailable, InternalError,
 };
@@ -65,10 +65,10 @@ pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, bool_type, default_ident_span,
     error_type, find_child_named, float_type, has_inferred, int_type, is_compiler_error,
     kernel_span, leaf_node_with_span, make_error_node, make_expr_error_node, make_expr_node,
-    make_param_node, no_span, none_type, param_node_type_expr, qualified_last_segment, string_type,
-    type_name_compatible, unit_type, with_optional_cardinality, with_required_cardinality,
-    Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, DeclarationMarker,
-    ErrorNode, ExprData, ExprErrorKind, InferredNode, NewlineIndex, Node,
+    make_param_node, no_span, none_type, optional_of, optional_payload, param_node_type_expr,
+    qualified_last_segment, string_type, type_is_optional, type_name_compatible, unit_type,
+    CompilerDiagnostic, Connective, ContainerSpellingVerdict, DeclarationMarker, ErrorNode,
+    ExprData, ExprErrorKind, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -92,7 +92,6 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -276,7 +275,6 @@ pub fn reground_alias_carrier_identity(
             connective: n.connective.clone(),
             params: n.params.clone(),
             inferred: n.inferred.clone(),
-            return_cardinality: n.return_cardinality.clone(),
             uses: n.uses.clone(),
             body: n.body.clone(),
             transport: n.transport.clone(),
@@ -311,7 +309,6 @@ pub fn structural_carrier_template_name(
                 connective: n.connective.clone(),
                 params: n.params.clone(),
                 inferred: n.inferred.clone(),
-                return_cardinality: n.return_cardinality.clone(),
                 uses: n.uses.clone(),
                 body: n.body.clone(),
                 transport: n.transport.clone(),
@@ -539,7 +536,6 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         inferred: Some(Rc::new(InferredNode::Resolved {
                             node: type_variable_node(key_id.clone()),
                         })),
-                        return_cardinality: Cardinality::Required,
                         uses: Rc::new(vec![]),
                         body: std::option::Option::None,
                         transport: std::option::Option::None,
@@ -565,7 +561,6 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         inferred: Some(Rc::new(InferredNode::Resolved {
                             node: type_variable_node(val_id.clone()),
                         })),
-                        return_cardinality: Cardinality::Required,
                         uses: Rc::new(vec![]),
                         body: std::option::Option::None,
                         transport: std::option::Option::None,
@@ -584,7 +579,6 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
                 inferred: std::option::Option::None,
-                return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: std::option::Option::None,
                 transport: std::option::Option::None,
@@ -623,7 +617,6 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 inferred: Some(Rc::new(InferredNode::Resolved {
                     node: type_variable_node(elem_id.clone()),
                 })),
-                return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: std::option::Option::None,
                 transport: std::option::Option::None,
@@ -641,7 +634,6 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -694,7 +686,6 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
                 message: msg.clone(),
                 span: crate::v1_std_core::no_span(),
             })),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -733,7 +724,6 @@ pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<
         inferred: Some(Rc::new(InferredNode::Resolved {
             node: field_type.clone(),
         })),
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -760,7 +750,6 @@ pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> 
         connective: Connective::Conj,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -796,7 +785,6 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     inferred: Some(Rc::new(InferredNode::Resolved {
                         node: element.clone(),
                     })),
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -814,7 +802,6 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
                 inferred: std::option::Option::None,
-                return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: std::option::Option::None,
                 transport: std::option::Option::None,
@@ -861,7 +848,6 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             connective: Connective::NoConnective,
                             params: Rc::new(vec![]),
                             inferred: Some(Rc::new(InferredNode::Resolved { node: key.clone() })),
-                            return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
                             body: std::option::Option::None,
                             transport: std::option::Option::None,
@@ -889,7 +875,6 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             inferred: Some(Rc::new(InferredNode::Resolved {
                                 node: value.clone(),
                             })),
-                            return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
                             body: std::option::Option::None,
                             transport: std::option::Option::None,
@@ -908,7 +893,6 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -951,7 +935,6 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         connective: Connective::Arrow,
         params: func_params.clone(),
         inferred: Some(Rc::new(InferredNode::Resolved { node: ret.clone() })),
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -986,7 +969,6 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 inferred: Some(Rc::new(InferredNode::Resolved {
                     node: first.clone(),
                 })),
-                return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: std::option::Option::None,
                 transport: std::option::Option::None,
@@ -1012,7 +994,6 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 inferred: Some(Rc::new(InferredNode::Resolved {
                     node: second.clone(),
                 })),
-                return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: std::option::Option::None,
                 transport: std::option::Option::None,
@@ -1031,7 +1012,6 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         connective: Connective::Conj,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -1060,7 +1040,6 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         inferred: Some(Rc::new(InferredNode::Resolved {
             node: type_node.clone(),
         })),
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -1109,7 +1088,6 @@ pub fn algebra_method_field(
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: callable.clone(),
             })),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -1141,7 +1119,6 @@ pub fn enrich_base_with_fields(
         connective: Connective::Conj,
         params: base.params.clone(),
         inferred: base.inferred.clone(),
-        return_cardinality: base.return_cardinality.clone(),
         uses: base.uses.clone(),
         body: base.body.clone(),
         transport: base.transport.clone(),
@@ -1288,7 +1265,7 @@ pub fn instantiate_algebra_type(
                 let ib =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: crate::v1_std_core::with_optional_cardinality(ib.ty.clone()),
+                    ty: crate::v1_std_core::optional_of(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
@@ -1967,7 +1944,7 @@ pub fn apply_type_substitution(
                     source_indices.clone(),
                 );
                 Rc::new(KernelTypeBuild {
-                    ty: crate::v1_std_core::with_optional_cardinality(ib.ty.clone()),
+                    ty: crate::v1_std_core::optional_of(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
@@ -2326,8 +2303,7 @@ pub fn node_type_shape(
                             {
                                 let __is_container =
                                     node_is_element_collection(n.clone(), source_indices.clone());
-                                let is_optional =
-                                    (n.return_cardinality.clone() == Cardinality::CardOptional);
+                                let is_optional = crate::v1_std_core::type_is_optional(n.clone());
                                 let is_map =
                                     node_is_keyed_collection(n.clone(), source_indices.clone());
                                 if __is_container.clone() {
@@ -2357,9 +2333,7 @@ pub fn node_type_shape(
                                     if is_optional.clone() {
                                         {
                                             let inner_shape = node_type_shape(
-                                                crate::v1_std_core::with_required_cardinality(
-                                                    n.clone(),
-                                                ),
+                                                crate::v1_std_core::optional_payload(n.clone()),
                                                 source_indices.clone(),
                                             );
                                             v1_rt::concat(
@@ -2554,8 +2528,7 @@ pub fn applied_argument_types_identical(
     right: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((((left.return_cardinality.clone() == right.return_cardinality.clone())
-        && applied_argument_heads_identical(left.clone(), right.clone(), source_indices.clone()))
+    ((applied_argument_heads_identical(left.clone(), right.clone(), source_indices.clone())
         && ((left.children.clone().len() as i64) == (right.children.clone().len() as i64)))
         && applied_arguments_identical(
             left.children.clone(),
@@ -2660,32 +2633,6 @@ pub fn type_reference_identity_key(
     }
 }
 
-pub fn optional_instance_at_payload_of(
-    leaf: Rc<Node>,
-    instance: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    if (instance.return_cardinality.clone() != Cardinality::Required) {
-        false
-    } else {
-        match declaration_carried_through_resolution(instance.clone(), 3) {
-            Some(d) => {
-                ((declaration_is_std_optional(d.clone())
-                    && ((instance.children.clone().len() as i64) == 1))
-                    && match instance.children.clone().first().cloned() {
-                        Some(ch) => applied_argument_types_identical(
-                            crate::v1_std_core::with_required_cardinality(leaf.clone()),
-                            child_type_node(ch.clone()),
-                            source_indices.clone(),
-                        ),
-                        std::option::Option::None => false,
-                    })
-            }
-            std::option::Option::None => false,
-        }
-    }
-}
-
 pub fn node_type_compatible(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -2713,8 +2660,8 @@ pub fn node_type_compatible(
         } else {
             false
         };
-        let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
+        let left_opt = crate::v1_std_core::type_is_optional(left.clone());
+        let right_opt = crate::v1_std_core::type_is_optional(right.clone());
         let right_is_unit = is_unit_like(right.clone());
         let left_is_unit = is_unit_like(left.clone());
         if (left_err.clone() || right_err.clone()) {
@@ -2850,8 +2797,14 @@ pub fn node_type_compatible(
                                         } else {
                                             if (left_opt.clone() && right_opt.clone()) {
                                                 {
-                                                    let left_inner = crate::v1_std_core::with_required_cardinality(left.clone());
-                                                    let right_inner = crate::v1_std_core::with_required_cardinality(right.clone());
+                                                    let left_inner =
+                                                        crate::v1_std_core::optional_payload(
+                                                            left.clone(),
+                                                        );
+                                                    let right_inner =
+                                                        crate::v1_std_core::optional_payload(
+                                                            right.clone(),
+                                                        );
                                                     let left_inner_is_unit =
                                                         is_unit_like(left_inner.clone());
                                                     let right_inner_is_unit =
@@ -2870,40 +2823,24 @@ pub fn node_type_compatible(
                                                     }
                                                 }
                                             } else {
-                                                if ((left_opt.clone()
-                                                    && optional_instance_at_payload_of(
+                                                if (left_opt.clone() || right_opt.clone()) {
+                                                    false
+                                                } else {
+                                                    (crate::v1_std_core::type_name_compatible(
+                                                        crate::v1_std_core::authored_name_at(
+                                                            source_indices.clone(),
+                                                            left.clone(),
+                                                        ),
+                                                        crate::v1_std_core::authored_name_at(
+                                                            source_indices.clone(),
+                                                            right.clone(),
+                                                        ),
+                                                    ) || alias_identity_in_judgment(
                                                         left.clone(),
                                                         right.clone(),
                                                         source_indices.clone(),
+                                                        text.clone(),
                                                     ))
-                                                    || (right_opt.clone()
-                                                        && optional_instance_at_payload_of(
-                                                            right.clone(),
-                                                            left.clone(),
-                                                            source_indices.clone(),
-                                                        )))
-                                                {
-                                                    true
-                                                } else {
-                                                    if (left_opt.clone() || right_opt.clone()) {
-                                                        false
-                                                    } else {
-                                                        (crate::v1_std_core::type_name_compatible(
-                                                            crate::v1_std_core::authored_name_at(
-                                                                source_indices.clone(),
-                                                                left.clone(),
-                                                            ),
-                                                            crate::v1_std_core::authored_name_at(
-                                                                source_indices.clone(),
-                                                                right.clone(),
-                                                            ),
-                                                        ) || alias_identity_in_judgment(
-                                                            left.clone(),
-                                                            right.clone(),
-                                                            source_indices.clone(),
-                                                            text.clone(),
-                                                        ))
-                                                    }
                                                 }
                                             }
                                         }
@@ -2946,40 +2883,34 @@ pub fn alias_identity_in_judgment(
 }
 
 pub fn applied_argument_opaque_identity(left: Rc<Node>, right: Rc<Node>) -> Option<bool> {
-    {
-        if (left.return_cardinality.clone() != right.return_cardinality.clone()) {
-            return Some(false);
-        }
-        match left.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::CompilerError { .. }) => Some(false),
-            Some(InferredNode::TypeVariable { id: left_id, .. }) => {
-                match right.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::TypeVariable { id: right_id, .. }) => {
-                        match left.declaration.clone() {
-                            Some(l) => match right.declaration.clone() {
-                                Some(r) => Some(crate::std_decl_ref::declaration_ref_eq(
-                                    l.clone(),
-                                    r.clone(),
-                                )),
-                                std::option::Option::None => Some(false),
-                            },
-                            std::option::Option::None => match right.declaration.clone() {
-                                Some(_) => Some(false),
-                                std::option::Option::None => {
-                                    Some((left_id.clone() == right_id.clone()))
-                                }
-                            },
-                        }
-                    }
-                    _ => Some(false),
-                }
+    match left.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::CompilerError { .. }) => Some(false),
+        Some(InferredNode::TypeVariable { id: left_id, .. }) => {
+            match right.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: right_id, .. }) => match left
+                    .declaration
+                    .clone()
+                {
+                    Some(l) => match right.declaration.clone() {
+                        Some(r) => Some(crate::std_decl_ref::declaration_ref_eq(
+                            l.clone(),
+                            r.clone(),
+                        )),
+                        std::option::Option::None => Some(false),
+                    },
+                    std::option::Option::None => match right.declaration.clone() {
+                        Some(_) => Some(false),
+                        std::option::Option::None => Some((left_id.clone() == right_id.clone())),
+                    },
+                },
+                _ => Some(false),
             }
-            _ => match right.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::CompilerError { .. }) => Some(false),
-                Some(InferredNode::TypeVariable { id: _, .. }) => Some(false),
-                _ => std::option::Option::None,
-            },
         }
+        _ => match right.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::CompilerError { .. }) => Some(false),
+            Some(InferredNode::TypeVariable { id: _, .. }) => Some(false),
+            _ => std::option::Option::None,
+        },
     }
 }
 
@@ -3065,7 +2996,7 @@ pub fn prefer_specific_type(
 ) -> Rc<Node> {
     {
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
-        let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
+        let left_is_optional = crate::v1_std_core::type_is_optional(left.clone());
         let left_first_child = left.children.clone().first().cloned();
         let left_norm_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone());
@@ -3089,7 +3020,7 @@ pub fn prefer_specific_type(
             }
         };
         let right_is_container = node_is_element_collection(right.clone(), source_indices.clone());
-        let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
+        let right_is_optional = crate::v1_std_core::type_is_optional(right.clone());
         let same_kind = if (left_is_container.clone() && right_is_container.clone()) {
             (left_norm_name.clone()
                 == crate::v1_std_core::authored_name_at(source_indices.clone(), right.clone()))
@@ -3153,8 +3084,8 @@ pub fn node_type_equals(
         } else {
             false
         };
-        let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
+        let left_opt = crate::v1_std_core::type_is_optional(left.clone());
+        let right_opt = crate::v1_std_core::type_is_optional(right.clone());
         let right_is_unit_eq = is_unit_like(right.clone());
         let left_is_unit_eq = is_unit_like(left.clone());
         if (left_err.clone() || right_err.clone()) {
@@ -3174,8 +3105,8 @@ pub fn node_type_equals(
                         } else {
                             if (left_opt.clone() && right_opt.clone()) {
                                 node_type_equals_core(
-                                    crate::v1_std_core::with_required_cardinality(left.clone()),
-                                    crate::v1_std_core::with_required_cardinality(right.clone()),
+                                    crate::v1_std_core::optional_payload(left.clone()),
+                                    crate::v1_std_core::optional_payload(right.clone()),
                                     source_indices.clone(),
                                     text.clone(),
                                 )
@@ -3584,7 +3515,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
         LiteralValue::LitInt { value: _, .. } => int_type(),
         LiteralValue::LitFloat { value: _, .. } => float_type(),
         LiteralValue::LitBool { value: _, .. } => bool_type(),
-        LiteralValue::LitNull => crate::v1_std_core::with_optional_cardinality(unit_type()),
+        LiteralValue::LitNull => type_variable_node("none".to_string()),
         LiteralValue::LitSymbol { value: _, .. } => string_type(),
     }
 }
@@ -3621,9 +3552,9 @@ pub fn method_receiver_element_node(
 
 pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
     {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = crate::v1_std_core::type_is_optional(n.clone());
         if is_optional.clone() {
-            crate::v1_std_core::with_required_cardinality(n.clone())
+            crate::v1_std_core::optional_payload(n.clone())
         } else {
             if ((n.name.clone() == "Optional".to_string())
                 && ((n.children.clone().len() as i64) == 1))
