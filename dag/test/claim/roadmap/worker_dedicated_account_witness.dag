@@ -16,6 +16,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_git_worker_subtree_path, dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_directory_mode_is_granted, dashboard_git_worker_file_mode_is_granted,
   dashboard_git_worker_subtree_granted_directory_mode, dashboard_git_worker_subtree_needs_sticky,
+  dashboard_git_worker_commit_write_set, dashboard_instance_worker_git_unwritable_paths,
   dashboard_git_worker_granted_shared_directory_mode, dashboard_git_worker_granted_directory_mode,
   dashboard_git_worker_interior_directory_mode_is_accepted, dashboard_git_worker_file_modes_are_equal,
   dashboard_git_worker_directory_mode_is_unmigrated,
@@ -245,23 +246,85 @@ fn lab_worktree(instance: HostDashboardInstance, key: String) -> String {
 // directory 8a is NEW (nothing in the measured repo had it) which is why the PARENT .git/objects has to
 // be group-writable and setgid; refs/heads/dispatch-attempt-claim-1 and its reflog are new files under
 // EXISTING parents; the entry rows are where a linked worktree keeps its own index, HEAD and reflog.
-fn lab_commit_write_paths(instance: HostDashboardInstance) -> List<String> {
+// ONE CLASS OF THE MODEL'S WRITE-SET AS THE CONCRETE PATH IT NAMES. A class is a template over the same
+// fact, so instantiating it here -- rather than keeping a parallel list that happens to agree -- keeps the
+// claim and the model row one fact: rename a class in the model and this claim stops covering it and
+// says so. The claim key is the branch name the commit is made on.
+fn lab_repo_write_row(git: String, template: NonEmptyStr, key: NonEmptyStr) -> String {
+  if template == ".git/objects/<fan-out>/<object>" {
+    join([git, "/objects/8a", "/5f3b2c1d4e6f8a0b2c4d6e8f0a1b2c3d4e5f6a7b"], "")
+  } else if template == ".git/refs/heads/<branch>" {
+    join([git, "/refs/heads", "/", key as String], "")
+  } else if template == ".git/logs/refs/heads/<branch>" {
+    join([git, "/logs/refs/heads", "/", key as String], "")
+  } else {
+    ""
+  }
+}
+
+// THE REPOSITORY HALF OF THE WRITE-SET: every class of dashboard_git_worker_commit_write_set instantiated,
+// PLUS THE TWO STRUCTURAL CONSEQUENCES A CLASS NAMES BUT DOES NOT REPEAT -- the fan-out DIRECTORY (a class
+// names the object; the commit also creates the directory above it, which is why the PARENT .git/objects
+// must be group-writable and setgid) and the ref's LOCK FILE (the class names the ref; the update renames
+// a lock over it). They are appended here and named again below, so the list cannot grow silently.
+fn lab_repo_write_paths(instance: HostDashboardInstance) -> List<String> {
   let git = join([instance.repo_root as String, "/.git"], "")
+  let key: NonEmptyStr = "dispatch-attempt-claim-1"
+  concat(
+    map(dashboard_git_worker_commit_write_set, t => lab_repo_write_row(git: git, template: t, key: key)),
+    [
+      join([git, "/objects/8a"], ""),
+      join([git, "/refs/heads", "/", key as String, ".lock"], ""),
+    ],
+  )
+}
+
+// THE FULL WRITE-SET A LINKED-WORKTREE COMMIT WRITES: the model's repository classes plus the attempt's
+// own private entry, which the model row deliberately does not carry because those paths live under
+// .git/worktrees/<key> and belong to one attempt.
+fn lab_commit_write_paths(instance: HostDashboardInstance) -> List<String> {
   let entry = dispatch_attempt_private_git_dir(
     instance: instance, attempt_worktree: lab_worktree(instance: instance, key: "dispatch-attempt-claim-1"))
-  [
-    join([git, "/objects/8a", "/5f3b2c1d4e6f8a0b2c4d6e8f0a1b2c3d4e5f6a7b"], ""),
-    join([git, "/objects/8a"], ""),
-    join([git, "/refs/heads", "/dispatch-attempt-claim-1"], ""),
-    join([git, "/logs/refs/heads", "/dispatch-attempt-claim-1"], ""),
-    join([git, "/refs/heads", "/dispatch-attempt-claim-1.lock"], ""),
+  concat(lab_repo_write_paths(instance: instance), [
     join([entry, "/index.lock"], ""),
     join([entry, "/index"], ""),
     join([entry, "/HEAD"], ""),
     join([entry, "/logs", "/HEAD"], ""),
     join([entry, "/ORIG_HEAD"], ""),
     join([entry, "/COMMIT_EDITMSG"], ""),
-  ]
+  ])
+}
+
+// EVERY MODEL CLASS MUST APPEAR IN THE WRITE-SET -- otherwise the claim could drop a class and still pass
+// its containment leg, proving less than the model row does.
+fn lab_write_set_covers_every_declared_class(instance: HostDashboardInstance) -> Bool {
+  let git = join([instance.repo_root as String, "/.git"], "")
+  let writes = lab_commit_write_paths(instance: instance)
+  all(dashboard_git_worker_commit_write_set, t =>
+    trim(s: t) != ""
+      && {
+        // The class must instantiate to a real path INSIDE the repository. A template the claim does not
+        // know instantiates to the empty string, and without this leg the empty string would match itself
+        // in the list it produced -- the claim would report full coverage for a class it never wrote.
+        let row = lab_repo_write_row(git: git, template: t, key: "dispatch-attempt-claim-1" as NonEmptyStr)
+        starts_with(s: row, prefix: concat(git, "/")) && any(writes, w => w == row)
+      })
+}
+
+// NO REPOSITORY-LEVEL ROW WITHOUT A MODEL CLASS -- otherwise the claim could invent a path and widen what
+// it proves. Rows under the attempt's private entry are exempt (the model row covers the repository), as
+// are the two structural consequences named above.
+fn lab_repo_rows_are_all_declared(instance: HostDashboardInstance) -> Bool {
+  let git = join([instance.repo_root as String, "/.git"], "")
+  let declared = map(dashboard_git_worker_commit_write_set, t =>
+    lab_repo_write_row(git: git, template: t, key: "dispatch-attempt-claim-1" as NonEmptyStr))
+  let entry = dispatch_attempt_private_git_dir(
+    instance: instance, attempt_worktree: lab_worktree(instance: instance, key: "dispatch-attempt-claim-1"))
+  all(lab_repo_write_paths(instance: instance), w =>
+    path_is_within(child: w, parent: entry)
+      || any(declared, d => d == w)
+      || w == join([git, "/objects/8a"], "")
+      || w == join([git, "/refs/heads/dispatch-attempt-claim-1.lock"], ""))
 }
 
 // THE CONFINEMENT QUANTIFIER, in ONE place, because the two claims that read it must read it the same
@@ -283,11 +346,14 @@ fn lab_confinement_holds(grants: List<String>, instance: HostDashboardInstance) 
   let git = join([instance.repo_root as String, "/.git"], "")
   !any(grants, g => g == git)
     && all(
-      filter(xs: dashboard_git_worker_unwritable_children, child => (child as String) != ".git"),
-      child => {
-        let denied = join([instance.repo_root as String, "/", child as String], "")
-        !any(grants, g => path_is_within(child: g, parent: denied))
-      },
+      // THE DENIED SET IS THE MODEL'S ROW, not a list copied into this file. The row is instance-shaped
+      // and derives from dashboard_git_worker_unwritable_children, so one rename moves the model and the
+      // claim together. ".git" itself is exempt from this DESCENDANT test -- objects/, refs/, logs/ and
+      // the attempt entry all sit inside it and ARE granted -- and is pinned instead by the equality leg
+      // above, which is the direction that means something for it.
+      filter(dashboard_instance_worker_git_unwritable_paths(instance: instance),
+        denied => (denied as String) != git),
+      denied => !any(grants, g => path_is_within(child: g, parent: denied as String)),
     )
 }
 
@@ -314,8 +380,11 @@ test fn the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_
     instance: lab, attempt_worktree: lab_worktree(instance: lab, key: "dispatch-attempt-claim-1"))
   // (a) every written path is inside a granted directory (or is one), and
   all(writes, w => any(grants, g => path_is_within(child: w, parent: g)))
-    // (b) the write-set is not vacuous: eleven rows, all of them from the derivation,
-    && length(writes) == 11
+    // (b) the write-set IS the derivation, in both directions: every class the model row names appears
+    //     in it, and no repository-level row in it lacks a class. A count of eleven could be kept while
+    //     a class was swapped out; these two legs cannot.
+    && lab_write_set_covers_every_declared_class(instance: lab)
+    && lab_repo_rows_are_all_declared(instance: lab)
     // (c) NOTHING in .git itself is granted -- the directory, or a descendant of a named unwritable
     //     entry. .git is the one path a "grant the whole repo git dir" would cover, and the one the
     //     derivation proves a commit never writes (25 commits with it at 0555); the lock file a
