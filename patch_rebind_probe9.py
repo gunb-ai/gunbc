@@ -36,34 +36,52 @@ BREAK = "break Rc::new(UnifyGenericsAcc {"
 HELPERS = r'''
 // ---- probe v9 helpers: Node fields only, no calls outside this block ----
 fn rebind9_names(n: &Rc<Node>, declared: &Vec<String>, hops: i64) -> bool {
-    // childless node: its NAME is the candidate. Mirrors the DAG predicate's leaf test.
+    // STRUCTURALLY IDENTICAL to the shipped predicate src/v1/04_infer.dag:8041
+    //   let is_named_leaf = (n.children |> count) == 0 && (declared |> any(p => p.name == n.name))
+    //   let below  = n.children |> any(c => ...)
+    //   let beyond = if hops > 0 { match n.inferred { Present{value: Resolved{node: rt}} => ...(hops-1) } }
+    //   is_named_leaf || below || beyond
+    // The subtlety that made an earlier version of THIS helper wrong: is_named_leaf is only the FIRST
+    // disjunct. A childless node whose NAME does not match still has to consult `beyond`, because a leaf
+    // can carry an `inferred` Resolved node whose own subtree names the parameter. Returning the name test
+    // as soon as the node is childless -- which is what this function did -- silently under-reports: it
+    // misses exactly the case the shipped predicate exists to catch (the predicate's own comment cites a
+    // binding that "has lost its Char argument; its substitution basis still carries FreeMonoid<Char>").
+    // probe v4's rebind_probe_pred_own gets this right by returning only on TRUE and falling through
+    // otherwise; so does this version.
+    let mut hit = false;
     if n.children.clone().len() == 0 {
-        return declared.iter().any(|x| x == &n.name.clone());
+        hit = declared.iter().any(|x| x == &n.name.clone());
     }
-    for c in n.children.clone().iter().cloned() {
-        if rebind9_names(&c, declared, hops) {
-            return true;
+    if !hit {
+        for c in n.children.clone().iter().cloned() {
+            if rebind9_names(&c, declared, hops) {
+                hit = true;
+                break;
+            }
         }
     }
-    // the `inferred` Resolved hop is load-bearing (a slot leaf under an r-hop is invisible to raw children),
-    // exactly as measured in probe v4 -- patterns copied from patch_rebind_probe4.py, which produced 267 rows.
-    if hops > 0 {
+    if !hit && hops > 0 {
         match n.inferred.clone() {
             Some(rc) => match rc.as_ref() {
-                InferredNode::Resolved { node } => rebind9_names(&node.clone(), declared, hops - 1),
-                _ => false,
+                InferredNode::Resolved { node } => {
+                    if rebind9_names(&node.clone(), declared, hops - 1) {
+                        hit = true;
+                    }
+                }
+                _ => {}
             },
-            None => false,
+            None => {}
         }
-    } else {
-        false
     }
+    hit
 }
 
 fn rebind9_childless_leaves(n: &Rc<Node>, out: &mut Vec<String>, hops: i64) {
+    // Same rule as above: a childless node contributes its name, AND its inferred hop is still walked, so
+    // the printed leaf set is the set the predicate can actually reach rather than the raw-children set.
     if n.children.clone().len() == 0 {
         out.push(n.name.clone());
-        return;
     }
     for c in n.children.clone().iter().cloned() { rebind9_childless_leaves(&c, out, hops); }
     if hops > 0 {
