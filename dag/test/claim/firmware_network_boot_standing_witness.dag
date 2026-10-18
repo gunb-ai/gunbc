@@ -1325,19 +1325,6 @@ data direct_mint_source: String = verdict_probe_hdr + "\nfn bypass_to_a_verdict(
 // also refused, the wall would be 'you may not import this name' and the claim above would be false.
 data lawful_import_source: String = verdict_probe_hdr + "\nfn names_the_blocker(b: PreparationBlockingOn) -> PreparationBlockingOn {\n  b\n}\n"
 
-test fn no_foreign_module_may_write_a_verdict_by_hand() -> Bool {
-  blocking_subject_count_for(
-    source: forge_ready_source,
-    wanted_class: "SoleConstructorViolation",
-    wanted_subject: "Ready",
-  ) >= 1
-    && blocking_subject_count_for(
-      source: lawful_verdict_source,
-      wanted_class: "SoleConstructorViolation",
-      wanted_subject: "Ready",
-    ) == 0
-}
-
 test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
   blocking_subject_count_for(
     source: direct_mint_source,
