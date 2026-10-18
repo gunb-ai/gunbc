@@ -19,6 +19,13 @@ data css_media_queries_5_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data css_prefers_color_scheme_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/mediaqueries-5/#prefers-color-scheme"
+  }
+}
+
 data css_conditional_rules_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -28,7 +35,9 @@ data css_conditional_rules_authority: ExternalAuthority = ExternalAuthority {
 
 // Cited upstream: W3C Media Queries Level 4 (the `pointer` interaction feature, #pointer, and the
 // `width` range feature in its `max-` prefixed form, #width and #mq-min-max) and Media Queries
-// Level 5 (`prefers-reduced-motion`, which Level 4 does not define). The `@media` at-rule that
+// Level 5 (`prefers-reduced-motion`, which Level 4 does not define, and `prefers-color-scheme`,
+// §12.5 #prefers-color-scheme, whose value grammar is `light | dark` — MQ5 dropped MQ4's
+// `no-preference`, so the two arms here are the whole closed set). The `@media` at-rule that
 // wraps a block under a condition is CSS Conditional Rules Level 3 (#at-media). Anchors verified
 // live 2026-10-05 by fetching each document and finding the cited ids.
 //
@@ -37,7 +46,9 @@ data css_conditional_rules_authority: ExternalAuthority = ExternalAuthority {
 // combinators and media types (`screen`, `print`) are the named next grammar, added when a
 // consumer needs one; they are not representable today, so no raw query text can stand in for
 // them. A feature's value is a closed set from the spec (pointer: none | coarse | fine;
-// prefers-reduced-motion: no-preference | reduce) or a typed <length> (max-width), never a string.
+// prefers-reduced-motion: no-preference | reduce; prefers-color-scheme: light | dark) or a typed
+// <length> (max-width), never a string. The arms mirror those sets ONE-TO-ONE: a value the spec
+// drops is absent from the sum, so a query the spec cannot form has no spelling here.
 //
 // WHY max-width TAKES A CssLength AND NOT A var(): a custom property is not substituted inside a
 // media query (var() is defined for property values, not for the media query grammar), so the
@@ -68,14 +79,31 @@ fn reduced_motion_preference_token(p: ReducedMotionPreference) -> String {
   }
 }
 
+// The two values MQ5 §12.5 defines. `no-preference` was Media Queries Level 4's third value and
+// is NOT here, because MQ5 removed it; a consumer asking for it must go through a grammar that
+// models MQ4's set deliberately, not inherit this one by a name that happens to fit.
+type ColorSchemePreference
+  = SchemeLight
+  | SchemeDark
+
+fn color_scheme_preference_token(p: ColorSchemePreference) -> String {
+  match p {
+    SchemeLight => "light"
+    SchemeDark => "dark"
+  }
+}
+
 type MediaCondition
   = MediaPointer { accuracy: PointerAccuracy }
+  | MediaPrefersColorScheme { preference: ColorSchemePreference }
   | MediaMaxWidth { max: CssLength }
   | MediaPrefersReducedMotion { preference: ReducedMotionPreference }
 
 fn media_condition_wire(c: MediaCondition) -> String {
   match c {
     MediaPointer { accuracy } => join(["(pointer: ", pointer_accuracy_token(a: accuracy), ")"], "")
+    MediaPrefersColorScheme { preference } =>
+      join(["(prefers-color-scheme: ", color_scheme_preference_token(p: preference), ")"], "")
     MediaMaxWidth { max } => join(["(max-width: ", css_length_wire(l: max), ")"], "")
     MediaPrefersReducedMotion { preference } =>
       join(["(prefers-reduced-motion: ", reduced_motion_preference_token(p: preference), ")"], "")
@@ -90,3 +118,10 @@ fn css_media_rule_wire(condition: MediaCondition, body: String) -> String {
 
 data coarse_pointer: MediaCondition = MediaPointer { accuracy: PointerCoarse }
 data reduced_motion: MediaCondition = MediaPrefersReducedMotion { preference: ReducedMotionReduce }
+// The OS-following light condition, as a named row rather than a construction at each call
+// site: which scheme a page follows is one fact with one name, and gunbc.site.gunb_ai_layout's
+// light/dark axis reads this row. There is deliberately NO prefers_dark row — a dark-first page
+// expresses dark as its unconditional :root values, so a dark row would have no consumer (§3c).
+// SchemeDark still exists as a VALUE: the spec's closed set is modelled in full, and only the
+// uninhabited shorthand is left out.
+data prefers_light: MediaCondition = MediaPrefersColorScheme { preference: SchemeLight }
