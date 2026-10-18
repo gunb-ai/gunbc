@@ -176,9 +176,10 @@ test fn migrated_production_retirement_conditions_are_bound() -> Bool {
 }
 
 // THE ON-CARRIER MARKER IS BOUND TO THE SAME DECLARATION AS THE TRIGGER, AND NAMES A CAPABILITY THAT
-// DISSOLVES. ctrl review policy R12 (scripts/INVARIANTS.md Rule 12) lets a hand-shell renderer exist only
-// when the intent is modelled AND the shell carries an on-carrier marker NAMING THE CAPABILITY that will
-// generate it. `DissolutionCondition` has no field for the end state -- it carries only a TRIGGER (the
+// DISSOLVES. The ctrl repo's review policy (its scripts/INVARIANTS.md Rule 12 — a path in THAT repo; it does
+// not exist in gunbc, so follow it there, review 82112) lets a hand-shell renderer exist only when the intent is
+// modelled AND the shell carries an on-carrier marker NAMING THE CAPABILITY that will generate it; this repo's
+// own equivalent bar is DESIGN 4b meta-obligation 3 with DESIGN 6 (the mark travels on the carrier). `DissolutionCondition` has no field for the end state -- it carries only a TRIGGER (the
 // declaration whose retirement discharges the debt) -- so the end state rides on the companion
 // `Disposition` row, and a marker nobody compares is decoration. This claim pins the pair: the marker is
 // `Scaffold` (not `Terminal`: the bash-emit path exists, this renderer just has not been routed through

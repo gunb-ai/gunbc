@@ -354,9 +354,15 @@ data verified_binary_install_shell_dissolution_trigger: DissolutionCondition = r
 
 // THE ON-CARRIER MARKER FOR THE SAME SHELL, NAMING WHAT REPLACES IT. `DissolutionCondition` carries a
 // TRIGGER (a declaration whose retirement discharges the debt) and has no field for the end state, so the
-// hand-shell rule (ctrl review policy R12 / scripts/INVARIANTS.md Rule 12: a hand-shell may not merge
-// unless the intent is modelled AND the shell carries an on-carrier marker NAMING THE CAPABILITY that will
-// generate it) is met by this companion row rather than by prose in the comment above. It is `Scaffold`
+// hand-shell rule is met by this companion row rather than by prose in the comment above. THE RULE, STATED
+// WHERE IT RESOLVES: this repo's own bar is DESIGN 4b meta-obligation 3 (a rung may be lowered only by declaring
+// the previous rung, the temporary rung, the reason, a bounded population and a restoration trigger) read with
+// DESIGN 6 (the mark travels on the carrier, not in a parallel ledger), and the authority it names is the
+// capability below -- `v2.workflow.bash_emit`. A separate hand-shell gate exists in the CTRL repo's review
+// policy (its scripts/INVARIANTS.md Rule 12: a hand-shell may not merge unless the intent is modelled AND the
+// shell carries an on-carrier marker NAMING THE CAPABILITY that will generate it); it is cited here as that
+// repo's policy, NOT as a path in this one, because `scripts/INVARIANTS.md` does not exist in gunbc and a reader
+// who tried to follow it would find nothing (review 82112). It is `Scaffold`
 // because this renderer is explicitly NOT a final artifact: it dissolves into a realization dispatch, and
 // `bind` pins which declaration the marker is on, so the mark travels on the carrier and not in a
 // parallel ledger document (DESIGN 6). The capability is `v2.workflow.bash_emit`: `bash_emit_stmts` takes
