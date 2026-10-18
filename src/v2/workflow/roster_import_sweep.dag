@@ -134,6 +134,7 @@ type RosterOutcome
   = RosterClean
   | RosterEdit { start: Int, end: Int, text: String, own_line: Bool }
   | RosterLabelEdits { edits: List<RosterLabelEdit> }
+  | RosterEditWithLabels { start: Int, end: Int, text: String, own_line: Bool, labels: List<RosterLabelEdit> }
   | RosterRefused { reason: RosterRefusalReason }
 
 // AN ARGUMENT-LABEL RENAME, its own edit kind (tidy-ant-251's wave-1 ruling): a call to a row's home declaration
@@ -446,6 +447,8 @@ fn roster_apply_path(held: RosterHeldLock, path: String, prepared: PreparedGramm
           roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterEdit { start: start, end: end, text: text, own_line: own_line })
         RosterLabelEdits { edits: edits } =>
           roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterLabelEdits { edits: edits })
+        RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: ls } =>
+          roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: ls })
       }
     } else {
       roster_refuse_row(path: path, reason: RefusalUnreadable)
@@ -498,11 +501,28 @@ fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
     RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
       roster_splice(before: before, start: start, end: end, replacement: (if own_line { "\n" } else { "" }) + text)
     RosterLabelEdits { edits: edits } => roster_label_splices(before: before, edits: edits)
+    // THE LABELS LAND IN THE SAME WRITE AS THE IMPORT THAT MAKES THEM NECESSARY: a file with the import and the old label
+    // does not resolve (the home's parameter is `text`), and a file the generator itself loads would stop the generator.
+    // The labels sit below the import, so they are spliced first and the import's offsets stay valid.
+    RosterEditWithLabels { start: start, end: end, text: text, own_line: own_line, labels: labels } =>
+      match roster_label_splices(before: before, edits: labels) {
+        RosterApplyRefused { reason: r } => RosterApplyRefused { reason: r }
+        RosterApplyWritten { content: relabelled } =>
+          if roster_labels_below(labels: labels, at: end) {
+            roster_splice(before: relabelled, start: start, end: end, replacement: (if own_line { "\n" } else { "" }) + text)
+          } else {
+            RosterApplyRefused { reason: RefusalExtentMismatch }
+          }
+      }
   }
 }
 
 // Label edits are applied last-first, so an earlier edit's offsets are unaffected by a later one's length change. Each
 // extent must land on scalar boundaries and hold exactly its `from` label; any other byte refuses the whole file.
+fn roster_labels_below(labels: List<RosterLabelEdit>, at: Int) -> Bool {
+  fold_list(xs: labels, empty: true, cons: fn(ok, e) { ok && e.start >= at })
+}
+
 fn roster_label_splices(before: String, edits: List<RosterLabelEdit>) -> RosterApplied {
   let octets = bytes_octets(b: utf8_encode_bytes(s: before))
   fold_list(
@@ -583,6 +603,9 @@ fn roster_render_outcome(path: String, outcome: RosterOutcome) -> String {
     RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
       "EDIT " + path + " " + int_to_decimal_string(value: start) + " " + int_to_decimal_string(value: end) + " "
         + (if own_line { "\\n" } else { "" }) + text + "\n"
+    RosterEditWithLabels { start: start, end: end, text: text, own_line: own_line, labels: labels } =>
+      roster_render_outcome(path: path, outcome: RosterEdit { start: start, end: end, text: text, own_line: own_line })
+        + roster_render_outcome(path: path, outcome: RosterLabelEdits { edits: labels })
     RosterLabelEdits { edits: edits } =>
       fold_list(xs: edits, empty: "", cons: fn(acc, e) {
         acc + "LABEL " + path + " " + int_to_decimal_string(value: e.start) + " " + int_to_decimal_string(value: e.end) + " " + e.from + " " + e.to + "\n"
@@ -613,6 +636,8 @@ fn roster_sweep_text_home(path: String, text: String, prepared: PreparedGrammar,
                     home: home
                   ) {
                     RosterClean => roster_label_outcome(tokens: stream.all, imported: scoped.tree.import_bindings, home: home)
+                    RosterEdit { start: st, end: en, text: tx, own_line: ol } =>
+                      roster_with_pending_labels(tokens: stream.all, edit_home: roster_edit_home(text: tx), start: st, end: en, text: tx, own_line: ol)
                     other => other
                   }
               }
@@ -637,6 +662,29 @@ fn roster_label_outcome(tokens: List<Token>, imported: List<AliasBindingRow>, ho
     }
   )
   if is_empty(xs: edits) { RosterClean } else { RosterLabelEdits { edits: edits } }
+}
+
+// The home an import edit renders (`import <home> { ... }`).
+fn roster_edit_home(text: String) -> String {
+  match list_at_optional(xs: split(s: text, delimiter: " "), index: 1) {
+    Present { value: h } => h
+    Absent => ""
+  }
+}
+
+// The label rows of the home an import edit makes visible are computed as if that import were present, and ride the same
+// outcome; no label edit means a plain RosterEdit.
+fn roster_with_pending_labels(tokens: List<Token>, edit_home: String, start: Int, end: Int, text: String, own_line: Bool) -> RosterOutcome {
+  let labels = fold_list(
+    xs: roster_label_rows(),
+    empty: [],
+    cons: fn(acc, row) { if row.home == edit_home { list_append(left: acc, right: roster_label_sites(tokens: tokens, row: row)) } else { acc } }
+  )
+  if is_empty(xs: labels) {
+    RosterEdit { start: start, end: end, text: text, own_line: own_line }
+  } else {
+    RosterEditWithLabels { start: start, end: end, text: text, own_line: own_line, labels: labels }
+  }
 }
 
 type RosterLabelScan {
@@ -974,26 +1022,19 @@ fn roster_controls_report() -> String {
   }
 }
 
-// A HOME OTHER THAN std.algebra, two passes to convergence: pass 1 inserts `import std.host_text { chars }` after the last
-// import; pass 2 (imports converged) renames each `chars(s:` label to `text:`, and leaves a non-call `s:` and a call to
-// another function alone; pass 3 is Clean. Multibyte text after the call checks the label extents' byte arithmetic.
+// A HOME OTHER THAN std.algebra, in ONE write: pass 1 inserts `import std.host_text { chars }` after the last import AND
+// renames each `chars(s:` label to `text:` (a file with the import and the old label does not resolve), leaving a non-call
+// `s:` and a call to another function alone; pass 2 is Clean. Multibyte text after the call checks the label extents.
 fn roster_control_home_converges(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.host\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String) -> Int {\n  g(s: x) + count(xs: chars(s: x)) + count(xs: chars(s: \"é😀\"))\n}\n"
-  let after_import = "module c.host\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  g(s: x) + count(xs: chars(s: x)) + count(xs: chars(s: \"é😀\"))\n}\n"
-  let after_labels = "module c.host\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  g(s: x) + count(xs: chars(text: x)) + count(xs: chars(text: \"é😀\"))\n}\n"
+  let after = "module c.host\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  g(s: x) + count(xs: chars(text: x)) + count(xs: chars(text: \"é😀\"))\n}\n"
   match roster_applied(before: before, outcome: roster_sweep_text(path: "control/host.dag", text: before, prepared: prepared, lex: lex)) {
     RosterApplyRefused { reason: r } => "CONTROL-FAIL home-converges: pass 1 refused " + roster_refusal_text(reason: r) + "\n"
     RosterApplyWritten { content: c1 } =>
-      if c1 != after_import { "CONTROL-FAIL home-converges: pass 1 did not insert the std.host_text import\n" } else {
-        match roster_applied(before: c1, outcome: roster_sweep_text(path: "control/host.dag", text: c1, prepared: prepared, lex: lex)) {
-          RosterApplyRefused { reason: r } => "CONTROL-FAIL home-converges: pass 2 refused " + roster_refusal_text(reason: r) + "\n"
-          RosterApplyWritten { content: c2 } =>
-            if c2 != after_labels { "CONTROL-FAIL home-converges: pass 2 did not rename exactly the chars(s: labels\n" } else {
-              match roster_sweep_text(path: "control/host.dag", text: c2, prepared: prepared, lex: lex) {
-                RosterClean => ""
-                _ => "CONTROL-FAIL home-converges: pass 3 is not Clean\n"
-              }
-            }
+      if c1 != after { "CONTROL-FAIL home-converges: pass 1 did not write the std.host_text import and exactly the chars(s: relabels\n" } else {
+        match roster_sweep_text(path: "control/host.dag", text: c1, prepared: prepared, lex: lex) {
+          RosterClean => ""
+          _ => "CONTROL-FAIL home-converges: pass 2 is not Clean\n"
         }
       }
   }
