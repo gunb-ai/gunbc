@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.unescaped_free_text_shares_a_channel_with_reserved_boundaries
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unescaped_free_text_shares_a_channel_with_reserved_boundaries: RecurringFailureMode = RecurringFailureMode {
+  identity: "unescaped_free_text_shares_a_channel_with_reserved_boundaries" as NonEmptyStr,
+
+  receipts: [
+    "unescaped free text shares a channel with reserved boundaries: a text artifact carries both observed free text (file contents, names) and reserved section markers that a later reader uses to recover structure, and the free text is written UNESCAPED. Text that spells a marker then forges or displaces a section. When the recovered section authorizes a destructive action, the forgery is a silent wrong answer on the gate, not a parse nuisance.",
+
+    "SPECIMEN, found 2026-10-18 in side-chat review of #14329. fleet_converge_planned_section_rows took the text before the FIRST end marker and after the LAST start marker of plan.txt, while CapMember.content went into the earlier premise block unescaped. A cap whose content carried a forged monotone section saying a runner unit was pending was therefore selected over the genuine later section saying complete, so a complete-to-pending drift that must refuse (the gate in front of RemoveDirectoryTree) admitted. A second leg: the row decoder discarded extra '=' fields, so 'complete=bogus' decoded as complete.",
+
+    "RUNG FOUND AT: mitigation. Repaired in #14329 to mechanically preventable: exactly-once framing counted with the same matching as the extraction, typed refusal on missing, duplicated, embedded or misordered boundaries (never choosing an occurrence), a decoder that consumes the whole row, and REDs through the real plan producer including a marker embedded mid-line in cap content.",
+
+    "ATTAINABLE CEILING: structurally impossible, via a total escaping encoder: free text is escaped on write so no free text can spell a reserved boundary, and the reader inverts it. NEXT-RUNG TRIGGER: apply derives the retirement premise from the authorized RemoveDirectoryTree actions themselves (the same typed values the renderer used), or the plan carries the encoder; either removes the text-recovery step from the gate.",
+
+    "RECOGNITION RULE: a count or split over a text artifact that also embeds observed free text; a section 'selected' by first or last occurrence; a gate whose input is recovered from a file rather than from the typed value that authorized the action. Cheap discriminator: put the marker inside the free-text field and see which section wins.",
+  ],
+
+  evidence: [],
+}
