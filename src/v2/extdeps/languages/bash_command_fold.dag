@@ -105,7 +105,6 @@ import v2.std.node {
   node_subtree_count,
 }
 import v2.std.witness { Holds, Violates, Witness, list_nth }
-import std.host_text { chars }
 
 data bash_fold_diagnostic_anchor: Node = Node {
   kind: TypeNode { connective: Conj },

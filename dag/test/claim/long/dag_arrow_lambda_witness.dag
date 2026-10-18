@@ -12,7 +12,6 @@ import v2.extdeps.languages.dag {
   dag_grammar_choice,
   dag_grammar_nonterminal
 }
-import std.host_text { chars }
 
 // CI2-0 grammar-extension proof obligation (operator repair sequencing msg_7152180b item a; premise
 // corrected by direct probe 2026-08-10): the v2 grammar already admits |> — the measured

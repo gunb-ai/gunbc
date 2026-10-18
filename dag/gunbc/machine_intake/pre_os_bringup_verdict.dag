@@ -26,7 +26,6 @@ import gunbc.machine_intake.pre_os_observation_capabilities {
   PerSlotLocalizationExposed,
   PreOsObservationCapabilities,
 }
-import std.host_text { chars }
 
 // WHAT A PRE-OS BRING-UP ATTEMPT ESTABLISHED ABOUT THE HOST, from independent observations only.
 // Two laws are structural here rather than checked:

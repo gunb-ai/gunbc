@@ -7,7 +7,6 @@ import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, Ve
 import extdeps.version.semver { semver_core_parse, semver_compare_numeric_digits, semver_label_from_code_points, semver_numeric_field, SemVerNumericField }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

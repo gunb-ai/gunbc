@@ -4,7 +4,6 @@ import std.logic { Bool }
 import v2.compiler.tokenize { tokenize }
 import v2.std.compilers.lexing { LexRules, ModeledLexRules, LexRuleSet, TokenRule, LiteralPattern }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
-import std.host_text { chars }
 
 // THE 01_tokenize ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
 // v2.compiler.tokenize tokenize accepts a source its rules match and refuses, with

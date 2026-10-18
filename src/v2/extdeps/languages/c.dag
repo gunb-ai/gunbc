@@ -144,7 +144,6 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
-import std.host_text { chars }
 
 // C R3: CompilationUnit.interface renders to the unit .h (declarations only);
 // CompilationUnit.members renders to the unit .c (implementation). partition_fold_outcome is the

@@ -238,7 +238,6 @@ import gunbc.roadmap.roadmap_static_site {
 }
 import extdeps.package_managers.apt { package_tailscale, package_tmux }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.host_text { chars }
 
 data witness_script_producers_note: String = "THE COMMITTED SCRIPT ARTIFACTS ARE GONE, SO THESE WITNESSES CALL THE EMITTER DIRECTLY. Nothing executed .github/live-deploy-srv1-apply.sh or -retract.sh — the real deploy runs live_deploy_apply_prod_role_wet through gunbc run — and their registry rows named a HostReconciler consumer that does not exist. A committed artifact nobody reads is not coverage; it is a false architectural claim that happened to be convenient as a byte oracle.\\n\\nThe coverage did not need the artifact. A fixture sha is forbidden in a committed PRODUCTION artifact, never in a witness, so these call live_deploy_apply_script_for with RevisionBoundAtEmission at the fixture revision and assert the same bytes the golden used to pin — with the ExecStart line now pinned EXACTLY, which the golden never did."
 

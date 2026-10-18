@@ -3,7 +3,6 @@ module v2.test.claim.tokenize.lex_rule_dispatch
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.tokenize { LexCursor }
 import v2.extdeps.languages.dag { dag_lex_rules }
-import std.host_text { chars }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
