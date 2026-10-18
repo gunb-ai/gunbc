@@ -2175,7 +2175,7 @@ test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
     }),
     separator: "\n",
   )
-  join(filter(full_lines, l => !line_is_a_scope_row(l: l) && !line_is_a_units_row(l: l) && !line_is_a_retirement_row(l: l)), "\n")
+  join(filter(full_lines, l => !line_is_a_scope_row(l: l) && !line_is_a_units_row(l: l) && !line_is_a_retirement_row(l: l) && !line_is_a_host_grant_row(l: l)), "\n")
     == join(filter(fabric_lines, l => !line_is_a_scope_row(l: l)), "\n")
     && list_length(items: filter(full_lines, l => line_is_a_scope_row(l: l))) == 1
     && list_length(items: filter(fabric_lines, l => line_is_a_scope_row(l: l))) == 1
@@ -2186,6 +2186,15 @@ test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
     && list_length(items: filter(fabric_lines, l => line_is_a_units_row(l: l))) == 0
     && list_length(items: filter(full_lines, l => line_is_a_retirement_row(l: l))) > 0
     && list_length(items: filter(fabric_lines, l => line_is_a_retirement_row(l: l))) == 0
+    && list_length(items: filter(full_lines, l => line_is_a_host_grant_row(l: l))) > 0
+    && list_length(items: filter(fabric_lines, l => line_is_a_host_grant_row(l: l))) == 0
+}
+
+// The host-grant family is a premise family a full-host baseline carries and the fabric-only one does
+// not (gunbc.fleet.fleet_host_grant_coverage host_grant_baseline_rows), so it is removed from the
+// remainder the way the units and retirement rows are, and asserted on its own side.
+fn line_is_a_host_grant_row(l: String) -> Bool {
+  starts_with(s: l, prefix: "host-grant:")
 }
 
 // THE UNIT-STANDINGS FAMILY IS THE ONE FAMILY A FULL-HOST BASELINE CANNOT LEAVE EMPTY: an unread
