@@ -56,7 +56,7 @@ fn boot_of(id: String) -> ServiceBootId? {
 // The sealed population of `id`'s boot over a SUPPLIED width and labels (the real producer for this host
 // leaves them unresolved until its offer enters the catalog; DESIGN section 3 pairing frontier, listed
 // beside the sibling witness).
-fn population_for(m: ManagedHost, id: String) -> CurrentServicePopulationStanding admit_callers: [decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admit_over")] {
+fn population_for(m: ManagedHost, id: String) -> CurrentServicePopulationStanding admit_callers: [decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admission_over")] {
   match boot_of(id: id) {
     Absent => CurrentServicePopulationRefused { refusal: CurrentPopulationEmpty }
     Present { value: b } => current_service_population_over(host: controlled(m: m), width: RunnerWidthDerived { slots: 5 }, registration_labels: labels, boot: b)
@@ -76,24 +76,31 @@ fn rebuilt_for(m: ManagedHost, id: String, index: Int) -> ServiceSlotRebuild {
 
 // ADMISSION OVER: the population of `population_id`, the kernel's current boot `current_id`, the unit
 // of `unit_id`/`index` rebuilt under the unit's own boot.
+fn admission_over(m: ManagedHost, population_id: String, current_id: String, unit_id: String, index: Int) -> ServiceSlotAdmission admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admit_over"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
+] {
+  match boot_of(id: current_id) {
+    Absent => ServiceSlotAdmissionRefused { cause: "no current boot" }
+    Present { value: current } =>
+      service_slot_admit(
+        current_boot: current,
+        population: population_for(m: m, id: population_id),
+        rebuilt: rebuilt_for(m: m, id: unit_id, index: index),
+        unit: unit_name(m: m, id: unit_id, index: index),
+      )
+  }
+}
+
 fn admit_over(m: ManagedHost, population_id: String, current_id: String, unit_id: String, index: Int) -> Bool admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_current_boot_population_member_is_admitted"),
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_stale_boot_is_refused"),
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "an_out_of_population_index_is_refused"),
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_unit_of_another_boot_is_refused"),
 ] {
-  match boot_of(id: current_id) {
-    Absent => false
-    Present { value: current } =>
-      match service_slot_admit(
-        current_boot: current,
-        population: population_for(m: m, id: population_id),
-        rebuilt: rebuilt_for(m: m, id: unit_id, index: index),
-        unit: unit_name(m: m, id: unit_id, index: index),
-      ) {
-        ServiceSlotAdmitted { admission: _ } => true
-        ServiceSlotAdmissionRefused { cause: _ } => false
-      }
+  match admission_over(m: m, population_id: population_id, current_id: current_id, unit_id: unit_id, index: index) {
+    ServiceSlotAdmitted { admission: _ } => true
+    ServiceSlotAdmissionRefused { cause: _ } => false
   }
 }
 
@@ -182,6 +189,7 @@ test fn an_outside_bypass_of_the_mint_path_is_refused() -> Bool {
 
 fn key_over(file: CustodyPathMetadata, dir: CustodyPathMetadata) -> ServiceSlotKeyStanding admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "the_key_is_held_only_when_both_paths_read_back_as_declared"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
 ] {
   service_slot_key_standing_of(row: host_credential_custody_row(c: ServiceSlotAppKey), file: file, dir: dir)
 }
@@ -221,6 +229,7 @@ fn isolate_as_readings(row: HostCredentialCustodyRow, user: String, listener: Ru
 fn isolate_as(row: HostCredentialCustodyRow, user: String) -> ServiceSlotIsolation admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_listener_user_that_cannot_read_the_key_is_isolated_and_one_that_can_is_refused"),
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "command_text"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
 ] {
   isolate_as_readings(row: row, user: user, listener: uid_reading(uid: if user == "root" { 0 } else { 1001 }))
 }
@@ -256,6 +265,7 @@ fn pass_of(text: String) -> ServiceSlotPassIdReading admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "command_text"),
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "host_unit_slot_root_of"),
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_pass_identity_is_a_valid_invocation_id_and_nothing_else"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
 ] {
   service_slot_pass_id_of(raw: Present { value: text })
 }

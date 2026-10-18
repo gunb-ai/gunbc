@@ -226,7 +226,7 @@ type ServiceSlotAdmission
 fn service_slot_admit(current_boot: ServiceBootId, population: CurrentServicePopulationStanding, rebuilt: ServiceSlotRebuild, unit: String) -> ServiceSlotAdmission
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_admit_current"),
-    decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admit_over"),
+    decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admission_over"),
   ]
 {
   match population {
@@ -288,6 +288,7 @@ fn service_slot_key_standing_of(row: HostCredentialCustodyRow, file: CustodyPath
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_key_custody"),
     decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "key_over"),
+    decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
   ]
 {
   let causes = concat(
@@ -375,6 +376,7 @@ fn service_slot_isolate_listener_as(
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_isolate_listener"),
     decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "isolate_as"),
+    decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
   ]
 {
   match listener {
@@ -519,7 +521,6 @@ fn service_slot_pass_over(
   launch: fn(HostUnitSlot, ServiceSlotListenerIsolated, ServiceSlotPassId, EncodedJitConfig) -> ListenerRun,
   deregister: fn(JitMintBinding, GitHubAppControlPlaneState, JitRegistration, JitSlotExit) -> JitBindingDeregistration,
 ) -> ServiceSlotPass
-  uses net: Network
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_pass"),
     decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "pass_with"),
