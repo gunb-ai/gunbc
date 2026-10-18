@@ -55,6 +55,11 @@ import gunbc.typed_remote_file_write {
   RemoteFileMode,
   RemoteFileModeOwnerReadWriteWorldRead,
   RemoteFileViaNonInteractiveSudo,
+  RemoteFileModeOwnerGroupRead,
+  RemoteFileValidation,
+  NoValidation,
+  VisudoCheck,
+  remote_file_privileged_argv,
   RemoteFileConverged,
   TypedRemoteFileWriteAdmission,
   TypedRemoteFileWriteAdmitted,
@@ -72,7 +77,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileStepLegRefused,
   typed_remote_file_compare_argv,
   classify_typed_remote_file_comparison,
-  converge_typed_remote_file,
+  converge_typed_remote_file_validated,
 }
 import gunbc.runner.runner_unit {
   RunnerUnitLifecycleIntent,
@@ -130,6 +135,8 @@ import gunbc.runner.runner_slot_retirement {
 }
 import gunbc.runner.runner_host_grants {  bootstrap_principal_is_not_the_grantee }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.generated_artifact { RunnerHostSudoersArtifact }
+import gunbc.tier_o_artifact_emit { tier_o_artifact_body, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO }
 
 // THE HOST FILES A RUNNER HOST MUST CARRY FOR ITS SLOTS TO BE TORN DOWN WHOLE, CONVERGED OVER THE
 // FLEET EDGE AS THE HOST'S ADMINISTRATOR.
@@ -174,6 +181,7 @@ type RunnerHostFileDesired {
   path: FilePath
   content: String
   mode: RemoteFileMode
+  validation: RemoteFileValidation
 }
 
 type RunnerHostFileWithheld {
@@ -219,6 +227,7 @@ fn runner_slot_cpu_desired(host: HostIdentity) -> RunnerSlotCpuDesired {
                 bytes_value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }) as NonEmptyStr,
               ),
               mode: RemoteFileModeOwnerReadWriteWorldRead,
+              validation: NoValidation,
             },
           }
       }
@@ -232,6 +241,7 @@ fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> Li
       path: runner_unit_teardown_dropin_path() as FilePath,
       content: gunbc_runner_unit_teardown_dropin_text(),
       mode: RemoteFileModeOwnerReadWriteWorldRead,
+      validation: NoValidation,
     },
     RunnerHostFileDesired {
       subject: "needrestart-runner-deferral" as NonEmptyStr,
@@ -240,6 +250,7 @@ fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> Li
         NeedrestartServiceSelectionOverride { units: prefix, selection: RestartDeferredByDefault },
       ]),
       mode: RemoteFileModeOwnerReadWriteWorldRead,
+      validation: NoValidation,
     },
   ]
 }
@@ -250,6 +261,7 @@ fn runner_host_fragment_file(fragment: String) -> RunnerHostFileDesired {
     path: runner_unit_system_path as FilePath,
     content: fragment,
     mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
   }
 }
 
@@ -259,6 +271,51 @@ fn runner_host_depriv_file(depriv: String) -> RunnerHostFileDesired {
     path: runner_unit_depriv_dropin_path() as FilePath,
     content: depriv,
     mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }
+}
+
+// THE SUDOERS DROP-IN IS THE RENDERED ARTIFACT'S BYTES, FROM THE ONE PRODUCER OF THEM. The content is
+// gunbc.tier_o_artifact_emit tier_o_artifact_body over RunnerHostSudoersArtifact -- the same fold
+// that decides, per host, between runner_host_sudoers_content and the refused-width variant, and the
+// one the drift watch compares the committed file with -- so what lands on the host is what is
+// committed, never a second rendering. It is installed by the ADMINISTRATOR, which holds its own
+// root through the bootstrap edge and so does not need the grants this file confers (the grantee
+// cannot install its own grant). Only the rendered lines are written: 0440 root-owned, validated by
+// visudo on the staging path before the rename, and read back byte-for-byte by the converge.
+// A host whose body cannot be rendered is WITHHELD with the producer's own cause, not skipped.
+data runner_host_sudoers_install_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner" as NonEmptyStr
+
+type RunnerHostSudoersDesired
+  = SudoersFileDesired { file: RunnerHostFileDesired }
+  | SudoersFileWithheld { withheld: RunnerHostFileWithheld }
+
+fn runner_host_sudoers_desired(host: HostIdentity) -> RunnerHostSudoersDesired {
+  match tier_o_artifact_body(a: RunnerHostSudoersArtifact { host: host }) {
+    TierOArtifactProduced { content: c } =>
+      SudoersFileDesired {
+        file: RunnerHostFileDesired {
+          subject: "runner-host-sudoers" as NonEmptyStr,
+          path: runner_host_sudoers_install_path as FilePath,
+          content: c,
+          mode: RemoteFileModeOwnerGroupRead,
+          validation: VisudoCheck,
+        },
+      }
+    TierOArtifactRefused { reason: r } =>
+      SudoersFileWithheld {
+        withheld: RunnerHostFileWithheld {
+          subject: "runner-host-sudoers" as NonEmptyStr,
+          cause: concat("runner_host_file_converge: the rendered sudoers body is refused, so nothing is installed: ", r) as NonEmptyStr,
+        },
+      }
+    TierOArtifactNotTierO =>
+      SudoersFileWithheld {
+        withheld: RunnerHostFileWithheld {
+          subject: "runner-host-sudoers" as NonEmptyStr,
+          cause: "runner_host_file_converge: the sudoers artifact has no Tier O body" as NonEmptyStr,
+        },
+      }
   }
 }
 
@@ -299,7 +356,11 @@ fn runner_host_file_desired_population_from_uid_reading(
     RunnerHostFilesDesired { files: fs, withheld: ws } =>
       match runner_slot_cpu_desired(host: host) {
         SlotCpuRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
-        SlotCpuDesired { per_slot: _, file: f } => RunnerHostFilesDesired { files: concat(fs, [f]), withheld: ws }
+        SlotCpuDesired { per_slot: _, file: f } =>
+          match runner_host_sudoers_desired(host: host) {
+            SudoersFileDesired { file: sf } => RunnerHostFilesDesired { files: concat(fs, [f, sf]), withheld: ws }
+            SudoersFileWithheld { withheld: sw } => RunnerHostFilesDesired { files: concat(fs, [f]), withheld: concat(ws, [sw]) }
+          }
       }
   }
 }
@@ -1001,7 +1062,7 @@ fn runner_host_leg_argv(leg: RunnerHostRemoteLeg) -> List<String> {
   match leg {
     LegAdministratorPrivilegeProbe => elevated_argv(command: ["true"])
     LegRootOnlyFind { paths: ps, kind: k } => runner_host_root_only_find_argv(paths: ps, kind: k)
-    LegMetadataProbe { path: p } => runner_host_file_metadata_probe_argv(path: p)
+    LegMetadataProbe { path: p } => elevated_argv(command: runner_host_file_metadata_probe_argv(path: p))
     LegListServiceUnits => systemctl_list_all_service_units_argv()
     LegShowSlotProperties { units: us } => systemctl_show_properties_argv(units: us, properties: runner_slot_show_properties)
     LegRetireeCgroupEvents { argv: a } => a
@@ -1167,7 +1228,7 @@ fn observe_runner_host_file_content(
               match typed_remote_file_step(
                 target: subject.target,
                 context: context,
-                raws: typed_remote_file_compare_argv(write: w),
+                raws: remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_compare_argv(write: w)),
                 stdin_payload: w.content,
               ) {
                 TypedRemoteFileStepArgvRefused => HostFileUnobservable { reason: "comparison argv refused as non-portable under the far-side shell re-parse allowlist" }
@@ -1630,12 +1691,13 @@ fn apply_runner_host_file(
     HostFileLeaveInPlace => HostFileLeftInPlace
     HostFileActionRefused { reason: r } => HostFileNotAttempted { reason: r }
     HostFileWrite =>
-      match converge_typed_remote_file(
+      match converge_typed_remote_file_validated(
         target: subject.target,
         context: context,
         admission: runner_host_file_write_admission(file: planned.file),
         mode: planned.file.mode,
         privilege: RemoteFileViaNonInteractiveSudo,
+        validation: planned.file.validation,
       ) {
         TypedRemoteFileConvergenceRefused { step: st, reason: why } => HostFileWriteRefused { step: st, reason: why }
         TypedRemoteFileConverged { converged: c } =>
