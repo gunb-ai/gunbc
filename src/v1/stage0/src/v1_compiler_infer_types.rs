@@ -3109,26 +3109,6 @@ pub fn callable_signatures_agree(
     }
 }
 
-pub fn applied_spelling_arguments_agree(
-    applied: Rc<Node>,
-    other: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    text: Rc<TextJudgment>,
-) -> bool {
-    if ((other.children.clone().len() as i64) == 0) {
-        false
-    } else {
-        match applied.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: _, .. }) => false,
-            _ => arguments_agree_in_lockstep(
-                applied.children.clone(),
-                other.children.clone(),
-                |a, b| node_type_equals(a.clone(), b.clone(), source_indices.clone(), text.clone()),
-            ),
-        }
-    }
-}
-
 pub fn node_type_equals_core(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -3238,25 +3218,7 @@ pub fn node_type_equals_core(
                                     || (right_applied.clone()
                                         && (left_leaf.clone() || left_struct.clone())))
                                 {
-                                    (applied_argument_heads_identical(
-                                        left.clone(),
-                                        right.clone(),
-                                        source_indices.clone(),
-                                    ) && if left_applied.clone() {
-                                        applied_spelling_arguments_agree(
-                                            left.clone(),
-                                            right.clone(),
-                                            source_indices.clone(),
-                                            text.clone(),
-                                        )
-                                    } else {
-                                        applied_spelling_arguments_agree(
-                                            right.clone(),
-                                            left.clone(),
-                                            source_indices.clone(),
-                                            text.clone(),
-                                        )
-                                    })
+                                    false
                                 } else {
                                     {
                                         let left_is_container = node_is_element_collection(

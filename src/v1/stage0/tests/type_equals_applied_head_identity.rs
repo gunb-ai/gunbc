@@ -173,31 +173,28 @@ fn an_application_refuses_the_expansion_of_another_instantiation_in_both_orders(
 }
 
 // gentle-carp-16's #14152 control shape: both operands hand-built, declaration None and inferred None,
-// the Disj side carrying its arguments positionally in children. Run as a PAIR: if both refuse, the arm
-// answers nothing and the refusal passes vacuously, which is a failure of the arm.
+// the Disj side carrying its arguments positionally in children. An application against a non-applied
+// spelling is not equality whatever its inferred state, so the former accept twin (Box<Int> vs
+// Disj Box<Int>) is a refusal control too: no expansion evidence must not reopen a comparison against
+// the other side's children, which may be fields or variants.
 fn disj_with_arguments(name: &str, args: Vec<Rc<Node>>) -> Rc<Node> {
     Rc::new(named(name, Connective::Disj, args))
 }
 
 #[test]
-fn hand_built_box_pair_agrees_on_same_arguments_and_refuses_different_ones() {
+fn hand_built_application_refuses_a_non_applied_disj_in_both_orders() {
     let bound = applied("Box", vec![leaf("Int")]);
-    assert!(
-        equals(bound.clone(), disj_with_arguments("Box", vec![leaf("Int")])),
-        "accept twin: Box<Int> vs Disj Box<Int> (a refusal here makes the refusal below vacuous)"
-    );
-    assert!(
-        !equals(
-            bound.clone(),
-            disj_with_arguments("Box", vec![leaf("Bool")])
-        ),
-        "Box<Int> vs Disj Box<Bool> must refuse"
-    );
-    let actual = disj_with_arguments("Box", vec![leaf("Bool")]);
-    assert!(
-        !equals(actual, bound),
-        "reverse operand order must refuse too"
-    );
+    for arg in ["Int", "Bool"] {
+        let disj = disj_with_arguments("Box", vec![leaf(arg)]);
+        assert!(
+            !equals(bound.clone(), disj.clone()),
+            "Box<Int> vs Disj Box<{arg}> must refuse"
+        );
+        assert!(
+            !equals(disj, bound.clone()),
+            "reverse operand order must refuse too"
+        );
+    }
 }
 
 // A CHILDLESS spelling of the SAME declaration is no proof of an argument-free instantiation: Box<Int>
@@ -316,6 +313,22 @@ fn an_application_refuses_a_product_expansion_of_another_instantiation_in_both_o
     );
     assert!(
         !equals(bool_expansion, int_stamp),
+        "reverse operand order must refuse too"
+    );
+}
+
+#[test]
+fn missing_expansion_evidence_must_not_reopen_field_comparison() {
+    let mut stripped = (*stamp_application("Int")).clone();
+    stripped.inferred = None;
+    let stripped = Rc::new(stripped);
+    let bool_expansion = expansion_of(&stamp_application("Bool"));
+    assert!(
+        !equals(stripped.clone(), bool_expansion.clone()),
+        "an application with no expansion evidence must refuse the expansion of another instantiation"
+    );
+    assert!(
+        !equals(bool_expansion, stripped),
         "reverse operand order must refuse too"
     );
 }
