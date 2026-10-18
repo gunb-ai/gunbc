@@ -37,7 +37,10 @@ FIELDS = ["name", "conn", "card", "decl", "infer", "shape", "nc", "idsp"]
 
 def parse(line):
     """One REBINDARM line -> header fields + the pairwise node table keyed by path (L0/R0/L00/.../L0r)."""
-    if not line.startswith("REBINDARM|"):
+        # Two tags exist in the wild: the arm probe's own REBINDARM|, and patch_rebind_probe3.py's
+    # REBINDV3|, which carries the SAME cross/trees fields. A parser that accepted only one silently
+    # returned 0 rows for a good run, and 0 reads like "the probe never reached the refusal site".
+    if not (line.startswith("REBINDARM|") or line.startswith("REBINDV3|")):
         return None
     b = line[len("REBINDARM|"):].rstrip("\n")
     i = b.find(";;TREE")
@@ -99,7 +102,7 @@ def main(paths):
     rows = []
     for p in paths:
         for line in open(p, errors='replace'):
-            if line.startswith('REBINDARM|'):
+            if line.startswith('REBINDARM|') or line.startswith('REBINDV3|'):
                 d = parse(line)
                 if d:
                     rows.append(d)
@@ -136,6 +139,19 @@ def main(paths):
     print("  C  UNEXPLAINED (cross=false, trees identical, still refused) : %d" % len(C))
     print("  neither A/B/C (cross=true but core_na=false -> inconsistent, report) : %d"
           % (len(rows) - len(A) - len(B) - len(C)))
+
+    # The C rows must be REPORTED BY IDENTITY (the pre-registration says "Report by identity. Pick no
+    # cause."), and an earlier revision of this parser printed only the COUNT -- which is how 18 rows sat
+    # un-named when the PR body needed them. Print each one, deduplicated on its own identity tuple.
+    print("\n=== OUTCOME C, by identity (UNEXPLAINED -- reported as such, no cause assigned) ===")
+    seen = set()
+    for r in C:
+        ident = (r['module'], r['bind'], r.get('unfoldedL'), r.get('unfoldedR'))
+        if ident in seen:
+            continue
+        seen.add(ident)
+        print("  module=%s bind=%s  L=%s  R=%s" % ident)
+    print("  distinct C identities: %d (over %d C lines; the probe emits per pass)" % (len(seen), len(C)))
 
     print("\n=== what separates the pair, per row (the field, by name) ===")
     for k, v in collections.Counter(first_difference(r) for r in rows).most_common():
