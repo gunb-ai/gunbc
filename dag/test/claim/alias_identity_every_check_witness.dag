@@ -181,23 +181,24 @@ test fn w_primitive_alias_and_kernel_agree_at_function_type() -> Bool {
 // ONE RELATION, SETTLED ARGUMENTS. alias_settled_agree decides alias identity by resolved declaration AND settles
 // applied arguments; the name-level seam that stopped at the head is deleted. Each RED is the refusal of an
 // alias-keyed mismatch (same head, differing argument) on the real acceptance path; each POSITIVE beside it is the
-// accepted pair. Revert arm: restore a head-only name relation and the REDs read zero.
+// accepted pair. Executed revert arm (main mirrors): these REDs are refused on main too, by an independent check, so they are regression controls for the one relation, not discriminators of the name-relation fold.
 data alias_arg_mismatch_if_source: String = "module probe_alias_arg_bad_if\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntInner = Inner<Int>\nfn p(c: Bool, a: IntInner, b: Inner<Bool>) -> Inner<Int> { if c { a } else { b } }\n"
 
 test fn w_alias_keyed_argument_mismatch_is_refused_at_if() -> Bool {
   refusal_count(source: alias_arg_mismatch_if_source) >= 1
 }
 
-data alias_arg_mismatch_call_source: String = "module probe_alias_arg_bad_call\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntInner = Inner<Int>\nfn take(x: IntInner) -> Int { 0 }\nfn p(b: Inner<Bool>) -> Int { take(x: b) }\n"
+// NAME-LEVEL SITE: a record literal names its type by a bare name; its field mismatch is refused (on main as well).
+data alias_arg_mismatch_lit_source: String = "module probe_alias_arg_bad_lit\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntInner = Inner<Int>\nfn take(x: IntInner) -> Int { 0 }\nfn p() -> Int { take(x: Inner { v: true }) }\n"
 
-test fn w_alias_keyed_argument_mismatch_is_refused_at_call() -> Bool {
-  refusal_count(source: alias_arg_mismatch_call_source) >= 1
+test fn w_alias_keyed_argument_mismatch_is_refused_at_literal() -> Bool {
+  refusal_count(source: alias_arg_mismatch_lit_source) >= 1
 }
 
-data alias_arg_agree_call_source: String = "module probe_alias_arg_ok_call\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntInner = Inner<Int>\nfn take(x: IntInner) -> Int { 0 }\nfn p(b: Inner<Int>) -> Int { take(x: b) }\n"
+data alias_arg_agree_lit_source: String = "module probe_alias_arg_ok_lit\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntInner = Inner<Int>\nfn take(x: IntInner) -> Int { 0 }\nfn p() -> Int { take(x: IntInner { v: 1 }) }\n"
 
-test fn w_alias_keyed_argument_agreement_is_accepted_at_call() -> Bool {
-  refusal_count(source: alias_arg_agree_call_source) == 0
+test fn w_alias_keyed_argument_agreement_is_accepted_at_literal() -> Bool {
+  refusal_count(source: alias_arg_agree_lit_source) == 0
 }
 
 data applied_alias_argument_mismatch_source: String = "module probe_applied_alias_arg_bad\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntAlias = Int\nfn take(x: Inner<IntAlias>) -> Int { 0 }\nfn p(b: Inner<Bool>) -> Int { take(x: b) }\n"

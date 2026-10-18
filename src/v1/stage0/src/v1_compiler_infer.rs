@@ -145,8 +145,8 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{
 };
 pub use crate::v1_compiler_infer_env::{
     alias_rhs_head_of_declaration, bare_name_miss_diagnostic, binding_declares_name,
-    build_unit_variant_index, census_declaration_type_env, declaration_node_of_ref,
-    declaration_provenance_of_ref, declaration_ref_of_declaration_node,
+    build_unit_variant_index, census_declaration_type_env, declaration_named_by_type_name,
+    declaration_node_of_ref, declaration_provenance_of_ref, declaration_ref_of_declaration_node,
     declaration_ref_of_type_node, declaration_substitution_basis, effective_visible_binding,
     empty_symbol_index, empty_type_env_cache, env_with_type_variable_bindings,
     global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates,
@@ -157,12 +157,12 @@ pub use crate::v1_compiler_infer_env::{
     merge_type_env_cache, merge_type_env_cache_guarded, node_with_children, node_with_inferred,
     overlay_skips_kernel_name, put_inductive_field, put_inductive_field_cross,
     qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
-    qualify_decl_reference_positions, settled_type, str_bindings_from_bindings,
-    symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
-    symbol_index_lookup, text_crossing_by_identity, text_representation_by_identity,
-    text_representation_is_text_arm, text_representation_is_unidentified,
-    text_representations_cross, transparent_alias_rhs, type_reference_declaration,
-    type_reference_declaration_reading, type_reference_declaration_ref,
+    qualify_decl_reference_positions, settled_type, settled_type_of_declaration,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
+    text_representation_by_identity, text_representation_is_text_arm,
+    text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
+    type_reference_declaration, type_reference_declaration_reading, type_reference_declaration_ref,
     unit_variant_index_shadow_insert, GlobalBareCandidate, GlobalBareLookupState,
     GuardedTypeEnvCacheMerge, ServiceCensusEntry, SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache,
     TypeEnvCacheMergeConflict, TypeReferenceDeclarationReading, UnitVariantContribution,
@@ -214,8 +214,8 @@ pub use crate::v1_compiler_infer_patterns::{
     ConstructorRoster, NodeLookupResult, PatternSubject,
 };
 pub use crate::v1_compiler_infer_resolve::{
-    fn_type_param_names, generic_declaration_application, is_user_generic_use_site,
-    peel_nominal_alias_identity, preserve_nominal_brand_on_resolve, reference_with_declaration,
+    expand_nominal_alias_rhs, fn_type_param_names, generic_declaration_application,
+    is_user_generic_use_site, preserve_nominal_brand_on_resolve, reference_with_declaration,
     resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
     ItemResolveResult, NodeResolveResult,
 };
@@ -2170,12 +2170,12 @@ pub fn declared_type_kernel_inhabitance_mismatch(
                 }
             };
             kernel_value_declared_type_mismatch(
-                crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                     declared_required.clone(),
                     scope.type_env.clone(),
                     scope.module_name.clone(),
                 ),
-                crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                     produced.clone(),
                     scope.type_env.clone(),
                     scope.module_name.clone(),
@@ -4170,7 +4170,7 @@ pub fn where_refinement_mismatch_diags(
                         } else {
                             {
                                 let formal_checked =
-                                    crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                                    crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                                         formal_resolved.clone(),
                                         type_env.clone(),
                                         module_name.clone(),
@@ -4888,7 +4888,7 @@ pub fn exposure_is_application(exposure: Rc<TypeHeadExposure>) -> bool {
 pub fn equality_admission_wall_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. A StuckTypeHead operand (no declaration identity at all) is the same parameter case seen one authority earlier -- measured live at v2.std.collection map_insert's 'candidate == key' over bare K, a load-bearing generic comparison -- and admits under the same boundary rather than refusing on a namelessness that is a property of genericity, not of brokenness. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). An empty list literal comparison ('x == []' / '!= []') is the same idiom one carrier over -- an EMPTINESS test on the finite container, decidable by cardinality regardless of element admissibility -- and is likewise exempt before any walk (surfaced live at dag/gunbc/commit_workflow.dag 'refusals == []' and dag/extdeps/languages/markdown.dag 'inner == []', where the floor's per-witness resolve grain hands the literal a synthesized element node with no declaration identity). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and peel_nominal_alias_identity is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already).".to_string()
+            "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. A StuckTypeHead operand (no declaration identity at all) is the same parameter case seen one authority earlier -- measured live at v2.std.collection map_insert's 'candidate == key' over bare K, a load-bearing generic comparison -- and admits under the same boundary rather than refusing on a namelessness that is a property of genericity, not of brokenness. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). An empty list literal comparison ('x == []' / '!= []') is the same idiom one carrier over -- an EMPTINESS test on the finite container, decidable by cardinality regardless of element admissibility -- and is likewise exempt before any walk (surfaced live at dag/gunbc/commit_workflow.dag 'refusals == []' and dag/extdeps/languages/markdown.dag 'inner == []', where the floor's per-witness resolve grain hands the literal a synthesized element node with no declaration identity). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and expand_nominal_alias_rhs is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -5142,7 +5142,7 @@ pub fn equality_leaf_admission(
         ) {
             return std::option::Option::None;
         }
-        let resolved = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+        let resolved = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
             peeled.clone(),
             scope.type_env.clone(),
             scope.module_name.clone(),
@@ -5580,7 +5580,7 @@ pub fn literal_introduction_type_mismatch(
     }
 }
 
-pub fn application_type_name_identity(
+pub fn application_type_expansion_head_name(
     type_name: String,
     type_env: Rc<TypeEnv>,
     module_name: String,
@@ -5591,7 +5591,7 @@ pub fn application_type_name_identity(
             Some(InferredNode::Resolved { node: target, .. }) => {
                 crate::v1_std_core::authored_name_at(
                     source_indices.clone(),
-                    crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                    crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                         target.clone(),
                         type_env.clone(),
                         module_name.clone(),
@@ -5600,7 +5600,7 @@ pub fn application_type_name_identity(
             }
             _ => crate::v1_std_core::authored_name_at(
                 source_indices.clone(),
-                crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                     decl.clone(),
                     type_env.clone(),
                     module_name.clone(),
@@ -5611,34 +5611,23 @@ pub fn application_type_name_identity(
     }
 }
 
-pub fn application_type_name_declaration(
+pub fn settled_declaration_of_type_name(
     type_name: String,
     type_env: Rc<TypeEnv>,
-    module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<DeclarationRef>> {
-    match crate::v1_compiler_infer_env::lookup_type_by_name(type_env.clone(), type_name.clone()) {
-        Some(decl) => {
-            let peeled = match decl.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => {
-                    crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                        target.clone(),
-                        type_env.clone(),
-                        module_name.clone(),
-                    )
-                }
-                _ => crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                    decl.clone(),
-                    type_env.clone(),
-                    module_name.clone(),
-                ),
-            };
-            crate::v1_compiler_infer_env::type_reference_declaration_ref(
-                peeled.clone(),
-                source_indices.clone(),
-                type_env.clone(),
-            )
-        }
+    match crate::v1_compiler_infer_env::declaration_named_by_type_name(
+        type_name.clone(),
+        type_env.clone(),
+    ) {
+        Some(d) => match crate::v1_compiler_infer_env::settled_type_of_declaration(
+            d.clone(),
+            type_env.source_indices.clone(),
+            type_env.clone(),
+            16,
+        ) {
+            Some(settled) => Some(settled.head.clone()),
+            std::option::Option::None => std::option::Option::None,
+        },
         std::option::Option::None => std::option::Option::None,
     }
 }
@@ -5647,7 +5636,7 @@ pub fn structured_application_structural_type_name(
     type_name: String,
     scope: Rc<InferScope>,
 ) -> String {
-    application_type_name_identity(
+    application_type_expansion_head_name(
         type_name.clone(),
         scope.type_env.clone(),
         scope.module_name.clone(),
@@ -5707,18 +5696,6 @@ pub fn application_type_names_compatible(
             true
         } else {
             {
-                let formal_identity = application_type_name_identity(
-                    formal_name.clone(),
-                    type_env.clone(),
-                    module_name.clone(),
-                    source_indices.clone(),
-                );
-                let lit_identity = application_type_name_identity(
-                    lit_name.clone(),
-                    type_env.clone(),
-                    module_name.clone(),
-                    source_indices.clone(),
-                );
                 let same_declaration = match crate::v1_compiler_infer_env::lookup_type_by_name(type_env.clone(), formal_name.clone()) {
     Some(formal_item) => match crate::v1_compiler_infer_env::lookup_type_by_name(type_env.clone(), lit_name.clone()) {
     Some(lit_item) => match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(formal_item.clone(), source_indices.clone(), type_env.clone()) {
@@ -5732,35 +5709,7 @@ pub fn application_type_names_compatible(
 },
     std::option::Option::None => false,
 };
-                let same_identity = if same_declaration.clone() {
-                    true
-                } else {
-                    match application_type_name_declaration(
-                        formal_name.clone(),
-                        type_env.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    ) {
-                        Some(formal_decl) => match application_type_name_declaration(
-                            lit_name.clone(),
-                            type_env.clone(),
-                            module_name.clone(),
-                            source_indices.clone(),
-                        ) {
-                            Some(lit_decl) => crate::std_decl_ref::declaration_ref_eq(
-                                formal_decl.clone(),
-                                lit_decl.clone(),
-                            ),
-                            std::option::Option::None => {
-                                (formal_identity.clone() == lit_identity.clone())
-                            }
-                        },
-                        std::option::Option::None => {
-                            (formal_identity.clone() == lit_identity.clone())
-                        }
-                    }
-                };
-                if same_identity.clone() {
+                if same_declaration.clone() {
                     true
                 } else {
                     if crate::std_coercion::dag_can_cast(lit_name.clone(), formal_name.clone()) {
@@ -6444,7 +6393,7 @@ pub fn declared_type_inhabitance(
 pub fn declared_type_carries_optional(declared: Rc<Node>, scope: Rc<InferScope>) -> bool {
     {
         let source_indices = scope.type_env.clone().source_indices.clone();
-        let declared_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+        let declared_peeled = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
             declared.clone(),
             scope.type_env.clone(),
             scope.module_name.clone(),
@@ -6581,7 +6530,7 @@ pub fn side_is_collection_after_peel(n: Rc<Node>, scope: Rc<InferScope>) -> bool
             true
         } else {
             {
-                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                let peeled = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                     n.clone(),
                     scope.type_env.clone(),
                     scope.module_name.clone(),
@@ -6611,7 +6560,7 @@ pub fn side_is_established_non_collection_identity(n: Rc<Node>, scope: Rc<InferS
             false
         } else {
             {
-                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                let peeled = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                     n.clone(),
                     scope.type_env.clone(),
                     scope.module_name.clone(),
@@ -6920,7 +6869,7 @@ pub fn nominal_product_head_name_if_declared_product(
             representative.clone(),
         ) {
             Some(decl) => {
-                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                let peeled = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                     decl.clone(),
                     scope.type_env.clone(),
                     scope.module_name.clone(),
@@ -7008,7 +6957,7 @@ pub fn nominal_coproduct_head_name_if_declared_coproduct(
             representative.clone(),
         ) {
             Some(decl) => {
-                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                let peeled = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                     decl.clone(),
                     scope.type_env.clone(),
                     scope.module_name.clone(),
@@ -7151,7 +7100,7 @@ pub fn nominal_coproduct_application_head_name(n: Rc<Node>, scope: Rc<InferScope
                         ) {
                             Some(decl) => {
                                 let peeled =
-                                    crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                                    crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                                         decl.clone(),
                                         scope.type_env.clone(),
                                         scope.module_name.clone(),
@@ -7574,7 +7523,7 @@ pub fn structured_application_site_type_mismatch(
         ExprData::ExprRecordLit { parent_enum: _, .. } => {
             structured_application_site_type_mismatch_with_peeled(
                 formal.clone(),
-                crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                     formal.clone(),
                     scope.type_env.clone(),
                     scope.module_name.clone(),
@@ -7620,12 +7569,7 @@ pub fn structured_formal_carrier_declaration(
                 std::option::Option::None => std::option::Option::None,
             }
         } else {
-            application_type_name_declaration(
-                name.clone(),
-                scope.type_env.clone(),
-                scope.module_name.clone(),
-                source_indices.clone(),
-            )
+            settled_declaration_of_type_name(name.clone(), scope.type_env.clone())
         }
     }
 }
@@ -7931,7 +7875,7 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
 ) -> bool {
     match (*actual_expr.expr_data.clone()).clone() {
         ExprData::ExprRecordLit { parent_enum: _, .. } => {
-            let formal_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+            let formal_peeled = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                 formal.clone(),
                 type_env.clone(),
                 module_name.clone(),
@@ -7955,12 +7899,11 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
                         {
                             let actual_raw =
                                 crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
-                            let actual =
-                                crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                                    actual_raw.clone(),
-                                    type_env.clone(),
-                                    module_name.clone(),
-                                );
+                            let actual = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
+                                actual_raw.clone(),
+                                type_env.clone(),
+                                module_name.clone(),
+                            );
                             direct_call_arg_type_mismatch(
                                 formal.clone(),
                                 substitution_basis.clone(),
@@ -7976,7 +7919,7 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
                 std::option::Option::None => {
                     let actual_raw =
                         crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
-                    let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                    let actual = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                         actual_raw.clone(),
                         type_env.clone(),
                         module_name.clone(),
@@ -8383,14 +8326,14 @@ match app.matched_argument_index.clone() {
     Some(arg_index) => match typed_args.clone().get((arg_index.clone()) as usize).cloned() {
     Some(ta) => {
                 let actual_expr = crate::v1_std_core::arg_value(ta.clone());
-let host_into_sequence = (!crate::v1_compiler_infer_types::type_node_is_callable(formal.clone()) && crate::v1_compiler_infer_env::host_text_into_structural_sequence(formal.clone(), crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::resolved_type(actual_expr.clone()), type_env.clone(), module_name.clone()), crate::v1_compiler_infer_types::resolved_type(actual_expr.clone()), type_env.clone()));
+let host_into_sequence = (!crate::v1_compiler_infer_types::type_node_is_callable(formal.clone()) && crate::v1_compiler_infer_env::host_text_into_structural_sequence(formal.clone(), crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(crate::v1_compiler_infer_types::resolved_type(actual_expr.clone()), type_env.clone(), module_name.clone()), crate::v1_compiler_infer_types::resolved_type(actual_expr.clone()), type_env.clone()));
 if host_into_sequence.clone() {
                     Rc::new(vec![text_crossing_route_error(formal.clone(), crate::v1_compiler_infer_types::resolved_type(actual_expr.clone()), "unicode_scalar_unfold".to_string(), source_indices.clone(), actual_expr.span.clone(), module_name.clone())])
                 } else {
                     if (!direct_call_formal_has_unbound_type_variable(app.formal.clone().substitution_basis.clone()) && ((literal_introduction_type_mismatch(formal.clone(), actual_expr.clone(), scope.clone()) || structured_application_site_type_mismatch_with_peeled(formal_subst.clone(), formal.clone(), carried_structural_type_name(formal.clone(), source_indices.clone(), 0), actual_expr.clone(), scope.clone())) || direct_call_structured_record_literal_resolved_type_mismatch(formal.clone(), app.formal.clone().substitution_basis.clone(), actual_expr.clone(), type_env.clone(), module_name.clone(), source_indices.clone()))) {
                         {
                             let actual_raw = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
-let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
+let actual = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(actual_raw.clone(), type_env.clone(), module_name.clone());
 Rc::new(vec![text_crossing_or_type_mismatch_error(formal.clone(), actual.clone(), type_env.clone(), actual_expr.span.clone(), module_name.clone())])
 }
                     } else {
@@ -8596,8 +8539,8 @@ if ((((exposure_is_application(exposure_view_for_node(app.formal.clone().declare
                     declared_type_obligation_diags(Rc::new(DeclaredTypeObligation {
     position: DeclaredTypePosition::PositionGenericTypeArgument,
     subject: app.formal.clone().parameter_identity.clone(),
-    declared: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::child_type_node(declared_pair.1.clone()), scope.type_env.clone(), scope.module_name.clone()),
-    produced: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::child_type_node(produced_child.clone()), scope.type_env.clone(), scope.module_name.clone()),
+    declared: crate::v1_compiler_infer_types::child_type_node(declared_pair.1.clone()),
+    produced: crate::v1_compiler_infer_types::child_type_node(produced_child.clone()),
     span: actual_expr.span.clone(),
 }), scope.clone())
                 } else {
@@ -8640,16 +8583,10 @@ pub fn container_element_nominal_brand_mismatch(
         match formal.children.clone().first().cloned() {
             Some(formal_ch) => match actual.children.clone().first().cloned() {
                 Some(actual_ch) => {
-                    let formal_el = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                        crate::v1_compiler_infer_types::child_type_node(formal_ch.clone()),
-                        type_env.clone(),
-                        module_name.clone(),
-                    );
-                    let actual_el = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                        crate::v1_compiler_infer_types::child_type_node(actual_ch.clone()),
-                        type_env.clone(),
-                        module_name.clone(),
-                    );
+                    let formal_el =
+                        crate::v1_compiler_infer_types::child_type_node(formal_ch.clone());
+                    let actual_el =
+                        crate::v1_compiler_infer_types::child_type_node(actual_ch.clone());
                     nominal_call_arg_brand_mismatch(
                         formal_el.clone(),
                         actual_el.clone(),
@@ -9905,7 +9842,7 @@ if match (*actual_expr.expr_data.clone()).clone() {
                 } else {
                     {
                         let actual_raw = expression_value_type(actual_expr.clone());
-let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
+let actual = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(actual_raw.clone(), type_env.clone(), module_name.clone());
 let formal_text = if (formal_code_point_view(app.formal.clone(), type_env.clone()) != std::option::Option::None) {
                             TextRepresentation::CodePointSequence
                         } else {
@@ -18633,8 +18570,8 @@ Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape
     Some(resolved) => resolved.clone(),
     std::option::Option::None => crate::v1_std_core::with_required_cardinality(expected_node.clone()),
 };
-let formal_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(expected_required.clone(), scope.type_env.clone(), scope.module_name.clone());
-let actual_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(got_node.clone(), scope.type_env.clone(), scope.module_name.clone());
+let formal_peeled = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(expected_required.clone(), scope.type_env.clone(), scope.module_name.clone());
+let actual_peeled = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(got_node.clone(), scope.type_env.clone(), scope.module_name.clone());
 if kernel_value_declared_type_mismatch(formal_peeled.clone(), actual_peeled.clone(), scope.type_env.clone(), scope.type_env.clone().source_indices.clone()) {
                                             Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
                                         } else {
@@ -30088,7 +30025,7 @@ v1_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(ResolvedFuncSig {
 Rc::new(ResolvedFormal {
     parameter_identity: crate::v1_std_core::param_node_name_at(p.clone(), env.source_indices.clone()),
     declared_type: declared_type.clone(),
-    declaration_bound_conformance: crate::v1_std_core::preserve_outer_optional_cardinality(declared_type.clone(), crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(declared_type.clone(), env.clone(), module_name.clone())),
+    declaration_bound_conformance: crate::v1_std_core::preserve_outer_optional_cardinality(declared_type.clone(), crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(declared_type.clone(), env.clone(), module_name.clone())),
     substitution_basis: crate::v1_compiler_infer_env::declaration_substitution_basis(declared_type.clone(), env.clone(), generic_names.clone()),
 })
 }); } __result }),
