@@ -934,6 +934,7 @@ pub struct EmitGraphInfo {
     pub type_decl_items: Rc<TypeDeclIndex>,
     pub data_variant_wire_spellings: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>,
     pub fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    pub fn_decl_identity_items: Rc<HashMap<String, Rc<Node>>>,
     pub fn_map_key_bounds: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub recursive_type_set: Rc<BTreeSet<String>>,
     pub fielded_variants: Rc<BTreeSet<String>>,
@@ -963,6 +964,7 @@ pub struct EmitInfoBuildState {
     pub type_summaries: Rc<TypeSummaryIndex>,
     pub type_decl_items: Rc<TypeDeclIndex>,
     pub fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    pub fn_decl_identity_items: Rc<HashMap<String, Rc<Node>>>,
     pub structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
 }
@@ -974,6 +976,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         type_decl_items: empty_type_decl_index(),
         data_variant_wire_spellings: v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(),
         fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        fn_decl_identity_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         fn_map_key_bounds: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
         recursive_type_set: v1_rt::rc_empty_set::<String>(),
         fielded_variants: v1_rt::rc_empty_set::<String>(),
@@ -1009,6 +1012,7 @@ pub fn emit_info_with_fn_type_context(
         type_decl_items: emit_info.type_decl_items.clone(),
         data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
         fn_decl_items: emit_info.fn_decl_items.clone(),
+        fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
         fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
         fielded_variants: emit_info.fielded_variants.clone(),
@@ -1033,40 +1037,6 @@ pub fn emit_info_with_fn_type_context(
     })
 }
 
-pub fn emit_info_with_type_decl_items(
-    emit_info: Rc<EmitGraphInfo>,
-    type_decl_items: Rc<TypeDeclIndex>,
-) -> Rc<EmitGraphInfo> {
-    Rc::new(EmitGraphInfo {
-        item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
-        type_summaries: emit_info.type_summaries.clone(),
-        type_decl_items: type_decl_items.clone(),
-        data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
-        fn_decl_items: emit_info.fn_decl_items.clone(),
-        fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
-        recursive_type_set: emit_info.recursive_type_set.clone(),
-        fielded_variants: emit_info.fielded_variants.clone(),
-        positional_payload_variants: emit_info.positional_payload_variants.clone(),
-        shared_types: emit_info.shared_types.clone(),
-        ownership_index: emit_info.ownership_index.clone(),
-        movable: emit_info.movable.clone(),
-        variant_to_enum: emit_info.variant_to_enum.clone(),
-        owned_bindings: emit_info.owned_bindings.clone(),
-        read_only_params_index: emit_info.read_only_params_index.clone(),
-        read_only_params: emit_info.read_only_params.clone(),
-        clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
-        map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
-        clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
-        map_key_bounded_type_params: emit_info.map_key_bounded_type_params.clone(),
-        fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
-        fn_type_env: emit_info.fn_type_env.clone(),
-        fn_return_type: emit_info.fn_return_type.clone(),
-        expected_type: emit_info.expected_type.clone(),
-        tco_cursor_param: emit_info.tco_cursor_param.clone(),
-        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
-    })
-}
-
 pub fn emit_info_with_fn_return(
     emit_info: Rc<EmitGraphInfo>,
     fn_return_type: Option<Rc<Node>>,
@@ -1077,6 +1047,7 @@ pub fn emit_info_with_fn_return(
         type_decl_items: emit_info.type_decl_items.clone(),
         data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
         fn_decl_items: emit_info.fn_decl_items.clone(),
+        fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
         fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
         fielded_variants: emit_info.fielded_variants.clone(),
@@ -1111,6 +1082,7 @@ pub fn emit_info_with_expected_type(
         type_decl_items: emit_info.type_decl_items.clone(),
         data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
         fn_decl_items: emit_info.fn_decl_items.clone(),
+        fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
         fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
         fielded_variants: emit_info.fielded_variants.clone(),
@@ -1243,23 +1215,10 @@ pub fn emit_graph_records_type_decl(
     match build_type_summary(item.clone(), source_indices.clone()) {
         Some(_) => true,
         std::option::Option::None => {
-            (((((item.module_item_kind.clone()
-                == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+            ((((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
                 && (item.connective.clone() == Connective::NoConnective))
                 && ((item.children.clone().len() as i64) == 0))
                 && ((item.params.clone().len() as i64) == 0))
-                || ((item.module_item_kind.clone()
-                    == ParsedModuleItemKind::ModuleItemTypeDeclaration)
-                    && (crate::v1_compiler_coercion::realized_checkpoint(
-                        crate::v1_compiler_coercion::declaration_realization(
-                            item.clone(),
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                item.clone(),
-                            ),
-                            RenderTarget::Rust,
-                        ),
-                    ) != std::option::Option::None)))
         }
     }
 }
@@ -2113,6 +2072,7 @@ pub fn add_emit_item_summary(
                     item.clone(),
                 ),
                 fn_decl_items: state.fn_decl_items.clone(),
+                fn_decl_identity_items: state.fn_decl_identity_items.clone(),
                 structural_alias_fn_surface_names: structural_alias_fn_surface_names.clone(),
                 structural_alias_direct_fn_names: structural_alias_direct_fn_names.clone(),
             })
@@ -2128,6 +2088,11 @@ pub fn add_emit_item_summary(
                 fn_decl_items: v1_rt::rc_map_insert(
                     state.fn_decl_items.clone(),
                     decl_name.clone(),
+                    item.clone(),
+                ),
+                fn_decl_identity_items: v1_rt::rc_map_insert(
+                    state.fn_decl_identity_items.clone(),
+                    type_decl_identity(module_name.clone(), decl_name.clone()),
                     item.clone(),
                 ),
                 structural_alias_fn_surface_names: state.structural_alias_fn_surface_names.clone(),
@@ -2228,6 +2193,7 @@ pub fn add_emit_item_summary(
                     type_summaries: next_summaries.clone(),
                     type_decl_items: state.type_decl_items.clone(),
                     fn_decl_items: state.fn_decl_items.clone(),
+                    fn_decl_identity_items: state.fn_decl_identity_items.clone(),
                     structural_alias_fn_surface_names: state
                         .structural_alias_fn_surface_names
                         .clone(),
