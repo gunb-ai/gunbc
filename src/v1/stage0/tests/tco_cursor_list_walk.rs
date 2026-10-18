@@ -89,22 +89,24 @@ impl Drop for Scratch {
     }
 }
 
+// Cargo leaves one rlib per build of the crate in deps/ (a `cargo build` of the binary beside this
+// test build leaves two), so "the" artifact is the one built last, which is the one this test
+// executable was compiled against. A wrong pick is not silent: rustc refuses a mismatched crate hash.
 fn unique_rlib(deps: &Path, name: &str) -> PathBuf {
     let prefix = format!("lib{name}-");
-    let matches: Vec<_> = std::fs::read_dir(deps)
+    std::fs::read_dir(deps)
         .expect("read test dependency directory")
         .map(|entry| entry.expect("read dependency entry").path())
         .filter(|path| {
             let filename = path.file_name().unwrap().to_string_lossy();
             filename.starts_with(&prefix) && filename.ends_with(".rlib")
         })
-        .collect();
-    assert_eq!(
-        matches.len(),
-        1,
-        "ambiguous or absent {name} artifact: {matches:?}"
-    );
-    matches[0].clone()
+        .max_by_key(|path| {
+            std::fs::metadata(path)
+                .and_then(|m| m.modified())
+                .expect("rlib mtime")
+        })
+        .unwrap_or_else(|| panic!("absent {name} artifact in {}", deps.display()))
 }
 
 fn module_path(root: &Path, m: &str) -> PathBuf {
