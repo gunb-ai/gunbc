@@ -199,6 +199,10 @@ import gunbc.live_deploy.release_locus {
   approval_broker_release_binary_path,
   RevisionBoundAtEmission,
 }
+import gunbc.host.host_effect { HostEffectIntent, HostOs, LocalShell, LiveDeployRetract, host_effect_identity_evidence }
+import gunbc.host.host_effect_realize { realize_live_deploy_retract_on_host }
+import gunbc.fleet.fleet_intent { srv1_host }
+import std.realization_reconcile { Converged, NotConverged }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.fleet.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoVisudo, fleet_posix_ci_runner_principal }
 import gunbc.host.host_axis_caps {
@@ -813,9 +817,9 @@ test fn witness_retract_script_owned_only() -> Bool {
     && string_contains(s: sh, pattern: "remove-empty-directory /opt/gunbc/dispatch-worktrees")
     && string_contains(s: sh, pattern: "remove-tree /opt/gunbc/gunbc")
     && !string_contains(s: sh, pattern: "remove-tree /opt/gunbc/dispatch-worktrees")
-    && string_contains(s: sh, pattern: "remove-files /etc/systemd/system/gunbc-tree-sync.service /etc/gunbc-tree-sync.env")
-    && string_contains(s: sh, pattern: "remove-files /etc/systemd/system/gunbc-roadmap.service")
-    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "retract"))
+    && string_contains(s: sh, pattern: "remove-files /etc/systemd/system/gunbc-tree-sync.service")
+    && string_contains(s: sh, pattern: "/etc/gunbc-tree-sync.env")
+    && string_contains(s: sh, pattern: "/etc/systemd/system/gunbc-roadmap.service")
     && !string_contains(s: sh, pattern: "apt-get remove")
     && !string_contains(s: sh, pattern: "apt-get purge")
 }
@@ -1310,6 +1314,34 @@ fn spec_with_target(target: DeploymentHostTarget) -> DeploymentSpec {
     target: target,
     names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
   )
+}
+
+// INHABITANCE ON THE REAL ROUTE: realize_live_deploy_retract_on_host over the LOCAL locus reads the
+// typed plan, and a plan refusal comes back as a typed NotConverged naming its step before any leg
+// runs. The refusing specs are the unobserved and the lab-plan-refused targets.
+fn retract_route_refusal(spec: DeploymentSpec) -> String {
+  match realize_live_deploy_retract_on_host(
+    spec: spec,
+    transport: LocalShell,
+    intent: HostEffectIntent {
+      target: HostOs { node: srv1_host },
+      effect: LiveDeployRetract { spec: spec },
+      evidence: host_effect_identity_evidence,
+      transport: LocalShell,
+      privilege_denial: none,
+    },
+    access: ci_deploy_srv1_access,
+  ) {
+    NotConverged { reason: r, applied: _ } => r
+    Converged { evidence: _, applied: _ } => "CONVERGED"
+  }
+}
+
+test fn the_real_retract_route_refuses_typed_on_a_plan_refusal_before_any_leg() -> Bool {
+  let unobserved = retract_route_refusal(spec: spec_with_target(target: unmeasured_client_target()))
+  let lab = retract_route_refusal(spec: spec_with_target(target: sandbox_refused_ready_client_target()))
+  string_contains(s: unobserved, pattern: "live_deploy retract refused at step tailscale-client")
+    && string_contains(s: lab, pattern: "live_deploy retract refused at step lab-plan")
 }
 
 test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
