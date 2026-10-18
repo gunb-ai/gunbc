@@ -24,6 +24,7 @@ import std.types { List, Bool, GitRef }
 import extdeps.git
 import extdeps.git.inspect
 import std.optional { Absent, Present }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.node { Atom, Node, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol }
@@ -43,8 +44,9 @@ import v2.std.qualified_name { QualifiedName }
 //   EDIT <path> <start> <end> <replacement>     replacement has newlines escaped as \n
 //   REFUSE <path> <cause>
 // roster_import_sweep_apply_exit is the committed apply step (stale-read check under an apply lock, then Filesystem.Write).
-// This generator plus its apply step is the wave tool of the NAMESPACE-XL sweeps; the N4/N5 work
-// makes its four-row table row-driven (the HOME TABLE rows) and keeps the tool. Driven as
+// This module IS the row-driven wave generator of the NAMESPACE-XL sweeps: roster_head_rows is its row table, the
+// HOME TABLE rows are added there as data, and no control flow changes when a row is added. Its controls are the
+// gunbc test //gunbc/instruments:roster-import-sweep-controls instrument. Driven as
 //   gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/roster_import_sweep.dag
 //     --function roster_import_sweep_for_paths --arg paths_csv=<comma-separated paths>
 // and applied with roster_import_sweep_apply_exit --arg root_dir=<absolute worktree root> --arg paths_csv=<paths relative to the root>
@@ -54,17 +56,82 @@ import v2.std.qualified_name { QualifiedName }
 // map_get under the seed (dag/std/graph.dag stops resolving: match arms typed String vs List<String>), so the
 // rename is a Map-home question held for the operator's table, with the collection-op signatures. Homes for
 // chars, List, list_push or Map wait for the operator's home table; the table below is the single
-// place a row would be added, and it is data a later row-driven generator replaces.
+// place a row would be added.
 
 type RosterHeadRow {
   call: String
   import_name: String
 }
 
+// THE CLOSED SET OF REFUSAL REASONS of this module; every REFUSE row is rendered from one by roster_refusal_text,
+// the sole place a reason becomes protocol text. RefusalNone is the admitted answer of roster_target_refusal only.
+type RosterRefusalReason
+  = RefusalNone
+  | RefusalTokenizeRefused
+  | RefusalParseRefused
+  | RefusalNormalizeRefused
+  | RefusalShapeNameBoundElsewhere
+  | RefusalNoImportAnchor
+  | RefusalExtentNotOnCharBoundary
+  | RefusalExtentMismatch
+  | RefusalExtentHasAnnotation
+  | RefusalRootNotAbsoluteCanonical
+  | RefusalRootNotGitToplevel
+  | RefusalApplyLockUnavailable
+  | RefusalApplyLockNotReleased
+  | RefusalLockWriteFailed
+  | RefusalGenerationHistoryUnestablished
+  | RefusalPathOutsideRoot
+  | RefusalLockNotHeld
+  | RefusalTargetNotTrackedRegular
+  | RefusalTargetIndexFlagged
+  | RefusalTargetModified
+  | RefusalTargetAncestorChanged
+  | RefusalGitUnobservable
+  | RefusalStaleRead
+  | RefusalWriteFailed
+  | RefusalUnreadable
+  | RefusalGrammarUnprepared
+
+fn roster_refusal_text(reason: RosterRefusalReason) -> String {
+  match reason {
+    RefusalNone => ""
+    RefusalTokenizeRefused => "tokenize-refused"
+    RefusalParseRefused => "parse-refused"
+    RefusalNormalizeRefused => "normalize-refused"
+    RefusalShapeNameBoundElsewhere => "shape-name-bound-elsewhere"
+    RefusalNoImportAnchor => "no-import-anchor"
+    RefusalExtentNotOnCharBoundary => "extent-not-on-char-boundary"
+    RefusalExtentMismatch => "extent-mismatch"
+    RefusalExtentHasAnnotation => "extent-has-annotation"
+    RefusalRootNotAbsoluteCanonical => "root-not-absolute-canonical"
+    RefusalRootNotGitToplevel => "root-not-git-toplevel"
+    RefusalApplyLockUnavailable => "apply-lock-unavailable"
+    RefusalApplyLockNotReleased => "apply-lock-not-released"
+    RefusalLockWriteFailed => "lock-write-failed"
+    RefusalGenerationHistoryUnestablished => "generation-history-unestablished"
+    RefusalPathOutsideRoot => "path-outside-root"
+    RefusalLockNotHeld => "lock-not-held"
+    RefusalTargetNotTrackedRegular => "target-not-tracked-regular"
+    RefusalTargetIndexFlagged => "target-index-flagged"
+    RefusalTargetModified => "target-modified"
+    RefusalTargetAncestorChanged => "target-ancestor-changed"
+    RefusalGitUnobservable => "git-unobservable"
+    RefusalStaleRead => "stale-read"
+    RefusalWriteFailed => "write-failed"
+    RefusalUnreadable => "unreadable"
+    RefusalGrammarUnprepared => "grammar-unprepared"
+  }
+}
+
+fn roster_refuse_row(path: String, reason: RosterRefusalReason) -> String {
+  "REFUSE " + path + " " + roster_refusal_text(reason: reason) + "\n"
+}
+
 type RosterOutcome
   = RosterClean
   | RosterEdit { start: Int, end: Int, text: String, own_line: Bool }
-  | RosterRefused { cause: String }
+  | RosterRefused { reason: RosterRefusalReason }
 
 fn roster_head_rows() -> List<RosterHeadRow> {
   [
@@ -86,7 +153,7 @@ fn roster_import_sweep_exit(paths_csv: String) -> ProcessExit {
 // re-derived the same compiled ground for every path (the cost that made an 83-file run take 25+ minutes).
 fn roster_import_sweep_for_paths(paths_csv: String) -> String {
   match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => "REFUSE * grammar-unprepared\n"
+    Rejected { diagnostics: _ } => roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared)
     Accepted { value: prepared, diagnostics: _ } =>
       roster_sweep_all(paths_csv: paths_csv, prepared: prepared, lex: dag_prepared_lex())
   }
@@ -105,7 +172,7 @@ fn roster_sweep_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRu
   if read.success {
     roster_render_outcome(path: path, outcome: roster_sweep_text(path: path, text: read.content, prepared: prepared, lex: lex))
   } else {
-    "REFUSE " + path + " unreadable\n"
+    roster_refuse_row(path: path, reason: RefusalUnreadable)
   }
 }
 
@@ -144,7 +211,7 @@ type RosterHeldLock sole_constructor {
 
 type RosterLockAcquisition
   = RosterLockAcquired { held: RosterHeldLock }
-  | RosterLockRefused { cause: String }
+  | RosterLockRefused { reason: RosterRefusalReason }
 
 fn roster_segments_admitted(segments: List<String>) -> Bool {
   fold_list(xs: segments, empty: true, cons: fn(ok, seg) { ok && seg != "" && seg != "." && seg != ".." })
@@ -185,26 +252,26 @@ fn roster_root_is_toplevel(root_dir: String) -> Bool {
 // A TARGET IS WRITTEN ONLY IF GIT TRACKS IT AS A REGULAR UNMODIFIED FILE. `git ls-tree HEAD -- <path>` names the entry's mode
 // (100644 regular; 120000 a symlink; nothing for an untracked path or one behind a symlinked directory, which git does not
 // track through), and `git status --porcelain` must not name the path (unmodified, so the sweep never lands on someone's
-// uncommitted work). Both are git's own observation; nothing here resolves a path itself. Returns "" when admitted, else the cause.
-fn roster_target_refusal(root: String, path: String) -> String {
+// uncommitted work). Both are git's own observation; nothing here resolves a path itself. Returns RefusalNone when admitted, else the reason.
+fn roster_target_refusal(root: String, path: String) -> RosterRefusalReason {
   if !roster_root_is_toplevel(root_dir: root) {
-    "root-not-git-toplevel"
+    RefusalRootNotGitToplevel
   } else {
     let tree = git.Inspect.ListTreeEntryAtPath(ref: "HEAD" as GitRef, path: path)
     let status = git.Inspect.WorkingTreeStatus(repository_path: root)
     let flags = git.Inspect.IndexFlagsIn(repository_path: root, path: path)
     if !tree.success || !status.success || !flags.success {
-      "git-unobservable"
+      RefusalGitUnobservable
     } else if string_length(s: tree.entries_nul) < 12 || substring(s: tree.entries_nul, start: 0, end: 12) != "100644 blob " {
-      "target-not-tracked-regular"
+      RefusalTargetNotTrackedRegular
     } else if flags.entries_nul != "H " + path + "\u{0}" {
-      "target-index-flagged"
+      RefusalTargetIndexFlagged
     } else if roster_status_names_path(entries_nul: status.entries_nul, path: path) {
-      "target-modified"
+      RefusalTargetModified
     } else if roster_status_names_ancestor(entries_nul: status.entries_nul, path: path) {
-      "target-ancestor-changed"
+      RefusalTargetAncestorChanged
     } else {
-      ""
+      RefusalNone
     }
   }
 }
@@ -253,9 +320,9 @@ fn roster_generation_history(success: Bool, content: String, error_kind: String)
 // the current lock's nonce. (Neither lock file nor generation file is tracked; both are scratch beside the tree.)
 fn roster_lock_acquire(root_dir: String) -> RosterLockAcquisition {
   if !roster_root_admitted(root_dir: root_dir) {
-    RosterLockRefused { cause: "root-not-absolute-canonical" }
+    RosterLockRefused { reason: RefusalRootNotAbsoluteCanonical }
   } else if !roster_root_is_toplevel(root_dir: root_dir) {
-    RosterLockRefused { cause: "root-not-git-toplevel" }
+    RosterLockRefused { reason: RefusalRootNotGitToplevel }
   } else {
     roster_lock_take(root_dir: root_dir)
   }
@@ -265,13 +332,13 @@ fn roster_lock_acquire(root_dir: String) -> RosterLockAcquisition {
 // call this on a scratch directory that is not a git toplevel.
 fn roster_lock_take(root_dir: String) -> RosterLockAcquisition {
   if !Filesystem.WriteCreateNew(path: roster_lock_file(root: root_dir), content: "roster_import_sweep_apply pending\n").success {
-    RosterLockRefused { cause: "apply-lock-unavailable" }
+    RosterLockRefused { reason: RefusalApplyLockUnavailable }
   } else {
     let prior = Filesystem.Read(path: roster_generation_file(root: root_dir))
     match roster_generation_history(success: prior.success, content: prior.content, error_kind: prior.error_kind) {
       RosterHistoryUnestablished => {
         let undone = Filesystem.Delete(path: roster_lock_file(root: root_dir))
-        RosterLockRefused { cause: "generation-history-unestablished" }
+        RosterLockRefused { reason: RefusalGenerationHistoryUnestablished }
       }
       RosterHistoryKnown { content: before } => {
         let nonce = int_to_decimal_string(value: string_length(s: before) + 1)
@@ -279,7 +346,7 @@ fn roster_lock_take(root_dir: String) -> RosterLockAcquisition {
           RosterLockAcquired { held: RosterHeldLock { root: root_dir, nonce: nonce } }
         } else {
           let undone = Filesystem.Delete(path: roster_lock_file(root: root_dir))
-          RosterLockRefused { cause: "lock-write-failed" }
+          RosterLockRefused { reason: RefusalLockWriteFailed }
         }
       }
     }
@@ -298,17 +365,17 @@ fn roster_lock_release(held: RosterHeldLock) -> Bool {
 
 fn roster_apply_for_paths(root_dir: String, paths_csv: String) -> String {
   match roster_lock_acquire(root_dir: root_dir) {
-    RosterLockRefused { cause: cause } => "REFUSE * " + cause + "\n"
+    RosterLockRefused { reason: reason } => roster_refuse_row(path: "*", reason: reason)
     RosterLockAcquired { held: held } => {
       let report = roster_apply_locked(held: held, paths_csv: paths_csv)
-      if roster_lock_release(held: held) { report } else { report + "REFUSE * apply-lock-not-released\n" }
+      if roster_lock_release(held: held) { report } else { report + roster_refuse_row(path: "*", reason: RefusalApplyLockNotReleased) }
     }
   }
 }
 
 fn roster_apply_locked(held: RosterHeldLock, paths_csv: String) -> String {
   match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => "REFUSE * grammar-unprepared\n"
+    Rejected { diagnostics: _ } => roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared)
     Accepted { value: prepared, diagnostics: _ } =>
       fold_list(
         xs: split(s: paths_csv, delimiter: ","),
@@ -320,41 +387,48 @@ fn roster_apply_locked(held: RosterHeldLock, paths_csv: String) -> String {
 
 fn roster_apply_path(held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   if !roster_path_admitted(path: path) {
-    "REFUSE " + path + " path-outside-root\n"
+    roster_refuse_row(path: path, reason: RefusalPathOutsideRoot)
   } else {
     let read = Filesystem.Read(path: held.root + "/" + path)
     if read.success {
       match roster_sweep_text(path: path, text: read.content, prepared: prepared, lex: lex) {
         RosterClean => ""
-        RosterRefused { cause: cause } => "REFUSE " + path + " " + cause + "\n"
+        RosterRefused { reason: reason } => roster_refuse_row(path: path, reason: reason)
         RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
           roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterEdit { start: start, end: end, text: text, own_line: own_line })
       }
     } else {
-      "REFUSE " + path + " unreadable\n"
+      roster_refuse_row(path: path, reason: RefusalUnreadable)
     }
   }
 }
 
 fn roster_apply_edit(held: RosterHeldLock, path: String, before: String, outcome: RosterOutcome) -> String {
   if !roster_path_admitted(path: path) {
-    "REFUSE " + path + " path-outside-root\n"
+    roster_refuse_row(path: path, reason: RefusalPathOutsideRoot)
   } else if !roster_lock_still_held(held: held) {
-    "REFUSE " + path + " lock-not-held\n"
-  } else if roster_target_refusal(root: held.root, path: path) != "" {
-    "REFUSE " + path + " " + roster_target_refusal(root: held.root, path: path) + "\n"
-  } else if !roster_target_unchanged(root: held.root, path: path, before: before) {
-    "REFUSE " + path + " stale-read\n"
+    roster_refuse_row(path: path, reason: RefusalLockNotHeld)
+  } else {
+    match roster_target_refusal(root: held.root, path: path) {
+      RefusalNone => roster_apply_admitted_edit(held: held, path: path, before: before, outcome: outcome)
+      refusal => roster_refuse_row(path: path, reason: refusal)
+    }
+  }
+}
+
+fn roster_apply_admitted_edit(held: RosterHeldLock, path: String, before: String, outcome: RosterOutcome) -> String {
+  if !roster_target_unchanged(root: held.root, path: path, before: before) {
+    roster_refuse_row(path: path, reason: RefusalStaleRead)
   } else {
     match roster_applied(before: before, outcome: outcome) {
-      RosterApplyRefused { cause: cause } => "REFUSE " + path + " " + cause + "\n"
+      RosterApplyRefused { reason: reason } => roster_refuse_row(path: path, reason: reason)
       RosterApplyWritten { content: content } =>
         if content == before {
           ""
         } else if Filesystem.Write(path: held.root + "/" + path, content: content).success {
           ""
         } else {
-          "REFUSE " + path + " write-failed\n"
+          roster_refuse_row(path: path, reason: RefusalWriteFailed)
         }
     }
   }
@@ -367,13 +441,13 @@ fn roster_target_unchanged(root: String, path: String, before: String) -> Bool {
 
 type RosterApplied
   = RosterApplyWritten { content: String }
-  | RosterApplyRefused { cause: String }
+  | RosterApplyRefused { reason: RosterRefusalReason }
 
 // THE PURE SPLICE the apply step performs, separate from its filesystem effects so the controls run it on text.
 fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
   match outcome {
     RosterClean => RosterApplyWritten { content: before }
-    RosterRefused { cause: cause } => RosterApplyRefused { cause: cause }
+    RosterRefused { reason: reason } => RosterApplyRefused { reason: reason }
     RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
       roster_splice(before: before, start: start, end: end, replacement: (if own_line { "\n" } else { "" }) + text)
   }
@@ -384,11 +458,11 @@ fn roster_splice(before: String, start: Int, end: Int, replacement: String) -> R
   let from = roster_scalar_boundary(octets: octets, byte: start)
   let to = roster_scalar_boundary(octets: octets, byte: end)
   if from < 0 || to < from {
-    RosterApplyRefused { cause: "extent-not-on-char-boundary" }
+    RosterApplyRefused { reason: RefusalExtentNotOnCharBoundary }
   } else if !roster_extent_holds(before: before, start: from, end: to) {
-    RosterApplyRefused { cause: "extent-mismatch" }
+    RosterApplyRefused { reason: RefusalExtentMismatch }
   } else if length(xs: split(s: substring(s: before, start: from, end: to), delimiter: "//")) > 1 {
-    RosterApplyRefused { cause: "extent-has-annotation" }
+    RosterApplyRefused { reason: RefusalExtentHasAnnotation }
   } else {
     RosterApplyWritten { content: substring(s: before, start: 0, end: from) + replacement + substring(s: before, start: to, end: string_length(s: before)) }
   }
@@ -436,19 +510,19 @@ fn roster_render_outcome(path: String, outcome: RosterOutcome) -> String {
     RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
       "EDIT " + path + " " + int_to_decimal_string(value: start) + " " + int_to_decimal_string(value: end) + " "
         + (if own_line { "\\n" } else { "" }) + text + "\n"
-    RosterRefused { cause: cause } => "REFUSE " + path + " " + cause + "\n"
+    RosterRefused { reason: reason } => roster_refuse_row(path: path, reason: reason)
   }
 }
 
 fn roster_sweep_text(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
       match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
-        Rejected { diagnostics: _ } => RosterRefused { cause: "tokenize-refused" }
+        Rejected { diagnostics: _ } => RosterRefused { reason: RefusalTokenizeRefused }
         Accepted { value: stream, diagnostics: _ } =>
           match parse_module_prepared(tokens: stream, prepared: prepared) {
-            Rejected { diagnostics: _ } => RosterRefused { cause: "parse-refused" }
+            Rejected { diagnostics: _ } => RosterRefused { reason: RefusalParseRefused }
             Accepted { value: artifact, diagnostics: _ } =>
               match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
-                Rejected { diagnostics: _ } => RosterRefused { cause: "normalize-refused" }
+                Rejected { diagnostics: _ } => RosterRefused { reason: RefusalNormalizeRefused }
                 Accepted { value: scoped, diagnostics: _ } =>
                   roster_sweep_rows(
                     parse_root: artifact.tree,
@@ -526,7 +600,7 @@ fn roster_sweep_rows(
   if is_empty(xs: needed) {
     RosterClean
   } else if roster_any_needed_bound_elsewhere(needed: needed, imported: imported) {
-    RosterRefused { cause: "shape-name-bound-elsewhere" }
+    RosterRefused { reason: RefusalShapeNameBoundElsewhere }
   } else {
     roster_import_row(parse_root: parse_root, spans: spans, needed: needed)
   }
@@ -563,7 +637,7 @@ fn roster_import_row(parse_root: Node, spans: SpanIndex, needed: List<RosterHead
       match roster_last_decl_end(decls: decls) {
         Present { value: at } =>
           RosterEdit { start: at, end: at, text: roster_render_import(names: roster_dedupe(base: [], more: wanted)), own_line: true }
-        Absent => RosterRefused { cause: "no-import-anchor" }
+        Absent => RosterRefused { reason: RefusalNoImportAnchor }
       }
     _ =>
       // Several std.algebra imports make the same names visible; the first one is extended and the rest stay as authored.
@@ -705,6 +779,18 @@ fn roster_import_sweep_controls_exit() -> ProcessExit {
   if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
 }
 
+// THE GATED ENTRY: `gunbc test //gunbc/instruments:roster-import-sweep-controls` (gunbc.instrument_targets
+// roster_import_sweep_controls_binding, a CliWireProgramProducer row). It runs the pure controls; the effectful lock controls
+// need a caller-made empty directory and stay a hand-run entry.
+fn roster_import_sweep_controls_wire() -> CliWireResponse {
+  let report = roster_controls_report()
+  if (report == "") {
+    CliWirePrintable { bytes: "roster-import-sweep controls held\n", exit: ExitSuccess }
+  } else {
+    CliWirePrintable { bytes: report, exit: exit_failure(reason: report) }
+  }
+}
+
 fn roster_controls_report() -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
@@ -721,8 +807,8 @@ fn roster_controls_report() -> String {
 
 fn roster_control_homonym(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   match roster_sweep_text(path: "control/homonym.dag", text: "module c.homonym\n\nimport examples.decoy { collection_concat_shape }\n\nfn f(xs: List<String>, ys: List<String>) -> List<String> {\n  concat(a: xs, b: ys)\n}\n", prepared: prepared, lex: lex) {
-    RosterRefused { cause: cause } =>
-      if cause == "shape-name-bound-elsewhere" { "" } else { "CONTROL-FAIL homonym: refused for " + cause + "\n" }
+    RosterRefused { reason: reason } =>
+      if roster_refusal_text(reason: reason) == "shape-name-bound-elsewhere" { "" } else { "CONTROL-FAIL homonym: refused for " + roster_refusal_text(reason: reason) + "\n" }
     _ => "CONTROL-FAIL homonym: a shape name bound to another declaration was not refused as a conflict\n"
   }
 }
@@ -740,7 +826,7 @@ fn roster_control_multibyte(prepared: PreparedGrammar, lex: PreparedLexRules) ->
   match roster_applied(before: before, outcome: roster_sweep_text(path: "control/multibyte.dag", text: before, prepared: prepared, lex: lex)) {
     RosterApplyWritten { content: content } =>
       if content == expected { "" } else { "CONTROL-FAIL multibyte: spliced text differs from the expected text outside or inside the extent\n" }
-    RosterApplyRefused { cause: cause } => "CONTROL-FAIL multibyte: refused " + cause + "\n"
+    RosterApplyRefused { reason: reason } => "CONTROL-FAIL multibyte: refused " + roster_refusal_text(reason: reason) + "\n"
   }
 }
 
@@ -790,8 +876,8 @@ fn roster_control_ancestor() -> String {
 fn roster_control_annotation(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.annotation\n\nimport std.algebra {\n  // 😀 kept\n  Cons\n}\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
   match roster_applied(before: before, outcome: roster_sweep_text(path: "control/annotation.dag", text: before, prepared: prepared, lex: lex)) {
-    RosterApplyRefused { cause: cause } =>
-      if cause == "extent-has-annotation" { "" } else { "CONTROL-FAIL annotation: refused for " + cause + "\n" }
+    RosterApplyRefused { reason: reason } =>
+      if roster_refusal_text(reason: reason) == "extent-has-annotation" { "" } else { "CONTROL-FAIL annotation: refused for " + roster_refusal_text(reason: reason) + "\n" }
     RosterApplyWritten { content: _ } => "CONTROL-FAIL annotation: the splice erased an annotation\n"
   }
 }
@@ -843,7 +929,7 @@ fn roster_control_unheld(root_dir: String) -> String {
     )
     let after = Filesystem.Read(path: root_dir + "/" + target)
     let removed = Filesystem.Delete(path: root_dir + "/" + target)
-    if refused != "REFUSE " + target + " lock-not-held\n" {
+    if refused != roster_refuse_row(path: target, reason: RefusalLockNotHeld) {
       "CONTROL-FAIL unheld: got " + refused
     } else if !after.success || after.content != before {
       "CONTROL-FAIL unheld: the target changed without the lock\n"
@@ -857,13 +943,13 @@ fn roster_control_stale(root_dir: String) -> String {
   let before = "module c.stale\n\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
   let target = ".roster_control_stale.dag"
   match roster_lock_take(root_dir: root_dir) {
-    RosterLockRefused { cause: cause } => "CONTROL-FAIL stale: first acquire refused " + cause + "\n"
+    RosterLockRefused { reason: reason } => "CONTROL-FAIL stale: first acquire refused " + roster_refusal_text(reason: reason) + "\n"
     RosterLockAcquired { held: first } =>
       if !roster_lock_release(held: first) {
         "CONTROL-FAIL stale: first release failed\n"
       } else {
         match roster_lock_take(root_dir: root_dir) {
-          RosterLockRefused { cause: cause } => "CONTROL-FAIL stale: second acquire refused " + cause + "\n"
+          RosterLockRefused { reason: reason } => "CONTROL-FAIL stale: second acquire refused " + roster_refusal_text(reason: reason) + "\n"
           RosterLockAcquired { held: second } =>
             if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
               "CONTROL-FAIL stale: scratch target could not be created\n"
@@ -880,7 +966,7 @@ fn roster_control_stale(root_dir: String) -> String {
               let released = roster_lock_release(held: second)
               if first.nonce == second.nonce {
                 "CONTROL-FAIL stale: two acquisitions shared a nonce\n"
-              } else if refused != "REFUSE " + target + " lock-not-held\n" {
+              } else if refused != roster_refuse_row(path: target, reason: RefusalLockNotHeld) {
                 "CONTROL-FAIL stale: got " + refused
               } else if !after.success || after.content != before {
                 "CONTROL-FAIL stale: a stale token changed the target\n"
@@ -897,10 +983,10 @@ fn roster_control_stale(root_dir: String) -> String {
 
 fn roster_control_contend(root_dir: String) -> String {
   match roster_lock_take(root_dir: root_dir) {
-    RosterLockRefused { cause: cause } => "CONTROL-FAIL contend: first acquire refused " + cause + "\n"
+    RosterLockRefused { reason: reason } => "CONTROL-FAIL contend: first acquire refused " + roster_refusal_text(reason: reason) + "\n"
     RosterLockAcquired { held: held } => {
       let second = match roster_lock_take(root_dir: root_dir) {
-        RosterLockRefused { cause: cause } => cause
+        RosterLockRefused { reason: reason } => roster_refusal_text(reason: reason)
         RosterLockAcquired { held: _ } => "acquired"
       }
       let released = roster_lock_release(held: held)
@@ -911,14 +997,14 @@ fn roster_control_contend(root_dir: String) -> String {
 
 fn roster_control_traversal(root_dir: String) -> String {
   match roster_lock_take(root_dir: root_dir) {
-    RosterLockRefused { cause: cause } => "CONTROL-FAIL traversal: acquire refused " + cause + "\n"
+    RosterLockRefused { reason: reason } => "CONTROL-FAIL traversal: acquire refused " + roster_refusal_text(reason: reason) + "\n"
     RosterLockAcquired { held: held } => {
       let edit = RosterEdit { start: 0, end: 0, text: "x", own_line: false }
       let up = roster_apply_edit(held: held, path: "../roster_control_outside.dag", before: "", outcome: edit)
       let abs = roster_apply_edit(held: held, path: "/tmp/roster_control_outside.dag", before: "", outcome: edit)
       let made = Filesystem.Read(path: root_dir + "/../roster_control_outside.dag")
       let released = roster_lock_release(held: held)
-      if up == "REFUSE ../roster_control_outside.dag path-outside-root\n" && abs == "REFUSE /tmp/roster_control_outside.dag path-outside-root\n" && !made.success && released {
+      if up == roster_refuse_row(path: "../roster_control_outside.dag", reason: RefusalPathOutsideRoot) && abs == roster_refuse_row(path: "/tmp/roster_control_outside.dag", reason: RefusalPathOutsideRoot) && !made.success && released {
         ""
       } else {
         "CONTROL-FAIL traversal: got " + up + abs
@@ -930,11 +1016,11 @@ fn roster_control_traversal(root_dir: String) -> String {
 fn roster_control_spellings(root_dir: String) -> String {
   let top = git.Inspect.Toplevel().path as String
   let scratch = match roster_lock_acquire(root_dir: root_dir) {
-    RosterLockRefused { cause: cause } => cause
+    RosterLockRefused { reason: reason } => roster_refusal_text(reason: reason)
     RosterLockAcquired { held: _ } => "acquired"
   }
   let sub = match roster_lock_acquire(root_dir: top + "/src") {
-    RosterLockRefused { cause: cause } => cause
+    RosterLockRefused { reason: reason } => roster_refusal_text(reason: reason)
     RosterLockAcquired { held: _ } => "acquired"
   }
   let lock_made = Filesystem.Read(path: roster_lock_file(root: root_dir))
