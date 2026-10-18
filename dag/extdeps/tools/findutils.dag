@@ -4,6 +4,15 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { String, NonEmptyStr, Int, List, Bool }
 import std.nat { Nat }
+// THE GRANTS ARE THE OTHER TOOLS' WORDS, NOT FIND'S. find owns the WALK -- the target, the bound, the
+// prune group, the no-symlink predicate, and the -exec plumbing that batches an action over what it
+// found. It does not own what `chmod g+w` means or what guard `chgrp` needs, and spelling those words
+// here put another tool's grammar in this module: an edit to extdeps.tools.chmod's mode rows would
+// change the standalone assert and leave the migration granting something else, and the two would
+// disagree silently because both look correct in isolation (review 81980, item 2). The words come from
+// the modules that own the programs; find composes them into actions.
+import extdeps.tools.chmod { chmod_mode_words, chmod_group_writable_mode, chmod_directory_setgid_mode, chmod_directory_sticky_mode }
+import extdeps.tools.chown { chgrp_words }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -280,8 +289,41 @@ fn find_subtree_regroup_command(target: String, group: String, pruned: List<Stri
     program: find_program(),
     arguments: concat(
       find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
-      ["-exec", "chgrp", "--no-dereference", group, "{}", "+"],
+      find_subtree_exec_action(words: chgrp_words(group: group)),
     ),
+  )
+}
+
+// ONE BATCHED ACTION OVER WHAT THE WALK FOUND: `-exec <program words> {} +`. The `{}` placeholder and
+// the `+` terminator are find's OWN grammar and are written exactly here -- a tool module does not get
+// to decide how find terminates an action, and when chgrp briefly carried its own `{}`/`+` the two
+// layers both appended them and the argv ended in `{} + {} +`, which find rejects. `<words>` are the
+// other tool's (its program word and its flags) and arrive whole. Batched with `+` rather than `\;` on
+// purpose: one process for the whole walk instead of one fork per entry, which on a repository's object
+// store is the difference between a migration that runs and one that never finishes inside its window.
+fn find_subtree_exec_action(words: List<String>) -> List<String> {
+  concat(concat(["-exec"], words), ["{}", "+"])
+}
+
+// ACTIONS ARE LISTS; AN ARGV IS NOT. Each action helper returns its own List<String> -- that is what
+// lets a claim pin one action without parsing the whole walk -- and an argv is a flat list of words,
+// so the two layers need exactly one join, here. Written as a fold rather than a literal of literals
+// so there is no version of this builder where a nested list can reach argv_command: adding a fourth
+// action means adding a line to `actions:`, and the flatten is not something each call site has to
+// remember (review 82028: the first cut of this builder passed List<List<String>> where find wanted
+// words, and both a lenient checker and a hand-read diff could miss it).
+fn flatten_actions(actions: List<List<String>>) -> List<String> {
+  fold(actions, init: [] as List<String>, f: (acc, action) => concat(acc, action))
+}
+
+// ONE BATCHED ACTION ON DIRECTORIES ONLY: `( -type d -exec <words> {} + )`. The guard is find's; the
+// words are the other tool's. The parenthesised group is a SEPARATE action from the unguarded one,
+// which is the point: g+s and a+t are properties of directories and are no-ops or wrong on files, so
+// they must not ride along with the grant that applies to everything the walk reaches.
+fn find_subtree_type_directory_action(words: List<String>) -> List<String> {
+  concat(
+    concat(["(", "-type", "d"], find_subtree_exec_action(words: words)),
+    [")"],
   )
 }
 
@@ -297,10 +339,23 @@ fn find_subtree_group_writable_command(target: String, pruned: List<String>, sti
     arguments: concat(
       find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
       concat(
-        [
-          "-exec", "chmod", "g+w", "{}", "+",
-          "(", "-type", "d", "-exec", "chmod", "g+s", "{}", "+", ")",
-        ],
+        // ONE ACTION PER LINE, THEN FLATTENED: each action is its own List<String> (that is what the
+        // two helpers above return, and what makes them testable one action at a time), so the list
+        // holding them is a List<List<String>> and reaches the argv only through flatten_actions --
+        // the one place the layers meet. Review 82028 caught this builder concat'ing the nested list
+        // straight into the walk: on a checker that enforces element types it does not typecheck, and
+        // on one that does not, the argv would carry whole actions where find expects single words --
+        // plausible, and never run. §5's fabricated output, wearing an argv.
+        flatten_actions(
+          actions: [
+            find_subtree_exec_action(
+              words: chmod_mode_words(mode: chmod_group_writable_mode)
+            ),
+            find_subtree_type_directory_action(
+              words: chmod_mode_words(mode: chmod_directory_setgid_mode)
+            ),
+          ]
+        ),
         // THE STICKY BIT, on directories only, and only where the caller says this subtree holds
         // entries the walker must not be able to remove. WHY IT EXISTS (bright-moth-475, 2026-10-18,
         // the finding this closes): rename(2) checks the PARENT for write, not the entry -- a write
@@ -317,7 +372,9 @@ fn find_subtree_group_writable_command(target: String, pruned: List<String>, sti
         // NOT `-R`: the same reason as the g+s action. `chmod +t` recursively would follow the walk's
         // reach into files; the -type d guard keeps it where it means something.
         if sticky {
-          ["(", "-type", "d", "-exec", "chmod", "a+t", "{}", "+", ")"]
+          find_subtree_type_directory_action(
+            words: chmod_mode_words(mode: chmod_directory_sticky_mode)
+          )
         } else {
           []
         },

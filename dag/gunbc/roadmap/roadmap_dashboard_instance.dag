@@ -12,6 +12,9 @@ import extdeps.git {
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
+import extdeps.access.posix {
+  FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
+}
 import std.measure { ByteSize }
 import std.materialization_store_grant {
   MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
@@ -2123,40 +2126,108 @@ data dashboard_git_maintenance_owned_config_keys: List<NonEmptyStr> = [
   "gc.auto", "maintenance.auto",
 ] as List<NonEmptyStr>
 
-// POSIX MODE BITS. This language has no octal literal, so every mode this slice cares about is written
-// as a DECIMAL with its octal spelling beside it, and the predicates are the one place the decimal is
-// decoded -- a consumer never compares a hand-typed 1533 of its own. The arithmetic is shown rather
-// than trusted: the setuid/setgid/sticky high bits are 04000 = 2048, 02000 = 1024, 01000 = 512 (so
-// 02775 = 1024 + 509 = 1533), and the low nine are three rwx triples of 4-2-1: 0775 = (256+128+64) +
-// (32+16+8) + (4+1) = 509. A mode is read by leg: mode / step % 8 peels one triple at a time, with the
-// owner triple at step 64, the group triple at step 8 and the other triple at step 1 -- so a group leg
-// of 6 is rw-, and an other leg of 4 (r--) rather than 6 (rw-) is what refuses a world-writable file
-// that is otherwise group-writable.
-//   1533 == 02775  the granted DIRECTORY: owner and attempt group rwx, other r-x, setgid
-//    436 == 0664   the granted FILE: owner and group rw, other r--  (loose objects are 0444 = 292,
-//                 read-only to everyone including their owner: git does that on purpose and nobody
-//                 needs to write them)
-//    509 == 0775   the state srv1 measured, and the reason this slice exists: right legs, NO setgid
-//    438 == 0666   group-writable but world-writable: refused
-// The octal spellings are comments only. If one is ever retyped, the readback claims compare the
-// decimal, so a drifted comment cannot make a wrong mode pass.
-data posix_mode_setgid_bit: Int = 1024
-data posix_mode_owner_triple_step: Int = 64
-data posix_mode_group_triple_step: Int = 8
-data dashboard_git_worker_granted_directory_mode: Int = 1533
-data dashboard_git_worker_granted_file_mode: Int = 436
+// THE MODES A COMMIT REQUIRES, stated as FileMode -- the type extdeps.access.posix already owns for
+// this concept (Open Group sys_stat.h), with file_mode_octal to render it and file_mode_of_octal_text
+// to read a `find -printf %m` / `stat %a` observation back. An earlier cut of this slice declared the
+// bits as Int constants and peeled them with `mode / step % 8`, which re-invented that authority for
+// no benefit (DESIGN 2: a fresh authority for a concept that exists is a failed decomposition) and
+// added a second grammar for the same four digits -- one parse in extdeps.access.posix, one here,
+// guaranteed to disagree the first time a special bit mattered. So: the rwx triples and the setgid /
+// sticky bits are NAMED, the predicates read fields, and the octal spelling exists exactly once, as
+// what file_mode_octal renders. There is no decimal literal in this slice and no comment restating an
+// octal in decimal, because there is nothing to restate -- the octal text is the rendering, not a
+// comment on a number.
+//   02775  the granted DIRECTORY: owner and attempt group rwx, other r-x, SETGID -- the bit that makes
+//          a fan-out directory git creates later inherit the attempt group rather than the creating
+//          process's primary group, which is the whole reason a worker can write into objects/<xx>/.
+//   03775  the granted directory that HOLDS ROOT-OWNED ENTRIES (.git/objects: pack/ and info/ are
+//          #13942's, and the root maintenance job writes and deletes through them). Sticky is the
+//          companion to g+w, not an extra: in a world-writable-by-group directory without it,
+//          rename(2) checks only the PARENT, so a confined worker can move root's objects/pack aside
+//          and plant a symlink for the root repack to write through. See
+//          dashboard_git_worker_sticky_children for why exactly one subtree gets it.
+//   0664   the granted FILE: owner and group rw, other r-- . A loose object is 0444 and stays that
+//          way -- git writes it read-only on purpose and nobody needs to write it, which is why the
+//          file predicate does not accept 0444 and does not need to.
+//   0775   THE MEASURED PRE-MIGRATION STATE, and the reason this slice exists: every leg is right and
+//          there is no setgid, so the next fan-out directory git creates inherits the creating
+//          process's primary group and the worker cannot write into it. Read off srv1, 2026-10-17.
+fn dashboard_git_permission_bits(r: Bool, w: Bool, x: Bool) -> PermissionBits {
+  PermissionBits { read: r, write: w, execute: x }
+}
 
-// 03775 in decimal: 1533 (the granted directory above) + 512 (01000, sticky). THE MODE OF A GRANTED
-// DIRECTORY THAT HOLDS ROOT-OWNED ENTRIES -- .git/objects, whose pack/ and info/ #13942 keeps and the
-// root maintenance job writes and deletes through. See dashboard_git_worker_sticky_children for why
-// one subtree needs it and the others must not get it.
-data posix_mode_sticky_bit: Int = 512
-data dashboard_git_worker_granted_shared_directory_mode: Int = 2045
+data dashboard_git_worker_owner_group_full_bits: PermissionBits = dashboard_git_permission_bits(r: true, w: true, x: true)
+data dashboard_git_worker_other_read_execute_bits: PermissionBits = dashboard_git_permission_bits(r: true, w: false, x: true)
+data dashboard_git_worker_owner_group_write_bits: PermissionBits = dashboard_git_permission_bits(r: true, w: true, x: false)
+data dashboard_git_worker_other_read_bits: PermissionBits = dashboard_git_permission_bits(r: true, w: false, x: false)
 
-// IS `mode` THE GRANTED SHAPE FOR ONE SUBTREE, asked per subtree rather than as one global answer:
-// objects/ is 03775 (a root-owned entry lives under it), refs/ and logs/ are 02775 (nothing foreign-
-// owned lives under them). A single "is it 1533" predicate over all three would make the sticky fix
-// invisible to the model -- the receipt would refuse the tree that is actually correct.
+data dashboard_git_worker_granted_directory_mode: FileMode = FileMode {
+  owner: dashboard_git_worker_owner_group_full_bits,
+  group: dashboard_git_worker_owner_group_full_bits,
+  other: dashboard_git_worker_other_read_execute_bits,
+  setuid: false,
+  setgid: true,
+  sticky: false,
+}
+
+data dashboard_git_worker_granted_shared_directory_mode: FileMode = FileMode {
+  owner: dashboard_git_worker_owner_group_full_bits,
+  group: dashboard_git_worker_owner_group_full_bits,
+  other: dashboard_git_worker_other_read_execute_bits,
+  setuid: false,
+  setgid: true,
+  sticky: true,
+}
+
+data dashboard_git_worker_granted_file_mode: FileMode = FileMode {
+  owner: dashboard_git_worker_owner_group_write_bits,
+  group: dashboard_git_worker_owner_group_write_bits,
+  other: dashboard_git_worker_other_read_bits,
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+// THE MEASURED STATE, as a row rather than a decimal: it is EVIDENCE read off srv1, and the number
+// that appears in the PR body and in the readback claim has to be the same one this model refuses.
+data dashboard_git_worker_unmigrated_directory_mode: FileMode = FileMode {
+  owner: dashboard_git_worker_owner_group_full_bits,
+  group: dashboard_git_worker_owner_group_full_bits,
+  other: dashboard_git_worker_other_read_execute_bits,
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+// TWO FILE MODES ARE ONE MODE WHEN THEY RENDER THE SAME. Structural comparison over the nine rwx
+// fields plus the three special bits, expressed through the one renderer extdeps.access.posix owns:
+// writing it as `a == b` would compare records field by field and silently accept a FileMode built
+// with a setuid bit nobody observed, and writing it as decimal equality is what this replaces.
+fn dashboard_git_worker_file_modes_are_equal(a: FileMode, b: FileMode) -> Bool {
+  file_mode_octal(mode: a) == file_mode_octal(mode: b)
+}
+
+// THE GRANTED DIRECTORY MODE FOR ONE SUBTREE: 03775 where a root-owned entry lives beneath it, 02775
+// where none does. PER SUBTREE, not one global answer -- a single "is it 02775" predicate would make
+// the sticky fix invisible to the model, because the readback would refuse the tree that is actually
+// correct.
+fn dashboard_git_worker_subtree_directory_mode_is_granted(child: NonEmptyStr) -> FileMode {
+  if dashboard_git_worker_subtree_needs_sticky(child: child) {
+    dashboard_git_worker_granted_shared_directory_mode
+  } else {
+    dashboard_git_worker_granted_directory_mode
+  }
+}
+
+// THE PLAIN GRANT, 02775, and it REFUSES 03775 -- deliberately, and a claim leg pins it: the sticky
+// shape is only correct for the one subtree that holds a root-owned entry, so a predicate that
+// accepted both would let refs/ or logs/ drift to 03775 unnoticed (where +t would EPERM the worker's
+// own first `git add` against root's index/HEAD). Ask the per-subtree question when the subtree is
+// known; ask this one when the question is "is this the plain grant".
+fn dashboard_git_worker_directory_mode_is_granted(mode: FileMode) -> Bool {
+  dashboard_git_worker_file_modes_are_equal(a: mode, b: dashboard_git_worker_granted_directory_mode)
+}
+
 // IS A DIRECTORY *BENEATH* A GRANTED SUBTREE ACCEPTED? Both shapes are, and the pair is not
 // redundancy: the migration's own chmod leaves every directory it walked at 03775 under objects/, but
 // a fan-out directory git CREATES TOMORROW can never be sticky -- mkdir inherits S_ISGID from the
@@ -2165,51 +2236,27 @@ data dashboard_git_worker_granted_shared_directory_mode: Int = 2045
 // under a 03775 parent, and a readback that demanded 03775 throughout would refuse a repository that
 // is correctly granted. Measured on the host: mkdir under a 3775 parent -> 2755, then git's shared
 // perm -> 2775.
-fn dashboard_git_worker_interior_directory_mode_is_accepted(mode: Int) -> Bool {
-  mode == dashboard_git_worker_granted_directory_mode || mode == dashboard_git_worker_granted_shared_directory_mode
+fn dashboard_git_worker_interior_directory_mode_is_accepted(mode: FileMode) -> Bool {
+  dashboard_git_worker_file_modes_are_equal(a: mode, b: dashboard_git_worker_granted_directory_mode)
+    || dashboard_git_worker_file_modes_are_equal(a: mode, b: dashboard_git_worker_granted_shared_directory_mode)
 }
 
-fn dashboard_git_worker_subtree_directory_mode_is_granted(child: NonEmptyStr) -> Int {
-  if dashboard_git_worker_subtree_needs_sticky(child: child) {
-    dashboard_git_worker_granted_shared_directory_mode
-  } else {
-    dashboard_git_worker_granted_directory_mode
-  }
+// A GRANTED FILE is group-writable and NOT world-writable, read as the two fields that say so rather
+// than as a peeled digit: `group.write` is the grant the worker needs and `other.write` is the thing
+// #13942's confinement refuses, so the predicate names the consequences it is actually asserting.
+// (0666 is refused by the second conjunct, 0444 -- a loose object -- by the first, and neither needs
+// to be enumerated.)
+fn dashboard_git_worker_file_mode_is_granted(mode: FileMode) -> Bool {
+  mode.group.write && !mode.other.write
 }
 
-// THE OWNER/GROUP/OTHER TRIPLE of one leg: r=4, w=2, x=1, read positionally. Steps are 8 to that
-// power: 64 (owner), 8 (group), 1 (other).
-fn posix_mode_leg(mode: Int, step: Int) -> Int {
-  mode / step % 8
+// THE PRE-MIGRATION STATE, stated as its negation so a claim can point at it directly: what srv1
+// measured is NOT a grant. Its group leg is right (7) and it has no setgid -- which is exactly how a
+// directory can look shared and still be unwritable by the attempt group for anything created after
+// the migration.
+fn dashboard_git_worker_directory_mode_is_unmigrated(mode: FileMode) -> Bool {
+  dashboard_git_worker_file_modes_are_equal(a: mode, b: dashboard_git_worker_unmigrated_directory_mode)
 }
-
-// A GRANTED DIRECTORY is exactly 02775: the owner and the attempt group read, write and traverse,
-// nobody else, and the setgid bit that makes a fan-out directory git creates later inherit the
-// attempt group instead of the creating process's primary group.
-fn dashboard_git_worker_directory_mode_is_granted(mode: Int) -> Bool {
-  mode == dashboard_git_worker_granted_directory_mode
-}
-
-// A GRANTED FILE is group-writable, traversable-or-not as it happens, and NOT world-writable. The
-// loose object is deliberately excluded: git writes it 0444 and no consumer needs to write it.
-fn dashboard_git_worker_file_mode_is_granted(mode: Int) -> Bool {
-  posix_mode_leg(mode: mode, step: posix_mode_group_triple_step) % 8 == 6
-    && posix_mode_leg(mode: mode, step: 1) == 4
-}
-
-// THE RECEIPT FOR THE PRE-MIGRATION STATE, stated as its negation so the claim can point at it
-// directly: the shape srv1 measured — 0775, the service user's own group, no setgid — is NOT a
-// grant. The group leg is right (7) but the setgid bit is missing, so the next fan-out directory
-// git creates under .git/objects inherits the creating process's primary group and the attempt
-// worker cannot write into it. Claim (2) reads this against the state BEFORE the migration runs.
-fn dashboard_git_worker_directory_mode_is_unmigrated(mode: Int) -> Bool {
-  mode == unmigrated_directory_mode_measured
-}
-
-// 0775 in decimal: 256+128+64 (owner rwx) + 32+16+8 (group rwx) + 4+1 (other r-x) = 509. Stated as
-// its own constant because it is EVIDENCE, read off srv1, and the number that appears in the PR body
-// and in the readback claim has to be the same one.
-data unmigrated_directory_mode_measured: Int = 509
 
 // THE BUNDLE INBOX: where a bundle-seeded instance stages its source bundle. Demanded only by an
 // instance whose source seed IS a bundle, and the staged bundle path is built under the same function

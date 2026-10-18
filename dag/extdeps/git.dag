@@ -989,7 +989,14 @@ fn shape_git_add_argv() -> List<String> {
   ["git", "add"]
 }
 
-fn git_program() -> ProgramIdentity = uncataloged_program(invocation: "git")
+// THE PROGRAM WORD, ONCE. The argv shapers in this module prefix a literal "git" because their callers
+// exec a vector with no separate program field; the builders hand the same word to argv_command's
+// program field. Both readings come off this row, so a host that needs /usr/local/bin/git changes one
+// line and every shape moves together -- including the readback below, whose two realizations are the
+// reason a second home for the word was worth minting (review 81980, item 1).
+data git_program_word: String = "git"
+
+fn git_program() -> ProgramIdentity = uncataloged_program(invocation: git_program_word as NonEmptyStr)
 
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
   ["git", "commit", "--no-verify", "--no-edit"]
@@ -1346,8 +1353,11 @@ fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: Strin
 // a read that consulted them could be satisfied by a developer's own ~/.gitconfig -- the claim would
 // then pass while the repository said nothing. A missing key prints nothing and exits 1, which the
 // caller reads as Refused, and an empty answer is not `group`.
-fn git_local_config_get_command(repo: String, key: String) -> ArgvCommand {
-  argv_command(program: git_program(), arguments: ["-C", repo, "config", "--local", "--get", key])
+fn git_local_config_get_command(repo: FilePath, key: String) -> ArgvCommand {
+  argv_command(
+    program: git_program(),
+    arguments: git_config_local_get_words(repo: repo, key: key)
+  )
 }
 
 // A BRANCH POINTING WHERE HEAD POINTS, the seed a pack-refs witness needs: `git branch <name>` mints a
@@ -1366,8 +1376,18 @@ fn git_show_ref_verify_quiet_command(repository_dir: String, target: String) -> 
   argv_command(program: git_program(), arguments: ["-C", repository_dir, "show-ref", "--verify", "--quiet", target])
 }
 
+// THE READBACK, IN BOTH REALIZATIONS. `--local` on BOTH sides is not decoration: the writers refuse the
+// global and system files, and a read that consulted them could be satisfied by a developer's own
+// ~/.gitconfig -- the claim would pass while the repository said nothing. A missing key prints nothing
+// and exits 1, which the caller reads as Refused, and an empty answer is not `group`.
+data git_config_local_get_option_words: List<String> = ["config", "--local", "--get"]
+
+fn git_config_local_get_words(repo: FilePath, key: String) -> List<String> {
+  concat(concat(["-C", repo as String], git_config_local_get_option_words), [key])
+}
+
 fn shape_git_config_local_get_in_repo_argv(repo: FilePath, key: String) -> List<String> {
-  ["git", "-C", repo as String, "config", "--local", "--get", key]
+  concat([git_program_word], git_config_local_get_words(repo: repo, key: key))
 }
 
 fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {

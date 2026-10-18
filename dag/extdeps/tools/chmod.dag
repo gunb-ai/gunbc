@@ -85,3 +85,31 @@ fn chmod_recursive_set_mode_command(chmod_program: NonEmptyStr, mode: NonEmptySt
 fn chmod_set_mode_command(chmod_program: NonEmptyStr, mode: NonEmptyStr, path: String) -> ArgvCommand {
   argv_command(program: uncataloged_program(invocation: chmod_program), arguments: [mode as String, path])
 }
+
+// THE SYMBOLIC MODES THIS REPOSITORY USES TO GRANT A GROUP, as rows rather than as words at call
+// sites. Three facts live here and each is the only place it is written: which bit is added, that it is
+// added rather than assigned (a numeric mode would REPLACE all nine bits and silently drop whatever the
+// entry already had), and that the entry it is added to is chosen by a test, not assumed.
+//   g+w  group write: the bit that lets a member of the repository's attempt group create and replace
+//        an entry. Without it nothing else in this file matters.
+//   g+s setgid on a DIRECTORY: children inherit the directory's group instead of the creator's
+//        primary group, which is the only reason a git-created object fan-out directory lands in
+//        gunbc-attempt at all. It is a no-op on a file, which is why the walk applies it behind
+//        -type d rather than to everything it finds.
+//   a+t  sticky on a DIRECTORY: rename and unlink in a directory the world can write are restricted to
+//        an entry's owner and root. The companion to g+w, not an extra: a group-writable directory
+//        WITHOUT it lets any member of the group move aside -- and therefore symlink over -- entries
+//        owned by somebody else, which is how a confined worker reached root's objects/pack.
+data chmod_group_writable_mode: NonEmptyStr = "g+w"
+data chmod_directory_setgid_mode: NonEmptyStr = "g+s"
+data chmod_directory_sticky_mode: NonEmptyStr = "a+t"
+
+// THE `chmod` WORDS FOR ONE MODE, as a list a caller can place. A caller that has a PATH and a program
+// uses chmod_set_mode_command above; a caller that is inside `find -exec`, where the path is a `{}`
+// placeholder and the program word is find's own rather than a path, composes this. Both readings carry
+// the SAME mode word from the rows above, which is the point: `find ... -exec chmod g+w {} +` and
+// `chmod g+w <path>` are the same grant, and an edit that changed one spelling of `g+w` and not the
+// other would leave the migration and the assert granting different things.
+fn chmod_mode_words(mode: NonEmptyStr) -> List<String> {
+  [chmod_path_resolved_program as String, mode as String]
+}

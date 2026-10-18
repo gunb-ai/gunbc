@@ -31,6 +31,9 @@ import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.git {
+  git_core_shared_repository_config_key, git_core_shared_repository_group_value,
+  git_gc_auto_config_key, git_maintenance_auto_config_key,
+  git_disabled_config_value, git_disabled_maintenance_config_value,
   git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
   git_maintenance_auto_disabled_config_command, git_repack_quiet_command, git_pack_refs_all_command,
   git_local_config_get_command, git_init_quiet_command, git_add_all_force_command,
@@ -233,11 +236,26 @@ test fn the_shared_repository_posture_writers_reach_the_repository_when_run() ->
     let wrote = wet_ran(command: git_shared_repository_group_config_command(repo: root as NonEmptyStr))
       && wet_ran(command: git_gc_auto_disabled_config_command(repo: root as NonEmptyStr))
       && wet_ran(command: git_maintenance_auto_disabled_config_command(repo: root as NonEmptyStr))
-    let shared = wet_out(command: git_local_config_get_command(repo: root, key: "core.sharedRepository"))
-    let gc_auto = wet_out(command: git_local_config_get_command(repo: root, key: "gc.auto"))
-    let maintenance = wet_out(command: git_local_config_get_command(repo: root, key: "maintenance.auto"))
+    let shared = wet_out(command: git_local_config_get_command(repo: root as FilePath, key: git_core_shared_repository_config_key))
+    let gc_auto = wet_out(command: git_local_config_get_command(repo: root as FilePath, key: git_gc_auto_config_key))
+    let maintenance = wet_out(command: git_local_config_get_command(repo: root as FilePath, key: git_maintenance_auto_config_key))
+    // THE THREE KEY NAMES, HELD TO WHAT GIT CALLS THEM. The reads above go through the MODEL's rows, so
+    // this witness cannot drift away from the writers (review 81980, item 1: the key names used to be
+    // restated here as literals, so a rename in the model left the readback checking a stale key). But a
+    // read that follows the model everywhere would pass while git ignores the repository -- write
+    // core.sharedRepositoryX, read core.sharedRepositoryX, and the claim is green over a posture that is
+    // not in effect. So the git-documented spellings appear exactly ONCE, HERE, as an assertion about
+    // what the model named the keys -- not as a second source used to read them. A rename in the model
+    // moves the read with it and FAILS here, which is the answer the reviewer wanted: the claim still
+    // pins the fact, and it does it in one place.
+    let keys_are_what_git_calls_them =
+      git_core_shared_repository_config_key == "core.sharedRepository"
+        && git_gc_auto_config_key == "gc.auto"
+        && git_maintenance_auto_config_key == "maintenance.auto"
     let clean = wet_ran(command: rm_recursive_force_command(path: root))
-    seeded && wrote && shared == "group" && gc_auto == "0" && maintenance == "false" && clean
+    keys_are_what_git_calls_them && seeded && wrote && shared == git_core_shared_repository_group_value
+      && gc_auto == git_disabled_config_value
+      && maintenance == git_disabled_maintenance_config_value && clean
   }
 }
 
