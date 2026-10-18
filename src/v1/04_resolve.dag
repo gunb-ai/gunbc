@@ -52,7 +52,7 @@ import v1.compiler.infer_env {
   TypeEnv, TypeBinding, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
-  lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
+  width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   UnitVariantContribution
 }
 
@@ -248,6 +248,41 @@ fn type_arg_name_is_bound_generic_parameter(name: String, env: TypeEnv) -> Bool 
         Present { value: inf } => is_type_variable(inferred: inf)
         Absent => false
       }
+  }
+}
+
+// A literal argument is the Nat-indexed width arm only where the applied type's parameter at that
+// position is of kind WidthResolution. The kind is read from the declaration of the type being
+// applied (`MachineWidth<bits: WidthResolution>`): its __param_kind property names the kind, which is
+// resolved in the APPLIED TYPE'S DECLARING module through the symbol index and compared to the
+// WidthResolution declaration by source location. Any other kind (or none) is not a width position.
+fn applied_arg_is_width_resolution_position(applied: Node, arg: Node, env: TypeEnv) -> Bool {
+  if !is_user_generic_use_site(n: applied, env: env) { false }
+  else {
+    let decl = resolve_generic_use_decl(env: env, n: applied)
+    match width_resolution_declaration(env: env) {
+      Absent => false
+      Present { value: width_decl } =>
+        match map_get(env.symbol_index.file_modules, decl.span.file) {
+          Absent => false
+          Present { value: declaring_module } =>
+            decl.params |> enumerate |> any(pair =>
+              match applied.children |> skip(pair.first) |> first {
+                Absent => false
+                Present { value: supplied } =>
+                  supplied.span.file == arg.span.file && supplied.span.start == arg.span.start && supplied.span.end == arg.span.end
+                  && match find_property(props: pair.second.properties, prop_name: type_param_kind_property_name(), source_indices: env.source_indices) {
+                    Absent => false
+                    Present { value: kind_node } =>
+                      match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(declaring_module, ".", authored_name(env: env, node: kind_node))) {
+                        Present { value: kind_decl } => kind_decl.span.file == width_decl.span.file && kind_decl.span.start == width_decl.span.start
+                        Absent => false
+                      }
+                  }
+              }
+            )
+        }
+    }
   }
 }
 
