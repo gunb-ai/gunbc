@@ -14,6 +14,7 @@ import v2.workflow.roster_import_sweep {
   RosterApplyWritten,
   RosterClean,
   RosterEdit,
+  RosterEditWithLabels,
   OneHome,
   RosterLabelEdit,
   RosterLabelEdits,
@@ -157,6 +158,7 @@ fn outcome_steps(outcome: RosterOutcome) -> List<EditStep> {
     RosterRefused { reason: _ } => []
     RosterEdit { start: s, end: e, text: t, own_line: o } => [EditStep { start: s, end: e, new_len: text_byte_length(text: (if o { "\n" } else { "" }) + t) }]
     RosterLabelEdits { edits: es } => fold_list(xs: es, empty: [], cons: fn(acc, e) { list_snoc_item(xs: acc, item: label_step(edit: e)) })
+    RosterEditWithLabels { start: s, end: e, text: t, own_line: o, labels: ls } => fold_list(xs: ls, empty: [EditStep { start: s, end: e, new_len: text_byte_length(text: (if o { "\n" } else { "" }) + t) }], cons: fn(acc, l) { list_snoc_item(xs: acc, item: label_step(edit: l)) })
   }
 }
 
@@ -177,6 +179,7 @@ fn proof_round(state: ProofState, path: String, prepared: PreparedGrammar, lex: 
       RosterRefused { reason: _ } => ProofState { text: state.text, rounds: state.rounds, done: false, stuck: "the sweep generator refused the module" }
       RosterEdit { start: s, end: e, text: t, own_line: o } => proof_apply(state: state, outcome: outcome)
       RosterLabelEdits { edits: es } => proof_apply(state: state, outcome: outcome)
+      RosterEditWithLabels { start: s, end: e, text: t, own_line: o, labels: ls } => proof_apply(state: state, outcome: outcome)
     }
   }
 }
@@ -552,7 +555,7 @@ fn join_delta_unobserved(d: JoinDelta) -> Bool {
 // homes needs a per-row scope (declared frontier, trigger: wave 2 adds a row with another home).
 fn rows_proof_scope(rows: List<AmbientNameHome>) -> String {
   match list_at_optional(xs: rows, index: 0) {
-    Present { value: row } => join(list_init(xs: split(s: row.home, delimiter: ".")), separator: ".")
+    Present { value: row } => join(list_init(xs: split(s: row.home as String, delimiter: ".")), separator: ".")
     Absent => ""
   }
 }
