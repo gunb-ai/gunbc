@@ -18,10 +18,6 @@ import extdeps.apple.app_attest {
   AssertionRefusal, AssertionAppIdMismatch, AssertionValidationCategoryAbsent, AssertionSignatureInvalid,
   assertion_parts, AssertionPartsOk, AssertionPartsRefused, assertion_signature_verifies_for, verify_assertion,
 }
-import extdeps.apple.app_attest_sample_ios_14_4 {
-  sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_client_data,
-  sample_team_identifier, sample_bundle_identifier, sample_assertion_counter,
-}
 import gunbc.instruments.app_attest_sample_rows {
   AppAttestSample, OwedAttestationVerdict, OwesAttestationVerified, OwesAttestationRefusedWith, OwedAssertionVerdict, OwesAssertionAuthentic, OwesAssertionRefusedWith,
   ios_14_4_sample, sample_app_id, sample_expectation, assertion_expectation, assertion_expectation_of, no_assertion_expectation,
