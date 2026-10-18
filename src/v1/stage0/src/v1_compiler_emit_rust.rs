@@ -6742,7 +6742,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             base_info.type_summaries.clone(),
             base_info.recursive_type_set.clone(),
             RenderTarget::Rust,
-            !compiler_pipeline_entry_is_retained_host(typed.modules.clone()),
+            !compiler_pipeline_entry_has_hand_authored_main(typed.modules.clone()),
         );
         let closure_source_indices = merged_module_source_indices(typed.modules.clone());
         let clone_bounded = crate::v1_compiler_trait_derive_emit::v1_clone_bounded_type_params(
@@ -43655,6 +43655,10 @@ pub fn compiler_pipeline_entry_module_name(modules: Rc<Vec<Rc<TypedModule>>>) ->
         Some(d) => d.module_name.clone(),
         std::option::Option::None => "".to_string(),
     }
+}
+
+pub fn compiler_pipeline_entry_has_hand_authored_main(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
+    ((compiler_pipeline_entry_decls(modules.clone()).len() as i64) > 0)
 }
 
 pub fn compiler_pipeline_entry_is_retained_host(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
