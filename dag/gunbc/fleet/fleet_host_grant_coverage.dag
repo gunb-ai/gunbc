@@ -1,0 +1,192 @@
+module gunbc.fleet.fleet_host_grant_coverage
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.algebra { trim, length }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  executor_privileged_operation_sudoers_command,
+  executor_privileged_operation_sudoers_line,
+}
+import gunbc.runner.runner_host_grants { runner_host_wide_refused_operations }
+import gunbc.runner.runner_host_deploy { RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for }
+import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
+import extdeps.sudo.nopasswd_execute_probe_check_op { sudo_nopasswd_grant_list_admits_probe }
+
+// WHETHER A HOST-WIDE SUDO GRANT IS INSTALLED IS A PREMISE OF APPLY, AND THIS MODULE OWNS ITS
+// OBSERVATION'S SHAPE AND READING (capability_arrives_outside_the_converged_path, srv3 apply
+// 39127216304: `sudo -n install -d ... /var/lib/gunbc/fleet-converge` failed "a password is
+// required" because gunbc-ghrunner.sudoers is modeled and uninstalled).
+//
+// TWO READS, NEITHER OF WHICH RUNS THE PRIVILEGED COMMAND. The listing is `sudo -n -l`
+// (extdeps.sudo.nopasswd_execute_probe_check_op sudo.NopasswdGrantList.Read), admitted row by row by
+// sudo_nopasswd_grant_list_admits_probe. The `-l <argv>` form is not used: that module documents
+// that it resolves the command, so an absent binary reads as a grant miss. The listing says WHETHER
+// a row covers the command, never WHICH FILE granted it, so a second read of the installed drop-in
+// separates a rendered grant from a hand-installed one.
+//
+// AN OBSERVATION THAT FAILED IS NEVER COVERAGE (§5). A listing that could not be read is
+// GrantUnobserved; a listing that admits the rule over a drop-in that could not be read is
+// GrantCoveredSourceUnobserved, because /etc/sudoers.d/* is root:root 0440 and "listed plus
+// unreadable" says nothing about whose rule it is.
+type HostGrantListing
+  = GrantListingRead { text: String }
+  | GrantListingUnread { cause: NonEmptyStr }
+
+type InstalledSudoersRead
+  = InstalledSudoersText { text: String }
+  | InstalledSudoersUnreadable { cause: NonEmptyStr }
+
+type HostGrantObservation {
+  listing: HostGrantListing
+  installed: InstalledSudoersRead
+}
+
+type HostGrantStanding
+  = GrantCoveredByRenderedSudoers
+  | GrantCoveredOutsideTheModel
+  | GrantCoveredSourceUnobserved { cause: NonEmptyStr }
+  | GrantMissing
+  | GrantUnobserved { cause: NonEmptyStr }
+
+type HostGrantRow {
+  rule: NonEmptyStr
+  standing: HostGrantStanding
+}
+
+data host_grant_installed_sudoers_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner"
+
+data host_grant_observation_unobserved_no_transaction: HostGrantObservation = HostGrantObservation {
+  listing: GrantListingUnread { cause: "no sudo grant listing was taken for this host, so no host-wide grant is known to be installed" as NonEmptyStr },
+  installed: InstalledSudoersUnreadable { cause: "no installed sudoers read was taken for this host" as NonEmptyStr },
+}
+
+fn host_grant_standing(observation: HostGrantObservation, rule: NonEmptyStr, rendered_line: NonEmptyStr) -> HostGrantStanding {
+  match observation.listing {
+    GrantListingUnread { cause: why } => GrantUnobserved { cause: why }
+    GrantListingRead { text: listing } =>
+      if !sudo_nopasswd_grant_list_admits_probe(listing: listing, probe: rule as SudoNopasswdGrantListProbeShape) {
+        GrantMissing
+      } else {
+        match observation.installed {
+          InstalledSudoersUnreadable { cause: why } => GrantCoveredSourceUnobserved { cause: why }
+          InstalledSudoersText { text: installed } =>
+            if any(xs: split(s: installed, delimiter: "\n"), predicate: l => trim(s: l) == (rendered_line as String)) {
+              GrantCoveredByRenderedSudoers
+            } else {
+              GrantCoveredOutsideTheModel
+            }
+        }
+      }
+  }
+}
+
+fn host_grant_row(observation: HostGrantObservation, grantee: NonEmptyStr, op: ExecutorPrivilegedOperation) -> HostGrantRow {
+  let rule = executor_privileged_operation_sudoers_command(op: op)
+  HostGrantRow {
+    rule: rule,
+    standing: host_grant_standing(
+      observation: observation,
+      rule: rule,
+      rendered_line: executor_privileged_operation_sudoers_line(grantee: grantee, op: op),
+    ),
+  }
+}
+
+// A HOST WITH NO RUNNER SPEC DECLARES NO HOST-WIDE GRANTS (host_wide_grant_apply_lines applies none
+// for it), so it has no rows to cover; the absence is the declaration's, not an observation's.
+fn host_grant_rows(host: NonEmptyStr, observation: HostGrantObservation) -> List<HostGrantRow> {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: _ } => []
+    RunnerHostSpecFound { spec: spec } =>
+      map(
+        runner_host_wide_refused_operations(spec: spec),
+        op => host_grant_row(observation: observation, grantee: spec.job_user, op: op),
+      )
+  }
+}
+
+fn host_grant_standing_tag(standing: HostGrantStanding) -> String {
+  match standing {
+    GrantCoveredByRenderedSudoers => "covered-by-rendered-sudoers"
+    GrantCoveredOutsideTheModel => "covered-outside-the-model"
+    GrantCoveredSourceUnobserved { cause: _ } => "covered-source-unobserved"
+    GrantMissing => "missing"
+    GrantUnobserved { cause: _ } => "unobserved"
+  }
+}
+
+// THE PREMISE ROWS. The standing tag only, never the cause text: a cause carries an error string
+// that may differ between the plan's read and apply's, which would read as drift of the host.
+fn host_grant_baseline_rows(rows: List<HostGrantRow>) -> List<String> {
+  map(rows, r => join(["host-grant:", r.rule as String, "=", host_grant_standing_tag(standing: r.standing)], ""))
+}
+
+fn host_grant_blocks_apply(standing: HostGrantStanding) -> Bool {
+  match standing {
+    GrantCoveredByRenderedSudoers => false
+    GrantCoveredOutsideTheModel => false
+    GrantCoveredSourceUnobserved { cause: _ } => false
+    GrantMissing => true
+    GrantUnobserved { cause: _ } => true
+  }
+}
+
+fn host_grant_blocking_text(row: HostGrantRow) -> String {
+  match row.standing {
+    GrantMissing => join(["missing sudoers rule: ", row.rule as String], "")
+    GrantUnobserved { cause: why } => join(["unobserved sudoers rule (", why as String, "): ", row.rule as String], "")
+    GrantCoveredByRenderedSudoers => ""
+    GrantCoveredOutsideTheModel => ""
+    GrantCoveredSourceUnobserved { cause: _ } => ""
+  }
+}
+
+fn host_grant_blocking_rows(rows: List<HostGrantRow>) -> List<HostGrantRow> {
+  filter(rows, r => host_grant_blocks_apply(standing: r.standing))
+}
+
+// THE CAPABILITY ApplyAwaitingCapability / AwaitingCapability CARRY. Present exactly when some
+// host-wide grant is missing or unobserved; it names every such rule, so the refusal says what to
+// install and apply never reaches the `sudo -n` that would fail mid-script.
+fn host_grant_awaiting_capability(rows: List<HostGrantRow>) -> String? {
+  let blocking = host_grant_blocking_rows(rows: rows)
+  if length(xs: blocking) == 0 {
+    Absent
+  } else {
+    Present {
+      value: concat(
+        "host-wide-sudo-grants: ",
+        join(map(blocking, r => host_grant_blocking_text(row: r)), "; "),
+      ),
+    }
+  }
+}
+
+fn host_grant_rules_with(rows: List<HostGrantRow>, tag: String) -> List<String> {
+  map(
+    filter(rows, r => host_grant_standing_tag(standing: r.standing) == tag),
+    r => r.rule as String,
+  )
+}
+
+fn host_grant_rules_line(label: String, rules: List<String>) -> String {
+  if length(xs: rules) == 0 {
+    join(["# host-grants ", label, ": none"], "")
+  } else {
+    join(["# host-grants ", label, " (", to_string(length(xs: rules)), "): ", join(rules, "; ")], "")
+  }
+}
+
+// plan.txt LINES, ONE PER STANDING THAT NEEDS AN OPERATOR'S EYE. Covered-outside-the-model is the
+// countable fact (a rule the host honors that this repository did not render), printed on its own
+// line per host so adopting or replacing it is a decision made on a number, not a surprise.
+fn host_grant_plan_lines(rows: List<HostGrantRow>) -> List<String> {
+  [
+    host_grant_rules_line(label: "covered-outside-the-model", rules: host_grant_rules_with(rows: rows, tag: "covered-outside-the-model")),
+    host_grant_rules_line(label: "covered-source-unobserved", rules: host_grant_rules_with(rows: rows, tag: "covered-source-unobserved")),
+    host_grant_rules_line(label: "missing", rules: host_grant_rules_with(rows: rows, tag: "missing")),
+    host_grant_rules_line(label: "unobserved", rules: host_grant_rules_with(rows: rows, tag: "unobserved")),
+  ]
+}
