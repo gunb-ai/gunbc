@@ -12,7 +12,6 @@ use crate::std_occurrence_binding::OccurrenceBindingResult::{
 };
 pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided;
-pub use crate::std_optional::Optional;
 use crate::std_reference_binding_observation::ReferenceBindingObservation::{
     DistinctHomonymObservation, DistinctHomonymProductionRefused, LaterDeclarationObservation,
     LaterDeclarationProductionRefused, RepeatedMentionDependencyObservation,
