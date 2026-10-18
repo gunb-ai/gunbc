@@ -284,7 +284,7 @@ test fn an_unmarked_nonzero_preflight_is_unreadable_and_keeps_its_status() -> Bo
 // back, and that reads not-entered, never ready.
 test fn an_inherited_native_cannot_make_an_unsandboxed_preflight_ready() -> Bool {
   let argv = join(argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program(), root: cursor_attempt_runtime_root(instance_root: "/i", reference: "r"))), " ")
-  let sentinel_set_outside = argv == concat(concat("env CURSOR_SANDBOX=", cursor_sandbox_outside_sentinel as String), " env HOME=/i/cursor-attempt-runtime/r/home XDG_CONFIG_HOME=/i/cursor-attempt-runtime/r/config /opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursor-agent --disable-auto-update sandbox run printenv CURSOR_SANDBOX")
+  let sentinel_set_outside = argv == concat(concat("env -u CURSOR_API_KEY CURSOR_SANDBOX=", cursor_sandbox_outside_sentinel as String), " env HOME=/i/cursor-attempt-runtime/r/home XDG_CONFIG_HOME=/i/cursor-attempt-runtime/r/config /opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursor-agent --disable-auto-update sandbox run printenv CURSOR_SANDBOX")
   let unsandboxed_stdout = concat(concat("Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\n", cursor_sandbox_outside_sentinel as String), "\n")
   let not_ready = match cursor_sandbox_preflight_reading(exit_code: 0, stdout: unsandboxed_stdout, stderr: "") {
     CursorSandboxNotEntered { detail } => string_contains(s: detail, pattern: "sentinel survived")
