@@ -27,8 +27,11 @@ import gunbc.runner.runner_jit_deregistration {
 }
 import gunbc.runner.runner_lost_boot_sweep_run {
   LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input,
-  sweep_authority, sweep_host_standing, SweepHostBound, SweepHostNotManaged,
-  sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, sweep_listing_of_roster, SweepListingObserved, SweepListingNotObserved,
+  sweep_host_standing, SweepHostBound, SweepHostNotManaged,
+  sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, 
+}
+import gunbc.runner.runner_lost_boot_sweep_plan {
+  sweep_authority, sweep_listing_of_roster, SweepListingObserved, SweepListingNotObserved,
   sweep_exceeds_ceiling, sweep_ceiling_refusal_text, lost_boot_sweep_registration_ceiling,
   sweep_plan, SweepPlan, SweepPlanRefused, SweepPlanSelected,
 }

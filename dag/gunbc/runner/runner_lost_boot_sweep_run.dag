@@ -30,6 +30,11 @@ import gunbc.github_effect_perform {
   ControllerInstallationToken,
   ControllerKeyStaged, ControllerKeyNotStaged, stage_controller_app_key, remove_staged_controller_key,
 }
+import gunbc.runner.runner_lost_boot_sweep_plan {
+  lost_boot_sweep_registration_ceiling, sweep_authority, sweep_refusal_text,
+  SweepListing, SweepListingObserved, SweepListingNotObserved, sweep_listing_of_roster,
+  SweepSelection, SweepPlan, SweepPlanRefused, SweepPlanSelected, sweep_plan, deregister_selection,
+}
 import gunbc.runner.runner_jit_deregistration {
   JitRegistration, JitDeregistration, JitDeregistrationSubject, JitRunnerDeregistered, JitDeregistrationRefused, JitDeregistrationRefusal,
   JitSlotExit, SlotLostBoot, ensure_jit_runner_deregistered,
@@ -67,16 +72,6 @@ data lost_boot_sweep_artifact_glob: String = "artifacts/service-runner-lost-boot
 
 data lost_boot_sweep_prelude_allowance: Second = second(count: 120)
 data lost_boot_sweep_per_registration_allowance: Second = second(count: 60)
-data lost_boot_sweep_registration_ceiling: Int = 40
-
-fn sweep_exceeds_ceiling(selected: Int) -> Bool {
-  selected > lost_boot_sweep_registration_ceiling
-}
-
-fn sweep_ceiling_refusal_text(selected: Int) -> String {
-  join(["lost-boot sweep: ", to_string(selected), " registrations selected, above the ", to_string(lost_boot_sweep_registration_ceiling), " the step timeout allows; nothing was deregistered"], "")
-}
-
 fn lost_boot_sweep_step_timeout_minutes() -> Minute {
   let secs = second_count(s: lost_boot_sweep_prelude_allowance)
     + lost_boot_sweep_registration_ceiling * second_count(s: lost_boot_sweep_per_registration_allowance)
@@ -147,22 +142,7 @@ fn population_refusal_text(refusal: CurrentServicePopulationRefusal) -> String {
   }
 }
 
-fn sweep_refusal_text(refusal: LostBootSweepRefusal) -> String {
-  match refusal {
-    SweepListingUnreadable { reason: _, cause: c } => concat("lost-boot sweep: listing unreadable: ", c as String)
-    SweepRegistrationRefused { listed: l, refusal: _ } => concat("lost-boot sweep: a listed registration was refused: ", l)
-  }
-}
-
 // ── The standing the sweep is taken under ─────────────────────────────────────────────────────
-
-fn sweep_authority() -> GitHubCredentialAuthority {
-  ManagedAppInstallationCredential {
-    app: gunbai_ci_declared,
-    installation: gunbai_ci_declared_installation_id,
-    profile: GitHubCredentialProfileRef { name: "fleet-converge-lost-boot-sweep" },
-  }
-}
 
 // THE HOST ENTERS ONLY THROUGH ITS managed_host ROW. A host the corpus does not manage has no standing,
 // so the sweep refuses it rather than naming a runner population from a string.
@@ -237,87 +217,6 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
       }
     }
   }
-}
-
-// THE SWEEP READS THE ORGANIZATION THROUGH THE ONE ROSTER READ (gunbc.fleet.organization_runner_roster_read),
-// not a walk of its own, under the SAME installation token it deletes with: the typed REST handler of that
-// read carries the token as the rest Bearer input, so the step has one credential source. The read reports Observed only
-// when the listing closed, every page agreed on total_count, no id was read with disagreeing payloads
-// and the distinct ids equal the total. Anything less is refused here with the report's own cause: a
-// prefix is never handed to lost_boot_sweep, where a runner on an unread page would read as absent.
-type SweepListing
-  = SweepListingObserved { listing: OrganizationRunnerListWire }
-  | SweepListingNotObserved { cause: NonEmptyStr }
-
-fn sweep_listing_of_roster(report: OrganizationRunnerRosterReport) -> SweepListing {
-  match report.evidence {
-    RosterObserved { observed_on: _, registrations: regs } =>
-      SweepListingObserved { listing: OrganizationRunnerListWire {
-        total_count: length(xs: regs),
-        runners: map(regs, r => OrganizationRunnerWire { id: r.id as Int, name: r.name as String }),
-      } }
-    RosterObservedPartial { observed_on: _, registrations: _, observed_count: seen, authority_total: total } =>
-      SweepListingNotObserved { cause: join(["lost-boot sweep: organization runner roster was partial (", to_string(seen), " of total_count ", to_string(total), "): ", report.note], "") as NonEmptyStr }
-    RosterReadUnavailable { reason: why } =>
-      SweepListingNotObserved { cause: concat("lost-boot sweep: organization runner roster was unavailable: ", why) as NonEmptyStr }
-  }
-}
-
-// THE PLAN IS THE ONLY WAY TO A DELETION. sweep_plan reads a roster report and answers either a
-// refusal or a SweepSelection, and SweepSelection is sole_constructor with its one mint admitted to
-// sweep_plan, so deregister_selection (the only function that deletes) cannot be handed a selection
-// that skipped the observed-roster conversion, the sweep's own refusals or the ceiling. ZERO DELETION
-// REQUESTS ON PARTIAL COVERAGE OR AN OVER-CEILING SELECTION IS ESTABLISHED AT THIS PLAN BOUNDARY, BY
-// CONSTRUCTION, NOT OBSERVED AT THE EFFECT: no hermetic route supplies a REST exchange to the page
-// operation or to the gh deletion (see lost_boot_sweep_effect_pairing_frontier).
-type SweepSelection sole_constructor {
-  subjects: List<JitDeregistrationSubject>
-  untouched: List<String>
-}
-
-type SweepPlan
-  = SweepPlanRefused { cause: String }
-  | SweepPlanSelected { selection: SweepSelection }
-
-data lost_boot_sweep_effect_pairing_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: sweep_and_deregister, which deletes only registrations of a SweepSelection minted by sweep_plan. POPULATION: this sweep deletion route (the org roster page read and ensure_jit_runner_deregistered's gh delete). WHAT IS NOT ESTABLISHED: that the page requests are the ones made and that zero deletion requests leave the process on a partial roster or an over-ceiling selection; both are established at the plan boundary, not observed at the effect. TRIGGER: the capability authenticated REST exchange replay in extdeps.transports.rest, blocked today on RestExchangeFixture input_digest (limbs content_hash_service_inputs derives through the host value_hash, not reproducible from .dag) for an operation carrying a Secret Bearer; when it exists, a hermetic control supplies the page responses and the delete boundary and observes the requests."
-)
-
-fn mint_sweep_selection(subjects: List<JitDeregistrationSubject>, untouched: List<String>) -> SweepSelection admit_callers: [
-  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_plan"),
-] {
-  SweepSelection { subjects: subjects, untouched: untouched }
-}
-
-fn sweep_plan(organization: GitHubOrganizationRef, population: CurrentServicePopulation, report: OrganizationRunnerRosterReport) -> SweepPlan admit_callers: [
-  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_and_deregister"),
-  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "plan_over"),
-] {
-  match sweep_listing_of_roster(report: report) {
-    SweepListingNotObserved { cause } => SweepPlanRefused { cause: cause as String }
-    SweepListingObserved { listing } =>
-      match lost_boot_sweep(organization: organization, population: population, authority: sweep_authority(), listing: RestAnswered { answer: listing }) {
-        LostBootSweepRefused { refusal } => SweepPlanRefused { cause: sweep_refusal_text(refusal: refusal) }
-        LostBootSweepSelected { subjects, untouched } =>
-          if sweep_exceeds_ceiling(selected: length(xs: subjects)) {
-            SweepPlanRefused { cause: sweep_ceiling_refusal_text(selected: length(xs: subjects)) }
-          } else {
-            SweepPlanSelected { selection: mint_sweep_selection(subjects: subjects, untouched: untouched) }
-          }
-      }
-  }
-}
-
-fn deregister_selection(selection: SweepSelection, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState, current: ServiceBootId) -> List<JitDeregistration> uses net: Network admit_callers: [
-  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_and_deregister"),
-] {
-  selection.subjects |> map(subject => ensure_jit_runner_deregistered(
-    token: token,
-    authority: sweep_authority(),
-    control_plane: control_plane,
-    subject: subject,
-    exit: SlotLostBoot { superseded_by: current },
-  ))
 }
 
 fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
