@@ -69,6 +69,7 @@ import gunbc.machine_intake.megarac_operation_evidence {
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import std.content_hash { content_hash_of_value }
+import std.decl_ref { decl_ref }
 
 // EVIDENCE THAT REPORTS A BUILD AT THIS CONTROLLER, for a fixture machine. A witness that means "this
 // controller now runs build X" produces a build reading naming X -- the same move production makes --
@@ -76,7 +77,14 @@ import std.content_hash { content_hash_of_value }
 // receipt. The board and chassis stay the machine's own and only the reported build changes, so a
 // refusal is about the build and not about some other board. The reading's own label says plainly that
 // no artifact stands behind it: it is a statement about a build, not a report that a capture happened.
-fn witness_evidence_reporting(h: ManagedHost, build: BmcFirmwareReleaseIdentity) -> MegaRacOperationEvidence {
+// THE SANCTIONED EVIDENCE HELPER OF THE ADMISSION WITNESS, SEALED TO ITS CLAIM ROSTER for the same
+// reason as fixture_evidence_at: it stands between the claims and the sealed mint, so an unrostered
+// caller is refused at this door too -- the indirect forged probe drives this path.
+fn witness_evidence_reporting(h: ManagedHost, build: BmcFirmwareReleaseIdentity) -> MegaRacOperationEvidence
+  admit_callers: [
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster"),
+  ]
+{
   match h.access {
     BmcAccessObserved { observation: o } => megarac_operation_evidence_fixture_for(
       endpoint: o.endpoint,

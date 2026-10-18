@@ -72,7 +72,7 @@ import gunbc.host.bmc_release_capability_catalog {
 // serving IPMI, so a route-shaped admission would have to enumerate absent Redfish locators, and a
 // capability-shaped one simply reads what was measured.
 type OobBootHandoffAdmission
-  = OobHandoffAdmitted { route: BmcAccessRoute }
+  = OobHandoffAdmitted { route: BmcAccessRoute, capability_row: BmcFirmwareReleaseCapabilityRow }
   | OobHandoffRouteUnobserved
   | OobHandoffBootSourceOverrideUnavailable
   | OobHandoffPowerControlUnavailable
@@ -116,7 +116,11 @@ fn oob_boot_handoff_admission_for_row(
     } else {
       match first_observed_boot_control_route(observation: observation) {
         Absent => OobHandoffRouteUnobserved
-        Present { value: route } => OobHandoffAdmitted { route: route }
+        // THE PAIRING, AT THE MINT: an admitted handoff carries the row its capability questions were
+        // answered from. A pairing claim reaches the release handoff admission CONSUMES by identity,
+        // and restoring an observation-firmware lookup at this layer makes that claim fail by giving the
+        // admitted handoff a row that is not the one the boot was admitted on.
+        Present { value: route } => OobHandoffAdmitted { route: route, capability_row: capability_row }
       }
     }
   }
@@ -132,21 +136,22 @@ fn oob_boot_handoff_admission_for_row(
 // refuse. An entry whose artifact establishes no release matches nothing, which arrives below as
 // Uncatalogued: the repair is to go read the build, which is the repair that actually applies. A build
 // the catalog has not read is a typed unresolved refusal, never a default row.
-fn oob_boot_handoff_admission(observation: BmcAccessObservation) -> OobBootHandoffAdmission {
-  match megarac_release_capability_row_for(firmware: observation.identity.firmware) {
-    MegaRacReleaseCapabilityKnown { row: row } => oob_boot_handoff_admission_for_row(
-      observation: observation, capability_row: row,
-    )
-    MegaRacReleaseCapabilityUncatalogued { firmware: firmware } => OobHandoffRowUncatalogued { firmware: firmware }
-    MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: count } => OobHandoffRowAmbiguous { firmware: firmware, count: count }
-  }
-}
+// THE OBSERVATION-ANSWERING ENTRY IS DELETED. It resolved the row from observation.identity.firmware,
+// which is the PROBED receipt, and every live consumer reached it with a route observation -- so the
+// handoff answered "can this controller drive a boot?" from whatever release was current when the
+// controller was first probed. After the 0.32 -> 0.45.3 reflash it kept consulting 0.32 while the
+// boot itself had been admitted on 0.45.3 (the side-chat blocker; the production claim
+// w_the_admitted_machine_boots_off_the_current_release_and_not_the_probed_one is what a restored
+// lookup now goes red against). The one fold is oob_boot_handoff_admission_for_row: the caller hands
+// the row the boot decision was made from. A caller that genuinely wants the catalog by probed
+// version -- the coverage probe below -- asks the catalog ITSELF (megarac_release_capability_row_for)
+// and says so in its name; it is a coverage diagnostic, not a live capability decision.
 
 // WHETHER AN ADMISSION ADMITS, as its own fn so the handoff's guard is one named question rather
 // than a match inlined into an effect sequence.
 fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
   match admission {
-    OobHandoffAdmitted { route: _ } => true
+    OobHandoffAdmitted { route: _, capability_row: _ } => true
     OobHandoffRouteUnobserved => false
     OobHandoffBootSourceOverrideUnavailable => false
     OobHandoffPowerControlUnavailable => false
@@ -517,13 +522,21 @@ fn oob_boot_handoff(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   selection: IpmiBootSelection,
+  // THE ROW THE BOOT ADMISSION WAS DECIDED ON, carried from the admitted subject. The observation
+  // keeps its own facts -- endpoint, route, receipt binding -- and answers NO capability question
+  // here: its identity.firmware records what was PROBED at intake, which after a reflash is the
+  // wrong release. Feeding it to the catalog at this layer is the side-chat defect (boot admitted
+  // on 0.45.3, handoff consulting the historical 0.32 row). The caller passes the row it was handed
+  // by admit_boot_subject / admit_reset_subject; it cannot re-resolve one without deliberately
+  // discarding the subject's own.
+  capability_row: BmcFirmwareReleaseCapabilityRow,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_boot_handoff", decl_name: "boot_drive_handoff"),
     decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_issue_and_watch"),
   ]
 {
-  let admission = oob_boot_handoff_admission(observation: observation)
+  let admission = oob_boot_handoff_admission_for_row(observation: observation, capability_row: capability_row)
   if oob_handoff_is_admitted(admission: admission) == false {
     return BootHandoffNotAdmitted { admission: admission }
   }
