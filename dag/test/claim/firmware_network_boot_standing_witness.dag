@@ -454,6 +454,15 @@ fn route_matches_the_catalog_row(
   }
 }
 
+// COMPARES WHAT THE EXECUTOR READS, NEVER THE CITATION. The fold is handed the catalog row's
+// authority and has no business rewriting it, so comparing citations would test the copy rather than
+// the decision -- which is why the fallback used to be whole-value equality and silently failed for
+// every arm not spelled out above it: whole-value equality includes `authority`, and the row's
+// citation is the module's while the test builds its route with the witness's.
+//
+// ALL EIGHT ARMS ARE NAMED (no `_ =>`, per the rule this module applies to itself): a new arm or a
+// renamed executor field is a compile error here instead of a comparison that quietly returns false
+// and points the reader at the fold.
 fn field_pairs_agree(route_a: FirmwareNetworkBootPreparationRoute, route_b: FirmwareNetworkBootPreparationRoute) -> Bool {
   match route_a {
     EnableNetworkStack { service_root: sa, attribute: aa, authority: _ } =>
@@ -461,12 +470,41 @@ fn field_pairs_agree(route_a: FirmwareNetworkBootPreparationRoute, route_b: Firm
         EnableNetworkStack { service_root: sb, attribute: ab, authority: _ } => sa == sb && aa == ab
         _ => false
       }
+    PointUefiBootNext { service_root: sa, boot_option: ba, authority: _ } =>
+      match route_b {
+        PointUefiBootNext { service_root: sb, boot_option: bb, authority: _ } => sa == sb && ba == bb
+        _ => false
+      }
+    RedfishOneShotOverride { service_root: sa, authority: _ } =>
+      match route_b {
+        RedfishOneShotOverride { service_root: sb, authority: _ } => sa == sb
+        _ => false
+      }
+    IpmiOneShotOverride { channel: ca, authority: _ } =>
+      match route_b {
+        IpmiOneShotOverride { channel: cb, authority: _ } => ca == cb
+        _ => false
+      }
+    SelectNicBoot { service_root: sa, attribute: aa, authority: _ } =>
+      match route_b {
+        SelectNicBoot { service_root: sb, attribute: ab, authority: _ } => sa == sb && aa == ab
+        _ => false
+      }
     SetSecureBootAttribute { service_root: sa, attribute: aa, authority: _ } =>
       match route_b {
         SetSecureBootAttribute { service_root: sb, attribute: ab, authority: _ } => sa == sb && aa == ab
         _ => false
       }
-    _ => route_a == route_b
+    UefiShellOverSol { sol_channel: ca, shell_script: xa, authority: _ } =>
+      match route_b {
+        UefiShellOverSol { sol_channel: cb, shell_script: xb, authority: _ } => ca == cb && xa == xb
+        _ => false
+      }
+    HumanConsole { instruction: ia, authority: _ } =>
+      match route_b {
+        HumanConsole { instruction: ib, authority: _ } => ia == ib
+        _ => false
+      }
   }
 }
 
@@ -955,7 +993,7 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
     Refused { cause: TransportRefusedVendorCommand { refusal: _ }, gaps: _ } => false
     Refused { cause: FirmwareModeUnsupportedByEdge { why: _ }, gaps: _ } => false
     Refused { cause: RefusedByOperatorPolicy { policy: _ }, gaps: _ } => false
-    Refused { cause: NoSuchUnit { why: _ }, gaps: _ } => false
+    Refused { cause: NoNetworkInterfacePresent { why: _ }, gaps: _ } => false
     Refused { cause: NoRouteOwnsThisBlocking { why: _ }, gaps: _ } => false
     NeedsPreparation { route: _, blocking: _ } => false
     Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
@@ -995,14 +1033,13 @@ test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
     // conflict from an unconfigured board, which is the branch `decide` depends on.
     && match network_entries_in(entries: misleadingly_network_labels) {
          NoNetworkEntry { examined_count: examined } => examined == 6
-         NetworkEntriesPresent { targets: _ } => false
+         NetworkEntriesPresent { head: _, additional_count: _ } => false
        }
     && match network_entries_in(entries: [honestly_network_label]) {
-         NetworkEntriesPresent { targets: targets } =>
-           match targets |> first {
-             Present { value: BootTargetPxe } => true
-             _ => false
-           }
+         // THE HEAD, IN THE ARM (review 81893): there is no `|> first` left to fail, which is the
+         // point -- the classifier walked to the head and is obliged to hand it over.
+         NetworkEntriesPresent { head: BootTargetPxe, additional_count: extra } => extra == 0
+         NetworkEntriesPresent { head: _, additional_count: _ } => false
          NoNetworkEntry { examined_count: _ } => false
        }
     && match redfish_boot_target_network_standing(t: BootTargetUefiHttp) {
@@ -1040,8 +1077,24 @@ test fn an_all_disk_boot_order_with_network_shaped_labels_is_not_ready() -> Bool
   ) {
     NeedsPreparation { route: r, blocking: b } =>
       is_a_fleet_route(route: r)
+        // THE BLOCKER THIS UNIT IS REALLY UNDER. Its BootOptions DOES list an HTTP option, and its
+        // BootOrder names none of them -- so this is 'exists, not selected' (a redirect), not
+        // 'absent' (the authoring write). An earlier version of this test asserted Absent, which was
+        // the OLD fold's answer: it tested BootOrder first and called a miss 'no network stack',
+        // sending a one-boot redirect case to a persistent BIOS write. The label-independence claim
+        // this test exists to make does not depend on which blocker is named -- a false Ready still
+        // fails it either way -- so the honest expectation wins over the convenient one.
         && match b {
-             NetworkBootOptionAbsent => true
+             NetworkBootOptionNotSelected =>
+               match r {
+                 PointUefiBootNext { service_root: _, boot_option: _, authority: _ } => true
+                 RedfishOneShotOverride { service_root: _, authority: _ } => true
+                 IpmiOneShotOverride { channel: _, authority: _ } => true
+                 // The persistent authoring route reaching this unit is the defect this whole split
+                 // exists to stop, so naming it here turns 'wrong remedy' into a failure rather than a
+                 // pass with a different plan attached.
+                 _ => false
+               }
              _ => false
            }
     Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
@@ -1248,11 +1301,26 @@ fn procedure_asks(
   ) > 0
 }
 
+// MATCHES THE ARM, NOT A FABRICATED VALUE. `procedure_asks` compares by ==, which is right for the
+// payload-free arms and WRONG for RequiresOperatorConsent: a record union with a `reason` field is
+// only equal to itself, so comparing against a made-up reason returned false for every route and the
+// consent claim was being carried by nothing. Matching the arm shape is the only correct question --
+// 'does this procedure demand consent', not 'does it demand consent for exactly this wording'.
 fn demands_consent(route: FirmwareNetworkBootPreparationRoute) -> Bool {
-  procedure_asks(
-    route: route,
-    requirement: RequiresOperatorConsent { reason: "anything" },
-  )
+  length(
+    xs: filter(
+      route_requires(route: route),
+      requirement =>
+        match requirement {
+          RequiresOperatorConsent { reason: _ } => true
+          RequiresPersistentChange => false
+          RequiresOneShotOnly => false
+          RequiresReset => false
+          RequiresReadbackOf { property: _ } => false
+          RequiresExistingBootOption => false
+        },
+    ),
+  ) > 0
 }
 
 // THE ADMISSIBILITY GATE IS NOT DECORATION: it is the reason the split cannot be undone quietly.

@@ -773,7 +773,12 @@ type FirmwareNetworkBootRefusal
   = TransportRefusedVendorCommand { refusal: FirmwareReadRefusal }
   | FirmwareModeUnsupportedByEdge { why: NonEmptyStr }
   | RefusedByOperatorPolicy { policy: NonEmptyStr }
-  | NoSuchUnit { why: NonEmptyStr }
+  // THE UNIT HAS NO NETWORK INTERFACE AT ALL (review 81893). This used to be `NoSuchUnit`, which sent
+  // an operator or an actuator to inventory for a unit that is present, answered every axis, and told
+  // us it has no NIC -- a hardware fact whose remedy is the firmware setting that enables the port.
+  // DESIGN 3: one name, two materially different meanings, and the material difference here is the
+  // REMEDY, which is exactly what a refusal cause exists to route.
+  | NoNetworkInterfacePresent { why: NonEmptyStr }
   // A blocker the catalog owns no remedy for. Reachable only by an edit to this module's table --
   // which is the point: it turns 'someone added a blocker and a route by hand' into a visible
   // refusal instead of an attempt that cannot possibly boot.
@@ -1168,7 +1173,7 @@ fn decide(
         // two reads disagree, re-read BootOptions' -- not 'enable the network stack', which would be
         // a persistent firmware write justified by guessing which of the two reads is the stale one.
         // DESIGN 5: an uncaused plausible action is exactly what a refusal exists to prevent.
-        NetworkEntriesPresent { targets: _ } =>
+        NetworkEntriesPresent { head: _, additional_count: _ } =>
           if listed_count > 0 {
             Refused {
               cause: BootOrderNamesUnenumeratedNetworkOption {
@@ -1192,7 +1197,7 @@ fn decide(
           prepare(blocker: NetworkBootOptionAbsent)
       }
     // AN OPTION IS LISTED.
-    NetworkEntriesPresent { targets: _ } =>
+    NetworkEntriesPresent { head: _, additional_count: _ } =>
       match order {
         // AND THE ORDER DOES NOT NAME IT: this is what a one-shot redirect is for, and now the only
         // case redirects are ever reached for. Nothing persistent is required, so the fleet's
@@ -1200,28 +1205,20 @@ fn decide(
         // this unit being sent to the persistent route because BootOrder happened to be tested first.
         NoNetworkEntry { examined_count: _ } =>
           prepare(blocker: NetworkBootOptionNotSelected)
-        // AND THE ORDER NAMES IT. The targets arrived in the firmware's own order, so the entry the
-        // unit will boot is the head, and the verdict can name it. The head cannot be missing -- the
-        // Present arm of the classifier is only produced for a non-empty list -- but the arm is
-        // matched rather than assumed, and REFUSES rather than defaulting a kind: an empty head is a
-        // fact worth hearing, not a thing to paper over.
-        NetworkEntriesPresent { targets: order_targets } =>
-          match (order_targets |> first) {
-            Absent =>
-              Refused {
-                cause: NoSuchUnit { why: "network entries counted but none enumerable in BootOrder" },
-                gaps: [],
-              }
-            Present { value: head_target } =>
-              ready_or_refuse_on_nics(
-                head_target: head_target,
-                nics: nics,
-                boot_mode: boot_mode,
-                authority: authority,
-                observed_at: observed_at,
-                observation: observation,
-              )
-          }
+        // AND THE ORDER NAMES IT. The classifier WALKED to the head and hands it over, so there is
+        // no 'counted some, enumerated none' state left to refuse (review 81893): the old code tested
+        // length > 0 and then took `|> first`, which needed an arm for a contradiction between its own
+        // two measurements -- and reported that contradiction, which is a defect in this fold if it
+        // ever happened, as a fact about the unit.
+        NetworkEntriesPresent { head: head_target, additional_count: _ } =>
+          ready_or_refuse_on_nics(
+            head_target: head_target,
+            nics: nics,
+            boot_mode: boot_mode,
+            authority: authority,
+            observed_at: observed_at,
+            observation: observation,
+          )
       }
   }
 }
@@ -1239,58 +1236,57 @@ fn ready_or_refuse_on_nics(
   observed_at: EpochMs,
   observation: FirmwareBootObservation,
 ) -> FirmwareNetworkBootStanding {
-  if length(xs: nics) == 0 {
-    // Zero NICs after an otherwise complete probe is a refusal, not a gap: every axis answered, and
-    // the answer was 'this unit has no network interface to boot from'. Gaps ride along empty because
-    // that IS the honest report -- nothing else is unknown here.
-    Refused {
-      cause: NoSuchUnit { why: "no network interface reported by any family reader" },
-      gaps: [],
-    }
-  } else if length(xs: nics) > 1 {
-    // Several candidate NICs and no evidence which one carries PXE is a preparation question. Picking
-    // the first would be machine-name selection wearing a different hat: stable, reproducible, and
-    // wrong on the first unit whose ports differ from the guess. Review 81711: this branch used to
-    // get a Redfish one-shot override, which redirects the next boot among EXISTING entries and so
-    // cannot answer 'which port' -- the same defect as the sibling branch review 81802 caught, which
-    // is why the pairing is now the catalog's job and typed rather than prose.
-    prepare(blocker: NoInterfaceCarriesPxe)
-  } else {
-    // The corpus's list idiom is `|> first` returning an Optional, not indexing: a single observed
-    // NIC still arrives through the pattern, so a miscount upstream yields a refusal here rather
-    // than an out-of-range surprise on a live attempt.
-    match (nics |> first) {
-      Present { value: nic } =>
-        Ready {
-          // The mode is the caller's edge fact, carried through untouched. The seam adds no site
-          // knowledge of its own: no TFTP root, no URL, no board spelling beyond the network match
-          // below, so nothing here can drift out of date when srv4 moves.
-          firmware_mode: boot_mode,
-          network_interface: nic,
-          // WHAT WILL ACTUALLY BOOT, quoted from the classification rather than re-asserted (review
-          // 81853). This is where the brief's `protocol` lives, and it is why the classifier is a
-          // union: the earlier fold proved 'something network-shaped is in the boot order' via a Bool
-          // and threw the evidence away, so a Ready could not tell an operator whether the board was
-          // going to PXE or to UEFI-HTTP. It is NOT a second name for `firmware_mode` -- that is the
-          // EDGE's claim about the client, this is the UNIT's own answer about the device it will use,
-          // and the two are allowed to disagree (an HTTP-serving edge in front of a unit whose head
-          // option is PXE is exactly such a unit), which is only reportable because both are carried.
-          boot_target: head_target,
-          evidence: ready_evidence(
-            observation_authority: authority,
-            observed_at: observed_at,
-            observation: observation,
-          ),
-        }
-      Absent =>
-        // Empty gaps, and that is the honest report: every axis answered and the enumeration still
-        // found no interface. A Refused with no gaps says 'nothing more is unknown', which is what
-        // separates it from a refusal hiding further silence.
-        Refused {
-          cause: NoSuchUnit { why: "one NIC counted but none enumerable" },
-          gaps: [],
-        }
-    }
+  // ONE MATCH OVER THE THREE SHAPES, not a length ladder followed by `|> first` (review 81893). The
+  // ladder needed FOUR outcomes for three questions: zero, one, several -- and 'counted exactly one
+  // but the head was Absent', a state that can only arise from the fold disagreeing with itself. Three
+  // arms, three remedies, and no arm that has to guess what its own contradiction means.
+  match nic_candidates(nics: nics) {
+    // A HARDWARE FACT ABOUT THE UNIT, and the most common real finding on a board whose NIC firmware
+    // is disabled -- which is why it gets its own name rather than wearing `NoSuchUnit`. An operator
+    // or actuator reading the cause must be sent to the NIC firmware setting, not to inventory: the
+    // unit is present, it answered every axis, and it said 'I have no interface to boot from'.
+    NoNicCandidate =>
+      Refused {
+        cause: NoNetworkInterfacePresent {
+          why: "the probe completed and the unit reported no network interface at all; enable the NIC in firmware (or attach it) before any boot route is attempted",
+        },
+        // Empty gaps, and that is the honest report: every axis answered, so nothing more is unknown.
+        // A Refused with no gaps says 'nothing left to go and ask about', which is what separates it
+        // from a refusal that is hiding further silence.
+        gaps: [],
+      }
+    // Several candidates and no evidence which port carries PXE is a PREPARATION question. Taking the
+    // first would be machine-name selection wearing a different hat: stable, reproducible, and wrong
+    // on the first unit whose ports differ from the guess. Review 81711: this branch used to get a
+    // Redfish one-shot override, which redirects among EXISTING entries and so cannot answer 'which
+    // port' -- the same defect review 81802 caught in the sibling branch, which is why the pairing is
+    // now the catalog's job and typed rather than prose.
+    SeveralNicCandidates { count: _ } =>
+      prepare(blocker: NoInterfaceCarriesPxe)
+    // The head was already carried here by the enumeration classifier, so the only fact this arm adds
+    // is WHICH INTERFACE -- and it arrives by pattern, never by indexing.
+    OneNicCandidate { nic: nic } =>
+      Ready {
+        // The mode is the caller's edge fact, carried through untouched. The seam adds no site
+        // knowledge of its own: no TFTP root, no URL, no board spelling beyond the network match
+        // below, so nothing here can drift out of date when srv4 moves.
+        firmware_mode: boot_mode,
+        network_interface: nic,
+        // WHAT WILL ACTUALLY BOOT, quoted from the classification rather than re-asserted (review
+        // 81853). This is where the brief's `protocol` lives, and it is why the classifier is a union
+        // at all: the earlier fold proved 'something network-shaped is in the boot order' via a Bool
+        // and threw the evidence away, so a Ready could not tell an operator whether the board was
+        // going to PXE or to UEFI-HTTP. It is NOT a second name for `firmware_mode` -- that is the
+        // EDGE's claim about the client, this is the UNIT's own answer about the device it will use,
+        // and the two are allowed to disagree (an HTTP-serving edge in front of a unit whose head
+        // option is PXE is exactly such a unit), which is reportable only because both are carried.
+        boot_target: head_target,
+        evidence: ready_evidence(
+          observation_authority: authority,
+          observed_at: observed_at,
+          observation: observation,
+        ),
+      }
   }
 }
 
@@ -1317,26 +1313,96 @@ fn ready_or_refuse_on_nics(
 // WHY A FOLD HERE AND NOT ANOTHER PREDICATE: the classification arrives already typed from extdeps,
 // so this module adds no re-derivation of what counts as network -- no spelling list, no local
 // notion of network-ness, nothing to drift. It only collects, in one pass, what extdeps said.
+// THE SHAPES OF 'WHICH NETWORK OPTIONS DOES THIS LIST CONTAIN', ONE PER QUESTION THE FOLD ASKS.
+// (review 81893) Both of these replaced a `length(xs: ...) == 0 / > 1 / else` ladder followed by
+// `|> first`, and that ladder is what made three refusals necessary: a fold that COUNTS a list and
+// then takes its HEAD can represent states it should never be able to reach -- 'counted one, listed
+// none' -- and each unreachable state needs an arm, a cause, and a witness. Matching the shape once
+// deletes the states instead of handling them: DESIGN 5, 'stronger than catching a wrong state is
+// making it unwritable'.
+//
+// `NetworkEntryStanding` therefore hands up the HEAD, because the head is the entry the firmware
+// will boot, and the only way to get a `Ready` is to have matched a `Present` arm that carries one.
+// There is no code path from 'network entries present' to 'Ready' that does not name the target.
 type NetworkEntryStanding
+  // The enumeration ANSWERED 'none of the entries I examined is a network target'. Not silence and
+  // not `false`: this is what makes the standing a preparation (a mechanism exists that creates an
+  // option) rather than a coverage gap, and `examined_count` is what separates that from the
+  // unconfigured-board case in `decide`.
   = NoNetworkEntry { examined_count: Int }
-  | NetworkEntriesPresent { targets: List<RedfishBootSourceOverrideTarget> }
+  // AT LEAST ONE, WITH THE HEAD IN HAND. `additional_count` is how many more followed it; zero means
+  // exactly one. Nothing downstream has to enumerate, index, or default to get the boot target.
+  | NetworkEntriesPresent { head: RedfishBootSourceOverrideTarget, additional_count: Int }
 
 fn network_entries_in(entries: List<BootEntry>) -> NetworkEntryStanding {
-  let targets: List<RedfishBootSourceOverrideTarget> = fold_list(
+  match fold_list(
     xs: entries,
-    empty: [],
+    empty: Absent,
     cons: fn(acc, entry) {
       match redfish_boot_target_network_standing(t: entry.kind) {
-        NetworkBootTarget { via: _ } => list_append(left: acc, right: [entry.kind])
+        NetworkBootTarget { via: _ } =>
+          match acc {
+            Absent => Present { value: FirstNetworkTarget { head: entry.kind, more: [] } }
+            Present { value: seen } =>
+              Present {
+                value: FirstNetworkTarget {
+                  head: seen.head,
+                  more: list_append(left: seen.more, right: [entry.kind]),
+                },
+              }
+          }
         NotNetworkBootTarget { why: _ } => acc
       }
     },
-  )
-  if length(xs: targets) > 0 {
-    NetworkEntriesPresent { targets: targets }
-  } else {
-    NoNetworkEntry { examined_count: length(xs: entries) }
+  ) {
+    Absent => NoNetworkEntry { examined_count: length(xs: entries) }
+    Present { value: seen } =>
+      NetworkEntriesPresent { head: seen.head, additional_count: length(xs: seen.more) }
   }
+}
+
+// THE FOLD'S ACCUMULATOR: the first network target seen, plus everything that came after it. Private
+// to the classifier -- its existence is why the public arm can promise a head it never has to look up.
+type FirstNetworkTarget {
+  head: RedfishBootSourceOverrideTarget,
+  more: List<RedfishBootSourceOverrideTarget>,
+}
+
+// THE NIC QUESTION, ANSWERED THE SAME WAY. Three arms because three different things can be true and
+// each has a different remedy: no interface at all (a hardware fact, a refusal), exactly one (boot
+// from it), or several with no evidence which carries PXE (a preparation: a firmware setting has to
+// change). The old code counted, then took `|> first`, and so needed a fourth state -- 'counted one,
+// enumerated none' -- which it reported as a refusal with no more meaning than 'my own two
+// measurements disagreed' (review 81893).
+type NicCandidateStanding
+  = NoNicCandidate
+  | OneNicCandidate { nic: NonEmptyStr }
+  | SeveralNicCandidates { count: Int }
+
+fn nic_candidates(nics: List<NonEmptyStr>) -> NicCandidateStanding {
+  match fold_list(
+    xs: nics,
+    empty: Absent,
+    cons: fn(acc, nic) {
+      match acc {
+        Absent => Present { value: FirstNic { first: nic, more: false } }
+        Present { value: seen } =>
+          Present { value: FirstNic { first: seen.first, more: true } }
+      }
+    },
+  ) {
+    Absent => NoNicCandidate
+    Present { value: seen } =>
+      if seen.more { SeveralNicCandidates { count: length(xs: nics) } } else { OneNicCandidate { nic: seen.first } }
+  }
+}
+
+// The accumulator behind the NIC question: the first interface, and whether a second one turned up.
+// `more` is a Bool rather than a count because SEEING TWO is all the fold needs to stop deciding; the
+// count for the report is taken once, at the end, where it cannot create a state.
+type FirstNic {
+  first: NonEmptyStr,
+  more: Bool,
 }
 
 // WHICH CLIENT MODES THIS EDGE CAN SERVE, answered per arm rather than by a catch-all, and with
@@ -1368,7 +1434,7 @@ fn network_entries_in(entries: List<BootEntry>) -> NetworkEntryStanding {
 // (review 81789) The first version of this fn was `LegacyBiosPxe { .. } => true, _ => false`, and
 // the `_ => false` was the bug: a fourth ClientNetworkBootMode added upstream would have counted as
 // serviceable with no compile error, walking straight toward a Ready -- the exact silent widen the
-// comment above the boot-entry classifier claims to prevent. Each mode now says WHY the edge can or
+// comment above `network_entries_in` claims to prevent. Each mode now says WHY the edge can or
 // cannot serve it, so adding a mode is a compile error that forces the question 'can our dnsmasq
 // ProxyDHCP edge boot this?' instead of an assumed answer.
 //
