@@ -937,6 +937,26 @@ test fn two_units_sharing_a_seed_do_not_share_a_binding_identity() -> Bool {
 
 // CATCHES: a binding existing for a disk the rules refused — a record of an install that could not have
 // happened.
+// The binding carries WHICH gate refused it, and does not swap them. A binding over a refused
+// target that blamed the disk would send the operator to the storage shelf for a firmware
+// standing that was never observed.
+test fn a_refused_target_binds_with_a_target_blocker_not_a_disk_blocker() -> Bool {
+  let unobserved_firmware = Refused {
+    reason: BmcFirmwareFamilyNotObserved,
+  } as BmcFirmwareFamilyStanding;
+  match bind_altra_autoinstall_seed(
+    seed: seeded_valid_seed(),
+    unit_key: witness_unit_key(),
+    attempt: 1,
+    standing: witness_unit_standing(),
+    firmware_standing: unobserved_firmware,
+  ) {
+    BindRefused { blocker: TargetNotAdmitted { cause: cause } } =>
+      eq_string(actual: diagnostic_for_target_refusal_cause(cause: cause), expected: "unit-key-absent"),
+    _ => false,
+  }
+}
+
 test fn a_binding_cannot_exist_over_a_refused_disk_selection() -> Bool {
   match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
     Present { value: seed } =>
