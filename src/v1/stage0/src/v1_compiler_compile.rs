@@ -195,7 +195,7 @@ pub fn merge_occurrence_transports(
             entries: Rc::new({
                 let mut __result = Vec::new();
                 for transport in transports.iter().cloned() {
-                    __result.extend((*transport.index.clone().entries.clone()).iter().cloned());
+                    __result.extend((*transport.index.entries.clone()).iter().cloned());
                 }
                 __result
             }),
@@ -258,7 +258,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                     {
                         __result.push(Rc::new(FuncEntry {
                             name: crate::v1_std_core::authored_name_at(
-                                m.type_env.clone().source_indices.clone(),
+                                m.type_env.source_indices.clone(),
                                 item.clone(),
                             ),
                             body: item.body.clone().clone().unwrap(),
@@ -299,12 +299,12 @@ pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>
         {
             __result.push(crate::v1_compiler_ownership::analyze_ownership(
                 crate::v1_std_core::authored_name_at(
-                    m.type_env.clone().source_indices.clone(),
+                    m.type_env.source_indices.clone(),
                     item.clone(),
                 ),
                 item.params.clone(),
                 item.body.clone().clone().unwrap(),
-                m.type_env.clone().source_indices.clone(),
+                m.type_env.source_indices.clone(),
             ));
         }
         __result
@@ -1205,24 +1205,19 @@ pub fn dag_emit_check_node_refs(
                                 __result.extend(
                                     (*v1_rt::concat(
                                         dag_emit_check_ref_target(
-                                            application.formal.clone().declared_type.clone(),
+                                            application.formal.declared_type.clone(),
                                             key_to_id.clone(),
                                         ),
                                         v1_rt::concat(
                                             dag_emit_check_ref_target(
                                                 application
                                                     .formal
-                                                    .clone()
                                                     .declaration_bound_conformance
                                                     .clone(),
                                                 key_to_id.clone(),
                                             ),
                                             dag_emit_check_ref_target(
-                                                application
-                                                    .formal
-                                                    .clone()
-                                                    .substitution_basis
-                                                    .clone(),
+                                                application.formal.substitution_basis.clone(),
                                                 key_to_id.clone(),
                                             ),
                                         ),
@@ -1288,7 +1283,7 @@ pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, 
     typed.modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
-            v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
+            v1_rt::rc_map_merge(acc, m.type_env.source_indices.clone())
         },
     )
 }
@@ -1793,29 +1788,26 @@ pub fn serialize_resolved_call_formal(
                                                 ", \"parameter_identity\": ".to_string(),
                                             ),
                                             crate::v1_compiler_dag_collect_support::json_quote(
-                                                value.formal.clone().parameter_identity.clone(),
+                                                value.formal.parameter_identity.clone(),
                                             ),
                                         ),
                                         ", \"declared_type\": ".to_string(),
                                     ),
                                     serialize_node_ref(
-                                        value.formal.clone().declared_type.clone(),
+                                        value.formal.declared_type.clone(),
                                         key_to_id.clone(),
                                     ),
                                 ),
                                 ", \"declaration_bound_conformance\": ".to_string(),
                             ),
                             serialize_node_ref(
-                                value.formal.clone().declaration_bound_conformance.clone(),
+                                value.formal.declaration_bound_conformance.clone(),
                                 key_to_id.clone(),
                             ),
                         ),
                         ", \"substitution_basis\": ".to_string(),
                     ),
-                    serialize_node_ref(
-                        value.formal.clone().substitution_basis.clone(),
-                        key_to_id.clone(),
-                    ),
+                    serialize_node_ref(value.formal.substitution_basis.clone(), key_to_id.clone()),
                 ),
                 ", \"matched_argument_index\": ".to_string(),
             ),
@@ -3273,7 +3265,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
                         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                        p.newline_index.clone().file.clone(),
+                        p.newline_index.file.clone(),
                         p.newline_index.clone(),
                     ),
                     acc.intern_table.clone(),
@@ -3290,7 +3282,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                         acc.parse_results.clone(),
                         parsed.result.clone(),
                     ),
-                    module_inputs: match parsed.result.clone().module.clone() {
+                    module_inputs: match parsed.result.module.clone() {
                         Some(parsed_module) => v1_rt::rc_list_push(
                             acc.module_inputs.clone(),
                             crate::v1_compiler_resolve::module_occurrence_input(
@@ -3463,7 +3455,7 @@ pub fn parse_revision_declarations_with_environment(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
                         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                        p.newline_index.clone().file.clone(),
+                        p.newline_index.file.clone(),
                         p.newline_index.clone(),
                     ),
                     crate::v1_std_core::pre_intern_tokens(
