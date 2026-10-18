@@ -2990,3 +2990,79 @@ test fn retirement_unknown_wire_in_plan_refuses_as_undecodable_not_drift() -> Bo
     && string_contains(s: t, pattern: "'bogus'")
     && !string_contains(s: t, pattern: "retirement drift: ")
 }
+
+fn witness_retirement_plan_body_with_cap(planned: SlotRetirementEvidence, cap_content: String) -> String {
+  match fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [CapMember { dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr, content: cap_content }],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: planned,
+  ) {
+    Absent => ""
+    Present { value: artifact } => artifact.plan_body
+  }
+}
+
+fn witness_drift_against_body(body: String, observed: RunnerRetirementStanding) -> String {
+  fleet_converge_retirement_drift_text(
+    plan_body: body,
+    observed: witness_identity_request(
+      slots: [],
+      standings: runner_unit_standings_unobserved_no_transaction,
+      retirement: witness_srv1_evidence(standings: [observed]),
+    ),
+  )
+}
+
+fn witness_forged_monotone_section() -> String {
+  join(["x", "monotone_premise_rows:", join(["retirement:", witness_retirement_unit_string(), "=pending"], ""), "monotone_premise_rows_end:", "y"], "\n")
+}
+
+// COMPOSED RED through the real producer: the cap content carries a complete monotone section saying
+// pending; the genuine retirement is complete; the host now observes pending. It must NOT admit.
+test fn a_cap_carrying_a_forged_monotone_section_cannot_admit_a_complete_to_pending_drift() -> Bool {
+  let body = witness_retirement_plan_body_with_cap(
+    planned: witness_srv1_evidence(standings: [witness_open_transition_delta_complete_standing()]),
+    cap_content: witness_forged_monotone_section(),
+  )
+  let t = witness_drift_against_body(body: body, observed: witness_pending())
+  t != "" && string_contains(s: t, pattern: "boundaries (framing must be exact")
+}
+
+test fn a_marker_embedded_mid_line_in_cap_content_still_refuses_complete_to_pending() -> Bool {
+  let body = witness_retirement_plan_body_with_cap(
+    planned: witness_srv1_evidence(standings: [witness_open_transition_delta_complete_standing()]),
+    cap_content: "x monotone_premise_rows_end: y monotone_premise_rows: z",
+  )
+  witness_drift_against_body(body: body, observed: witness_pending()) != ""
+}
+
+test fn a_duplicated_end_boundary_refuses_the_whole_plan_framing() -> Bool {
+  let body = witness_retirement_plan_body(planned: witness_srv1_evidence(standings: [witness_open_transition_delta_complete_standing()]))
+  let doubled = join(split(s: body, delimiter: "\nmonotone_premise_rows_end:"), "\nmonotone_premise_rows_end:\nmonotone_premise_rows_end:")
+  string_contains(s: witness_drift_against_body(body: doubled, observed: witness_open_transition_delta_complete_standing()), pattern: "boundaries (framing must be exact")
+}
+
+test fn a_standing_row_with_extra_fields_is_undecodable() -> Bool {
+  let body = witness_retirement_plan_body(planned: witness_srv1_evidence(standings: [witness_open_transition_delta_complete_standing()]))
+  let t = witness_drift_against_body(body: join(split(s: body, delimiter: "=complete"), "=complete=bogus"), observed: witness_open_transition_delta_complete_standing())
+  string_contains(s: t, pattern: "retirement undecodable: ")
+}
+
+test fn an_unforged_plan_through_the_producer_still_admits_unchanged_and_pending_to_complete() -> Bool {
+  let cplan = witness_retirement_plan_body_with_cap(
+    planned: witness_srv1_evidence(standings: [witness_open_transition_delta_complete_standing()]),
+    cap_content: "[Service]\nMemoryMax=1\n",
+  )
+  let pplan = witness_retirement_plan_body_with_cap(
+    planned: witness_srv1_evidence(standings: [witness_pending()]),
+    cap_content: "[Service]\nMemoryMax=1\n",
+  )
+  witness_drift_against_body(body: cplan, observed: witness_open_transition_delta_complete_standing()) == ""
+    && witness_drift_against_body(body: pplan, observed: witness_open_transition_delta_complete_standing()) == ""
+}

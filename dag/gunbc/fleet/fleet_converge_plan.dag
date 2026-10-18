@@ -804,15 +804,57 @@ fn plan_text_lines(text: String) -> List<String> {
   split(s: text, delimiter: "\n")
 }
 
+fn plan_marker_count(text: String, marker: String) -> Int {
+  length(split(s: text, delimiter: marker)) - 1
+}
+
+// FRAMING IS EXACT, NEVER CHOSEN. Free text (a cap's content) enters the plan body unescaped, so a
+// marker-looking line inside it is indistinguishable from a boundary. The producer emits each boundary
+// exactly once, so any other count (an injected copy, a missing one, or an end before its start) is
+// refused by name; no occurrence is ever selected. Empty string is "framed".
+fn plan_section_framing_fault(plan_body: String, section: String) -> String {
+  let start = concat("\n", section, ":\n")
+  let end = concat("\n", fleet_converge_plan_section_end_marker(section: section))
+  let starts = plan_marker_count(text: plan_body, marker: start)
+  let ends = plan_marker_count(text: plan_body, marker: end)
+  if starts == 0 {
+    concat("plan.txt carries no ", section, ": section")
+  } else if ends == 0 {
+    concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)")
+  } else if starts != 1 {
+    concat("plan.txt carries ", starts as String, " ", section, ": boundaries (framing must be exact; embedded or duplicated boundary)")
+  } else if ends != 1 {
+    concat("plan.txt carries ", ends as String, " ", fleet_converge_plan_section_end_marker(section: section), " boundaries (framing must be exact; embedded or duplicated boundary)")
+  } else {
+    match list_head(xs: reverse(split(s: plan_body, delimiter: start))) {
+      Absent => concat("plan.txt ", section, " section is empty")
+      Present { value: after_start } =>
+        if string_contains(s: after_start, pattern: end) {
+          ""
+        } else {
+          concat("plan.txt ", section, " end boundary precedes its start (misordered)")
+        }
+    }
+  }
+}
+
+fn plan_framing_fault(plan_body: String) -> String {
+  let faults = filter(
+    map(
+      [fleet_converge_plan_baseline_section, fleet_converge_plan_observed_only_section, fleet_converge_plan_monotone_section],
+      sec => plan_section_framing_fault(plan_body: plan_body, section: sec),
+    ),
+    f => f != "",
+  )
+  match list_head(xs: faults) { Absent => ""  Present { value: f } => f }
+}
+
 fn fleet_converge_planned_section_rows(plan_body: String, section: String) -> PlannedBaselineRows {
   let start = concat("\n", section, ":\n")
   let end = concat("\n", fleet_converge_plan_section_end_marker(section: section))
-  if !string_contains(s: plan_body, pattern: start) {
-    PlannedBaselineRowsUnavailable { cause: concat("plan.txt carries no ", section, ": section") }
-  } else if !string_contains(s: plan_body, pattern: end) {
-    PlannedBaselineRowsUnavailable {
-      cause: concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)"),
-    }
+  let fault = plan_framing_fault(plan_body: plan_body)
+  if fault != "" {
+    PlannedBaselineRowsUnavailable { cause: fault }
   } else {
     match plan_text_before(text: plan_body, marker: end) {
       Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
@@ -869,6 +911,11 @@ fn retirement_row_standing(row: String) -> String {
   match list_head(xs: skip(xs: split(s: row, delimiter: "="), n: 1)) { Absent => ""  Present { value: t } => t }
 }
 
+// A row is exactly <unit>=<wire>. Any further "=" field is undecodable, never silently dropped.
+fn retirement_row_field_count(row: String) -> Int {
+  length(split(s: row, delimiter: "="))
+}
+
 fn retirement_row_for_unit(rows: List<String>, unit: String) -> String? {
   list_head(xs: filter(rows, r => retirement_row_unit(row: r) == unit))
 }
@@ -896,6 +943,11 @@ fn retirement_standing_drift_line(planned: String, observed: String?) -> String 
     Absent => concat("retirement drift: ", unit, " planned ", planned_wire, ", now unobserved (absent from the observation)")
     Present { value: o } => {
       let observed_wire = retirement_row_standing(row: o)
+      if retirement_row_field_count(row: planned) != 2 {
+        retirement_undecodable_line(unit: unit, wire: planned_wire)
+      } else if retirement_row_field_count(row: o) != 2 {
+        retirement_undecodable_line(unit: unit, wire: observed_wire)
+      } else {
       match retirement_standing_from_wire(unit: unit, wire: planned_wire) {
         RetirementWireUndecodable { unit: u, wire: w } => retirement_undecodable_line(unit: u, wire: w)
         RetirementWireDecoded { standing: p } =>
@@ -904,6 +956,7 @@ fn retirement_standing_drift_line(planned: String, observed: String?) -> String 
             RetirementWireDecoded { standing: q } =>
               retirement_decoded_drift_line(unit: unit, planned: p, observed: q, planned_wire: planned_wire, observed_wire: observed_wire)
           }
+      }
       }
     }
   }
