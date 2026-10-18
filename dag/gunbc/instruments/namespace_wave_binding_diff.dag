@@ -312,6 +312,86 @@ fn formatter_control_failure() -> Optional<String> {
   }
 }
 
+// ---------------------------------------------------------------------------------------------------
+// THE WAVE-1 JOIN CONTROLS ON THE REAL CENSUS ROUTE. Four roots the host censuses with the native census-infer: a
+// BASE module that still refuses resolve (`semver_version_parse` is declared nowhere) and uses `chars(s: ...)` unimported at
+// four sites -- the shape of a real wave-1 module (two call lines are excerpted from test.claim.extdeps_version_semver) --
+// and three HEADS, each carrying the wave's own edits (the import inserted above every body, `s:` relabelled `text:` on the
+// SAME line, which is also what the same-line pair of sites exercises) plus one difference:
+//   admit       nothing else: all four sites must join to std.host_text.chars and the verdict is success;
+//   moved       a blank line added between the first two call lines: still four sites on each side, EQUAL COUNT, but the
+//               first site's coordinate moved, so it has no partner (Appeared + Vanished) and the verdict is 1;
+//   wrong home  the import points at examples.other.chars: four sites resolve, to the wrong declaration (TargetChanged),
+//               verdict 1.
+// The admit head is the positive control and also the coordinate-shift challenge: a count-only or ordinal-keyed join
+// would pass the moved head, and a coordinate that an import insertion or a same-line relabel moved would refuse admit.
+
+fn wave_join_shared() -> List<BindingDiffFixtureFile> {
+  [
+    BindingDiffFixtureFile { path: "std/host_text.dag", content: "module std.host_text\n\nfn chars(text: String) -> Int {\n  1\n}\n" },
+    BindingDiffFixtureFile { path: "examples/other.dag", content: "module examples.other\n\nfn chars(text: String) -> Int {\n  2\n}\n" }
+  ]
+}
+
+fn wave_join_module(import_line: String, label: String, gap: String) -> String {
+  "module examples.wave\n" + import_line
+    + "\nfn first() -> Int {\n  semver_version_parse(cps: chars(" + label + ": \"1.0.0\" as String))\n}\n" + gap
+    + "\nfn second() -> Int {\n  semver_version_parse(cps: chars(" + label + ": \"1.0.0-alpha\" as String))\n}\n"
+    + "\nfn same_line() -> Int {\n  pair(a: chars(" + label + ": \"a\"), b: chars(" + label + ": \"b\"))\n}\n"
+}
+
+fn binding_diff_wave_base_files() -> List<BindingDiffFixtureFile> {
+  wave_join_shared() + [BindingDiffFixtureFile { path: "examples/wave.dag", content: wave_join_module(import_line: "", label: "s", gap: "") }]
+}
+
+fn binding_diff_wave_head_files() -> List<BindingDiffFixtureFile> {
+  wave_join_shared() + [BindingDiffFixtureFile { path: "examples/wave.dag", content: wave_join_module(import_line: "\nimport std.host_text { chars }\n", label: "text", gap: "") }]
+}
+
+fn binding_diff_wave_moved_head_files() -> List<BindingDiffFixtureFile> {
+  wave_join_shared() + [BindingDiffFixtureFile { path: "examples/wave.dag", content: wave_join_module(import_line: "\nimport std.host_text { chars }\n", label: "text", gap: "\n") }]
+}
+
+fn binding_diff_wave_wrong_home_head_files() -> List<BindingDiffFixtureFile> {
+  wave_join_shared() + [BindingDiffFixtureFile { path: "examples/wave.dag", content: wave_join_module(import_line: "\nimport examples.other { chars }\n", label: "text", gap: "") }]
+}
+
+fn verdict_code(r: CliWireResponse) -> Int {
+  match r {
+    CliWirePrintable { bytes: _, exit: e } =>
+      match e {
+        ExitSuccess => 0
+        ExitFailure { code: c, reason: _ } => c
+      }
+    CliWireUnprintable { cause: _ } => 0 - 1
+  }
+}
+
+fn wave_join_case(name: String, base: String, head: String, want: Int) -> String {
+  let got = verdict_code(r: binding_diff_verdict(base_stdout: base, head_stdout: head, base_status: 0, head_status: 0))
+  if got == want { "" } else { "wave-1 join " + name + ": verdict " + to_string(got) + ", want " + to_string(want) + "\n" }
+}
+
+// The route must actually have observed the fixture: four unbound sites on base, the module unreached, no binding_module.
+fn wave_join_route_failure(base: String, admit: String, moved: String, wrong_home: String) -> Optional<String> {
+  let sites = count(rows_with_prefix(stdout: base, prefix: "binding_unbound\texamples.wave\tchars\t"))
+  let report = (if sites == 4 { "" } else { "wave-1 join base fixture: " + to_string(sites) + " unbound chars sites, want 4 (the census route did not print the loci)\n" })
+    + wave_join_case(name: "admit (positive control)", base: base, head: admit, want: 0)
+    + wave_join_case(name: "equal-count moved site (RED)", base: base, head: moved, want: 1)
+    + wave_join_case(name: "wrong home (RED)", base: base, head: wrong_home, want: 1)
+  if report == "" { optional_absent() } else { optional_present(value: report) }
+}
+
+// UNOBSERVED IS 2, ON THE FULL VERDICT: a head that names a rewritten module its census could not read, over otherwise
+// admitted rows, must not answer success or 1.
+fn wave_unobserved_control_failure() -> Optional<String> {
+  let observed = "binding_module\texamples.uses\t1\t0\t0\t0\n"
+  let base = observed + "binding\texamples.uses\tInt\t0\tdeclared\texamples.home.Int\n"
+  let head = base + "unobserved_rewritten\texamples.wave\n"
+  let got = verdict_code(r: binding_diff_verdict(base_stdout: base, head_stdout: head, base_status: 0, head_status: 0))
+  if got == 2 { optional_absent() } else { optional_present(value: "an unobserved rewritten module answered " + to_string(got) + ", not 2") }
+}
+
 // THE VERDICT. An incomplete side never yields success: a census that answered 2 (a rewritten module
 // refused or unread, an incomplete subject run, an unreadable spelling) keeps that standing unless a
 // stronger refusal (a re-binding, exit 1) applies. Each side's own 2-rows are carried into the output.
@@ -372,18 +452,55 @@ fn partial_conflicting(module: String, base_stdout: String, head_stdout: String)
     |> filter(l => field_at(line: l, index: 3) != "0")) != 0
 }
 
+fn binding_diff_verdict(base_stdout: String, head_stdout: String, base_status: Int, head_status: Int) -> CliWireResponse {
+  let diff = binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: ambient_name_homes())
+  // A MODULE REFUSED ON BOTH SIDES is compared at occurrence grain by the verified join
+  // (gunbc.instruments.namespace_wave_occurrence_join) over its partial and unbound rows. It leaves the unobserved
+  // list only when its partial observation is usable on both sides (no conflicting record) and nothing refused.
+  let joined = diff.unobserved_both_sides |> map(m => JoinedModule { module: m, deltas: occurrence_join_module(rows: ambient_name_homes(), module: m, base_stdout: base_stdout, head_stdout: head_stdout), conflicting: partial_conflicting(module: m, base_stdout: base_stdout, head_stdout: head_stdout) })
+  let join_refused = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => !join_delta_admitted(d: d))) })
+  let join_admitted = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => join_delta_admitted(d: d))) })
+  let conflicting = joined |> filter(j => j.conflicting) |> map(j => j.module)
+  let still_unobserved = joined |> filter(j => j.conflicting || (count(j.deltas |> filter(d => !join_delta_admitted(d: d))) != 0)) |> map(j => j.module)
+  let unobserved = unobserved_rewritten_either(base_stdout: base_stdout, head_stdout: head_stdout)
+  let outside = outside_other_population(base_stdout: base_stdout, head_stdout: head_stdout)
+  let bytes = ((diff.admitted + diff.refused) |> map(d => delta_line(d: d)) |> join(separator: "\n")) + "\n"
+    + (diff.unreached_one_side |> map(m => "refused\tUnreachedOnOneSide\t" + m) |> join(separator: "\n")) + "\n"
+    + ((join_admitted + join_refused) |> map(d => join_delta_line(d: d)) |> join(separator: "\n")) + "\n"
+    + (conflicting |> map(m => "refused\tPartialConflicting\t" + m) |> join(separator: "\n")) + "\n"
+    + (still_unobserved |> map(m => "unobserved\t" + m) |> join(separator: "\n")) + "\n"
+    + (unobserved |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
+    + (outside |> map(m => "outside_other_population\t" + m) |> join(separator: "\n")) + "\n"
+    + ((side_incomplete_rows(side: "base", stdout: base_stdout) + side_incomplete_rows(side: "head", stdout: head_stdout)) |> join(separator: "\n")) + "\n"
+  CliWirePrintable {
+    bytes: bytes,
+    exit: binding_diff_exit(
+      refused: count(diff.refused) + count(diff.unreached_one_side) + count(join_refused) + count(conflicting),
+      unobserved: count(unobserved),
+      outside: count(outside),
+      unobserved_both: count(still_unobserved),
+      base_status: base_status,
+      head_status: head_status
+    )
+  }
+}
+
 fn binding_diff_standing(
   rebind_base_stdout: String,
   rebind_head_stdout: String,
   base_stdout: String,
   base_status: Int,
   head_stdout: String,
-  head_status: Int
+  head_status: Int,
+  wave_base_stdout: String,
+  wave_admit_stdout: String,
+  wave_moved_stdout: String,
+  wave_wrong_home_stdout: String
 ) -> CliWireResponse {
   match rebind_red_failure(base_stdout: rebind_base_stdout, head_stdout: rebind_head_stdout) {
     Present { value: why } => CliWirePrintable { bytes: rebind_base_stdout + "\n" + rebind_head_stdout + "\n", exit: ExitFailure { code: 1, reason: "re-bind RED: " + why } }
     Absent =>
-      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), occurrence_join_controls_failure()]) {
+      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), occurrence_join_controls_failure(), wave_unobserved_control_failure(), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout)]) {
         Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
           if (base_status != 0) && (base_status != 2) {
@@ -395,36 +512,7 @@ fn binding_diff_standing(
           } else if count(binding_lines(stdout: head_stdout)) == 0 {
             CliWirePrintable { bytes: head_stdout + "\n", exit: ExitFailure { code: 2, reason: "head: the head census printed no binding row, so head was not observed; an empty side is no observation, never an empty diff" } }
           } else {
-            let diff = binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: ambient_name_homes())
-            // A MODULE REFUSED ON BOTH SIDES is compared at occurrence grain by the verified join
-            // (gunbc.instruments.namespace_wave_occurrence_join) over its partial and unbound rows. It leaves the unobserved
-            // list only when its partial observation is usable on both sides (no conflicting record) and nothing refused.
-            let joined = diff.unobserved_both_sides |> map(m => JoinedModule { module: m, deltas: occurrence_join_module(rows: ambient_name_homes(), module: m, base_stdout: base_stdout, head_stdout: head_stdout), conflicting: partial_conflicting(module: m, base_stdout: base_stdout, head_stdout: head_stdout) })
-            let join_refused = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => !join_delta_admitted(d: d))) })
-            let join_admitted = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => join_delta_admitted(d: d))) })
-            let conflicting = joined |> filter(j => j.conflicting) |> map(j => j.module)
-            let still_unobserved = joined |> filter(j => j.conflicting || (count(j.deltas |> filter(d => !join_delta_admitted(d: d))) != 0)) |> map(j => j.module)
-            let unobserved = unobserved_rewritten_either(base_stdout: base_stdout, head_stdout: head_stdout)
-            let outside = outside_other_population(base_stdout: base_stdout, head_stdout: head_stdout)
-            let bytes = ((diff.admitted + diff.refused) |> map(d => delta_line(d: d)) |> join(separator: "\n")) + "\n"
-              + (diff.unreached_one_side |> map(m => "refused\tUnreachedOnOneSide\t" + m) |> join(separator: "\n")) + "\n"
-              + ((join_admitted + join_refused) |> map(d => join_delta_line(d: d)) |> join(separator: "\n")) + "\n"
-              + (conflicting |> map(m => "refused\tPartialConflicting\t" + m) |> join(separator: "\n")) + "\n"
-              + (still_unobserved |> map(m => "unobserved\t" + m) |> join(separator: "\n")) + "\n"
-              + (unobserved |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
-              + (outside |> map(m => "outside_other_population\t" + m) |> join(separator: "\n")) + "\n"
-              + ((side_incomplete_rows(side: "base", stdout: base_stdout) + side_incomplete_rows(side: "head", stdout: head_stdout)) |> join(separator: "\n")) + "\n"
-            CliWirePrintable {
-              bytes: bytes,
-              exit: binding_diff_exit(
-                refused: count(diff.refused) + count(diff.unreached_one_side) + count(join_refused) + count(conflicting),
-                unobserved: count(unobserved),
-                outside: count(outside),
-                unobserved_both: count(still_unobserved),
-                base_status: base_status,
-                head_status: head_status
-              )
-            }
+            binding_diff_verdict(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status)
           }
       }
   }

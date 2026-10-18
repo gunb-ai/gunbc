@@ -1907,6 +1907,19 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         Ok(pair) => pair,
         Err(cause) => return unreached(cause),
     };
+    let wave_roots = write_root("wave_base", "binding_diff_wave_base_files")
+        .and_then(|b| write_root("wave_admit", "binding_diff_wave_head_files").map(|a| (b, a)))
+        .and_then(|(b, a)| {
+            write_root("wave_moved", "binding_diff_wave_moved_head_files").map(|m| (b, a, m))
+        })
+        .and_then(|(b, a, m)| {
+            write_root("wave_wrong_home", "binding_diff_wave_wrong_home_head_files")
+                .map(|w| (b, a, m, w))
+        });
+    let (wave_base, wave_admit, wave_moved, wave_wrong_home) = match wave_roots {
+        Ok(roots) => roots,
+        Err(cause) => return unreached(cause),
+    };
     let base_ref = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
         "binding_diff_base_ref",
@@ -1933,7 +1946,14 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
     };
     let runs = match cli_run::run_census_infer_root_sets(
         source_roots,
-        &[vec![rebind_base], vec![rebind_head]],
+        &[
+            vec![rebind_base],
+            vec![rebind_head],
+            vec![wave_base],
+            vec![wave_admit],
+            vec![wave_moved],
+            vec![wave_wrong_home],
+        ],
     ) {
         Ok(runs) => runs,
         Err(cause) => return unreached(cause),
@@ -1957,6 +1977,13 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         (
             Some("head_status".to_string()),
             crate::v1_interpreter::Value::Int(i64::from(head_run.1.unwrap_or(-1))),
+        ),
+        (Some("wave_base_stdout".to_string()), text(&runs[2].stdout)),
+        (Some("wave_admit_stdout".to_string()), text(&runs[3].stdout)),
+        (Some("wave_moved_stdout".to_string()), text(&runs[4].stdout)),
+        (
+            Some("wave_wrong_home_stdout".to_string()),
+            text(&runs[5].stdout),
         ),
     ];
     match crate::v1_interpreter::run_in_context_with_args(
