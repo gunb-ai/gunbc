@@ -32,7 +32,10 @@ import gunbc.host.verified_binary_install {
   verified_binary_install_destination_present_command,
   verified_binary_install_fetch_step,
   verified_binary_install_install_steps,
-  verified_binary_install_plan_refusal_reason,
+  VerifiedBinaryInstallRefusal,
+  Unverifiable,
+  DigestMismatch,
+  verified_binary_install_refusal_message,
   verified_binary_install_verify_line,
   verified_binary_install_verify_step,
 }
@@ -105,11 +108,18 @@ type BuildCacheEnsureKind =
   | InstallStep
   | UnitStep
 
-// WHAT A FAILED DIGEST READ REFUSED, as the effect states it. The two digests are carried, not just the
-// fact of a mismatch: "the download is corrupt" and "the archive was swapped" are different incidents, and
-// a refusal that collapses them cannot be triaged. Same posture as
-// gunbc.host.verified_binary_install.VerifiedBinaryInstallPlan.RefusedToInstall, whose verdict this is.
-type BuildCacheDigestRefusal = DigestRefused { reason: String, expected_hex: String, observed_line: String }
+// WHAT A FAILED DIGEST READ REFUSED, as the effect states it: the upstream effect's OWN refusal sum,
+// imported rather than re-declared. This site's check and gunbc.host.verified_binary_install's check are
+// the same fn (`verified_binary_install_admission`), so the refusal they produce is the same TYPE; the
+// alternative was a second near-identical sum here, which DESIGN 2 calls forked logic -- two vocabularies
+// that can drift apart on what counts as a corrupt download versus a swapped archive. The shape also
+// matters: it used to be one arm with a `reason: String` and an `expected_hex: String`, where the only
+// thing separating "nothing was measurable" from "the bytes are not the pinned ones" was which sentence had
+// been joined into that string, and a caller could only recover the difference by matching prose. Now they
+// are `Unverifiable { observed_line }` and `DigestMismatch { observed, expected }`, both digests carried as
+// DIGESTS, and `build_cache_digest_refusal_detail` derives the human-readable report from the arm. There is
+// no `Verified` arm reachable here at all: this is the refusal-only sum, so a refusal carrying an admitted
+// digest is not a value this effect can construct.
 
 // ONE PLAN LEG: what to run, how to run it, and what kind of leg it is. The `kind` field is derived when
 // the plan is BUILT, at the one site that knows what each operation is for; a caller cannot re-derive it
@@ -146,7 +156,7 @@ type BuildCacheEnsureExecuted
   | EnsureCompleted
   | EnsureFailed { op: BuildCacheEnsureOp, observed: BuildCacheHostRunObserved }
   | EnsureTransportBlocked { op: BuildCacheEnsureOp, reason: String }
-  | EnsureDigestRefused { op: BuildCacheEnsureOp, refusal: BuildCacheDigestRefusal }
+  | EnsureDigestRefused { op: BuildCacheEnsureOp, refusal: VerifiedBinaryInstallRefusal }
 
 // WHAT DECIDING ONE LEG PRODUCES, as ONE value so the caller cannot read a stop as a success. `LegPassed`
 // means this leg ran and the sequence may continue; `LegStopped` carries the terminal arm the fold reports
@@ -167,7 +177,7 @@ type BuildCacheEnsureRun =
   | RefusedBeforeInstall {
       legs: List<BuildCacheEnsureOp>,
       op: BuildCacheEnsureOp,
-      refusal: BuildCacheDigestRefusal,
+      refusal: VerifiedBinaryInstallRefusal,
     }
 
 // THE DECISION FOR ONE LEG, PURE, so the `set -e` this effect replaces is something a claim can exercise
@@ -242,25 +252,20 @@ fn build_cache_digest_line_is_admitted(digest: Digest, observed_sha256sum_line: 
     Present { value: line } =>
       match verified_binary_install_admission(expected: digest, observed_sha256sum_line: line) {
         Verified { observed: _ } => true
-        Refused { reason: _, expected: _, observed_line: _ } => false
+        Refused { refusal: _ } => false
       }
   }
 }
 
-// THE REFUSAL FOR ONE OBSERVED LINE: the cited admission's reason plus BOTH digests. Absent means the line
-// is admitted, so the caller must ask build_cache_ensure_run whether a refusal applies rather than reading
-// a missing refusal as a passed gate.
-fn build_cache_digest_refusal(digest: Digest, observed_sha256sum_line: String) -> Optional<BuildCacheDigestRefusal> {
+// THE REFUSAL FOR ONE OBSERVED LINE: exactly what the cited admission produced, with nothing flattened on
+// the way through. It returns the upstream sum unchanged -- no re-packing into a local record, because that
+// re-packing is where the two worlds used to collapse into one string. Absent means the line is ADMITTED,
+// so a caller must ask build_cache_ensure_run whether a refusal applies rather than reading a missing
+// refusal as a passed gate.
+fn build_cache_digest_refusal(digest: Digest, observed_sha256sum_line: String) -> Optional<VerifiedBinaryInstallRefusal> {
   match verified_binary_install_admission(expected: digest, observed_sha256sum_line: observed_sha256sum_line) {
     Verified { observed: _ } => none
-    Refused { reason: why, expected: e, observed_line: read } =>
-      Present {
-        value: DigestRefused {
-          reason: why,
-          expected_hex: e.hex as String,
-          observed_line: read,
-        },
-      }
+    Refused { refusal: refusal } => Present { value: refusal }
   }
 }
 
@@ -926,17 +931,31 @@ fn build_cache_failure_detail(op: BuildCacheEnsureOp, observed: BuildCacheHostRu
 // The observed line is quoted VERBATIM rather than parsed into "the digest was X" because a malformed line
 // is itself the evidence: sha256sum's own output, including the case where the file it was asked to hash
 // was not the archive it expected.
-fn build_cache_digest_refusal_detail(op: BuildCacheEnsureOp, refusal: BuildCacheDigestRefusal) -> String {
+fn build_cache_digest_refusal_detail(op: BuildCacheEnsureOp, refusal: VerifiedBinaryInstallRefusal) -> String {
   match refusal {
-    DigestRefused { reason: why, expected_hex: expected, observed_line: line } =>
+    Unverifiable { observed_line: line } =>
       join(
         [
           "the build-cache ensure refused to install: ",
-          why,
+          verified_binary_install_refusal_message(refusal: refusal),
+          "; the sha256sum line read from the download was quoted verbatim above because a malformed line ",
+          "is itself the evidence; the verification step was ",
+          shell_command_text_of_argv(argv: argv_words(command: op.argv)),
+          ", and nothing was extracted, moved into ",
+          sccache_installed_binary_path,
+          ", or made executable",
+        ],
+        "",
+      )
+    DigestMismatch { observed: observed, expected: expected } =>
+      join(
+        [
+          "the build-cache ensure refused to install: ",
+          verified_binary_install_refusal_message(refusal: refusal),
           "; the pinned release digest is ",
-          expected,
+          expected.hex as String,
           " and the download reported ",
-          line,
+          observed.hex as String,
           "; the verification step was ",
           shell_command_text_of_argv(argv: argv_words(command: op.argv)),
           ", and nothing was extracted, moved into ",

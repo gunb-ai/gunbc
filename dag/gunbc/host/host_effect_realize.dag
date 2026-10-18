@@ -4060,11 +4060,10 @@ fn build_cache_fold_ensure_ops_with_outcomes(
     supplied,
     init: state,
     f: (acc, given) =>
-      // THE CARRIER DECIDES, at every step. Delegating this to the pure step alone would still be correct,
-      // but the sequence's own guard is what makes "nothing after a stopped leg" visible in the loop that
-      // reads like the loop the transport runs.
-      // ONE RULE, SHARED: the step below is the same step the transport loop calls. Nothing here decides
-      // anything of its own, which is the entire reason these witnesses are about the real route.
+      // THE CARRIER DECIDES, at every step -- the same predicate the transport loop asks before it starts a
+      // leg, so the two routes cannot disagree about whether a leg happens. Everything below that guard is
+      // delegation: `build_cache_fold_op_executed` is the very step the loop calls. This fold holds no rule of
+      // its own, which is the entire reason the witnesses over it are about the real route and not a copy.
       if !build_cache_ensure_fold_is_progressing(fold_state: acc) {
         acc
       } else {
@@ -4079,19 +4078,7 @@ fn build_cache_fold_ensure_ops_with_outcomes(
   )
 }
 
-// ONE OP'S OUTCOME, FOLDED INTO THE CARRIER. The terminal arm comes from build_cache_op_executed, which is
-// the single place exit codes become receipt arms; the carrier's digest_line is updated HERE, against the
-// leg's DECLARED kind, so the second pass is decided by a pure fn over a recorded observation rather than
-// by an if buried in the loop. A leg of any other kind leaves the line untouched — inventing a digest line
-// from a fetch or a chmod would be the same silent default this effect removes.
-fn build_cache_fold_op_executed(
-  acc: BuildCacheEnsureFold,
-  op: BuildCacheEnsureOp,
-  ran: RunArgvTransportOutcome,
-  plan: List<BuildCacheEnsureOp>,
-  digest: Digest,
-) -> BuildCacheEnsureFold {
-  // THE DIGEST GATE, AT THE POINT THE READ ANSWERED. The line the host printed is not itself permission: it is
+// THE DIGEST GATE, AT THE POINT THE READ ANSWERED. The line the host printed is not itself permission: it is
 // handed to `build_cache_ensure_run`, the single authority in the module that owns this effect, and that
 // authority either admits the rest of the plan or refuses it carrying BOTH digests. Repeating its rule here
 // would be the DESIGN 3 defect this lane exists to remove -- a second copy could pass every witness while the
@@ -4115,6 +4102,19 @@ fn build_cache_read_leg_gate(
     }
   }
 }
+
+// ONE OP'S OUTCOME, FOLDED INTO THE CARRIER. The terminal arm comes from build_cache_op_executed, which is
+// the single place exit codes become receipt arms; the carrier's digest_line is updated HERE, against the
+// leg's DECLARED kind, so the second pass is decided by a pure fn over a recorded observation rather than
+// by an if buried in the loop. A leg of any other kind leaves the line untouched — inventing a digest line
+// from a fetch or a chmod would be the same silent default this effect removes.
+fn build_cache_fold_op_executed(
+  acc: BuildCacheEnsureFold,
+  op: BuildCacheEnsureOp,
+  ran: RunArgvTransportOutcome,
+  plan: List<BuildCacheEnsureOp>,
+  digest: Digest,
+) -> BuildCacheEnsureFold {
 
 // NO GUARD HERE, DELIBERATELY. "A leg has stopped the sequence, so this leg does not happen" is a rule about
   // the SEQUENCE, and it is asked once by each route that walks one -- by `build_cache_run_ensure_ops` before

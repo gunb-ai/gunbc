@@ -10,11 +10,22 @@ module test.claim.host.verified_binary_install_witness
 // nothing gets installed". A `List<ArgvCommand>` of length zero cannot make that claim: a caller that
 // can only count steps reads `[]` as "nothing to do", and cannot tell already-installed from
 // download-produced-nothing from verification-refused -- the silent default DESIGN 3 and 6b forbid. So
-// the plan is a sum and the RED asserts three separate facts from the refused input: the plan IS a
-// refusal, the refusal CARRIES its reason naming both digests (which is what lets the caller report
-// NotConverged with a reason instead of an empty success), and the steps that refusal yields are NONE.
+// the plan is a sum and the RED asserts four separate facts from the refused input: the plan IS a
+// refusal, the refusal carries its cause AS A TYPE (`DigestMismatch`, with both digests as Digest values,
+// so a caller can branch without parsing text and the report can be DERIVED from the arm), the derived
+// report names both digests (which is what lets the caller report NotConverged with a reason instead of an
+// empty success), and the steps that refusal yields are NONE.
 // The positive control runs the same fold with the release row's own digest. Neither arm alone means
 // anything; the pair is discriminating because only the digest differs between them.
+//
+// WHY THE TWO REFUSALS ARE SEPARATE VARIANTS AND NOT ONE WITH A REASON STRING (review 81979, DESIGN 4c/5).
+// "sha256sum yielded no digest" (a mirror outage: nothing was measured) and "the digest is not the pinned
+// one" (a suspected swap: something was measured and disagreed) used to share an arm and be told apart
+// only by which sentence had been joined into `reason: String` -- an undeclared sum carried in-band, in the
+// one module whose comment says the difference is between a failed attack and a failed build. They are
+// `Unverifiable` and `DigestMismatch` now, so `the_two_refusal_causes_are_distinguishable_as_types` can
+// assert the distinction without reading any prose, and a caller that wants the old behaviour has to
+// delete a type rather than forget to read a field.
 //
 // LIVE-TREE DISPOSITION. SubstrateInputsOnly: strings, records of strings, and the ArgvCommand values
 // the cited extdeps builders return. Nothing executes; no host, no process, no network.
@@ -35,11 +46,15 @@ import gunbc.host.verified_binary_install {
   VerifiedBinaryInstallParams,
   VerifiedBinaryInstallPlan,
   VerifiedBinaryInstallVerdict,
+  VerifiedBinaryInstallRefusal,
+  Unverifiable,
+  DigestMismatch,
   verified_binary_install_admission,
   verified_binary_install_admitted_plan,
   verified_binary_install_destination_present,
   verified_binary_install_install_steps,
-  verified_binary_install_plan_refusal_reason,
+  verified_binary_install_plan_refusal,
+  verified_binary_install_plan_refusal_message,
   verified_binary_install_shell,
   verified_binary_install_verify_line,
 }
@@ -147,21 +162,17 @@ test fn positive_control_a_matching_digest_admits_the_install() -> Bool {
   let plan = verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: line)
   let steps = verified_binary_install_install_steps(p: p)
   match verified_binary_install_admission(expected: p.digest, observed_sha256sum_line: line) {
-    Refused { reason: _, expected: _, observed_line: _ } => false
+    Refused { refusal: _ } => false
     Verified { observed: d } => d == p.digest
   }
-    && match plan {
-         RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => false
-         Planned { steps: s } => count(s) == 5
-       }
     // The plan's OWN arms say it is admitted, and the refusal accessor agrees there is no refusal: no
     // boolean or list accessor can turn a RefusedToInstall into a pass, because the only way to read a
     // plan in this claim is to name which arm you are in.
     && match plan {
-         RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => false
+         RefusedToInstall { refusal: _, dest_path: _, source_url: _ } => false
          Planned { steps: s } => count(s) == 5
        }
-    && match verified_binary_install_plan_refusal_reason(plan: plan) {
+    && match verified_binary_install_plan_refusal_message(plan: plan) {
          Present { value: _ } => false
          Absent => true
        }
@@ -178,11 +189,11 @@ test fn red_a_digest_mismatch_refuses_and_nothing_is_installed() -> Bool {
   // (1) a refusal, not a shorter plan and not an empty success
   match plan {
     Planned { steps: _ } => false
-    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => true
+    RefusedToInstall { refusal: _, dest_path: _, source_url: _ } => true
   }
     // (2) THE VERDICT TRAVELS TO THE CALLER: the reason plus both digests, which is what lets a caller
     // report NotConverged { reason } instead of reading an empty list as a no-op.
-    && match verified_binary_install_plan_refusal_reason(plan: plan) {
+    && match verified_binary_install_plan_refusal_message(plan: plan) {
          Absent => false
          Present { value: why } =>
            string_contains(s: why, pattern: sccache_release_0_15_0.digest_x86_64.hex as String)
@@ -193,19 +204,25 @@ test fn red_a_digest_mismatch_refuses_and_nothing_is_installed() -> Bool {
     // the claim names the arm and the absence of any install step inside it.
     && match plan {
          Planned { steps: _ } => false
-         RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } =>
+         RefusedToInstall { refusal: _, dest_path: _, source_url: _ } =>
            count(verified_binary_install_install_steps(p: p)) == 5
        }
     // No install leg is ACTUATED by the refusal: the plan the consumer holds carries no steps to actuate.
-    && match verified_binary_install_plan_refusal_reason(plan: plan) {
+    && match verified_binary_install_plan_refusal_message(plan: plan) {
          Absent => false
          Present { value: _ } => true
        }
-    // (4) the refusal names the destination it declined to write and the url it declined to trust.
+    // (4) THE CAUSE IS THE DIGEST, AS A DIGEST -- not a sentence about one. This claim binds the refusal's
+    // own arms: a mismatch must arrive as `DigestMismatch` carrying BOTH digests (the aarch64 content that
+    // really came back, against the x86_64 value that was pinned), and arriving as `Unverifiable` -- which
+    // is what the pre-split code could say about a mismatch by writing the wrong caption -- fails here. The
+    // destination and url are the ones it declined to touch.
     && match plan {
          Planned { steps: _ } => false
-         RefusedToInstall { reason: _, expected: e, observed_line: seen, dest_path: d, source_url: u } =>
-           e == p.digest && seen == line && d == p.dest_path && u == p.url
+         RefusedToInstall { refusal: Unverifiable { observed_line: _ }, dest_path: _, source_url: _ } => false
+         RefusedToInstall { refusal: DigestMismatch { observed: o, expected: e }, dest_path: d, source_url: u } =>
+           e == p.digest && o == sccache_release_0_15_0.digest_aarch64
+           && d == p.dest_path && u == p.url
        }
 }
 
@@ -217,35 +234,88 @@ test fn the_refusal_is_caused_by_the_digest_alone() -> Bool {
   let good = verified_binary_install_admitted_plan(p: sccache_params(digest: sccache_release_0_15_0.digest_aarch64), observed_sha256sum_line: line)
   let bad = verified_binary_install_admitted_plan(p: sccache_params(digest: sccache_release_0_15_0.digest_x86_64), observed_sha256sum_line: line)
   match good {
-    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => false
+    RefusedToInstall { refusal: _, dest_path: _, source_url: _ } => false
     Planned { steps: s } => count(s) == 5
   }
     && match bad {
          Planned { steps: _ } => false
-         RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => true
+         RefusedToInstall { refusal: _, dest_path: _, source_url: _ } => true
        }
 }
 
-// A LINE THAT YIELDS NO DIGEST REFUSES TOO, AND SAYS THE LINE WAS UNREADABLE. This is the arm a mirror
-// outage actually hits (a 404 body is what gets fed to the check), and its reason must differ from the
-// mismatch reason: an outage reading as an attack, or an attack reading as an outage, is how both go
-// unnoticed.
+// A LINE THAT YIELDS NO DIGEST REFUSES TOO, AND SAYS SO AS ITS OWN WORLD. This is the arm a mirror outage
+// actually hits (a 404 body is what gets fed to the check). It used to share one arm with the mismatch case
+// and differ only by which sentence had been joined into `reason: String`, so distinguishing an outage from
+// a swap meant matching prose -- and an outage reading as an attack, or an attack reading as an outage, is
+// how both go unnoticed. Now the distinction is in the TYPE, which is what this claim asserts: the refusal
+// IS `Unverifiable`, it carries the unreadable line verbatim (the malformed line is itself the evidence),
+// and it is NOT a `DigestMismatch` -- there is no observed digest to name, because nothing was measurable.
+// The derived message quotes the line. It deliberately does NOT quote the pinned digest: this incident is
+// "no bytes were measured", and printing the expected digest would imply a comparison was ever made.
 test fn an_unreadable_line_refuses_and_says_the_line_was_unreadable() -> Bool {
   let p = sccache_params(digest: sccache_release_0_15_0.digest_aarch64)
   let plan = verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: "<html>404 Not Found</html>")
   match plan {
     Planned { steps: _ } => false
-    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => true
+    RefusedToInstall { refusal: _, dest_path: _, source_url: _ } => true
   }
-    && match verified_binary_install_plan_refusal_reason(plan: plan) {
+    // THE ARM, NOT A STRING ABOUT THE ARM.
+    && match verified_binary_install_plan_refusal(plan: plan) {
          Absent => false
-         Present { value: why } =>
-           string_contains(s: why, pattern: "<html>404 Not Found</html>")
-           && string_contains(s: why, pattern: sccache_release_0_15_0.digest_aarch64.hex as String)
+         Present { value: Unverifiable { observed_line: seen } } => seen == "<html>404 Not Found</html>"
+         Present { value: DigestMismatch { observed: _, expected: _ } } => false
        }
-    && match verified_binary_install_plan_refusal_reason(plan: plan) {
+    // The derived report quotes the unreadable line verbatim.
+    && match verified_binary_install_plan_refusal_message(plan: plan) {
+         Absent => false
+         Present { value: why } => string_contains(s: why, pattern: "<html>404 Not Found</html>")
+       }
+    && match verified_binary_install_plan_refusal_message(plan: plan) {
          Absent => false
          Present { value: _ } => true
+       }
+}
+
+// THE TWO REFUSALS ARE DIFFERENT TYPES, NOT TWO SENTENCES. THE DISCRIMINATOR FOR THE SPLIT. Both plans are
+// built from the SAME params and the SAME generic entry point; the only difference is the line sha256sum
+// produced. Each is then read back through the TYPE-level accessor and must land in its own arm and be
+// refusable as the other: an outage is not a swap and a swap is not an outage, and no `string_contains` on a
+// reason is consulted anywhere here. Deleting the split -- folding both back into one `Refused` arm with a
+// `reason: String` -- makes this claim uncompilable rather than quietly true, which is the point: the
+// distinction stops being something a caller can lose by forgetting to read the text.
+test fn the_two_refusal_causes_are_distinguishable_as_types() -> Bool {
+  let p = sccache_params(digest: sccache_release_0_15_0.digest_aarch64)
+  let swap = verified_binary_install_admitted_plan(
+    p: p,
+    observed_sha256sum_line: observed_line_for(hex: sccache_release_0_15_0.digest_x86_64.hex as String, path: p.download_path),
+  )
+  let outage = verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: "<html>404 Not Found</html>")
+  // The swap: a digest WAS measured, and it is not the pinned one. Both digests ride as DIGESTS.
+  match verified_binary_install_plan_refusal(plan: swap) {
+    Present { value: DigestMismatch { observed: o, expected: e } } =>
+      o == sccache_release_0_15_0.digest_x86_64 && e == sccache_release_0_15_0.digest_aarch64
+    Present { value: Unverifiable { observed_line: _ } } => false
+    Absent => false
+  }
+    // The outage: nothing was measured, so there is no observed digest to carry.
+    && match verified_binary_install_plan_refusal(plan: outage) {
+         Present { value: Unverifiable { observed_line: seen } } =>
+           seen == "<html>404 Not Found</html>"
+         Present { value: DigestMismatch { observed: _, expected: _ } } => false
+         Absent => false
+       }
+    // And the two derived reports do not agree with each other's incident: each names only its own world.
+    && match verified_binary_install_plan_refusal_message(plan: swap) {
+         Present { value: swap_msg } =>
+           string_contains(s: swap_msg, pattern: "possible swapped artefact")
+           && !string_contains(s: swap_msg, pattern: "produced no digest")
+         Absent => false
+       }
+    && match verified_binary_install_plan_refusal_message(plan: outage) {
+         Present { value: outage_msg } =>
+           string_contains(s: outage_msg, pattern: "produced no digest")
+           && !string_contains(s: outage_msg, pattern: "possible swapped artefact")
+         Absent => false
        }
 }
 

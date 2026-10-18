@@ -13,20 +13,24 @@ import gunbc.build_cache.build_cache_provision_verdict {
   DaemonUnresponsive,
 }
 // THE IMPORTS BELOW ARE NOT COSMETIC, AND TWO GAPS IN THE COMPILER ARE WHY THEY ARE SPELLED OUT.
-// `EnsureDigestRefused` and `DigestRefused` were used by claims in this module from the day they were
-// written without ever appearing here, and the strict closure compile of this exact file reported
-// blocking=0 unresolved=0 (same gap as `VerifiedBinaryInstallPlan` in gunbc.host.sccache_verified_install,
-// reported by review 81885 on this PR). They are named now because a claim that resolves only by accident
-// is a claim that can silently stop resolving. Anything new in this module is imported explicitly for the
-// same reason; do not read the list as noise.
+// `EnsureDigestRefused` and the old single-arm `DigestRefused` were used by claims in this module from the
+// day they were written without ever appearing here, and the strict closure compile of this exact file
+// reported blocking=0 unresolved=0 (same gap as `VerifiedBinaryInstallPlan` in
+// gunbc.host.sccache_verified_install, reported by review 81885 on this PR). They are named now because a
+// claim that resolves only by accident is a claim that can silently stop resolving. Anything new in this
+// module is imported explicitly for the same reason; do not read the list as noise.
+//
+// `BuildCacheDigestRefusal` / `DigestRefused` are GONE from the import list because the CARRIER IS GONE:
+// review 81979 found the two digest-refusal causes folded into one arm separated only by a `reason: String`
+// prefix, so gunbc.host.build_cache_daemon_ensure now carries the upstream effect's own refusal sum
+// (`VerifiedBinaryInstallRefusal`, arms `Unverifiable` / `DigestMismatch`) instead of re-declaring a
+// flattened copy. Claims here match those arms directly.
 import gunbc.host.build_cache_daemon_ensure {
-  BuildCacheDigestRefusal,
   BuildCacheEnsureFold,
   // USED BY stdout_for_leg BELOW. Said out loud because two other names in this module were used for weeks
   // without being imported while the strict compile said `unresolved=0` -- see the note above the import
   // block. A parameter type is a use.
   BuildCacheEnsureKind,
-  DigestRefused,
   EnsureDigestRefused,
   BuildCacheEnsureExecuted,
   BuildCacheEnsureOp,
@@ -82,7 +86,15 @@ import gunbc.host.host_effect_realize {
   build_cache_fold_ensure_ops_with_outcomes,
   build_cache_run_ensure_ops,
 }
-import gunbc.host.verified_binary_install { AlreadyInstalled, InstallNeeded, VerifiedBinaryInstallPresence }
+import gunbc.host.verified_binary_install {
+  AlreadyInstalled,
+  DigestMismatch,
+  InstallNeeded,
+  Unverifiable,
+  VerifiedBinaryInstallPresence,
+  VerifiedBinaryInstallRefusal,
+  verified_binary_install_refusal_message,
+}
 import gunbc.shell_command_text { shell_command_text_of_argv }
 import extdeps.exec.command { argv_words }
 import std.algebra { string_contains }
@@ -785,23 +797,28 @@ fn build_cache_contract_plan_legs(install: Optional<VerifiedBinaryInstallPresenc
 }
 
 // WHETHER THE REFUSAL CARRIES BOTH DIGESTS AS TEXT AN OPERATOR CAN ACT ON. Matching on the rendered
-// values rather than on an arm name, because what has to survive is the information, not the spelling.
-fn build_cache_digest_refusal_names(refusal: BuildCacheDigestRefusal, expected: String, observed: String) -> Bool {
+// values rather than on an arm name, because what has to survive is the information, not the spelling --
+// and the rendering is DERIVED from the arm (`verified_binary_install_refusal_message`), never stored
+// beside it. The `Unverifiable` arm deliberately returns false: it has no observed digest to name, so a
+// claim that asks "does this refusal carry the expected AND the observed digest?" must not be satisfied by
+// the arm where nothing was measured. That is the review-81979 split doing work at a call site rather than
+// sitting in a type declaration nobody consults.
+fn build_cache_digest_refusal_names(refusal: VerifiedBinaryInstallRefusal, expected: String, observed: String) -> Bool {
   match refusal {
-    DigestRefused { reason: _, expected_hex: e, observed_line: line } =>
-      string_contains(s: e, pattern: expected)
-        && string_contains(s: line, pattern: observed)
+    Unverifiable { observed_line: _ } => false
+    DigestMismatch { observed: o, expected: e } =>
+      string_contains(s: e.hex as String, pattern: expected)
+        && string_contains(s: o.hex as String, pattern: observed)
         && string_contains(s: reason_of(refusal: refusal), pattern: "digest")
   }
 }
 
-// THE REFUSAL'S OWN WORDS, reached through the type rather than by matching on an arm name at every call
-// site. A grammar with no tuple patterns needs this one accessor to read a coproduct field from outside a
-// match; the match above keeps the exhaustiveness the type is supposed to guarantee.
-fn reason_of(refusal: BuildCacheDigestRefusal) -> String {
-  match refusal {
-    DigestRefused { reason: why, expected_hex: _, observed_line: _ } => why
-  }
+// THE REFUSAL'S OWN WORDS, DERIVED FROM THE ARM. A grammar with no tuple patterns needs this one accessor
+// to read a coproduct value from outside a match; the matches at the call sites keep the exhaustiveness the
+// type is supposed to guarantee, and no caller can obtain these words without first naming which world it
+// is reporting.
+fn reason_of(refusal: VerifiedBinaryInstallRefusal) -> String {
+  verified_binary_install_refusal_message(refusal: refusal)
 }
 
 test fn a_digest_that_was_never_read_never_admits_an_install_leg() -> Bool {
@@ -916,11 +933,16 @@ test fn a_supplied_digest_mismatch_stops_the_fold_before_any_install_leg() -> Bo
       // THE GATE IS THE READ ITSELF, and the refusal carries BOTH digests: what was pinned and what the host
       // said. A refusal that drops either one cannot be acted on by whoever reads the report.
       gate.kind == ReadDigest
+        // THE CAUSE IS A TYPE HERE, NOT A CAPTION: this line is a real digest that disagrees with the pin,
+        // so it must arrive as `DigestMismatch` carrying both digests as DIGESTS. Arriving as
+        // `Unverifiable` -- which the pre-split code could say about anything by picking the wrong string --
+        // fails this claim.
         && match why {
-             DigestRefused { reason: why_text, expected_hex: expected, observed_line: read } =>
-               string_contains(s: why_text, pattern: "digest")
-                 && expected == sccache_release_0_15_0.digest_x86_64.hex as String
-                 && string_contains(s: read, pattern: "0000000000000000000000000000000000000000000000000000000000000000")
+             Unverifiable { observed_line: _ } => false
+             DigestMismatch { observed: observed, expected: expected } =>
+               string_contains(s: reason_of(refusal: why), pattern: "digest")
+                 && expected.hex as String == sccache_release_0_15_0.digest_x86_64.hex as String
+                 && string_contains(s: observed.hex as String, pattern: "0000000000000000000000000000000000000000000000000000000000000000")
            }
     // EVERY OTHER ARM IS A FAIL-OPEN HERE. EnsureCompleted is the mutation's signature; a transport arm would
     // mean the fold reached for something outside its inputs, which it must never do.
@@ -1114,10 +1136,11 @@ test fn a_fold_that_never_read_a_digest_is_never_permitted_the_whole_plan() -> B
              && list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: UnitStep)) == 0
              && gate.kind == ReadDigest
              && match why {
-                  DigestRefused { reason: why_text, expected_hex: expected, observed_line: read } =>
-                    string_contains(s: why_text, pattern: "digest")
-                      && expected == sccache_release_0_15_0.digest_x86_64.hex as String
-                      && string_contains(s: read, pattern: "0000000000000000000000000000000000000000000000000000000000000000")
+                  Unverifiable { observed_line: _ } => false
+                  DigestMismatch { observed: observed, expected: expected } =>
+                    string_contains(s: reason_of(refusal: why), pattern: "digest")
+                      && expected.hex as String == sccache_release_0_15_0.digest_x86_64.hex as String
+                      && string_contains(s: observed.hex as String, pattern: "0000000000000000000000000000000000000000000000000000000000000000")
                 }
          // THE DISCRIMINATOR: an admitted mismatch is a silent default, so the positive arm here must not
          // be reachable on a line that disagrees with the pin.

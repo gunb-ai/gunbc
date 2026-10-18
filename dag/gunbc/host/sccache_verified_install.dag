@@ -35,8 +35,10 @@ import gunbc.host.verified_binary_install {
 //
 // WHAT IT DOES NOT DO: decide the refusal. A digest mismatch is refused by
 // `verified_binary_install_admitted_plan` in the generic module, which returns
-// `RefusedToInstall { reason, expected, observed_line, dest_path, source_url }` — a refusal the
-// consumer must report, never an empty list that could be read as "nothing to do". This module is
+// `RefusedToInstall { refusal, dest_path, source_url }` where `refusal` is the upstream sum's
+// `DigestMismatch { observed, expected }` -- both digests as DIGESTS, not as sentences, and not an
+// `Unverifiable` (bytes were measured here; they just disagreed). A refusal the consumer must report,
+// never an empty list that could be read as "nothing to do". This module is
 // where the digest COMES FROM, which is why a witness that changes the digest here is the RED that
 // says nothing gets installed.
 
@@ -116,7 +118,8 @@ fn sccache_verified_install_script(
 // THE RED'S ENTRY POINT, AND WHY IT IS HERE RATHER THAN IN THE GENERIC MODULE. The claim "a digest
 // mismatch refuses and nothing gets installed" is about sccache's digest, so the test supplies
 // sccache's boundary values with the digest swapped and reads back the refusal: the plan is refused,
-// its reason names both digests, and the plan itself is in its RefusedToInstall ARM rather than in a
+// its refusal is the `DigestMismatch` arm carrying both digests, and the plan itself is in its
+// RefusedToInstall ARM rather than in a
 // Planned arm with an empty list — there is deliberately no accessor that renders a refusal as "no
 // steps", because a refusal that looks like nothing-to-do is the silent default DESIGN §5 forbids.
 // Same shape for the positive control: with the release row's own digest the plan is Planned with the
