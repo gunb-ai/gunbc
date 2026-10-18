@@ -104,7 +104,6 @@ import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_elevated }
 import gunbc.live_deploy.operations {
   install_directory_command,
   rm_force_command,
-  rm_empty_directory_command,
   rm_force_recursive_command,
   systemctl_disable_now_command,
   systemctl_user_daemon_reload_command,

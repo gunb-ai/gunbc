@@ -26,7 +26,7 @@ import gunbc.live_deploy.spec {
   deployment_tree_remote_unit_name, tree_sync_unit_path, deployment_slice_unit_path,
 }
 
-// THE RETRACT FOLD'S LEGS AS DATA, replacing the bash that live_deploy_retract_script_for rendered. A
+// THE RETRACT FOLD'S LEGS AS DATA, replacing the retract bash script. A
 // leg is one typed operation on the host; the runner (gunbc.host.host_effect_realize
 // realize_live_deploy_retract_on_host) turns each into a typed argv and folds the first failure into a
 // NotConverged naming that leg's step. There is no PipelineStep interpreter here: the legs are a closed

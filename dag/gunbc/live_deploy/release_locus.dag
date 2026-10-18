@@ -32,7 +32,7 @@ import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 // compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists
 // so a retract cannot name a revision even accidentally — the arm that would render ExecStart under
 // it REFUSES with a poison marker, the same unreachable-arm discipline
-// emit_deploy_teardown_dependency_refusal uses.\n\nA THIRD ARM WAS TRIED AND DELETED, AND THE
+// the deleted retract emitter used.\n\nA THIRD ARM WAS TRIED AND DELETED, AND THE
 // REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the
 // unit so a committed script could defer its revision to invocation. It could never have worked:
 // the unit body reaches the host as a single-quoted printf argument (it was a quoted-delimiter

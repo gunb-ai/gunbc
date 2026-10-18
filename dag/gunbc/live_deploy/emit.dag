@@ -323,7 +323,6 @@ import gunbc.live_deploy.operations {
   pwd_file_install_privileged_command,
   install_directory_command,
   rm_force_command,
-  rm_empty_directory_command,
   rm_force_recursive_command,
   install_directory_owned_command,
   install_file_owned_command,
@@ -3758,7 +3757,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
 // nothing, retract desires nothing), so neither can produce a Modified hunk at all — a replace here
 // would mean a pole stopped being degenerate, which is a real observed-provider arriving and needs
 // its staged-replacement intermediates declared (gunbc.change_realization) before it may emit
-// anything. That arm REFUSES loudly (emit_deploy_teardown_dependency_refusal — a typed/located
+// anything. That arm REFUSES loudly (a typed/located
 // poison step), it does NOT fabricate a no-op (DESIGN §5: an unreachable arm refuses, never a
 // silent pass).
 data live_deploy_replace_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ EffectReplace reached the deploy emit dispatch. Both deploy poles are degenerate — apply observes the empty set, retract desires the empty set — so no Modified hunk can arise and no replace can be emitted. Reaching this arm means a NON-degenerate observed provider landed without its realization being modeled: a replace on a host resource is an in-place update only if the address survived, and a STAGED replacement with declared intermediates otherwise (gunbc.change_realization). Emitting an unconditional overwrite here would be the srv4 failure exactly — a transition that believed it had nothing to retire. This marker is not valid deploy shell, so the golden drift gate reds. member="
@@ -4685,15 +4684,6 @@ data live_deploy_emit_shell_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data live_deploy_retract_emit_shell_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_retract_script_for",
-    field: WholeDeclaration
-  }
-}
-
 data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
@@ -4703,11 +4693,11 @@ data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Dis
   }
 }
 
-// The apply/retract scripts are now ONE orchestration-intent Pipeline each, built from the two
+// The apply script is ONE orchestration-intent Pipeline (the retract fold is typed legs, gunbc.live_deploy.retract_legs), built from the two
 // degenerate POLES of the grain-agnostic gunbc.membership_reconcile (apply = reconcile
 // desired=all-members/observed=none => all Upsert; retract = reconcile
-// desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects /
-// retract_intent_from_effects fold the resulting MemberEffects into the Pipeline via the per-kind
+// desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects
+// folds the resulting MemberEffects into the Pipeline via the per-kind
 // emit_deploy_member_effect handler (share the diff, dispatch the apply), framing
 // (preamble/receipt) wrapping OUTSIDE the reconcile. A refusal (a non-owned/unknown member) refuses
 // the WHOLE fold before emit (EffectsOrRefusal sum — un-emittable by type; never reached by the
