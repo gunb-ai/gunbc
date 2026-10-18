@@ -106,7 +106,12 @@ type FlexTemplateHashRow {
   hash: NonEmptyStr
 }
 
-data flex_vast_template_hashes: List<FlexTemplateHashRow> = []
+data flex_vast_template_hashes: List<FlexTemplateHashRow> = [
+  FlexTemplateHashRow {
+    recipe: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
+    hash: "c6793d31e3204da102145c4c331e42ae" as NonEmptyStr,
+  },
+]
 
 fn flex_vast_template_hash(rows: List<FlexTemplateHashRow>, recipe: DeclarationRef) -> NonEmptyStr? {
   match first_where(rows, row => (row.recipe.module_path == recipe.module_path) && (row.recipe.decl_name == recipe.decl_name)) {
