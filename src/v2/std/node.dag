@@ -31,8 +31,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type Symbol
 
-// THE KERNEL HOST-TEXT TYPE, declared beside Symbol (the v2 kernel-types home, neat-boar-16's ruling
-// on #12549's successor). It is NOT v2.std.text String, which is the structural FreeMonoid<Char>:
+// THE MIGRATION-TIME PROJECTION OF HOST TEXT. Host text's one home is std.host_text HostText (operator
+// ruling H2, 2026-10-17): this declaration is no longer its semantic home, and v2.extdeps.languages.dag
+// lists both as the one String kernel value type until the String-to-HostText wave respells every
+// authored String and deletes this row. It was declared beside Symbol (the v2 kernel-types home,
+// neat-boar-16's ruling on #12549's successor). It is NOT v2.std.text String, which is the structural FreeMonoid<Char>:
 // the two are distinct representations, and a host-text value reaches the structural carrier only
 // through the declared unfold (gunbc.structural_realization_bindings literal_homomorphism_rows,
 // UnicodeScalarSequenceUnfold) or refuses. v2.extdeps.languages.dag binds the spelling `String` to
