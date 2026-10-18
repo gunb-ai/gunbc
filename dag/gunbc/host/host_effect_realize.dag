@@ -4093,12 +4093,19 @@ fn build_cache_read_leg_gate(
   plan: List<BuildCacheEnsureOp>,
   digest: Digest,
 ) -> BuildCacheEnsureFold {
-  let read_line = Present { value: o.stdout }
-  match build_cache_ensure_run(ops: plan, digest: digest, observed_digest_line: read_line) {
-    Runs { legs: _ } => BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: read_line }
+  // THE `Present` IS BUILT AT EACH SITE RATHER THAN BOUND ONCE ABOVE THE MATCH. That is not repetition for
+  // its own sake: a `let` here has no declared type to lean on, and the compiler infers the BINDING as
+  // `String` (the payload) rather than as the `Optional<String>` the parameter and the two carrier fields
+  // both want -- which surfaces as `type mismatch: expected 'Coproduct(Optional)', got 'Primitive(String)'`
+  // at the field, an error pointing away from the binding. Writing the constructor where the expected type
+  // IS known (the field position) is how the rest of this file does it, e.g. green `digest_line:
+  // Present { value: o.stdout }`, and there is no annotated-`let` form in this module to reach for.
+  match build_cache_ensure_run(ops: plan, digest: digest, observed_digest_line: Present { value: o.stdout }) {
+    Runs { legs: _ } =>
+      BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: Present { value: o.stdout } }
     RefusedBeforeInstall { legs: _, op: gate, refusal: why } => BuildCacheEnsureFold {
       executed: EnsureDigestRefused { op: gate, refusal: why },
-      digest_line: read_line,
+      digest_line: Present { value: o.stdout },
     }
   }
 }

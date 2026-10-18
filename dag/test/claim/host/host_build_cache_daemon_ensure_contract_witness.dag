@@ -164,6 +164,19 @@ data zeroed_stats_table: String = "Compile requests                      0\nComp
 // a second copy of the value.
 data contract_fatal_fragment: String = sccache_fatal_error_log_fragment
 
+// THE TRANSPORT THE DRY ROUTES RUN AGAINST. `EmitArtifactThenThinRun` is the ONE arm that refuses without
+// touching a host: `host_effect_apply` turns any typed-argv use of it into EnsureTransportBlocked, reserved
+// as it is for the ConvergePlan lane (host-effect Phase D). That is what lets the transport LOOP be exercised
+// from a claim at all -- every other arm would either need a mock or would mutate this machine, and the
+// real_execution claim stays UNOBSERVED for exactly that reason. Both halves of it are filled because the
+// arm carries them; neither is read, since the refusal happens on the arm's IDENTITY. BootstrapFragment's own
+// wall says a hand-spelled script is not an admitted artifact, so the value here is a placeholder that must
+// never be reached -- which the claim proves by asserting the refusal it produces.
+data ensure_refusal_transport: HostEffectTransport = EmitArtifactThenThinRun {
+  bootstrap: BootstrapFragment { script: "true" },
+  invocation: ThinInvocation { argv: ["true"] },
+}
+
 test fn binary_present_with_daemon_absent_runs_the_ensure_legs_and_converges() -> Bool {
   let observe = build_cache_contract_observe()
   // (1) CONTROL, true today: the two captures are read as they should be -- binary present, and an rc-0 stats
@@ -1067,7 +1080,7 @@ test fn the_fold_runs_no_leg_after_a_leg_has_stopped_the_sequence() -> Bool {
            // The leg that stopped the sequence is the fetch, and only the fetch — and the fold handed back
            // the transport's own text rather than inventing one.
            blocked.kind == FetchArchive
-             && string_contains(s: shell_command_text_of_argv(command: blocked.argv), pattern: "curl")
+             && string_contains(s: shell_command_text_of_argv(argv: argv_words(command: blocked.argv)), pattern: "curl")
              && string_contains(s: why, pattern: "EmitArtifactThenThinRun")
              // AND THE READ NEVER GOT A LINE, so no digest could have been admitted.
              && match build_cache_ensure_fold_digest_line(fold_state: stopped) {
