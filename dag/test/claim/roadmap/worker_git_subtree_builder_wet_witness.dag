@@ -1,80 +1,107 @@
 module test.claim.roadmap.worker_git_subtree_builder_wet_witness
 
+// WORKER-ROOT-EQUIVALENT-3 wet witnesses for the argv builders the lab worker's commit grant is made
+// of: the root-owned shared-repository posture (extdeps/git) and the bounded subtree re-group
+// (extdeps/tools/findutils). DESIGN 5 -- done means EXECUTED: an argv-shape claim stays green over a
+// command that cannot run. At 2dc2b8de3f98 all five git builders rendered
+// `git env GIT_CONFIG_GLOBAL=... git config ...` (argv_words is [program] ++ arguments, and their
+// arguments began with the word env), every one exited 1 with "git: 'env' is not a git command", and
+// the migration's chmod carried an unclosed `(` so find refused the expression and the grant never
+// landed. Not one of those was visible to any shape claim. These witnesses RUN each builder against a
+// throwaway tree and read back the EFFECT -- the config key git reports, the mode find reports.
+//
+// THE ROUTE IS THE PRODUCTION ROUTE: gunbc.command_runner run_shell_command_capture over
+// CommandTransport LocalExec, the same call the provision executor and the actuator make when they
+// spawn one of these ArgvCommands, and the same route the runner-revision wet witnesses take. The
+// witness never re-shells an argv: the ArgvCommand goes in as an ArgvCommand.
+//
+// WET: it creates a throwaway tree, writes into it, and runs real processes, so the hermetic envelope
+// refuses it; it is excluded from discovery and enrolled as declared wet entries
+// (gunbc.ci.ci_layer_roots, v2.workflow.local_repo_wet_terminal local_repo_wet_schedule). Local:
+//   claim_batch --wet --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag --functions <csv>
+// It needs a real `git`, GNU `find`, `stat`, `chmod`, `install`, `mkdir`, `rm` on the host and nothing
+// else: no srv1, no GPU card, no network, no systemd unit, no sudo -- and every directory it touches is
+// one it created under a mktemp root.
+
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
-import extdeps.shell
+import std.optional { Optional, Present, Absent }
+import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
+import gunbc.command_runner { run_shell_command_capture }
 import extdeps.git {
   git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
   git_maintenance_auto_disabled_config_command, git_repack_quiet_command, git_pack_refs_all_command,
+  git_local_config_get_command, git_init_quiet_command, git_add_all_force_command,
+  git_commit_snapshot_command, git_branch_command, git_show_ref_verify_quiet_command,
 }
 import extdeps.tools.findutils {
   find_subtree_regroup_command, find_subtree_group_writable_command, find_subtree_mode_readback_command,
 }
-import extdeps.exec.command { ArgvCommand, argv_words }
-
-// WET: this file creates a throwaway tree (shell.Mktemp.Dir) and runs REAL PROCESSES
-// (shell.Exec.RunArgv), so hermetic discovery refuses it by construction; it is excluded from discovery
-// and enrolled as declared wet entries (gunbc.ci.ci_layer_roots). Local recipe:
-//   claim_batch --wet --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag --functions <csv>
-// It needs a real `git` and GNU `find` on the host and nothing else: no srv1, no GPU card, no network,
-// no systemd unit, and every directory it makes is removed before it returns.
-
-// RUNNING ONE BUILDER'S ARGV, as the shipper would. The ArgvCommand is the SAME value the roadmap hands
-// to systemd and to the provision executor; argv_words is the very word list those routes spawn, and
-// RunArgv takes the program apart from its arguments exactly as execve does. NOTHING IS RE-SHELLED: an
-// argv assembled by a shell would let a word-splitting defect in the builder hide behind the shell's own
-// splitting, which is precisely the class this file exists to catch.
-// THE SPLIT INTO PROGRAM AND ARGUMENTS, in the shape RunArgv wants: word zero is the program, the rest
-// are its arguments, and nothing between them is interpreted. The head is read through the Option the
-// list already gives (extdeps/procps/ps, extdeps/container/oci/digest), never by an index.
-fn wet_run_argv(program: NonEmptyStr, arguments: List<String>) -> Int {
-  shell.Exec.RunArgv(program: program, arguments: arguments).exit_code
+import extdeps.tools.gnu_coreutils {
+  mktemp_directory_command, mkdir_parents_command, install_empty_file_command, rm_recursive_force_command,
 }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
+import extdeps.tools.id { id_gid_command }
+import extdeps.posix.test_utility { test_regular_file_command }
 
-fn wet_run_argv_out(program: NonEmptyStr, arguments: List<String>) -> String {
-  trim(s: shell.Exec.RunArgv(program: program, arguments: arguments).stdout)
-}
-
-fn wet_run(command: ArgvCommand) -> Int {
-  let words = argv_words(command: command)
-  match first(words) {
-    Absent => 1
-    Present { value: head } => wet_run_argv(program: head as NonEmptyStr, arguments: words |> skip(n: 1))
+// RUNNING ONE BUILDER, exactly as the shipper would. This is gunbc.command_runner's production spawn --
+// the call the provision executor makes with the very ArgvCommand values the roadmap hands it -- so what
+// is tested is what ships, and the witness adds no shell, no quoting and no word list of its own
+// between the model and execve. A Refused outcome is FALSE here, never an error: an argv the host cannot
+// exec is the exact defect this file was written to catch.
+fn wet_ran(command: ArgvCommand) -> Bool {
+  match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
   }
 }
 
-fn wet_run_capturing(command: ArgvCommand) -> String {
-  let words = argv_words(command: command)
-  match first(words) {
-    Absent => ""
-    Present { value: head } => wet_run_argv_out(program: head as NonEmptyStr, arguments: words |> skip(n: 1))
+fn wet_out(command: ArgvCommand) -> String {
+  match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessOutputPresent { text: t } => trim(s: t)
+    ProcessOutputAbsent => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
   }
 }
 
-// A RAW WORD LIST, for the claim's OWN instruments only -- creating the tree, seeding a commit, and
-// reading a mode WITHOUT the prunes so the claim can see a path the builders refuse to walk. Never for
-// the builders under test, which are run only through wet_run above.
-fn wet_raw(program: NonEmptyStr, arguments: List<String>) -> Int {
-  wet_run_argv(program: program, arguments: arguments)
+fn wet_all(steps: List<ArgvCommand>) -> Bool {
+  all(xs: steps, predicate: c => wet_ran(command: c))
 }
 
-fn wet_raw_out(program: NonEmptyStr, arguments: List<String>) -> String {
-  wet_run_argv_out(program: program, arguments: arguments)
+// THE INSTRUMENTS, all of them minted by an admitted tool builder and run through the same production
+// route: mkdir -p, install(1) for empty files at a stated mode, chmod, rm -rf, id -g, stat -c %a, test
+// -f, git init/add/commit/branch/show-ref. THE WITNESS MINTS NOTHING ITSELF -- no argv_command call
+// appears in this file at all, which is why no instrument can quietly disagree with the shape its tool
+// module declares.
+
+fn wet_mktree(paths: List<String>) -> Bool {
+  wet_all(steps: map(xs: paths, f: p => mkdir_parents_command(path: p)))
+}
+
+fn wet_touch_at(mode: NonEmptyStr, paths: List<String>, gid: Int) -> Bool {
+  wet_all(steps: map(xs: paths, f: p => install_empty_file_command(path: p, octal_mode: mode, uid: wet_self_uid(), gid: gid)))
 }
 
 // THE TREE THE MIGRATION IS APPLIED TO, in the state bright-moth-475 read on srv1 on 2026-10-17: the lab
 // instance repo's objects, refs and logs -- AND THEIR EXISTING SUBDIRECTORIES -- owned by a human account
 // at 0755 on directories / 0644 on files, which is what #14270 left behind (its owned-directory provider
-// asserts the top level and does not recurse). The nested names are not decoration:
-//   refs/heads/branches/x  a legal ref whose LAST SEGMENT is one of the confined names, and the shape a
-//                          bare prune pattern would silently cut out of the walk
+// asserts the top level and does not recurse). THE NESTED NAMES ARE NOT DECORATION:
+//   refs/heads/branches/x   a legal ref whose LAST SEGMENT is one of the confined names, and the shape a
+//                           bare prune pattern would silently cut out of the walk
 //   objects/pack, objects/info   the two subtrees #13942 keeps for root, which must not be re-grouped
 data wet_lab_tree_directories: List<String> = [
   "objects/f9", "objects/pack", "objects/info", "refs/heads/branches", "logs/refs/heads", "hooks", "info",
 ]
 
-data wet_lab_tree_files: List<String> = [
+data wet_lab_tree_directories_0755: List<String> = [
+  "objects", "objects/f9", "objects/pack", "objects/info", "refs", "refs/heads", "refs/heads/branches",
+  "logs", "logs/refs", "logs/refs/heads",
+]
+
+data wet_lab_tree_files_0644: List<String> = [
   "objects/f9/0123456789abcdef0123456789abcdef01234567",
   "objects/pack/pack.pack",
   "objects/info/commit-graph",
@@ -84,16 +111,53 @@ data wet_lab_tree_files: List<String> = [
   "info/exclude",
 ]
 
-fn wet_build_lab_tree(root: String) -> Bool {
-  wet_raw(program: "mkdir", arguments: concat(["-p"], map(xs: wet_lab_tree_directories, f: d => concat(root, concat("/", d))))) == 0
-    && wet_raw(program: "touch", arguments: map(xs: wet_lab_tree_files, f: p => concat(root, concat("/", p)))) == 0
-    && wet_raw(program: "chmod", arguments: concat(["755"], map(xs: wet_lab_tree_directories, f: d => concat(root, concat("/", d))))) == 0
-    && wet_raw(program: "chmod", arguments: concat(["644"], map(xs: wet_lab_tree_files, f: p => concat(root, concat("/", p))))) == 0
+fn wet_build_lab_tree(root: String, gid: Int) -> Bool {
+  wet_mktree(paths: map(xs: wet_lab_tree_directories, f: d => concat(root, concat("/", d))))
+    && wet_touch_at(mode: "0644", paths: map(xs: wet_lab_tree_files_0644, f: p => concat(root, concat("/", p))), gid: gid)
+    // THE TOP LEVEL TOO: objects/, refs/, logs/ themselves must be 0755, because that is the state the
+    // srv1 read found them in -- a fresh mkdir is 0755 under the usual umask, and chmod states it rather
+    // than trusting the umask of whatever process is running the witness.
+    && wet_all(steps: map(xs: wet_lab_tree_directories_0755, f: d => chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "0755", path: concat(root, concat("/", d)))))
+}
+
+// THE CLAIM'S OWN CREDENTIALS, asked of the host rather than assumed: the gid files are seeded with (so
+// the group bit the receipt reads is comparable) and the uid install(1) needs for ownership. install(1)
+// refuses to set an owner a non-root caller does not have, so both come from id(1) itself -- the
+// witness runs unprivileged and stays that way.
+fn wet_self_gid() -> Int {
+  match parse_int(s: wet_out(command: id_gid_command())) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+// install(1) takes a NUMERIC uid; `id -u` is the only honest answer for "the account running this
+// witness", and it is asked of the host through the same production route as everything else.
+fn wet_self_uid() -> Int {
+  match parse_int(s: wet_out(command: id_uid_command())) {
+    Present { value: n } => n
+    Absent => 0
+  }
 }
 
 // THE RECEIPT AS EXACT LINES. The readback builder prints `<octal-mode> <path-relative-to-target>`; a
 // grant is asserted by a line being PRESENT AND EQUAL to the mode the model's predicates demand -- never
 // by a substring, which could match a different entry (or match "277" inside "2775").
+// ONE RECEIPT LINE, as find prints it: the octal mode, a single space, then the path relative to the
+// target. Spelled here once so no claim can compare against a mode-and-path glued by the wrong
+// separator and pass on nothing.
+fn wet_line(mode: String, path: String) -> String {
+  concat(mode, concat(" ", path))
+}
+
+// THE TARGET'S OWN LINE: find's %P is EMPTY for the starting point, so the target prints as the mode
+// and a single space and nothing else. Asserting "2775 " is the only way to say objects/ itself is
+// granted -- the entries alone would all be right while the parent that must accept tomorrow's new
+// fan-out directory stayed 0755.
+fn wet_target_line(mode: String) -> String {
+  concat(mode, " ")
+}
+
 fn wet_receipt_has_all(out: String, wanted: List<String>) -> Bool {
   let lines = split(s: out, delimiter: "\n")
   all(xs: wanted, predicate: w => any(xs: lines, predicate: l => l == w))
@@ -108,7 +172,7 @@ fn wet_receipt_has_none(out: String, forbidden: List<String>) -> Bool {
 // the same two numbers the model carries as 1533 and 436 (roadmap_dashboard_instance
 // dashboard_git_worker_granted_directory_mode / _file_mode); this witness is where they meet the
 // filesystem, so a model that declared a mode git or find would not actually produce goes red HERE and
-// not on srv1. The setgid bit is the one that cannot be faked by `chmod g+w` alone, and it is what makes
+// not on srv1. THE SETGID BIT IS THE ONE THAT CANNOT BE FAKED by `chmod g+w` alone, and it is what makes
 // a fan-out directory git creates tomorrow inherit gunbc-attempt instead of the creating process's group.
 data wet_granted_directory_mode: String = "2775"
 data wet_granted_file_mode: String = "664"
@@ -126,24 +190,24 @@ data wet_objects_pruned: List<String> = ["pack", "info"]
 // consumer obligation for the repack that moves to root (DESIGN 3c): `git commit` spawns
 // `git maintenance run --auto`, whose sweep opens packed-refs.lock IN .git ITSELF, a path #13942 confines
 // to root -- measured as a printed "error unable to lock packed-refs file" over an exit-0 commit, which
-// is exactly the noise that teaches an operator to ignore a confined write.
+// is exactly the noise that teaches an operator to ignore a confined write. THE READBACK IS THE
+// REPOSITORY'S OWN git (a builder is never asked to grade its own work), and a stray global config
+// cannot satisfy it: the posture's typed GIT_CONFIG_GLOBAL/GIT_CONFIG_NOSYSTEM refusals are what keep the
+// write pointed at the repository, and the keys land under the [core]/[gc]/[maintenance] sections
+// --local, not anywhere else.
 test fn the_shared_repository_posture_writers_reach_the_repository_when_run() -> Bool {
-  let tmp = shell.Mktemp.Dir()
-  if !tmp.success {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-posture-XXXXXX"))
+  if root == "" {
     false
   } else {
-    let root = trim(s: tmp.path as String)
-    let seeded = wet_raw(program: "git", arguments: ["init", "-q", root]) == 0
-    let wrote = wet_run(command: git_shared_repository_group_config_command(repo: tmp.path)) == 0
-      && wet_run(command: git_gc_auto_disabled_config_command(repo: tmp.path)) == 0
-      && wet_run(command: git_maintenance_auto_disabled_config_command(repo: tmp.path)) == 0
-    // Read back with the repository's OWN git, not with the builder under test.
-    let shared = wet_raw_out(program: "git", arguments: ["-C", root, "config", "--get", "core.sharedRepository"])
-    let gc_auto = wet_raw_out(program: "git", arguments: ["-C", root, "config", "--get", "gc.auto"])
-    let maintenance = wet_raw_out(program: "git", arguments: ["-C", root, "config", "--get", "maintenance.auto"])
-    // THE WRITES CAME FROM THE BUILDERS, not from the environment: a stray global config must not be able
-    // to satisfy the readback, which is what the two typed refusals are for.
-    let clean = wet_raw(program: "rm", arguments: ["-rf", "--", root]) == 0
+    let seeded = wet_ran(command: git_init_quiet_command(repository_dir: root))
+    let wrote = wet_ran(command: git_shared_repository_group_config_command(repo: root as NonEmptyStr))
+      && wet_ran(command: git_gc_auto_disabled_config_command(repo: root as NonEmptyStr))
+      && wet_ran(command: git_maintenance_auto_disabled_config_command(repo: root as NonEmptyStr))
+    let shared = wet_out(command: git_local_config_get_command(repo: root, key: "core.sharedRepository"))
+    let gc_auto = wet_out(command: git_local_config_get_command(repo: root, key: "gc.auto"))
+    let maintenance = wet_out(command: git_local_config_get_command(repo: root, key: "maintenance.auto"))
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
     seeded && wrote && shared == "group" && gc_auto == "0" && maintenance == "false" && clean
   }
 }
@@ -153,140 +217,142 @@ test fn the_shared_repository_posture_writers_reach_the_repository_when_run() ->
 // walked file. At 2dc2b8de the chmod carried `"(", "-type", "d", ... "+"` with no closing paren: find
 // exited non-zero ("invalid expression; I was expecting to find a ')'"), the chmod never ran, the receipt
 // was empty -- and every shape claim stayed green because an argv is a list of words to a word-list
-// claim. THE THREE SUBDIRS ARE THE POINT: objects/f9 is the existing fan-out directory whose 0755 made
+// claim. THE EXISTING SUBDIRECTORIES ARE THE POINT: objects/f9 is the fan-out directory whose 0755 made
 // gunbc-worker's first commit fail, and it is the case #14270's non-recursive provider does not cover.
 test fn the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree() -> Bool {
-  let tmp = shell.Mktemp.Dir()
-  if !tmp.success {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-migrate-XXXXXX"))
+  let gid = wet_self_gid()
+  if root == "" || gid <= 0 {
     false
   } else {
-    let root = trim(s: tmp.path as String)
-    let group = wet_raw_out(program: "id", arguments: ["-Gn"])
-    let built = wet_build_lab_tree(root: root)
     let objects = concat(root, "/objects")
     let refs = concat(root, "/refs")
     let logs = concat(root, "/logs")
-    let granted = wet_run(command: find_subtree_regroup_command(target: objects, group: group, pruned: wet_objects_pruned)) == 0
-      && wet_run(command: find_subtree_group_writable_command(target: objects, pruned: wet_objects_pruned)) == 0
-      && wet_run(command: find_subtree_regroup_command(target: refs, group: group, pruned: [])) == 0
-      && wet_run(command: find_subtree_group_writable_command(target: refs, pruned: [])) == 0
-      && wet_run(command: find_subtree_regroup_command(target: logs, group: group, pruned: [])) == 0
-      && wet_run(command: find_subtree_group_writable_command(target: logs, pruned: [])) == 0
-    let objects_receipt = wet_run_capturing(command: find_subtree_mode_readback_command(target: objects, pruned: wet_objects_pruned))
-    let refs_receipt = wet_run_capturing(command: find_subtree_mode_readback_command(target: refs, pruned: []))
-    let logs_receipt = wet_run_capturing(command: find_subtree_mode_readback_command(target: logs, pruned: []))
-    let clean = wet_raw(program: "rm", arguments: ["-rf", "--", root]) == 0
+    let built = wet_build_lab_tree(root: root, gid: gid)
+    let granted = wet_ran(command: find_subtree_regroup_command(target: objects, group: to_string(gid), pruned: wet_objects_pruned))
+      && wet_ran(command: find_subtree_group_writable_command(target: objects, pruned: wet_objects_pruned))
+      && wet_ran(command: find_subtree_regroup_command(target: refs, group: to_string(gid), pruned: []))
+      && wet_ran(command: find_subtree_group_writable_command(target: refs, pruned: []))
+      && wet_ran(command: find_subtree_regroup_command(target: logs, group: to_string(gid), pruned: []))
+      && wet_ran(command: find_subtree_group_writable_command(target: logs, pruned: []))
+    let objects_receipt = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: wet_objects_pruned))
+    let refs_receipt = wet_out(command: find_subtree_mode_readback_command(target: refs, pruned: []))
+    let logs_receipt = wet_out(command: find_subtree_mode_readback_command(target: logs, pruned: []))
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
     built
       && granted
-      // objects/, its EXISTING fan-out directory, and the loose object inside it. The bare "2775 " line is
-      // objects/ itself: without a group-writable AND setgid objects/, git cannot create tomorrow's fan-out
-      // directory at all, which is the half of the grant that a recursive chmod of contents would miss.
+      // objects/, its EXISTING fan-out directory, and the loose object inside it. The bare "2775 " line
+      // is objects/ itself: without a group-writable AND setgid objects/, git cannot create tomorrow's
+      // fan-out directory at all -- the half of the grant a recursive chmod of CONTENTS alone would miss.
       && wet_receipt_has_all(out: objects_receipt, wanted: [
-        concat(wet_granted_directory_mode, " "),
-        concat(wet_granted_directory_mode, "/f9"),
-        concat(wet_granted_file_mode, "/f9/0123456789abcdef0123456789abcdef01234567"),
+        wet_target_line(mode: wet_granted_directory_mode),
+        wet_line(mode: wet_granted_directory_mode, path: "f9"),
+        wet_line(mode: wet_granted_file_mode, path: "f9/0123456789abcdef0123456789abcdef01234567"),
       ])
       // refs/, its intermediate refs/heads (git mkdir's that path when a new branch is nested), a branch
       // UNDER a directory named branches, and the leaf ref -- 0664, not 0644, so a sibling attempt in the
-      // same group can read and git can rewrite it.
+      // same group can read it and git can rewrite it.
       && wet_receipt_has_all(out: refs_receipt, wanted: [
-        concat(wet_granted_directory_mode, " "),
-        concat(wet_granted_directory_mode, "/heads"),
-        concat(wet_granted_directory_mode, "/heads/branches"),
-        concat(wet_granted_file_mode, "/heads/branches/x"),
+        wet_target_line(mode: wet_granted_directory_mode),
+        wet_line(mode: wet_granted_directory_mode, path: "heads"),
+        wet_line(mode: wet_granted_directory_mode, path: "heads/branches"),
+        wet_line(mode: wet_granted_file_mode, path: "heads/branches/x"),
       ])
       // logs/ mirrors refs/ one level at a time; the reflog is the file git appends to on every commit.
       && wet_receipt_has_all(out: logs_receipt, wanted: [
-        concat(wet_granted_directory_mode, " "),
-        concat(wet_granted_directory_mode, "/refs"),
-        concat(wet_granted_directory_mode, "/refs/heads"),
-        concat(wet_granted_file_mode, "/refs/heads/x"),
+        wet_target_line(mode: wet_granted_directory_mode),
+        wet_line(mode: wet_granted_directory_mode, path: "refs"),
+        wet_line(mode: wet_granted_directory_mode, path: "refs/heads"),
+        wet_line(mode: wet_granted_file_mode, path: "refs/heads/x"),
       ])
       // The pruned subtrees are not merely ungranted, they are not even LISTED: reaching the -printf is
       // proof the walk stopped at the prune.
       && wet_receipt_has_none(out: objects_receipt, forbidden: [
-        concat(wet_granted_directory_mode, "/pack"),
-        concat(wet_granted_directory_mode, "/info"),
+        wet_line(mode: wet_granted_directory_mode, path: "pack"),
+        wet_line(mode: wet_granted_directory_mode, path: "info"),
       ])
       && clean
   }
 }
 
 // THREE, THE PRUNE IS BOUNDED TO ITS TARGET, in both directions, read off the FILESYSTEM and never off
-// the word list. (a) WITHOUT the prunes the same walk re-groups objects/pack and objects/info to 2775/664
-// -- which is the state #13942 forbids, so the effect the prunes prevent is demonstrated, not assumed.
-// (b) WITH them, the confined subtrees are still 755/644. Read WITHOUT the prunes: a receipt that omits
-// them is not evidence they were left alone, only that the walk did not look. (c) The anchor: at
+// the word list. (a) WITH the prunes, the confined subtrees are still 755/644 -- read WITHOUT them,
+// because a receipt that omits them is not evidence they were left alone, only that the walk did not
+// look. (b) The SAME walk with the prunes DROPPED does reach them and grant them -- which is the state
+// #13942 forbids, so the effect the prunes prevent is demonstrated, not assumed. (c) THE ANCHOR: at
 // 2dc2b8de the prunes were bare `*/pack`, `*/info`, `*/hooks`, `*/branches` patterns, which match at ANY
-// depth -- so refs/heads/branches (a legal branch whose segment collides with a confined name) was pruned
-// out of the walk, left ungranted, and its owner could never update it. The walk of refs above shows the
-// colliding ref granted; this shows the same thing about the hooks subtree that IS pruned, and about the
-// fact that a name collision under refs is never one of the confined paths.
+// depth -- so refs/heads/branches (a legal branch whose segment collides with a confined name) was
+// pruned out of the walk, left ungranted, and its owner could never update it. refs and logs therefore
+// declare NO prunes at all in the model, and the ref under a directory named branches is granted above.
 test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is() -> Bool {
-  let tmp = shell.Mktemp.Dir()
-  if !tmp.success {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-prune-XXXXXX"))
+  let gid = wet_self_gid()
+  if root == "" || gid <= 0 {
     false
   } else {
-    let root = trim(s: tmp.path as String)
     let objects = concat(root, "/objects")
-    let group = wet_raw_out(program: "id", arguments: ["-Gn"])
-    let built = wet_build_lab_tree(root: root)
-    let walked = wet_run(command: find_subtree_regroup_command(target: objects, group: group, pruned: wet_objects_pruned)) == 0
-      && wet_run(command: find_subtree_group_writable_command(target: objects, pruned: wet_objects_pruned)) == 0
-    // Whole-subtree read, prunes absent: a RAW find, so the confined paths are visible at all.
-    let whole = wet_raw_out(program: "find", arguments: [objects, "-printf", "%m %P\\n"])
+    let refs = concat(root, "/refs")
+    let built = wet_build_lab_tree(root: root, gid: gid)
+    let walked = wet_ran(command: find_subtree_regroup_command(target: objects, group: to_string(gid), pruned: wet_objects_pruned))
+      && wet_ran(command: find_subtree_group_writable_command(target: objects, pruned: wet_objects_pruned))
+    // (a) Whole-subtree read, prunes ABSENT, so the confined paths are visible at all.
+    let whole = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: []))
     let confined_untouched = wet_receipt_has_all(out: whole, wanted: [
       "755 pack", "644 pack/pack.pack", "755 info", "644 info/commit-graph",
     ])
-    // The SAME walk with the prunes dropped does reach them -- the prunes are what stands between the
-    // migration and a confined-subtree grant.
-    let unpruned = wet_run(command: find_subtree_regroup_command(target: objects, group: group, pruned: [])) == 0
-      && wet_run(command: find_subtree_group_writable_command(target: objects, pruned: [])) == 0
-    let after = wet_raw_out(program: "find", arguments: [objects, "-printf", "%m %P\\n"])
+    // (b) The same walk with the prunes dropped REACHES them -- the prunes are what stand between the
+    // migration and a confined-subtree grant, so this is the control that makes leg (a) mean something.
+    let unpruned = wet_ran(command: find_subtree_regroup_command(target: objects, group: to_string(gid), pruned: []))
+      && wet_ran(command: find_subtree_group_writable_command(target: objects, pruned: []))
+    let after = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: []))
     let unpruned_reaches_them = wet_receipt_has_all(out: after, wanted: [
-      concat(wet_granted_directory_mode, "/pack"),
-      concat(wet_granted_file_mode, "/pack/pack.pack"),
-      concat(wet_granted_directory_mode, "/info"),
+      wet_line(mode: wet_granted_directory_mode, path: "pack"),
+      wet_line(mode: wet_granted_file_mode, path: "pack/pack.pack"),
+      wet_line(mode: wet_granted_directory_mode, path: "info"),
     ])
-    // The collision, from the model's side AND the filesystem's: refs carries no prune names at all, and
-    // the ref under a directory named branches was walked and granted by the builder in claim two.
-    let refs_walked = wet_raw_out(program: "find", arguments: [concat(root, "/refs"), "-not", "-type", "l", "-printf", "%m %P\\n"])
-    let clean = wet_raw(program: "rm", arguments: ["-rf", "--", root]) == 0
+    // (c) The collision, read from the filesystem: the ref under a directory named branches is walked
+    // and granted, which is what a bare `*/branches` prune would have prevented.
+    let refs_read = wet_out(command: find_subtree_mode_readback_command(target: refs, pruned: []))
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
     built
       && walked
       && confined_untouched
       && unpruned
       && unpruned_reaches_them
-      && wet_receipt_has_all(out: refs_walked, wanted: [concat(wet_granted_file_mode, "/heads/branches/x")])
+      && wet_receipt_has_all(out: refs_read, wanted: [wet_line(mode: wet_granted_file_mode, path: "heads/branches/x")])
       && clean
   }
 }
 
 // FOUR, THE MAINTENANCE PAIR THE ROOT UNIT RUNS. `git gc --quiet` must complete and
 // `git pack-refs --all` must LEAVE A PACKED-REFS FILE -- the very file the worker is forbidden to
-// rewrite, whose lock lives in .git itself. The loose ref is asserted present BEFORE the packer runs, so
-// packed-refs afterwards can only be the packer's doing; and the ref is asserted still reachable
-// afterwards, so a packer that mangled refs cannot pass. At 2dc2b8de the gc argv spelled its option as
-// four words (`-c`, `gc.auto`, `=`, `0`), which dies as `git -c gc.auto = 0 gc` with "git: '=' is not a
-// git command" -- and a builder that produced no packed-refs at all would leave the nightly repack a
-// silent no-op while every claim about it stayed green.
+// rewrite, whose lock lives in .git itself. The loose ref is asserted present BEFORE the packer runs
+// (test -f, not a cat), so a packed-refs afterwards can only be the packer's doing, and the ref is
+// asserted still reachable afterwards (git show-ref --verify), so a packer that mangled refs cannot
+// pass. At 2dc2b8de the gc argv spelled its option as four words (`-c`, `gc.auto`, `=`, `0`), which dies
+// as `git -c gc.auto = 0 gc` with "git: '=' is not a git command" -- and a builder that produced no
+// packed-refs at all would leave the nightly repack a silent no-op while every claim about it stayed
+// green. The identity flags git commit demands are carried by the builder that ships with them.
 test fn the_maintenance_pair_repacks_and_leaves_a_packed_refs_file() -> Bool {
-  let tmp = shell.Mktemp.Dir()
-  if !tmp.success {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-repack-XXXXXX"))
+  if root == "" {
     false
   } else {
-    let root = trim(s: tmp.path as String)
-    let seeded = wet_raw(program: "git", arguments: ["init", "-q", root]) == 0
-      && wet_raw(program: "git", arguments: ["-C", root, "config", "user.name", "WORKER ROOT EQUIVALENT 3 WITNESS"]) == 0
-      && wet_raw(program: "git", arguments: ["-C", root, "config", "user.email", "witness@invalid"]) == 0
-      && wet_raw(program: "git", arguments: ["-C", root, "commit", "-q", "--allow-empty", "-m", "seed"]) == 0
-      && wet_raw(program: "git", arguments: ["-C", root, "branch", "witness-branch"]) == 0
-    let loose_before = wet_raw(program: "test", arguments: ["-f", concat(root, "/.git/refs/heads/witness-branch")]) == 0
-    let gc = wet_run(command: git_repack_quiet_command(repo: tmp.path)) == 0
-    let packed = wet_run(command: git_pack_refs_all_command(repo: tmp.path)) == 0
-    let packed_file = wet_raw(program: "test", arguments: ["-f", concat(root, "/.git/packed-refs")]) == 0
-    let ref_reachable = wet_raw(program: "git", arguments: ["-C", root, "show-ref", "--verify", "--quiet", "refs/heads/witness-branch"]) == 0
-    let clean = wet_raw(program: "rm", arguments: ["-rf", "--", root]) == 0
+    let seeded = wet_ran(command: git_init_quiet_command(repository_dir: root))
+      && wet_ran(command: git_add_all_force_command(repository_dir: root))
+      && wet_ran(command: git_commit_snapshot_command(
+        repository_dir: root,
+        identity_name: "WORKER ROOT EQUIVALENT 3 WITNESS",
+        identity_email: "witness@invalid",
+        message: "seed",
+      ))
+      && wet_ran(command: git_branch_command(repository_dir: root, branch: "witness-branch" as NonEmptyStr))
+    let loose_before = wet_ran(command: test_regular_file_command(path: concat(root, "/.git/refs/heads/witness-branch")))
+    let gc = wet_ran(command: git_repack_quiet_command(repo: root as NonEmptyStr))
+    let packed = wet_ran(command: git_pack_refs_all_command(repo: root as NonEmptyStr))
+    let packed_file = wet_ran(command: test_regular_file_command(path: concat(root, "/.git/packed-refs")))
+    let ref_reachable = wet_ran(command: git_show_ref_verify_quiet_command(repository_dir: root, target: "refs/heads/witness-branch"))
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
     seeded && loose_before && gc && packed && packed_file && ref_reachable && clean
   }
 }
@@ -296,27 +362,22 @@ test fn the_maintenance_pair_repacks_and_leaves_a_packed_refs_file() -> Bool {
 // the words read `git env GIT_CONFIG_GLOBAL=... git config ...`); `git` appears exactly once, as env's
 // operand; an option is never split across words (`=` alone, or a bare `gc.auto`, is not a git command);
 // and the two untrusted-config refusals are still there as bound words. This is the cheap half of the
-// wall -- claims ONE to FOUR are the half that RUNS.
+// wall -- claims ONE to FOUR are the half that RUNS. It needs no host at all, so it stays meaningful on
+// a machine with no git: a shape this file cannot execute is still a shape that must not ship.
 test fn the_posture_argv_words_are_executable_shapes() -> Bool {
-  let tmp = shell.Mktemp.Dir()
-  if !tmp.success {
-    false
-  } else {
-    let posture = [
-      git_shared_repository_group_config_command(repo: tmp.path),
-      git_gc_auto_disabled_config_command(repo: tmp.path),
-      git_maintenance_auto_disabled_config_command(repo: tmp.path),
-      git_repack_quiet_command(repo: tmp.path),
-      git_pack_refs_all_command(repo: tmp.path),
-    ]
-    let ok = all(xs: posture, predicate: c => wet_argv_is_executable_shape(words: argv_words(command: c)))
-    let clean = wet_raw(program: "rm", arguments: ["-rf", "--", trim(s: tmp.path as String)]) == 0
-    ok && clean
-  }
+  let root = "/tmp/wre3-shape-unused"
+  let posture = [
+    git_shared_repository_group_config_command(repo: root as NonEmptyStr),
+    git_gc_auto_disabled_config_command(repo: root as NonEmptyStr),
+    git_maintenance_auto_disabled_config_command(repo: root as NonEmptyStr),
+    git_repack_quiet_command(repo: root as NonEmptyStr),
+    git_pack_refs_all_command(repo: root as NonEmptyStr),
+  ]
+  all(xs: posture, predicate: c => wet_argv_is_executable_shape(words: argv_words(command: c)))
 }
 
-// THE HEAD, then the shape. Read through the Option the list already gives -- an index would panic on
-// an empty word list, and an empty word list is exactly what a builder that minted nothing would produce.
+// THE HEAD, then the shape. Read through the Option the list already gives -- an empty word list is
+// exactly what a builder that minted nothing would produce, and it must be FALSE here, not a panic.
 fn wet_argv_is_executable_shape(words: List<String>) -> Bool {
   match first(words) {
     Absent => false
@@ -334,7 +395,6 @@ fn wet_argv_leads_with_env(words: List<String>, head: String) -> Bool {
     && any(xs: words, predicate: w => w == "GIT_CONFIG_GLOBAL=/dev/null")
     && any(xs: words, predicate: w => w == "GIT_CONFIG_NOSYSTEM=1")
 }
-
 
 fn wet_count_of(words: List<String>, wanted: String) -> Int {
   count(filter(xs: words, predicate: w => w == wanted))

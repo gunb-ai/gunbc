@@ -1301,6 +1301,32 @@ fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: Strin
   ["git", "-C", repo as String, "config", "--local", key, value]
 }
 
+// THE READBACK OF THE THREE POSTURE KEYS, as a command rather than as a service operation, so a
+// witness can run it through the SAME route the writers run and ask the repository what it now says.
+// `--local` on BOTH sides, and it is not decoration: the writers refuse the global and system files, and
+// a read that consulted them could be satisfied by a developer's own ~/.gitconfig -- the claim would
+// then pass while the repository said nothing. A missing key prints nothing and exits 1, which the
+// caller reads as Refused, and an empty answer is not `group`.
+fn git_local_config_get_command(repo: String, key: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repo, "config", "--local", "--get", key])
+}
+
+// A BRANCH POINTING WHERE HEAD POINTS, the seed a pack-refs witness needs: `git branch <name>` mints a
+// LOOSE ref under refs/heads/, which is what makes a packed-refs file afterwards the packer's doing and
+// not the clone's or the init's.
+fn git_branch_command(repository_dir: String, branch: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "branch", branch as String])
+}
+
+// IS THE REF STILL REACHABLE, asked of git itself. `--verify --quiet` exits non-zero when the ref does
+// not name an object, so the ANSWER IS THE EXIT CODE and there is nothing to parse -- which is the point
+// after a pack-refs: a packer that wrote a packed-refs git itself cannot resolve must not be able to
+// pass. `-C` is carried because a ref query without it answers about whatever directory the process
+// happens to sit in.
+fn git_show_ref_verify_quiet_command(repository_dir: String, target: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "show-ref", "--verify", "--quiet", target])
+}
+
 fn shape_git_config_local_get_in_repo_argv(repo: FilePath, key: String) -> List<String> {
   ["git", "-C", repo as String, "config", "--local", "--get", key]
 }
