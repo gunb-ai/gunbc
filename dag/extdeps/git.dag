@@ -7,6 +7,7 @@ import extdeps.exec.command { ArgvCommand, argv_command, shell_quote, env_prefix
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
 import std.env_binding { EnvBinding, EnvSet }
+import extdeps.tools.env { env_bindings_argv }
 import std.algebra { length, skip, trim }
 import std.resources { Network }
 
@@ -18,24 +19,18 @@ import std.resources { Network }
 // the operation, so host and worker config never reach the publication principal.
 // GIT_CONFIG_GLOBAL=/dev/null is git's override of ~/.gitconfig and $XDG_CONFIG_HOME/git/config.
 // GIT_TERMINAL_PROMPT=0 refuses a prompt if the netrc is missing instead of hanging.
-data git_config_global_null_env: String = "GIT_CONFIG_GLOBAL=/dev/null"
-data git_config_nosystem_env: String = "GIT_CONFIG_NOSYSTEM=1"
-
-// THE SAME TWO REFUSALS AS TYPED BINDINGS, the form env_prefixed_command composes. Words and bindings
-// are the two spellings of ONE fact, so they sit together and are named to say which is which: the
-// word form is for a caller that already owns an env program and puts the words in its OWN argv
-// (gunbc.roadmap.roadmap_belt_actuate belt_commit_git runs program "/usr/bin/env" and splices these
-// words after it -- which is why this function returns the two words and MUST NOT prepend "env"
-// itself, or the belt's argv becomes `/usr/bin/env env git ...`); the binding form is for a caller that
-// delegates the env prefix to the minted composition route.
+// THE THREE REFUSALS, EACH IN ONE PLACE. A binding is the fact (an env entry an operation is run with);
+// `NAME=value` is how that fact RENDERS, and rendering is not a second place to state it -- so there is
+// no word row here at all. Callers that delegate the prefix compose through extdeps.exec.command's
+// env_prefixed_command over these bindings; callers that own the env program themselves (the belt's
+// commit runs program "/usr/bin/env" and splices the assignments into its OWN argv) take the words from
+// git_untrusted_config_env_words / git_isolated_home_env_argv below, which RENDER them with the one
+// renderer in extdeps.tools.env rather than re-spelling them. An earlier cut of this file kept both
+// spellings as literals beside each other and claimed that sitting together "cannot drift" -- it could:
+// nothing made the second change when the first was edited, and the drift it would have produced is a
+// root nightly repack reading a user's global config after every config writer had stopped doing so.
 data git_config_global_env_binding: EnvBinding = EnvSet { name: "GIT_CONFIG_GLOBAL", value: "/dev/null" }
 data git_config_nosystem_env_binding: EnvBinding = EnvSet { name: "GIT_CONFIG_NOSYSTEM", value: "1" }
-data git_terminal_prompt_disabled_env: String = "GIT_TERMINAL_PROMPT=0"
-// THE TYPED FORMS, for a builder that composes through EnvBinding rather than spelling `NAME=value`
-// words. They sit beside the word rows they stand for so the two cannot drift into different values;
-// the maintenance builder used to RE-SPELL GIT_CONFIG_GLOBAL and GIT_CONFIG_NOSYSTEM inline, which is
-// exactly the second source §3 forbids -- it would have kept repacking under a user's global config
-// after the config writers stopped reading one.
 data git_terminal_prompt_disabled_env_binding: EnvBinding = EnvSet { name: "GIT_TERMINAL_PROMPT", value: "0" }
 
 fn git_home_env_binding(home: FilePath) -> EnvBinding {
@@ -174,26 +169,51 @@ fn git_pack_refs_all_command(repo: FilePath) -> ArgvCommand {
 // that inherited a HOME with a gitconfig in it would repack under someone's aliases and hooks;
 // that is the whole reason this function exists rather than passing no environment at all.
 fn git_maintenance_env_bindings(home: FilePath) -> List<EnvBinding> {
-  concat(
-    [git_home_env_binding(home: home), git_terminal_prompt_disabled_env_binding],
-    git_untrusted_config_env_bindings(),
-  )
+  git_isolated_home_env_bindings(home: home)
 }
 
 data git_worktree_commondir_relative: String = "../.."
 data git_dir_flag_prefix: String = "--git-dir="
 data git_work_tree_flag_prefix: String = "--work-tree="
 
+// THE SAME TWO REFUSALS AS WORDS, for the one caller that owns its env program: the belt's commit runs
+// program "/usr/bin/env" and splices these after it, which is why this returns the assignments ALONE and
+// MUST NOT prepend "env" itself -- or the belt's argv becomes `/usr/bin/env env git ...` (review 81949,
+// item 1, is what caught that). These are RENDERED from git_untrusted_config_env_bindings() by the one
+// renderer in extdeps.tools.env, so the word form and the binding form cannot disagree by construction
+// rather than by comment.
 fn git_untrusted_config_env_words() -> List<String> {
-  [git_config_global_null_env, git_config_nosystem_env]
+  env_bindings_argv(bindings: git_untrusted_config_env_bindings())
 }
 
 fn git_isolated_home_netrc_path(home: FilePath) -> FilePath {
   concat(home as String, "/.netrc") as FilePath
 }
 
+// THE PUBLICATION ENVIRONMENT AS AN `env`-prefixed argv: the same bindings the typed route composes,
+// rendered by the one renderer, with the `env` program word FIRST because this argv carries its own
+// program (the caller execs it directly). HOME is the binding from git_home_env_binding, so the .netrc
+// this path depends on and the environment that sets it are one row, not two.
 fn git_isolated_home_env_argv(home: FilePath) -> List<String> {
-  ["env", concat("HOME=", home as String), git_config_global_null_env, git_config_nosystem_env, git_terminal_prompt_disabled_env]
+  concat(
+    ["env"],
+    env_bindings_argv(bindings: git_isolated_home_env_bindings(home: home)),
+  )
+}
+
+// THE BINDINGS BEHIND IT, exposed so a claim can pin the rendered words against the git the host has
+// without restating them, and so the maintenance route (which delegates its prefix) and this route
+// (which carries it) are reading one list.
+// HOME FIRST, then the two config refusals, then the prompt -- THE ORDER THE PUBLICATION CLAIM PINS.
+// Order is functionally irrelevant to `env` (last write wins and no key repeats), so this is pinned for
+// the claim rather than for the tool: roadmap_publish_actuate_witness compares the whole prefix as a
+// list, which is the strictest thing it can check about an argv it cannot run. Reordering here is a
+// claim failure, not a behavior change, and that is the right way round for a spelling.
+fn git_isolated_home_env_bindings(home: FilePath) -> List<EnvBinding> {
+  concat(
+    [git_home_env_binding(home: home)],
+    concat(git_untrusted_config_env_bindings(), [git_terminal_prompt_disabled_env_binding]),
+  )
 }
 
 fn git_push_ref_in_repo_argv(repo: FilePath, remote: String, refspec: String, home: FilePath) -> List<String> {
