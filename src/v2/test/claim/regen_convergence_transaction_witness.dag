@@ -68,6 +68,7 @@ import v2.workflow.regen_convergence_transaction {
   StagePlannedExecutedMismatch,
   regen_plan_stage,
   regen_plan_next_stage,
+  regen_stage_plan_kind_label,
   regen_admit_affected_bound,
   RegenInstallBoundaryObservation,
   RegenSurfaceLineage,
@@ -827,4 +828,20 @@ test fn aggregate_product_roles_make_non_seed_publication_reachable() -> Bool {
     && regen_generated_product_generation_role_labels(product: "lib.rs")
       == ["GenerationInput"]
     && regen_generated_product_generation_role_labels(product: "unowned.rs") == []
+}
+
+// DEFECT 2 control: the host prints this label, so a planner refusal must reach it with its variant,
+// surface (module:path) and reason, not the bare word `Refused`. Discriminating: reverting the label
+// to a fixed string fails every contains below.
+test fn a_stage_planning_refusal_prints_its_variant_surface_and_reason() -> Bool {
+  let unowned = fixture_surface(
+    module: "v1.compiler.emit_rust",
+    path: "lib.rs",
+    role: GenerationInput,
+    seed: UnresolvedSeedMembership { reason: "lib.rs has no owner in generated_stage0_crate_partition" }
+  )
+  let label = regen_stage_plan_kind_label(outcome: fixture_plan(kind: PromoteGenerationInputs, rows: [unowned]))
+  string_contains(s: label, pattern: "SeedMembershipUnresolved")
+    && string_contains(s: label, pattern: "v1.compiler.emit_rust:lib.rs")
+    && string_contains(s: label, pattern: "lib.rs has no owner in generated_stage0_crate_partition")
 }
