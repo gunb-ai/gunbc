@@ -219,3 +219,12 @@ test fn the_sweep_step_has_no_prelude_credential_path() -> Bool {
     && !string_contains(s: sweep, pattern: prelude_marker())
     && !string_contains(s: sweep, pattern: "GH_TOKEN")
 }
+
+// THE LADDER IS ONE FUNCTION FOR BOTH TRANSPORTS (registration_from_fields), so a refusal the json
+// route owes the typed route owes too.
+test fn a_negative_id_refuses_the_page() -> Bool {
+  match wire_read(page: 1, per_page: 100, wire: wire_page(total: 1, runners: [entry(id: -3, name: "a", status: "online")])) {
+    RosterPageFailed { cause: _ } => true
+    _ => false
+  }
+}

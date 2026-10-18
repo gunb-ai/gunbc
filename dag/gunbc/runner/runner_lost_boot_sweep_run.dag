@@ -7,7 +7,6 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.transports.rest { RestResult, RestAnswered }
-import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
 import product.host_identity { HostIdentity }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
