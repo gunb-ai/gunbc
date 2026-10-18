@@ -9,72 +9,128 @@ module test.claim.github_deployment_protection_rule_witness
 // srv1-production — root mutation — proceeds when it should not. Every red here attacks a fact
 // that, if modelled wrong, would let a broker believe it had approval when it had none, or point a
 // review at the wrong target:
-//   1. an invented review state read as approval;
+//   1. an invented review state, which now cannot even be named (§5), so the red attacks the wire
+//      boundary that turns a string into a ReviewState;
 //   2. the two review endpoints collapsing into one (App review landing in the human queue);
 //   3. an invented environment protection-rule type (the model would "see" a custom rule where
 //      GitHub reports none, or fail to see the human reviewers that are still standing);
 //   4. a 30-day timeout read as a pass;
-//   5. an incomplete review body read as sendable (GitHub rejects it, and a broker that treats the
-//      rejection as harmless leaves the gate shut but reports success);
-//   6. an unfiltered webhook action answered with a review.
+//   5. a review that names the wrong environment, or forgets the environment — now unwritable;
+//   6. an unfiltered webhook action answered with a review;
+//   7. the reviewer App granted an axis upstream never asked for.
 // Each test below has a MUTATED counterpart that must fail: the same fn, fed the wrong upstream
 // fact, returning true. A fn that returns true for everything passes all of these and enforces
 // nothing — which is why the negatives are written first here, not last.
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, NonEmptyStr }
 import extdeps.github.deployment_protection_rule {
-  review_state_is_accepted,
-  review_body_is_complete,
-  review_body_carries_a_decision,
-  review_body_binds_an_environment,
-  human_review_body_is_complete,
-  review_endpoint_body_environment_name_field,
-  review_endpoint_body_optional_fields,
-  review_endpoint_body_alternatives,
+  ReviewState,
+  Approved,
+  Rejected,
+  review_state_wire,
+  review_state_from_wire,
+  DeploymentProtectionRuleReview,
+  review_body_field_names,
+  review_releases_environment,
+  review_matches_capability,
+  review_matches_decision,
+  HumanDeploymentReview,
+  RequiredReviewersKind,
+  WaitTimerKind,
+  BranchPolicyKind,
+  environment_protection_rule_kind_wire,
+  environment_protection_rule_kind_from_wire,
+  RuleTimeoutOutcome,
+  JobFails,
+  JobApproved,
   the_two_review_endpoints_are_distinct,
-  environment_protection_type_is_known,
   rule_webhook_is_an_answerable_request,
   rule_timeout_is_a_refusal,
+  rule_app_permission_is_admissible,
+  rule_app_permission_set_is_admissible,
+  rule_app_permission_set_is_complete,
   review_endpoint_path,
   human_review_endpoint_path,
   pending_deployments_endpoint_path,
   review_endpoint_success_status,
-  review_accepted_states,
-  review_endpoint_body_required_fields,
-  human_review_body_required_fields,
+  review_endpoint_body_environment_name_field,
+  review_endpoint_body_state_field,
+  review_endpoint_body_comment_field,
+  review_endpoint_body_alternatives,
   environment_protection_rule_type_values,
   rule_webhook_action,
+  rule_webhook_event_name,
   rule_timeout_days,
   rule_incompatible_job_setting,
+  rule_app_permissions,
+  rule_app_forbidden_axes,
+}
+import extdeps.github.app {
+  GitHubAppPermission,
+  ContentsAxis,
+  DeploymentsAxis,
+  AdministrationAxis,
+  SecurityEventsAxis,
+  IdTokenAxis,
+  AppAccessRead,
+  AppAccessWrite,
 }
 import gunbc.plan { plans_all_have_retirement, plans_all_titled }
 import gunbc.plan_registry { all_plans }
 
+// Two fixed environments, named rather than spelled at each call site: the one the gate protects and
+// one that is NOT the gate. Every binding red is "would this review have released the boundary?"
+data srv1_env: NonEmptyStr = "srv1-production"
+data other_env: NonEmptyStr = "gcp-iam-converge"
+
+// The review the operator actually authorised: srv1-production, approved, with a reason.
+fn sanctioned_review() -> DeploymentProtectionRuleReview {
+  DeploymentProtectionRuleReview {
+    environment_name: srv1_env,
+    state: Approved,
+    comment: Present { value: "tapped on the phone" },
+  }
+}
+
 // ---------------------------------------------------------------------------
-// 1. The review state enum: an invented state must never read as accepted
+// 1. The review state: an invented state cannot be named, and cannot be parsed in
 // ---------------------------------------------------------------------------
 
+// The two wire strings GitHub's enum accepts, reached through the type rather than through a list.
 test fn review_state_admits_exactly_the_documented_pair() -> Bool {
-  review_state_is_accepted(state: "approved")
-    && review_state_is_accepted(state: "rejected")
+  (review_state_wire(state: Approved) as String) == "approved"
+    && (review_state_wire(state: Rejected) as String) == "rejected"
+    && review_state_from_wire(name: "approved") == Present { value: Approved }
+    && review_state_from_wire(name: "rejected") == Present { value: Rejected }
 }
 
-// The discriminating red: an approval that was never tapped must not be expressible. A model that
-// admitted `approved_by_operator` would let a broker synthesize a decision the human did not make.
+// The discriminating red: an approval that was never tapped must not be expressible. Where the model
+// used a List<NonEmptyStr> plus a String->Bool membership predicate, a broker could hand that
+// predicate "approved_by_operator" and get a Bool back; now the only way to obtain a ReviewState is
+// Approved, Rejected, or a parse that returns nothing for every invented spelling. `true` here means:
+// for each invented spelling, there is NO ReviewState to build a request with.
 test fn review_state_refuses_every_invented_variant() -> Bool {
-  !review_state_is_accepted(state: "approved_by_operator")
-    && !review_state_is_accepted(state: "APPROVED")
-    && !review_state_is_accepted(state: "approve")
-    && !review_state_is_accepted(state: "")
-    && !review_state_is_accepted(state: "waiting")
+  review_state_from_wire(name: "approved_by_operator") == none
+    && review_state_from_wire(name: "APPROVED") == none
+    && review_state_from_wire(name: "approve") == none
+    && review_state_from_wire(name: "auto") == none
+    && review_state_from_wire(name: "waiting") == none
+    // No empty-string case: NonEmptyStr refuses it at the type, which is itself the guarantee that
+    // "no state at all" cannot be smuggled in as a blank.
+    && review_state_from_wire(name: "  ") == none
+    && review_state_from_wire(name: "approved ") == none
 }
 
-test fn review_state_enum_has_no_third_member() -> Bool {
-  (review_accepted_states |> count) == 2
+// The sum has exactly two constructors and the wire map is injective over them. A third arm would
+// mean a third outcome nobody approved.
+test fn review_state_wire_is_injective_and_total() -> Bool {
+  (review_state_wire(state: Approved) as String) != (review_state_wire(state: Rejected) as String)
+    && review_state_from_wire(name: review_state_wire(state: Approved)) == Present { value: Approved }
+    && review_state_from_wire(name: review_state_wire(state: Rejected)) == Present { value: Rejected }
 }
 
 // ---------------------------------------------------------------------------
-// 2. The two review endpoints stay distinct
+// 2. The two review endpoints, and the two bodies, stay distinct
 // ---------------------------------------------------------------------------
 
 // POST .../deployment_protection_rule is the App's own-rule endpoint. POST .../pending_deployments
@@ -83,168 +139,197 @@ test fn review_state_enum_has_no_third_member() -> Bool {
 // today, the operator is the reviewer. That is the double-authority failure in a different costume.
 test fn the_app_and_human_review_endpoints_do_not_collapse() -> Bool {
   the_two_review_endpoints_are_distinct()
-    && (review_endpoint_path as String) != (human_review_endpoint_path as String)
-    && (review_endpoint_path as String).ends_with("/deployment_protection_rule")
-    && (human_review_endpoint_path as String).ends_with("/pending_deployments")
+    && (review_endpoint_path as String).contains("/deployment_protection_rule")
+    && (human_review_endpoint_path as String).contains("pending_deployments")
+    && pending_deployments_endpoint_path == human_review_endpoint_path
 }
 
-// The body shapes differ, so the mix-up is detectable at request-build time and must be refused
-// there rather than discovered in a GitHub 422.
-test fn the_human_endpoint_refuses_the_app_body_shape() -> Bool {
-  human_review_body_is_complete(fields: ["environment_ids", "state", "comment"])
-    // The App's decision body is missing environment_ids: handing it to the human endpoint is a
-    // call that will not be accepted, and the mix-up must be caught here rather than in a 422.
-    && !human_review_body_is_complete(fields: ["environment_name", "state"])
-    && !human_review_body_is_complete(fields: ["environment_name", "state", "comment"])
-}
-
-// The discriminating red, written against the upstream pair rather than against the row: dropping
-// EITHER required field must fail. If the model row ever lost environment_name — the field that
-// binds a review to an environment, and the one absent from the URL — the second clause goes red.
-test fn the_app_endpoint_refuses_an_incomplete_body() -> Bool {
-  review_body_is_complete(fields: ["environment_name", "state"])
-    && !review_body_is_complete(fields: ["state"])
-    && !review_body_is_complete(fields: ["environment_name"])
-    && !review_body_is_complete(fields: ["environment_name", "comment"])
-    && !review_body_is_complete(fields: ["state", "comment"])
-    && !review_body_is_complete(fields: [])
-}
-
-// comment is optional in the decision-bearing alternative, so a body WITHOUT it is still sendable.
-// A model that made comment required would refuse honest approvals and push a broker to stuff the
-// comment field with something untrue just to satisfy its own check.
-test fn the_app_endpoint_accepts_a_review_without_a_comment() -> Bool {
-  review_body_is_complete(fields: ["environment_name", "state"])
-    && (review_endpoint_body_optional_fields |> count) == 1
-    && (review_endpoint_body_optional_fields |> any(f => (f as String) == "comment"))
-    && (review_endpoint_body_required_fields |> count) == 2
-}
-
-// The poll endpoint is neither of them: it is a GET that reports what is waiting and carries no
-// authority to change it.
-test fn the_pending_poll_is_not_a_review_endpoint() -> Bool {
-  (pending_deployments_endpoint_path as String) != (review_endpoint_path as String)
-    && (pending_deployments_endpoint_path as String).ends_with("/pending_deployments")
+// The two authorities take different body TYPES, so the mix-up is a type error rather than a 422.
+// The human body names environments by numeric id and requires a comment; the App's names one by
+// name and takes the comment optionally. Neither value converts into the other.
+test fn the_two_review_bodies_are_different_types_with_different_fields() -> Bool {
+  (review_body_field_names(review: sanctioned_review()) |> count) == 3
+    // The names come from the model's own rows, not from string literals repeated here: if the
+    // upstream renames the field, the model and this red move together.
+    && (review_body_field_names(review: sanctioned_review())
+        |> any(f => f == review_endpoint_body_environment_name_field))
+    && (review_body_field_names(review: sanctioned_review())
+        |> any(f => f == review_endpoint_body_state_field))
+    && (review_body_field_names(review: sanctioned_review())
+        |> any(f => f == review_endpoint_body_comment_field))
+    && !(review_body_field_names(review: sanctioned_review())
+         |> any(f => (f as String) == "environment_ids"))
+    && (review_endpoint_body_alternatives |> count) == 2
+    // The human record's environment field is a LIST OF IDS, not a name — so a reviewer identity
+    // cannot be reused as an App identity by smuggling a name into the ids slot.
+    && HumanDeploymentReview {
+         environment_ids: [22766227517],
+         state: Approved,
+         comment: "a human typed this",
+       }.state
+       == Approved
 }
 
 // ---------------------------------------------------------------------------
-// 3. The environment projection's type enum has exactly three built-in kinds
+// 3. The environment binding: the discriminating red the implementation PR inherits
+// ---------------------------------------------------------------------------
+
+// The environment a review releases is NOT a function of the URL: the path carries owner, repo and
+// run_id only. So the only thing that can catch a review aimed at the wrong environment is a check
+// on the record — and this red is what the stage-2 broker red must reproduce against a real call.
+test fn the_environment_binding_is_a_body_field_not_a_path_segment() -> Bool {
+  !(review_endpoint_path as String).contains("environment_name")
+    && (review_releases_environment(review: sanctioned_review()) as String) == "srv1-production"
+    && review_matches_capability(review: sanctioned_review(), capability_environment: srv1_env)
+    // THE mutation: same run, same decision, wrong environment. The gate that opens is not the one
+    // the operator tapped.
+    && !review_matches_capability(review: sanctioned_review(), capability_environment: other_env)
+}
+
+// The decision is checked against the capability the same way, so "tapped reject, sent approve"
+// fails the comparison rather than being caught downstream by a GitHub response.
+test fn the_decision_is_checked_against_the_capability() -> Bool {
+  review_matches_decision(review: sanctioned_review(), capability_state: Approved)
+    && !review_matches_decision(review: sanctioned_review(), capability_state: Rejected)
+}
+
+// A review with no reason is still a legal request (comment is optional upstream). A model that made
+// it required would push a broker to stuff the field with something untrue to satisfy its own check.
+test fn a_review_without_a_comment_is_still_sendable() -> Bool {
+  (review_body_field_names(review: sanctioned_review()) |> count) == 3
+    && (review_body_field_names(review: DeploymentProtectionRuleReview {
+         environment_name: srv1_env,
+         state: Approved,
+         comment: none,
+       })
+        |> count) == 2
+}
+
+// ---------------------------------------------------------------------------
+// 4. Protection-rule types: GitHub reports three; a fourth is invented
 // ---------------------------------------------------------------------------
 
 test fn environment_protection_types_are_the_three_documented_kinds() -> Bool {
-  environment_protection_type_is_known(value: "required_reviewers")
-    && environment_protection_type_is_known(value: "wait_timer")
-    && environment_protection_type_is_known(value: "branch_policy")
-    && (environment_protection_rule_type_values |> count) == 3
+  (environment_protection_rule_type_values |> count) == 3
+    && (environment_protection_rule_kind_wire(kind: RequiredReviewersKind) as String) == "required_reviewers"
+    && (environment_protection_rule_type_values
+        |> any(t => (t as String) == environment_protection_rule_kind_wire(kind: RequiredReviewersKind)))
+    && (environment_protection_rule_type_values
+        |> any(t => (t as String) == environment_protection_rule_kind_wire(kind: WaitTimerKind)))
+    && (environment_protection_rule_type_values
+        |> any(t => (t as String) == environment_protection_rule_kind_wire(kind: BranchPolicyKind)))
 }
 
-// The discriminating red: an enabled custom App rule is NOT a fourth `protection_rules[].type`
-// value. A model that invented `custom_deployment_protection_rules` here would let a check read
-// "the App rule is on this environment" from the environment projection — and read it falsely,
-// because the projection would then contain a value GitHub never sends. Conversely, dropping
-// `required_reviewers` from the enum would make a still-standing human gate read as absent, which
-// is precisely the state in which removing the operator's reviewer would go unnoticed.
+// An invented type value must not parse. "custom_deployment_protection_rules" is the name that would
+// make the model SEE a custom rule where GitHub reports none — the read-back that gates activation.
 test fn environment_protection_types_refuse_invented_members() -> Bool {
-  !environment_protection_type_is_known(value: "custom_deployment_protection_rules")
-    && !environment_protection_type_is_known(value: "deployment_protection_rule")
-    && !environment_protection_type_is_known(value: "protection_rule")
-    && !environment_protection_type_is_known(value: "app")
+  environment_protection_rule_kind_from_wire(value: "custom_deployment_protection_rules") == none
+    && environment_protection_rule_kind_from_wire(value: "required_reviewer") == none
+    && environment_protection_rule_kind_from_wire(value: "deployment_protection_rule") == none
+    && environment_protection_rule_kind_from_wire(value: "wait-timer") == none
+    && environment_protection_rule_kind_from_wire(value: "RequiredReviewersKind") == none
+    && environment_protection_rule_kind_from_wire(
+         value: environment_protection_rule_kind_wire(kind: RequiredReviewersKind)
+       ) == Present { value: RequiredReviewersKind }
 }
 
 // ---------------------------------------------------------------------------
-// 4. The timeout is a refusal, never a pass
+// 5. The timeout is a refusal, and is not provable by searching prose
 // ---------------------------------------------------------------------------
 
+// A timeout must fail the job. The previous model stored the upstream SENTENCE and asserted
+// outcome.contains("fails") && !outcome.contains("approved") — a grep over English, which passes for
+// "the job fails over and is approved later". Now the only two readings are typed, and the wrong one
+// is a different value, not a different word.
 test fn the_rule_timeout_reads_as_a_refusal() -> Bool {
-  rule_timeout_is_a_refusal(
-    outcome: "it will wait for up to 30 days for a webhook event response before it times out and the workflow job fails",
-  )
+  rule_timeout_is_a_refusal(outcome: JobFails)
+    && !rule_timeout_is_a_refusal(outcome: JobApproved)
     && rule_timeout_days == 30
 }
 
-// The discriminating red: a fold that turned the timeout into an approval — "nothing objected, so
-// proceed" — is the exact fail-open this feature must not introduce.
-test fn the_rule_timeout_refuses_an_approval_shaped_reading() -> Bool {
-  !rule_timeout_is_a_refusal(outcome: "the wait timer elapsed and the deployment was approved")
-    && !rule_timeout_is_a_refusal(outcome: "no reviewer responded, proceeding")
-    && !rule_timeout_is_a_refusal(outcome: "the workflow job succeeded")
+// The fail-closed arms are all the same shape: nothing was approved. A fold that mapped the timeout
+// onto the approved state is refused by the type's own arms, not by a string comparison.
+test fn a_timeout_never_produces_an_approval() -> Bool {
+  !rule_timeout_is_a_refusal(outcome: JobApproved)
+    && rule_timeout_is_a_refusal(outcome: rule_timeout_outcome_reading())
+    && rule_timeout_days > 0
+}
+
+fn rule_timeout_outcome_reading() -> RuleTimeoutOutcome {
+  JobFails
 }
 
 // ---------------------------------------------------------------------------
-// 5. The webhook is answerable only on its one published activity
+// 6. The webhook is answered only for the action that asks for an answer
 // ---------------------------------------------------------------------------
 
 test fn the_rule_webhook_is_answerable_only_when_requested() -> Bool {
   rule_webhook_is_an_answerable_request(event: "deployment_protection_rule", action: "requested")
-    && (rule_webhook_action as String) == "requested"
-}
-
-// The discriminating red: a receiver that ignored the action would post a review in response to any
-// future activity type on the same event — including one whose semantics are the opposite of a
-// request.
-test fn the_rule_webhook_refuses_unpublished_or_foreign_activities() -> Bool {
-  !rule_webhook_is_an_answerable_request(event: "deployment_protection_rule", action: "completed")
+    && !rule_webhook_is_an_answerable_request(event: "deployment_protection_rule", action: "created")
     && !rule_webhook_is_an_answerable_request(event: "deployment_protection_rule", action: "")
     && !rule_webhook_is_an_answerable_request(event: "deployment", action: "created")
     && !rule_webhook_is_an_answerable_request(event: "workflow_run", action: "requested")
+    && (rule_webhook_action as String) == "requested"
+    && (rule_webhook_event_name as String) == "deployment_protection_rule"
 }
 
 // ---------------------------------------------------------------------------
-// 6. The upstream facts the broker's own logic is written against
+// 7. The reviewer App holds exactly the axes upstream asked for
 // ---------------------------------------------------------------------------
 
-// 204 is the ONLY success signal GitHub gives for the review call, so the broker's witness must be
-// the response code. A model that allowed a different success status would let a broker call
-// "success" on a 301 or a 200-with-body and consider the gate answered.
+// Two axes, both at the documented level, and no forbidden axis among them. Compared as
+// GitHubPermissionAxis values: a description that merely omits the widening cannot satisfy this.
+test fn the_gate_app_carries_only_the_rule_axes() -> Bool {
+  (rule_app_permissions |> count) == 2
+    && rule_app_permission_set_is_complete()
+    && rule_app_permission_set_is_admissible()
+    && (rule_app_forbidden_axes |> count) == 6
+}
+
+// THE discriminating red for the App registration: grant Contents (or IdToken, which would let a
+// reviewer identity federate into a cloud role) and admissibility goes false. This is the red a
+// widened registration must trip.
+test fn a_widened_app_is_refused_by_axis_not_by_prose() -> Bool {
+  !rule_app_permission_is_admissible(
+    permission: GitHubAppPermission { name: ContentsAxis, access: AppAccessWrite }
+  )
+    && !rule_app_permission_is_admissible(
+         permission: GitHubAppPermission { name: IdTokenAxis, access: AppAccessWrite }
+       )
+    && !rule_app_permission_is_admissible(
+         permission: GitHubAppPermission { name: AdministrationAxis, access: AppAccessRead }
+       )
+    && rule_app_permission_is_admissible(
+         permission: GitHubAppPermission { name: DeploymentsAxis, access: AppAccessWrite }
+       )
+    && !rule_app_permission_is_admissible(
+         permission: GitHubAppPermission { name: SecurityEventsAxis, access: AppAccessRead }
+       )
+}
+
+// ---------------------------------------------------------------------------
+// 8. Success signal, and the job setting that cannot be gated
+// ---------------------------------------------------------------------------
+
+// 204 with no body is the ONLY success signal. A fold that treated 200-with-json, or "no exception",
+// as success would report an approval it did not receive.
 test fn the_review_call_has_exactly_one_success_signal() -> Bool {
   review_endpoint_success_status == 204
 }
 
-// The human body takes `environment_ids`; the App body does not. If the two required-field lists
-// ever became equal, the endpoint-distinctness red above would stop discriminating.
-test fn the_two_review_bodies_do_not_share_a_shape() -> Bool {
-  (human_review_body_required_fields |> count) == 3
-    && (review_endpoint_body_required_fields |> count) == 2
-    // `environment_ids` (a numeric id list) belongs to the human endpoint's body ONLY, and
-    // `environment_name` (a name, in the App's body) ONLY to the App's. If a fold ever put either
-    // in the other list, the endpoint-distinctness red above would stop discriminating, so both
-    // memberships are asserted directly.
-    && (human_review_body_required_fields |> any(r => (r as String) == "environment_ids"))
-    && !(review_endpoint_body_required_fields |> any(r => (r as String) == "environment_ids"))
-    && (review_endpoint_body_required_fields |> any(r => (r as String) == "environment_name"))
-    && !(human_review_body_required_fields |> any(r => (r as String) == "environment_name"))
-    && (review_endpoint_body_required_fields |> any(r => (r as String) == "state"))
-    // comment is NOT required in the decision-bearing alternative, so it must not appear here.
-    && !(review_endpoint_body_required_fields |> any(r => (r as String) == "comment"))
-}
-
-// The binding that the discriminating implementation red will attack. The environment released by a
-// review is carried in the BODY as environment_name; the path carries only owner, repo and run_id.
-// So a review aimed at the wrong environment is invisible to anything that validates the URL, and
-// only a check on the body can catch it. If these three fns ever stop distinguishing the three
-// bodies, the implementation red (wrong run id / wrong environment must not approve) has no teeth.
-test fn the_environment_binding_is_a_body_field_not_a_path_segment() -> Bool {
-  review_body_binds_an_environment(fields: ["environment_name", "state"])
-    && !review_body_binds_an_environment(fields: ["state", "comment"])
-    && !review_body_binds_an_environment(fields: [])
-    && review_body_carries_a_decision(fields: ["environment_name", "state"])
-    // the comment-only alternative is schema-legal and asserts NO decision
-    && !review_body_carries_a_decision(fields: ["environment_name", "comment"])
-    && (review_endpoint_path as String).contains("environment_name") == false
-    && (review_endpoint_body_alternatives |> count) == 2
-}
-
 // A job whose environment is `deployment: false` is incompatible with a custom rule. If this were
-// modelled wrong, a job could be gated by a rule that GitHub will never invoke for it — waiting
-// forever, or silently ungated.
+// modelled wrong, a job could be gated by a rule GitHub never invokes for it — waiting forever, or
+// silently ungated.
 test fn an_environmentless_job_setting_stays_incompatible_with_a_rule() -> Bool {
   (rule_incompatible_job_setting as String) == "deployment: false"
-    && (rule_incompatible_job_setting as String).contains("deployment")
 }
 
-// The plan carrier is registered in the authority registry, not left as a loose file. Without this
-// red a plan can sit in dag/gunbc/plans/ unread by the lens, the doc graph and every governance
-// claim over all_plans — which is exactly how a plan becomes prose nobody enforces.
+// ---------------------------------------------------------------------------
+// 9. The plan is in the registry, not loose
+// ---------------------------------------------------------------------------
+
+// Without this red a plan can sit in dag/gunbc/plans/ unread by the lens, the doc graph and every
+// governance claim over all_plans — which is how a plan becomes prose nobody enforces.
 fn plan_slug_is_registered(slug: String) -> Bool {
   fold(all_plans, init: false, f: (acc, p) => acc || p.slug == slug)
 }

@@ -21,10 +21,26 @@ module extdeps.github.deployment_protection_rule
 // calling the human reviewer endpoint either fails, or — worse — succeeds while a human is still
 // being asked, which is two authorities for one decision.
 
-import std.types { String, List, NonEmptyStr }
+import std.types { String, Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+// The permission vocabulary is extdeps.github.app's, not re-minted here (§2).
+import extdeps.github.app {
+  GitHubPermissionAxis,
+  ActionsAxis,
+  ContentsAxis,
+  DeploymentsAxis,
+  PullRequestsAxis,
+  AdministrationAxis,
+  SecurityEventsAxis,
+  WorkflowsAxis,
+  IdTokenAxis,
+  GitHubAppPermissionAccess,
+  AppAccessRead,
+  AppAccessWrite,
+  GitHubAppPermission,
+}
 
 // ---------------------------------------------------------------------------
 // Authority anchors (each a page read on 2026-10-18)
@@ -126,18 +142,70 @@ data review_endpoint_success_status: Int = 204
 // the required pair differs between them:
 //   review-custom-gates-state-required   required = [environment_name, state]   (comment optional)
 //   review-custom-gates-comment-required required = [environment_name, comment] (no state at all)
-// So the pair that carries a DECISION is [environment_name, state]; the other alternative is the
-// shape used when no state is being asserted. `environment_name` is required in BOTH alternatives —
-// it is the environment this review releases, and it is never inferable from the run id.
+// Only the FIRST carries a decision, and it is the one a broker sends — so the body is modelled as
+// the record for that alternative, not as a field-name list a caller could build wrongly (§5).
+// environment_name is required in BOTH alternatives: it is the environment this review releases, and
+// it is never inferable from the run id (the path carries only owner, repo and run_id).
+data review_endpoint_body_environment_name_field: NonEmptyStr = "environment_name"
 data review_endpoint_body_state_field: NonEmptyStr = "state"
 data review_endpoint_body_comment_field: NonEmptyStr = "comment"
-data review_endpoint_body_environment_name_field: NonEmptyStr = "environment_name"
-data review_endpoint_body_required_fields: List<NonEmptyStr> = ["environment_name", "state"]
-data review_endpoint_body_optional_fields: List<NonEmptyStr> = ["comment"]
 data review_endpoint_body_alternatives: List<NonEmptyStr> = [
   "review-custom-gates-state-required",
-  "review-custom-gates-comment-required"
+  "review-custom-gates-comment-required",
 ]
+
+// THE REQUEST A BROKER BUILDS. Three parts, each named: the environment released, the decision, and
+// an optional human-readable reason. The two required parts are not optional in the type, so the
+// request that "forgets" the environment — the one that would aim a srv1 approval at another
+// environment, or a review at no environment at all — cannot be written. The comment-only
+// alternative is deliberately NOT representable here: it is schema-legal upstream but asserts no
+// decision, and a broker that sent it would leave the deployment waiting while reading its own 204
+// as an approval.
+// THE REVIEW DECISION, as a closed sum. GitHub's own `state` enum is exactly these two values on
+// BOTH review endpoints (the App's and the human one), so both bodies share this type and there is
+// no third outcome to spell — and no validator to forget to call (§5: correctness by construction).
+// The wire strings live in review_state_wire so a caller cannot invent one; review_state_from_wire
+// is the only way in, and it returns Absent for anything GitHub would not accept.
+type ReviewState
+  = Approved
+  | Rejected
+
+fn review_state_wire(state: ReviewState) -> NonEmptyStr {
+  match state {
+    Approved => "approved"
+    Rejected => "rejected"
+  }
+}
+
+fn review_state_from_wire(name: NonEmptyStr) -> ReviewState? {
+  if name == review_state_wire(state: Approved) {
+    Present { value: Approved }
+  } else if name == review_state_wire(state: Rejected) {
+    Present { value: Rejected }
+  } else {
+    none
+  }
+}
+
+type DeploymentProtectionRuleReview {
+  environment_name: NonEmptyStr,
+  state: ReviewState,
+  comment: NonEmptyStr?,
+}
+
+fn review_body_field_names(review: DeploymentProtectionRuleReview) -> List<NonEmptyStr> {
+  match review.comment {
+    Present { value: _ } => [
+      review_endpoint_body_environment_name_field,
+      review_endpoint_body_state_field,
+      review_endpoint_body_comment_field,
+    ]
+    Absent => [
+      review_endpoint_body_environment_name_field,
+      review_endpoint_body_state_field,
+    ]
+  }
+}
 
 // The App's fine-grained requirement for that call, from the REST reference's own note: this
 // endpoint "works with the following fine-grained token types: GitHub App installation access
@@ -149,21 +217,40 @@ data review_endpoint_body_alternatives: List<NonEmptyStr> = [
 // something the upstream never asked for. The same page's NOTE says GitHub Apps can only review
 // their OWN custom deployment protection rules — a rule created by another app is not answerable
 // by this identity.
-data review_required_repository_permission: NonEmptyStr = "Deployments"
-data review_required_permission_level: NonEmptyStr = "write"
+//
+// The AXIS and ACCESS vocabulary is extdeps.github.app's existing GitHubPermissionAxis /
+// GitHubAppPermissionAccess (§2: one shape, bound by several tables — minting a second list of
+// permission strings here would be the failed decomposition that file's own comment names). What is
+// NEW here, and what these rows own, is only which axes this feature's App must hold.
+data review_required_permission: GitHubAppPermission = GitHubAppPermission {
+  name: DeploymentsAxis,
+  access: AppAccessWrite,
+}
+
 data review_accepted_token_type: NonEmptyStr = "GitHub App installation access tokens"
-data rule_required_repository_permissions: List<NonEmptyStr> = ["Actions", "Deployments"]
-data rule_permission_levels: List<NonEmptyStr> = ["read-only", "read and write"]
-// The documented minimum for the rule App: Actions read-only, Deployments read and write, and
-// nothing else. Anything wider — Contents, Administration, Pull requests — is an unrequested grant
-// on the identity that releases the srv1 root boundary.
-data rule_app_minimum_permissions: List<NonEmptyStr> = ["Actions", "Deployments"]
-data rule_app_forbidden_permissions: List<NonEmptyStr> = [
-  "Contents",
-  "Administration",
-  "Pull requests",
-  "Secrets",
-  "Security events"
+
+// The documented permission set for the rule App: Actions read-only, Deployments read and write, and
+// NOTHING else. Anything wider — Contents, Administration, Pull requests, Secrets — is an
+// unrequested grant on the identity that releases the srv1 root boundary. Because the elements are
+// GitHubAppPermission records rather than strings, a widening is a different value of an existing
+// closed type, and the refusal below compares axes rather than substrings of a sentence.
+data rule_app_permissions: List<GitHubAppPermission> = [
+  GitHubAppPermission { name: ActionsAxis, access: AppAccessRead },
+  GitHubAppPermission { name: DeploymentsAxis, access: AppAccessWrite },
+]
+
+// Axes an operator must NOT grant this App. Deployments is required and so is absent; these are the
+// ones that would turn a reviewer identity into something broader. MetadataAxis is excluded on
+// purpose: a GitHub App needs it to exist at all, and refusing it would refuse the App. IdTokenAxis
+// is the sharpest of them — an App that can mint OIDC id tokens can federate into a cloud role,
+// which is exactly the escalation the mtcollins1 WIF condition is built to constrain.
+data rule_app_forbidden_axes: List<GitHubPermissionAxis> = [
+  ContentsAxis,
+  AdministrationAxis,
+  PullRequestsAxis,
+  SecurityEventsAxis,
+  WorkflowsAxis,
+  IdTokenAxis,
 ]
 
 // The same REST page states the alternative that policy forbids here rather than the API:
@@ -178,12 +265,6 @@ data review_oauth_classic_scope: NonEmptyStr = "repo"
 data review_documented_example_body: NonEmptyStr = "environment_name=prod-eus, state=approved, comment=All health checks passed."
 data review_documented_api_version_header: NonEmptyStr = "X-GitHub-Api-Version: 2026-03-10"
 
-// The two and only two accepted values. Anything else is not a third outcome; it is a request that
-// will not be accepted, leaving the deployment exactly where it was.
-data review_state_approved: NonEmptyStr = "approved"
-data review_state_rejected: NonEmptyStr = "rejected"
-data review_accepted_states: List<NonEmptyStr> = [review_state_approved, review_state_rejected]
-
 // The poll that shows what is waiting for protection rules to pass. Read access to the repository
 // is enough; no permission grant is needed to SEE the gate.
 data pending_deployments_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/pending_deployments"
@@ -195,29 +276,72 @@ data pending_deployments_field_current_user_can_approve: NonEmptyStr = "current_
 data pending_deployments_field_reviewers: NonEmptyStr = "reviewers"
 
 // The HUMAN/team reviewer endpoint, named so it is never confused with the App's. A GitHub App does
-// not use this to answer its own rule, and its body shape is different (`environment_ids`).
+// not use this to answer its own rule, and its body shape is genuinely different: it names
+// environments by NUMERIC ID rather than by name, and comment is required rather than optional.
+// Typed separately so the two authorities cannot share a value (§3: two authorities, one per
+// decision-maker). The REST reference gives the required triple [environment_ids, state, comment].
 data human_review_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/pending_deployments"
-data human_review_body_required_fields: List<NonEmptyStr> = ["environment_ids", "state", "comment"]
+data human_review_endpoint_method: NonEmptyStr = "POST"
 
-// The environment projection's protection-rule types: the enum carries only these three built-in
-// kinds. An enabled custom App rule is NOT a fourth `type` value here; it is a separate resource
-// under .../deployment_protection_rules. Claiming a `custom_deployment_protection_rules` type
-// would be inventing a field the upstream does not have.
+type HumanDeploymentReview {
+  environment_ids: List<Int>,
+  state: ReviewState,
+  comment: NonEmptyStr,
+}
+
+// Only three protection-rule types exist in the environment projection, and they are GitHub's own
+// names. Modelled as a sum so a fold cannot carry a fourth; the wire strings come from the type.
+type EnvironmentProtectionRuleKind
+  = RequiredReviewersKind
+  | WaitTimerKind
+  | BranchPolicyKind
+
+fn environment_protection_rule_kind_wire(kind: EnvironmentProtectionRuleKind) -> NonEmptyStr {
+  match kind {
+    RequiredReviewersKind => "required_reviewers"
+    WaitTimerKind => "wait_timer"
+    BranchPolicyKind => "branch_policy"
+  }
+}
+
+fn environment_protection_rule_kind_from_wire(value: NonEmptyStr) -> EnvironmentProtectionRuleKind? {
+  if value == environment_protection_rule_kind_wire(kind: RequiredReviewersKind) {
+    Present { value: RequiredReviewersKind }
+  } else if value == environment_protection_rule_kind_wire(kind: WaitTimerKind) {
+    Present { value: WaitTimerKind }
+  } else if value == environment_protection_rule_kind_wire(kind: BranchPolicyKind) {
+    Present { value: BranchPolicyKind }
+  } else {
+    none
+  }
+}
+
+// The environment projection's protection-rule types: the REST enum carries only these three
+// built-in kinds. An enabled custom App rule is NOT a fourth `type` value here; it is a separate
+// resource under .../deployment_protection_rules. Claiming a `custom_deployment_protection_rules`
+// type would be inventing a field the upstream does not have. The list is derived from the sum, so
+// there is one authority for the names (§2) — widening the sum is the only way to widen this list.
 data environment_protection_rule_type_values: List<NonEmptyStr> = [
-  "required_reviewers",
-  "wait_timer",
-  "branch_policy"
+  environment_protection_rule_kind_wire(kind: RequiredReviewersKind),
+  environment_protection_rule_kind_wire(kind: WaitTimerKind),
+  environment_protection_rule_kind_wire(kind: BranchPolicyKind),
 ]
 data environment_protection_type_field: NonEmptyStr = "type"
 
-// How long GitHub holds a triggered rule before it gives up on the App. The configure-custom-
-// protection-rules page, verbatim: "When a custom deployment protection rule is triggered it will
-// wait for up to 30 days for a webhook event response before it times out and the workflow job
-// fails." Failure of the rule is therefore a job FAILURE, never a silent approval — the fail-closed
-// arm the broker depends on. But note the honest cost: a permanently unreachable App leaves the run
-// WAITING for up to a month, so a broker outage is fail-closed yet not prompt.
+// What happens when the App never answers. Modelled as a closed outcome, NOT as a sentence to grep:
+// a contains("fails") check passes for "the job fails over and is approved later", which is exactly
+// the reading this row exists to forbid. The upstream says it plainly (configure-custom-protection-
+// rules page): "When a custom deployment protection rule is triggered it will wait for up to 30 days
+// for a webhook event response before it times out and the workflow job fails."
+type RuleTimeoutOutcome
+  = JobFails
+  | JobApproved
+
+data rule_timeout_outcome: RuleTimeoutOutcome = JobFails
+
+// The same number, as an Int rather than a word in prose, so a fold can reason about the stall and
+// a witness can mutate it.
 data rule_timeout_days: Int = 30
-data rule_timeout_outcome: String = "it will wait for up to 30 days for a webhook event response before it times out and the workflow job fails"
 
 // ---------------------------------------------------------------------------
 // Discriminating fns — the upstream facts a witness mutates. The tests live in
@@ -225,50 +349,38 @@ data rule_timeout_outcome: String = "it will wait for up to 30 days for a webhoo
 // witness in this repository lives.
 // ---------------------------------------------------------------------------
 
-// A review state outside the enum is not "treat it as a rejection"; it is a call that will not be
-// accepted. The caller must find that out before it sends anything.
-fn review_state_is_accepted(state: String) -> Bool {
-  review_accepted_states |> any(s => (s as String) == state)
-}
-
-// The review body's required fields. The plausible shortcut — send `state` and `comment` and let
-// GitHub work out which environment you mean, because the run id is already in the path — is a
-// request GitHub does not accept: environment_name is required in both body alternatives.
-fn review_body_is_complete(fields: List<String>) -> Bool {
-  review_endpoint_body_required_fields
-    |> all(r => fields |> any(f => f == (r as String)))
-}
-
-// The decision-bearing shape specifically. A body that carries environment_name and comment but no
-// state is a legal alternative in the schema and asserts NO decision; a broker that built that body
-// would leave the deployment waiting forever and read its own 204 as an approval.
-fn review_body_carries_a_decision(fields: List<String>) -> Bool {
-  fields |> any(f => f == (review_endpoint_body_state_field as String))
-}
-
-// The environment this review releases is a body field, never a path parameter: the path carries
-// only owner, repo and run_id. So an environment_name taken from the wrong source is invisible to
-// any check that looks only at the path.
-fn review_body_binds_an_environment(fields: List<String>) -> Bool {
-  fields |> any(f => f == (review_endpoint_body_environment_name_field as String))
-}
-
-// The human-reviewer endpoint needs `environment_ids`, not the App's two-field body. A caller that
-// hands the App body to the human endpoint is mixing two authorities.
-fn human_review_body_is_complete(fields: List<String>) -> Bool {
-  human_review_body_required_fields
-    |> all(r => fields |> any(f => f == (r as String)))
-}
-
 // The two review calls differ by one path segment. A refactor that collapsed them would silently
 // send an App review to the human queue, so the distinction is asserted, not assumed.
 fn the_two_review_endpoints_are_distinct() -> Bool {
   review_endpoint_path != human_review_endpoint_path
 }
 
-// Only three protection-rule types exist in the environment projection.
-fn environment_protection_type_is_known(value: String) -> Bool {
-  environment_protection_rule_type_values |> any(t => (t as String) == value)
+// The environment this review releases, as an ACCESSOR returning NonEmptyStr — not a check, and not
+// Optional. That is the construction guarantee: a review with no environment cannot be built, so
+// there is no "did you remember to set it" validator left to forget (§5).
+fn review_releases_environment(review: DeploymentProtectionRuleReview) -> NonEmptyStr {
+  review.environment_name
+}
+
+// Whether the review is the one the operator's tap authorised. `capability_environment` is what the
+// REDEEMED CAPABILITY names. A broker that lifts environment_name from the waiting run instead of
+// from the capability is caught here — and nowhere else, because the run's URL never mentions an
+// environment. This is the discriminating red's hinge.
+fn review_matches_capability(
+  review: DeploymentProtectionRuleReview,
+  capability_environment: NonEmptyStr
+) -> Bool {
+  review.environment_name == capability_environment
+}
+
+// Whether the DECISION matches the tap. Same shape as the environment check, so a broker that
+// approved where the operator rejected is caught by the same kind of comparison against the
+// capability rather than against whatever the run happened to be doing.
+fn review_matches_decision(
+  review: DeploymentProtectionRuleReview,
+  capability_state: ReviewState
+) -> Bool {
+  review.state == capability_state
 }
 
 // A receiver that ignored the action would answer any future activity type with a review.
@@ -278,9 +390,35 @@ fn rule_webhook_is_an_answerable_request(event: String, action: String) -> Bool 
 }
 
 // A timeout must be read as a job failure, never as an approval. A fold that let a timeout answer
-// `approved` would approve a deployment nobody tapped.
-fn rule_timeout_is_a_refusal(outcome: String) -> Bool {
-  outcome.contains("fails") && !outcome.contains("approved")
+// `approved` would approve a deployment nobody tapped — and unlike a prose check, this cannot be
+// satisfied by a sentence that happens to contain the word "fails".
+fn rule_timeout_is_a_refusal(outcome: RuleTimeoutOutcome) -> Bool {
+  match outcome {
+    JobFails => true
+    JobApproved => false
+  }
+}
+
+// Whether the App may answer at all: only its own rule, and only with the axes it is supposed to
+// hold. A forbidden axis on the App means the reviewer identity is broader than this feature asked
+// for, which is a reason to refuse to run rather than to run carefully. Compared by AXIS, not by
+// substring of a description.
+fn rule_app_permission_is_admissible(permission: GitHubAppPermission) -> Bool {
+  !(rule_app_forbidden_axes |> any(a => a == permission.name))
+}
+
+// Every row of the App's declared permission set is admissible. A single widened axis makes this
+// false, and the broker's activation check reads this rather than a description.
+fn rule_app_permission_set_is_admissible() -> Bool {
+  rule_app_permissions |> all(p => rule_app_permission_is_admissible(permission: p))
+}
+
+// The App must hold Deployments at write, or the review call is refused by GitHub and every gated
+// deploy stalls until the rule times out. Stated as a positive requirement so the two checks
+// together pin the set exactly.
+fn rule_app_permission_set_is_complete() -> Bool {
+  rule_app_permissions |> any(p => p.name == DeploymentsAxis && p.access == AppAccessWrite)
+    && rule_app_permissions |> any(p => p.name == ActionsAxis && p.access == AppAccessRead)
 }
 
 // ---------------------------------------------------------------------------
@@ -295,7 +433,7 @@ data review_endpoint_ref: DeclarationRef = DeclarationRef {
 
 data review_state_enum_ref: DeclarationRef = DeclarationRef {
   module_path: "extdeps.github.deployment_protection_rule",
-  decl_name: "review_accepted_states",
+  decl_name: "review_state_wire",
   field: WholeDeclaration
 }
 
