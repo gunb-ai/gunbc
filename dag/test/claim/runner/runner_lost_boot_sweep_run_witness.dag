@@ -26,7 +26,7 @@ import gunbc.runner.runner_jit_deregistration {
   JitDeregistration, JitDeregistrationRefused, DeregistrationAuthorityForAnotherInstallation, SlotLostBoot,
 }
 import gunbc.runner.runner_lost_boot_sweep_run {
-  LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input,
+  LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input, lost_boot_current_from_capture,
   sweep_host_standing, SweepHostBound, SweepHostNotManaged,
   sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, 
 }
@@ -36,6 +36,7 @@ import gunbc.runner.runner_lost_boot_sweep_plan {
   sweep_plan, SweepPlan, SweepPlanRefused, SweepPlanSelected,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import test.claim.runner.runner_host_medium_witness { closed, begin_line }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -118,15 +119,46 @@ fn run_sweep(m: ManagedHost, authority: GitHubCredentialAuthority, current: Stri
   }
 }
 
-// THE DISPATCH INPUT IS NEVER DEFAULTED. RED: an absent or blank boot id must refuse. Positive control:
-// a real id is carried through unchanged.
-test fn an_absent_current_boot_id_refuses_and_a_present_one_is_carried() -> Bool {
-  (match lost_boot_current_input(raw: "") {
+// THE CURRENT BOOT ID COMES FROM THE HOST'S CLOSED CAPTURE ENVELOPE AND NOWHERE ELSE (review 82195): no
+// typed boot id exists, so a well-formed UUID the envelope does not carry has no route to the sweep.
+// Positive control: a closed runner-host-up envelope bound to the swept host yields exactly the id it
+// carries, and not the unrelated id new_boot_id.
+test fn an_admitted_envelope_yields_exactly_the_boot_id_it_carries() -> Bool {
+  match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64")) {
+    LostBootCurrentPresent { boot: b } => (b.boot_id as String) == "aaaaaaaa-0000-4000-8000-000000000001" && (b.boot_id as String) != new_boot_id
+    LostBootCurrentRefused { cause: _ } => false
+  }
+}
+
+// REDS: an open envelope, a failed install, an envelope bound to another machine and an empty capture
+// each refuse with their own cause before any credential is read.
+test fn an_envelope_that_does_not_establish_runner_host_up_refuses() -> Bool {
+  (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: begin_line) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "not a closed envelope")
+    LostBootCurrentPresent { boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "1", machine: "aarch64")) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "does not establish runner-host-up")
+    LostBootCurrentPresent { boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtjade1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64")) {
     LostBootCurrentRefused { cause: _ } => true
     LostBootCurrentPresent { boot: _ } => false
-  }) && (match lost_boot_current_input(raw: new_boot_id) {
-    LostBootCurrentPresent { boot: b } => (b.boot_id as String) == new_boot_id
-    LostBootCurrentRefused { cause: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: "") {
+    LostBootCurrentRefused { cause: _ } => true
+    LostBootCurrentPresent { boot: _ } => false
+  })
+}
+
+// A missing or unreadable envelope, and a blank host or path, refuse; none is defaulted.
+test fn a_missing_envelope_or_blank_input_refuses() -> Bool {
+  (match lost_boot_current_input(host: "mtcollins1", capture_path: "/tmp/gunbc_no_such_capture_dir/capture.txt") {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unreadable")
+    LostBootCurrentPresent { boot: _ } => false
+  }) && (match lost_boot_current_input(host: "mtcollins1", capture_path: "") {
+    LostBootCurrentRefused { cause: _ } => true
+    LostBootCurrentPresent { boot: _ } => false
+  }) && (match lost_boot_current_input(host: "", capture_path: "x") {
+    LostBootCurrentRefused { cause: _ } => true
+    LostBootCurrentPresent { boot: _ } => false
   })
 }
 
