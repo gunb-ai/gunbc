@@ -4624,7 +4624,7 @@ fn observe_slot_population_over_host_effect_transport(
 // WHY THE ONE-NODE PROVIDER HERE, WHEN ITS OWN ANNOTATION POINTS live_deploy AT THE HALVES. That
 // annotation's premise is quoted: "The live_deploy transaction emits its apply as a script rather
 // than running it here, so it consumes the same halves separately". This change removes the premise.
-// The wet apply script is deleted by PB2 and the demanded-directory leg now executes synchronously
+// The demanded-directory leg executes synchronously
 // on the host, which is the exact condition the annotation names for taking the node
 // ("any other route that executes synchronously realize the same decision and the same plan"). So
 // this consumes the node the way the roadmap dashboard apply does, and the halves
@@ -5700,7 +5700,7 @@ fn live_deploy_retract_run_legs_from(legs: List<DeployRetractLeg>, transport: Ho
 }
 
 // THE APPROVAL BROKER'S RELEASE TREE, INSTALLED AS A TYPED, FAIL-FAST VERTICAL (W6). One leg of the
-// dark install, declared frontier: its consumers are the microVM controller install (W5) and the live_deploy apply (PB2), each landing in its own atomic PR that calls this one function, and until they land only its witness calls it: owner, base_root,
+// dark install, declared frontier: its consumers are the microVM controller install (W5) and the live_deploy apply (next PR), each landing in its own atomic PR that calls this one function, and until they land only its witness calls it: owner, base_root,
 // source_root and revision are PARAMETERS (the owner is never inferred, the source is never the
 // process cwd), and every step is an ArgvCommand run through run_argv_over_host_effect_transport --
 // no shell, no quoting, no script body. The first failing step stops the line and names itself.

@@ -102,14 +102,14 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "over_fleet_ssh_a_sha256_transport_mock_is_unverifiable_not_a_mismatch"),
     decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "a_non_portable_fetch_word_refuses_over_fleet_ssh_before_any_local_leg"),
     decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "fleet_ssh_argv_goes_through_the_host_effect_dispatcher"),
-    // W8/PB2 C1 (live_deploy typed ensure-directory leaf): the real-route inhabitation claim and the
+    // C1 (live_deploy typed ensure-directory leaf): the real-route inhabitation claim and the
     // fold-halting claim both need a transport that fails closed before any exec, which is exactly
     // what this context provides -- the host-effect runner's FleetSsh arm refuses typed, so the claim
     // runs the real leaf/provider/runner chain with nothing privileged spawned in CI.
     decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_ensure_owned_directory_witness", decl_name: "the_srv1_demanded_directories_reach_the_leaf_and_refuse_without_a_transport"),
     decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_ensure_owned_directory_witness", decl_name: "w_unreachable_transport"),
     decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_ensure_owned_directory_witness", decl_name: "the_fold_halts_at_the_first_refused_directory_and_names_it"),
-    // W8/PB2 phase-B preamble (gunbc.host.host_effect_realize.live_deploy_apply_preamble_on_host): its
+    // Phase-B preamble (gunbc.host.host_effect_realize.live_deploy_apply_preamble_on_host): its
     // real-route inhabitation claim runs the ordered typed legs over a REAL DeployAccess, and the only
     // hermetic transport that fails closed before any exec is this context's FleetSsh arm. Same reason
     // as the C1 claims above, same leaf chain -- no privileged spawn in CI.

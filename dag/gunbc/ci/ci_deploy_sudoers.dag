@@ -187,7 +187,7 @@ fn deploy_sudoers_install_stmts(access: DeployAccess) -> List<Node> {
   concat(
     [
       deploy_sudoers_elevated(command: [visudo, "-cf"], tail: [deploy_sudoers_stage_word()]),
-      deploy_sudoers_elevated(command: [install, "-m", "0440"], tail: [deploy_sudoers_stage_word(), bash_build_word_lit(text: dropin)]),
+      deploy_sudoers_elevated(command: [install, coreutils_install_mode_flag as String, deploy_sudoers_file_mode as String], tail: [deploy_sudoers_stage_word(), bash_build_word_lit(text: dropin)]),
       bash_build_command_from_lits(lits: argv_words(command: visudo_check_command(file: dropin))),
     ],
     deploy_sudoers_post_install_roster_probe_stmts(access: access)
@@ -195,9 +195,9 @@ fn deploy_sudoers_install_stmts(access: DeployAccess) -> List<Node> {
 }
 
 // THE SAME INSTALL, AS A TYPED ARGV — the sibling of deploy_sudoers_install_stmts for the typed route
-// (gunbc.host.host_effect_realize live_deploy_apply_preamble_on_host), so the `-m 0440` policy and the
-// roster-read install path are spelled ONCE in this module rather than a second time where they could
-// drift or be loosened by a caller. The mode is a local constant, not a parameter: a caller that could
+// (gunbc.host.host_effect_realize live_deploy_apply_preamble_on_host). Both read deploy_sudoers_file_mode
+// and coreutils_install_mode_flag, so the `0440` policy is spelled ONCE in this module and neither route
+// can drift or be loosened by a caller. The mode is a local constant, not a parameter: a caller that could
 // pass a mode could pass 0666. Program identity is argv_command's sealed constructor (this module is a
 // named caller), so nothing here can carry a shell metacharacter, and no argv is ever rejoined into a
 // string to be re-parsed.

@@ -468,7 +468,7 @@ test fn the_fold_halts_at_the_first_refused_directory_and_names_it() -> Bool {
 }
 
 // ══ INHABITANCE ON THE REAL ROUTE (DESIGN §3: at least one claim where it actually runs) ═════════
-// The fold the PB2 cutover calls, over the REAL srv1 deployment spec's demanded directories -- not a
+// The demanded-directory fold, over the REAL srv1 deployment spec's demanded directories -- not a
 // fixture target -- driving the real provider against the real transport runner. Hermetic because the
 // transport is the FleetSsh arm, which the host-effect runner refuses before any exec (its own
 // authority is a separate change), so nothing privileged is spawned: there is no /usr/bin/sudo in the
