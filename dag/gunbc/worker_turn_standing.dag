@@ -71,6 +71,8 @@ import gunbc.cursor_harness_credential {
   cursor_sandbox_discriminating_preflight_command,
   CursorSandboxPreflightReading,
   CursorSandboxReady,
+  CursorSandboxRefused,
+  CursorSandboxRefusal,
   CursorSandboxUnavailable,
   CursorSandboxNotEntered,
   CursorSandboxPreflightUnreadable,
@@ -193,24 +195,18 @@ fn cursor_standing_from_key(key: CursorKeyProbeReading) -> ProviderStanding {
   }
 }
 
-// The sandbox arms that stop the line: the key probe is not reached for any of them. The payloads are
-// CursorSandboxPreflightReading's own; the split exists so that Ready has no constructor here (DESIGN §4b,
-// structurally impossible beats a fail-closed placeholder reason for an arm no caller can reach). The one
-// consumer builds this directly in the three stopping arms of cursor_observed_standing_for_program.
-type CursorSandboxRefusal
-  = CursorSandboxRefusedUnavailable { detail: String }
-  | CursorSandboxRefusedNotEntered { detail: String }
-  | CursorSandboxRefusedUnreadable { exit_code: Int, detail: String }
-
+// The sandbox arms that stop the line: the key probe is not reached for any of them. It takes the reading's
+// own refusal (gunbc.cursor_harness_credential CursorSandboxRefusal), so Ready has no constructor here
+// (DESIGN §4b: structurally impossible beats a fail-closed placeholder for an arm no caller can reach).
 fn cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusal) -> ProviderStanding {
   match refusal {
-    CursorSandboxRefusedUnavailable { detail } =>
+    CursorSandboxUnavailable { detail } =>
       ProviderStandingUnobserved { reason: concat(cursor_sandbox_unavailable_reason_prefix, detail) as NonEmptyStr }
-    CursorSandboxRefusedNotEntered { detail } =>
+    CursorSandboxNotEntered { detail } =>
       ProviderStandingUnobserved {
         reason: join(["the cursor sandbox preflight exited 0 but its command did not read CURSOR_SANDBOX=native from inside, so the CLI may have run it unsandboxed: ", detail], "") as NonEmptyStr,
       }
-    CursorSandboxRefusedUnreadable { exit_code, detail } =>
+    CursorSandboxPreflightUnreadable { exit_code, detail } =>
       ProviderStandingUnobserved {
         reason: join(["the cursor sandbox preflight exited ", to_string(value: exit_code), " without naming its unsupported-sandbox error (on 124 the bound may have fired or the CLI returned 124 itself): ", detail], "") as NonEmptyStr,
       }
@@ -313,10 +309,7 @@ fn cursor_observed_standing_for_program(program: ProgramIdentity, presence: File
     FilesystemEntryListed { directory: _, name: _ } =>
       match cursor_sandbox_preflight_observe(program: program, root: root) {
         CursorSandboxReady => cursor_key_probe_observe(program: program, root: root, snapshot: snapshot)
-        CursorSandboxUnavailable { detail } => cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedUnavailable { detail: detail })
-        CursorSandboxNotEntered { detail } => cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedNotEntered { detail: detail })
-        CursorSandboxPreflightUnreadable { exit_code, detail } =>
-          cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedUnreadable { exit_code: exit_code, detail: detail })
+        CursorSandboxRefused { refusal } => cursor_standing_from_sandbox_refusal(refusal: refusal)
       }
   }
 }

@@ -45,6 +45,7 @@ import gunbc.cursor_harness_credential {
   cursor_sandbox_outside_sentinel,
   CursorSandboxPreflightReading,
   CursorSandboxReady,
+  CursorSandboxRefused,
   CursorSandboxUnavailable,
   CursorSandboxNotEntered,
   CursorSandboxPreflightUnreadable,
@@ -52,9 +53,6 @@ import gunbc.cursor_harness_credential {
 import gunbc.worker_turn_standing {
   cursor_standing_from_key,
   cursor_standing_from_sandbox_refusal,
-  CursorSandboxRefusedUnavailable,
-  CursorSandboxRefusedNotEntered,
-  CursorSandboxRefusedUnreadable,
   cursor_entitlement_trip_pending_reason,
   cursor_sandbox_unavailable_reason_prefix,
 }
@@ -193,16 +191,6 @@ data observed_srv2_sandbox_unsupported_stderr: String = "Error: command failed u
 data supplied_sandbox_entered_stdout: String = "Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\nSandbox policy: {\n  \"type\": \"workspace_readwrite\"\n}\nnative\n"
 data supplied_sandbox_not_entered_stdout: String = "Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\nSandbox policy: {\n  \"type\": \"workspace_readwrite\"\n}\n"
 
-// The production fold builds the refusal in its three stopping arms; the controls reach it from a supplied reading.
-fn standing_of_stopping_reading(reading: CursorSandboxPreflightReading) -> ProviderStanding {
-  match reading {
-    CursorSandboxReady => ProviderStandingUnobserved { reason: "ready is not a stopping reading" as NonEmptyStr }
-    CursorSandboxUnavailable { detail } => cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedUnavailable { detail: detail })
-    CursorSandboxNotEntered { detail } => cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedNotEntered { detail: detail })
-    CursorSandboxPreflightUnreadable { exit_code, detail } => cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusedUnreadable { exit_code: exit_code, detail: detail })
-  }
-}
-
 fn sandbox_ready() -> CursorSandboxPreflightReading {
   cursor_sandbox_preflight_reading(exit_code: 0, stdout: supplied_sandbox_entered_stdout, stderr: "")
 }
@@ -234,59 +222,66 @@ test fn the_key_reading_never_makes_the_offer_selectable_before_the_entitlement_
 // THE srv2 CAPTURE READS UNAVAILABLE, and the host refuses with its OWN cause
 // (the key is never presented), not the entitlement reason.
 test fn the_srv2_sandbox_capture_refuses_the_accepted_key_with_the_host_cause() -> Bool {
-  let reading_unavailable = match sandbox_unsupported_on_srv2() {
-    CursorSandboxUnavailable { detail } => string_contains(s: detail, pattern: "uid_map") && string_contains(s: detail, pattern: "SandboxUnsupportedError")
+  match sandbox_unsupported_on_srv2() {
     CursorSandboxReady => false
-    CursorSandboxNotEntered { detail: _ } => false
-    CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
+    CursorSandboxRefused { refusal } => {
+      let reading_unavailable = match refusal {
+        CursorSandboxUnavailable { detail } => string_contains(s: detail, pattern: "uid_map") && string_contains(s: detail, pattern: "SandboxUnsupportedError")
+        CursorSandboxNotEntered { detail: _ } => false
+        CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
+      }
+      let standing = cursor_standing_from_sandbox_refusal(refusal: refusal)
+      let host_cause = match standing {
+        ProviderStandingUnobserved { reason } =>
+          string_contains(s: reason as String, pattern: cursor_sandbox_unavailable_reason_prefix)
+            && reason != cursor_entitlement_trip_pending_reason
+        ProviderStandingFromFact { fact: _ } => false
+      }
+      reading_unavailable && host_cause && !provider_standing_is_selection_eligible(standing: standing, draw: LimitDispatchDrawAutomatic)
+    }
   }
-  let standing = standing_of_stopping_reading(reading: sandbox_unsupported_on_srv2())
-  let host_cause = match standing {
-    ProviderStandingUnobserved { reason } =>
-      string_contains(s: reason as String, pattern: cursor_sandbox_unavailable_reason_prefix)
-        && reason != cursor_entitlement_trip_pending_reason
-    ProviderStandingFromFact { fact: _ } => false
-  }
-  reading_unavailable && host_cause && !provider_standing_is_selection_eligible(standing: standing, draw: LimitDispatchDrawAutomatic)
 }
 
 // EXIT 0 IS NOT READY WITHOUT THE SUBJECT'S OWN READ: a run that printed no in-sandbox value is
 // not-entered, and an accepted key over it still refuses.
 test fn a_preflight_exit_0_without_the_in_sandbox_read_is_not_ready() -> Bool {
   let reading = cursor_sandbox_preflight_reading(exit_code: 0, stdout: supplied_sandbox_not_entered_stdout, stderr: "")
-  let not_entered = match reading {
-    CursorSandboxNotEntered { detail: _ } => true
+  let refused_not_entered = match reading {
     CursorSandboxReady => false
-    CursorSandboxUnavailable { detail: _ } => false
-    CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
-  }
-  let refused = match standing_of_stopping_reading(reading: reading) {
-    ProviderStandingUnobserved { reason } => string_contains(s: reason as String, pattern: "CURSOR_SANDBOX=native")
-    ProviderStandingFromFact { fact: _ } => false
+    CursorSandboxRefused { refusal } => {
+      let not_entered = match refusal {
+        CursorSandboxNotEntered { detail: _ } => true
+        CursorSandboxUnavailable { detail: _ } => false
+        CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
+      }
+      let refused = match cursor_standing_from_sandbox_refusal(refusal: refusal) {
+        ProviderStandingUnobserved { reason } => string_contains(s: reason as String, pattern: "CURSOR_SANDBOX=native")
+        ProviderStandingFromFact { fact: _ } => false
+      }
+      not_entered && refused
+    }
   }
   let ready_reads_ready = match sandbox_ready() {
     CursorSandboxReady => true
-    CursorSandboxNotEntered { detail: _ } => false
-    CursorSandboxUnavailable { detail: _ } => false
-    CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
+    CursorSandboxRefused { refusal: _ } => false
   }
-  not_entered && refused && ready_reads_ready
+  refused_not_entered && ready_reads_ready
 }
 
 // A NON-ZERO EXIT WITHOUT THE CLI'S ERROR CLASS IS UNREADABLE, carrying its status -- 124 included,
 // which is not read as the bound firing.
 test fn an_unmarked_nonzero_preflight_is_unreadable_and_keeps_its_status() -> Bool {
   let on_124 = match cursor_sandbox_preflight_reading(exit_code: 124, stdout: "", stderr: "") {
-    CursorSandboxPreflightUnreadable { exit_code, detail: _ } => exit_code == 124
+    CursorSandboxRefused { refusal: CursorSandboxPreflightUnreadable { exit_code, detail: _ } } => exit_code == 124
+    CursorSandboxRefused { refusal: CursorSandboxNotEntered { detail: _ } } => false
+    CursorSandboxRefused { refusal: CursorSandboxUnavailable { detail: _ } } => false
     CursorSandboxReady => false
-    CursorSandboxNotEntered { detail: _ } => false
-    CursorSandboxUnavailable { detail: _ } => false
   }
   let on_other = match cursor_sandbox_preflight_reading(exit_code: 1, stdout: "Executing command: printenv CURSOR_SANDBOX\n", stderr: "boom\n") {
-    CursorSandboxPreflightUnreadable { exit_code, detail } => exit_code == 1 && detail == "boom"
+    CursorSandboxRefused { refusal: CursorSandboxPreflightUnreadable { exit_code, detail } } => exit_code == 1 && detail == "boom"
+    CursorSandboxRefused { refusal: CursorSandboxNotEntered { detail: _ } } => false
+    CursorSandboxRefused { refusal: CursorSandboxUnavailable { detail: _ } } => false
     CursorSandboxReady => false
-    CursorSandboxNotEntered { detail: _ } => false
-    CursorSandboxUnavailable { detail: _ } => false
   }
   on_124 && on_other
 }
@@ -300,10 +295,10 @@ test fn an_inherited_native_cannot_make_an_unsandboxed_preflight_ready() -> Bool
   let sentinel_set_outside = argv == concat(concat("env -u CURSOR_API_KEY CURSOR_SANDBOX=", cursor_sandbox_outside_sentinel as String), " env HOME=/i/cursor-attempt-runtime/r/home XDG_CONFIG_HOME=/i/cursor-attempt-runtime/r/config /opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursor-agent --disable-auto-update sandbox run printenv CURSOR_SANDBOX")
   let unsandboxed_stdout = concat(concat("Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\n", cursor_sandbox_outside_sentinel as String), "\n")
   let not_ready = match cursor_sandbox_preflight_reading(exit_code: 0, stdout: unsandboxed_stdout, stderr: "") {
-    CursorSandboxNotEntered { detail } => string_contains(s: detail, pattern: "sentinel survived")
+    CursorSandboxRefused { refusal: CursorSandboxNotEntered { detail } } => string_contains(s: detail, pattern: "sentinel survived")
+    CursorSandboxRefused { refusal: CursorSandboxUnavailable { detail: _ } } => false
+    CursorSandboxRefused { refusal: CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } } => false
     CursorSandboxReady => false
-    CursorSandboxUnavailable { detail: _ } => false
-    CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
   }
   sentinel_set_outside && not_ready
 }
