@@ -266,6 +266,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_executable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_directory_command"),
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_group_names_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_gid_command"),
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_uid_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_version_command"),
     decl_ref(module_path: "extdeps.virtualization.qemu", decl_name: "qemu_version_command"),

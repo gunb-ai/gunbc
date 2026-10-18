@@ -58,6 +58,15 @@ fn id_group_names_command(user: NonEmptyStr) -> ArgvCommand {
   argv_command(program: id_program(), arguments: ["-nG", "--", user as String])
 }
 
+// -g WITH NO OPERAND: the PRIMARY GROUP of THE CALLING PROCESS, numeric. The counterpart of
+// id_uid_command's no-operand rule, and for the same reason: install(1) takes a numeric owner:group, and
+// a witness that seeds a tree must seed it with the group it actually holds. A caller asking whether a
+// SUPPLEMENTARY group has landed must instead ask the account database (id_group_names_command), because
+// a running process cannot have picked one up.
+fn id_gid_command() -> ArgvCommand {
+  argv_command(program: id_program(), arguments: ["-g"])
+}
+
 // -u WITH NO OPERAND: the uid of THE CALLING PROCESS, which is the account the transport actually
 // reached -- the counterpart of id_user_name_argv's no-operand rule, in numeric form. install(1) takes a
 // numeric owner, and a witness that seeds a tree must seed it with the owner it is actually allowed to
