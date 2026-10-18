@@ -2162,12 +2162,12 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn global_bare_callable_binding(binding: Rc<TypeBinding>) -> bool {
-    ((((((binding.resolved.clone().transport.clone() == std::option::Option::None)
-        && (binding.resolved.clone().expr_data.clone() == Rc::new(ExprData::NoExprData)))
-        && (binding.resolved.clone().connective.clone() == Connective::NoConnective))
-        && (binding.resolved.clone().inferred.clone() != std::option::Option::None))
-        && ((binding.resolved.clone().properties.clone().len() as i64) == 0))
-        && (binding.resolved.clone().type_annotation.clone() == std::option::Option::None))
+    ((((((binding.resolved.transport.clone() == std::option::Option::None)
+        && (binding.resolved.expr_data.clone() == Rc::new(ExprData::NoExprData)))
+        && (binding.resolved.connective.clone() == Connective::NoConnective))
+        && (binding.resolved.inferred.clone() != std::option::Option::None))
+        && ((binding.resolved.properties.clone().len() as i64) == 0))
+        && (binding.resolved.type_annotation.clone() == std::option::Option::None))
 }
 
 pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
@@ -3838,7 +3838,7 @@ pub fn infer_arithmetic_binop_type_node(
                     candidates.clone(),
                     source_indices.clone(),
                 ) {
-                    Some(m) => match m.field_node.clone().inferred.clone().as_deref().cloned() {
+                    Some(m) => match m.field_node.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
                             if ((rt.params.clone().len() as i64) > 0) {
                                 match rt.inferred.clone().as_deref().cloned() {

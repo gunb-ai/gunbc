@@ -5177,7 +5177,7 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
             let merged_allocator =
                 crate::std_occurrence_identity::occurrence_id_allocator_advance_to(
-                    merged.authored_token_ordinals.clone().allocator.clone(),
+                    merged.authored_token_ordinals.allocator.clone(),
                     t.authored_token_ordinals.clone(),
                 );
             let merged = intern_table_with_authored_token_ordinals(

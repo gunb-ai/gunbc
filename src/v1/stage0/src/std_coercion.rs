@@ -332,7 +332,7 @@ pub struct ConversionPlan {
 }
 
 pub fn conversion_plan_identity(plan: Rc<ConversionPlan>) -> String {
-    plan.route.clone().decl_name.clone()
+    plan.route.decl_name.clone()
 }
 
 pub fn kernel_carrier_of_literal_source(kind: LiteralSourceKind) -> Rc<ConversionEndpoint> {

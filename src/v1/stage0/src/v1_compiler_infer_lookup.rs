@@ -548,12 +548,9 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
         ) {
             Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound)
         } else {
-            match v1_rt::map_get(
-                &type_env.symbol_index.clone().global_bare.clone(),
-                name.clone(),
-            )
-            .as_deref()
-            .cloned()
+            match v1_rt::map_get(&type_env.symbol_index.global_bare.clone(), name.clone())
+                .as_deref()
+                .cloned()
             {
                 Some(GlobalBareLookupState::GlobalBareUniqueBinding {
                     module_path: mp,
@@ -575,7 +572,7 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
                     Some(cand) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
                         declaration: Rc::new(BorrowedCensusDecl {
                             owner_module_path: cand.module_path.clone(),
-                            node: cand.binding.clone().resolved.clone(),
+                            node: cand.binding.resolved.clone(),
                         }),
                     }),
                     std::option::Option::None => {
@@ -691,7 +688,7 @@ pub fn borrowed_census_callable_candidate(
     candidate: Rc<GlobalBareCandidate>,
 ) -> Rc<CallableCandidate> {
     {
-        let node = candidate.binding.clone().resolved.clone();
+        let node = candidate.binding.resolved.clone();
         let excluded = crate::v1_compiler_infer_env::borrowed_generic_param_names(
             node.params.clone(),
             type_env.source_indices.clone(),
@@ -993,8 +990,8 @@ pub fn global_bare_callable_node(type_env: Rc<TypeEnv>, name: String) -> Option<
         }
         match crate::v1_compiler_infer_env::lookup_binding_by_name(type_env.clone(), name.clone()) {
             Some(binding) => {
-                if (((binding.resolved.clone().params.clone().len() as i64) > 0)
-                    || (binding.resolved.clone().inferred.clone() != std::option::Option::None))
+                if (((binding.resolved.params.clone().len() as i64) > 0)
+                    || (binding.resolved.inferred.clone() != std::option::Option::None))
                 {
                     Some(binding.resolved.clone())
                 } else {
@@ -1598,8 +1595,8 @@ pub fn lookup_structural_method(
                     __result
                 });
                 if ((((blocking_method_diagnostics.clone().len() as i64) == 0)
-                    && (enriched.ty.clone().connective.clone() == Connective::Conj))
-                    && ((enriched.ty.clone().children.clone().len() as i64) > 0))
+                    && (enriched.ty.connective.clone() == Connective::Conj))
+                    && ((enriched.ty.children.clone().len() as i64) > 0))
                 {
                     {
                         let base_result = lookup_field_in_product(
@@ -1705,7 +1702,7 @@ pub fn declared_arg_types_for_method(
                     })
                 }
                 std::option::Option::None => {
-                    match mfr.field_node.clone().inferred.clone().as_deref().cloned() {
+                    match mfr.field_node.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: callable, .. }) => {
                             let expanded = if ((callable.params.clone().len() as i64) > 0) {
                                 callable.clone()

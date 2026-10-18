@@ -335,8 +335,8 @@ pub fn applied_arg_is_width_resolution_position(
                 std::option::Option::None => false,
                 Some(width_decl) => {
                     match v1_rt::map_get(
-                        &env.symbol_index.clone().file_modules.clone(),
-                        decl.span.clone().file.clone(),
+                        &env.symbol_index.file_modules.clone(),
+                        decl.span.file.clone(),
                     ) {
                         std::option::Option::None => false,
                         Some(declaring_module) => {
@@ -355,10 +355,10 @@ pub fn applied_arg_is_width_resolution_position(
                             {
                                 if match applied.children.clone().get((pair.0.clone()) as usize).cloned() {
     std::option::Option::None => false,
-    Some(supplied) => ((((supplied.span.clone().file.clone() == arg.span.clone().file.clone()) && (supplied.span.clone().start.clone() == arg.span.clone().start.clone())) && (supplied.span.clone().end.clone() == arg.span.clone().end.clone())) && match crate::v1_std_core::find_property(pair.1.clone().properties.clone(), crate::v1_std_core::type_param_kind_property_name(), env.source_indices.clone()) {
+    Some(supplied) => ((((supplied.span.file.clone() == arg.span.file.clone()) && (supplied.span.start.clone() == arg.span.start.clone())) && (supplied.span.end.clone() == arg.span.end.clone())) && match crate::v1_std_core::find_property(pair.1.clone().properties.clone(), crate::v1_std_core::type_param_kind_property_name(), env.source_indices.clone()) {
     std::option::Option::None => false,
     Some(kind_node) => match crate::v1_compiler_infer_env::symbol_index_lookup(env.symbol_index.clone(), v1_rt::concat(v1_rt::concat(declaring_module.clone(), ".".to_string()), crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone()))) {
-    Some(kind_decl) => ((kind_decl.span.clone().file.clone() == width_decl.span.clone().file.clone()) && (kind_decl.span.clone().start.clone() == width_decl.span.clone().start.clone())),
+    Some(kind_decl) => ((kind_decl.span.file.clone() == width_decl.span.file.clone()) && (kind_decl.span.start.clone() == width_decl.span.start.clone())),
     std::option::Option::None => false,
 },
 }),
@@ -735,7 +735,7 @@ pub fn resolve_paramless_generic_use_decl_with_children(
         let mut __result = Vec::new();
         for parent in env.parents.clone().iter().cloned() {
             if match v1_rt::map_get(&parent.str_bindings.clone(), brand.clone()) {
-                Some(b) => ((b.resolved.clone().params.clone().len() as i64) > 0),
+                Some(b) => ((b.resolved.params.clone().len() as i64) > 0),
                 std::option::Option::None => false,
             } {
                 __result.push(parent);
@@ -1198,7 +1198,7 @@ pub fn resolve_node_bounded(
                                     crate::v1_std_core::param_node_default_value(p.clone()),
                                     v1_rt::concat(
                                         p.properties.clone(),
-                                        pr.resolved.clone().properties.clone(),
+                                        pr.resolved.properties.clone(),
                                     ),
                                     p.span.clone(),
                                     crate::v1_std_core::node_name_span(p.clone()),
@@ -1763,15 +1763,15 @@ Rc::new(NodeResolveResult {
                                     name: type_name.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
-                                    children: target_result.resolved.clone().children.clone(),
-                                    connective: target_result.resolved.clone().connective.clone(),
+                                    children: target_result.resolved.children.clone(),
+                                    connective: target_result.resolved.connective.clone(),
                                     params: Rc::new(vec![]),
-                                    inferred: target_result.resolved.clone().inferred.clone(),
+                                    inferred: target_result.resolved.inferred.clone(),
                                     return_cardinality: n.return_cardinality.clone(),
                                     uses: n.uses.clone(),
                                     body: n.body.clone(),
                                     transport: n.transport.clone(),
-                                    properties: target_result.resolved.clone().properties.clone(),
+                                    properties: target_result.resolved.properties.clone(),
                                     type_annotation: n.type_annotation.clone(),
                                     is_self_recursive: is_recursive.clone(),
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
@@ -1797,7 +1797,7 @@ Rc::new(NodeResolveResult {
                                     uses: n.uses.clone(),
                                     body: n.body.clone(),
                                     transport: n.transport.clone(),
-                                    properties: target_result.resolved.clone().properties.clone(),
+                                    properties: target_result.resolved.properties.clone(),
                                     type_annotation: n.type_annotation.clone(),
                                     is_self_recursive: is_recursive.clone(),
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
@@ -4614,7 +4614,7 @@ pub fn resolve_item_types(
                                 transport: child.transport.clone(),
                                 properties: v1_rt::concat(
                                     child.properties.clone(),
-                                    tr.resolved.clone().properties.clone(),
+                                    tr.resolved.properties.clone(),
                                 ),
                                 type_annotation: child.type_annotation.clone(),
                                 is_self_recursive: false,
@@ -4686,7 +4686,7 @@ pub fn resolve_item_types(
                                                 transport: field.transport.clone(),
                                                 properties: v1_rt::concat(
                                                     field.properties.clone(),
-                                                    tr.resolved.clone().properties.clone(),
+                                                    tr.resolved.properties.clone(),
                                                 ),
                                                 type_annotation: field.type_annotation.clone(),
                                                 is_self_recursive: false,
