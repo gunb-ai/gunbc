@@ -59,6 +59,10 @@ import v2.workflow.regen_convergence_transaction {
   FinalRegenerationStillDrifts,
   regen_execute_convergence_fixture,
   regen_admit_generation_progress,
+  regen_generation_progress_admission_label,
+  regen_candidate_generation_admission_label,
+  regen_convergence_refusal_detail,
+  CandidateFromDifferentSeed,
   RegenGenerationProgressAdmitted,
   RegenGenerationProgressRefused,
   GenerationCycleDetected,
@@ -876,4 +880,68 @@ test fn a_stage_planning_refusal_prints_its_variant_surface_and_reason() -> Bool
   string_contains(s: label, pattern: "SeedMembershipUnresolved")
     && string_contains(s: label, pattern: "v1.compiler.emit_rust:lib.rs")
     && string_contains(s: label, pattern: "lib.rs has no owner in generated_stage0_crate_partition")
+}
+
+// PRODUCER-TO-PROJECTION controls (review 5563928750): each refusal is produced by its real
+// producer and rendered by the label the host prints; every payload field must appear. Reverting a
+// specialised bare-tag arm, or dropping a nested field from the renderer, fails the matching control.
+test fn a_generation_cycle_refusal_prints_both_digests() -> Bool {
+  let label = regen_generation_progress_admission_label(admission: regen_admit_generation_progress(
+    seen_state_keys: ["seedD:treeD"], seed_digest: "seedD", candidate_tree_digest: "treeD", ordinal: 1, bound: 5))
+  string_contains(s: label, pattern: "GenerationCycleDetected")
+    && string_contains(s: label, pattern: "seed_digest=seedD")
+    && string_contains(s: label, pattern: "candidate_tree_digest=treeD")
+}
+
+test fn a_generation_bound_refusal_prints_the_bound() -> Bool {
+  let label = regen_generation_progress_admission_label(admission: regen_admit_generation_progress(
+    seen_state_keys: [], seed_digest: "s", candidate_tree_digest: "t", ordinal: 7, bound: 7))
+  string_contains(s: label, pattern: "GenerationBoundExceeded") && string_contains(s: label, pattern: "bound=7")
+}
+
+test fn a_stale_candidate_refusal_prints_planned_surfaces_and_generations() -> Bool {
+  let label = regen_candidate_generation_admission_label(admission: regen_admit_candidate_generation(observation: RegenCandidateGenerationObservation {
+    planned_surfaces: [one_identity(), second_identity()],
+    current_seed_digest: "g1",
+    manifest_producer_seed_digest: "g0",
+    observed_candidate_digest: "candidate-g0"
+  }))
+  string_contains(s: label, pattern: "CandidateStaleAfterProducerRebuild")
+    && string_contains(s: label, pattern: "std.subject:std_subject.rs")
+    && string_contains(s: label, pattern: "std.dependent:std_dependent.rs")
+    && string_contains(s: label, pattern: "observed_generation=g0")
+    && string_contains(s: label, pattern: "current_generation=g1")
+    && string_contains(s: label, pattern: "observed_candidate_digest=candidate-g0")
+}
+
+test fn a_different_seed_refusal_prints_every_candidate_identity_field() -> Bool {
+  let detail = regen_convergence_refusal_detail(refusal: CandidateFromDifferentSeed {
+    candidate: RegenCandidateIdentity {
+      producer_generation_id: "gen-a",
+      candidate_tree_id: "tree-id-a",
+      candidate_tree_digest: "tree-digest-a",
+      surface: one_identity(),
+      candidate_digest: "cand-digest-a"
+    },
+    expected_generation_id: "gen-b"
+  })
+  string_contains(s: detail, pattern: "candidate_generation=gen-a")
+    && string_contains(s: detail, pattern: "candidate_tree_id=tree-id-a")
+    && string_contains(s: detail, pattern: "candidate_tree_digest=tree-digest-a")
+    && string_contains(s: detail, pattern: "candidate_digest=cand-digest-a")
+    && string_contains(s: detail, pattern: "std.subject:std_subject.rs")
+    && string_contains(s: detail, pattern: "expected_generation=gen-b")
+}
+
+test fn a_stage_execution_refusal_prints_variant_surfaces_and_ordinal() -> Bool {
+  let digest = regen_convergence_refusal_detail(refusal: StageExecutionRefused {
+    refusal: InstalledDigestMismatch { surfaces: [one_identity()], expected: "e1", observed: "o1" } })
+  let build = regen_convergence_refusal_detail(refusal: StageExecutionRefused {
+    refusal: StageSeedBuildRefused { ordinal: 3, reason: "cargo failed" } })
+  string_contains(s: digest, pattern: "InstalledDigestMismatch")
+    && string_contains(s: digest, pattern: "std_subject.rs")
+    && string_contains(s: digest, pattern: "expected=e1 observed=o1")
+    && string_contains(s: build, pattern: "StageSeedBuildRefused")
+    && string_contains(s: build, pattern: "ordinal=3")
+    && string_contains(s: build, pattern: "cargo failed")
 }
