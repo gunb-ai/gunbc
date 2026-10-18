@@ -41,6 +41,10 @@ fn revision_job_installed_toolchain(release_dir: String) -> String { concat(revi
 // STATE. The root and the receipt store are root-owned; the spec directory is the operator's, because
 // the spec is the request (repository, commit, tree, claims) and the job re-derives and verifies every
 // field of it (decode_revision_job_spec, then the exact-tree check) rather than trusting the writer.
+// The operator-owned spec directory (briansrls, 0755) adds no new path to root on srv1: uid 1000
+// already holds sudo there. The repository a spec may name is authored (revision_job_admitted_repositories),
+// and the root unit still stages the tree itself; unprivileged staging is the declared terminal shape,
+// with its trigger (before any spec names a commit not on main) stated at that row.
 data revision_job_state_root: String = "/var/lib/gunbc/revision-job"
 data revision_job_spec_dir: String = "/var/lib/gunbc/revision-job/spec"
 data revision_job_receipt_store: String = "/var/lib/gunbc/revision-job/receipts"
