@@ -953,9 +953,9 @@ fn roster_controls_report() -> String {
 // import; pass 2 (imports converged) renames each `chars(s:` label to `text:`, and leaves a non-call `s:` and a call to
 // another function alone; pass 3 is Clean. Multibyte text after the call checks the label extents' byte arithmetic.
 fn roster_control_home_converges(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let before = "module c.host\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  g(s: x) + count(xs: chars(s: x)) + count(xs: chars(s: \"é😀\"))\n}\n"
-  let after_import = "module c.host\n\nimport std.algebra { Cons }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  g(s: x) + count(xs: chars(s: x)) + count(xs: chars(s: \"é😀\"))\n}\n"
-  let after_labels = "module c.host\n\nimport std.algebra { Cons }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  g(s: x) + count(xs: chars(text: x)) + count(xs: chars(text: \"é😀\"))\n}\n"
+  let before = "module c.host\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String) -> Int {\n  g(s: x) + count(xs: chars(s: x)) + count(xs: chars(s: \"é😀\"))\n}\n"
+  let after_import = "module c.host\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  g(s: x) + count(xs: chars(s: x)) + count(xs: chars(s: \"é😀\"))\n}\n"
+  let after_labels = "module c.host\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  g(s: x) + count(xs: chars(text: x)) + count(xs: chars(text: \"é😀\"))\n}\n"
   match roster_applied(before: before, outcome: roster_sweep_text(path: "control/host.dag", text: before, prepared: prepared, lex: lex)) {
     RosterApplyRefused { reason: r } => "CONTROL-FAIL home-converges: pass 1 refused " + roster_refusal_text(reason: r) + "\n"
     RosterApplyWritten { content: c1 } =>
