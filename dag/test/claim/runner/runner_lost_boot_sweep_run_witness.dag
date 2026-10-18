@@ -1,10 +1,10 @@
 module test.claim.runner.runner_lost_boot_sweep_run_witness
 
 import std.algebra { string_contains }
+import extdeps.transports.rest { RestResult, RestAnswered }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOnline }
 import gunbc.fleet.fleet_runner_connectivity { RosterObserved, RosterObservedPartial, RosterReadUnavailable, OrganizationRunnerRosterEvidence }
@@ -28,7 +28,7 @@ import gunbc.runner.runner_jit_deregistration {
 import gunbc.runner.runner_lost_boot_sweep_run {
   LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input,
   sweep_authority, sweep_host_standing, SweepHostBound, SweepHostNotManaged,
-  sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, sweep_listing_of_roster,
+  sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, sweep_listing_of_roster, SweepListingObserved, SweepListingNotObserved,
   sweep_exceeds_ceiling, sweep_ceiling_refusal_text, lost_boot_sweep_registration_ceiling,
 }
 
@@ -292,14 +292,14 @@ fn roster_report(e: OrganizationRunnerRosterEvidence) -> OrganizationRunnerRoste
 test fn only_an_observed_roster_becomes_the_sweep_listing() -> Bool {
   let reg = GitHubSelfHostedRunnerRegistration { id: 7, name: "a", status: GitHubRunnerOnline {}, busy: false, ephemeral: none, version: none, os: "Linux", labels: [] }
   (match sweep_listing_of_roster(report: roster_report(RosterObserved { observed_on: "d", registrations: [reg] })) {
-    RestAnswered { answer: w } => w.total_count == 1 && count(w.runners) == 1
-    RestRefused { refusal: _ } => false
-  }) && (match sweep_listing_of_roster(report: roster_report(RosterObservedPartial { observed_on: "d", registrations: [reg], observed_count: 1, authority_total: 1 })) {
-    RestRefused { refusal: _ } => true
-    RestAnswered { answer: _ } => false
+    SweepListingObserved { listing: w } => w.total_count == 1 && count(w.runners) == 1
+    SweepListingNotObserved { cause: _ } => false
+  }) && (match sweep_listing_of_roster(report: roster_report(RosterObservedPartial { observed_on: "d", registrations: [reg], observed_count: 1, authority_total: 2 })) {
+    SweepListingNotObserved { cause: c } => string_contains(s: c as String, pattern: "was partial (1 of total_count 2)") && !string_contains(s: c as String, pattern: "transport")
+    SweepListingObserved { listing: _ } => false
   }) && (match sweep_listing_of_roster(report: roster_report(RosterReadUnavailable { reason: "r" })) {
-    RestRefused { refusal: _ } => true
-    RestAnswered { answer: _ } => false
+    SweepListingNotObserved { cause: c } => string_contains(s: c as String, pattern: "was unavailable: r") && !string_contains(s: c as String, pattern: "transport")
+    SweepListingObserved { listing: _ } => false
   })
 }
 

@@ -131,45 +131,50 @@ fn decode_runner_labels(v: JsonValue) -> List<NonEmptyStr>? {
 
 // REQUIRED FIELDS REFUSE WHEN ABSENT; OPTIONAL ONES STAY ABSENT. The split is the upstream schema's
 // (extdeps.github.ci_runner GitHubSelfHostedRunnerRegistration), not a choice made here.
-fn decode_runner_registration(v: JsonValue) -> RunnerRegistrationDecode {
-  match json_member_int(v: v, key: "id") {
-    Absent => RunnerRegistrationDecodeRefused { reason: "a runner object has no integer id" }
-    Present { value: id } =>
-      if id < 0 {
-        RunnerRegistrationDecodeRefused { reason: "a runner object has a negative id" }
-      } else {
-        match json_member_string(v: v, key: "name") {
-          Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no name: id ", to_string(id)) as NonEmptyStr }
-          Present { value: name } => match json_member_string(v: v, key: "status") {
-            Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no status: id ", to_string(id)) as NonEmptyStr }
-            Present { value: raw_status } => match decode_runner_status(raw: raw_status) {
-              Absent => RunnerRegistrationDecodeRefused { reason: concat("runner status is neither online nor offline: ", raw_status as String) as NonEmptyStr }
-              Present { value: status } => match json_member_bool(v: v, key: "busy") {
-                Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no busy flag: id ", to_string(id)) as NonEmptyStr }
-                Present { value: busy } => match json_member_string(v: v, key: "os") {
-                  Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no os: id ", to_string(id)) as NonEmptyStr }
-                  Present { value: os } => match decode_runner_labels(v: v) {
-                    Absent => RunnerRegistrationDecodeRefused { reason: concat("runner labels are absent or unnamed: id ", to_string(id)) as NonEmptyStr }
-                    Present { value: labels } => match checked_int_magnitude(a: id) {
-                      CheckedNatOverflow { cause: _ } => RunnerRegistrationDecodeRefused { reason: concat("runner id is not representable as a natural number: ", to_string(id)) as NonEmptyStr }
-                      CheckedNatReady { value: nat_id } => RunnerRegistrationDecoded { registration: GitHubSelfHostedRunnerRegistration {
-                        id: nat_id,
-                        name: name,
-                        status: status,
-                        busy: busy,
-                        ephemeral: json_member_bool(v: v, key: "ephemeral"),
-                        version: json_member_string(v: v, key: "version"),
-                        os: os,
-                        labels: labels
-                      } }
-                    }
-                  }
+fn registration_from_fields(id: Int, name: NonEmptyStr?, status: NonEmptyStr?, busy: Bool?, os: NonEmptyStr?, labels: List<NonEmptyStr>?, ephemeral: Bool?, version: NonEmptyStr?) -> RunnerRegistrationDecode {
+  if id < 0 {
+    RunnerRegistrationDecodeRefused { reason: "a runner object has a negative id" }
+  } else {
+    match name {
+      Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no name: id ", to_string(id)) as NonEmptyStr }
+      Present { value: n } => match status {
+        Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no status: id ", to_string(id)) as NonEmptyStr }
+        Present { value: raw_status } => match decode_runner_status(raw: raw_status) {
+          Absent => RunnerRegistrationDecodeRefused { reason: concat("runner status is neither online nor offline: ", raw_status as String) as NonEmptyStr }
+          Present { value: st } => match busy {
+            Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no busy flag: id ", to_string(id)) as NonEmptyStr }
+            Present { value: bz } => match os {
+              Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no os: id ", to_string(id)) as NonEmptyStr }
+              Present { value: o } => match labels {
+                Absent => RunnerRegistrationDecodeRefused { reason: concat("runner labels are absent or unnamed: id ", to_string(id)) as NonEmptyStr }
+                Present { value: ls } => match checked_int_magnitude(a: id) {
+                  CheckedNatOverflow { cause: _ } => RunnerRegistrationDecodeRefused { reason: concat("runner id is not representable as a natural number: ", to_string(id)) as NonEmptyStr }
+                  CheckedNatReady { value: nat_id } => RunnerRegistrationDecoded { registration: GitHubSelfHostedRunnerRegistration {
+                    id: nat_id, name: n, status: st, busy: bz, ephemeral: ephemeral, version: version, os: o, labels: ls
+                  } }
                 }
               }
             }
           }
         }
       }
+    }
+  }
+}
+
+fn decode_runner_registration(v: JsonValue) -> RunnerRegistrationDecode {
+  match json_member_int(v: v, key: "id") {
+    Absent => RunnerRegistrationDecodeRefused { reason: "a runner object has no integer id" }
+    Present { value: id } => registration_from_fields(
+      id: id,
+      name: json_member_string(v: v, key: "name"),
+      status: json_member_string(v: v, key: "status"),
+      busy: json_member_bool(v: v, key: "busy"),
+      os: json_member_string(v: v, key: "os"),
+      labels: decode_runner_labels(v: v),
+      ephemeral: json_member_bool(v: v, key: "ephemeral"),
+      version: json_member_string(v: v, key: "version")
+    )
   }
 }
 
@@ -779,43 +784,26 @@ fn nonempty_of(s: String) -> NonEmptyStr? {
   if s == "" { none } else { Present { value: s as NonEmptyStr } }
 }
 
-fn registration_from_wire(w: OrganizationRunnerRosterEntryWire) -> RunnerRegistrationDecode {
-  if w.id < 0 {
-    RunnerRegistrationDecodeRefused { reason: "a runner object has a negative id" }
+fn wire_label_names(w: OrganizationRunnerRosterEntryWire) -> List<NonEmptyStr>? {
+  let names = map(w.labels, l => nonempty_of(s: l.name))
+  if any(names, n => match n { Absent => true, Present { value: _ } => false }) {
+    none
   } else {
-    match nonempty_of(s: w.name) {
-      Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no name: id ", to_string(w.id)) as NonEmptyStr }
-      Present { value: name } => match nonempty_of(s: w.status) {
-        Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no status: id ", to_string(w.id)) as NonEmptyStr }
-        Present { value: raw_status } => match decode_runner_status(raw: raw_status) {
-          Absent => RunnerRegistrationDecodeRefused { reason: concat("runner status is neither online nor offline: ", raw_status as String) as NonEmptyStr }
-          Present { value: status } => match nonempty_of(s: w.os) {
-            Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no os: id ", to_string(w.id)) as NonEmptyStr }
-            Present { value: os } => {
-              let label_names = map(w.labels, l => nonempty_of(s: l.name))
-              if any(label_names, n => match n { Absent => true, Present { value: _ } => false }) {
-                RunnerRegistrationDecodeRefused { reason: concat("runner labels are absent or unnamed: id ", to_string(w.id)) as NonEmptyStr }
-              } else {
-                match checked_int_magnitude(a: w.id) {
-                  CheckedNatOverflow { cause: _ } => RunnerRegistrationDecodeRefused { reason: concat("runner id is not representable as a natural number: ", to_string(w.id)) as NonEmptyStr }
-                  CheckedNatReady { value: nat_id } => RunnerRegistrationDecoded { registration: GitHubSelfHostedRunnerRegistration {
-                    id: nat_id,
-                    name: name,
-                    status: status,
-                    busy: w.busy,
-                    ephemeral: w.ephemeral,
-                    version: match w.version { Absent => none, Present { value: v } => nonempty_of(s: v) },
-                    os: os,
-                    labels: flat_map(label_names, n => match n { Present { value } => [value], Absent => [] })
-                  } }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+    Present { value: flat_map(names, n => match n { Present { value } => [value], Absent => [] }) }
   }
+}
+
+fn registration_from_wire(w: OrganizationRunnerRosterEntryWire) -> RunnerRegistrationDecode {
+  registration_from_fields(
+    id: w.id,
+    name: nonempty_of(s: w.name),
+    status: nonempty_of(s: w.status),
+    busy: Present { value: w.busy },
+    os: nonempty_of(s: w.os),
+    labels: wire_label_names(w: w),
+    ephemeral: w.ephemeral,
+    version: match w.version { Absent => none, Present { value: v } => nonempty_of(s: v) }
+  )
 }
 
 fn roster_page_read_from_wire(org: NonEmptyStr, page: PositiveInt, per_page: Int, wire: OrganizationRunnerRosterPageWire) -> OrganizationRunnerRosterPageRead {

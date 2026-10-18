@@ -6,7 +6,7 @@ import std.measure { Second, second, second_count, Minute, minute }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.transports.rest { RestResult }
+import extdeps.transports.rest { RestResult, RestAnswered }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
 import product.host_identity { HostIdentity }
 import gunbc.actions_run_binding { actions_variable_trimmed }
@@ -18,7 +18,6 @@ import gunbc.fleet.fleet_runner_connectivity { github_organization_ref, RosterOb
 import gunbc.fleet.organization_runner_roster_read { OrganizationRunnerRosterReport, organization_runner_roster_report_via_rest }
 import extdeps.github.pagination { github_max_page_size }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestTransportRefused }
 import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
 import extdeps.uuid { uuid_of }
@@ -244,17 +243,21 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
 // when the listing closed, every page agreed on total_count, no id was read with disagreeing payloads
 // and the distinct ids equal the total. Anything less is refused here with the report's own cause: a
 // prefix is never handed to lost_boot_sweep, where a runner on an unread page would read as absent.
-fn sweep_listing_of_roster(report: OrganizationRunnerRosterReport) -> RestResult<OrganizationRunnerListWire> {
+type SweepListing
+  = SweepListingObserved { listing: OrganizationRunnerListWire }
+  | SweepListingNotObserved { cause: NonEmptyStr }
+
+fn sweep_listing_of_roster(report: OrganizationRunnerRosterReport) -> SweepListing {
   match report.evidence {
     RosterObserved { observed_on: _, registrations: regs } =>
-      RestAnswered { answer: OrganizationRunnerListWire {
+      SweepListingObserved { listing: OrganizationRunnerListWire {
         total_count: length(xs: regs),
         runners: map(regs, r => OrganizationRunnerWire { id: r.id as Int, name: r.name as String }),
       } }
     RosterObservedPartial { observed_on: _, registrations: _, observed_count: seen, authority_total: total } =>
-      RestRefused { refusal: RestTransportRefused { cause: join(["organization runner roster was partial (", to_string(seen), " of total_count ", to_string(total), "): ", report.note], "") as NonEmptyStr } }
+      SweepListingNotObserved { cause: join(["lost-boot sweep: organization runner roster was partial (", to_string(seen), " of total_count ", to_string(total), "): ", report.note], "") as NonEmptyStr }
     RosterReadUnavailable { reason: why } =>
-      RestRefused { refusal: RestTransportRefused { cause: concat("organization runner roster was unavailable: ", why) as NonEmptyStr } }
+      SweepListingNotObserved { cause: concat("lost-boot sweep: organization runner roster was unavailable: ", why) as NonEmptyStr }
   }
 }
 
@@ -265,11 +268,14 @@ fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, t
   match current_service_population(host: standing, boot: current) {
     CurrentServicePopulationRefused { refusal } => exit_failure(reason: population_refusal_text(refusal: refusal))
     CurrentServicePopulationDerived { population } =>
+  match sweep_listing_of_roster(report: organization_runner_roster_report_via_rest(org: organization.login, page_size: github_max_page_size, token: token.token)) {
+    SweepListingNotObserved { cause } => exit_failure(reason: cause as String)
+    SweepListingObserved { listing } =>
   match lost_boot_sweep(
     organization: organization,
     population: population,
     authority: sweep_authority(),
-    listing: sweep_listing_of_roster(report: organization_runner_roster_report_via_rest(org: organization.login, page_size: github_max_page_size, token: token.token)),
+    listing: RestAnswered { answer: listing },
   ) {
     LostBootSweepRefused { refusal } => exit_failure(reason: sweep_refusal_text(refusal: refusal))
     LostBootSweepSelected { subjects, untouched } => if sweep_exceeds_ceiling(selected: length(xs: subjects)) {
@@ -285,6 +291,7 @@ fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, t
       let wrote = write_sweep_receipt(lines: sweep_report_lines(outcomes: outcomes, untouched: untouched))
       if sweep_all_deregistered(outcomes: outcomes) { wrote } else { exit_failure(reason: "lost-boot sweep: at least one selected registration was not deregistered; see the receipt") }
     }
+  }
   }
   }
 }
