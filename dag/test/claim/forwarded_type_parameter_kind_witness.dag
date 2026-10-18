@@ -90,7 +90,7 @@ fn ftk_forwarded_without_a_kind() -> Outcome<ResolvedTree> {
 }
 
 test fn a_forwarded_parameter_declared_without_a_kind_refuses() -> Bool {
-  ftk_refuses_with(o: ftk_forwarded_without_a_kind(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
+  ftk_refuses_with(o: ftk_forwarded_without_a_kind(), reason: ^resolve_reason_forwarded_parameter_unkinded)
 }
 
 // (3) THE WIDEN'S SECOND VICTIM. The forwarded parameter declares a DIFFERENT kind -- `Colour`, whose
@@ -101,14 +101,14 @@ fn ftk_forwarded_wrong_kind() -> Outcome<ResolvedTree> {
 }
 
 test fn a_forwarded_parameter_declared_of_a_different_kind_refuses() -> Bool {
-  ftk_refuses_with(o: ftk_forwarded_wrong_kind(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
+  ftk_refuses_with(o: ftk_forwarded_wrong_kind(), reason: ^resolve_reason_forwarded_parameter_kind_differs)
 }
 
 // (4) CONTROL: THE REFUSAL IS THE WALL'S OWN, NOT THE FIXTURE'S. A named non-inhabitant at the same slot
 // refuses with the same reason, which main already did -- so (2) and (3) refuse for the wall's reason,
 // and the diagnostic class is reachable in this fixture independently of the forwarded case.
 fn ftk_named_non_inhabitant() -> Outcome<ResolvedTree> {
-  ftk_assemble(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Other\n  = Foreign\n\ntype Slot<b: Resolution>\n\ntype Use = Slot<Foreign>\n")
+  ftk_assemble(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Colour\n  = Red\n  | Blue\n\ntype Slot<b: Resolution>\n\ntype Use = Slot<Red>\n")
 }
 
 test fn a_named_non_inhabitant_at_the_kinded_slot_refuses() -> Bool {
@@ -125,3 +125,18 @@ fn ftk_unkinded_slot_forward() -> Outcome<ResolvedTree> {
 test fn a_parameter_forwarded_into_an_unkinded_slot_is_not_repudiated() -> Bool {
   ftk_accepts(o: ftk_unkinded_slot_forward())
 }
+
+// NO FN-HEADER WITNESS EXISTS IN THIS FILE, AND THAT IS A MEASURED FINDING, NOT AN OVERSIGHT.
+// Review 81998 asked for the Arrow branch's witness (a function's OWN kinded type parameter forwarded
+// into a kinded slot). It is not authorable today: `fn width_of<b: Resolution>(s: Slot<b>) -> Nat { 0 }`
+// assembles -- no parse, unbound-symbol, arity or arrow-stage reason fires -- and the refusal is this
+// judgment's own resolve_reason_forwarded_parameter_kind_unresolved, because symbol_index_fill_declaration
+// records a type-parameter conjunct only through type_decl_view, under which an `fn` item is NotATypeDecl
+// and answers binders: optional_absent. Measured against the control that the same index reading SUCCEEDS
+// at a type declaration's path, so the empty record is specific to fn headers.
+// gunbc.recurring_failure_mode fn_type_parameter_header_is_never_indexed carries the specimen, the
+// per-stage measurements and the trigger: when the fill records an fn header's binders, the two rows
+// deleted here (matching-kind admitted; different-kind refused with resolve_reason_forwarded_parameter_kind_differs)
+// become authorable and must be reinstated and run. The Arrow push branch is NOT deleted for being
+// uncovered: the specimen reaches it and decides there, which is what the exact-reason measurement proves,
+// so DESIGN section 3c's deletion does not apply to a branch that is live and merely unobservable.

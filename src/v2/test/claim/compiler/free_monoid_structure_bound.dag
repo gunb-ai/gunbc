@@ -200,6 +200,11 @@ fn fmb_conforms(c: TypeApplicationConformance) -> Bool {
     TypeApplicationArityMismatch { declared: _, supplied: _ } => false
     TypeApplicationKindNotInhabited { argument: _, kind: _ } => false
     TypeApplicationKindUnresolved { argument: _, kind: _ } => false
+    // A forwarded parameter refused for any of these three reasons is equally a non-conformance; the
+    // distinction lives in the reason, not in whether the caller accepts.
+    TypeApplicationForwardedParameterUnkinded { argument: _, kind: _ } => false
+    TypeApplicationForwardedParameterKindDiffers { argument: _, kind: _ } => false
+    TypeApplicationForwardedParameterUnresolved { argument: _, kind: _ } => false
     TypeApplicationBinderOrderMalformed => false
   }
 }
