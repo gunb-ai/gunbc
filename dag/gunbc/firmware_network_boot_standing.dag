@@ -718,7 +718,20 @@ fn ready_evidence(
   observation_authority: CitedFigureStanding,
   observed_at: EpochMs,
   observation: FirmwareBootObservation
-) -> ReadyEvidence {
+) -> ReadyEvidence
+  // THE TYPE ALONE WAS NOT THE WALL. `sole_constructor` confines where a LITERAL may be written, which
+  // leaves the constructor function open to any importer -- and this one took an observation as an
+  // argument, so an importer could seal a Ready's evidence around an observation chosen to support a
+  // conclusion it does not support. Admitting only the one fold that computes the verdict from that
+  // same observation makes the evidence and the verdict non-separable: there is no call site where one
+  // is produced and the other is picked independently.
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.firmware_network_boot_standing",
+      decl_name: "ready_or_refuse_on_nics",
+    ),
+  ]
+  {
   ReadyEvidence {
     observation_authority: observation_authority,
     observed_at: observed_at,
@@ -726,7 +739,16 @@ fn ready_evidence(
   }
 }
 
-type FirmwareNetworkBootStanding
+// THE VERDICT ITSELF IS NOT AUTHORABLE (merry-fox-82, blocker 2). Until now any module could write
+// `Ready { ... }` with a hand-picked interface and a `boot_target` of its own invention, and the
+// sealed `evidence` inside it would simply have been whatever they passed -- sealing the evidence and
+// leaving the verdict open seals the frame and lets the picture be swapped. The same held for
+// `NeedsPreparation { route: ..., blocking: ... }`, which is how the catalog/verdict pairing this
+// module exists to enforce could be bypassed in one line by a caller who skipped the catalog and
+// picked a route that cannot physically move the blocker. Construction is confined to the functions
+// at the bottom of this file, all caller-sealed by name; the union's arms remain public for MATCHING
+// (a match is not a mint), so every consumer can still consume verdicts and none can fabricate one.
+type FirmwareNetworkBootStanding sole_constructor
   = Ready {
       firmware_mode: ClientNetworkBootMode,
       network_interface: NonEmptyStr,
@@ -844,7 +866,13 @@ type FirmwareNetworkBootRefusal
 // DHCP the resulting boot produced.
 // ---------------------------------------------------------------------------
 
-type NetworkBootAttempt {
+// NOT AUTHORABLE EITHER (merry-fox-82, blocker 2). `firmware_network_boot_attempt_receipt` takes an
+// attempt and a verdict and pairs them as the record of what was done to a unit, so an ordinary
+// record here meant a caller could hand that receipt a `NetworkBootAttempt` with any route it liked
+// -- including one its own blocker never resolved to -- and an `Unobserved` verdict presented as the
+// outcome of a boot that was never attempted. Its only mint is `network_boot_attempt` below, which
+// derives the route from the blocker via the catalog rather than accepting one.
+type NetworkBootAttempt sole_constructor {
   route: FirmwareNetworkBootPreparationRoute
   boot_control: BootControlReceiptStanding
   reset_observed_at: EpochMs
@@ -1093,7 +1121,20 @@ fn gap_absence(gap: UnansweredAxis) -> AxisAbsence {
 // and no second copy of the rule to keep in step with the first. A blocker with no row is a
 // modeling gap IN THIS MODULE and is reported as a refusal naming it -- inventing a route for a
 // blocker nobody has written a remedy for is exactly what produces an attempt that cannot boot.
-fn prepare(blocker: PreparationBlockingOn) -> FirmwareNetworkBootStanding {
+fn prepare(blocker: PreparationBlockingOn) -> FirmwareNetworkBootStanding
+  // EVERY PATH THAT RETURNS A VERDICT IS CALLER-SEALED, not only the type. sole_constructor confines
+  // where a literal may be written; without this list the mint functions below stay open to any
+  // importer, and an importer could call prepare(blocker:) with any blocker/route pairing it liked and
+  // present the result as this module's verdict. Each entry is a fold IN THIS FILE that has earned the
+  // right to conclude -- adding a second file is an edit here, in the dependency that owns the verdict,
+  // which is a counted review event rather than an import someone writes in their own module.
+  admit_callers: [
+    decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide"),
+    decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide_from_joins"),
+    decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide_absent"),
+    decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "ready_or_refuse_on_nics"),
+  ]
+ {
   match route_for_blocking(blocker: blocker) {
     Present { value: route } => NeedsPreparation { route: route, blocking: blocker }
     Absent =>
@@ -1131,7 +1172,11 @@ fn decide(
   authority: CitedFigureStanding,
   observed_at: EpochMs,
   boot_mode: ClientNetworkBootMode
-) -> FirmwareNetworkBootStanding {
+) -> FirmwareNetworkBootStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "firmware_network_boot_standing"),
+  ]
+ {
   // EVERY FACT BELOW IS READ OUT OF THE OBSERVATION. The four matches here are exhaustive, so an
   // unanswered axis cannot be mistaken for an answered one -- the arms exist because the compiler
   // requires them, and each reports rather than lying, so a future gap-pass bug surfaces as an
@@ -1197,7 +1242,11 @@ fn decide_from_joins(
   authority: CitedFigureStanding,
   observed_at: EpochMs,
   observation: FirmwareBootObservation
-) -> FirmwareNetworkBootStanding {
+) -> FirmwareNetworkBootStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide"),
+  ]
+ {
   match join {
     // THE HEAD DOES NOT APPEAR IN THE ENUMERATION, and the enumeration was not empty. Two positive
     // reads disagree -- real firmware does this (a hidden or vendor-removed option stays listed in
@@ -1265,7 +1314,11 @@ fn decide_from_joins(
 // unconfigured, or because every network option in the enumeration is DISABLED -- and those two
 // have different remediations. A disabled option exists, so the authoring route is not what is
 // missing; what is missing is that nobody enabled it.
-fn decide_absent(available: AvailableNetworkStanding) -> FirmwareNetworkBootStanding {
+fn decide_absent(available: AvailableNetworkStanding) -> FirmwareNetworkBootStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide_from_joins"),
+  ]
+ {
   match available {
     AvailableNetworkOptionsPresent { head: _, additional_count: _ } =>
       // Options exist and at least one is a usable network target; the order simply does not select
@@ -1287,7 +1340,11 @@ fn ready_or_refuse_on_nics(
   authority: CitedFigureStanding,
   observed_at: EpochMs,
   observation: FirmwareBootObservation
-) -> FirmwareNetworkBootStanding {
+) -> FirmwareNetworkBootStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide_from_joins"),
+  ]
+ {
   // ONE MATCH OVER THE THREE SHAPES, not a length ladder followed by `|> first` (review 81893). The
   // ladder needed FOUR outcomes for three questions: zero, one, several -- and 'counted exactly one
   // but the head was Absent', a state that can only arise from the fold disagreeing with itself. Three
