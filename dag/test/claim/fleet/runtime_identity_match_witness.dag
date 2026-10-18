@@ -51,6 +51,8 @@ import gunbc.fleet.runtime_identity_match {
   AuthenticationFailed,
   ReplyUnreadable,
   axes_agree,
+  examinations,
+  examination_axis,
   runtime_identity_axis_rows,
   runtime_identity_match,
   runtime_identity_match_consumer_frontier,
@@ -332,6 +334,20 @@ test fn test_pre_boot_gap_is_located_on_the_firmware_side() -> Bool {
     Unprovable { why: gaps, pre_unit: _, post_unit: _ } => gaps.length() == 1 && first_gap_side(gaps: gaps) == PreBootFirmwareSide
     _ => false
   }
+}
+
+// NO AXIS MAY VANISH QUIETLY. With the third, "unreachable" examination arm deleted, the only thing keeping
+// an axis from silently contributing nothing is this count: every row must answer with EXACTLY ONE
+// examination, whatever its standings are. The mixture below puts a silent side and a refused side in the
+// same pair, which is precisely where the deleted arm used to swallow an axis -- and the fold, seeing neither
+// a divergence nor a gap from it, would have reported Match over an axis nobody examined. Each of the four
+// rows was refused on one side and silent on the other, so all four must still appear.
+test fn test_every_axis_answers_with_exactly_one_examination() -> Bool {
+  let rows = runtime_identity_axis_rows
+  let ex = examinations(pre: pre_with_every_refused(), post: post_with_every_unobserved())
+  let axes = ex.map(e => examination_axis(e: e))
+  let counted = rows.map(r => axes.filter(a => a == r.axis).length())
+  counted.all(n => n == 1) && axes.length() == rows.length()
 }
 
 // A CORROBORATING GAP MUST NOT VOID THE BINDING. The model string is corroborating; if an unanswered

@@ -33,7 +33,6 @@ module gunbc.fleet.runtime_identity_match
 //   other. Deciding is done on the readings; the channel is context that is stated, never inferred.
 
 import std.types { Bool, List, NonEmptyStr }
-import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
 import gunbc.machine_intake.subject { UnitKey }
@@ -178,17 +177,6 @@ type AxisStanding<T>
   | AxisStayedSilent { reason: NonEmptyStr }
   | AxisWasRefused { refusal: RuntimeIdentityRefusal }
 
-// THE ONE PROJECTION from a standing to an absence. Four fns used to do this, one per axis sum, each the
-// same three lines; a fifth axis would have needed a fifth copy. The table grows by a row and this is simply
-// called on the new field.
-fn axis_absence<T>(standing: AxisStanding<T>) -> RuntimeIdentityAbsence? {
-  match standing {
-    AxisWasRead { value: _ } => Absent
-    AxisStayedSilent { reason: r } => Present { value: Unread { reason: r } }
-    AxisWasRefused { refusal: f } => Present { value: ControllerRefused { refusal: f } }
-  }
-}
-
 // WHAT ONE AXIS SAYS ABOUT A PAIR OF STANDINGS -- the single answer the fold consumes. Three fns used to
 // hand-match coproducts into bools (`both_sides_read`, `axis_is_decisive`, `same_runtime_identity_axis`) and
 // the fold branched on those bools: each had already thrown away WHICH ARM it came from, a new arm would
@@ -196,15 +184,75 @@ fn axis_absence<T>(standing: AxisStanding<T>) -> RuntimeIdentityAbsence? {
 // travels with the verdict about it, the weight is CARRIED rather than flattened to "is decisive", and a new
 // state makes every consumer of this sum stop compiling until it handles the new arm.
 //
-// `AxisIncomparable` is unreachable and total at once. A pair is absent only when some side is not read, and
-// a side that is not read always yields a present absence -- so `AxisUnanswered` catches every real case.
-// The typechecker cannot know that, and the honest arm is one that CLAIMS nothing rather than a default that
-// guesses: if the reachability argument above ever becomes false, this is where the new state lands, and it
-// surfaces to an operator as a gap rather than being silently agreed with.
+// TWO ARMS, NOT THREE, AND WHY THAT IS THE POINT. There used to be a third, `AxisIncomparable`, justified as
+// "unreachable but total": `axis_pair` decided whether both sides had been read and a SEPARATE `side_gap`
+// decided which side had not, so their leftovers had nowhere to go and landed in an arm every fold returned
+// `[]` for -- which the fold read as "no divergence, no gap", i.e. `Match`. An unreachable arm that is
+// dropped silently is not a safety net, it is the escape hatch DESIGN section 5 rejects by name, and the
+// comment claiming it "surfaces to an operator" was false. The fix is not to make that arm fatal but to
+// delete its constructor: `standing_report` below now answers both questions from ONE match over the two
+// standings, so a state where neither arm applies cannot be built in the first place (correctness by
+// construction, not validation).
 type AxisExamination
   = AxisCompared { axis: RuntimeIdentityAxis, pair: AxisReadingPair, weight: AxisWeight }
   | AxisUnanswered { gap: RuntimeIdentityGap, weight: AxisWeight }
-  | AxisIncomparable { axis: RuntimeIdentityAxis, weight: AxisWeight }
+
+// WHICH SIDE FAILED TO ANSWER, decided by the same single match that decides whether a pair exists. The two
+// questions -- "is there a pair to compare?" and "if not, who stayed quiet and why?" -- are ONE fact about
+// the same two standings, and deriving them twice is what produced the arm with no honest meaning above.
+//
+// `PreQuiet` wins when both sides are silent, because the firmware side is the one a controller was asked to
+// read: that is where an operator would go first, and an operator reading "the booted OS never reported a
+// serial" while the BMC also never answered is sent to the wrong row.
+//
+// WHY THE SILENT/REFUSED MAPPING APPEARS ONCE PER SIDE. A gap that cannot name which side stayed quiet
+// cannot be routed -- the firmware row and the OS row are different places to go and different humans -- so
+// the side must be spoken by the match itself rather than recovered from a value afterwards.
+type AxisReport<T>
+  = BothAnswered { pre_value: T, post_value: T }
+  | PreQuiet { absence: RuntimeIdentityAbsence }
+  | PostQuiet { absence: RuntimeIdentityAbsence }
+
+fn standing_report<T>(pre: AxisStanding<T>, post: AxisStanding<T>) -> AxisReport<T> {
+  match pre {
+    AxisWasRead { value: pv } => match post {
+      AxisWasRead { value: ov } => BothAnswered { pre_value: pv, post_value: ov }
+      AxisStayedSilent { reason: r } => PostQuiet { absence: Unread { reason: r } }
+      AxisWasRefused { refusal: f } => PostQuiet { absence: ControllerRefused { refusal: f } }
+    }
+    AxisStayedSilent { reason: r } => PreQuiet { absence: Unread { reason: r } }
+    AxisWasRefused { refusal: f } => PreQuiet { absence: ControllerRefused { refusal: f } }
+  }
+}
+
+// WHICH AXIS AN EXAMINATION IS ABOUT. A projection over BOTH arms, deliberately not a pair of bool probes:
+// the witness uses it to count examinations per axis, which is how "no axis was quietly dropped" is asserted
+// now that the third arm is gone -- with two arms, an axis that produced nothing would previously have been
+// invisible in exactly the way the deleted arm made invisible.
+fn examination_axis(e: AxisExamination) -> RuntimeIdentityAxis {
+  match e {
+    AxisCompared { axis: a, pair: _, weight: _ } => a
+    AxisUnanswered { gap: g, weight: _ } => g.axis
+  }
+}
+
+// THE ONE MATCH PER AXIS, and the only place an AxisExamination is built. Both arms cover every combination
+// of the two standings, so the fold can never be handed a reading it has no policy for.
+fn examine_axis<T>(
+  row: RuntimeIdentityAxisRow,
+  pre: AxisStanding<T>,
+  post: AxisStanding<T>,
+  build: fn(T, T) -> AxisReadingPair,
+) -> AxisExamination {
+  match standing_report(pre: pre, post: post) {
+    BothAnswered { pre_value: pv, post_value: ov } =>
+      AxisCompared { axis: row.axis, pair: build(pv, ov), weight: row.weight }
+    PreQuiet { absence: a } =>
+      AxisUnanswered { gap: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, absence: a }, weight: row.weight }
+    PostQuiet { absence: a } =>
+      AxisUnanswered { gap: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, absence: a }, weight: row.weight }
+  }
+}
 
 // What an axis did not answer, and WHETHER it stayed quiet or was refused. The absence is a SUM, not a
 // string: `Unread` (nobody got an answer) and `ControllerRefused` (an answer of "no" came back, with its
@@ -350,7 +398,6 @@ fn all_divergences(examined: List<AxisExamination>) -> List<RuntimeIdentityDiver
   examined.flat_map(e => match e {
     AxisCompared { axis: a, pair: p, weight: _ } => if axes_agree(pair: p) { [] } else { [RuntimeIdentityDivergence { axis: a, readings: p }] }
     AxisUnanswered { gap: _, weight: _ } => []
-    AxisIncomparable { axis: _, weight: _ } => []
   })
 }
 
@@ -366,7 +413,6 @@ fn fatal_gaps(examined: List<AxisExamination>) -> List<RuntimeIdentityGap> {
       CorroboratingAxis => []
     }
     AxisCompared { axis: _, pair: _, weight: _ } => []
-    AxisIncomparable { axis: _, weight: _ } => []
   })
 }
 
@@ -380,7 +426,6 @@ fn axes_checked_and_passed(examined: List<AxisExamination>) -> List<RuntimeIdent
       CorroboratingAxis => []
     }
     AxisUnanswered { gap: _, weight: _ } => []
-    AxisIncomparable { axis: _, weight: _ } => []
   })
 }
 
@@ -394,16 +439,23 @@ fn axes_checked_and_passed(examined: List<AxisExamination>) -> List<RuntimeIdent
 // wrappers used to answer these as Bools derived separately, each re-deriving the standings and each free to
 // disagree; the weight is carried here instead of being flattened to "is decisive".
 fn examinations(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<AxisExamination> {
-  runtime_identity_axis_rows.map(r => match axis_pair(row: r, pre: pre, post: post) {
-    Present { value: p } => AxisCompared { axis: r.axis, pair: p, weight: r.weight }
-    Absent => match side_gap(row: r, pre: pre, post: post) {
-      Present { value: g } => AxisUnanswered { gap: g, weight: r.weight }
-      Absent => AxisIncomparable { axis: r.axis, weight: r.weight }
-    }
+  runtime_identity_axis_rows.map(r => match r.axis {
+    BoardSerialAxis => examine_axis(
+      row: r, pre: pre.board_serial, post: post.board_serial,
+      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
+    BiosVersionAxis => examine_axis(
+      row: r, pre: pre.bios_version, post: post.bios_version,
+      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
+    ModelAxis => examine_axis(
+      row: r, pre: pre.model, post: post.model,
+      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
+    NicSetAxis => examine_axis(
+      row: r, pre: pre.nics, post: post.nics,
+      build: (pv, ov) => AddressSetPair { pre_addresses: pv, post_addresses: ov })
   })
 }
 
-// THE READINGS OF ONE AXIS ON BOTH SIDES, or Absent when either side failed to read.
+// THE READINGS OF ONE AXIS ON BOTH SIDES.
 //
 // A SUM, not a record with four fields two of which are always placeholders. The two agreement rules
 // consume different evidence -- an exact-equality axis has no addresses to compare, an address-set axis has
@@ -411,56 +463,11 @@ fn examinations(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> L
 // should be and every address axis to carry a rendering where a reading should be. A flat shape then lets
 // one rule read the half it does not use: the divergence this shape makes impossible is a MAC axis
 // "agreeing" because two rendered strings happened to match, or a serial axis comparing empty address lists
-// and calling that a shared interface. Which arm a pair is follows from the axis, in `axis_pair`, the only
+// and calling that a shared interface. Which arm a pair is follows from the axis, in `examine_axis`, the only
 // place a pair is ever built -- so the rule that runs is decided by the evidence in hand and nothing else.
 type AxisReadingPair
   = TextPair { pre_text: NonEmptyStr, post_text: NonEmptyStr }
   | AddressSetPair { pre_addresses: List<Eui48Address>, post_addresses: List<Eui48Address> }
-
-// THE ONLY PLACE A READING IS EXTRACTED from either side, per axis. One place, so the fold cannot compare
-// one side's field against the other side's different field -- the bug this shape exists to prevent. The
-// pair extracted here is BOTH what is compared and what a divergence reports, so a report can never
-// describe a reading other than the one that decided.
-fn axis_pair(
-  row: RuntimeIdentityAxisRow,
-  pre: PreBootIdentityStanding,
-  post: PostBootIdentityReport,
-) -> AxisReadingPair? {
-  match row.axis {
-    BoardSerialAxis => pair_of(
-      pre: pre.board_serial, post: post.board_serial,
-      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
-    BiosVersionAxis => pair_of(
-      pre: pre.bios_version, post: post.bios_version,
-      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
-    ModelAxis => pair_of(
-      pre: pre.model, post: post.model,
-      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
-    NicSetAxis => pair_of(
-      pre: pre.nics, post: post.nics,
-      build: (pv, ov) => AddressSetPair { pre_addresses: pv, post_addresses: ov })
-  }
-}
-
-// THE ONE PLACE A PAIR IS BUILT, so no axis can be compared against evidence its rule does not consume. The
-// four axes differed only in payload, which is why this is a parameter rather than four copies of the same
-// nested match -- the copies is what let one axis's arm be matched against another's field without anyone
-// noticing. A pair exists only when BOTH sides read; anything else is Absent and the gap path explains why.
-fn pair_of<T>(
-  pre: AxisStanding<T>,
-  post: AxisStanding<T>,
-  build: fn(T, T) -> AxisReadingPair,
-) -> AxisReadingPair? {
-  match pre {
-    AxisWasRead { value: pv } => match post {
-      AxisWasRead { value: ov } => Present { value: build(pv, ov) }
-      AxisStayedSilent { reason: _ } => Absent
-      AxisWasRefused { refusal: _ } => Absent
-    }
-    AxisStayedSilent { reason: _ } => Absent
-    AxisWasRefused { refusal: _ } => Absent
-  }
-}
 
 // THE AGREEMENT RULES, indexed by READING KIND -- which is the only way this can be written so a
 // misconfiguration cannot fabricate a verdict. There used to be an `AxisComparison` field on the row and a
@@ -471,7 +478,7 @@ fn pair_of<T>(
 // prefers the shape where the wrong state is unwritable over one that catches it.
 //
 // So the rule travels WITH the evidence: a text pair is compared by exact equality, an address pair by a
-// shared permanent address. Which kind a axis produces is settled by `axis_pair` above, the single place a
+// shared permanent address. Which kind an axis produces is settled by `examine_axis`, the single place a
 // pair is ever built, and no row can now overrule it. The two rules stay two rules because they are
 // genuinely different claims -- the address rule is NOT exact equality, since a firmware reports every
 // interface it can boot from while the booted OS reports only what it brought up, and on this fleet's boxes
@@ -512,51 +519,6 @@ fn same_mac_address(left: Eui48Address, right: Eui48Address) -> Bool {
     && left.octet4 == right.octet4
     && left.octet5 == right.octet5
     && left.octet6 == right.octet6
-}
-
-// Which side stayed quiet, and what it said. Both sides are checked so an Unprovable is located rather than
-// merely asserted; the pre-boot side is asked first because in this fleet the firmware is the side that
-// usually refuses.
-fn side_gap(
-  row: RuntimeIdentityAxisRow,
-  pre: PreBootIdentityStanding,
-  post: PostBootIdentityReport,
-) -> RuntimeIdentityGap? {
-  match pre_side_gap(row: row, pre: pre) {
-    Present { value: g } => Present { value: g }
-    Absent => post_side_gap(row: row, post: post)
-  }
-}
-
-fn pre_side_gap(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding) -> RuntimeIdentityGap? {
-  match absence_on_firmware_side(row: row, pre: pre) {
-    Present { value: a } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, absence: a } }
-    Absent => Absent
-  }
-}
-
-fn absence_on_firmware_side(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding) -> RuntimeIdentityAbsence? {
-  match row.axis {
-    BoardSerialAxis => axis_absence(standing: pre.board_serial)
-    BiosVersionAxis => axis_absence(standing: pre.bios_version)
-    ModelAxis => axis_absence(standing: pre.model)
-    NicSetAxis => axis_absence(standing: pre.nics)
-  }
-}
-fn post_side_gap(row: RuntimeIdentityAxisRow, post: PostBootIdentityReport) -> RuntimeIdentityGap? {
-  match absence_on_os_side(row: row, post: post) {
-    Present { value: a } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, absence: a } }
-    Absent => Absent
-  }
-}
-
-fn absence_on_os_side(row: RuntimeIdentityAxisRow, post: PostBootIdentityReport) -> RuntimeIdentityAbsence? {
-  match row.axis {
-    BoardSerialAxis => axis_absence(standing: post.board_serial)
-    BiosVersionAxis => axis_absence(standing: post.bios_version)
-    ModelAxis => axis_absence(standing: post.model)
-    NicSetAxis => axis_absence(standing: post.nics)
-  }
 }
 
 // ---------------------------------------------------------------------------
