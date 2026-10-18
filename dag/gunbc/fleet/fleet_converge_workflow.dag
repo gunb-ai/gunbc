@@ -3569,6 +3569,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
       [
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
+        fleet_converge_grant_only_await_step(),
         fleet_converge_receipt_download_step(
           id: "dashboard_plan_receipt_download",
           name: "Download the plan artifact (carries the plan receipt) from the plan run",
@@ -4816,6 +4817,19 @@ fn fleet_converge_jobs() -> List<Job> {
 // (gunbc.auth.branch_run_grant_await), then federates through the branch-dispatch pool as the
 // account the grant named. Without the grant the auth step's exchange is refused by IAM itself.
 fn fleet_converge_branch_run_grant_await_step() -> Step {
+  fleet_converge_branch_run_grant_await_step_when(if_condition: fleet_converge_run_scoped_step_if)
+}
+
+// THE GRANT-ONLY ROWS' WAIT: a mode whose job holds no cloud credential still waits, off main, for the
+// approved grant before it runs the branch's code. It is placed in the mode's own executing job
+// (fleet_converge_mode_job_id), before that job's mutation.
+data fleet_converge_grant_only_step_if: String = join(["(", fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: run_scoped_modes_with_route(route: GrantOnlyNoAccount))), ") && ", fleet_converge_on_branch_step_if], "")
+
+fn fleet_converge_grant_only_await_step() -> Step {
+  fleet_converge_branch_run_grant_await_step_when(if_condition: fleet_converge_grant_only_step_if)
+}
+
+fn fleet_converge_branch_run_grant_await_step_when(if_condition: String) -> Step {
   RunStep {
     name: Present { value: "Run-scoped grant: wait for the grant run main's broker dispatched for this run attempt" },
     id: Present { value: "branch_run_grant_await" },
@@ -4825,7 +4839,7 @@ fn fleet_converge_branch_run_grant_await_step() -> Step {
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
     ] },
     working_directory: none,
-    if_condition: Present { value: fleet_converge_run_scoped_step_if },
+    if_condition: Present { value: if_condition },
     continue_on_error: none,
     timeout_minutes: Present { value: 50 }
   }
@@ -4835,8 +4849,8 @@ fn fleet_converge_branch_run_grant_await_step() -> Step {
 // underscores>, which the mode's consumers read.
 fn fleet_converge_granted_account_auth_step(row: RunScopedMode, email: String) -> Step {
   ci_wif_auth_step_with_condition(
-    name: join(["WIF auth (OIDC -> branch-dispatch pool -> ", row.account_id as String, " SA; only after this run's grant)"], ""),
-    id: concat("wif_auth_", (row.account_id as String).replace(from: "-", to: "_")),
+    name: join(["WIF auth (OIDC -> branch-dispatch pool -> ", fleet_converge_row_account_text(row: row), " SA; only after this run's grant)"], ""),
+    id: concat("wif_auth_", fleet_converge_row_account_text(row: row).replace(from: "-", to: "_")),
     provider_resource: branch_dispatch_provider_resource(),
     service_account: email,
     if_condition: Present { value: fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: [row])) },
@@ -4851,15 +4865,32 @@ fn fleet_converge_granted_account_auth_steps() -> List<Step> {
     map(fleet_converge_row_service_accounts(row: r), email => fleet_converge_granted_account_auth_step(row: r, email: email)))
 }
 
+fn fleet_converge_row_account_text(row: RunScopedMode) -> String {
+  match row.account_id { Present { value: id } => id as String  Absent => "(no account)" }
+}
+
 fn fleet_converge_row_service_accounts(row: RunScopedMode) -> List<String> {
-  match run_scoped_federation_named(account_id: row.account_id as String) { Present { value: f } => [f.service_account as String]  Absent => [] }
+  match row.account_id {
+    Absent => []
+    Present { value: id } => match run_scoped_federation_named(account_id: id as String) { Present { value: f } => [f.service_account as String]  Absent => [] }
+  }
+}
+
+// A row owes a service account unless its route is grant-only, where an account would be a second
+// credential path beside the grant.
+fn fleet_converge_row_owes_account_without_one(row: RunScopedMode) -> Bool {
+  row.main_route != GrantOnlyNoAccount && fleet_converge_row_service_accounts(row: row).length() == 0
+}
+
+fn fleet_converge_row_grant_only_names_account(row: RunScopedMode) -> Bool {
+  row.main_route == GrantOnlyNoAccount && fleet_converge_row_service_accounts(row: row).length() != 0
 }
 
 fn fleet_converge_unfederated_run_scoped_refusal_of(rows: List<RunScopedMode>) -> String? {
-  let bad = filter(rows, r => fleet_converge_row_service_accounts(row: r).length() == 0)
+  let bad = filter(rows, r => fleet_converge_row_owes_account_without_one(row: r) || fleet_converge_row_grant_only_names_account(row: r))
   if bad.length() == 0 { Absent } else {
-    Present { value: join(["REFUSED gunbc.fleet.fleet_converge_workflow: run_scoped_modes row(s) name an account with no federation (gunbc.auth.branch_dispatch_federation run_scoped_federation_named), so the sign-in would carry no service account: ",
-      join(map(bad, r => join(["mode ", r.mode as String, " account_id ", r.account_id as String], "")), "; "), ". No workflow yaml was emitted."], "") }
+    Present { value: join(["REFUSED gunbc.fleet.fleet_converge_workflow: run_scoped_modes row(s) name an account with no federation (gunbc.auth.branch_dispatch_federation run_scoped_federation_named), or a grant-only row names one, so the sign-in would carry no service account or a second credential path: ",
+      join(map(bad, r => join(["mode ", r.mode as String, " account_id ", fleet_converge_row_account_text(row: r)], "")), "; "), ". No workflow yaml was emitted."], "") }
   }
 }
 

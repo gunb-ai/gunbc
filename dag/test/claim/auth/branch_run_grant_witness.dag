@@ -19,7 +19,7 @@ import gunbc.auth.branch_dispatch_federation {
   mtcollins1_boot_run_scoped_federation, mtcollins1_boot_run_scoped_service_account_id, select_boot_credential_source,
   boot_credential_effect, boot_credential_source_from_selection, boot_credential_source_from_pattern,
   ReviewedMainDedicatedFederation, RunScopedApprovedGrant, BootCredentialSourceSelected, BootCredentialSourceRefused,
-  BootCredentialStanding, run_scoped_federation_named, run_scoped_modes,
+  BootCredentialStanding, run_scoped_federation_named, run_scoped_modes, RunScopedMode, GrantOnlyNoAccount,
 }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
@@ -27,8 +27,8 @@ import gunbc.auth.authorization_pattern_selection {
 }
 import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, Conforms }
 import gunbc.auth.branch_run_grant {
-  BranchRunFacts, BranchRunAdmitted, BranchRunRefused, BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
-  judge_branch_run, plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
+  BranchRunFacts, BranchRunAdmitted, BranchRunRefused, BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused, BranchRunGrant, BranchRunAccountCell, BranchRunApprovalOnly,
+  judge_branch_run, plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose, branch_run_grant_preimage,
 }
 import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
@@ -145,7 +145,10 @@ test fn a_rerun_attempt_needs_its_own_grant() -> Bool {
   let f = hetzner_cloud_control_federation()
   let first = branch_run_impersonation_cell(run_id: 7, run_attempt: 1, expires_at: "2026-10-09T05:00:00Z")
   match plan_branch_run_grant(f: f, run: facts(attempt: 2, created_at: "2026-10-09T04:10:00Z"), expires_at: "2026-10-09T05:10:00Z", reading: PolicyObserved { policy: policy(cells: [first], etag: "e1") }) {
-    BranchRunGrantPlanned { grant: g } => g.cell.member != first.member && g.pruned.length() == 0
+    BranchRunGrantPlanned { grant: g } => match g.access {
+      BranchRunAccountCell { account: _, cell: c, pruned: pr, observed_etag: _ } => c.member != first.member && pr.length() == 0
+      BranchRunApprovalOnly => false
+    }
     _ => false
   }
 }
@@ -159,17 +162,20 @@ test fn the_grant_prunes_lapsed_cells_and_preserves_the_rest() -> Bool {
   let foreign = GcpIamBindingCell { role: "roles/iam.serviceAccountTokenCreator", member: "user:operator@example.com", condition: none }
   let observed = policy(cells: [lapsed, live, foreign], etag: "e1")
   match plan_branch_run_grant(f: f, run: facts(attempt: 1, created_at: "2026-10-09T04:00:00Z"), expires_at: "2026-10-09T05:00:00Z", reading: PolicyObserved { policy: observed }) {
-    BranchRunGrantPlanned { grant: g } =>
-      g.observed_etag == "e1" && g.pruned.length() == 1 && gcp_cell_in(c: lapsed, xs: g.pruned)
+    BranchRunGrantPlanned { grant: g } => match g.access {
+     BranchRunApprovalOnly => false
+     BranchRunAccountCell { account: _, cell: gcell, pruned: gpruned, observed_etag: getag } =>
+      getag == "e1" && gpruned.length() == 1 && gcp_cell_in(c: lapsed, xs: gpruned)
         && (branch_run_grant_purpose(g: g) as String).contains("attempt 1 of fleet-converge (mode hetzner_cloud_server_read) on work/cax-onboard")
         && match approved_grant_policy(g: g, reading: PolicyObserved { policy: observed }) {
           Present { value: next } => {
             let cells = gcp_policy_cells(p: next)
-            gcp_cell_in(c: g.cell, xs: cells) && gcp_cell_in(c: live, xs: cells) && gcp_cell_in(c: foreign, xs: cells) && !gcp_cell_in(c: lapsed, xs: cells)
+            gcp_cell_in(c: gcell, xs: cells) && gcp_cell_in(c: live, xs: cells) && gcp_cell_in(c: foreign, xs: cells) && !gcp_cell_in(c: lapsed, xs: cells)
           }
           Absent => false
         }
         && match approved_grant_policy(g: g, reading: PolicyObserved { policy: policy(cells: [lapsed, live, foreign], etag: "e2") }) { Present { value: _ } => false  Absent => true }
+    }
     _ => false
   }
 }
@@ -193,8 +199,8 @@ test fn a_present_cell_holds_and_an_unjudgeable_owned_cell_refuses() -> Bool {
 // non-main boot run maps to mtcollins1-boot-run; the hetzner read mode is eligible on any ref.
 test fn boot_mode_eligibility_follows_the_credential_selection_by_ref() -> Bool {
   match run_scoped_mode_eligible(mode: "mtcollins1_boot", branch: "main") { Present { value: _ } => false  Absent => true }
-    && match run_scoped_mode_eligible(mode: "mtcollins1_boot", branch: "integration/mtcollins-boot") { Present { value: m } => (m.account_id as String) == "mtcollins1-boot-run"  Absent => false }
-    && match run_scoped_mode_eligible(mode: "hetzner_cloud_server_read", branch: "main") { Present { value: m } => (m.account_id as String) == "hetzner-cloud-control"  Absent => false }
+    && match run_scoped_mode_eligible(mode: "mtcollins1_boot", branch: "integration/mtcollins-boot") { Present { value: m } => (account_text(m: m)) == "mtcollins1-boot-run"  Absent => false }
+    && match run_scoped_mode_eligible(mode: "hetzner_cloud_server_read", branch: "main") { Present { value: m } => (account_text(m: m)) == "hetzner-cloud-control"  Absent => false }
     && match run_scoped_mode_eligible(mode: "hetzner_cloud_server_read", branch: "work/x") { Present { value: _ } => true  Absent => false }
     && match run_scoped_mode_eligible(mode: "microvm_network_apply", branch: "work/x") { Present { value: _ } => false  Absent => true }
 }
@@ -205,17 +211,22 @@ test fn fleet_identity_modes_are_granted_off_main_only() -> Bool {
   all(["plan", "apply", "dashboard_deploy"], mode =>
     match run_scoped_mode_eligible(mode: mode, branch: "main") { Present { value: _ } => false  Absent => true }
       && match run_scoped_mode_eligible(mode: mode, branch: "work/x") { Present { value: _ } => true  Absent => false })
-    && match run_scoped_mode_named(mode: "plan") { Present { value: m } => (m.account_id as String) == "fleet-cloud-convergence"  Absent => false }
-    && match run_scoped_mode_named(mode: "apply") { Present { value: m } => (m.account_id as String) == "fleet-apply-run"  Absent => false }
-    && match run_scoped_mode_named(mode: "dashboard_deploy") { Present { value: m } => (m.account_id as String) == "dashboard-deploy-run"  Absent => false }
+    && match run_scoped_mode_named(mode: "plan") { Present { value: m } => (account_text(m: m)) == "fleet-cloud-convergence"  Absent => false }
+    && match run_scoped_mode_named(mode: "apply") { Present { value: m } => (account_text(m: m)) == "fleet-apply-run"  Absent => false }
+    && match run_scoped_mode_named(mode: "dashboard_deploy") { Present { value: m } => m.main_route == GrantOnlyNoAccount && account_text(m: m) == "(none)"  Absent => false }
 }
 
 // RED: every row resolves to a federation (a row without one would be a grant nothing can plan), the
 // new accounts hold no standing impersonation and are converge targets, and the plan row's account is
 // not a second converge target.
 test fn every_row_resolves_and_the_new_accounts_have_no_standing_way_in() -> Bool {
-  all(run_scoped_modes(), r => match run_scoped_federation_named(account_id: r.account_id as String) { Present { value: _ } => true  Absent => false })
-    && all(["fleet-apply-run", "dashboard-deploy-run"], id =>
+  all(run_scoped_modes(), r => match r.account_id {
+      Absent => r.main_route == GrantOnlyNoAccount
+      Present { value: id } => match run_scoped_federation_named(account_id: id as String) { Present { value: _ } => true  Absent => false }
+    })
+    && match run_scoped_federation_named(account_id: "dashboard-deploy-run") { Present { value: _ } => false  Absent => true }
+    && !any(gcp_iam_converge_targets, t => (t.service_account_id as String) == "dashboard-deploy-run")
+    && all(["fleet-apply-run"], id =>
       match run_scoped_federation_named(account_id: id) {
         Absent => false
         Present { value: f } => impersonation_cells(f: f).length() == 0
@@ -229,8 +240,8 @@ test fn every_row_resolves_and_the_new_accounts_have_no_standing_way_in() -> Boo
 // MAIN'S TABLE DECIDES THE ACCOUNT: the read mode maps to hetzner-cloud-control, anything else to nothing.
 test fn only_a_declared_mode_reaches_a_declared_account() -> Bool {
   mode_of_run_title(title: title) == "hetzner_cloud_server_read"
-    && match run_scoped_mode_named(mode: "hetzner_cloud_server_read") { Present { value: m } => (m.account_id as String) == "hetzner-cloud-control"  Absent => false }
-    && match run_scoped_mode_named(mode: "mtcollins1_boot") { Present { value: m } => (m.account_id as String) == (mtcollins1_boot_run_scoped_service_account_id as String)  Absent => false }
+    && match run_scoped_mode_named(mode: "hetzner_cloud_server_read") { Present { value: m } => (account_text(m: m)) == "hetzner-cloud-control"  Absent => false }
+    && match run_scoped_mode_named(mode: "mtcollins1_boot") { Present { value: m } => (account_text(m: m)) == (mtcollins1_boot_run_scoped_service_account_id as String)  Absent => false }
     && match run_scoped_mode_named(mode: "microvm_network_apply") { Present { value: _ } => false  Absent => true }
 }
 
@@ -342,4 +353,18 @@ test fn red_a_non_admitted_pattern_is_a_refused_boot_credential_source() -> Bool
     && standing_is_refused(s: boot_credential_source_from_selection(on_reviewed_main: false, s: PatternSelectionNeedsPolicy { survivors: [] }))
     && standing_is_refused(s: boot_credential_source_from_pattern(on_reviewed_main: false, p: FederatedScopedGrant))
     && standing_is_refused(s: boot_credential_source_from_pattern(on_reviewed_main: true, p: OperatorApprovedCapability))
+}
+
+fn account_text(m: RunScopedMode) -> String {
+  match m.account_id { Present { value: id } => id as String  Absent => "(none)" }
+}
+
+// A GRANT-ONLY ROW'S GRANT IS THE APPROVAL ALONE: it carries no account and no cell, its purpose says
+// no cloud credential is involved, its preimage differs from every account grant's, and the apply has no
+// policy to write for it.
+test fn a_grant_only_row_grants_an_approval_and_writes_no_policy() -> Bool {
+  let g = BranchRunGrant { run: facts(attempt: 1, created_at: "2026-10-09T04:00:00Z"), access: BranchRunApprovalOnly }
+  (branch_run_grant_purpose(g: g) as String).contains("no cloud credential")
+    && branch_run_grant_preimage(g: g).contains("access=approval_only")
+    && match approved_grant_policy(g: g, reading: PolicyObserved { policy: policy(cells: [], etag: "e1") }) { Present { value: _ } => false  Absent => true }
 }
