@@ -963,6 +963,10 @@ test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
     // width check and the digit-strip check is never reached -- a mutation that disabled the strip would be
     // invisible. At four characters the width check passes and ONLY the strip can reject it.
     && refuses(crypt_digest: "$6$rounds=abcd$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // ...AND A COST THAT STARTS WITH A DIGIT AND THEN DEVIATES: "rounds=abcd" above is caught by the leading
+    // class as much as by the digit strip, so disabling the strip alone was invisible. At "1abc" the first
+    // character is a legal [1-9], the width is legal, and ONLY the strip can reject it.
+    && refuses(crypt_digest: "$6$rounds=1abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     // ...and the two documented ENDS of the range are accepted, so the check is not secretly a smaller range.
     && accepts(crypt_digest: "$6$rounds=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && accepts(crypt_digest: "$6$rounds=999999999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
