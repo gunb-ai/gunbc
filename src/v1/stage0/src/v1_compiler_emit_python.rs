@@ -58,7 +58,6 @@ pub use crate::v1_compiler_languages::{
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Conj, Disj};
 pub use crate::v1_std_core::DeclaredCallableIdentity;
 use crate::v1_std_core::ExprData::{
@@ -89,10 +88,9 @@ pub use crate::v1_std_core::{
     let_value, make_expr_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
     module_imports, module_items, param_node_name_at, param_node_type_expr,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
-    slice_end, slice_start, transport_env, with_required_cardinality, Cardinality, Connective,
-    DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind, StringPart, TextFile, UnaryOpKind,
-    VarBindingKind,
+    slice_end, slice_start, transport_env, type_is_optional, Connective, DeclaredFuncSig, ExprData,
+    FieldAccessStyle, FieldSummary, InferredNode, MatchPattern, MethodSemantics, NewlineIndex,
+    Node, ParsedModuleItemKind, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -830,10 +828,9 @@ pub fn emit_py_dataclass_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> 
             RenderTarget::Python,
             env.source_indices.clone(),
         );
-        let is_optional = (crate::v1_compiler_infer_types::resolved_type(child.clone())
-            .return_cardinality
-            .clone()
-            == Cardinality::CardOptional);
+        let is_optional = crate::v1_std_core::type_is_optional(
+            crate::v1_compiler_infer_types::resolved_type(child.clone()),
+        );
         let default_str = if is_optional.clone() {
             v1_rt::concat(" = ".to_string(), py_default_value())
         } else {

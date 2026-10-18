@@ -21,6 +21,7 @@ pub use crate::std_occurrence_identity::{
     occurrence_id_allocator_initial, occurrence_transport_refusal, NodeOccurrenceIdentity,
     OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
+pub use crate::std_optional::Optional;
 pub use crate::std_source_annotation::{
     source_annotation_graph_concat, source_annotation_graph_empty, SourceAnnotationGraph,
     UnboundAnnotationCapture,
@@ -76,7 +77,6 @@ use crate::v1_std_core::CallSemantics::{
 use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
-use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{
     InternalError, OccurrenceTransportViolation, OwnershipViolation, TestCodeReferenced,
 };
@@ -101,16 +101,16 @@ pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at,
     build_newline_index, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
     expr_call_func_at, expr_method_name_at, field_access_field_at, field_binding_name_at,
-    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_cardinality,
+    field_binding_pattern, field_init_node_name_at, field_init_node_value,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_span,
     field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, lambda_param_names_at,
     make_error_node, module_imports, module_items, no_span, param_node_default_value,
     param_node_name_at, param_node_span, param_node_type_expr, pre_intern_tokens,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, CallSemantics,
-    CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
-    DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    CallTargetIdentity, CompileResult, CompilerDiagnostic, Connective, DeclarationMarker,
+    ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
     ResolvedCallFormal, StringPart, TextFile, Token, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
@@ -1336,13 +1336,6 @@ pub fn json_bool(value: bool) -> String {
         "true".to_string()
     } else {
         "false".to_string()
-    }
-}
-
-pub fn cardinality_name(value: Cardinality) -> String {
-    match value.clone() {
-        Cardinality::Required => "Required".to_string(),
-        Cardinality::CardOptional => "CardOptional".to_string(),
     }
 }
 
@@ -2689,7 +2682,51 @@ pub fn serialize_field(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), crate::v1_compiler_dag_collect_support::json_quote(crate::v1_std_core::field_node_name_at(field.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node_ref(crate::v1_std_core::field_node_type_expr(field.clone()), key_to_id.clone())), ", \"cardinality\": ".to_string()), crate::v1_compiler_dag_collect_support::json_quote(cardinality_name(crate::v1_std_core::field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node_ref(crate::v1_std_core::field_node_default_value(field.clone()), key_to_id.clone())), ", \"from_key\": ".to_string()), json_optional_string(crate::v1_std_core::field_node_from_key(field.clone(), source_indices.clone()))), ", \"span\": ".to_string()), serialize_span(crate::v1_std_core::field_node_span(field.clone()))), "}".to_string())
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "{\"name\": ".to_string(),
+                                            crate::v1_compiler_dag_collect_support::json_quote(
+                                                crate::v1_std_core::field_node_name_at(
+                                                    field.clone(),
+                                                    source_indices.clone(),
+                                                ),
+                                            ),
+                                        ),
+                                        ", \"type_expr\": ".to_string(),
+                                    ),
+                                    serialize_node_ref(
+                                        crate::v1_std_core::field_node_type_expr(field.clone()),
+                                        key_to_id.clone(),
+                                    ),
+                                ),
+                                ", \"default_value\": ".to_string(),
+                            ),
+                            json_optional_node_ref(
+                                crate::v1_std_core::field_node_default_value(field.clone()),
+                                key_to_id.clone(),
+                            ),
+                        ),
+                        ", \"from_key\": ".to_string(),
+                    ),
+                    json_optional_string(crate::v1_std_core::field_node_from_key(
+                        field.clone(),
+                        source_indices.clone(),
+                    )),
+                ),
+                ", \"span\": ".to_string(),
+            ),
+            serialize_span(crate::v1_std_core::field_node_span(field.clone())),
+        ),
+        "}".to_string(),
+    )
 }
 
 pub fn serialize_param(
@@ -2803,12 +2840,12 @@ pub fn serialize_node_record(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), crate::v1_compiler_dag_collect_support::json_quote(crate::v1_std_core::authored_name_at(source_indices.clone(), node.clone()))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), crate::v1_compiler_dag_collect_support::json_quote(crate::v1_std_core::authored_name_at(source_indices.clone(), node.clone()))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
     Connective::Conj => crate::v1_compiler_dag_collect_support::json_quote(crate::v1_compiler_dag_collect_support::connective_name(Connective::Conj)),
     Connective::Disj => crate::v1_compiler_dag_collect_support::json_quote(crate::v1_compiler_dag_collect_support::connective_name(Connective::Disj)),
     Connective::NoConnective => "null".to_string(),
     Connective::Arrow => crate::v1_compiler_dag_collect_support::json_quote(crate::v1_compiler_dag_collect_support::connective_name(Connective::Arrow)),
-}), ", \"params\": ".to_string()), serialize_node_params_json(node.clone(), source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), crate::v1_compiler_dag_collect_support::json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), source_indices.clone(), key_to_id.clone())), "}".to_string())
+}), ", \"params\": ".to_string()), serialize_node_params_json(node.clone(), source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), source_indices.clone(), key_to_id.clone())), "}".to_string())
 }
 
 pub fn serialize_typed_module(
@@ -3361,7 +3398,6 @@ pub fn census_heads_node(
         connective: node.connective.clone(),
         params: node.params.clone(),
         inferred: node.inferred.clone(),
-        return_cardinality: node.return_cardinality.clone(),
         uses: Rc::new(vec![]),
         body: body.clone(),
         transport: node.transport.clone(),

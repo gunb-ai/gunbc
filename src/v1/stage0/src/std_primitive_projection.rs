@@ -4,6 +4,7 @@
 use self::PrimitiveProjectionAnswer::*;
 use self::ProjectionFidelity::*;
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -524,7 +525,7 @@ pub fn primitive_projection_row_for_declaration(
 ) -> Option<Rc<PrimitiveProjection>> {
     primitive_projection_roster().iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, row: Rc<PrimitiveProjection>| match acc.clone() {
+        |acc: Option<Rc<PrimitiveProjection>>, row: Rc<PrimitiveProjection>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 if crate::std_decl_ref::declaration_ref_eq(

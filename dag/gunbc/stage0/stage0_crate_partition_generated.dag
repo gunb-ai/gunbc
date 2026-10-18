@@ -80,6 +80,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_target_representation",
         "std_literal_elaboration",
         "std_operator_realization",
+        "gunbc_structural_realization_bindings",
         "std_import_statement",
         "v1_std_core",
         "gunbc_rust_emitted_edge",
@@ -155,7 +156,6 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       kind: GeneratedLayeredCoreCrate,
       modules: [
         "gunbc_rust_source_type_bindings",
-        "gunbc_structural_realization_bindings",
         "v1_compiler_parse",
         "v1_compiler_coercion",
         "v1_compiler_compiler_tests_rust",

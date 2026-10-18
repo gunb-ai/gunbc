@@ -1450,7 +1450,7 @@ fn reference_param_with_declaration(param: Node, binders: List<String>, env: Typ
 // joins it replaces. It changes nothing but the identity slot. A kernel spelling names
 // no corpus declaration and is returned as authored, and so is a reference with no binding.
 fn reference_with_declaration(n: Node, env: TypeEnv) -> Node {
-  if n.declaration != none || is_kernel_type(name: authored_name(env: env, node: n)) {
+  if n.declaration != none || type_is_optional(n: n) || is_kernel_type(name: authored_name(env: env, node: n)) {
     n
   } else {
     match lookup_type_for(env: env, node: n) {

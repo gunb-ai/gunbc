@@ -168,7 +168,7 @@ pub fn nat_div_rem_by_succ(a: Nat, divisor_prev: Nat) -> Rc<NatQuotient> {
     }
 }
 
-pub fn nat_ceil_div(a: Nat, b: Nat) -> Option<Nat> {
+pub fn nat_ceil_div(a: Nat, b: Nat) -> Option<i64> {
     if (b.clone() == 0) {
         std::option::Option::None
     } else {

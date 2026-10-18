@@ -4340,7 +4340,6 @@ mod compiler_tests {
             connective: crate::v1_std_core::Connective::NoConnective,
             params: std::rc::Rc::new(im::Vector::new()),
             inferred: None,
-            return_cardinality: crate::v1_std_core::Cardinality::Required,
             uses: std::rc::Rc::new(im::Vector::new()),
             body: None,
             transport: None,
@@ -4853,7 +4852,6 @@ mod compiler_tests {
                 connective: crate::v1_std_core::Connective::NoConnective,
                 params: std::rc::Rc::new(im::Vector::new()),
                 inferred: None,
-                return_cardinality: crate::v1_std_core::Cardinality::Required,
                 uses: std::rc::Rc::new(im::Vector::new()),
                 body: None,
                 transport: None,
@@ -4926,7 +4924,10 @@ mod compiler_tests {
     fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {
         let optional_type = shaped_type_node("Node", Vec::new());
         let optional_type = std::rc::Rc::new(crate::v1_std_core::Node {
-            return_cardinality: crate::v1_std_core::Cardinality::CardOptional,
+            declaration: Some(
+                crate::gunbc_structural_realization_bindings::optional_declaration_ref(),
+            ),
+            children: vec![optional_type.clone()],
             ..(*optional_type).clone()
         });
         let arg = named_type_node("child");
@@ -5664,7 +5665,7 @@ mod compiler_tests {
     // (v1.compiler.infer_env bare_occurrence_binding). The member references of a coproduct body reach
     // the emitter from the type environment's copy with no Node.declaration, so the census route is
     // the emitter's own decision. THE RED is the importer: with the kernel ahead of the named import
-    // (the order direct_import_export_precedence_note states) its payload routes kernel_mint to
+    // (the order direct_import_export_precedence_note states) its payload routed to the kernel Optional's
     // std.optional, measured on gunbc#13454 at 57551c4b. The control keeps a module that names
     // Optional without importing it on the kernel arm.
     #[test]
@@ -5674,7 +5675,7 @@ mod compiler_tests {
             std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/optional.dag".to_string(), content: "module std.optional\n\ntype Optional<T>\n  = Present { value: T }\n  | Absent\n".to_string() }),
             std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/collision.dag".to_string(), content: "module hom.collision\n\ntype Optional\n  = CollisionWrapped { value: Int }\n  | CollisionEmpty\n".to_string() }),
             std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/importer.dag".to_string(), content: "module hom.importer\n\nimport hom.collision { Optional }\n\ntype HeldChoice\n  = HeldOptional { held: Optional }\n  | HeldNothing\n".to_string() }),
-            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/plain.dag".to_string(), content: "module hom.plain\n\ntype PlainChoice\n  = PlainHeld { held: Optional<Int> }\n  | PlainNothing\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/plain.dag".to_string(), content: "module hom.plain\n\nimport std.optional { Optional }\n\ntype PlainChoice\n  = PlainHeld { held: Optional<Int> }\n  | PlainNothing\n".to_string() }),
             std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/user.dag".to_string(), content: "module hom.user\n\nimport hom.importer { HeldChoice }\nimport hom.plain { PlainChoice }\n\nfn pick(h: HeldChoice, p: PlainChoice) -> Int {\n  1\n}\n".to_string() }),
         ];
         let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
@@ -5699,20 +5700,14 @@ mod compiler_tests {
             "the imported Optional must route to the import, never the kernel mint:\n{receipt}"
         );
         let plain = routes("PlainChoice");
-        assert!(
-            !plain.is_empty()
-                && plain
-                    .iter()
-                    .all(|r| r == "kernel_mint:Resolved:std.optional.Optional"),
-            "an unimported Optional is the kernel's:\n{receipt}"
-        );
+        assert!(!plain.is_empty() && plain.iter().all(|r| r == "referencing_module_import:Resolved:std.optional.Optional"), "an Optional imported from std.optional is that declaration (no kernel mint answers for it):\n{receipt}");
         assert!(!receipt.contains("LeafAmbiguous:Optional"), "{receipt}");
     }
 
     // A COPRODUCT NAMED Optional EMITS AS ITS OWN ENUM. still-raven-321's fixture,
     // fixtures/native_emission_controls_optional_collision.dag, is a non-kernel declaration that shares
     // the kernel mint's leaf. Host-Option is decided by declaration (v1.compiler.emit_rust
-    // declaration_owns_host_option over gunbc.structural_realization_bindings kernel_mint_declaration_rows),
+    // declaration_owns_host_option over gunbc.structural_realization_bindings optional_declaration_ref),
     // so its positions name its own enum. THE RED is the leaf rule this replaced: every position rendered
     // as Option<..> and the variants were never emitted (E0425 cannot find CollisionWrapped). The fixture
     // lives outside the source roots, because a second Optional in the accepted corpus is a leaf-name fork,

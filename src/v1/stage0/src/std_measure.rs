@@ -205,7 +205,7 @@ pub fn mega_factor() -> Nat {
     v1_rt::int_mul(1000, 1000)
 }
 
-pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
+pub fn time_scale_factor_seconds(s: Scale) -> Option<i64> {
     match s.clone() {
         Scale::One => Some(1),
         Scale::ArcsecondAngle => std::option::Option::None,
@@ -233,7 +233,7 @@ pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
     }
 }
 
-pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
+pub fn memory_scale_factor_bytes(s: Scale) -> Option<i64> {
     match s.clone() {
         Scale::One => Some(1),
         Scale::Kibi => Some(kibi_factor()),

@@ -24,7 +24,7 @@ pub fn keyed_row_find<K: Clone, V: Clone>(
 ) -> Option<Rc<KeyedRow<K, V>>> {
     rows.iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, row: Rc<KeyedRow<K, V>>| {
+        |acc: Option<Rc<KeyedRow<K, V>>>, row: Rc<KeyedRow<K, V>>| {
             if key_eq(row.row_key.clone(), wanted_key.clone()) {
                 Some(row.clone())
             } else {

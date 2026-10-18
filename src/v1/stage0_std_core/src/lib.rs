@@ -150,6 +150,9 @@ pub mod std_literal_elaboration;
 #[path = "../../stage0/src/std_operator_realization.rs"]
 pub mod std_operator_realization;
 #[rustfmt::skip]
+#[path = "../../stage0/src/gunbc_structural_realization_bindings.rs"]
+pub mod gunbc_structural_realization_bindings;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_import_statement.rs"]
 pub mod std_import_statement;
 #[rustfmt::skip]

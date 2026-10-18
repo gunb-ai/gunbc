@@ -43,6 +43,7 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
 pub use crate::std_occurrence_identity::{occurrence_id_eq, NodeOccurrenceIdentity, OccurrenceId};
+pub use crate::std_optional::Optional;
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;
@@ -127,7 +128,6 @@ use crate::v1_std_core::CallSemantics::ResolvedDirectCallSemantics;
 use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
-use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -165,11 +165,11 @@ pub use crate::v1_std_core::{
     is_local_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
     let_binding_name_at, let_body, let_value, local_transport_node, make_error_node,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, operation_modifier_name, param_node_default_value, param_node_name_at,
-    param_node_type_expr, qualified_last_segment, record_lit_type_name_at, return_value,
-    slice_base, slice_end, slice_start, transport_base_path, transport_has_auth, transport_verb,
-    tuple_type_name, unaryop_operand, with_required_cardinality, CallSemantics, CallTargetIdentity,
-    Cardinality, CompilerDiagnostic, Connective, DeclaredCallableIdentity, DeclaredFuncSig,
+    module_items, operation_modifier_name, optional_payload, param_node_default_value,
+    param_node_name_at, param_node_type_expr, qualified_last_segment, record_lit_type_name_at,
+    return_value, slice_base, slice_end, slice_start, transport_base_path, transport_has_auth,
+    transport_verb, tuple_type_name, type_is_optional, unaryop_operand, CallSemantics,
+    CallTargetIdentity, CompilerDiagnostic, Connective, DeclaredCallableIdentity, DeclaredFuncSig,
     ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
     MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind, StringPart, TextFile, TransportKind,
     UnaryOpKind, VarBindingKind,
@@ -888,10 +888,10 @@ pub fn has_nested_records_node(
             break true;
         } else {
             if is_coproduct.clone() {
-                let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+                let is_optional = crate::v1_std_core::type_is_optional(n.clone());
                 if is_optional.clone() {
                     {
-                        let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
+                        let __tco_0 = crate::v1_std_core::optional_payload(n);
                         let __tco_1 = source_indices;
                         __tco_loop_n = __tco_0;
                         __tco_loop_source_indices = __tco_1;
@@ -1924,11 +1924,11 @@ pub fn render_node_type(
                 return result;
             }
         }
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = crate::v1_std_core::type_is_optional(n.clone());
         if is_optional.clone() {
             {
                 let inner_str = render_node_type(
-                    crate::v1_std_core::with_required_cardinality(n.clone()),
+                    crate::v1_std_core::optional_payload(n.clone()),
                     target.clone(),
                     shared_types.clone(),
                     source_indices.clone(),
@@ -2798,7 +2798,7 @@ pub fn bind_file_result_field(
     )) {
         Some(c) => Some(Rc::new(FileResultField {
             channel: c.clone(),
-            optional: (ch.return_cardinality.clone() == Cardinality::CardOptional),
+            optional: crate::v1_std_core::type_is_optional(ch.clone()),
         })),
         std::option::Option::None => std::option::Option::None,
     }
@@ -3020,7 +3020,7 @@ pub fn shell_bind_result_field(
     )) {
         Some(c) => Some(Rc::new(ShellResultField {
             channel: c.clone(),
-            optional: (ch.return_cardinality.clone() == Cardinality::CardOptional),
+            optional: crate::v1_std_core::type_is_optional(ch.clone()),
         })),
         std::option::Option::None => std::option::Option::None,
     }
@@ -6037,8 +6037,8 @@ pub fn param_is_required_stderr_capture_policy(p: Rc<Node>, env: Rc<TypeEnv>) ->
         let ty = crate::v1_std_core::param_node_type_expr(p.clone());
         (((((crate::v1_std_core::param_node_name_at(p.clone(), env.source_indices.clone())
             == "stderr_capture".to_string())
-            && (p.return_cardinality.clone() == Cardinality::Required))
-            && (ty.return_cardinality.clone() == Cardinality::Required))
+            && !crate::v1_std_core::type_is_optional(p.clone()))
+            && !crate::v1_std_core::type_is_optional(ty.clone()))
             && !crate::v1_compiler_infer_types::node_is_collection(
                 ty.clone(),
                 env.source_indices.clone(),
@@ -6852,7 +6852,7 @@ pub fn transparent_representation_root(
         if (fuel.clone() <= 0) {
             break n.clone();
         } else {
-            if (n.return_cardinality.clone() == Cardinality::CardOptional) {
+            if crate::v1_std_core::type_is_optional(n.clone()) {
                 break n.clone();
             } else {
                 if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {

@@ -159,7 +159,7 @@ pub fn uint8_octets_of_ints(values: Rc<Vec<i64>>) -> Rc<QualifiedOctetsResult> {
     }
 }
 
-pub fn first_uint8_out_of_range(mut __tco_loop_remaining: Rc<Vec<i64>>) -> Option<Int> {
+pub fn first_uint8_out_of_range(mut __tco_loop_remaining: Rc<Vec<i64>>) -> Option<i64> {
     loop {
         #[allow(unused_mut)]
         let mut remaining = __tco_loop_remaining;
@@ -231,7 +231,7 @@ pub fn uint8_channel_bit_width_int() -> Int {
     ))
 }
 
-pub fn uint8_channel_inclusive_max_value_derived() -> Option<Int> {
+pub fn uint8_channel_inclusive_max_value_derived() -> Option<i64> {
     match crate::std_induction::int_pow_bounded(2, uint8_channel_bit_width_int()) {
         Some(two_pow) => Some(v1_rt::int_sub(two_pow.clone(), 1)),
         std::option::Option::None => std::option::Option::None,

@@ -4,7 +4,7 @@ import std.optional { Present, Absent, Optional }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { type_is_optional, optional_payload, resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { type_is_optional, resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type, is_container_type }
@@ -1399,10 +1399,6 @@ fn authored_name(env: TypeEnv, node: Node) -> String {
 }
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
-  if type_is_optional(n: node) && (node.connective == NoConnective) && ((node.children |> count) > 0) {
-    // The std.optional application names Optional, which is not the declaration the position denotes: its payload is.
-    lookup_type_for(env: env, node: optional_payload(n: node))
-  } else {
   match node.ident {
     Present { value: id } =>
       match lookup_type(env: env, ident: id) {
@@ -1419,7 +1415,6 @@ fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
         Absent => Absent
       }
     Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
-  }
   }
 }
 

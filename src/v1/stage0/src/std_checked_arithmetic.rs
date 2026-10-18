@@ -276,7 +276,7 @@ pub fn checked_int_magnitude(a: i64) -> Rc<CheckedNat> {
     }
 }
 
-pub fn checked_int_to_nat(n: i64) -> Option<Nat> {
+pub fn checked_int_to_nat(n: i64) -> Option<i64> {
     if (n.clone() < 0) {
         std::option::Option::None
     } else {
@@ -287,7 +287,7 @@ pub fn checked_int_to_nat(n: i64) -> Option<Nat> {
     }
 }
 
-pub fn nat_from_last_space_token(line: String) -> Option<Nat> {
+pub fn nat_from_last_space_token(line: String) -> Option<i64> {
     {
         let last = Rc::new(
             line.clone()

@@ -7,7 +7,6 @@ use self::TypeNodeDeclarationReading::*;
 use self::TypeNodeUnidentifiedCause::*;
 use self::TypeReferenceDeclarationReading::*;
 use self::UnitVariantPhantomLookup::*;
-pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_coercion::TextRepresentation::{
     CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
@@ -24,13 +23,10 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
-use crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationFound;
-pub use crate::std_literal_elaboration::{
-    kernel_mint_declaration_for, KernelMintDeclarationLookup,
-};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_operator_realization::OperandDeclaration;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{is_container_type, is_kernel_type, SourceSpan};
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::{
     ModulePathBindingAmbiguous, ModulePathBindingHit, ModulePathBindingMiss,
@@ -42,7 +38,6 @@ pub use crate::v1_compiler_type_head_exposure::TypeHeadExposure;
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType};
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -54,8 +49,9 @@ pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
     intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
     param_node_name_at, param_node_type_expr, qualified_last_segment,
-    resolved_node_is_kernel_identity_for_name, source_text_at, Cardinality, CompilerDiagnostic,
-    Connective, DeclarationMarker, ExprData, InferredNode, InternTable, NewlineIndex, Node,
+    resolved_node_is_kernel_identity_for_name, source_text_at, type_is_optional,
+    CompilerDiagnostic, Connective, DeclarationMarker, ExprData, InferredNode, InternTable,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -252,7 +248,7 @@ pub fn effective_visible_binding(
         Some(b) => Some(b.clone()),
         std::option::Option::None => parents.iter().cloned().fold(
             std::option::Option::None,
-            |acc: _, parent: Rc<TypeEnv>| {
+            |acc: Option<Rc<TypeBinding>>, parent: Rc<TypeEnv>| {
                 if (acc.clone() != std::option::Option::None) {
                     acc.clone()
                 } else {
@@ -406,12 +402,9 @@ pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Op
 }
 
 pub fn overlay_skips_kernel_name(name: String) -> bool {
-    (((((crate::std_types::is_kernel_type(name.clone())
+    ((crate::std_types::is_kernel_type(name.clone())
         || crate::std_types::is_container_type(name.clone()))
         || (name.clone() == "Unit".to_string()))
-        || (name.clone() == "Optional".to_string()))
-        || (name.clone() == "Present".to_string()))
-        || (name.clone() == "Absent".to_string()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1723,7 +1716,6 @@ pub fn qualify_borrowed_type_names(
                             connective: n.connective.clone(),
                             params: n.params.clone(),
                             inferred: n.inferred.clone(),
-                            return_cardinality: n.return_cardinality.clone(),
                             uses: n.uses.clone(),
                             body: n.body.clone(),
                             transport: n.transport.clone(),
@@ -1757,7 +1749,6 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
         connective: n.connective.clone(),
         params: n.params.clone(),
         inferred: n.inferred.clone(),
-        return_cardinality: n.return_cardinality.clone(),
         uses: n.uses.clone(),
         body: n.body.clone(),
         transport: n.transport.clone(),
@@ -1784,7 +1775,6 @@ pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc
         connective: n.connective.clone(),
         params: n.params.clone(),
         inferred: inferred.clone(),
-        return_cardinality: n.return_cardinality.clone(),
         uses: n.uses.clone(),
         body: n.body.clone(),
         transport: n.transport.clone(),
@@ -2525,7 +2515,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     inferred: Some(Rc::new(InferredNode::TypeVariable {
                         id: tp_name.clone(),
                     })),
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -2871,27 +2860,6 @@ pub fn declaration_ref_of_declaration_node(
         );
         if (decl_name.clone() == "".to_string()) {
             return std::option::Option::None;
-        }
-        let minted = if crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
-            decl.clone(),
-            decl_name.clone(),
-        ) {
-            match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
-                kernel_mint_declaration_rows(),
-                decl_name.clone(),
-            ))
-            .clone()
-            {
-                KernelMintDeclarationLookup::KernelMintDeclarationFound {
-                    declaration: d, ..
-                } => Some(d.clone()),
-                _ => std::option::Option::None,
-            }
-        } else {
-            std::option::Option::None
-        };
-        if (minted.clone() != std::option::Option::None) {
-            return minted.clone();
         }
         match decl.ident_span.clone() {
             std::option::Option::None => std::option::Option::None,
@@ -3677,14 +3645,14 @@ pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
         || ((pre.params.clone().len() as i64) > 0))
         || (pre.type_annotation.clone() != std::option::Option::None))
         || ((pre.children.clone().len() as i64) > 0))
-        || (pre.return_cardinality.clone() != Cardinality::Required))
+        || crate::v1_std_core::type_is_optional(pre.clone()))
     {
         std::option::Option::None
     } else {
         match pre.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rhs, .. }) => {
                 if (((rhs.connective.clone() != Connective::NoConnective)
-                    || (rhs.return_cardinality.clone() != Cardinality::Required))
+                    || crate::v1_std_core::type_is_optional(rhs.clone()))
                     || (rhs.type_annotation.clone() != std::option::Option::None))
                 {
                     std::option::Option::None
@@ -3770,7 +3738,6 @@ pub fn alias_rhs_with_index_identity(
                 connective: rhs.connective.clone(),
                 params: rhs.params.clone(),
                 inferred: rhs.inferred.clone(),
-                return_cardinality: rhs.return_cardinality.clone(),
                 uses: rhs.uses.clone(),
                 body: rhs.body.clone(),
                 transport: rhs.transport.clone(),

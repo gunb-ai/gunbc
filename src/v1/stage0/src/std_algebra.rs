@@ -699,7 +699,7 @@ pub fn collection_sort_by_shape() -> Rc<AlgebraFieldTemplate> {
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StepPositionScan {
     pub next: i64,
     pub found: Option<i64>,
@@ -711,23 +711,23 @@ pub fn template_param_position(
 ) -> Option<i64> {
     {
         let scan = t.param_types.clone().iter().cloned().fold(
-            StepPositionScan {
+            Rc::new(StepPositionScan {
                 next: 0,
                 found: std::option::Option::None,
-            },
-            |acc: StepPositionScan, p: Rc<AlgebraTypeTemplate>| match acc.found.clone() {
+            }),
+            |acc: Rc<StepPositionScan>, p: Rc<AlgebraTypeTemplate>| match acc.found.clone() {
                 Some(_) => acc.clone(),
                 std::option::Option::None => {
                     if admits(p.clone()) {
-                        StepPositionScan {
+                        Rc::new(StepPositionScan {
                             next: v1_rt::int_add(acc.next.clone(), 1),
                             found: Some(acc.next.clone()),
-                        }
+                        })
                     } else {
-                        StepPositionScan {
+                        Rc::new(StepPositionScan {
                             next: v1_rt::int_add(acc.next.clone(), 1),
                             found: std::option::Option::None,
-                        }
+                        })
                     }
                 }
             },
@@ -762,7 +762,7 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
     {
         let step_return = t.param_types.clone().iter().cloned().fold(
             std::option::Option::None,
-            |acc: _, p: Rc<AlgebraTypeTemplate>| match acc.clone() {
+            |acc: Option<Rc<AlgebraTypeTemplate>>, p: Rc<AlgebraTypeTemplate>| match acc.clone() {
                 Some(_) => acc.clone(),
                 std::option::Option::None => match (*p.clone()).clone() {
                     AlgebraTypeTemplate::CallableOf { return_type: r, .. } => Some(r.clone()),
