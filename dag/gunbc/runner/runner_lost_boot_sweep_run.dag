@@ -15,7 +15,7 @@ import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
 import gunbc.fleet.app_control_plane_inspection { gunbai_ci_registration_goal }
 import gunbc.fleet.fleet_runner_connectivity { github_organization_ref, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
-import gunbc.fleet.organization_runner_roster_read { OrganizationRunnerRosterReport, organization_runner_roster_report }
+import gunbc.fleet.organization_runner_roster_read { OrganizationRunnerRosterReport, organization_runner_roster_report_via_rest }
 import extdeps.github.pagination { github_max_page_size }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestTransportRefused }
@@ -231,7 +231,8 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
 }
 
 // THE SWEEP READS THE ORGANIZATION THROUGH THE ONE ROSTER READ (gunbc.fleet.organization_runner_roster_read),
-// not a walk of its own. That read follows the authority's Link continuations and reports Observed only
+// not a walk of its own, under the SAME installation token it deletes with: the typed REST handler of that
+// read carries the token as the rest Bearer input, so the step has one credential source. The read reports Observed only
 // when the listing closed, every page agreed on total_count, no id was read with disagreeing payloads
 // and the distinct ids equal the total. Anything less is refused here with the report's own cause: a
 // prefix is never handed to lost_boot_sweep, where a runner on an unread page would read as absent.
@@ -260,7 +261,7 @@ fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, t
     organization: organization,
     population: population,
     authority: sweep_authority(),
-    listing: sweep_listing_of_roster(report: organization_runner_roster_report(org: organization.login, page_size: github_max_page_size)),
+    listing: sweep_listing_of_roster(report: organization_runner_roster_report_via_rest(org: organization.login, page_size: github_max_page_size, token: token.token)),
   ) {
     LostBootSweepRefused { refusal } => exit_failure(reason: sweep_refusal_text(refusal: refusal))
     LostBootSweepSelected { subjects, untouched } => {
