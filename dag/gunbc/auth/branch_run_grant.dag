@@ -29,7 +29,7 @@ import gunbc.auth.heal_publisher_provision { DedicatedFederation, rest_refusal_t
 import gunbc.auth.branch_dispatch_federation {
   branch_run_impersonation_cell, branch_run_key_variable, parse_branch_run_key,
   branch_run_grant_condition_title_prefix, branch_run_expiry_expression_prefix, branch_run_expiry_expression_suffix,
-  branch_run_key, mode_of_run_title, run_scoped_mode_named, run_scoped_mode_eligible, run_scoped_federation_named,
+  branch_run_key, mode_of_run_title, run_scoped_mode_named, run_scoped_mode_eligible, run_scoped_federation_named, run_scoped_account_id,
 }
 import gunbc.auth.gcp_iam_converge {
   PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, ServiceAccountPolicy, PolicyDelta, PolicyDeltaRefused,
@@ -303,7 +303,7 @@ fn derive_branch_run_grant(observe: Secret, attempt: AttemptIdentity) -> BranchR
 fn account_for_run(run: BranchRunFacts) -> DedicatedFederation? {
   match run_scoped_mode_eligible(mode: run.mode, branch: run.branch) {
     Absent => none
-    Present { value: m } => run_scoped_federation_named(account_id: m.account_id as String)
+    Present { value: m } => run_scoped_federation_named(account_id: run_scoped_account_id(m: m) as String)
   }
 }
 
