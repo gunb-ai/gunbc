@@ -320,8 +320,12 @@ test fn witness_rendered_issue_page_links_only_canonical_routes() -> Bool {
 test fn witness_nav_scan_walks_into_a_document_root() -> Bool {
   let page = issue_detail_page(view: hv_row(id: "hv-mid", title: "Mid title"), hierarchy: hv_view(id: "hv-mid"), observation: ObservationsNominal, attempts: [], events: [], viewer: "", recents: [], expected_revision: "")
   let wrapped = hv_nav_hrefs(node: Document { doctype: "html", root: page })
+  // Two conjuncts, each measured against its own mutation (C6 makes the first red by making the arm
+  // return []; a length-only comparison measured NON-load-bearing, so this one compares the lists
+  // themselves -- same links, same order, same multiplicity -- which is the actual claim: wrapping a
+  // page changes nothing about what the scan sees).
   all(["hv-root", "hv-proj", "hv-leaf", "hv-sib", "hv-ext"], id => string_contains(s: join(wrapped, ","), pattern: issue_page_path(node_id: id)))
-    && list_length(items: wrapped) == list_length(items: hv_nav_hrefs(node: page))
+    && join(wrapped, ",") == join(hv_nav_hrefs(node: page), ",")
 }
 
 fn hv_nav_hrefs(node: Fragment) -> List<String> {
