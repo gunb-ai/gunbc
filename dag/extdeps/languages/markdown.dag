@@ -6,6 +6,9 @@ import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import extdeps.languages.html {
   canonical_html_spellings,
+  html_comment_open_sequence,
+  html_comment_close_sequence,
+  html_doctype_open_sequence,
 }
 import extdeps.languages.html_fragment { serialize_fragment }
 import extdeps.uri_validation {
@@ -151,14 +154,14 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
     void_tags: [],
     void_rendering: OmitClose,
     raw_text_tags: [],
-    // CommonMark passes an HTML comment through as an HTML block (CommonMark 0.30 §6.6 lists "<!--"
-    // among the block start conditions), so a Markdown comment IS the HTML spelling.
-    comment_open: "<!-- ",
-    comment_close: " -->",
-    // Same for the doctype: §4.2 sends a line starting "<!DOCTYPE" through as an HTML block, so the
-    // spelling exists and is the HTML one. Nothing here builds the fragment today; the row is the
-    // correct answer to the question the medium is asked, not a placeholder.
-    doctype_open: "<!DOCTYPE ",
+    // READ, not retyped. CommonMark passes an HTML comment through as an HTML block (CommonMark 0.30
+    // §6.6 lists "<!--" among the block start conditions) and sends a line starting "<!DOCTYPE"
+    // through the same way (§4.2), so a Markdown comment IS the HTML spelling and a Markdown doctype
+    // IS the HTML doctype. Importing the HTML rows is what makes that sentence enforced rather than
+    // aspirational: re-typing "<!-- " here would be a second home for one fact (§3).
+    comment_open: html_comment_open_sequence,
+    comment_close: html_comment_close_sequence,
+    doctype_open: html_doctype_open_sequence,
   }
 }
 

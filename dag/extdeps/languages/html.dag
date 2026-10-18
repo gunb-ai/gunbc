@@ -27,9 +27,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // Comment and document-type SPELLINGS of this language. They live here, not in whichever module
 // emits a comment, because they are facts about HTML (§4: "a new target language is rows in
-// extdeps/languages/, never an edit to the fold"). std.languages already records a language's block
-// comment delimiters for the text-generation path; these are the same characters, read once and
-// placed on the medium, which is the object a serializer is allowed to consult.
+// extdeps/languages/, never an edit to the fold").
+//
+// std.languages ALSO records these characters — html_format and markdown_format each carry
+// CommentSyntax { block_start: "<!-- ", block_end: " -->" } — and these rows must stay those
+// characters. They are not literally read from there, and cannot be: CommentSyntax fields are
+// String? (a language may have no block comment at all), while a markup medium requires String, and
+// the only narrowing that would make the read legal is a fallback for the absent case, which is
+// §5's forbidden silent default. The import direction rules the other way too: std.markup imports
+// std.languages, so std.languages cannot import this module to share a row. So the two are kept
+// equal by witness_markup_comment_rows_agree_with_std_languages, which reads std.languages' rows and
+// compares — drift is a red claim, not a comment. They differ in KIND, not in value: std.languages
+// describes a language to a code GENERATOR (what to write when commenting generated output); these
+// rows are what a MARKUP SERIALIZER is permitted to consult, and the guard checks against the
+// tokenizer's terminator, which CommentSyntax does not carry.
 data html_comment_open_sequence: String = "<!-- "
 data html_comment_close_sequence: String = " -->"
 // The sequence the TOKENIZER ends a comment at has no leading space. The delimiter we EMIT does, for

@@ -10,6 +10,7 @@ import extdeps.languages.html {
   html_markup_medium,
   html5_void_tags,
   canonical_html_spellings,
+  html_doctype_open_sequence,
 }
 import extdeps.uri_validation {
   find_first_rejected_url,
@@ -48,6 +49,12 @@ fn jsx_component_prefix(fn_name: String) -> String {
   join(["export function ", fn_name, "(): JSX.Element { return "], "")
 }
 
+// JSX's own comment delimiters, in JSX's own module. Deliberately NOT the HTML rows: a comment
+// written "<!-- -->" inside JSX is parsed as text, so the two languages genuinely differ here and
+// each needs a home of its own.
+data jsx_comment_open_sequence: String = "{/* "
+data jsx_comment_close_sequence: String = " */}"
+
 fn jsx_markup_medium() -> MarkupMedium {
   MarkupMedium {
     tag_overrides: [],
@@ -57,13 +64,15 @@ fn jsx_markup_medium() -> MarkupMedium {
     void_rendering: SelfClose,
     raw_text_tags: [],
     // Inside JSX the comment form is {/* … */}. An HTML comment there is parsed as TEXT, which is
-    // exactly why the medium requires the field instead of defaulting it to the HTML spelling.
-    comment_open: "{/* ",
-    comment_close: " */}",
+    // exactly why the medium requires the field instead of defaulting it to the HTML spelling. Rows,
+    // not literals: these are JSX's comment syntax, a fact about this language, named once and read.
+    comment_open: jsx_comment_open_sequence,
+    comment_close: jsx_comment_close_sequence,
     // A JSX module declares no document type, so nothing builds the fragment for this medium. The row
-    // is still correct: there is one document-type keyword across markup languages, and inventing a
-    // JSX-specific one to mark "not applicable" would be a spelling no parser accepts.
-    doctype_open: "<!DOCTYPE ",
+    // is still correct — and it is READ from HTML rather than copied, because the argument for the
+    // row's existence is exactly that there is one document-type keyword across markup languages.
+    // Inventing a JSX-specific keyword to mark "not applicable" would be a spelling no parser accepts.
+    doctype_open: html_doctype_open_sequence,
   }
 }
 

@@ -26,6 +26,18 @@ import extdeps.languages.markdown {
   commonmark_gfm_spellings,
   serialize_markdown_source_with,
 }
+import extdeps.languages.react_jsx {
+  jsx_markup_medium,
+  jsx_comment_open_sequence,
+  jsx_comment_close_sequence,
+}
+import extdeps.languages.html {
+  html_comment_open_sequence,
+  html_comment_close_sequence,
+  html_doctype_open_sequence,
+}
+import std.languages { html_format, markdown_format }
+import std.optional { Present, Absent }
 import std.markdown {
   MarkdownDocument,
   ParagraphBlock,
@@ -160,3 +172,64 @@ test fn witness_xss_still_rejected_through_fold() -> Bool {
   }
 }
 
+// ── comment and doctype spellings: one home, checked by execution ──────────────────────────────
+//
+// These three claims are the reason a medium may hold a comment spelling at all. The medium is the
+// object a serializer is allowed to consult, so the spelling has to live on it — but three media each
+// typing "<!-- " would be three homes for one fact (§3), which is exactly what happened when this
+// change first landed (review 82174 on #14351: markdown and jsx re-typed the HTML rows). Now they are
+// imports, and these claims are what makes a re-typed copy RED rather than merely disfavoured.
+
+fn html_medium() -> MarkupMedium { html_markup_medium() }
+fn md_medium_c() -> MarkupMedium { markdown_markup_medium(sp: commonmark_gfm_spellings) }
+
+// HTML's rows and std.languages' html_format/markdown_format CommentSyntax must stay the same
+// characters. They are different KINDS of fact — a generator's comment syntax vs. what a markup
+// serializer may emit — and the read cannot be made literal (CommentSyntax fields are String?, and
+// narrowing one to String needs a fallback for the absent case, §5). So agreement is executed: an
+// absent block delimiter, or a differing one, is red either way.
+test fn witness_html_comment_rows_agree_with_std_languages() -> Bool {
+  match html_format.comment.block_start {
+    Present { value: o } =>
+      match html_format.comment.block_end {
+        Present { value: c } =>
+          o == html_comment_open_sequence && c == html_comment_close_sequence
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn witness_markdown_comment_rows_agree_with_std_languages() -> Bool {
+  match markdown_format.comment.block_start {
+    Present { value: o } =>
+      match markdown_format.comment.block_end {
+        Present { value: c } =>
+          o == html_comment_open_sequence && c == html_comment_close_sequence
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// A Markdown comment IS the HTML comment (CommonMark 0.30 §6.6 / §4.2 pass both through as HTML
+// blocks), so the Markdown medium must report the SAME characters the HTML medium does. Not an
+// assertion that they are equal to a literal — an assertion that the two media cannot drift.
+test fn witness_markdown_comment_delimiters_are_the_html_ones() -> Bool {
+  let md = md_medium_c()
+  md.comment_open == html_medium().comment_open
+    && md.comment_close == html_medium().comment_close
+    && md.doctype_open == html_medium().doctype_open
+}
+
+// JSX is the case the field exists FOR: a "<!-- -->" comment inside JSX is parsed as text, so JSX
+// must NOT report HTML's delimiters — while still reporting the one doctype keyword, since a doctype
+// is not a JSX construct at all and an invented keyword would be a spelling no parser accepts.
+test fn witness_jsx_comment_delimiters_differ_and_doctype_does_not() -> Bool {
+  let jx = jsx_markup_medium()
+  jx.comment_open == jsx_comment_open_sequence
+    && jx.comment_close == jsx_comment_close_sequence
+    && jx.comment_open != html_medium().comment_open
+    && jx.comment_close != html_medium().comment_close
+    && jx.doctype_open == html_doctype_open_sequence
+}
