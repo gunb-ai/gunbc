@@ -259,6 +259,33 @@ fn lab_commit_write_paths(instance: HostDashboardInstance) -> List<String> {
   ]
 }
 
+// THE CONFINEMENT QUANTIFIER, in ONE place, because the two claims that read it must read it the same
+// way and a disagreement between them would be a hole rather than a check.
+// dashboard_git_worker_unwritable_children carries TWO shapes of "unwritable", and they mean different
+// things, so they are asserted differently:
+//   .git ITSELF -- no grant may BE it. Every grant the derivation justifies is a DESCENDANT of .git
+//     (.git/objects, .git/refs, .git/logs, .git/worktrees/<key>), so a "nothing inside .git" reading of
+//     this row is refuted by the very rows this PR exists to assert -- which is how the first version of
+//     this quantifier failed: it bidirectionally prefix-matched .git against the grants and called
+//     objects/ a violation. What .git's OWN write bit buys is what stays root's: the ability to create a
+//     file at the top of the git directory, which is exactly packed-refs.lock and the repository-level
+//     index.lock. That is the fact the row carries, and it is checked as equality.
+//   A NAMED ENTRY (.git/config, .git/hooks, .git/info, .git/objects/pack, ...) -- no grant may BE it and
+//     none may be INSIDE it. A grant may legitimately be its ANCESTOR: objects/ must be group-writable so
+//     git can create tomorrow's fan-out directory, while objects/pack stays root's because the migration's
+//     walk PRUNES it -- a leg the migration claim owns, not this one.
+fn lab_confinement_holds(grants: List<String>, instance: HostDashboardInstance) -> Bool {
+  let git = join([instance.repo_root as String, "/.git"], "")
+  !any(grants, g => g == git)
+    && all(
+      filter(xs: dashboard_git_worker_unwritable_children, child => (child as String) != ".git"),
+      child => {
+        let denied = join([instance.repo_root as String, "/", child as String], "")
+        !any(grants, g => g == denied || starts_with(s: g, prefix: concat(denied, "/")))
+      },
+    )
+}
+
 // THE DECLARED GRANT SET: what #14270 already declared, plus the per-attempt entry this slice adds, as
 // path text. The provider asserts ONE directory and does not recurse, so coverage of an EXISTING
 // descendant is not this set's job -- that is claim (2)'s migration.
@@ -288,11 +315,7 @@ test fn the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_
     //     entry. .git is the one path a "grant the whole repo git dir" would cover, and the one the
     //     derivation proves a commit never writes (25 commits with it at 0555); the lock file a
     //     packed-refs rewrite needs can ONLY be created there.
-    && !any(grants, g => g == git)
-    && all(dashboard_git_worker_unwritable_children, child => {
-      let denied = join([lab.repo_root as String, "/", child as String], "")
-      !any(grants, g => g == denied || starts_with(s: denied, prefix: g) || starts_with(s: g, prefix: denied))
-    })
+    && lab_confinement_holds(grants: grants, instance: lab)
     // (d) the per-attempt entry IS granted -- the row #14270's handoff named, and the one that made the
     //     first commit die on index.lock -- and its mode is the shared-posture mode git itself asks for.
     && any(grants, g => g == entry)
@@ -414,8 +437,15 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     its owner could never update it. The prune is `<target>/pack`, a path, not a pattern.
     && all(steps, c => occurrences(words: c.arguments, wanted: "-path") == occurrences(words: c.arguments, wanted: "-prune"))
     && all(objects_steps, c => all(objects_paths, p => any(c.arguments, a => a == p)))
-    && all(objects_steps, c => occurrences(words: c.arguments, wanted: "-path") == occurrences(words: c.arguments, wanted: "-prune"))
-    && all(refs_and_logs_steps, c => !any(c.arguments, a => a == "-path" || a == "-prune"))
+    && all(refs_and_logs_steps, c => !any(c.arguments, a => a == "-prune"))
+    //     WHY THERE IS NO "no -path outside objects" LEG, which is the shape this line once had and why
+    //     it was wrong to write: a walk target is ITSELF one argument, and this instance's target is
+    //     `.../source/.git/logs` -- so a predicate forbidding the word `-path` anywhere in a refs or logs
+    //     step is refuted by the walk's own target, not by a stray prune. The tight statement of "no bare
+    //     patterns anywhere" is leg (b) -- each subtree's target appears EXACTLY TWICE in the whole
+    //     migration, once per arm -- plus the -path/-prune balance above and the forbidden names below.
+    //     Those three together leave no room for a pattern; a fourth leg that duplicates them has to be
+    //     right about the argv's incidental words as well, and was not.
     && !any(all_args, a => a == "*/hooks" || a == "*/info" || a == "*/branches" || a == "*/pack"
       || a == "*/hooks/*" || a == "*/info/*" || a == "*/branches/*" || a == "*/pack/*")
     // (f) the walk is BOUNDED and never follows a link: a depth cap, and symlinks excluded. (chgrp
@@ -509,10 +539,7 @@ test fn the_confined_git_interior_and_sibling_isolation_survive_the_subtree_gran
   let node = "claim-3" as RoadmapNodeId
   // (a) no confined interior path is in the worker's writable list, as itself or as a descendant, and
   //     no grant reaches down into one...
-  all(dashboard_git_worker_unwritable_children, child => {
-    let denied = join([lab.repo_root as String, "/", child as String], "")
-    !any(writable, w => w == denied || starts_with(s: w, prefix: denied))
-  })
+  lab_confinement_holds(grants: writable, instance: lab)
     // (b) ...and the granted subtree list is EXACTLY the four the derivation justifies: three shared
     //     subtrees plus this attempt's own entry, so the grant cannot have widened.
     && length(lab_granted_git_paths(instance: lab)) == 4
