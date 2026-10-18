@@ -1,6 +1,21 @@
 #!/usr/bin/env bash
 # Execute the contract-stamp guard against the real bytes, and fail if it does not refuse what it
 # is supposed to refuse.
+# SCAFFOLD - dissolve-on: a .dag capability to EXECUTE a program and observe its exit status and
+# stdout, at which point the modelled rows in gunbc.witness.compiler_gate_contract_stamp
+# (compiler_gate_contract_stamp_evidence_cases) become a `gunbc test` row in gunbc.instrument_targets
+# and this runner dissolves into that row.
+# CLASS (b), a MISSING TARGET-LANGUAGE CAPABILITY, not class (c) "route available, migration
+# unauthored": the substrate has no process-exec surface at all -- src/ and dag/ expose no
+# Command::new / ProcessBuilder, and dag/std/process.dag models an exit VALUE, not an exec -- so no
+# claim row can spawn the guard and read what it prints. The vocabulary and the correction are the
+# fleet's own: tools/fabric_ci_fci1_bounded_execution_controls.sh:5-9 records the same mis-classing
+# of its own runner and fixes it the same way. What IS expressible in .dag has been moved there
+# (which cases exist, which subject each reads, the expected exit code and finding for each, and the
+# step that carries them into the job); what remains here is only the spawn-and-observe residual, so
+# this file holds no table that could drift from the model -- review 82145 filed the earlier shape as
+# blocking, and review 82163 is right that prose about the gap is not a marker, which is what the line
+# above is for.
 #
 # WHO OWNS WHAT. The case TABLE -- which cases exist, which subject each reads, what exit code and
 # which diagnostic each must produce -- is modelled in .dag, at
