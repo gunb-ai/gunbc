@@ -1,0 +1,375 @@
+module gunbc.witness.compiler_gate_contract_stamp
+
+import std.types { Bool, FilePath, List, String }
+import std.optional { Absent, Optional, Present }
+import std.algebra { fold, filter, length, list_append, list_map, string_contains, trim }
+import std.contract_identity { ContractEpoch }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
+import gunbc.parse_verdict_schema {
+  parse_verdict_reuse_counts_field_labels,
+  parse_verdict_reuse_counts_prefix,
+  parse_verdict_restore_ancestor_ordinals
+}
+import gunbc.emitted_subject_build_gate {
+  emitted_subject_build_rows,
+  emitted_subject_build_label_text
+}
+import v2.cli.population_verb_names { cli_verb_parse_population }
+import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlMapping, YamlString }
+import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
+
+// THE INVOCATION-CONTRACT STAMP: what the generated steps of gunbc.witness.compiler_gate_workflow
+// promise about the SUBJECT'S OWN BINARY -- which verbs it is asked to run, with which flags, and what
+// shape of output a step reads back -- hashed into one literal that is emitted into the workflow AND
+// read back off the checked-out tree.
+//
+// WHY THIS EXISTS. gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions,
+// silent arm. A pull-request run takes the WORKFLOW TEXT from the merge ref and the gunbc BINARY from
+// the PR head (the lane's checkout ref is github.event.pull_request.head.sha, so the two are never
+// declared to be paired). When the head lacks the newest part of an instruction, the older binary still
+// ANSWERS the newer command: runs 39066871919, 39067193189, 39067690307 and 39069382384 (2026-10-17)
+// executed the new reuse walk against a head predating the ancestor locator, printed the six-field
+// counts shape with no ancestor=, and exited GREEN with reused=0. The step's only contract on that
+// output was a shell exit code, so a stale verb answering a fresh command was indistinguishable from a
+// current verb with nothing to reuse -- and reused=0 is a legitimate outcome, which is what made those
+// greens so easy to read as fine. Nothing refused, because nothing was written down about what the step
+// would accept as an answer.
+//
+// THIS IS THE WRITTEN-DOWN, AND IT IS A PREMISE, NOT A SYMPTOM CHECK. The stamp is deliberately NOT
+// "the counts line must contain ancestor=": that is one per symptom, hard-codes one field name, passes
+// every other shape drift, and must be rewritten each time the contract moves (§5 -- a check that would
+// also pass the bad thing is not a check). The stamp is the declaration the generator ALREADY HOLDS
+// when it emits the step: the step says "run this verb, with these flags, and read this field set
+// back". Refusing when the checked-out tree cannot have produced that declaration refuses the SPLIT
+// itself, whichever part of the instruction the head is missing.
+//
+// THE PREIMAGE, AND WHY IT IS THESE ROWS AND NOT THE WORKFLOW TEXT. DESIGN §4d and the stated law of
+// gunbc.required_ci_contract_epoch: do NOT digest workflow text, or every unrelated commit to main
+// forces every open PR to merge main. So the preimage is ONLY the atoms a generated step puts in the
+// subject's argv or reads from its stdout, taken from rows the generator already consumes. A change to
+// main that touches no invoked contract must NOT move the stamp; a change to an invoked verb, a flag it
+// is handed, or a field a step reads MUST move it, because the stale-subject case is exactly the case
+// where those moved.
+
+// THE NAME, one place, so the emitter, the refusal, the admission consumer and the witness cannot drift
+// apart. Deliberately a sibling of, and not equal to, required_ci_contract_epoch_env_key: the two hash
+// different preimages and answer different questions, and a shared key would let one silently stand in
+// for the other.
+data compiler_gate_contract_stamp_env_key: String = "GUNBC_COMPILER_GATE_CONTRACT_STAMP"
+
+data compiler_gate_contract_stamp_provenance: String =
+  "gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp"
+
+// --------------------------------------------------------------------------------- THE DECLARED CONTRACT
+//
+// THE ATOMS. Each entry is a promise the emitted steps make about the subject's argv or its stdout, and
+// each is spelled by the row that GENERATES the step rather than re-typed here (§3). Adding a verb, a
+// flag or a read-back field means adding its atom; omitting one leaves the stamp silent about a promise,
+// which is precisely the gap that let four stale-verb runs pass.
+
+// THE VERBS AND THE FLAGS THEY ARE HANDED. Four argv shapes, one per generated step that invokes the
+// subject's binary: the reuse walk, the plain walk, the identity/receipts publisher, and the two
+// instrument builds. `--reuse-from` is the flag whose ABSENCE was the loud form of this class (unknown
+// option --reuse-from, exit 127 with an empty --compiler) and whose silent form is the four greens
+// above: a head predating it still accepted the command.
+fn compiler_gate_invocation_argv_rows() -> List<String> {
+  list_append(
+    xs: [
+      join(["argv:", cli_verb_parse_population, " --compiler ", " --reuse-from "], ""),
+      join(["argv:", cli_verb_parse_population, " --compiler ", " --write-identity ", " --receipts "], ""),
+      join(["argv:", cli_verb_parse_population, " --compiler "], "")
+    ],
+    x: list_map(
+      xs: emitted_subject_build_rows(),
+      f: fn(row) { join(["argv:test ", emitted_subject_build_label_text(row: row)], "") }
+    )
+  )
+}
+
+// THE OUTPUT SHAPE A STEP READS BACK. The reuse walk accepts whatever the verb prints provided it exits
+// 0, so the field set IS the contract -- and it is the field set the four silent runs proved unenforced.
+// The labels are the rows the verb prints and its claim asserts, so there is no second spelling that
+// could drift and quietly un-stamp a real contract change.
+data compiler_gate_invocation_output_rows: List<String> =
+  list_append(
+    xs: list_map(
+      xs: parse_verdict_reuse_counts_field_labels,
+      f: fn(label) { concat("stdout:", parse_verdict_reuse_counts_prefix, " ", label) }
+    ),
+    x: "stdout:ancestor-attribution-required"
+  )
+
+// THE LOCATOR'S BOUND. The restore chain walks a declared first-parent window and records the ancestor
+// it restored from; the counts line then names it. The window's width is contract, because a head that
+// cannot walk as far cannot make the claim the step makes. Drawn from the same row the locator, the
+// gated restore chain and the record step are all generated from, so the stamp cannot disagree with the
+// steps it stamps.
+fn compiler_gate_invocation_locator_rows() -> List<String> {
+  list_map(
+    xs: parse_verdict_restore_ancestor_ordinals,
+    f: fn(ordinal) { join(["locator:first-parent-ordinal:", to_string(ordinal)], "") }
+  )
+}
+
+fn compiler_gate_invocation_contract_rows() -> List<String> {
+  list_append(
+    xs: list_append(xs: compiler_gate_invocation_argv_rows(), x: compiler_gate_invocation_output_rows),
+    x: compiler_gate_invocation_locator_rows()
+  )
+}
+
+// CANONICAL ORDER, for the same reason the epoch sorts its lists: a row appended in a different order is
+// not a changed contract, and a stamp that moved on reordering would be a stamp that lies about being
+// moved by a real change.
+fn compiler_gate_invocation_contract_canonical_rows() -> List<String> {
+  sort_by(compiler_gate_invocation_contract_rows(), f => f)
+}
+
+fn compiler_gate_invocation_contract_material() -> String {
+  join(compiler_gate_invocation_contract_canonical_rows(), "|")
+}
+
+// -------------------------------------------------------------------------------------- DERIVED OR REFUSE
+//
+// The value is a function of the declared rows and nothing else, so no author can pin a stamp that
+// flatters a stale tree, and the refusal to produce one is typed rather than silent. Mirrors
+// required_ci_contract_epoch_is_derived: a module that cannot state its own stamp must REFUSE to emit
+// one, not emit a placeholder that would compare equal to itself forever.
+type CompilerGateContractStampDerivation
+  = CompilerGateContractStampDerived { stamp: ContractEpoch }
+  | CompilerGateContractStampNotDerived { reason: String }
+
+fn compiler_gate_contract_stamp_derivation() -> CompilerGateContractStampDerivation {
+  if length(compiler_gate_invocation_contract_canonical_rows()) == 0
+  then CompilerGateContractStampNotDerived {
+    reason: "the invocation contract declares no rows, so nothing would be promised and nothing could be refused"
+  }
+  else if fold(
+    compiler_gate_invocation_contract_canonical_rows(),
+    init: false,
+    f: fn(any_empty, row) { any_empty || string_length(s: row) == 0 }
+  )
+  then CompilerGateContractStampNotDerived {
+    reason: "a declared contract row is empty, so two different contracts could hash alike"
+  }
+  else if string_contains(s: compiler_gate_invocation_contract_material(), pattern: "${{")
+  then CompilerGateContractStampNotDerived {
+    reason: "a contract row carries a GitHub expression, so the stamp would not be a literal and could not be compared"
+  }
+  else
+    CompilerGateContractStampDerived {
+      stamp: content_hash_of_value(value: compiler_gate_invocation_contract_material())
+    }
+}
+
+fn compiler_gate_contract_stamp_is_derived() -> Bool {
+  match compiler_gate_contract_stamp_derivation {
+    CompilerGateContractStampDerived { stamp: _ } => true
+    CompilerGateContractStampNotDerived { reason: _ } => false
+  }
+}
+
+fn compiler_gate_contract_stamp_underived_reason() -> String {
+  match compiler_gate_contract_stamp_derivation {
+    CompilerGateContractStampDerived { stamp: _ } => ""
+    CompilerGateContractStampNotDerived { reason: r } => r
+  }
+}
+
+// THE LITERAL THAT GOES INTO THE EMITTED WORKFLOW. "refused" is a value that can never equal a content
+// hash, so an underived stamp fails the tree comparison rather than passing it -- refuse, never warn.
+fn compiler_gate_contract_stamp_yaml_value() -> String {
+  match compiler_gate_contract_stamp_derivation {
+    CompilerGateContractStampDerived { stamp: stamp } => serialize_content_hash(hash: stamp)
+    CompilerGateContractStampNotDerived { reason: _ } => "refused"
+  }
+}
+
+fn compiler_gate_contract_stamp() -> String {
+  compiler_gate_contract_stamp_yaml_value()
+}
+
+// --------------------------------------------------------------------------------------- THE TREE-SIDE READ
+//
+// ONE PARSE, TYPED ARMS, NO WARNING ARM AND NO OVERRIDE INPUT (§5). The RUNNING side of the comparison is
+// not read here: it arrives as the workflow-level env literal the runner injected, which is the file
+// GitHub actually executed. The TREE side is this file as it sits in the checked-out subject. When the
+// two differ, the instruction executing was not generated from the tree it is judging -- which is the
+// split, and the refusal names both stamps.
+//
+// WHY NOT THE TREE'S OWN gunbc TO PARSE IT. The suspect in this class is the tree's binary, so a read
+// that runs it would have the accused vouch for itself. The read goes through the ingested document,
+// structurally -- never a substring scan, which would match the key inside a shell command, a heredoc or
+// a comment and answer about text rather than about the workflow's environment (the law
+// gunbc.required_ci_epoch_observation states for the sibling reader).
+//
+// WHY NO "MALFORMED HEX" ARM. Once the member is a non-empty string there is no further decoding step
+// that could refuse; an arm for it would be a permanently unreachable RED, which std.contract_identity
+// forbids on ContractEpoch itself. The arms below are each reachable from a document a fixture can hand.
+type CompilerGateContractStampReading
+  = StampPresent { stamp: String }
+  | StampAbsent
+  | StampUnreadable { detail: String }
+  | StampMismatch { running: String, tree: String }
+
+fn compiler_gate_contract_stamp_workflow_path() -> FilePath {
+  artifact_path(a: WitnessFloorYamlArtifact) as FilePath
+}
+
+fn compiler_gate_stamp_env_entries(entries: List<YamlKeyValue>) -> List<YamlKeyValue> {
+  fold(
+    entries,
+    init: [],
+    f: fn(acc, kv) {
+      if kv.key == "env" {
+        match kv.value {
+          YamlMapping { entries: es } => es
+          YamlNull => acc
+          YamlBool { value: _ } => acc
+          YamlInt { lexeme: _ } => acc
+          YamlFloat { lexeme: _ } => acc
+          YamlString { value: _ } => acc
+          YamlSequence { elements: _ } => acc
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn compiler_gate_stamp_matching_entries(entries: List<YamlKeyValue>) -> List<YamlKeyValue> {
+  filter(entries, kv => kv.key == compiler_gate_contract_stamp_env_key)
+}
+
+// A SECOND STAMP MEMBER IS UNREADABLE, NOT "THE FIRST ONE WINS". A workflow that declares the stamp
+// twice is not a workflow whose stamp can be trusted, and picking one by position would be a silent
+// resolution of an ambiguity the check exists to police.
+fn compiler_gate_stamp_from_entry(kvs: List<YamlKeyValue>) -> CompilerGateContractStampReading {
+  match length(kvs) {
+    0 => StampAbsent
+    1 =>
+      match first(kvs) {
+        Present { value: kv } =>
+          match kv.value {
+            YamlString { value: s } =>
+              if string_length(s: s) == 0
+              then StampUnreadable { detail: "the stamp member is the empty string" }
+              else if string_contains(s: s, pattern: "${{")
+              then StampUnreadable { detail: "the stamp member is a GitHub expression, not a literal" }
+              else StampPresent { stamp: trim(s) }
+            YamlNull => StampUnreadable { detail: "the stamp member is not a string" }
+            YamlBool { value: _ } => StampUnreadable { detail: "the stamp member is not a string" }
+            YamlInt { lexeme: _ } => StampUnreadable { detail: "the stamp member is not a string" }
+            YamlFloat { lexeme: _ } => StampUnreadable { detail: "the stamp member is not a string" }
+            YamlSequence { elements: _ } => StampUnreadable { detail: "the stamp member is not a string" }
+            YamlMapping { entries: _ } => StampUnreadable { detail: "the stamp member is not a string" }
+          }
+        Absent => StampAbsent
+      }
+    _ => StampUnreadable { detail: "the workflow declares the contract stamp member more than once" }
+  }
+}
+
+// THE PURE HALF: it takes source text and decides, so every refusal arm is authorable from a fixture.
+fn compiler_gate_contract_stamp_read_from(src: String) -> CompilerGateContractStampReading {
+  match ingest_yaml_source(src: src) {
+    YamlIngestRejected { line: l, reason: r } =>
+      StampUnreadable { detail: join(["document rejected at line ", to_string(l), ": ", r], "") }
+    IngestedYaml { value: doc } =>
+      match doc {
+        YamlMapping { entries: es } =>
+          compiler_gate_stamp_from_entry(
+            kvs: compiler_gate_stamp_matching_entries(
+              entries: compiler_gate_stamp_env_entries(entries: es)
+            )
+          )
+        YamlNull => StampUnreadable { detail: "the workflow document is not a mapping, so it declares no env block" }
+        YamlBool { value: _ } => StampUnreadable { detail: "the workflow document is not a mapping, so it declares no env block" }
+        YamlInt { lexeme: _ } => StampUnreadable { detail: "the workflow document is not a mapping, so it declares no env block" }
+        YamlFloat { lexeme: _ } => StampUnreadable { detail: "the workflow document is not a mapping, so it declares no env block" }
+        YamlString { value: _ } => StampUnreadable { detail: "the workflow document is not a mapping, so it declares no env block" }
+        YamlSequence { elements: _ } => StampUnreadable { detail: "the workflow document is not a mapping, so it declares no env block" }
+      }
+  }
+}
+
+// --------------------------------------------------------------------------------------------- THE VERDICT
+//
+// Four arms and no fifth. The RUNNING value is compared as read: the emitted workflow carries a literal,
+// and a running value that is not a literal is a generation bug the derived-or-refuse half above already
+// refuses at emit time -- so there is no second parse here to author, and no arm to fake.
+fn compiler_gate_contract_stamp_compare(
+  running: String,
+  tree: CompilerGateContractStampReading
+) -> CompilerGateContractStampReading {
+  match tree {
+    StampPresent { stamp: tree_stamp } =>
+      if tree_stamp == running then StampPresent { stamp: tree_stamp }
+      else StampMismatch { running: running, tree: tree_stamp }
+    StampAbsent => StampAbsent
+    StampUnreadable { detail: d } => StampUnreadable { detail: d }
+  }
+}
+
+// THE DIAGNOSTIC IS THE POINT OF THE CHECK. Every refusal names BOTH stamps and the one remedy, and is
+// located by the step that prints it. There is no warning arm and no input that overrides it (§5).
+fn compiler_gate_contract_stamp_refusal_line(verdict: CompilerGateContractStampReading) -> String {
+  match verdict {
+    StampPresent { stamp: _ } => ""
+    StampAbsent => join(
+      [
+        "REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no ",
+        compiler_gate_contract_stamp_env_key,
+        " at ",
+        compiler_gate_contract_stamp_workflow_path_as_string(),
+        ", so its workflow predates the instruction this job is executing. ",
+        compiler_gate_contract_stamp_provenance,
+        ". Remedy: merge origin/main into this branch."
+      ],
+      ""
+    )
+    StampUnreadable { detail: d } => join(
+      [
+        "REFUSED gunbc contract stamp: StampUnreadable {",
+        d,
+        "}. The checked-out subject's ",
+        compiler_gate_contract_stamp_workflow_path_as_string(),
+        " does not carry a readable ",
+        compiler_gate_contract_stamp_env_key,
+        ". Remedy: merge origin/main into this branch."
+      ],
+      ""
+    )
+    StampMismatch { running: running, tree: tree_stamp } => join(
+      [
+        "REFUSED gunbc contract stamp: StampMismatch {running=",
+        running,
+        ", tree=",
+        tree_stamp,
+        "}. The workflow executing was generated from a DIFFERENT revision than the tree it is judging: ",
+        "the instruction came from the merge ref and the ",
+        compiler_gate_contract_stamp_provenance,
+        "-stamped workflow in the checked-out tree says otherwise. ",
+        "Remedy: merge origin/main into this branch so the tree carries the instruction being run."
+      ],
+      ""
+    )
+  }
+}
+
+fn compiler_gate_contract_stamp_workflow_path_as_string() -> String {
+  compiler_gate_contract_stamp_workflow_path() as String
+}
+
+// THE ARMS THE GENERATED STEP ACTS ON, kept as named predicates so the witness can assert each one is
+// reachable rather than taking the step's word for it.
+fn compiler_gate_contract_stamp_is_refusal(verdict: CompilerGateContractStampReading) -> Bool {
+  match verdict {
+    StampPresent { stamp: _ } => false
+    StampAbsent => true
+    StampUnreadable { detail: _ } => true
+    StampMismatch { running: _, tree: _ } => true
+  }
+}
