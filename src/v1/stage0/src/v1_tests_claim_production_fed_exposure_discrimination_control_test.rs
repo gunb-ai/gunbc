@@ -50,15 +50,15 @@ pub fn inputs_in_consumer_module(
             |acc: Rc<Vec<Rc<OccurrenceModulePathRow>>>, row: Rc<OccurrenceModulePathRow>| {
                 v1_rt::concat(
                     acc,
-                    Rc::new(vec![match (row.occurrence.clone().value.clone()
-                        == declaration.value.clone())
-                    {
-                        true => row.clone(),
-                        false => Rc::new(OccurrenceModulePathRow {
-                            occurrence: row.occurrence.clone(),
-                            module_path: consumer.clone(),
-                        }),
-                    }]),
+                    Rc::new(vec![
+                        match (row.occurrence.value.clone() == declaration.value.clone()) {
+                            true => row.clone(),
+                            false => Rc::new(OccurrenceModulePathRow {
+                                occurrence: row.occurrence.clone(),
+                                module_path: consumer.clone(),
+                            }),
+                        },
+                    ]),
                 )
             },
         ),
