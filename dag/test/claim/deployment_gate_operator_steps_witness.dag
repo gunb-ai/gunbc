@@ -1,4 +1,4 @@
-module gunbc.test.claim.deployment_gate_operator_steps_witness
+module test.claim.deployment_gate_operator_steps_witness
 
 // Witness file for the five operator acts that stand up the deployment gate, and for the ordering that
 // keeps the gate shut until the app-side rule has been witnessed BOTH ways.
@@ -71,11 +71,12 @@ import gunbc.auth.deployment_gate_authorization {
   BothArmsOneDispatch,
   EvidenceFromAnotherEnvironment,
   admit_reviewer_removal,
-  reviewer_removal_is_admitted,
+  reviewer_removal_obstacle,
   reviewer_removal_is_performable,
-  rule_app_permission_is_admissible,
-  rule_app_permission_set_is_admissible,
-  rule_app_permission_set_is_complete,
+  gate_app_permissions,
+  gate_app_axis_is_not_forbidden,
+  gate_app_permission_set_is_admissible,
+  gate_app_permission_set_is_exact,
   GateInstallation,
 }
 
@@ -221,7 +222,10 @@ test fn the_removal_is_not_collapsed_into_the_enablement() -> Bool {
 // the words APPROVING and REJECTING and proved nothing.
 test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
   !reviewer_removal_is_performable()
-    && reviewer_removal_is_admitted(admission: admitted_pair())
+    && (match reviewer_removal_obstacle(admission: admitted_pair()) {
+          none => true
+          Present { value: _ } => false
+        })
 }
 
 // Each mutation is a shortcut someone would actually take: both arms the same state, both arms on the
@@ -232,7 +236,10 @@ test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
 test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused() -> Bool {
   let approve = approved_trial(run_id: 35447067113)
   let reject = rejected_trial(run_id: 35447067114)
-  reviewer_removal_is_admitted(admission: admitted_pair())
+  (match reviewer_removal_obstacle(admission: admitted_pair()) {
+    none => true
+    Present { value: _ } => false
+  })
     // both arms the same observed review => one dispatch, which cannot show a refusal
     && (match admit_reviewer_removal(approved: approve, rejected: approve) {
           RemovalRefused { missing: BothArmsOneDispatch } => true
@@ -253,10 +260,12 @@ test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refuse
           RemovalRefused { missing: _ } => false
           RemovalAdmitted { evidence: _ } => false
         })
-    // a refusal is a refusal: the act is not performable with one
-    && !reviewer_removal_is_admitted(
-         admission: RemovalRefused { missing: NoRejectingReview }
-       )
+    // a refusal is a refusal, and the obstacle says WHICH one -- the operator reads the missing
+    // trial by name rather than being told "no".
+    && (match reviewer_removal_obstacle(admission: RemovalRefused { missing: NoRejectingReview }) {
+          Present { value: NoRejectingReview } => true
+          Absent => false
+        })
     && (match admitted_pair() {
           RemovalAdmitted { evidence: e } =>
             e.run_id_approved != e.run_id_rejected && e.environment_name == gate_env
@@ -352,7 +361,7 @@ test fn the_enablement_readback_uses_real_protection_types() -> Bool {
 
 test fn the_gate_app_carries_only_the_rule_permissions() -> Bool {
   (deployment_gate_app_permissions |> count) == 2
-    && rule_app_permission_set_is_complete()
+    && gate_app_permission_set_is_exact()
     && (deployment_gate_app_permissions
         |> any(p => p.name == DeploymentsAxis && p.access == AppAccessWrite))
     && (deployment_gate_app_permissions
@@ -363,16 +372,16 @@ test fn the_gate_app_carries_only_the_rule_permissions() -> Bool {
 // App that releases srv1 root mutation must not be able to read source, mint a workload token, or
 // administer the repository.
 test fn the_permission_set_refuses_a_widened_app() -> Bool {
-  rule_app_permission_set_is_admissible()
+  gate_app_permission_set_is_admissible()
     && !(deployment_gate_app_permissions
          |> append(GitHubAppPermission { name: ContentsAxis, access: AppAccessWrite })
-         |> all(p => rule_app_permission_is_admissible(permission: p)))
+         |> all(p => gate_app_axis_is_not_forbidden(permission: p)))
     && !(deployment_gate_app_permissions
          |> append(GitHubAppPermission { name: IdTokenAxis, access: AppAccessRead })
-         |> all(p => rule_app_permission_is_admissible(permission: p)))
+         |> all(p => gate_app_axis_is_not_forbidden(permission: p)))
     && !(deployment_gate_app_permissions
          |> append(GitHubAppPermission { name: AdministrationAxis, access: AppAccessWrite })
-         |> all(p => rule_app_permission_is_admissible(permission: p)))
+         |> all(p => gate_app_axis_is_not_forbidden(permission: p)))
 }
 
 // The installation the token is minted from is a configured fact, never a field of a readback — the

@@ -24,7 +24,7 @@ module gunbc.auth.deployment_gate_operator_steps
 // production module that ships fixtures ships values someone can mistake for observations, and a
 // guarded act built from a fixture is the prose guard it replaced wearing a type. Every witness for
 // these rows, and every fixture they mutate, lives in
-// gunbc.test.claim.deployment_gate_operator_steps_witness. What stays here is the rows and the folds
+// test.claim.deployment_gate_operator_steps_witness. What stays here is the rows and the folds
 // that decide them.
 
 import std.types {
@@ -41,8 +41,8 @@ import std.human_intervention {
   NoDischargeSiteModeled,
   human_intervention_frequency_eq,
 }
-import extdeps.github.deployment_protection_rule { rule_app_permissions }
 import extdeps.github.app { GitHubAppPermission }
+import gunbc.auth.deployment_gate_authorization { gate_app_permissions }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 
 // The repository the App is installed on. Named once, in one row, so the installation subject and
@@ -58,7 +58,7 @@ data deployment_gate_environment: NonEmptyStr = srv1_production_environment_name
 // read one authority (§3). Verbatim upstream: Actions Read-only, Deployments Read and write. Contents
 // is NOT on that list; an App granted Contents:write here holds something the upstream never asked
 // for, on the identity that releases srv1 root mutation.
-data deployment_gate_app_permissions: List<GitHubAppPermission> = rule_app_permissions
+data deployment_gate_app_permissions: List<GitHubAppPermission> = gate_app_permissions
 
 // ---------------------------------------------------------------------------
 // The five operator acts

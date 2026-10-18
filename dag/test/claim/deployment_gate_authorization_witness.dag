@@ -1,4 +1,4 @@
-module gunbc.test.claim.deployment_gate_authorization_witness
+module test.claim.deployment_gate_authorization_witness
 
 // Witness file for the authorization decision behind "answer a pending environment gate for a run".
 // This is where the fixtures live; the production module gunbc.auth.deployment_gate_authorization
@@ -44,7 +44,6 @@ import extdeps.github.deployment_protection_rule {
   RuleOwningApp,
   EnvironmentRuleOwnership,
   NotOwnedByGateApp,
-  rule_ownership_is_established,
   review_call,
   human_review_call,
   pending_deployments_poll_call,
@@ -74,17 +73,21 @@ import gunbc.auth.deployment_gate_authorization {
   rule_delivery_independence,
   selected_gate_route,
   gate_route_for,
-  operator_webhook_sets_no_receiver,
+  operator_webhook_receiver,
   admit_reviewer_removal,
   DeploymentGateTrialEvidence,
   broker_may_answer,
   ownership_names_environment,
-  run_is_still_worth_answering,
+  answer_refusal_from_settlement,
+  AnswerRefusal,
+  RunAlreadyConcluded,
   capability_binds_request,
   review_answers_capability,
   review_matches_decision,
   review_was_accepted,
-  gate_credential_is_permitted,
+  gate_credential_refusal,
+  CredentialRefusal,
+  OperatorOwnedCredential,
   gate_credential_is_documented,
   for_answer_pending_gate,
   gate_pattern_redeems_a_human_decision,
@@ -384,8 +387,15 @@ fn sanctioned_review() -> DeploymentProtectionRuleReview {
 // the rule elsewhere, never answers. The review endpoint enforces own-rule-only too, which is a reason
 // to expect a refusal and never a reason to skip the check.
 test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
-  rule_ownership_is_established(ownership: minted_ownership())
-    && !rule_ownership_is_established(ownership: unattributed_ownership())
+  (match minted_ownership() {
+    OwnedByGateApp { rule_id: _, app_id: _, app_slug: _, environment_name: e } =>
+      e == srv1_production_environment_name
+    NotOwnedByGateApp { because: _ } => false
+  })
+    && (match unattributed_ownership() {
+          NotOwnedByGateApp { because: _ } => true
+          OwnedByGateApp { rule_id: _, app_id: _, app_slug: _, environment_name: _ } => false
+        })
     && !broker_may_answer(
          wait: an_answerable_wait(),
          run: an_in_flight_run(),
@@ -437,9 +447,21 @@ test fn success_is_one_status_on_the_right_call() -> Bool {
 // looking like it did. Both arms of GitHub's own settlement sum are exercised, so "we did not look" is
 // a value rather than a skipped call.
 test fn a_concluded_run_is_never_answered() -> Bool {
-  run_is_still_worth_answering(settlement: RunSettlementInFlight)
-    && !run_is_still_worth_answering(settlement: RunSettled { conclusion: RunSuccess })
-    && !run_is_still_worth_answering(settlement: RunSettled { conclusion: RunFailure })
+  match answer_refusal_from_settlement(settlement: RunSettlementInFlight) {
+    none => true
+    Present { value: _ } => false
+  }
+    // THE CONCLUSION SURVIVES THE REFUSAL. A Bool said "no" to both settled arms and threw the
+    // conclusion away, so "refused a run that succeeded" and "refused a run that failed" were the same
+    // reported fact — and they are different facts, one of which means the gate was never answered.
+    && (match answer_refusal_from_settlement(settlement: RunSettled { conclusion: RunSuccess }) {
+          Present { value: RunAlreadyConcluded { conclusion: c } } => c == RunSuccess
+          none => false
+        })
+    && (match answer_refusal_from_settlement(settlement: RunSettled { conclusion: RunFailure }) {
+          Present { value: RunAlreadyConcluded { conclusion: c } } => c == RunFailure
+          none => false
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -450,8 +472,16 @@ test fn a_concluded_run_is_never_answered() -> Bool {
 // test passes for the wrong reason — nothing would have been refused, and the day someone "supports"
 // PATs there would be no closed position to point at.
 test fn the_operators_own_token_is_refused_though_github_accepts_it() -> Bool {
-  gate_credential_is_permitted(credential: InstallationAccessToken)
-    && !gate_credential_is_permitted(credential: OAuthClassicWithRepoScope)
+  (match gate_credential_refusal(credential: InstallationAccessToken) {
+    none => true
+    Present { value: _ } => false
+  })
+    // The refusal NAMES the kind it refused. `=> false` alone would still pass if the fold refused the
+    // wrong arm or refused for a reason that has nothing to do with whose credential it is.
+    && (match gate_credential_refusal(credential: OAuthClassicWithRepoScope) {
+          Present { value: OperatorOwnedCredential { kind: k } } => k == OAuthClassicWithRepoScope
+          none => false
+        })
     && gate_credential_is_documented()
 }
 
@@ -473,7 +503,10 @@ test fn the_selected_route_follows_the_standing_and_adds_no_exposure() -> Bool {
     StandingConfirmed { witnessed_run_id: _ } => false
     StandingRefuted { refused_because: _ } => false
   }
-    && operator_webhook_sets_no_receiver()
+    && (match operator_webhook_receiver() {
+          none => true
+          Present { value: _ } => false
+        })
     // THE OTHER ARM, EXERCISED: refuting the standing selects the relay, and the relay is where an
     // inbound ingress appears. A Bool fold over either sum would have hidden this branch.
     && (match gate_route_for(standing: StandingRefuted { refused_because: "refused without a delivery" }) {

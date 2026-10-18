@@ -13,7 +13,7 @@ module gunbc.auth.deployment_gate_authorization
 // here and the accepted set is there.
 //
 // AND WHY NOTHING IN IT IS A TEST OR A FIXTURE. On main no dag/gunbc/auth module carries a `test fn`;
-// the tests for this file live in gunbc.test.claim.deployment_gate_authorization_witness, which is
+// the tests for this file live in test.claim.deployment_gate_authorization_witness, which is
 // where fixtures belong. A production module that ships fixtures ships values someone can mistake for
 // observations, and a typed prerequisite built from a fixture is the prose guard it replaced wearing a
 // type. What is kept here are types, folds, and the one frontier row that says "not yet".
@@ -36,6 +36,7 @@ import std.measure {
 import std.optional {
   Present,
   Absent,
+  Optional,
 }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.github.deployment_protection_rule {
@@ -53,18 +54,15 @@ import extdeps.github.deployment_protection_rule {
   review_documented_example_body,
   PendingDeploymentWait,
   pending_wait_environment_name,
-  pending_wait_carries_a_human_reviewer,
   EnvironmentRuleOwnership,
   OwnedByGateApp,
   NotOwnedByGateApp,
-  rule_ownership_is_established,
   EnabledDeploymentProtectionRule,
   rule_ownership_from_readback,
   review_call_succeeded,
   custom_rule_response_timeout,
   custom_rule_timeout_run_conclusion,
   rule_gate_approval_ceiling,
-  rule_app_permissions,
   wait_minutes_as_seconds,
   wait_timer_maximum,
   rule_delivery_documented_guarantee,
@@ -84,6 +82,7 @@ import extdeps.github.app {
   AppAccessWrite,
 }
 import extdeps.github.actions_runs {
+  RunConclusion,
   RunFailure,
   RunSettlement,
   RunSettlementInFlight,
@@ -167,10 +166,17 @@ fn gate_pattern_redeems_a_human_decision() -> Bool {
 // the REST reference itself lists first. The other arm is the operator's own credential sitting where a
 // service can reach it: the second rejected alternative in the plan carrier, and the pattern the
 // selection's hard constraints already exclude.
-fn gate_credential_is_permitted(credential: ReviewCredential) -> Bool {
+// THE REFUSAL AS A VALUE. `match credential { A => true, B => false }` threw away the one thing a
+// caller has to be able to show: WHICH kind was refused, and that it was refused because it is a
+// person's credential. The arm carries the kind, so a witness can require the refusal to name the
+// operator-owned arm — a fold that refused the wrong arm would now go red instead of still returning
+// false. Absent is the permitted arm; there is no Bool standing between the sum and its consumer.
+type CredentialRefusal = OperatorOwnedCredential { kind: ReviewCredential }
+
+fn gate_credential_refusal(credential: ReviewCredential) -> Optional<CredentialRefusal> {
   match credential {
-    InstallationAccessToken => true
-    OAuthClassicWithRepoScope => false
+    InstallationAccessToken => none
+    OAuthClassicWithRepoScope => Present { value: OperatorOwnedCredential { kind: OAuthClassicWithRepoScope } }
   }
 }
 
@@ -198,21 +204,35 @@ data rule_app_forbidden_axes: List<GitHubPermissionAxis> = [
   IdTokenAxis,
 ]
 
-fn rule_app_permission_is_admissible(permission: GitHubAppPermission) -> Bool {
+// WHAT OUR REVIEWER IDENTITY IS ALLOWED TO HOLD. Upstream states only a MINIMUM for one endpoint
+// (extdeps.github.deployment_protection_rule.review_required_permission: Deployments, write) — that is
+// a property of GitHub's API. WHICH axes the gate App is granted is our decision about a credential of
+// ours, which is why this row sits here and not beside the endpoint model: changing our grant must never
+// require editing a model of GitHub. Actions is read because the broker has to read the run's own record
+// to answer a gate; nothing else is asked for, and every other axis is refused by name below rather than
+// merely absent.
+data gate_app_permissions: List<GitHubAppPermission> = [
+  GitHubAppPermission { name: ActionsAxis, access: AppAccessRead },
+  GitHubAppPermission { name: DeploymentsAxis, access: AppAccessWrite },
+]
+
+// ONE MEANING PER NAME (§3, meaning fork). This used to be two functions with ONE name in two modules,
+// answering differently: the extdeps copy asked "are both documented axes present", this one also
+// required "and nothing else". A caller could not tell from the name which contract it got. The extdeps
+// copy is deleted, and the surviving pair says in its name what it asks — `..._is_admissible` asks only
+// that no axis is forbidden; `..._is_exact` additionally requires both documented rows and no third.
+fn gate_app_axis_is_not_forbidden(permission: GitHubAppPermission) -> Bool {
   !(rule_app_forbidden_axes |> any(a => a == permission.name))
 }
 
-fn rule_app_permission_set_is_admissible() -> Bool {
-  rule_app_permissions |> all(p => rule_app_permission_is_admissible(permission: p))
+fn gate_app_permission_set_is_admissible() -> Bool {
+  gate_app_permissions |> all(p => gate_app_axis_is_not_forbidden(permission: p))
 }
 
-// The documented permission set, complete: Actions read-only AND Deployments write, no more and no
-// fewer. Without Deployments:write the review call is refused outright (the upstream requires it); with
-// anything else the App has grown past the feature.
-fn rule_app_permission_set_is_complete() -> Bool {
-  (rule_app_permissions |> count) == 2
-    && (rule_app_permissions |> any(p => p.name == ActionsAxis && p.access == AppAccessRead))
-    && (rule_app_permissions
+fn gate_app_permission_set_is_exact() -> Bool {
+  (gate_app_permissions |> count) == 2
+    && (gate_app_permissions |> any(p => p.name == ActionsAxis && p.access == AppAccessRead))
+    && (gate_app_permissions
         |> any(p => p.name == DeploymentsAxis && p.access == AppAccessWrite))
 }
 
@@ -280,10 +300,15 @@ fn selected_gate_route() -> GateDiscoveryRoute {
 // untested there is NO receiver, so the App's webhook is left pointed at a disabled endpoint. A step
 // that configured a real public receiver would be adding the inbound exposure the route was chosen to
 // avoid — and if the trial refutes the inference, it is this row that changes.
-fn operator_webhook_sets_no_receiver() -> Bool {
+// THE RECEIVER AS A VALUE. The old form collapsed the route sum to "is it the no-webhook arm", which
+// both dropped the relay's address and let the operator step's wording stand in for the fact. Absent
+// means the App's webhook stays pointed at a disabled endpoint — the exposure the route was chosen to
+// avoid. Present carries WHERE the relay listens, so the step's instruction can name it instead of
+// describing it.
+fn operator_webhook_receiver() -> Optional<NonEmptyStr> {
   match selected_gate_route() {
-    NoWebhookPollAndSubmit => true
-    WebhookRelayFallback { relay_ingress: _ } => false
+    NoWebhookPollAndSubmit => none
+    WebhookRelayFallback { relay_ingress: r } => Present { value: r }
   }
 }
 
@@ -343,12 +368,21 @@ fn broker_may_answer(
   ownership: EnvironmentRuleOwnership
 ) -> Bool {
   run.run_id == claim.run_id
-    && run_is_still_worth_answering(settlement: workflow_run_settlement(record: run))
+    && (match answer_refusal_from_settlement(settlement: workflow_run_settlement(record: run)) {
+          none => true
+          Present { value: _ } => false
+        })
     && pending_wait_environment_name(wait: wait) == claim.environment
-    && ownership_names_environment(
-         ownership: ownership, environment: pending_wait_environment_name(wait: wait)
-       )
-    && rule_ownership_is_established(ownership: ownership)
+    // THE OWNERSHIP SUM, CONSUMED WHERE IT IS CONSUMED. `rule_ownership_is_established` used to answer
+    // this with true/false beside `ownership_names_environment`, which asked the same question of the
+    // same value and already refused the NotOwned arm — a second predicate over one sum is a second
+    // authority over it (§3), and the Bool version threw the typed `because:` away. One match, and the
+    // environment it names is the one that has to agree.
+    && (match ownership {
+          OwnedByGateApp { rule_id: _, app_id: _, app_slug: _, environment_name: owned } =>
+            owned == pending_wait_environment_name(wait: wait)
+          NotOwnedByGateApp { because: _ } => false
+        })
     && !pending_wait_carries_a_human_reviewer(wait: wait)
     && capability_binds_request(capability: capability, claim: claim)
 }
@@ -370,10 +404,15 @@ fn ownership_names_environment(
 // now changes nothing while looking like it did. The settlement is GitHub's own sum, so "we did not
 // look" is a value rather than a skipped call. Reached only through the record, which is why the fold
 // above cannot be satisfied by an id.
-fn run_is_still_worth_answering(settlement: RunSettlement) -> Bool {
+// "We refused a run that had already concluded" and "we refused a run that had already FAILED" are
+// different facts to record, and a Bool cannot tell them apart — so the conclusion survives in the
+// refusal instead of being matched away.
+type AnswerRefusal = RunAlreadyConcluded { conclusion: RunConclusion }
+
+fn answer_refusal_from_settlement(settlement: RunSettlement) -> Optional<AnswerRefusal> {
   match settlement {
-    RunSettlementInFlight => true
-    RunSettled { conclusion: _ } => false
+    RunSettlementInFlight => none
+    RunSettled { conclusion: c } => Present { value: RunAlreadyConcluded { conclusion: c } }
   }
 }
 
@@ -516,7 +555,7 @@ type DeploymentGateTrialEvidence sole_constructor {
 //   STRUCTURAL, ENFORCED BY THE COMPILER. ObservedRuleReview and DeploymentGateTrialEvidence are
 //   sole_constructor, so OUTSIDE THIS MODULE a literal for either is refused at the name
 //   (SoleConstructorViolation — executed as a probe red by
-//   gunbc.test.claim.deployment_gate_authorization_witness). That is what makes "remove the reviewer
+//   test.claim.deployment_gate_authorization_witness). That is what makes "remove the reviewer
 //   without both trials" unrepresentable AS SOURCE: there is no value of the admitted arm an outside
 //   caller can supply, because there is no value of the evidence type it could carry.
 //
@@ -581,10 +620,14 @@ fn admit_reviewer_removal(
 
 // What the removal act asks, and all it can ask: the admission is the whole precondition, and the act
 // has no other way to be performed.
-fn reviewer_removal_is_admitted(admission: ReviewerRemovalAdmission) -> Bool {
+// THE OBSTACLE AS A VALUE, because the refusal is the half the operator acts on: WHICH trial is
+// missing says what to run next. The Bool that stood here kept the reason in a type and then dropped it
+// (`RemovalRefused { missing: _ } => false`), so the model could state six distinct blockers and report
+// only "no". Consumers that want yes/no ask THIS and match it; nothing re-implements the arm test.
+fn reviewer_removal_obstacle(admission: ReviewerRemovalAdmission) -> Optional<RemovalRefusalReason> {
   match admission {
-    RemovalAdmitted { evidence: _ } => true
-    RemovalRefused { missing: _ } => false
+    RemovalAdmitted { evidence: _ } => none
+    RemovalRefused { missing: m } => Present { value: m }
   }
 }
 
@@ -602,7 +645,10 @@ data reviewer_removal_admission: ReviewerRemovalAdmission = admit_reviewer_remov
 )
 
 fn reviewer_removal_is_performable() -> Bool {
-  reviewer_removal_is_admitted(admission: reviewer_removal_admission)
+  match reviewer_removal_obstacle(admission: reviewer_removal_admission) {
+    none => true
+    Present { value: _ } => false
+  }
 }
 
 // ---------------------------------------------------------------------------

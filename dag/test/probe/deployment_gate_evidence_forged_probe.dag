@@ -26,13 +26,14 @@ module test.probe.deployment_gate_evidence_forged_probe
 // sits under the whole-tree strict-resolve exclusion, so this source reaches the compiler only through
 // that witness.
 
-import std.types { NonEmptyStr, String, Int, Bool, List, Present }
+import std.types { String, Int, Bool, List }
+import std.optional { Present }
 import gunbc.auth.deployment_gate_authorization {
   ObservedRuleReview,
   DeploymentGateTrialEvidence,
   ReviewerRemovalAdmission,
   admit_reviewer_removal,
-  reviewer_removal_is_admitted,
+  reviewer_removal_obstacle,
 }
 import extdeps.github.actions_runs { WorkflowRunRecord }
 import extdeps.github.deployment_protection_rule { Approved, Rejected }
@@ -65,8 +66,13 @@ data forged_admission: ReviewerRemovalAdmission = admit_reviewer_removal(
   },
 )
 
-fn forged_removal_is_admitted() -> Bool {
-  reviewer_removal_is_admitted(admission: forged_admission)
+// Whether the forged admission would read as admitted. The obstacle carries the missing trial by name,
+// so a forgery that made it through would report NO obstacle -- that is what this returns true for.
+fn forged_removal_looks_admitted() -> Bool {
+  match reviewer_removal_obstacle(admission: forged_admission) {
+    none => true
+    Present { value: _ } => false
+  }
 }
 
 // A run record written here, so the forgery above does not depend on a helper it could not obtain.

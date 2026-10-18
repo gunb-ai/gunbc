@@ -34,6 +34,7 @@ module extdeps.github.deployment_protection_rule
 // calling the human reviewer endpoint either fails, or — worse — succeeds while a human is still
 // being asked, which is two authorities for one decision.
 
+import std.algebra { non_empty }
 import std.types {
   String,
   Int,
@@ -508,15 +509,12 @@ data review_required_permission: GitHubAppPermission = GitHubAppPermission {
   access: AppAccessWrite,
 }
 
-// The documented permission set for the rule App: Actions read-only, Deployments read and write, and
-// NOTHING else. Anything wider — Contents, Administration, Pull requests, Secrets — is an
-// unrequested grant on a reviewer identity. Because the elements are
-// GitHubAppPermission records rather than strings, a widening is a different value of an existing
-// closed type, and the refusal below compares axes rather than substrings of a sentence.
-data rule_app_permissions: List<GitHubAppPermission> = [
-  GitHubAppPermission { name: ActionsAxis, access: AppAccessRead },
-  GitHubAppPermission { name: DeploymentsAxis, access: AppAccessWrite },
-]
+// WHAT UPSTREAM STATES ABOUT PERMISSIONS IS ONLY THE MINIMUM THE CALL NEEDS (review_required_permission
+// below), because that is a property of GitHub's endpoint. WHICH permissions the gate App is granted --
+// Actions read, Deployments write, nothing else -- is gunbc's decision about a credential of ours, and
+// lives in gunbc.auth.deployment_gate_authorization.gate_app_permissions with the refusal of every
+// widened axis next to it. This file used to hold the set and judge it; a change to OUR App's grant
+// must not require an edit to a model of GitHub.
 
 // WHO MAY MAKE THE REVIEW CALL, as UPSTREAM STATES IT — the set of credential kinds GitHub accepts,
 // and nothing more. WHICH of them gunbc permits is a §3d selection made in
@@ -696,8 +694,12 @@ fn pending_wait_environment_name(wait: PendingDeploymentWait) -> NonEmptyStr {
 // Whether any HUMAN reviewer is listed. A wait that names users or teams is a required-reviewer wait,
 // and an App has no business answering it — the fail-closed direction is to refuse whenever a human
 // is in the list, rather than to assume the wait is ours.
+// THE UPSTREAM AUTHORITY FOR NONEMPTINESS IS std.algebra'S FreeMonoid (§3b's cardinality row names
+// it), so emptiness is asked there rather than written as `any(r => true)` -- a predicate that walks
+// reviewers and never looks at one. The type does the looking: PendingDeploymentReviewer has exactly
+// UserReviewer and TeamReviewer arms and no App arm, so a non-empty list IS a list of humans.
 fn pending_wait_carries_a_human_reviewer(wait: PendingDeploymentWait) -> Bool {
-  wait.reviewers |> any(r => true)
+  non_empty(xs: wait.reviewers)
 }
 
 // WHETHER THIS APP OWNS THE RULE THAT IS HOLDING THE JOB. That is NOT readable from the wait (see the
@@ -722,13 +724,6 @@ type OwnershipRefusalReason
 type EnvironmentRuleOwnership
   = OwnedByGateApp { rule_id: Int, app_id: Int, app_slug: NonEmptyStr, environment_name: NonEmptyStr }
   | NotOwnedByGateApp { because: OwnershipRefusalReason }
-
-fn rule_ownership_is_established(ownership: EnvironmentRuleOwnership) -> Bool {
-  match ownership {
-    OwnedByGateApp { rule_id: _, app_id: _, app_slug: _, environment_name: _ } => true
-    NotOwnedByGateApp { because: _ } => false
-  }
-}
 
 // THE READBACK THAT ESTABLISHES OWNERSHIP IS THE ENABLED-RULES ENDPOINT, not the integrations
 // endpoint. The pin distinguishes them flatly:
@@ -772,8 +767,8 @@ fn rule_ownership_from_readback(
   gate_app_id: Int
 ) -> EnvironmentRuleOwnership {
   rules |> fold(
-init: NotOwnedByGateApp { because: NoRuleBelongsToThisApp },
-    f: fn(acc: EnvironmentRuleOwnership, rule: EnabledDeploymentProtectionRule) -> EnvironmentRuleOwnership {
+    init: NotOwnedByGateApp { because: NoRuleBelongsToThisApp },
+    f: fn(acc, rule) {
       if rule.enabled && rule.app.id == gate_app_id {
         OwnedByGateApp {
           rule_id: rule.id,
@@ -912,26 +907,6 @@ fn rule_webhook_is_an_answerable_request(event: String, action: String) -> Bool 
     && action == (rule_webhook_action as String)
 }
 
-// A timeout must be read as a job failure, never as an approval. A fold that let a timeout answer
-// `approved` would approve a deployment nobody tapped — and unlike a prose check, this cannot be
-// satisfied by a sentence that happens to contain the word "fails".
-
-// Whether the App may answer at all: only its own rule, and only with the axes it is supposed to
-// hold. A forbidden axis on the App means the reviewer identity is broader than this feature asked
-// for, which is a reason to refuse to run rather than to run carefully. Compared by AXIS, not by
-// substring of a description.
-
-// Every row of the App's declared permission set is admissible. A single widened axis makes this
-// false, and an activation check reads this rather than a description.
-
-// The App must hold Deployments at write, or the review call is refused by GitHub and every gated
-// deploy stalls until the rule times out. Stated as a positive requirement so the two checks
-// together pin the set exactly.
-fn rule_app_permission_set_is_complete() -> Bool {
-  rule_app_permissions |> any(p => p.name == DeploymentsAxis && p.access == AppAccessWrite)
-    && rule_app_permissions |> any(p => p.name == ActionsAxis && p.access == AppAccessRead)
-}
-
 // ---------------------------------------------------------------------------
 // The three REST calls, as RECORDS — path, method and success status read together
 // ---------------------------------------------------------------------------
@@ -1053,7 +1028,6 @@ data deployment_protection_rule_fact_citations: List<FactCitation> = [
   FactCitation { fact: gate_ceiling_ref, authority: limits_authority },
   FactCitation { fact: wait_timer_field_ref, authority: environment_authority },
   FactCitation { fact: reviewer_types_ref, authority: openapi_authority },
-  FactCitation { fact: rule_app_permissions_ref, authority: rule_authority },
   FactCitation { fact: spec_pin_ref, authority: spec_authority },
 ]
 
@@ -1077,7 +1051,6 @@ data deployment_protection_rule_live_fact_names: List<NonEmptyStr> = [
   "rule_gate_approval_ceiling",
   "wait_timer_maximum",
   "pending_deployment_reviewer_type_wire",
-  "rule_app_permissions",
   "spec_pinned_commit",
 ]
 
@@ -1115,7 +1088,6 @@ data custom_rule_timeout_ref: DeclarationRef = gate_ref(decl_name: "custom_rule_
 data gate_ceiling_ref: DeclarationRef = gate_ref(decl_name: "rule_gate_approval_ceiling")
 data wait_timer_field_ref: DeclarationRef = gate_ref(decl_name: "wait_timer_maximum")
 data reviewer_types_ref: DeclarationRef = gate_ref(decl_name: "pending_deployment_reviewer_type_wire")
-data rule_app_permissions_ref: DeclarationRef = gate_ref(decl_name: "rule_app_permissions")
 data spec_pin_ref: DeclarationRef = gate_ref(decl_name: "spec_pinned_commit")
 
 data extdeps_external_authority_anchor: ExternalAuthority = rule_authority

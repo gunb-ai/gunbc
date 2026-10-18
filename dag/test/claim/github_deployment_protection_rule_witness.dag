@@ -1,4 +1,4 @@
-module gunbc.test.claim.github_deployment_protection_rule_witness
+module test.claim.github_deployment_protection_rule_witness
 
 // Witness file: the custom deployment protection rule upstream model is load-bearing or it is wrong.
 // The feature this model exists for replaces "the operator clicks Review deployments" with "the
@@ -83,6 +83,11 @@ import extdeps.github.deployment_protection_rule {
   extdeps_published_authorities,
   EnabledDeploymentProtectionRule,
   RuleOwningApp,
+  OwnedByGateApp,
+  NotOwnedByGateApp,
+  ReadbackCarriedNoRules,
+  NoEnabledRule,
+  NoRuleBelongsToThisApp,
   rule_ownership_from_readback,
   enabled_rule_readback_endpoint_path,
   enabled_rule_readback_endpoint_method,
@@ -97,7 +102,6 @@ import extdeps.github.deployment_protection_rule {
   pending_wait_carries_a_human_reviewer,
   pending_deployment_wait_field_names,
   pending_deployments_field_environment,
-  rule_ownership_is_established,
   RestCall,
   review_call,
   pending_deployments_poll_call,
@@ -116,7 +120,6 @@ import extdeps.github.deployment_protection_rule {
   review_credential_is_documented,
   review_accepted_token_type,
   review_oauth_classic_scope,
-  rule_app_permissions,
   review_permission_is_satisfied,
   review_required_permission,
   review_documented_example_body,
@@ -406,35 +409,47 @@ test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -
     enabled: true,
     app: RuleOwningApp { id: 2222222222, slug: "some-other-integration" },
   }
-  rule_ownership_is_established(
-    ownership: rule_ownership_from_readback(
-      rules: [enabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
-    )
-  )
-    && !rule_ownership_is_established(
-         ownership: rule_ownership_from_readback(
-           rules: [disabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
-         )
-       )
-    && !rule_ownership_is_established(
-         ownership: rule_ownership_from_readback(
-           rules: [foreign_rule], environment_name: srv1_env, gate_app_id: gate_app_id
-         )
-       )
-    && !rule_ownership_is_established(
-         ownership: rule_ownership_from_readback(
-           rules: [] as List<EnabledDeploymentProtectionRule>,
-           environment_name: srv1_env,
-           gate_app_id: gate_app_id,
-         )
-       )
+  // THE SUM IS THE ANSWER. There is no `rule_ownership_is_established` any more: a Bool over this sum
+  // answered "is it the owned arm" while `ownership_by_readback` already returned the arm, so the two
+  // predicates were one fact with two authorities, and the Bool version discarded the typed
+  // OwnershipRefusalReason. Each arm is therefore matched HERE, and the refusal arms assert WHICH
+  // reason they carry -- a fold that refused an enabled foreign rule with ReadbackCarriedNoRules would
+  // now be wrong rather than merely different.
+  match rule_ownership_from_readback(
+    rules: [enabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+  ) {
+    OwnedByGateApp { rule_id: r, app_id: a, app_slug: _, environment_name: e } =>
+      r == 900000002 && a == gate_app_id && e == srv1_env
+    NotOwnedByGateApp { because: _ } => false
+  }
+    && (match rule_ownership_from_readback(
+          rules: [disabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+        ) {
+          NotOwnedByGateApp { because: NoEnabledRule } => true
+          _ => false
+        })
+    && (match rule_ownership_from_readback(
+          rules: [foreign_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+        ) {
+          NotOwnedByGateApp { because: NoRuleBelongsToThisApp } => true
+          _ => false
+        })
+    && (match rule_ownership_from_readback(
+          rules: [] as List<EnabledDeploymentProtectionRule>,
+          environment_name: srv1_env,
+          gate_app_id: gate_app_id,
+        ) {
+          NotOwnedByGateApp { because: ReadbackCarriedNoRules } => true
+          _ => false
+        })
     // A readback that attributes nothing to this App id is a refusal even when rules came back: the
     // environment in the ownership can never be one that was not read.
-    && !rule_ownership_is_established(
-         ownership: rule_ownership_from_readback(
-           rules: [enabled_rule], environment_name: srv1_env, gate_app_id: 7
-         )
-       )
+    && (match rule_ownership_from_readback(
+          rules: [enabled_rule], environment_name: srv1_env, gate_app_id: 7
+        ) {
+          NotOwnedByGateApp { because: NoRuleBelongsToThisApp } => true
+          _ => false
+        })
 }
 
 // THE ENDPOINT CENSUS, as data. Both endpoints exist upstream and do different jobs; the model cites
@@ -741,14 +756,28 @@ test fn the_call_needs_deployments_write_and_checks_it() -> Bool {
        )
 }
 
-// The documented App permission set, as an upstream fact: Actions read-only AND Deployments read+write,
-// which is two rows and no more. (That the App is REFUSED anything else is gunbc policy, and is
-// witnessed where that policy lives.)
-test fn the_documented_permission_set_is_exactly_two_rows() -> Bool {
-  (rule_app_permissions |> count) == 2
-    && (rule_app_permissions |> any(p => p.name == ActionsAxis && p.access == AppAccessRead))
-    && (rule_app_permissions
-        |> any(p => p.name == DeploymentsAxis && p.access == AppAccessWrite))
+// THE ONLY PERMISSION FACT UPSTREAM OWNS. Which axes the gate App may hold -- Actions read,
+// Deployments write, nothing else -- is gunbc's decision about a credential of ours, and it now lives
+// (and is witnessed) in gunbc.auth.deployment_gate_authorization. What survives here is the endpoint's
+// own minimum, which is a property of GitHub's API rather than of our App: Deployments at write, so a
+// read-only App cannot answer a gate at all.
+test fn upstream_states_only_the_endpoint_minimum() -> Bool {
+  review_required_permission.name == DeploymentsAxis
+    && review_required_permission.access == AppAccessWrite
+    && review_permission_is_satisfied(
+         permissions: [
+           GitHubAppPermission { name: DeploymentsAxis, access: AppAccessWrite },
+         ]
+       )
+    // A read-only Deployments App does NOT satisfy it: the failure this row exists to catch.
+    && !review_permission_is_satisfied(
+         permissions: [
+           GitHubAppPermission { name: DeploymentsAxis, access: AppAccessRead },
+         ]
+       )
+    && !review_permission_is_satisfied(
+         permissions: [GitHubAppPermission { name: ActionsAxis, access: AppAccessRead }]
+       )
 }
 
 // THE SUCCESS SIGNAL, and the three calls that must not be confused. 204 with no body is the only
