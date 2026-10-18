@@ -422,34 +422,34 @@ test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -
     enabled: true,
     app: RuleOwningApp { id: 2222222222, slug: "some-other-integration" },
   }
-  // THE SUM IS THE ANSWER. There is no `rule_ownership_is_established` any more: a Bool over this sum
-  // answered "is it the owned arm" while `ownership_by_readback` already returned the arm, so the two
-  // predicates were one fact with two authorities, and the Bool version discarded the typed
+  // THE SUM IS THE ANSWER. There is no Bool wrapper beside `ownership_from_readback`: an earlier round
+  // had `rule_ownership_is_established` answering "is it the owned arm" next to the fold that already
+  // returned the arm, which was one fact with two authorities -- and the Bool discarded the typed
   // OwnershipRefusalReason. Each arm is therefore matched HERE, and the refusal arms assert WHICH
   // reason they carry -- a fold that refused an enabled foreign rule with ReadbackCarriedNoRules would
   // now be wrong rather than merely different.
   match ownership_from_readback(
-    rules: [enabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+    rules: [enabled_rule], environment_name: gated_env, gate_app_id: gate_app_id
   ) {
     OwnedByGateApp { rule_id: r, app_id: a, app_slug: _, environment_name: e } =>
-      r == 900000001 && a == gate_app_id && e == srv1_env
+      r == 900000001 && a == gate_app_id && e == gated_env
     NotOwnedByGateApp { because: _ } => false
   }
     && (match ownership_from_readback(
-          rules: [disabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+          rules: [disabled_rule], environment_name: gated_env, gate_app_id: gate_app_id
         ) {
           NotOwnedByGateApp { because: NoEnabledRule } => true
           _ => false
         })
     && (match ownership_from_readback(
-          rules: [foreign_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+          rules: [foreign_rule], environment_name: gated_env, gate_app_id: gate_app_id
         ) {
           NotOwnedByGateApp { because: NoRuleBelongsToThisApp } => true
           _ => false
         })
     && (match ownership_from_readback(
           rules: [] as List<EnabledDeploymentProtectionRule>,
-          environment_name: srv1_env,
+          environment_name: gated_env,
           gate_app_id: gate_app_id,
         ) {
           NotOwnedByGateApp { because: ReadbackCarriedNoRules } => true
@@ -458,7 +458,7 @@ test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -
     // A readback that attributes nothing to this App id is a refusal even when rules came back: the
     // environment in the ownership can never be one that was not read.
     && (match ownership_from_readback(
-          rules: [enabled_rule], environment_name: srv1_env, gate_app_id: 7
+          rules: [enabled_rule], environment_name: gated_env, gate_app_id: 7
         ) {
           NotOwnedByGateApp { because: NoRuleBelongsToThisApp } => true
           _ => false
