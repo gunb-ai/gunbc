@@ -531,8 +531,12 @@ fn build_cache_matched_stats_fragment(capture: String) -> Optional<String> {
 // also change what the fleet observes. The contract that SHOULD hold — binary present, daemon absent,
 // therefore the ensure legs RUN and converge — is pinned by a claim enrolled as a known-red quarantine
 // probe, written to assert the correct behaviour so the fix greens it without an edit. The fix is the
-// one-arm dissolve named by that row and by its gunbc.recurring_failure_mode row: the observe phase must
-// not end the ensure, and ownership comes from the endpoint SURVEY, not from `--show-stats` — the same
+// TWO-ARM dissolve named by that row and by its gunbc.recurring_failure_mode row — ObserveStatsOk is consulted
+// in two decisions and both must stop treating it as an answer about the daemon: build_cache_ensure_is_needed
+// returns false on it (skipping the ensure before it starts), and build_cache_daemon_ensure_observation maps it
+// straight to DaemonUnresponsive without consulting the ensure or the read-back (so an ensure that DID run is
+// still reported unresponsive). Both must fall through to the path the other outcomes already use. The observe
+// phase must not end the ensure, and ownership comes from the endpoint SURVEY, not from `--show-stats` — the same
 // conclusion the receipt's own server_placement paragraph already reached.
 fn build_cache_ensure_is_needed(observe: BuildCacheObserve) -> Bool {
   match observe {

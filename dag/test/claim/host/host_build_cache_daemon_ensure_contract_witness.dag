@@ -101,9 +101,24 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // ran, nothing was enabled or restarted, and the read-back never happened; the classifier then reported
 // "exited zero without printing its read_back=ok receipt" and the effect refused with NotConverged. The port
 // keeps that behaviour EXACTLY (ruling A: faithful port, no behaviour change in this PR), which is why this
-// claim is red now. The fix is ONE ARM: the observe phase must not end the ensure, and daemon ownership comes
-// from the endpoint survey rather than from `--show-stats` -- the same conclusion the retired receipt's own
+// claim is red now. THE FIX IS TWO ARMS, NOT ONE, and an earlier revision of this comment said one; the
+// count matters because a fix that changes only the first leaves the defect live. `ObserveStatsOk` is consulted
+// in two decisions and both have to stop treating it as an answer about the daemon:
+//   (a) `build_cache_ensure_is_needed` (dag/gunbc/host/build_cache_daemon_ensure.dag:539) returns false for it,
+//       so the ensure is skipped before it starts; and
+//   (b) `build_cache_daemon_ensure_observation` (:802) maps it straight to DaemonUnresponsive WITHOUT looking at
+//       the ensure or the read-back, so even an ensure that DID run would be reported as unresponsive.
+// Both must fall through to the same path the other outcomes already use. Daemon ownership comes from the
+// endpoint survey rather than from `--show-stats` -- the same conclusion the retired receipt's own
 // server_placement paragraph already reached, and the reason `--show-stats` is documented as supplemental.
+//
+// WHY THE TAIL OF THIS CLAIM CARRIES THE SAME OBSERVATION RATHER THAN A CONVENIENT ONE. The claim asserts a
+// property of ONE host state end to end, so the decision, the ensure and the post-ensure classification are all
+// fed the same `observe` value. Handing the classification an unrelated observation that happens to fall through
+// would let the claim go green on a host that is not this one -- and, with arm (b) above in place, on a build
+// where the skip predicate alone was flipped. That is not a contract; it is two claims pretending to be one, so
+// the same-observation path is what is asserted here and the different-host version is kept as a separate,
+// separately named control.
 //
 // THE FOUR CONJUNCTS, AND WHICH ONE IS RED TODAY. Three are true now and are here as the positive control:
 // they prove the observer read the captures correctly, that the ensure's operations ARE derivable (so the
