@@ -320,6 +320,12 @@ fn workflow_action_uses_refusal_reason(workflow_module: String, refusals: List<W
 // branch name into it gets that branch.
 data checkout_revision_inputs: List<String> = ["expected_revision", "head_sha", "expected_healed_sha"]
 
+// A JOB OUTPUT THAT NAMES A COMMIT, by construction of the job that assigns it: `plan-revision` writes
+// only a revision that gunbc.fleet.fleet_converge_plan_revision admitted from GitHub's record of the
+// plan run, and `build` re-exports either that or the event sha. Both sit behind `|| github.sha`
+// in fleet-converge, so an empty output falls to a commit.
+data checkout_commit_job_outputs: List<String> = ["plan-revision.outputs.revision", "build.outputs.revision"]
+
 fn checkout_names_a_revision_input(name: String) -> Bool {
   fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || n == name })
 }
@@ -331,6 +337,7 @@ fn checkout_context_names_a_commit(context: ExpressionContext, path: List<String
       dotted == "sha" || dotted == "event.pull_request.head.sha"
         || fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || dotted == concat("event.inputs.", n) })
     Inputs => checkout_names_a_revision_input(name: dotted)
+    Needs => fold(checkout_commit_job_outputs, init: false, f: fn(acc, n) { acc || dotted == n })
     _ => false
   }
 }

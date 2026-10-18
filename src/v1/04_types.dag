@@ -1,10 +1,11 @@
 module v1.compiler.infer_types
 
+import std.decl_ref { declaration_ref_eq }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
 import v1.compiler.type_head_exposure { type_declaration_identity_key }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, lookup_binding_by_name }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, lookup_binding_by_name, alias_settled_agree, settled_type }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -991,7 +992,6 @@ type TextJudgment
 
 type TextNotAskedReason
   = TextNotAskedInVariantFieldSummary
-  | TextNotAskedForCallableComponentResidue
   | TextNotAskedForSyntheticWitnessNodes
 
 fn peel_alias_rhs_once(n: Node, text: TextJudgment) -> Node {
@@ -1288,7 +1288,79 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
     else if left_opt || right_opt { false }
     else {
       type_name_compatible(a: authored_name_at(source_indices: source_indices, node: left), b: authored_name_at(source_indices: source_indices, node: right))
+        || alias_identity_in_judgment(left: left, right: right, source_indices: source_indices, text: text)
     }
+  }
+}
+
+fn alias_identity_in_judgment(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  match text {
+    TextJudgedIn { env: e } =>
+      alias_settled_agree(left: left, right: right, source_indices: source_indices, env: e,
+        agree: (a, b) => applied_argument_agrees(left: child_type_node(ch: a), right: child_type_node(ch: b), source_indices: source_indices, text: text))
+    TextNotAsked { reason: _ } => false
+  }
+}
+
+// An applied argument of an alias-settled pair is judged by the declaration it settles to, under the same declared-arity rule as the
+// top level (alias_settled_agree): identical head, and for a parameterized head every argument agrees in turn, a side exposing none
+// refusing. Only an argument that names no declaration (a kernel scalar, a container, a type variable) falls to node_type_compatible,
+// which owns those kernel readings; node_type_compatible alone would pass `Inner<Int>` for `Inner<Bool>` by head name.
+// Identity the compatibility relation cannot give: a cardinality difference, a compiler-error side and a type variable are each
+// decided here and never reach node_type_compatible, which admits all three. A type variable is identical only to the same owner's
+// parameter (two carried declaration refs compare equal); two unowned synthetic variables compare their bare id; one owned and one
+// unowned decline. Answers none for every other pair.
+fn applied_argument_opaque_identity(left: Node, right: Node) -> Bool? {
+  if left.return_cardinality != right.return_cardinality { return Present { value: false } }
+  match left.inferred {
+    Present { value: CompilerError { message: _, span: _ } } => Present { value: false }
+    Present { value: TypeVariable { id: left_id } } =>
+      match right.inferred {
+        Present { value: TypeVariable { id: right_id } } =>
+          match left.declaration {
+            Present { value: l } =>
+              match right.declaration {
+                Present { value: r } => Present { value: declaration_ref_eq(a: l, b: r) }
+                Absent => Present { value: false }
+              }
+            Absent =>
+              match right.declaration {
+                Present { value: _ } => Present { value: false }
+                Absent => Present { value: left_id == right_id }
+              }
+          }
+        _ => Present { value: false }
+      }
+    _ =>
+      match right.inferred {
+        Present { value: CompilerError { message: _, span: _ } } => Present { value: false }
+        Present { value: TypeVariable { id: _ } } => Present { value: false }
+        _ => none
+      }
+  }
+}
+
+fn applied_argument_agrees(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  match applied_argument_opaque_identity(left: left, right: right) {
+    Present { value: verdict } => verdict
+    Absent => applied_argument_declared_agrees(left: left, right: right, source_indices: source_indices, text: text)
+  }
+}
+
+fn applied_argument_declared_agrees(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  match text {
+    TextJudgedIn { env: e } =>
+      match settled_type(n: left, source_indices: source_indices, env: e, fuel: 16) {
+        Absent => node_type_compatible(left: left, right: right, source_indices: source_indices, text: text)
+        Present { value: _ } =>
+          match settled_type(n: right, source_indices: source_indices, env: e, fuel: 16) {
+            Absent => node_type_compatible(left: left, right: right, source_indices: source_indices, text: text)
+            Present { value: _ } =>
+              alias_settled_agree(left: left, right: right, source_indices: source_indices, env: e,
+                agree: (a, b) => applied_argument_agrees(left: child_type_node(ch: a), right: child_type_node(ch: b), source_indices: source_indices, text: text))
+          }
+      }
+    TextNotAsked { reason: _ } => node_type_compatible(left: left, right: right, source_indices: source_indices, text: text)
   }
 }
 

@@ -10,7 +10,7 @@ import v2.std.data_index { DataInitDecl, data_init_decl_facts_live, lexeme_match
 import v2.std.effect_reach { HostEffectSinkKind, EffectReachFlow, EffectReachClassification, LocalEffect, HostEffectReach, EffectReachRefused, FilesystemReadSink, WitnessBinRunSink, ShellExecRunSink, GunbcCompileEntrySink, UnknownHostEffectSink, effect_reach_host_sink_callee_symbols_v0 }
 import v2.std.fn_index { FnArrowDecl, atom_identities_in_node, call_reachable_decls, param_names_of, fn_arrow_decl_facts_live, is_path_like_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.node { Atom, Conj, Edge, Node, NodeFold, Positional, Symbol, fold_node, symbol_lexeme, Authored, StructuralLabel }
+import v2.std.node { Atom, Conj, Edge, Node, NodeFold, Symbol, fold_node, symbol_lexeme, positional_child_target_nodes }
 import v2.std.text { String, string_eq }
 
 
@@ -129,16 +129,6 @@ fn path_literal_from_lexeme(
   }
 }
 
-fn positional_child_targets(node: Node) -> List<Node> {
-  fold(node.children, init: empty_node_list, f: fn(acc, e) {
-    match e.label {
-      StructuralLabel { label: _ } => acc
-      Positional => list_snoc_item(xs: acc, item: e.target)
-      Authored { name: _ } => acc
-    }
-  })
-}
-
 fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
   fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
     match node_atom_identity_optional(node: n) {
@@ -199,7 +189,7 @@ fn flows_from_call_node(
   param_names: List<String>,
   data_inits: List<DataInitDecl>
 ) -> List<EffectReachFlow> {
-  let targets = positional_child_targets(node: node)
+  let targets = positional_child_target_nodes(node: node)
   match list_head(xs: targets) {
     Present { value: callee_node } =>
       match node_atom_identity_optional(node: callee_node) {
