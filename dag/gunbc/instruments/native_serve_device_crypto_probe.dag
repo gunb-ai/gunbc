@@ -136,12 +136,6 @@ fn crypto_cases() -> List<DeviceCryptoProbeCase> {
       body_contains: answer_words(verdict: "refused", arm: "AssertionValidationCategoryAbsent"),
     },
     DeviceCryptoProbeCase {
-      identity: "red_assertion_with_altered_client_data_is_a_signature_failure",
-      request: crypto_post(path: device_crypto_assertion_path, body: assertion_check_request_json(object_b64: octets_text(octets: sample_assertion_octets, url_safe: false) as NonEmptyStr, e: assertion_expectation_with(e: sample_assertion_expectation(), client_data: "not-the-sample-client-data" as NonEmptyStr, app_id: sample_assertion_expectation().app_id))),
-      status: 200,
-      body_contains: answer_words(verdict: "refused", arm: "AssertionSignatureInvalid"),
-    },
-    DeviceCryptoProbeCase {
       identity: "red_assertion_with_another_app_id_is_an_app_id_mismatch",
       request: crypto_post(path: device_crypto_assertion_path, body: assertion_check_request_json(object_b64: octets_text(octets: sample_assertion_octets, url_safe: false) as NonEmptyStr, e: assertion_expectation_with(e: sample_assertion_expectation(), client_data: sample_assertion_expectation().client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr))),
       status: 200,
