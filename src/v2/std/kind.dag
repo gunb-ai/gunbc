@@ -1,7 +1,7 @@
 module v2.std.kind
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { fold_list, list_flat_map, empty_map, map_insert, map_lookup }
+import std.algebra { fold_list, list_flat_map, empty_map, map_insert, map_lookup, collection_concat_shape }
 
 import std.types { Map, List }
 import v2.std.node { Atom, Node, Symbol, TypeNode, arrow_signature_order_edge }

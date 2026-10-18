@@ -3247,6 +3247,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness", function: "the_committed_image_satisfies_the_pin_by_real_execution" },
+      entry: "dag/test/claim/fleet/site_pxe_edge_chainloader_real_execution_witness.dag",
+      function: "the_committed_image_satisfies_the_pin_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness", function: "a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution" },
+      entry: "dag/test/claim/fleet/site_pxe_edge_chainloader_real_execution_witness.dag",
+      function: "a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.seeded_filler_real_execution", function: "a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution" },
       entry: "dag/test/claim/seeded_filler_real_execution.dag",
       function: "a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution",

@@ -333,7 +333,7 @@ test fn an_observed_host_plans_the_missing_slots() -> Bool {
       ) {
         RunnerSlotConvergePlanned { host: _, plan: p } =>
           runner_slot_provision_has_width_increase(plan: p)
-            && membership_added_count(plan: p.membership) == (wt_srv1_deploy().runner_count - 1 - 2)
+            && membership_added_count(plan: p.membership) == (wt_srv1_deploy().runner_count - 2 - 2)
         RunnerSlotConvergeRefused { host: _, reason: _ } => false
       }
   }
@@ -473,8 +473,8 @@ test fn only_the_fabric_hosts_lose_provisioning_targets() -> Bool {
          == provision_width_of(host: operator_host_srv4) - 2
     && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv4), expected: 2)
     && list_length(items: desired_runner_slot_members(deploy: wt_srv1_deploy()))
-         == provision_width_of(host: operator_host_srv1) - 1
-    && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv1), expected: 1)
+         == provision_width_of(host: operator_host_srv1) - 2
+    && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv1), expected: 2)
 }
 
 
@@ -799,7 +799,7 @@ test fn srv1_provision_plan_masks_the_authorized_remainder_when_07_through_12_ar
                 observed: [],
                 evidence: SlotRetirementEvidencePresent { authorization: auth, standings: ss },
               )
-              line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-14.service")
+              line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-15.service")
                 && line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-50.service")
                 && !line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-07.service")
                 && !line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-12.service")
@@ -809,7 +809,7 @@ test fn srv1_provision_plan_masks_the_authorized_remainder_when_07_through_12_ar
                 )
                 && !any(lines, l =>
                   string_contains(s: l, pattern: "__GUNBC_CONVERGE_WITHHELD__")
-                    && string_contains(s: l, pattern: "actions-runner@srv1-14.service")
+                    && string_contains(s: l, pattern: "actions-runner@srv1-15.service")
                 )
             }
           }

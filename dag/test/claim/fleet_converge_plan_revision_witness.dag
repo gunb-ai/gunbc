@@ -1,0 +1,89 @@
+module test.claim.fleet_converge_plan_revision_witness
+
+import std.optional { Present, Absent }
+import gunbc.fleet.fleet_converge_plan_revision {
+  admit_plan_revision, PlanRevisionAdmitted, PlanRevisionMalformed, PlanRevisionReceiptDisagrees,
+  PlanRunNotOnDefaultBranch, PlanRunRepositoryMismatch,
+  admit_checkout_head, CheckoutHeadAdmitted, CheckoutHeadMismatch,
+}
+
+// CONSUMER: the `plan-revision` job of the emitted fleet-converge workflow, through
+// resolve_plan_revision_admission, calls admit_plan_revision on (plan receipt, GitHub GetRun) and
+// the build/consumer checkouts take the admitted revision; verify_checkout_at_plan_revision calls
+// admit_checkout_head. These claims call the same functions with supplied boundary values; the
+// inhabitance of the GetRun and receipt reads is the resolver's own route.
+data plan_x: String = "1111111111111111111111111111111111111111"
+data plan_y: String = "2222222222222222222222222222222222222222"
+data wit_repo: String = "owner/gunbc"
+
+// POSITIVE CONTROL: the plan was made at X; main has since moved to Y. Admission takes no event sha,
+// so the admitted revision is X whatever Y is.
+test fn plan_at_x_is_admitted_at_x_after_main_moved_to_y() -> Bool {
+  match admit_plan_revision(receipt_repository: wit_repo, receipt_revision: plan_x, github_head_sha: plan_x,
+    github_head_branch: Present { value: "main" }, repository: wit_repo, default_branch: "main") {
+    PlanRevisionAdmitted { revision: r } => r == plan_x && r != plan_y
+    other => false
+  }
+}
+
+test fn receipt_revision_that_differs_from_github_refuses() -> Bool {
+  match admit_plan_revision(receipt_repository: wit_repo, receipt_revision: plan_y, github_head_sha: plan_x,
+    github_head_branch: Present { value: "main" }, repository: wit_repo, default_branch: "main") {
+    PlanRevisionReceiptDisagrees { receipt: r, github: g } => r == plan_y && g == plan_x
+    other => false
+  }
+}
+
+test fn plan_run_off_the_default_branch_refuses() -> Bool {
+  match admit_plan_revision(receipt_repository: wit_repo, receipt_revision: plan_x, github_head_sha: plan_x,
+    github_head_branch: Present { value: "feature" }, repository: wit_repo, default_branch: "main") {
+    PlanRunNotOnDefaultBranch { observed: o, expected: e } => o == "feature" && e == "main"
+    other => false
+  }
+}
+
+test fn plan_run_with_no_branch_refuses() -> Bool {
+  match admit_plan_revision(receipt_repository: wit_repo, receipt_revision: plan_x, github_head_sha: plan_x,
+    github_head_branch: Absent, repository: wit_repo, default_branch: "main") {
+    PlanRunNotOnDefaultBranch { observed: _, expected: _ } => true
+    other => false
+  }
+}
+
+test fn malformed_receipt_revision_refuses() -> Bool {
+  match admit_plan_revision(receipt_repository: wit_repo, receipt_revision: "main", github_head_sha: plan_x,
+    github_head_branch: Present { value: "main" }, repository: wit_repo, default_branch: "main") {
+    PlanRevisionMalformed { source: _, value: v } => v == "main"
+    other => false
+  }
+}
+
+test fn malformed_github_head_sha_refuses() -> Bool {
+  match admit_plan_revision(receipt_repository: wit_repo, receipt_revision: plan_x, github_head_sha: "ABC",
+    github_head_branch: Present { value: "main" }, repository: wit_repo, default_branch: "main") {
+    PlanRevisionMalformed { source: _, value: v } => v == "ABC"
+    other => false
+  }
+}
+
+test fn receipt_for_another_repository_refuses() -> Bool {
+  match admit_plan_revision(receipt_repository: "other/gunbc", receipt_revision: plan_x, github_head_sha: plan_x,
+    github_head_branch: Present { value: "main" }, repository: wit_repo, default_branch: "main") {
+    PlanRunRepositoryMismatch { receipt: r, expected: e } => r == "other/gunbc" && e == wit_repo
+    other => false
+  }
+}
+
+test fn checkout_at_the_admitted_revision_is_admitted() -> Bool {
+  match admit_checkout_head(expected: plan_x, observed: plan_x) {
+    CheckoutHeadAdmitted { revision: r } => r == plan_x
+    other => false
+  }
+}
+
+test fn checkout_that_landed_on_the_event_sha_refuses() -> Bool {
+  match admit_checkout_head(expected: plan_x, observed: plan_y) {
+    CheckoutHeadMismatch { expected: e, observed: o } => e == plan_x && o == plan_y
+    other => false
+  }
+}

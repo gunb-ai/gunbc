@@ -62,7 +62,7 @@ import std.algebra {
 import v2.std.compilers.body_lowering { lower_bind }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   Atom,
   Bind,
   BinderStructureEdge,
@@ -95,8 +95,8 @@ import v2.std.node {
 }
 import v2.std.anonymous_binder { fresh_fold_carrier }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.node_query { DeclaredField, declared_field_from_edge, find_named_child, node_positional_child_targets }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.node_query { DeclaredField, declared_field_from_edge, find_named_child }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string, declaration_denotation_of_type }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, anonymous_signature_arrow, arrow_declared_parameter_order }
 import v2.std.type_binder { type_param_names, type_params_edge, type_binder_set_children }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -1274,23 +1274,18 @@ fn fold_realized_member_role(realized: Node) -> Optional<FoldMemberRole> {
 // is not one of these, or is not an instantiation at all -- is Absent, and the caller must say so rather
 // than guess a member.
 fn fold_collection_member_type(domain_type: Node) -> Optional<Node> {
-  let args = node_positional_child_targets(node: domain_type)
-  if fold_node_is_instantiation(n: domain_type) && length(xs: args) == 2 {
-    match list_at_optional(xs: args, index: 0) {
-      Absent => optional_absent()
-      Present { value: head } =>
-        match declaration_reference_path_optional(node: head) {
-          Absent => optional_absent()
-          Present { value: path } =>
-            if qualified_name_to_dotted_string(qn: path) == "std.algebra.FreeMonoid" {
-              list_at_optional(xs: args, index: 1)
-            } else {
-              optional_absent()
-            }
+  match declaration_denotation_of_type(t: domain_type) {
+    Absent => optional_absent()
+    Present { value: denotation } =>
+      if qualified_name_to_dotted_string(qn: denotation.declaration) == "std.algebra.FreeMonoid" {
+        match denotation.type_arguments {
+          Cons { head: member, tail: Empty } => optional_present(value: member)
+          Cons { head: _, tail: _ } => optional_absent()
+          Empty => optional_absent()
         }
-    }
-  } else {
-    optional_absent()
+      } else {
+        optional_absent()
+      }
   }
 }
 
@@ -1331,7 +1326,7 @@ fn fold_step_formal_at(step: Node, position: Int) -> Optional<FoldMemberFormal> 
       match list_at_optional(xs: labels, index: position) {
         Absent => optional_absent()
         Present { value: label } =>
-          match list_at_optional(xs: node_positional_child_targets(node: step), index: 0) {
+          match list_at_optional(xs: positional_child_target_nodes(node: step), index: 0) {
             Absent => optional_absent()
             Present { value: domain } =>
               fold_list(xs: domain.children, empty: optional_absent(), cons: fn(acc, e) {
@@ -1371,7 +1366,7 @@ fn fold_step_body_node(step: Node) -> Optional<Node> {
 // The step's DECLARED return, when the author wrote one: position 1 of the Arrow, unless it is one of the
 // step's own fresh variables (an unwritten return is minted as one), in which case nothing was declared.
 fn fold_step_declared_return(step: Node) -> Optional<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: step), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: step), index: 1) {
     Present { value: declared } =>
       if fold_type_is_variable_of(t: declared, step: step) { optional_absent() } else { optional_present(value: declared) }
     Absent => optional_absent()
@@ -1380,7 +1375,7 @@ fn fold_step_declared_return(step: Node) -> Optional<Node> {
 
 // The step callable of a fold encoding's Loop: its one positional child.
 fn fold_loop_step(loop_node: Node) -> Optional<Node> {
-  let positional = node_positional_child_targets(node: loop_node)
+  let positional = positional_child_target_nodes(node: loop_node)
   if length(xs: positional) == 1 { list_at_optional(xs: positional, index: 0) } else { optional_absent() }
 }
 
@@ -1413,7 +1408,7 @@ fn fold_recurrence_encoding(operands: FoldCallOperands) -> Node {
 fn fold_recurrence_loop(encoding: Node) -> Optional<Node> {
   match encoding.kind {
     ComputationNode { behavior: Bind } =>
-      match list_at_optional(xs: node_positional_child_targets(node: encoding), index: 2) {
+      match list_at_optional(xs: positional_child_target_nodes(node: encoding), index: 2) {
         Present { value: body } =>
           match body.kind {
             ComputationNode { behavior: Loop } => optional_present(value: body)

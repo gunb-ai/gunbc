@@ -33,12 +33,11 @@ import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_au
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
 import gunbc.dispatch_credential_snapshot {
   TakenCredentialSnapshot,
-  dispatch_credential_snapshot_discard,
   CredentialSnapshotTombstoned,
   CredentialSnapshotTombstoneFailed,
 }
 import gunbc.dispatch_credential_acquisition {
-  credential_admit_reader_or_discard,
+  credential_admit_reader_or_discard, credential_discard_taken_attempt,
   CredentialLaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
@@ -2441,7 +2440,7 @@ fn belt_snapshot_discarded_unless_consumed(
   match belt_snapshot_disposition(outcome: outcome) {
     SnapshotConsumedByChild => outcome
     SnapshotDiscardRequired =>
-      match dispatch_credential_snapshot_discard(snapshot: snapshot) {
+      match credential_discard_taken_attempt(snapshot: snapshot) {
         CredentialSnapshotTombstoned => outcome
         CredentialSnapshotTombstoneFailed { reason } =>
           SpawnFailed {
