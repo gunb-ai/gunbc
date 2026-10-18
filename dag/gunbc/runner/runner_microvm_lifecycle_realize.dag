@@ -46,6 +46,7 @@ import gunbc.runner.runner_microvm_attempt {
   runner_microvm_attempt_part_of_property,
 }
 import gunbc.runner.runner_attempt_launch {
+  InputDriveStaging,
   AttemptGround, GroundClear, GroundOccupied,
   AttemptLaunchPlan, LaunchAuthorized,
   AttemptStagingVerdict, StagingAdmitsJailer, StagingRefusedVmConfiguration, AttemptStagingReceipt, jail_config_path,
@@ -1081,6 +1082,7 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       stage_jail_root: stage_root,
       stage_kernel: stage_kernel,
       stage_rootfs: stage_rootfs,
+      input_drives: inputs,
       workspace_path: workspace_path,
       workspace_create: create,
       workspace_format: format,
@@ -1091,6 +1093,11 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       let root_outcome = run_shell_command_capture(command: stage_root, transport: LocalExec)
       let kernel_outcome = run_staged_after(after: root_outcome, command: stage_kernel)
       let rootfs_outcome = run_staged_after(after: kernel_outcome, command: stage_rootfs)
+      let input_outcomes = map(inputs, d => InputDriveStaging {
+        jail_path: d.jail_path,
+        exit: command_exit_code(outcome: run_staged_after(after: rootfs_outcome, command: d.stage)),
+        present: observe_path_exists(path: join([jail_root, d.jail_path], "")),
+      })
       let create_outcome = run_staged_after(after: rootfs_outcome, command: create)
       let format_outcome = run_staged_after(after: create_outcome, command: format)
       let kernel_present = observe_path_exists(path: jail_kernel_destination(jail_root: jail_root))
@@ -1106,6 +1113,7 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
             rootfs_exit: command_exit_code(outcome: rootfs_outcome),
             kernel: kernel_present,
             rootfs: rootfs_present,
+            inputs: input_outcomes,
           },
           jit: stage_bootstrap_device(device: launch_payload_device(payload: payload)),
           workspace: WorkspaceStagingObservation {

@@ -5919,6 +5919,116 @@ mod compiler_tests {
         );
     }
 
+    // THE DECISION BEHIND AN IMPORTED RESOURCE'S USE-LINE. emit_specific_import_use_lines drops an
+    // imported name the env resolves to a bare kernel-identity leaf (a host-realized scalar), and a
+    // resource resolves to exactly that shape, so its use-line was dropped and the `uses` parameter
+    // type named nothing (E0425 in the emitted crate). The executed consumer of the positive arm is
+    // the native-allocation-observation label (red at gunbc#13892 head 170e4410b2b, green after the
+    // repair, same inputs); this row pins the decision itself on both arms and the same-spelling case.
+    #[test]
+    fn an_imported_resource_name_is_recognised_by_kind_and_name() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        use crate::v1_std_core::ParsedModuleItemKind::{
+            ModuleItemResource, ModuleItemTypeDeclaration,
+        };
+        let resource = item_of_kind(
+            "AllocationCounter",
+            ModuleItemResource,
+            vec!["kind", "mode"],
+        );
+        assert!(
+            crate::v1_compiler_emit_rust::resource_item_declares_name(
+                resource.clone(),
+                "AllocationCounter".to_string(),
+                source_indices.clone(),
+            ),
+            "an imported resource declaration must keep its use-line"
+        );
+        assert!(
+            !crate::v1_compiler_emit_rust::resource_item_declares_name(
+                resource,
+                "Other".to_string(),
+                source_indices.clone(),
+            ),
+            "a name the resource does not declare must not be kept by this arm"
+        );
+        let type_item = item_of_kind("AllocationCounter", ModuleItemTypeDeclaration, Vec::new());
+        assert!(
+            !crate::v1_compiler_emit_rust::resource_item_declares_name(
+                type_item,
+                "AllocationCounter".to_string(),
+                source_indices,
+            ),
+            "the same spelling declared as a type is not a resource"
+        );
+    }
+
+    // THE COUNTING ALLOCATOR IS INSTALLED BY DEMAND AND BY NOTHING ELSE. Rendering the native claim
+    // driver main for three binding sets: none (the pure main), a bound resource that is not the
+    // AllocationCounter (the effect main), and the AllocationCounter binding. Only the last may carry a
+    // #[global_allocator]; the first two are the negative controls, so a main that always rendered it
+    // (or one that rendered it for any effect main) turns this row red.
+    #[test]
+    fn the_counting_allocator_is_installed_only_by_demand() {
+        use crate::v1_compiler_emit_rust::emit_native_claim_driver_main_rs;
+        let render = |bindings: Vec<
+            std::rc::Rc<crate::v1_compiler_emit_rust::NativeEffectBindingText>,
+        >|
+         -> String {
+            emit_native_claim_driver_main_rs(
+                "c".to_string(),
+                "m".to_string(),
+                std::rc::Rc::new(bindings.into()),
+            )
+            .content
+            .clone()
+        };
+        let other = std::rc::Rc::new(crate::v1_compiler_emit_rust::NativeEffectBindingText {
+            var: "fs".to_string(),
+            type_path: "c::std_filesystem::Filesystem".to_string(),
+            binding_line: "    let fs = 0;\n".to_string(),
+            argument: "fs".to_string(),
+        });
+        let counter = std::rc::Rc::new(crate::v1_compiler_emit_rust::NativeEffectBindingText {
+            var: "counter".to_string(),
+            type_path: "c::std_realization_measurement::AllocationCounter".to_string(),
+            binding_line: "    let counter = 0;\n".to_string(),
+            argument: "counter".to_string(),
+        });
+        assert!(
+            !render(Vec::new()).contains("#[global_allocator]"),
+            "a pure main must carry no allocator"
+        );
+        assert!(
+            !render(vec![other.clone()]).contains("#[global_allocator]"),
+            "an effect main without the AllocationCounter must carry no allocator"
+        );
+        let registered =
+            |main: &str| main.contains("register_counting_allocator(&COUNTING_ALLOCATOR)");
+        assert!(
+            !registered(&render(Vec::new())),
+            "a pure main must register no provider"
+        );
+        assert!(
+            !registered(&render(vec![other.clone()])),
+            "an effect main without the AllocationCounter must register no provider"
+        );
+        let demanding = render(vec![other, counter]);
+        assert!(
+            demanding.contains("#[global_allocator]"),
+            "positive control: a main binding the AllocationCounter carries it"
+        );
+        assert!(
+            registered(&demanding),
+            "the allocator and its registration come from the one selection"
+        );
+        assert!(
+            demanding.find("register_counting_allocator").unwrap()
+                < demanding.find("native_claim_report(").unwrap(),
+            "registration precedes the first read"
+        );
+    }
+
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]

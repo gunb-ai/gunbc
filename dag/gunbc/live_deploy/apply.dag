@@ -142,7 +142,7 @@ import gunbc.live_deploy.emit {
   microvm_controller_vmm_receipt_path,
 }
 import gunbc.live_deploy.release_locus {
-  approval_broker_tree_receipt_path_for,
+  release_locus_tree_receipt_path,
   RevisionBoundAtEmission,
   ReleaseRevisionBinding,
 }
@@ -991,7 +991,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
       detail: "the broker liveness endpoint was never reached within the poll bound after the unit was restarted" as NonEmptyStr
     },
   )
-  let receipt_path = approval_broker_tree_receipt_path_for(
+  let receipt_path = release_locus_tree_receipt_path(
     root: spec.approval_broker.repo_root as String,
     revision: RevisionBoundAtEmission { revision: candidate.revision },
   )
@@ -1085,7 +1085,7 @@ fn microvm_controller_install_wet_with_access(spec: DeploymentSpec, access: Depl
 
 fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> ProcessExit {
   let revision = RevisionBoundAtEmission { revision: candidate.revision }
-  let tree = Filesystem.Read(path: approval_broker_tree_receipt_path_for(root: microvm_controller_root, revision: revision))
+  let tree = Filesystem.Read(path: release_locus_tree_receipt_path(root: microvm_controller_root, revision: revision))
   match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
     TreeReceiptUnreadable { detail: d } =>
       exit_failure(reason: join(["microvm_controller_install: the locus tree receipt could not be read, so the copy did not complete: ", d as String], ""))
@@ -1097,9 +1097,9 @@ fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> Proc
       } else {
         match microvm_controller_vmm_readback_exit(revision: revision) {
           ExitSuccess => if workspace_executor_installed_adapter_matches(
-            release_dir: approval_broker_release_dir(root: microvm_controller_root, revision: revision),
+            release_dir: release_locus_dir(root: microvm_controller_root, revision: revision),
             slot: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot())) {
-            match workspace_installed_image(release_dir: approval_broker_release_dir(root: microvm_controller_root, revision: revision), identity: workspace_demo_image_identity()) {
+            match workspace_installed_image(release_dir: release_locus_dir(root: microvm_controller_root, revision: revision), identity: workspace_demo_image_identity()) {
               WorkspaceImageVerified { image: _ } => ExitSuccess
               WorkspaceImageRefused { reason } => exit_failure(reason: concat("microvm_controller_install: ", reason))
             }
