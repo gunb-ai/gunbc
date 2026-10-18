@@ -6,7 +6,8 @@ import gunbc.regen_affected_set {
   regen_bootstrap_product_paths,
   regen_generated_product_owner_paths,
   regen_generated_product_source_modules,
-  regen_generated_product_generation_role_labels
+  regen_generated_product_generation_role_labels,
+  regen_generated_product_seed_membership_labels
 }
 
 import v2.workflow.regen_convergence_transaction {
@@ -788,35 +789,66 @@ test fn gunbc_cli_dispatch_generation_subject_obeys_all_three_stage_boundaries()
   }
 }
 
-// Seed-manifest absence is not itself an OutsideSeed fact. The generated-product authority
-// explicitly classifies publishable aggregates, while the seed crate root remains an input.
+// compiler_tests.rs is an emitted generation subject OUTSIDE the seed (`#[cfg(test)] mod` in
+// lib.rs), so it publishes with the non-seed outputs; its role is no longer bent to
+// NonSeedGeneratedOutput to dodge the membership fall-through.
 test fn compiler_tests_generation_subject_obeys_all_three_stage_boundaries() -> Bool {
   let carrier = fixture_surface(
     module: "v1.compiler.compiler_tests_rust",
     path: "compiler_tests.rs",
     role: GenerationSubject,
-    seed: SeedEmbedded
+    seed: OutsideSeed
   )
   let promote = fixture_plan(kind: PromoteGenerationInputs, rows: [carrier])
   let install = fixture_plan(kind: InstallSeedCompatibilityCut, rows: [carrier])
   let publish = fixture_plan(kind: PublishNonSeedOutputs, rows: [carrier])
   match promote {
     RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: held } } =>
-      count(held) == 1 && match install {
+      count(held) == 1 && match publish {
         RegenStagePlanned { stage: stage } =>
           count(stage.planned_surfaces) == 1
             && stage.planned_surfaces |> all(row =>
               row.identity.declaring_module == "v1.compiler.compiler_tests_rust"
                 && row.identity.projected_path == "compiler_tests.rs"
             )
-            && match publish {
-              RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: publish_held } } =>
-                count(publish_held) == 1
+            && match install {
+              RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: install_held } } =>
+                count(install_held) == 1
               _ => false
             }
         _ => false
       }
     _ => false
+  }
+}
+
+// DEFECT 1 control: every aggregate product declares its seed membership on its own row, so the
+// host never derives it from a basename. lib.rs is the seed root; a product with no row has no
+// answer (and so refuses upstream) rather than a guessed one.
+test fn every_aggregate_product_declares_its_seed_membership_on_its_row() -> Bool {
+  regen_generated_product_seed_membership_labels(product: "lib.rs") == ["SeedEmbedded"]
+    && regen_generated_product_seed_membership_labels(product: "gunbc_cli_dispatch_generated.rs") == ["SeedEmbedded"]
+    && regen_generated_product_seed_membership_labels(product: "compiler_tests.rs") == ["OutsideSeed"]
+    && regen_generated_product_seed_membership_labels(product: "emitted_population.rs") == ["OutsideSeed"]
+    && regen_generated_product_seed_membership_labels(product: "main.rs") == ["OutsideSeed"]
+    && regen_generated_product_seed_membership_labels(product: "unowned.rs") == []
+    && regen_generated_product_owner_paths()
+      |> all(path => count(regen_generated_product_seed_membership_labels(product: path)) <= 1)
+}
+
+// A changed lib.rs (the seed-module-add case) with its declared membership plans in the
+// generation-input cut instead of refusing SeedMembershipUnresolved.
+test fn a_changed_seed_root_with_declared_membership_plans_instead_of_refusing() -> Bool {
+  let root = fixture_surface(
+    module: "v1.compiler.emit_rust",
+    path: "lib.rs",
+    role: GenerationInput,
+    seed: SeedEmbedded
+  )
+  match fixture_plan(kind: PromoteGenerationInputs, rows: [root]) {
+    RegenStagePlanned { stage: stage } => count(stage.planned_surfaces) == 1
+    RegenStagePlanningRefused { refusal: _ } => false
+    RegenConvergenceTerminal => false
   }
 }
 
