@@ -285,7 +285,7 @@ fn lab_confinement_holds(grants: List<String>, instance: HostDashboardInstance) 
       filter(xs: dashboard_git_worker_unwritable_children, child => (child as String) != ".git"),
       child => {
         let denied = join([instance.repo_root as String, "/", child as String], "")
-        !any(grants, g => g == denied || starts_with(s: g, prefix: concat(denied, "/")))
+        !any(grants, g => path_is_within(child: g, parent: denied))
       },
     )
 }
@@ -312,7 +312,7 @@ test fn the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_
   let entry = dispatch_attempt_private_git_dir(
     instance: lab, attempt_worktree: lab_worktree(instance: lab, key: "dispatch-attempt-claim-1"))
   // (a) every written path is inside a granted directory (or is one), and
-  all(writes, w => any(grants, g => w == g || starts_with(s: w, prefix: g)))
+  all(writes, w => any(grants, g => path_is_within(child: w, parent: g)))
     // (b) the write-set is not vacuous: eleven rows, all of them from the derivation,
     && length(writes) == 11
     // (c) NOTHING in .git itself is granted -- the directory, or a descendant of a named unwritable
@@ -336,8 +336,19 @@ test fn the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_
     //     predicate, not by memory of an error message.
     && !all(lab_commit_write_paths(instance: lab), w => any(
       map(dashboard_instance_worker_git_directories(instance: lab), d => owned_path_text(t: d)),
-      g => w == g || starts_with(s: w, prefix: g),
+      g => path_is_within(child: w, parent: g),
     ))
+}
+
+// IS `child` THE SAME PATH AS, OR UNDER, `parent`? One helper, because the boundary is the whole
+// content of the question. A bare string prefix is NOT containment: "<repo>/.git/objects-x" starts with
+// "<repo>/.git/objects" but is a SIBLING of the granted subtree, not inside it -- a claim that called
+// that "inside the grant" would pass while a path the worker has no business touching sat outside every
+// grant it was checked against. So: equal, or the parent with a trailing "/" as the prefix. The denial
+// side of claim (1) had the "/" and the containment side did not (review 82058); both now read this, and
+// the two directions of the same question cannot disagree about what a path segment is.
+fn path_is_within(child: String, parent: String) -> Bool {
+  child == parent || starts_with(s: child, prefix: concat(parent, "/"))
 }
 
 // THE MODES, AS FileMode -- the type extdeps.access.posix owns (Open Group sys_stat.h). An earlier cut
@@ -766,9 +777,13 @@ test fn the_confined_git_interior_and_sibling_isolation_survive_the_subtree_gran
     // (c) SIBLING ISOLATION, the per-attempt half: neither the sibling's worktree nor its private entry
     //     is writable, while mine is. (The shared refs/objects/logs residual is #13942's own declared
     //     residual and is not what this half checks -- this checks per-attempt state.)
-    && !any(writable, w => starts_with(s: w, prefix: sibling)
-      || starts_with(s: w, prefix: dispatch_attempt_private_git_dir(instance: lab, attempt_worktree: sibling)))
-    && any(writable, w => starts_with(s: w, prefix: dispatch_attempt_private_git_dir(instance: lab, attempt_worktree: mine)))
+    //     THE BOUNDARY IS PART OF THE CHECK, NOT A DETAIL. A sibling attempt whose key is a PREFIX of
+    //     mine ("claim-2" beside "claim-21") shares its whole name with my entry's parent up to that
+    //     slash, so a bare prefix comparison would let a grant on <sibling> pass as "not mine" while a
+    //     grant on <sibling>-evil passed as "mine". Both directions go through path_is_within.
+    && !any(writable, w => path_is_within(child: w, parent: sibling)
+      || path_is_within(child: w, parent: dispatch_attempt_private_git_dir(instance: lab, attempt_worktree: sibling)))
+    && any(writable, w => path_is_within(child: w, parent: dispatch_attempt_private_git_dir(instance: lab, attempt_worktree: mine)))
     // (d) the grant is a GROUP grant only: the worker's property set still carries #13942's privilege
     //     confinement unchanged -- no new privilege, no setuid/setgid exec, no capabilities -- and
     //     NothingNewPrivileges/RestrictSUIDSGID are still there to stop the setgid-bit shapes.
