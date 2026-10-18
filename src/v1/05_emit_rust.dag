@@ -19781,7 +19781,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
   let effect_failed_import = if effectful { " native_serve_effect_failed," } else { "" }
   let startup_import = if startup {
     concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup;", "\n",
-      "use ", crate_name, "::gunbc_native_serve::{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};", "\n")
+      "use ", crate_name, "::gunbc_native_serve::\{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};", "\n")
   } else { "" }
   let startup_run = if startup {
     concat(
