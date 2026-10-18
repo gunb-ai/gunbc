@@ -56,6 +56,19 @@ for f in $LOGS/my_04_infer.dag $LOGS/my_04_types.dag $LOGS/rebind_census.sh $LOG
   [ -s "$f" ] || { echo "CARRIER FILE EMPTY: $f -- abort (an empty file here is the silent-wrong-answer trap)"; exit 29; }
 done
 echo "carrier sizes: $(wc -c < $LOGS/my_04_infer.dag) $(wc -c < $LOGS/my_04_types.dag) $(wc -c < $LOGS/patch_rebind_probe4.py) $(wc -c < $LOGS/patch_s1b_counter.py)"
+
+# THE CLAIM TEST SOURCES MUST COME FROM MY BRANCH, NOT MAIN. unify_generics grew a 6th argument
+# (`text`) when the fold landed, and the DAG-side census CALLS it; main's copy passes 5 and the regen
+# refuses the whole tree with 'call shape mismatch calling unify_generics: missing required argument
+# text' -- which is exactly what this dispatch's first run did at round 1, after 5m20s of build. The
+# source is a8e23ad9db5: the committed fold head, which PRE-DATES the uncommitted extension arms.
+SRC_SHA=a8e23ad9db55a4de3c40bcd1d51f0da632b2a5c9
+timeout 600 git fetch --depth 1 origin $SRC_SHA > $LOGS/fs.log 2>&1 || { echo "TESTS FETCH FAILED"; exit 30; }
+git show $SRC_SHA:src/v1/tests/claim/generic_identity_census.dag > src/v1/tests/claim/generic_identity_census.dag || { echo "no census claim"; exit 31; }
+[ -s src/v1/tests/claim/generic_identity_census.dag ] || { echo "EMPTY census claim from a failed git show -- abort"; exit 31; }
+echo "claim census: calls=$(grep -ac 'unify_generics(' src/v1/tests/claim/generic_identity_census.dag) withText=$(grep -ac 'text: ' src/v1/tests/claim/generic_identity_census.dag) (want 2 and 2; 0 withText = main's copy = the refusal I already paid 9 minutes for)"
+[ "$(grep -ac 'text: ' src/v1/tests/claim/generic_identity_census.dag)" = "2" ] || { echo "WRONG CENSUS VERSION"; exit 31; }
+
 # Pre-extension source guard: the fold must be present, the NEW ARMS must NOT be.
 echo "source guard: fold=$(grep -ac UnifyGenericsAcc $LOGS/my_04_infer.dag) rawChildrenFix=$(grep -ac 'any(c => binding_has_type_variable_leaf(n: c))' $LOGS/my_04_infer.dag) ownFormArms=$(grep -ac 'binding_is_generic_declaration_own_form(n: bound)' $LOGS/my_04_infer.dag) (want >0, 1, 0)"
 [ "$(grep -ac 'binding_is_generic_declaration_own_form(n: bound)' $LOGS/my_04_infer.dag)" = "0" ] || { echo "SOURCE HAS THE EXTENSION ARMS -- the probe would lose every admitted row. ABORT"; exit 32; }
