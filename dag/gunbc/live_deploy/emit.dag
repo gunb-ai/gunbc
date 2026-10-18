@@ -2172,6 +2172,10 @@ fn deploy_publication_principal_ensure_command(spec: DeploymentSpec) -> String {
   })
 }
 
+data deploy_apply_preamble_steps_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: deploy_apply_preamble_steps is the bash body of the deploy preamble, shadowed by the typed gunbc.host.host_effect_realize live_deploy_apply_preamble_on_host (live on the retract route). DISSOLVES WHEN the apply route takes live_deploy_apply_preamble_on_host: the ONE apply PR switches the apply root and deletes this function. NOT satisfied by the typed preamble existing, nor by a claim comparing the two bodies." as NonEmptyStr,
+)
+
 fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> List<PipelineStep> {
   [
     deploy_raw(command: deploy_sudoers_install_shell(access: access)),

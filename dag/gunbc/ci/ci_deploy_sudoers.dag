@@ -1,6 +1,7 @@
 module gunbc.ci.ci_deploy_sudoers
 
 import std.types { String, NonEmptyStr, List, Bool }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { fold_list, list_flat_map }
 import std.list { distinct_by_key }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_command }
@@ -180,6 +181,10 @@ fn deploy_sudoers_post_install_roster_probe_stmts(access: DeployAccess) -> List<
 // visudo and install are read from gunbc.fleet.fleet_posix_accounts ci_runner_sudo_binary_path, the same
 // rows ci_runner_sudoers_install_binaries names, so what this step spends and what the pre-install
 // gate demands cannot drift apart.
+data deploy_sudoers_install_stmts_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: deploy_sudoers_install_stmts is the bash body of the deploy preamble, shadowed by the typed gunbc.host.host_effect_realize live_deploy_apply_preamble_on_host (live on the retract route). DISSOLVES WHEN the apply route takes live_deploy_apply_preamble_on_host: the ONE apply PR switches the apply root and deletes this function. NOT satisfied by the typed preamble existing, nor by a claim comparing the two bodies." as NonEmptyStr,
+)
+
 fn deploy_sudoers_install_stmts(access: DeployAccess) -> List<Node> {
   let visudo = ci_runner_sudo_binary_path(b: SudoVisudo) as String
   let install = ci_runner_sudo_binary_path(b: SudoInstall) as String

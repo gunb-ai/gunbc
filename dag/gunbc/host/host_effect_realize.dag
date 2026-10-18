@@ -4622,7 +4622,7 @@ fn observe_slot_population_over_host_effect_transport(
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // THE SHARED DEPLOY PREAMBLE, as TYPED EFFECTS.
 //
-// This block replaces the bash body emitted by gunbc.live_deploy.emit deploy_apply_preamble_steps,
+// This block SHADOWS the bash body emitted by gunbc.live_deploy.emit deploy_apply_preamble_steps until the apply route takes it (that function's dissolution row names the trigger),
 // which shipped through retained_srvn / realize_shell_on_host. The script it reproduces is
 // gunbc.ci.ci_deploy_sudoers deploy_sudoers_install_stmts followed by
 // gunbc.live_deploy.emit deploy_publication_principal_ensure_command, in that order:
