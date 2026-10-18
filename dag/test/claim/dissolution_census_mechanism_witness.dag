@@ -14,7 +14,11 @@ import extdeps.container.docker_ce { docker_ce_install_dissolution_trigger }
 import extdeps.standards.rfc_8118 { project_navigable_uri_fragment_decompose_dissolve_on }
 // THE TWO ROWS W7 ADDED. They are imported from the modules that CARRY them, not from a fixture:
 // the obligation has to live on the declaration that still ships the shell leaf, or it is prose.
-import gunbc.host.verified_binary_install { verified_binary_install_shell_dissolution_trigger }
+import gunbc.host.verified_binary_install {
+  verified_binary_install_shell_dissolution_trigger,
+  verified_binary_install_shell_bash_emit_dissolution_trigger,
+}
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import gunbc.host.sccache_verified_install { sccache_verified_install_script_dissolution_trigger }
 import gunbc.dissolution_observation {
   DissolutionCensusAnswered,
@@ -169,6 +173,31 @@ test fn migrated_production_retirement_conditions_are_bound() -> Bool {
     // dag/test/claim/long/dissolution_census_witness.dag, not here.
     && dissolution_is_bound(condition: verified_binary_install_shell_dissolution_trigger)
     && dissolution_is_bound(condition: sccache_verified_install_script_dissolution_trigger)
+}
+
+// THE ON-CARRIER MARKER IS BOUND TO THE SAME DECLARATION AS THE TRIGGER, AND NAMES A CAPABILITY THAT
+// DISSOLVES. ctrl review policy R12 (scripts/INVARIANTS.md Rule 12) lets a hand-shell renderer exist only
+// when the intent is modelled AND the shell carries an on-carrier marker NAMING THE CAPABILITY that will
+// generate it. `DissolutionCondition` has no field for the end state -- it carries only a TRIGGER (the
+// declaration whose retirement discharges the debt) -- so the end state rides on the companion
+// `Disposition` row, and a marker nobody compares is decoration. This claim pins the pair: the marker is
+// `Scaffold` (not `Terminal`: the bash-emit path exists, this renderer just has not been routed through
+// it yet), it dissolves to a `RealizationDispatch`, and its `bind` names THE SAME DECLARATION the trigger
+// retires -- `gunbc.host.verified_binary_install` `verified_binary_install_shell`. Deleting the marker,
+// flipping it to `Terminal`, or binding it to any other declaration reddens this claim; that is what makes
+// it the RED for the marker rather than a comment with a `data` row beside it. Form follows
+// `test.claim.generated_artifact_merge_driver_recipe`, which asserts its own Scaffold row the same way.
+test fn the_shell_renderers_on_carrier_marker_binds_the_trigger_subject() -> Bool {
+  match verified_binary_install_shell_bash_emit_dissolution_trigger {
+    Scaffold { dissolves_to: to, bind: b } =>
+      match to {
+        RealizationDispatch => true
+        _ => false
+      }
+        && b.module_path as String == "gunbc.host.verified_binary_install"
+        && b.decl_name as String == "verified_binary_install_shell"
+    Terminal { reason: _ } => false
+  }
 }
 
 // THE LIVE DISCRIMINATOR, AND IT IS DELIBERATELY NOT A COUNT.
