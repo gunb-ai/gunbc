@@ -178,7 +178,7 @@ fn observe_actions_run_binding_at_checkout() -> ActionsRunBindingObservation {
       CheckoutHeadAdmitted { revision: head } =>
         if release_revision_text_valid(text: head) {
           ActionsRunBound {
-            binding: ActionsRunBinding { repository: b.repository, workflow_ref: b.workflow_ref, run_id: b.run_id, run_revision: head },
+            binding: ActionsRunBinding { repository: b.repository, workflow_ref: b.workflow_ref, run_id: b.run_id, run_revision: b.run_revision, execution_revision: head },
           }
         } else {
           ActionsRunUnbound { variable: "HEAD", detail: join(["not a 40-digit lower-hex revision: ", head], "") }
