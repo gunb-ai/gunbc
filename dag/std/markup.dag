@@ -117,6 +117,33 @@ type MarkupMedium {
   // all (HTML, XML, and CommonMark, which passes "<!DOCTYPE" through as an HTML block), so every
   // medium here answers correctly; a medium that never builds the fragment still answers the question.
   doctype_open: String
+  // What ENDS a comment in this language, as the tokenizer sees it: HTML "-->" (HTML §13.1.1 "comment
+  // end state"), JSX "*/" (the terminator of a JSX expression-container comment). Distinct from
+  // comment_close, which is what WE WRITE: HTML's emitter puts a space before the terminator for
+  // readability (" -->"), and collapsing the two is what lets "a-->b" through — the collapse is a
+  // measured control (C5), not a hypothetical.
+  //
+  // Required, and a guarded route REFUSES a medium whose terminator is empty rather than treating it
+  // as "no rule". A medium with no terminator cannot guard a comment at all: there is no string to
+  // search for, so "contains the terminator" is vacuously false and every comment passes. A required
+  // String is already the shape that makes the omission a type error; the empty value is the
+  // remaining way to get there, and it is refused where it would matter.
+  comment_terminator: String
+  // Whether THIS medium can carry a document-type declaration at all. True for HTML, XML/SVG and
+  // CommonMark (which passes "<!DOCTYPE" through as an HTML block, §4.2); FALSE for JSX, whose files
+  // are ECMAScript modules — "<!DOCTYPE html>" inside a JSX expression container is not valid TSX, and
+  // before review 82181 the guarded JSX route serialized one anyway and returned JsxOk.
+  //
+  // A Bool on the medium rather than a check written in the JSX module, because the walk is shared: a
+  // per-language refusal would be the second copy that got JSX missed in the first place (§6b). A new
+  // medium answers the question when it is written; it cannot forget the rule, only state it wrongly.
+  document_declaration_allowed: Bool
+  // Whether a body ENDING in "-" closes the comment. True for HTML and XML, where the tokenizer's
+  // comment-end state is reached from "--" and the emitter's own "-" supplies the third character;
+  // false for JSX, where "- */" is an ordinary comment. This is a per-language fact, not a policy
+  // knob: it sits beside comment_terminator because the two together are the language's comment
+  // grammar, and a medium must answer it — there is no "unset" inhabitant.
+  comment_trailing_dash_closes: Bool
 }
 
 fn tag_in_set(tag: String, tags: List<String>) -> Bool {
@@ -176,7 +203,7 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
         }
       } else {
         let child_medium = if tag_in_set(tag: t, tags: medium.raw_text_tags) {
-          MarkupMedium { tag_overrides: medium.tag_overrides, bracket: medium.bracket, text_escape: EscapeRaw, void_tags: medium.void_tags, void_rendering: medium.void_rendering, raw_text_tags: medium.raw_text_tags, comment_open: medium.comment_open, comment_close: medium.comment_close, doctype_open: medium.doctype_open }
+          MarkupMedium { tag_overrides: medium.tag_overrides, bracket: medium.bracket, text_escape: EscapeRaw, void_tags: medium.void_tags, void_rendering: medium.void_rendering, raw_text_tags: medium.raw_text_tags, comment_open: medium.comment_open, comment_close: medium.comment_close, doctype_open: medium.doctype_open, comment_terminator: medium.comment_terminator, comment_trailing_dash_closes: medium.comment_trailing_dash_closes, document_declaration_allowed: medium.document_declaration_allowed }
         } else {
           medium
         }
@@ -232,3 +259,131 @@ fn document_line_ending() -> String {
 type MarkupSerializeResult
   = Serialized { html: String }
   | Rejected { reason: String }
+
+// THE CLOSED OUTCOME OF A HAZARD CHECK, for every medium and every hazard in this layer.
+//
+// WHY A SUM AND NOT A STRING. The first shape of these checks returned String, with "" meaning
+// "clean" and any other value the diagnostic (review 82181 on #14351). That makes the empty string
+// carry the load-bearing answer, so a check that ever returns "" — a bug, a stub, a copy-paste of
+// itself — PASSES, and the two states are indistinguishable at every call site: `if hazard == ""`
+// is a string test, not a type test. DESIGN §5: "every path succeeds fully or fails with a typed,
+// located diagnostic, and no plausible output is fabricated." A closed sum means the caller has to
+// name both outcomes to compile, and there is no inhabitant that means both.
+//
+// ONE SUM FOR ALL THE HAZARDS, not one per hazard: the caller's job is "may I serialize this, and
+// if not why", which does not vary by hazard. Each reason is located (it names the terminator or
+// tag involved) and the hazard that fired is recoverable from its text, which is what a refusal
+// surface needs; nothing branches on WHICH hazard.
+type MarkupHazard
+  = HazardFree
+  | HazardFound { reason: String }
+
+// ── ONE HAZARD WALKER, DRIVEN BY THE MEDIUM ─────────────────────────────────────────────────────
+// WHY IT LIVES HERE AND NOT BESIDE THE HTML ROWS. The first shape of this check existed once per
+// language (review 82181 on #14351): the HTML guarded route consulted a comment hazard and its JSX
+// sibling did not, so a comment body containing "*/" closed early and the remainder was parsed as
+// TSX, and a Document inside a JSX expression serialized as "<!DOCTYPE html>" where no parser reads
+// it — both came back JsxOk. That is §6b's repeated pattern left un-generalized: the two routes
+// answered their own language and the shared defect went unguarded. The walk is a fact about
+// Fragments and Media, not about HTML, so it is written once in the layer that owns both. A new
+// medium gets the check by carrying its comment grammar; it cannot forget to call it.
+//
+// THREE HAZARDS, ONE WALK:
+//   1. a comment body that holds the medium's terminator (or ends in a dash, where that closes),
+//   2. a doctype name that is not one bare token,
+//   3. a raw-text element whose content contains its own close sequence.
+// Each is refused rather than filtered: escaping cannot fix (1) — a comment decodes nothing — and
+// stripping the sequence would change what the comment says. (2) is refused because the tokenizer
+// reads ONE token after the keyword, so anything else changes how the document parses. (3) is
+// refused for the same reason <script> content is: the browser would end the element early.
+//
+// A MEDIUM WITH NO COMMENT GRAMMAR IS ITSELF A FINDING, not a pass: string_contains(body, "") is
+// true of every string, so an empty terminator would refuse everything, and a missing terminator
+// treated as "no rule" would pass everything. Neither is acceptable, so an unterminated medium
+// refuses with a diagnostic that says which field is unset (§5: located, never silent).
+
+fn comment_body_hazard(body: String, medium: MarkupMedium) -> MarkupHazard {
+  if medium.comment_terminator == "" {
+    HazardFound { reason: "medium declares no comment terminator (MarkupMedium.comment_terminator is empty) — a comment in this medium cannot be checked for early termination; fill the field or forbid comments in this medium" }
+  } else if string_contains(s: body, pattern: medium.comment_terminator) {
+    HazardFound { reason: join(["markup comment body contains the comment terminator '", medium.comment_terminator, "' — refusing to serialize (the remainder would be parsed as markup); restructure the comment"], "") }
+  } else if medium.comment_trailing_dash_closes && ends_with(s: body, suffix: "-") {
+    // "--" before the delimiter's own "-" also reaches the tokenizer's comment end state, so a body
+    // ending in a dash closes early even with no terminator in the middle. The remedy differs from
+    // the case above (shorten the body vs remove a sequence from it), so the reason differs.
+    HazardFound { reason: join(["markup comment body ends in '-' — adjacent to the close delimiter this forms an abrupt '", medium.comment_terminator, "' close; restructure the comment"], "") }
+  } else {
+    HazardFree
+  }
+}
+
+// A <!DOCTYPE> name is a production, not free text: the tokenizer reads at most ONE token after the
+// keyword, so a name holding whitespace or angle brackets makes the declaration swallow text and the
+// document parse in the wrong mode (a page can silently land in quirks mode). Refusing anything but a
+// single bare token is construction-side, so a malformed doctype cannot be written.
+fn doctype_name_hazard(keyword: String) -> MarkupHazard {
+  if keyword == "" {
+    HazardFound { reason: "doctype declares no document type — the name after the doctype keyword is what selects the parsing mode" }
+  } else if string_contains(s: keyword, pattern: "<") || string_contains(s: keyword, pattern: ">") || string_contains(s: keyword, pattern: " ") {
+    HazardFound { reason: join(["doctype name '", keyword, "' is not a single bare token — the tokenizer reads one token after the doctype keyword; anything else changes how the document parses"], "") }
+  } else {
+    HazardFree
+  }
+}
+
+fn first_hazard_in(children: List<Fragment>, medium: MarkupMedium) -> MarkupHazard {
+  fold(children,
+    init: HazardFree,
+    f: (acc, c) => match acc {
+      HazardFound { reason: r } => HazardFound { reason: r }
+      HazardFree => fragment_hazard(node: c, medium: medium)
+    })
+}
+
+fn raw_text_children_text(children: List<Fragment>) -> String {
+  fold(children, init: "", f: (acc, c) => match c {
+    FragmentText { content: t } => concat(acc, t)
+    RawNode { content: t } => concat(acc, t)
+    // A comment is not character data of the raw-text element, and a Document inside one is not
+    // legitimate markup; neither contributes text to the close-sequence check, which is about what
+    // the raw-text element's own content would terminate early.
+    MarkupComment { body: _ } => acc
+    Document { doctype: _, root: _ } => acc
+    Element { tag: _, attributes: _, children: _ } => acc
+  })
+}
+
+// THE ONE WALK. Exhaustive over Fragment by construction — a new arm is a compile error here, which
+// is the point: an arm that quietly passed would certify an unchecked shape, and a guard that looks
+// like it checked is worse than one that is absent.
+fn fragment_hazard(node: Fragment, medium: MarkupMedium) -> MarkupHazard {
+  match node {
+    FragmentText { content: _ } => HazardFree
+    RawNode { content: _ } => HazardFree
+    MarkupComment { body: b } => comment_body_hazard(body: b, medium: medium)
+    Document { doctype: d, root: r } =>
+      if !medium.document_declaration_allowed {
+        // Refused, not stripped. Dropping the declaration would hand back a fragment whose bytes claim
+        // a different document than the caller built, and silently dropping part of a page is the
+        // degradation §5 counts; the caller asked for a document type in a medium that has no such
+        // thing, which is a construction error at the call site.
+        HazardFound { reason: join(["a document-type declaration '", medium.doctype_open, d, "' has no meaning in this medium — it declares ECMAScript/JSX-style modules, not documents; emit the root fragment instead"], "") }
+      } else {
+        let bad_doctype = doctype_name_hazard(keyword: d)
+        match bad_doctype {
+          HazardFound { reason: rs } => HazardFound { reason: rs }
+          HazardFree => fragment_hazard(node: r, medium: medium)
+        }
+      }
+    Element { tag: t, attributes: _, children: kids } =>
+      if tag_in_set(tag: t, tags: medium.raw_text_tags) {
+        if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {
+          HazardFound { reason: join(["raw-text element <", t, "> content contains its own close sequence '</", t, "' — refusing to serialize (corruption otherwise); restructure the content"], "") }
+        } else {
+          first_hazard_in(children: kids, medium: medium)
+        }
+      } else {
+        first_hazard_in(children: kids, medium: medium)
+      }
+  }
+}

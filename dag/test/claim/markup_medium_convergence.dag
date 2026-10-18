@@ -75,6 +75,9 @@ fn md_medium_underscore() -> MarkupMedium {
     comment_open: "<!-- ",
     comment_close: " -->",
     doctype_open: "<!DOCTYPE ",
+    comment_terminator: "-->",
+    comment_trailing_dash_closes: true,
+    document_declaration_allowed: true,
   }
 }
 
@@ -110,6 +113,9 @@ fn single_quote_medium() -> MarkupMedium {
     comment_open: "<!-- ",
     comment_close: " -->",
     doctype_open: "<!DOCTYPE ",
+    comment_terminator: "-->",
+    comment_trailing_dash_closes: true,
+    document_declaration_allowed: true,
   }
 }
 

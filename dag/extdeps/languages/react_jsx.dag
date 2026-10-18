@@ -5,6 +5,8 @@ import extdeps.uri { Uri, Https }
 import std.markup {
   Fragment, MarkupMedium, EscapeHtml, SelfClose,
   serialize_fragment_with,
+  HazardFree, HazardFound,
+  fragment_hazard,
 }
 import extdeps.languages.html {
   html_markup_medium,
@@ -54,6 +56,16 @@ fn jsx_component_prefix(fn_name: String) -> String {
 // each needs a home of its own.
 data jsx_comment_open_sequence: String = "{/* "
 data jsx_comment_close_sequence: String = " */}"
+// The sequence that ENDS a JSX comment is "*/" — and it is not " */}" minus the brace. A comment
+// closes at the first "*/", so "*/}" contains the terminator and the trailing brace becomes code.
+// That distinction is why the medium carries the terminator separately from comment_close: the emitter
+// writes " */}", the checker must look for "*/". Both rows sit here, in JSX's own module, because both
+// are facts about JSX.
+data jsx_comment_terminator: String = "*/"
+// A body ending in "-" does NOT close a JSX comment: "- */}" is an ordinary comment in JSX, whose
+// comment grammar has no abrupt-close state. Contrast the HTML medium, where the same shape reaches
+// the tokenizer's comment end state. This is the per-language fact the medium field exists for.
+data jsx_comment_trailing_dash_closes: Bool = false
 
 fn jsx_markup_medium() -> MarkupMedium {
   MarkupMedium {
@@ -73,6 +85,16 @@ fn jsx_markup_medium() -> MarkupMedium {
     // row's existence is exactly that there is one document-type keyword across markup languages.
     // Inventing a JSX-specific keyword to mark "not applicable" would be a spelling no parser accepts.
     doctype_open: html_doctype_open_sequence,
+    // The hazard walk reads these two from the medium, which is what makes JSX covered without a
+    // JSX-specific hazard function of its own — the gap review 82181 found (a comment holding "*/"
+    // closed early and the rest was parsed as TSX; a Document emitted "<!DOCTYPE html>" inside a JSX
+    // expression; both came back JsxOk).
+    comment_terminator: jsx_comment_terminator,
+    comment_trailing_dash_closes: jsx_comment_trailing_dash_closes,
+    // FALSE, and this row is the fix for review 82181's second JSX finding: a Document used to be
+    // serialized into a JSX expression container as "<!DOCTYPE html>", which is not valid TSX, and the
+    // route answered JsxOk. A JSX file is an ECMAScript module; it has no document type to declare.
+    document_declaration_allowed: false,
   }
 }
 
@@ -88,9 +110,25 @@ type JsxEmitResult
   = JsxOk { tsx: String }
   | JsxRejected { reason: String }
 
+// THE GUARDED JSX ROUTE, guarding the same three things the HTML one does. Before review 82181 it
+// checked URLs and nothing else, because the comment and doctype checks had been written per language
+// and only HTML got one; the walk they now share lives in std.markup and reads this medium's comment
+// grammar, so JSX is covered by the same code path rather than by someone remembering to add it.
+//
+// What it refuses, and why each is not merely filtered:
+//   - a comment body holding "*/" closes the comment and the remainder is parsed as TSX — a comment
+//     that changes the meaning of the file it is in, which is not a comment;
+//   - a Document emits "<!DOCTYPE html>" inside a JSX expression container, which is not valid TSX;
+//     the name check and the walk run on the root, so the declaration itself is checked too;
+//   - raw-text content carrying its own close sequence, for the same early-termination reason.
+// An empty medium terminator is itself refused by the walk, so a medium cannot opt out by omission.
 fn try_serialize_jsx_component(fn_name: String, node: Fragment) -> JsxEmitResult {
   match find_first_rejected_url(node: node) {
     Present { value: r } => JsxRejected { reason: r.url }
-    Absent => JsxOk { tsx: serialize_jsx_component(fn_name: fn_name, node: node) }
+    Absent =>
+      match fragment_hazard(node: node, medium: jsx_markup_medium()) {
+        HazardFree => JsxOk { tsx: serialize_jsx_component(fn_name: fn_name, node: node) }
+        HazardFound { reason: why } => JsxRejected { reason: why }
+      }
   }
 }

@@ -16,9 +16,18 @@ module test.claim.markup_document_comment_witness
 // RED CONTROLS (run once each; the mutation is named so it can be re-run, and the refusals recorded).
 //   C1  std.markup's MarkupComment arm: replace medium.comment_open with the literal "<!-- ".
 //       witness_comment_delimiters_come_from_the_medium goes red (the JSX-shaped medium renders <!--).
-//   C2  extdeps.languages.html comment_hazard: return "" unconditionally.
-//       witness_comment_terminator_is_refused, witness_comment_trailing_dash_is_refused and
-//       witness_guarded_route_refuses_a_self_terminating_comment go red.
+//   C2  std.markup comment_body_hazard: return HazardFree unconditionally.
+//       witness_comment_terminator_is_refused, witness_comment_trailing_dash_is_refused,
+//       witness_guarded_route_refuses_a_self_terminating_comment and the two JSX route claims go red.
+//   C6  std.markup fragment_hazard's Document arm: skip the document_declaration_allowed test.
+//       witness_jsx_guarded_route_refuses_a_document_declaration goes red.
+//   C7  std.markup comment_body_hazard: ignore medium.comment_trailing_dash_closes (always apply the
+//       rule). witness_medium_grammar_decides_the_dash_rule goes red -- the claim that the dash rule is
+//       read from the medium rather than hardcoded in the walker.
+//   C8  extdeps.languages.react_jsx try_serialize_jsx_component: drop the fragment_hazard match and
+//       return JsxOk after the URL pass alone. witness_jsx_guarded_route_refuses_a_comment_that_closes_
+//       early and ..._a_document_declaration go red. (This is the pre-review-82181 shape; it is the
+//       control that would have caught the original finding.)
 //   C3  extdeps.uri_validation find_first_rejected_url: return Absent for the Document arm.
 //       witness_url_guard_walks_into_the_document goes red (the javascript: href inside the root is
 //       no longer found) while witness_url_guard_passes_a_clean_document stays green — which is the
@@ -34,11 +43,18 @@ import std.markup {
   EscapeHtml, OmitClose, attr, serialize_fragment_with,
 }
 import extdeps.languages.html {
-  try_serialize_html_source, EmitOk, EmitRejected, comment_hazard, doctype_hazard,
+  try_serialize_html_source, EmitOk, EmitRejected,
   html_markup_medium, html_comment_open_sequence, html_comment_close_sequence,
   html_comment_terminator, html_doctype_open_sequence, html_doctype_name, canonical_html_spellings,
 }
+import std.markup {
+  HazardFree, HazardFound,
+  fragment_hazard, comment_body_hazard, doctype_name_hazard,
+}
 import extdeps.uri_validation { find_first_rejected_url }
+import extdeps.languages.react_jsx {
+  try_serialize_jsx_component, JsxOk, JsxRejected, jsx_markup_medium, jsx_comment_terminator,
+}
 import std.optional { Absent, Present }
 import gunbc.auth.approval_broker_marker {
   approval_broker_marker_comment, BrokerMarkerComment, MarkerCommentRendered, MarkerCommentRefused,
@@ -68,6 +84,13 @@ data jsx_like_medium: MarkupMedium = MarkupMedium {
   comment_open: "{/* ",
   comment_close: " */}",
   doctype_open: "<!DOCTYPE ",
+  // The comment grammar of THIS adversarial medium, spelled as JSX spells it. This medium exists to
+  // prove the serializer has no HTML delimiter hidden in it; the hazard fields are what let the same
+  // medium then be asked whether a comment terminated early, so a serializer that ignored a medium's
+  // terminator would be caught by these claims rather than by the HTML medium alone.
+  comment_terminator: "*/",
+  comment_trailing_dash_closes: false,
+  document_declaration_allowed: true,
 }
 
 fn comment_node(body: String) -> Fragment {
@@ -124,28 +147,55 @@ test fn witness_comment_body_is_emitted_verbatim() -> Bool {
 // ── 2. a comment cannot terminate itself ──────────────────────────────────────────────────────
 
 test fn witness_clean_comment_body_is_accepted() -> Bool {
-  comment_hazard(body: "a note about the header") == ""
+  match comment_body_hazard(body: "a note about the header", medium: html_markup_medium()) {
+    HazardFree => true
+    HazardFound { reason: _ } => false
+  }
 }
 
 // "a-->b" is the case that separates the TOKENIZER's terminator ("-->", no leading space) from the
 // delimiter we EMIT (" -->", with one). Collapsing the two rows — the obvious tidy-up — leaves a tight
 // "-->" unrefused, and the serializer would then emit a comment the browser closes early.
 test fn witness_comment_terminator_is_refused() -> Bool {
-  comment_hazard(body: "before --> after") != ""
-    && comment_hazard(body: "ends abruptly -->") != ""
-    && comment_hazard(body: "a-->b") != ""
+  all(["before --> after", "ends abruptly -->", "a-->b"],
+    b => match comment_body_hazard(body: b, medium: html_markup_medium()) {
+      HazardFound { reason: _ } => true
+      HazardFree => false
+    })
 }
 
 test fn witness_comment_trailing_dash_is_refused() -> Bool {
   // "--" before the delimiter's own "-" also closes a comment, so a body ending in "-" is refused even
-  // though it contains no " -->" anywhere.
-  comment_hazard(body: "trailing dash-") != ""
+  // though it contains no " -->" anywhere. Read from the medium: the same body is fine in a medium
+  // whose comment grammar has no abrupt-close state (witness_medium_grammar_decides_the_dash_rule).
+  match comment_body_hazard(body: "trailing dash-", medium: html_markup_medium()) {
+    HazardFound { reason: _ } => true
+    HazardFree => false
+  }
+}
+
+// The dash rule is a fact about the MEDIUM, not about the walker: the identical body in a medium that
+// declares comment_trailing_dash_closes = false must be accepted. Without this pair, the flag could be
+// ignored by the walk (hardcoded to refuse) and every claim above would stay green — the medium's
+// grammar would be decoration.
+test fn witness_medium_grammar_decides_the_dash_rule() -> Bool {
+  let body = "trailing dash-"
+  match comment_body_hazard(body: body, medium: jsx_like_medium) {
+    HazardFree =>
+      match comment_body_hazard(body: body, medium: html_markup_medium()) {
+        HazardFound { reason: _ } => true
+        HazardFree => false
+      }
+    HazardFound { reason: _ } => false
+  }
 }
 
 // A refusal that says only "bad" is not located (§5): the terminator must be named in the diagnostic.
 test fn witness_comment_hazard_names_the_terminator() -> Bool {
-  let refusal = comment_hazard(body: "x --> y")
-  refusal != "" && string_contains(s: refusal, pattern: html_comment_terminator)
+  match comment_body_hazard(body: "x --> y", medium: html_markup_medium()) {
+    HazardFound { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminator)
+    HazardFree => false
+  }
 }
 
 // The guarded route refuses rather than emitting a self-terminating comment. This is the difference
@@ -247,14 +297,18 @@ test fn witness_comment_in_a_document_still_checked_for_early_close() -> Bool {
 // ── 4. the doctype name is a production, not free text ────────────────────────────────────────
 
 test fn witness_clean_doctype_name_is_accepted() -> Bool {
-  doctype_hazard(keyword: "html") == ""
+  match doctype_name_hazard(keyword: "html") {
+    HazardFree => true
+    HazardFound { reason: _ } => false
+  }
 }
 
 test fn witness_doctype_name_rejects_non_token_names() -> Bool {
-  doctype_hazard(keyword: "") != ""
-    && doctype_hazard(keyword: "html system") != ""
-    && doctype_hazard(keyword: "html>") != ""
-    && doctype_hazard(keyword: "<html") != ""
+  all(["", "html system", "html>", "<html"],
+    k => match doctype_name_hazard(keyword: k) {
+      HazardFound { reason: _ } => true
+      HazardFree => false
+    })
 }
 
 // ── 5. the consumer's refusal is a refusal (review 82142 on #14351) ───────────────────────────
@@ -294,7 +348,10 @@ test fn witness_marker_clean_token_renders_as_a_comment() -> Bool {
 // gunbc.auth.approval_broker_marker and not here, witness_marker_corpus_matches_the_module's refusal
 // on an unknown-shaped name is the tripwire.
 test fn witness_marker_token_never_closes_its_comment() -> Bool {
-  all(marker_token_corpus(), s => comment_hazard(body: s) == "")
+  all(marker_token_corpus(), s => match comment_body_hazard(body: s, medium: html_markup_medium()) {
+    HazardFree => true
+    HazardFound { reason: _ } => false
+  })
 }
 
 test fn witness_marker_corpus_is_not_empty() -> Bool {
@@ -312,4 +369,70 @@ fn marker_names() -> List<String> {
     "device-push-update", "no-route-matched", "method-not-allowed", "adapter-refused",
     "static-route-served",
   ]
+}
+
+// ── 7. every guarded route, not just the HTML one (review 82181 on #14351) ────────────────────
+// THE CLAIM THIS SECTION EXISTS TO MAKE: the hazard walk is reached from EVERY guarded route, and a
+// route that checks only URLs is red. Before the fix, try_serialize_jsx_component consulted
+// find_first_rejected_url and returned JsxOk for anything else, because the comment and doctype checks
+// had been written once per language and only HTML got one — so a JSX comment holding "*/" closed
+// early and the remainder was parsed as TSX, and a Document emitted "<!DOCTYPE html>" inside a JSX
+// expression container, which is not valid TSX. Both were reported as success. §5: "every path
+// succeeds fully or fails with a typed, located diagnostic."
+//
+// The fix is one walk in std.markup reading the medium's comment grammar, so these claims are about
+// the ROUTE being wired to it, not about HTML's rules being re-asserted for JSX.
+
+fn jsx_root_with_comment(body: String) -> Fragment {
+  Element { tag: "div", attributes: [], children: [ MarkupComment { body: body } ] }
+}
+
+test fn witness_jsx_guarded_route_refuses_a_comment_that_closes_early() -> Bool {
+  match try_serialize_jsx_component(fn_name: "C", node: jsx_root_with_comment(body: "x */ <b>code</b>")) {
+    JsxRejected { reason: r } => string_contains(s: r, pattern: jsx_comment_terminator)
+    JsxOk { tsx: _ } => false
+  }
+}
+
+test fn witness_jsx_guarded_route_refuses_a_document_declaration() -> Bool {
+  match try_serialize_jsx_component(fn_name: "C", node: Document { doctype: "html", root: jsx_root_with_comment(body: "ok") }) {
+    JsxRejected { reason: _ } => true
+    JsxOk { tsx: _ } => false
+  }
+}
+
+// The other half: JSX still ACCEPTS what JSX can express, and the refusal above is not a blanket
+// rejection that would also pass these claims vacuously.
+test fn witness_jsx_guarded_route_still_accepts_a_clean_component() -> Bool {
+  match try_serialize_jsx_component(fn_name: "C", node: jsx_root_with_comment(body: "a plain note")) {
+    JsxOk { tsx: _ } => true
+    JsxRejected { reason: _ } => false
+  }
+}
+
+// A medium cannot opt out of the check by leaving its terminator unset. An empty terminator would make
+// the containment test vacuously false (nothing contains ""), i.e. every comment passes — §5's silent
+// widen — so the absence is itself a located finding naming the field.
+test fn witness_a_medium_without_a_terminator_refuses_rather_than_passes() -> Bool {
+  match comment_body_hazard(body: "anything at all", medium: unterminated_medium) {
+    HazardFound { reason: r } => string_contains(s: r, pattern: "comment_terminator")
+    HazardFree => false
+  }
+}
+
+data unterminated_medium: MarkupMedium = MarkupMedium {
+  tag_overrides: [],
+  bracket: jsx_like_bracket,
+  text_escape: EscapeHtml,
+  void_tags: [],
+  void_rendering: OmitClose,
+  raw_text_tags: [],
+  comment_open: "<!-- ",
+  comment_close: " -->",
+  doctype_open: "<!DOCTYPE ",
+  // Deliberately the degenerate value, to be the thing the walk refuses. This is not an invalid value
+  // asserted as EXPECTED output — the claim asserts the REFUSAL.
+  comment_terminator: "",
+  comment_trailing_dash_closes: true,
+  document_declaration_allowed: true,
 }
