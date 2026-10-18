@@ -5689,32 +5689,27 @@ fn fleet_converge_workspace_operation_step(mode: FleetConvergeWorkflowMode, run:
   }
 }
 
-fn fleet_converge_workspace_image_upload_step() -> Step {
+fn fleet_converge_guest_image_upload_step(label: String, id: String, name: String, paths: String, mode: FleetConvergeWorkflowMode) -> Step {
   UsesStep {
-    name: Present { value: "Archive the exact workspace image build and digest receipt" },
-    id: Present { value: "workspace_image_upload" }, uses: upload_artifact_action,
+    name: Present { value: concat(concat("Archive the exact ", label), " image build and digest receipt") },
+    id: Present { value: id }, uses: upload_artifact_action,
     with: Present { value: [
-      kv(key: "name", value: yaml_string(s: workspace_image_artifact_name)),
-      kv(key: "path", value: yaml_string(s: workspace_image_artifact_paths())),
+      kv(key: "name", value: yaml_string(s: name)),
+      kv(key: "path", value: yaml_string(s: paths)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 90)),
       kv(key: "compression-level", value: yaml_int(n: 6)),
-    ] }, env: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: WorkspaceImageBuild) },
+    ] }, env: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: mode) },
     continue_on_error: none, timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }
 
+fn fleet_converge_workspace_image_upload_step() -> Step {
+  fleet_converge_guest_image_upload_step(label: "workspace", id: "workspace_image_upload", name: workspace_image_artifact_name,
+    paths: workspace_image_artifact_paths(), mode: WorkspaceImageBuild)
+}
+
 fn fleet_converge_revision_job_image_upload_step() -> Step {
-  UsesStep {
-    name: Present { value: "Archive the exact revision-job image build and digest receipt" },
-    id: Present { value: "revision_job_image_upload" }, uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: revision_job_image_artifact_name)),
-      kv(key: "path", value: yaml_string(s: revision_job_image_artifact_paths())),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 90)),
-      kv(key: "compression-level", value: yaml_int(n: 6)),
-    ] }, env: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: RevisionJobImageBuild) },
-    continue_on_error: none, timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
-  }
+  fleet_converge_guest_image_upload_step(label: "revision-job", id: "revision_job_image_upload", name: revision_job_image_artifact_name,
+    paths: revision_job_image_artifact_paths(), mode: RevisionJobImageBuild)
 }
