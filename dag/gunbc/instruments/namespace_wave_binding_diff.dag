@@ -7,7 +7,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, KernelTypeSpellingTable, ambient_name_homes }
 import gunbc.instruments.ambient_name_census_reading { ambient_census_base_ref, census_observation_text }
-import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, occurrence_join_module, join_delta_line, join_delta_admitted, occurrence_join_controls_failure }
+import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, occurrence_join_module, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure }
 
 // THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
 // a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
@@ -392,6 +392,14 @@ fn wave_unobserved_control_failure() -> Optional<String> {
   if got == 2 { optional_absent() } else { optional_present(value: "an unobserved rewritten module answered " + to_string(got) + ", not 2") }
 }
 
+// A BASE CENSUS OLDER THAN THE LOCUS ROWS is no observation: the same wave base with its binding_file rows removed,
+// against the admitted head, must answer 2 -- not 1 (an invented refusal) and not 0.
+fn base_without_line_count_control_failure(base: String, admit: String) -> Optional<String> {
+  let stripped = split(s: base, delimiter: "\n") |> filter(l => !starts_with(s: l, prefix: "binding_file\t")) |> join(separator: "\n")
+  let got = verdict_code(r: binding_diff_verdict(base_stdout: stripped, head_stdout: admit, base_status: 0, head_status: 0))
+  if got == 2 { optional_absent() } else { optional_present(value: "a base census with no line counts answered " + to_string(got) + ", not 2") }
+}
+
 // THE VERDICT. An incomplete side never yields success: a census that answered 2 (a rewritten module
 // refused or unread, an incomplete subject run, an unreadable spelling) keeps that standing unless a
 // stronger refusal (a re-binding, exit 1) applies. Each side's own 2-rows are carried into the output.
@@ -458,7 +466,9 @@ fn binding_diff_verdict(base_stdout: String, head_stdout: String, base_status: I
   // (gunbc.instruments.namespace_wave_occurrence_join) over its partial and unbound rows. It leaves the unobserved
   // list only when its partial observation is usable on both sides (no conflicting record) and nothing refused.
   let joined = diff.unobserved_both_sides |> map(m => JoinedModule { module: m, deltas: occurrence_join_module(rows: ambient_name_homes(), module: m, base_stdout: base_stdout, head_stdout: head_stdout), conflicting: partial_conflicting(module: m, base_stdout: base_stdout, head_stdout: head_stdout) })
-  let join_refused = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => !join_delta_admitted(d: d))) })
+  // A module with no line count on a side was never observed there (a census older than the locus rows): that is
+  // no observation (it stays in still_unobserved, exit 2), never a refusal.
+  let join_refused = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => !join_delta_admitted(d: d) && !join_delta_unobserved(d: d))) })
   let join_admitted = joined |> fold(init: [], f: fn(acc, j) { acc + (j.deltas |> filter(d => join_delta_admitted(d: d))) })
   let conflicting = joined |> filter(j => j.conflicting) |> map(j => j.module)
   let still_unobserved = joined |> filter(j => j.conflicting || (count(j.deltas |> filter(d => !join_delta_admitted(d: d))) != 0)) |> map(j => j.module)
@@ -500,7 +510,7 @@ fn binding_diff_standing(
   match rebind_red_failure(base_stdout: rebind_base_stdout, head_stdout: rebind_head_stdout) {
     Present { value: why } => CliWirePrintable { bytes: rebind_base_stdout + "\n" + rebind_head_stdout + "\n", exit: ExitFailure { code: 1, reason: "re-bind RED: " + why } }
     Absent =>
-      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), occurrence_join_controls_failure(), wave_unobserved_control_failure(), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout)]) {
+      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), occurrence_join_controls_failure(), wave_unobserved_control_failure(), base_without_line_count_control_failure(base: wave_base_stdout, admit: wave_admit_stdout), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout)]) {
         Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
           if (base_status != 0) && (base_status != 2) {

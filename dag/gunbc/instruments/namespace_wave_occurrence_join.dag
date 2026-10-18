@@ -135,7 +135,7 @@ fn occurrence_join_module(rows: List<AmbientNameHome>, module: String, base_stdo
   let base_n = join_line_count(stdout: base_stdout, module: module)
   let head_n = join_line_count(stdout: head_stdout, module: module)
   if (base_n < 0) || (head_n < 0) {
-    [JoinRefused { cause: "Unlocated", coordinate: module, detail: "no binding_file line count on " + (if base_n < 0 { "base" } else { "head" }) }]
+    [JoinRefused { cause: "NoLineCount", coordinate: module, detail: "no binding_file line count on " + (if base_n < 0 { "base" } else { "head" }) }]
   } else {
     occurrence_join_entries(rows: rows, base: join_side(entries: join_entries(stdout: base_stdout, module: module), line_count: base_n), head: join_side(entries: join_entries(stdout: head_stdout, module: module), line_count: head_n))
   }
@@ -193,6 +193,13 @@ fn join_delta_admitted(d: JoinDelta) -> Bool {
   match d {
     JoinAdmitted { coordinate: _, spelling: _, home: _ } => true
     JoinRefused { cause: _, coordinate: _, detail: _ } => false
+  }
+}
+
+fn join_delta_unobserved(d: JoinDelta) -> Bool {
+  match d {
+    JoinAdmitted { coordinate: _, spelling: _, home: _ } => false
+    JoinRefused { cause: c, coordinate: _, detail: _ } => c == "NoLineCount"
   }
 }
 
