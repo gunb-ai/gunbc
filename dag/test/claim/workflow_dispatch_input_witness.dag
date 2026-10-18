@@ -284,7 +284,10 @@ fn fleet_converge_job_edges_hold(edges: List<FleetConvergeJobEdge>, expected: Li
     } else if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
       e.needs == []
     } else {
-      e.needs == build
+      // THE BINARIES' SOURCE IS `build`; a job may also wait on another rostered job (the converge waits
+      // for gcp-iam-bootstrap), but never on one the roster does not name.
+      any(e.needs, n => n == (fleet_converge_release_bins_job_id as String))
+        && all(e.needs, n => n == (fleet_converge_release_bins_job_id as String) || (n != (e.id as String) && any(expected, x => x == n)))
     })
 }
 
