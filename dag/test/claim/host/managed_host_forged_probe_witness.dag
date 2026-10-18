@@ -102,9 +102,14 @@ test fn a_boot_medium_fetch_from_outside_its_entries_is_refused() -> Bool {
 // w_a_build_reading_for_another_controller_grounds_no_capability_row call the SAME mints from inside
 // the rosters and pass, which the claim battery measures directly. A roster that refused everyone
 // would green the reds and go red on the controls.
-test fn an_unrostered_caller_is_refused_at_both_evidence_fixture_doors() -> Bool {
-  let c = probe()
-  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_operation_evidence_fixture_for") >= 1
-    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "witness_evidence_reporting") >= 1
-    && blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
+test fn an_unrostered_caller_is_refused_at_the_evidence_fixture_mint() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "megarac_operation_evidence_fixture_for") >= 1
+}
+
+test fn an_unrostered_caller_is_refused_at_the_witness_evidence_helper() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "witness_evidence_reporting") >= 1
+}
+
+test fn the_forged_probe_emits_no_sole_constructor_violation() -> Bool {
+  blocking_count_for_class(c: probe(), wanted: "SoleConstructorViolation") == 0
 }
