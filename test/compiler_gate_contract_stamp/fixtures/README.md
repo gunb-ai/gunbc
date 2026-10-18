@@ -19,7 +19,16 @@ It is committed rather than fetched by sha because those four heads live on **de
 blobs are reachable from the object store, but a fresh clone has no ref that reaches them, so a
 reviewer running `./run_evidence.sh` must not depend on a fetch that can fail.
 
-`../run_evidence.sh` runs the CURRENTLY COMMITTED guard (extracted from
-`.github/workflows/witnesses.yml` by `../extract_guard.py`, never retyped) against this file. The
-guard must **refuse** it: the tree declares no `GUNBC_COMPILER_GATE_CONTRACT_STAMP`, so its
-workflow predates the instruction that is being executed. Green here means the guard is not looking.
+`../run_evidence.sh` (no arguments) extracts the GENERATED EVIDENCE STEP's own bytes from
+`.github/workflows/witnesses.yml` and executes them, and that step invokes the harness once per
+modelled case, with the expectations supplied as argv by the model
+(`compiler_gate_contract_stamp_evidence_cases` in `dag/gunbc/witness/compiler_gate_contract_stamp.dag`).
+The guard's script is always READ OUT OF the committed artifact, never retyped, so this file and the
+guard are exercised as the fleet actually has them. The guard must **refuse** this fixture: the tree
+declares no `GUNBC_COMPILER_GATE_CONTRACT_STAMP`, so its workflow predates the instruction being
+executed. Green here means the guard is not looking.
+
+There is no separate extractor script: `.gitignore` line 162 ignores `*.py` outright ("never committed
+to the substrate"), which is how an earlier version of this harness came to reference a file that was
+never committed and therefore could not run from a clone. The extractor is now an awk function inside
+`../run_evidence.sh`, so the harness needs only bash and awk -- the fleet's runners already have both.
