@@ -29,7 +29,7 @@ import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_i
 import gunbc.auth.heal_publisher_provision {
   standing_principal_set,
   DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present, dedicated_federation_input_refusals,
-  FederationClassified, FederationUnclassified, rest_refusal_text, outcome_is_not_found,
+  FederationClassified, FederationUnclassified, FederationPermissionDenied, rest_refusal_text, outcome_is_not_found,
 }
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
@@ -37,9 +37,11 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_resource_key, iam_bootstrap_capability_bindings, iam_bootstrap_trust_bindings,
   iam_bootstrap_deny_policy_id, iam_bootstrap_attachment_point,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
+  IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match,
   iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_bound_secrets,
 }
 
+import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account }
 import gunbc.auth.gcp_iam_bootstrap_authority {
   bootstrap_operator_matches, iam_bootstrap_operator_member, iam_bootstrap_operator_subject,
   iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_authority_dependency_plan,
@@ -54,6 +56,15 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 // Operator-authorized initial setup. This entry does not forge an app approval or workflow
 // identity. Its credential is never a fallback in the ongoing approval-gated job.
+//
+// ITS RESIDUAL ROLE IS THE FIRST-TIME ROOT BOOTSTRAP ONLY. A subject declared after the root exists --
+// a new secret in any grant set or custody row, a new target's account or pool -- is bound by the
+// bootstrap delta (gunbc.auth.gcp_iam_bootstrap_delta classifies, gunbc.auth.gcp_iam_bootstrap_delta_run
+// files one approval and applies as iam-bootstrap), never by rerunning this ceremony. What only this
+// ceremony writes: the services, the custom roles, the deny policies, the project cells, and the
+// trust roots -- the converge job's and the bootstrap delta job's pools, providers and accounts and
+// who may become each -- none of which iam-bootstrap may touch (gunbc.auth.gcp_iam_bootstrap_delta_route
+// trust_root_subject, root_ceremony_subject).
 // Trust is last. Existing mismatched roles, providers and deny policies refuse instead of being
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
 type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
@@ -89,7 +100,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("workflow provider ", federation.provider_id as String),
     concat("workflow condition ", federation.attribute_condition),
     concat("workflow principal set ", match standing_principal_set(f: federation) { Present { value: ps } => ps  Absent => "none standing (run-scoped)" }),
-    concat("deny policy ", iam_bootstrap_deny_policy_id as String),
+    concat("deny policies ", join(map(iam_bootstrap_deny_policies(), d => d.policy_id as String), ",")),
     concat("deny principal serviceAccount:", iam_converge_service_account as String),
     concat("deny permissions ", join(iam_converge_denied_permissions, ",")),
     "Target bootstrap creates only bare pools/accounts; target providers and workload trust remain approval-gated.",
@@ -115,6 +126,7 @@ fn iam_bootstrap_ensure_identity(f: DedicatedFederation, own_trust: Bool, token:
   let before = observe_and_classify(f: f, token: token)
   match before {
     FederationUnclassified { reasons } => join(reasons, "; ")
+    FederationPermissionDenied { pool: _, account: _, causes } => concat("the operator token is denied a declared subject: ", join(causes, "; "))
     FederationClassified { create_pool, create_provider, create_account } => {
       let created = create_absent_subjects(f: f, token: token, c: FederationClassified {
         create_pool: create_pool, create_provider: own_trust && create_provider, create_account: create_account })
@@ -122,6 +134,7 @@ fn iam_bootstrap_ensure_identity(f: DedicatedFederation, own_trust: Bool, token:
         let after = observe_and_classify(f: f, token: token)
         match after {
           FederationUnclassified { reasons } => join(reasons, "; ")
+          FederationPermissionDenied { pool: _, account: _, causes } => concat("the operator token is denied a declared subject: ", join(causes, "; "))
           FederationClassified { create_pool: pool_missing, create_provider: _, create_account: account_missing } =>
             if pool_missing || account_missing || (own_trust && !federation_fully_present(c: after)) {
               concat(f.label, ": named creation is not yet established by readback; no rights granted")
@@ -350,27 +363,28 @@ fn iam_bootstrap_ensure_role(role: IamBootstrapRole, token: Secret) -> String {
   }
 }
 
+// EVERY DECLARED DENY POLICY, in order; the first refusal stops the rest.
 fn iam_bootstrap_ensure_deny(token: Secret) -> String {
-  iam_bootstrap_ensure_deny_bounded(token: token, remaining: 0)
+  fold(iam_bootstrap_deny_policies(), init: "", f: (prior, d) => if prior != "" { prior } else { iam_bootstrap_ensure_deny_bounded(policy: d, token: token, remaining: 0) })
 }
 
-fn iam_bootstrap_ensure_deny_bounded(token: Secret, remaining: Int) -> String {
-  match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id) {
+fn iam_bootstrap_ensure_deny_bounded(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
+  match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
     RestAnswered { answer: seen } =>
-      if iam_bootstrap_deny_matches(rules: seen.rules) { "" } else { "existing bootstrap deny policy differs; refusing to weaken or adopt it" }
+      if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: policy.rules) { "" } else { concat(policy.policy_id as String, ": existing bootstrap deny policy differs; refusing to weaken or adopt it") }
     RestRefused { refusal: seen_refusal } =>
       if !outcome_is_not_found(o: seen_refusal) { rest_refusal_text(o: seen_refusal) }
       else {
         if remaining > 0 && !iam_bootstrap_current_authority_live() { "authority deadline or clock does not admit another deny installation attempt" }
         else {
-          match gcp.IamDeny.CreatePolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id, rules: iam_bootstrap_deny_rules()) {
+          match gcp.IamDeny.CreatePolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id, rules: policy.rules) {
             RestRefused { refusal: made_refusal } =>
               if bootstrap_deny_retry_admitted(refusal: made_refusal, remaining: remaining, live: iam_bootstrap_current_authority_live()) {
                 if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
-                  iam_bootstrap_ensure_deny_bounded(token: token, remaining: remaining - 1)
+                  iam_bootstrap_ensure_deny_bounded(policy: policy, token: token, remaining: remaining - 1)
                 } else { "deny authority propagation wait failed" }
               } else { rest_refusal_text(o: made_refusal) }
-            RestAnswered { answer: _ } => iam_bootstrap_deny_creation_readback(token: token, remaining: 6)
+            RestAnswered { answer: _ } => iam_bootstrap_deny_creation_readback(policy: policy, token: token, remaining: 6)
           }
         }
       }
@@ -496,18 +510,18 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
         if prior != "" { prior } else { iam_bootstrap_ensure_custody_container(secret: secret, token: token) }) }
     }
     BootstrapRoles => fold(iam_bootstrap_roles, init: "", f: (prior, role) => if prior != "" { prior } else { iam_bootstrap_ensure_role(role: role, token: token) })
-    BootstrapDeny => {
-      match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id) {
+    BootstrapDeny => fold(iam_bootstrap_deny_policies(), init: "", f: (prior, d) => if prior != "" { prior } else {
+      match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: d.policy_id) {
         RestAnswered { answer: seen } =>
-          if iam_bootstrap_deny_matches(rules: seen.rules) { "" } else { "existing deny policy differs; no authority granted" }
+          if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: d.rules) { "" } else { concat(d.policy_id as String, ": existing deny policy differs; no authority granted") }
         RestRefused { refusal: seen_refusal } =>
           if !outcome_is_not_found(o: seen_refusal) { rest_refusal_text(o: seen_refusal) }
           else {
             let authority = iam_bootstrap_authority_converge(token: token, withdrawing: false)
-            if authority != "" { authority } else { iam_bootstrap_ensure_deny_bounded(token: token, remaining: 30) }
+            if authority != "" { authority } else { iam_bootstrap_ensure_deny_bounded(policy: d, token: token, remaining: 30) }
           }
       }
-    }
+    })
     BootstrapAuthorityCleanup => iam_bootstrap_authority_converge(token: token, withdrawing: true)
     BootstrapCapabilities => fold(iam_bootstrap_capability_bindings(), init: "", f: (prior, binding) => if prior != "" { prior } else { iam_bootstrap_ensure_binding(binding: binding, token: token) })
     BootstrapProbeAuthority => iam_bootstrap_probe_authority_converge(token: token, withdrawing: false)
@@ -608,7 +622,7 @@ fn iam_bootstrap_positive_probes(token: Secret) -> String {
 }
 
 fn iam_bootstrap_negative_probes(token: Secret) -> String {
-  let accounts = fold([iam_observe_service_account, iam_converge_service_account], init: "", f: (prior, account) =>
+  let accounts = fold([iam_observe_service_account, iam_converge_service_account, iam_bootstrap_service_account], init: "", f: (prior, account) =>
     if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapAccount { account: account }, requested: ["iam.serviceAccounts.setIamPolicy"], expected: [], token: token) })
   let pool = if accounts != "" { accounts } else {
     iam_bootstrap_check_probe(resource: BootstrapPool { pool: gcp_iam_observe_dedicated_federation().pool_id }, requested: ["iam.workloadIdentityPoolProviders.create"], expected: [], token: token)
@@ -907,14 +921,14 @@ fn iam_bootstrap_current_authority_live() -> Bool {
 }
 
 // An accepted asynchronous create is followed only by bounded reads, never another create.
-fn iam_bootstrap_deny_creation_readback(token: Secret, remaining: Int) -> String {
-  match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id) {
+fn iam_bootstrap_deny_creation_readback(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
+  match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
     RestAnswered { answer: check } =>
-      if iam_bootstrap_deny_matches(rules: check.rules) { "" } else { "created deny policy differs; no capabilities granted" }
+      if iam_bootstrap_deny_rules_match(observed: check.rules, declared: policy.rules) { "" } else { concat(policy.policy_id as String, ": created deny policy differs; no capabilities granted") }
     RestRefused { refusal: check_refusal } =>
       if outcome_is_not_found(o: check_refusal) && remaining > 0 {
         if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
-          iam_bootstrap_deny_creation_readback(token: token, remaining: remaining - 1)
+          iam_bootstrap_deny_creation_readback(policy: policy, token: token, remaining: remaining - 1)
         } else { "deny creation readback wait failed" }
       } else { concat("deny creation accepted but exact readback is not established: ", rest_refusal_text(o: check_refusal)) }
   }

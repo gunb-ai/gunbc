@@ -1,0 +1,91 @@
+module test.claim.gcp_iam_bootstrap_delta_route_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpIamBindingCell, gcp_cells_bindings, gcp_cell_in, gcp_policy_cells }
+import gunbc.auth.gcp_iam_converge { PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, iam_converge_service_account, gcp_iam_observe_dedicated_federation }
+import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
+import gunbc.auth.gcp_iam_bootstrap_model { BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding, IamBootstrapResource }
+import gunbc.auth.gcp_iam_bootstrap_delta { SubjectNotBootstrapped, SubjectUnbound, SubjectAbsentOrUnboundCannotTell }
+import gunbc.auth.gcp_iam_bootstrap_delta_route {
+  BootstrapDeltaRequestBody, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, bootstrap_delta_requestable,
+  BootstrapCellsWrite, WriteBootstrapCells, BootstrapCellsAlreadyPresent, BootstrapCellsRefused, bootstrap_cells_write,
+  approved_subjects, bootstrap_delta_preimage, trust_root_subject,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── WHAT THESE CLAIMS ARE ABOUT ──────────────────────────────────────────────────────────────
+// The route's pure halves at their interfaces: what a delta may ask for, what one subject's write adds
+// given the policy iam-bootstrap reads, and what an unadmitted gate yields. The live route's
+// inhabitance -- a fresh test secret going from declared to converged with one tap -- is the live trial.
+
+data secret: NonEmptyStr = "gunbc-bootstrap-route-probe-secret"
+
+fn cell(role: String, member: String) -> GcpIamBindingCell {
+  GcpIamBindingCell { role: role, member: member, condition: none }
+}
+
+data converge_cell: GcpIamBindingCell = cell(role: "projects/gunbai-secrets/roles/gunbcIamConvergeSecretPolicy", member: "serviceAccount:iam-converge@gunbai-secrets.iam.gserviceaccount.com")
+data observe_cell: GcpIamBindingCell = cell(role: "projects/gunbai-secrets/roles/gunbcIamObserveSecret", member: "serviceAccount:iam-observe@gunbai-secrets.iam.gserviceaccount.com")
+data foreign_cell: GcpIamBindingCell = cell(role: "roles/secretmanager.secretAccessor", member: "serviceAccount:someone@gunbai-secrets.iam.gserviceaccount.com")
+
+fn policy(cells: List<GcpIamBindingCell>, etag: String) -> GcpPolicy {
+  GcpPolicy { bindings: gcp_cells_bindings(cs: cells), etag: etag, version: 3 }
+}
+
+fn subject_of(s: IamBootstrapResource, cells: List<GcpIamBindingCell>) -> SubjectNotBootstrapped {
+  SubjectNotBootstrapped { subject: s, standing: SubjectAbsentOrUnboundCannotTell { cause: "status 403" }, missing: map(cells, c => IamBootstrapBinding { resource: s, cell: c }) }
+}
+
+data body: BootstrapDeltaRequestBody = BootstrapDeltaRequestBody { subjects: [subject_of(s: BootstrapSecret { secret: secret }, cells: [converge_cell, observe_cell])] }
+
+// AN APPROVED DELTA APPLIES ONLY THE NAMED CELLS: over a policy that already holds one approved cell
+// and a foreign one, the write adds exactly the other approved cell, removes nothing, and keeps the
+// foreign cell.
+test fn an_approved_delta_applies_only_the_named_cells() -> Bool {
+  match bootstrap_cells_write(approved: [converge_cell, observe_cell], reading: PolicyObserved { policy: policy(cells: [observe_cell, foreign_cell], etag: "e1") }) {
+    WriteBootstrapCells { policy: after, added } => count(added) == 1 && gcp_cell_in(c: converge_cell, xs: added)
+      && all([converge_cell, observe_cell, foreign_cell], c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: after)))
+      && count(gcp_policy_cells(p: after)) == 3
+    _ => false
+  }
+}
+
+test fn approved_cells_already_present_write_nothing() -> Bool {
+  match bootstrap_cells_write(approved: [converge_cell], reading: PolicyObserved { policy: policy(cells: [converge_cell], etag: "e1") }) {
+    BootstrapCellsAlreadyPresent => true
+    _ => false
+  }
+}
+
+test fn an_unfenced_or_unreadable_policy_refuses_the_write() -> Bool {
+  (match bootstrap_cells_write(approved: [converge_cell], reading: PolicyObserved { policy: policy(cells: [], etag: "") }) { BootstrapCellsRefused { reason: _ } => true  _ => false })
+    && (match bootstrap_cells_write(approved: [converge_cell], reading: PolicyUnreadable { cause: "status 503" }) { BootstrapCellsRefused { reason: _ } => true  _ => false })
+    && (match bootstrap_cells_write(approved: [converge_cell], reading: PolicyResourceAbsent) { BootstrapCellsRefused { reason: _ } => true  _ => false })
+}
+
+// A REFUSED OR MISSING APPROVAL APPLIES NOTHING: the only source of effects is the admitted body.
+test fn a_refused_or_missing_approval_applies_nothing() -> Bool {
+  count(approved_subjects(admitted: false, b: body)) == 0 && count(approved_subjects(admitted: true, b: body)) == 1
+}
+
+// THE TRUST ROOTS AND THE PROJECT ARE NEVER REQUESTABLE; an ordinary secret is.
+test fn trust_roots_and_project_cells_are_unrequestable() -> Bool {
+  let roots = [
+    BootstrapAccount { account: iam_bootstrap_service_account }, BootstrapAccount { account: iam_converge_service_account },
+    BootstrapPool { pool: gcp_iam_bootstrap_wif_pool_id }, BootstrapPool { pool: gcp_iam_observe_dedicated_federation().pool_id },
+  ]
+  all(roots, r => trust_root_subject(s: r)
+    && match bootstrap_delta_requestable(subjects: [subject_of(s: r, cells: [converge_cell])]) { BootstrapDeltaUnrequestable { reasons: _ } => true  _ => false })
+    && (match bootstrap_delta_requestable(subjects: [subject_of(s: BootstrapProject, cells: [converge_cell])]) { BootstrapDeltaUnrequestable { reasons: _ } => true  _ => false })
+    && (match bootstrap_delta_requestable(subjects: body.subjects) { BootstrapDeltaRequestAdmitted { body: _ } => true  _ => false })
+}
+
+// CONSENT IS TO EXACTLY THE CELLS: one cell more or less is a different preimage.
+test fn the_preimage_binds_every_cell() -> Bool {
+  let fewer = BootstrapDeltaRequestBody { subjects: [subject_of(s: BootstrapSecret { secret: secret }, cells: [converge_cell])] }
+  bootstrap_delta_preimage(b: body) != bootstrap_delta_preimage(b: fewer)
+    && string_contains(s: bootstrap_delta_preimage(b: body), pattern: secret as String)
+}

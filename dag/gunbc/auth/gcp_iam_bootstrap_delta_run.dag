@@ -1,0 +1,89 @@
+module gunbc.auth.gcp_iam_bootstrap_delta_run
+
+import std.types { NonEmptyStr, String, Secret }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.scoped_authorization { AuthorizationRequest }
+import std.optional { Present, Absent }
+import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
+import gunbc.auth.gcp_iam_converge_run { run_attempt, observe_token, request_and_wait_as }
+import gunbc.auth.gcp_iam_bootstrap_delta {
+  BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, observe_bootstrap_delta, subject_not_bootstrapped_text,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta_route {
+  BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, bootstrap_delta_requestable,
+  BootstrapDeltaRequest, BootstrapDeltaRequested, BootstrapDeltaRequestRefused, bootstrap_delta_request, apply_approved_subjects,
+}
+
+// ── THE BOOTSTRAP DELTA RUN (fleet-converge mode gcp_iam_converge, its own job, before the converge) ─
+// One job in the gcp-iam-bootstrap environment, three steps, the converge's order (gunbc.auth.gcp_iam_converge_run):
+//   request -- as iam-observe: derive the whole roster's delta; an empty one exits clean and asks nobody;
+//              a nonempty one files ONE request over exactly its cells and writes the approved output
+//              only when the live gate admits an approval of exactly that request for this attempt.
+//   impersonate -- the workflow's second auth step federates to iam-bootstrap, only on that output.
+//   apply   -- re-derive the delta as iam-observe, re-derive the request for this attempt, re-admit
+//              the recorded approval, then iam-bootstrap applies exactly the approved cells and reads
+//              each back. The independent readback is the converge job that follows: its observer
+//              re-derives the delta, and a nonempty one there refuses the converge.
+// The approval is enforced by this reviewed code until a custom protection rule answered only on a
+// redeemed capability gates the environment (gunbc.rung_drop gcp_iam_bootstrap_approval_in_reviewed_code).
+
+data iam_bootstrap_token_env: NonEmptyStr = "IAM_BOOTSTRAP_ACCESS_TOKEN"
+
+data gcp_iam_bootstrap_delta_approved_output: String = "bootstrap_approved"
+
+data bootstrap_label: String = "gcp iam bootstrap delta"
+
+type BootstrapDeltaStep
+  = BootstrapNothingToDo
+  | BootstrapStepRefused { reason: String }
+  | BootstrapStepRequest { request: AuthorizationRequest<BootstrapDeltaRequestBody> }
+
+// THE ONE DERIVATION BOTH STEPS RUN, so the apply step's request is the request step's when nothing moved.
+fn bootstrap_delta_step(delta: BootstrapDelta) -> BootstrapDeltaStep {
+  match run_attempt() {
+    Absent => BootstrapStepRefused { reason: "GITHUB_RUN_ID is unset; this entry runs only as the fleet-converge job" }
+    Present { value: attempt } => match delta {
+      BootstrapObserved { unverified: _ } => BootstrapNothingToDo
+      BootstrapDeltaRefused { reasons } => BootstrapStepRefused { reason: concat("the delta refuses, nothing requested: ", join(reasons, "; ")) }
+      BootstrapDeltaRequired { subjects, unverified: _ } => match bootstrap_delta_requestable(subjects: subjects) {
+        BootstrapDeltaUnrequestable { reasons } => BootstrapStepRefused { reason: concat("not requestable: ", join(reasons, "; ")) }
+        BootstrapDeltaRequestAdmitted { body } => match bootstrap_delta_request(b: body, attempt: attempt) {
+          BootstrapDeltaRequestRefused { reason } => BootstrapStepRefused { reason: reason }
+          BootstrapDeltaRequested { request } => BootstrapStepRequest { request: request }
+        }
+      }
+    }
+  }
+}
+
+fn gcp_iam_bootstrap_delta_request_wet() -> ProcessExit
+{
+  match observe_token() {
+    Absent => exit_failure(reason: concat(bootstrap_label, ": no workload identity token for iam-observe; an operator token is not an admitted source"))
+    Present { value: observe } => match bootstrap_delta_step(delta: observe_bootstrap_delta(token: observe)) {
+      BootstrapNothingToDo => ExitSuccess
+      BootstrapStepRefused { reason } => exit_failure(reason: join([bootstrap_label, ": ", reason], ""))
+      BootstrapStepRequest { request } => request_and_wait_as(request: request, label: bootstrap_label,
+        body_file_name: "gcp-iam-bootstrap-delta-submit.json", output: gcp_iam_bootstrap_delta_approved_output)
+    }
+  }
+}
+
+fn gcp_iam_bootstrap_delta_apply_wet() -> ProcessExit
+{
+  match observe_token() {
+    Absent => exit_failure(reason: concat(bootstrap_label, ": no workload identity token for iam-observe"))
+    Present { value: observe } => match bootstrap_delta_step(delta: observe_bootstrap_delta(token: observe)) {
+      BootstrapNothingToDo => exit_failure(reason: concat(bootstrap_label, ": the delta emptied between the tap and the apply; the iam-bootstrap token is unused"))
+      BootstrapStepRefused { reason } => exit_failure(reason: join([bootstrap_label, ": ", reason], ""))
+      BootstrapStepRequest { request } => match approved_gcp_access_for_request(request: request, token_variable: iam_bootstrap_token_env) {
+        ApprovedGcpAccessRefused { reason } => exit_failure(reason: join([bootstrap_label, ": nothing applied: ", reason], ""))
+        ApprovedGcpAccessReady { authorization: _, token } => {
+          let refused = apply_approved_subjects(subjects: request.subject.subjects, token: token)
+          if refused != "" { exit_failure(reason: join([bootstrap_label, ": an approved subject refused; nothing after it was applied: ", refused], "")) }
+          else { ExitSuccess }
+        }
+      }
+    }
+  }
+}

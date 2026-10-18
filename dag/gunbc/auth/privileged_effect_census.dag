@@ -32,6 +32,7 @@ import gunbc.auth.managed_host_boot_federation {
 import gunbc.auth.branch_dispatch_federation {
   boot_credential_effect_on_reviewed_main, boot_credential_effect_off_reviewed_main,
 }
+import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_effect }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -1245,6 +1246,18 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       billing: NoBillingConsequence,
       witness_discharge: NoWitnessDischarge,
     },
+    realized: RealizedFederatedGrant,
+    divergence_reason: Present { value: gcp_iam_approval_enforced_in_reviewed_code },
+  },
+  // MIRRORS gcp_iam_converge_apply_wet AND DIVERGES IN THE SAME SHAPE, not a realization of (b): the
+  // selection's OperatorApprovedCapability is "one capability bound to that request's revision
+  // (approval_capability), redeemed once (approval_broker), the effect executed by the authority
+  // adapter under ITS identity". This site files and is tapped like (b), but no capability is
+  // redeemed through the broker; the job's own federated token, minted after its reviewed code admits
+  // the recorded approval, performs the effect. That is the converge's realization and its reason.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.gcp_iam_bootstrap_delta_run", decl_name: "gcp_iam_bootstrap_delta_apply_wet"),
+    effect: bootstrap_delta_privileged_effect,
     realized: RealizedFederatedGrant,
     divergence_reason: Present { value: gcp_iam_approval_enforced_in_reviewed_code },
   },

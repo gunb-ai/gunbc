@@ -7,7 +7,7 @@ import std.content_hash { Sha256Digest }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
 import gunbc.auth.approval_decision_store { request_revision_of }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, PoolReading, PoolForbidden, AccountForbidden, PoolUnreadable, PoolObservedAbsent, AccountObservedAbsent, ProvidersObserved, classify_dedicated_federation, heal_publisher_dedicated_federation, impersonation_cells, heal_publisher_impersonation_cell }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, FederationPermissionDenied, PoolReading, PoolForbidden, AccountForbidden, PoolUnreadable, PoolObservedAbsent, AccountObservedAbsent, ProvidersObserved, classify_dedicated_federation, heal_publisher_dedicated_federation, impersonation_cells, heal_publisher_impersonation_cell }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells }
 import extdeps.cloud.gcp.secret_ref { SecretRef, gcp_secret_resource_by_number }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
@@ -22,7 +22,7 @@ import gunbc.auth.gcp_iam_converge {
   iam_converge_bindings, iam_converge_bootstrap_readback, ReachProbe, ExpectAdmitted, ExpectDenied,
   ConvergeCreateRole, ConvergeProviderRole, ConvergeAccountPolicyRole, ConvergeSecretPolicyRole, pool_resource,
   iam_converge_provider_role_permissions, iam_converge_account_policy_role_permissions, iam_converge_secret_policy_role_permissions,
-  gcp_iam_observe_dedicated_federation,
+  gcp_iam_observe_dedicated_federation, not_bootstrapped_refusal,
   plan_dedicated_federation, plan_estate, gcp_iam_converge_request_over, gcp_iam_estate_diff_preimage, federation_input_refused_plan,
   gcp_iam_converge_escalation_prefix, gcp_iam_converge_targets,
   iam_converge_denied_permissions, iam_converge_create_role_permissions,
@@ -105,19 +105,17 @@ fn is_add_cells_on(e: GcpIamEffect, resource: String, etag: String) -> Bool {
 
 // ── The plan ─────────────────────────────────────────────────────────────────────────────────
 
-// A POOL OR ACCOUNT THAT IS NOT THERE REFUSES, NAMING THE BOOTSTRAP: this converge creates neither
-// (iam-observe cannot even tell absent from unbound), so the plan carries no create-pool or
-// create-service-account effect and the refusal names the ceremony entry and the stages. The
-// provider, reachable after the bootstrap, is the only create it plans.
-test fn an_absent_pool_or_account_refuses_naming_the_bootstrap() -> Bool {
+// A POOL OR ACCOUNT THAT IS NOT THERE REFUSES, POINTING AT THE DELTA: this converge creates neither,
+// and classifying the subject (absent or unbound, which cells) is gunbc.auth.gcp_iam_bootstrap_delta's,
+// so the refusal is the one typed pointer there and names no manual ceremony.
+test fn an_absent_pool_or_account_refuses_pointing_at_the_delta() -> Bool {
   match plan_dedicated_federation(
     f: heal,
     classification: FederationClassified { create_pool: true, create_provider: true, create_account: true },
     account_policy: PolicyResourceAbsent,
     secret_policies: heal_secret_readings(reading: PolicyObserved { policy: empty_policy(etag: "s0") }),
   ) {
-    GcpIamRefused { target: _, reasons: rs } =>
-      rs.length() == 2 && all(rs, r => string_contains(s: r, pattern: "iam_bootstrap_apply") && string_contains(s: r, pattern: "not yet bootstrapped"))
+    GcpIamRefused { target: _, reasons: rs } => rs == [not_bootstrapped_refusal] && !string_contains(s: join(rs, ""), pattern: "iam_bootstrap_apply")
     _ => false
   }
 }
@@ -228,22 +226,23 @@ test fn the_preimage_names_the_refused_target() -> Bool {
     && p != without
 }
 
-// A 403 ON THE POOL CANNOT DISTINGUISH ABSENT FROM UNBOUND, so the arm says both and names the
-// repair; a 404 stays absent and creatable, and an unreadable cause keeps its own text.
+// A 403 ON THE POOL IS ITS OWN TYPED ARM, never a reason string; a 404 stays absent and creatable, and
+// an unreadable cause keeps its own text.
 fn federation_reasons(pool: PoolReading) -> List<String> {
   match classify_dedicated_federation(f: heal, pool: pool, providers: ProvidersObserved { providers: [] }, account: AccountObservedAbsent) {
     FederationUnclassified { reasons: rs } => rs
+    FederationPermissionDenied { pool: _, account: _, causes: _ } => []
     FederationClassified { create_pool: _, create_provider: _, create_account: _ } => []
   }
 }
 
-test fn a_403_pool_reading_names_the_bootstrap_repair() -> Bool {
-  let rs = federation_reasons(pool: PoolForbidden { cause: "status 403: denied" })
-  rs.length() == 1
-    && string_contains(s: join(rs, ""), pattern: "absent or not yet bootstrapped")
-    && string_contains(s: join(rs, ""), pattern: "iam_bootstrap_apply")
-    && string_contains(s: join(rs, ""), pattern: "identities stage")
-    && string_contains(s: join(rs, ""), pattern: "capabilities stage")
+test fn a_403_pool_reading_is_typed_permission_denied_and_the_plan_points_at_the_delta() -> Bool {
+  let c = classify_dedicated_federation(f: heal, pool: PoolForbidden { cause: "status 403: denied" }, providers: ProvidersObserved { providers: [] }, account: AccountObservedAbsent)
+  (match c { FederationPermissionDenied { pool: p, account: a, causes: cs } => p && !a && count(cs) == 1  _ => false })
+    && match plan_dedicated_federation(f: heal, classification: c, account_policy: PolicyResourceAbsent, secret_policies: heal_secret_readings(reading: PolicyResourceAbsent)) {
+      GcpIamRefused { target: _, reasons: rs } => rs == [not_bootstrapped_refusal]
+      _ => false
+    }
 }
 
 test fn an_unreadable_pool_keeps_its_own_text_and_a_404_stays_absent() -> Bool {

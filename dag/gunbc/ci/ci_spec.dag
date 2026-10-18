@@ -1032,6 +1032,16 @@ data gunbc_ci_gcp_iam_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "gcp_iam_converge_apply_wet",
 }
 
+data gunbc_ci_gcp_iam_bootstrap_delta_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/gcp_iam_bootstrap_delta_run.dag",
+  function: "gcp_iam_bootstrap_delta_request_wet",
+}
+
+data gunbc_ci_gcp_iam_bootstrap_delta_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/gcp_iam_bootstrap_delta_run.dag",
+  function: "gcp_iam_bootstrap_delta_apply_wet",
+}
+
 data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
   function: "mtcollins1_boot_wet",
@@ -3558,6 +3568,32 @@ fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
       claim_run: false,
       receipt_rel: none
     )
+  )
+}
+
+// THE BOOTSTRAP DELTA'S REQUEST STEP IS THE SAME RUNNER as the converge's (it files over the same
+// signed route, so it needs the same submission key), and carries the same dissolution condition.
+fn gunbc_ci_gcp_iam_bootstrap_delta_request_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_submission_key_prelude(stem: "gcp-iam-bootstrap-delta"),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_gcp_iam_bootstrap_delta_request_target.entry,
+      function: gunbc_ci_gcp_iam_bootstrap_delta_request_target.function,
+      claim_run: false,
+      receipt_rel: none
+    )
+  )
+}
+
+fn gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_gcp_iam_bootstrap_delta_apply_target.entry,
+    function: gunbc_ci_gcp_iam_bootstrap_delta_apply_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

@@ -23,9 +23,9 @@ import extdeps.cloud.gcp.secret_ref { gcp_secret_resource_by_number }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number, federated_service_account_member, github_wif_issuer_uri }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells, GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
 import gunbc.auth.heal_publisher_provision {
-  DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified,
+  DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, FederationPermissionDenied,
   heal_publisher_dedicated_federation, private_heal_publisher_dedicated_federation, impersonation_cells, observe_and_classify,
-  rest_refusal_text, outcome_is_not_found, StandingPoolImpersonation, dedicated_federation_input_refusals }
+  rest_refusal_text, outcome_is_not_found, outcome_is_forbidden, StandingPoolImpersonation, dedicated_federation_input_refusals }
 import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
 import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
 import gunbc.native_product_federation { native_product_federations }
@@ -42,6 +42,7 @@ import gunbc.fleet.host_credential_custody_converge {
   OracleOciApiSigningKey, ClaudeCodeOauthHarnessToken, TrackerWebTestOauthClientSecret, GunbaiBotPublicationAppKey, FlexVastApiKey,
 }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
+import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
 import gunbc.auth.gcp_iam_converge_federation {
   gcp_iam_observe_wif_pool_id, gcp_iam_observe_wif_pool_display_name, gcp_iam_observe_wif_provider_id,
@@ -424,11 +425,16 @@ fn string_member(xs: List<String>, x: String) -> Bool {
 
 // THE RESOURCES THE CONVERGE JOB'S OWN TRUST LIVES IN: its pool, and the two accounts that pool may
 // become. None of them may carry any iam-converge binding.
+// iam-bootstrap's pool and account are trust too: a converge binding on either would let the converge
+// job make itself a principal of the bootstrap's project-parented reach
+// (test.claim.gcp_iam_bootstrap_self_grant_witness, run RED before these two rows existed).
 fn iam_converge_own_trust_resources() -> List<String> {
   [
     pool_resource(pool_id: gcp_iam_observe_dedicated_federation().pool_id),
     service_account_resource(email: iam_converge_service_account),
     service_account_resource(email: iam_observe_service_account),
+    pool_resource(pool_id: gcp_iam_bootstrap_wif_pool_id),
+    service_account_resource(email: iam_bootstrap_service_account),
   ]
 }
 
@@ -486,10 +492,10 @@ type PolicySubject
 // NO CreatePool AND NO CreateServiceAccount: iam-observe's reads are bound per pool and per account,
 // so a missing pool or account reads 403 under the converge plan and never 404, and those two
 // effects could never fire here. They implied a capability the converge does not have. Creating the
-// pool and the account is the operator bootstrap ceremony (gunbc.auth.gcp_iam_bootstrap
-// iam_bootstrap_ensure_identity, which reads under the operator's token where a 404 IS observable);
-// a target whose pool or account is not there refuses with that repair named
-// (target_not_bootstrapped_reasons). The provider is the one create reachable after the bootstrap.
+// pool and the account is iam-bootstrap's, under one approval of the bootstrap delta
+// (gunbc.auth.gcp_iam_bootstrap_delta_route, which reads where a 404 IS observable); a target whose
+// pool or account is not there refuses with not_bootstrapped_refusal. The provider is the one create
+// reachable after the bootstrap.
 type GcpIamEffect
   = CreateProvider { pool_id: NonEmptyStr, provider_id: NonEmptyStr, issuer_uri: NonEmptyStr, attribute_mapping: Map<String, String>, attribute_condition: String }
   | AddPolicyCells { subject: PolicySubject, observed_etag: String, cells: List<GcpIamBindingCell> }
@@ -592,13 +598,12 @@ fn delta_refusals(ds: List<PolicyDelta>) -> List<String> {
 // A RUN-SCOPED ACCOUNT OWNS NO STANDING CELL, so its policy is not a subject of this plan at all: an
 // add of no cells would be an effect with nothing in it, and the run cells on that policy belong to
 // gunbc.auth.branch_run_grant.
-fn target_not_bootstrapped_reasons(f: DedicatedFederation, pool_absent: Bool, account_absent: Bool) -> List<String> {
-  let repair = ". Repair: run the bootstrap ceremony, gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply, whose identities stage creates it and whose capabilities stage binds the read roles; this converge creates neither pools nor accounts"
-  concat(
-    if pool_absent { [join(["the pool ", f.pool_id as String, " is absent or not yet bootstrapped", repair], "")] } else { [] },
-    if account_absent { [join(["the service account ", f.service_account as String, " is absent or not yet bootstrapped", repair], "")] } else { [] },
-  )
-}
+// A SUBJECT THE OBSERVER CANNOT ACT ON IS NOT THIS PLAN'S TO CLASSIFY: whether it is absent or merely
+// unbound, and exactly which bootstrap cells it is missing, is
+// gunbc.auth.gcp_iam_bootstrap_delta bootstrap_delta (SubjectNotBootstrapped, over the whole roster), and
+// the bootstrap delta job ahead of this one files its approval. This plan refuses the target and points
+// there; it neither restates the classification nor names a manual repair.
+data not_bootstrapped_refusal: String = "SubjectNotBootstrapped: the observer is denied or cannot find a declared subject; gunbc.auth.gcp_iam_bootstrap_delta bootstrap_delta classifies it with its missing cells and the gcp_iam_bootstrap job files the approval that binds them"
 
 fn plan_dedicated_federation(
   f: DedicatedFederation,
@@ -608,9 +613,10 @@ fn plan_dedicated_federation(
 ) -> GcpIamPlan {
   match classification {
     FederationUnclassified { reasons: rs } => GcpIamRefused { target: f.label, reasons: rs }
+    FederationPermissionDenied { pool: _, account: _, causes: _ } => GcpIamRefused { target: f.label, reasons: [not_bootstrapped_refusal] }
     FederationClassified { create_pool: cp, create_provider: cv, create_account: ca } =>
       if cp || ca {
-        GcpIamRefused { target: f.label, reasons: target_not_bootstrapped_reasons(f: f, pool_absent: cp, account_absent: ca) }
+        GcpIamRefused { target: f.label, reasons: [not_bootstrapped_refusal] }
       } else if !grant_readings_cover(declared: f.secret_grants, readings: secret_policies) {
         GcpIamRefused { target: f.label, reasons: ["the secret policy readings are not exactly the declared grants"] }
       } else if !all(f.secret_grants, g => grant_in_fleet_project(g: g)) {
@@ -907,6 +913,8 @@ fn gcp_iam_converge_request(d: GcpIamEstateDiff, attempt: AttemptIdentity) -> Gc
 fn policy_reading_of_refusal(refusal: RestRefusal) -> PolicyReading {
   if outcome_is_not_found(o: refusal) {
     PolicyResourceAbsent
+  } else if outcome_is_forbidden(o: refusal) {
+    PolicyUnreadable { cause: not_bootstrapped_refusal }
   } else {
     PolicyUnreadable { cause: rest_refusal_text(o: refusal) }
   }
@@ -1111,6 +1119,7 @@ fn execute_target_diff(f: DedicatedFederation, d: GcpIamDiff, token: Secret) -> 
   }
   if creates.length() > 0 {
     match observe_and_classify(f: f, token: token) {
+      FederationPermissionDenied { pool: _, account: _, causes: cs } => return join([d.target, ": the created subjects are denied to the observer -- nothing granted: ", join(cs, "; ")], "")
       FederationUnclassified { reasons: rs } => return join([d.target, ": the created subjects do not read back as declared -- nothing granted: ", join(rs, "; ")], "")
       FederationClassified { create_pool: a, create_provider: b, create_account: c } =>
         if a || b || c { return concat(d.target, ": a created subject is not yet visible on readback -- nothing granted") }

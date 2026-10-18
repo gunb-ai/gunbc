@@ -1,0 +1,279 @@
+module gunbc.auth.gcp_iam_bootstrap_delta_route
+
+import std.types { Int, List, NonEmptyStr, String, Secret, Bool }
+import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
+import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
+import std.optional { Present, Absent }
+import std.list { distinct_by_key }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolOperation }
+import extdeps.cloud.gcp.iam {
+  GcpPolicy, GcpIamBindingCell, GcpIamOwnedCellUniverse, reconcile_gcp_policy, gcp_cell_in, gcp_policy_cells,
+  GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
+}
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.cloud.gcp.iam_admin
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
+import gunbc.auth.gcp_operation_wait { wif_create_operation_wait }
+import gunbc.auth.consent_preimage { consent_field, consent_list_field }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, rest_refusal_text, outcome_is_not_found }
+import gunbc.secret_provision_actuator { create_secret_container, SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown }
+import gunbc.auth.gcp_iam_converge {
+  iam_converge_service_account, iam_observe_service_account, gcp_iam_observe_dedicated_federation, cell_preimage,
+  PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable,
+}
+import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
+  iam_bootstrap_resource_key, iam_bootstrap_identity_federations,
+}
+import gunbc.auth.gcp_iam_bootstrap { iam_bootstrap_read_policy, iam_bootstrap_write_policy, BootstrapPolicyWritten, BootstrapPolicyWriteRefused }
+import gunbc.auth.gcp_iam_bootstrap_delta {
+  SubjectNotBootstrapped, BootstrapSubjectStanding, SubjectUnbound, SubjectAbsent, SubjectAbsentOrUnboundCannotTell, subject_not_bootstrapped_text,
+}
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, ApiSurface, WorkloadIdentityUnbindable, MintsNoCredential, ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
+}
+import std.human_intervention { FleetOnce }
+
+// ── THE APPROVAL ROUTE FOR A BOOTSTRAP DELTA ─────────────────────────────────────────────────
+// gunbc.auth.gcp_iam_bootstrap_delta classifies; this module turns a nonempty delta into ONE approval
+// over exactly its missing cells, and, on the operator's tap, has iam-bootstrap apply exactly those
+// cells and read them back. The cycle is the converge's (gunbc.auth.gcp_iam_converge_run): plan as
+// iam-observe, file over the diff's SHA-256, gate on the live approval at the observed instant,
+// federate as iam-bootstrap only after it, re-derive and re-admit before any effect, and hand the
+// readback to iam-observe -- the converge job's next plan, whose delta must then be empty.
+//
+// THE PRIVILEGED EFFECT, as the authorization-pattern selection sees it (rostered in
+// gunbc.auth.privileged_effect_census). Its workload identity is UNBINDABLE in the selection's sense:
+// no federated run may hold this reach unattended, which is the point of the gate.
+data bootstrap_delta_privileged_effect: PrivilegedEffect = PrivilegedEffect {
+  subject: "bind the bootstrap roster's missing cells on declared subjects (secrets, service accounts, workload identity pools), creating a subject bare when it is absent, under one operator approval of exactly those cells" as NonEmptyStr,
+  frequency: FleetOnce,
+  reversibility: ReversibleByReapply,
+  surface: ApiSurface,
+  workload_identity: WorkloadIdentityUnbindable { cause: "the reach is project-parented setIamPolicy, which no unattended federated run may hold a path to; iam-bootstrap is reachable only from the gcp-iam-bootstrap environment after a live approval" as NonEmptyStr },
+  minted_reach: MintsNoCredential,
+  billing: NoBillingConsequence,
+  witness_discharge: NoWitnessDischarge,
+}
+
+// ── What a delta may and may not ask for ─────────────────────────────────────────────────────
+// THE TRUST ROOTS ARE NEVER A DELTA SUBJECT: the three accounts (also walled by the tag-conditioned
+// deny, gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_delta_deny_rules) and the two pools whose
+// principal sets reach them (walled only here: pools take no tags). The ceremony writes them once.
+fn trust_root_subject(s: IamBootstrapResource) -> Bool {
+  match s {
+    BootstrapAccount { account } => any([iam_converge_service_account, iam_observe_service_account, iam_bootstrap_service_account], a => (a as String) == (account as String))
+    BootstrapPool { pool } => any([gcp_iam_observe_dedicated_federation().pool_id, gcp_iam_bootstrap_wif_pool_id], p => (p as String) == (pool as String))
+    BootstrapProject => false
+    BootstrapSecret { secret: _ } => false
+  }
+}
+
+// THE PROJECT'S CELLS ARE THE ROOT CEREMONY'S: iam-bootstrap is denied the project's own setIamPolicy.
+fn root_ceremony_subject(s: IamBootstrapResource) -> Bool {
+  match s {
+    BootstrapProject => true
+    BootstrapAccount { account: _ } => false
+    BootstrapPool { pool: _ } => false
+    BootstrapSecret { secret: _ } => false
+  }
+}
+
+type BootstrapDeltaRequestBody {
+  subjects: List<SubjectNotBootstrapped>
+}
+
+type BootstrapDeltaRequestable
+  = BootstrapDeltaRequestAdmitted { body: BootstrapDeltaRequestBody }
+  | BootstrapDeltaUnrequestable { reasons: List<String> }
+
+fn bootstrap_delta_requestable(subjects: List<SubjectNotBootstrapped>) -> BootstrapDeltaRequestable {
+  let roots = filter(subjects, s => trust_root_subject(s: s.subject))
+  let ceremony = filter(subjects, s => root_ceremony_subject(s: s.subject))
+  if count(subjects) == 0 { BootstrapDeltaUnrequestable { reasons: ["the delta is empty; there is nothing to approve"] } }
+  else if count(roots) > 0 || count(ceremony) > 0 {
+    BootstrapDeltaUnrequestable { reasons:
+      map(roots, s => concat(iam_bootstrap_resource_key(resource: s.subject), ": a trust root; only the first-time root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) writes it"))
+      + map(ceremony, s => concat(iam_bootstrap_resource_key(resource: s.subject), ": project cells are the root ceremony's; iam-bootstrap is denied the project's setIamPolicy")) }
+  } else { BootstrapDeltaRequestAdmitted { body: BootstrapDeltaRequestBody { subjects: subjects } } }
+}
+
+// ── The consent preimage, the digest and the request ─────────────────────────────────────────
+fn standing_preimage(s: BootstrapSubjectStanding) -> String {
+  match s {
+    SubjectUnbound => consent_field(tag: "standing", value: "unbound")
+    SubjectAbsent => consent_field(tag: "standing", value: "absent")
+    SubjectAbsentOrUnboundCannotTell { cause: _ } => consent_field(tag: "standing", value: "absent-or-unbound")
+  }
+}
+
+fn subject_preimage(s: SubjectNotBootstrapped) -> String {
+  join([
+    consent_field(tag: "subject", value: iam_bootstrap_resource_key(resource: s.subject)),
+    standing_preimage(s: s.standing),
+    consent_list_field(tag: "cell", values: map(s.missing, b => cell_preimage(c: b.cell))),
+  ], "")
+}
+
+fn bootstrap_delta_preimage(b: BootstrapDeltaRequestBody) -> String {
+  join([
+    consent_field(tag: "encoding", value: "gunbc-gcp-iam-bootstrap-delta/1"),
+    consent_field(tag: "project", value: fleet_secrets_project_id as String),
+    consent_field(tag: "actor", value: iam_bootstrap_service_account as String),
+    consent_list_field(tag: "subject", values: map(b.subjects, s => subject_preimage(s: s))),
+  ], "")
+}
+
+data gcp_iam_bootstrap_delta_escalation_prefix: NonEmptyStr = "gcp-iam-bootstrap-delta-"
+
+data gcp_iam_bootstrap_delta_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: NamespacePosition { tree: ServiceOpTree { service: "iam.googleapis.com" }, path: ["projects", fleet_secrets_project_id as String] },
+  action: "gunbc.gcp-iam-bootstrap-delta.apply" as AuthorizedAction,
+}
+
+// THE PURPOSE NAMES EVERY SUBJECT AND CELL -- secret NAMES only; no value is ever read here.
+fn bootstrap_delta_purpose(b: BootstrapDeltaRequestBody) -> NonEmptyStr {
+  join(["GCP IAM bootstrap delta (project ", fleet_secrets_project_id as String, "): ",
+    join(map(b.subjects, s => subject_not_bootstrapped_text(s: s)), " || "),
+    ". Approving lets this run, and only this run, act as ", iam_bootstrap_service_account as String,
+    " to create each absent subject bare and add exactly these cells."], "") as NonEmptyStr
+}
+
+fn bootstrap_delta_request_over(b: BootstrapDeltaRequestBody, g: Sha256Digest, attempt: AttemptIdentity) -> AuthorizationRequest<BootstrapDeltaRequestBody> {
+  AuthorizationRequest {
+    escalation_id: join([gcp_iam_bootstrap_delta_escalation_prefix as String, g.hex as String, "-", attempt as String], "") as NonEmptyStr,
+    scopes: [gcp_iam_bootstrap_delta_scope],
+    subject: b,
+    purpose: bootstrap_delta_purpose(b: b),
+    attempt: attempt,
+    intent_hash: as_content_hash_cryptographic(digest: g),
+    destructive: false,
+  }
+}
+
+type BootstrapDeltaRequest
+  = BootstrapDeltaRequested { request: AuthorizationRequest<BootstrapDeltaRequestBody> }
+  | BootstrapDeltaRequestRefused { reason: String }
+
+fn bootstrap_delta_request(b: BootstrapDeltaRequestBody, attempt: AttemptIdentity) -> BootstrapDeltaRequest {
+  match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: bootstrap_delta_preimage(b: b))))) {
+    Absent => BootstrapDeltaRequestRefused { reason: "the bootstrap delta's SHA-256 did not admit as a lowercase 64-hex digest" }
+    Present { value: g } => BootstrapDeltaRequested { request: bootstrap_delta_request_over(b: b, g: g, attempt: attempt) }
+  }
+}
+
+// ── Execution: exactly the approved cells ────────────────────────────────────────────────────
+// THE PURE HALF OF ONE SUBJECT'S WRITE: given its policy as iam-bootstrap reads it now, the write that
+// adds exactly the approved cells, or why not. Cells already present are not re-added (the observer
+// could not see them), so the write never carries a cell outside the approval and never removes one.
+type BootstrapCellsWrite
+  = WriteBootstrapCells { policy: GcpPolicy, added: List<GcpIamBindingCell> }
+  | BootstrapCellsAlreadyPresent
+  | BootstrapCellsRefused { reason: String }
+
+fn bootstrap_cells_write(approved: List<GcpIamBindingCell>, reading: PolicyReading) -> BootstrapCellsWrite {
+  match reading {
+    PolicyUnreadable { cause } => BootstrapCellsRefused { reason: concat("the policy could not be read: ", cause) }
+    PolicyResourceAbsent => BootstrapCellsRefused { reason: "the subject is absent after its creation step" }
+    PolicyObserved { policy: p } =>
+      if p.etag == "" { BootstrapCellsRefused { reason: "the policy carries no etag, so the write cannot be fenced; the root ceremony's pool initializer owns that state" } }
+      else { match reconcile_gcp_policy(observed: p, desired_owned: approved, owned_universe: GcpIamOwnedCellUniverse { cells: approved }) {
+        GcpPolicyRepresentationLossy { conditional_roles: _ } => BootstrapCellsRefused { reason: "the policy was read at a representation that mangles conditional bindings" }
+        GcpPolicyAlreadyConverged { policy: _ } => BootstrapCellsAlreadyPresent
+        GcpPolicyDeltaRequired { policy: after, added, removed, preserved: _ } =>
+          if count(removed) > 0 { BootstrapCellsRefused { reason: "reconciliation proposed a removal; consent covers additions only" } }
+          else if !all(added, c => gcp_cell_in(c: c, xs: approved)) { BootstrapCellsRefused { reason: "the write would add a cell outside the approval" } }
+          else { WriteBootstrapCells { policy: after, added: added } }
+      } }
+  }
+}
+
+// THE APPROVED BODY IS THE ONLY SOURCE OF EFFECTS: a gate that did not admit yields none.
+fn approved_subjects(admitted: Bool, b: BootstrapDeltaRequestBody) -> List<SubjectNotBootstrapped> {
+  if admitted { b.subjects } else { [] }
+}
+
+fn federation_for(s: IamBootstrapResource) -> DedicatedFederation? {
+  filter(iam_bootstrap_identity_federations(), f => match s {
+    BootstrapAccount { account } => (f.service_account as String) == (account as String)
+    BootstrapPool { pool } => (f.pool_id as String) == (pool as String)
+    BootstrapProject => false
+    BootstrapSecret { secret: _ } => false
+  }).first()
+}
+
+fn needs_existence_settled(s: BootstrapSubjectStanding) -> Bool {
+  match s {
+    SubjectUnbound => false
+    SubjectAbsent => true
+    SubjectAbsentOrUnboundCannotTell { cause: _ } => true
+  }
+}
+
+fn created_or_present(o: RestRefusal, what: String) -> String {
+  if match o { RestStatusRefused { status, body: _ } => (status as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { "" }
+  else { join([what, ": create refused: ", rest_refusal_text(o: o)], "") }
+}
+
+// iam-bootstrap reads its parent, so here a NOT_FOUND IS absence (google.aip.dev/211); a subject
+// still absent is created bare -- a secret with no version, an account with no key, a pool with no
+// provider -- and anything else stops before a policy is written.
+fn settle_existence(s: IamBootstrapResource, token: Secret) -> String {
+  match iam_bootstrap_read_policy(resource: s, token: token) {
+    PolicyObserved { policy: _ } => ""
+    PolicyUnreadable { cause } => concat(iam_bootstrap_resource_key(resource: s), concat(": unreadable to iam-bootstrap: ", cause))
+    PolicyResourceAbsent => match s {
+      BootstrapProject => "the project is absent"
+      BootstrapSecret { secret } => match create_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token) {
+        SecretContainerCreated { container: _ } => ""
+        SecretContainerCreationRefused { cause } => concat(secret as String, concat(": bare create refused: ", cause as String))
+        SecretContainerCreationOutcomeUnknown { cause } => concat(secret as String, concat(": bare create outcome unknown; nothing bound: ", cause as String))
+      }
+      BootstrapAccount { account: _ } => match federation_for(s: s) {
+        Absent => "the account is not one the roster declares"
+        Present { value: f } => match gcp.IamAdmin.CreateServiceAccount(access_token: token, project_id: fleet_secrets_project_id, account_id: f.service_account_id, display_name: f.service_account_display_name) {
+          RestAnswered { answer: _ } => ""
+          RestRefused { refusal } => created_or_present(o: refusal, what: f.service_account as String)
+        }
+      }
+      BootstrapPool { pool: _ } => match federation_for(s: s) {
+        Absent => "the pool is not one the roster declares"
+        Present { value: f } => match gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, display_name: f.pool_display_name) {
+          RestAnswered { answer: a } => wif_create_operation_wait(token: token, subject: WifPoolOperation { pool_id: f.pool_id as String }, operation_name: a.operation_name, done: a.done, error: a.error, render_refusal: o => rest_refusal_text(o: o))
+          RestRefused { refusal } => created_or_present(o: refusal, what: f.pool_id as String)
+        }
+      }
+    }
+  }
+}
+
+fn apply_subject(s: SubjectNotBootstrapped, token: Secret) -> String {
+  let key = iam_bootstrap_resource_key(resource: s.subject)
+  let approved = map(s.missing, b => b.cell)
+  let settled = if needs_existence_settled(s: s.standing) { settle_existence(s: s.subject, token: token) } else { "" }
+  if settled != "" { settled } else {
+    match bootstrap_cells_write(approved: approved, reading: iam_bootstrap_read_policy(resource: s.subject, token: token)) {
+      BootstrapCellsRefused { reason } => join([key, ": ", reason], "")
+      BootstrapCellsAlreadyPresent => ""
+      WriteBootstrapCells { policy, added: _ } => match iam_bootstrap_write_policy(resource: s.subject, policy: policy, token: token) {
+        BootstrapPolicyWriteRefused { refusal } => join([key, ": the fenced write was refused: ", rest_refusal_text(o: refusal)], "")
+        BootstrapPolicyWritten => match iam_bootstrap_read_policy(resource: s.subject, token: token) {
+          PolicyObserved { policy: checked } => if all(approved, c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: checked))) { "" }
+            else { concat(key, ": the write answered but the readback lacks an approved cell") }
+          PolicyResourceAbsent => concat(key, ": the write answered but the subject reads absent")
+          PolicyUnreadable { cause } => join([key, ": the write answered but the readback is unreadable: ", cause], "")
+        }
+      }
+    }
+  }
+}
+
+// THE APPROVED SUBJECTS, in the approved order; the first refusal stops the rest.
+fn apply_approved_subjects(subjects: List<SubjectNotBootstrapped>, token: Secret) -> String {
+  fold(subjects, init: "", f: (acc, s) => if acc != "" { acc } else { apply_subject(s: s, token: token) })
+}

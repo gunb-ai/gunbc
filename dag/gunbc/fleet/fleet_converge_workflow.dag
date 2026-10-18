@@ -108,6 +108,8 @@ import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gc
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
+import gunbc.auth.gcp_iam_bootstrap_federation { gcp_iam_bootstrap_environment, gcp_iam_bootstrap_wif_provider_resource, iam_bootstrap_service_account }
+import gunbc.auth.gcp_iam_bootstrap_delta_run { iam_bootstrap_token_env, gcp_iam_bootstrap_delta_approved_output }
 import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { ProdRoleRealization, ProdRoleRealizationRefusal, prod_role_realization, prod_role_realization_refusal_detail }
 import gunbc.auth.managed_host_boot_federation {
@@ -170,6 +172,8 @@ import gunbc.ci.ci_spec {
   gunbc_ci_mtcollins1_boot_admit_invoke,
   gunbc_ci_gcp_iam_converge_request_invoke,
   gunbc_ci_gcp_iam_converge_apply_invoke,
+  gunbc_ci_gcp_iam_bootstrap_delta_request_invoke,
+  gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke,
   gunbc_ci_org_runner_roster_observe_invoke,
   gunbc_ci_runner_guest_image_observe_invoke,
   gunbc_ci_runner_guest_image_converge_invoke,
@@ -4790,7 +4794,8 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: PrinterWorkflow), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: NamecheapObserve), needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: GcpIamConverge), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_gcp_iam_bootstrap_job_id, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: GcpIamConverge), needs: [fleet_converge_release_bins_job_id as String, fleet_converge_gcp_iam_bootstrap_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: ArrivalConverge), needs: [fleet_converge_release_bins_job_id as String] },
 ]
 
@@ -4828,6 +4833,7 @@ fn fleet_converge_jobs() -> List<Job> {
     fleet_converge_approval_broker_dark_install_job(),
     fleet_converge_microvm_controller_install_job(),
     fleet_converge_rlm_launch_deployment_receipt_job(),
+    fleet_converge_gcp_iam_bootstrap_job(),
     fleet_converge_gcp_iam_converge_job(),
     fleet_converge_namecheap_observe_job(),
     fleet_converge_arrival_converge_job(),
@@ -4985,7 +4991,12 @@ data fleet_converge_branch_run_grant_approved_if: String = join([fleet_converge_
 
 data fleet_converge_gcp_iam_approved_if: String = join(["(", fleet_converge_gcp_iam_converge_approved_if, ") || (", fleet_converge_branch_run_grant_approved_if, ")"], "")
 
-data fleet_converge_gcp_iam_job_if: String = fleet_converge_any_mode_step_if(modes: [GcpIamConverge, BranchRunGrant])
+// THE CONVERGE WAITS FOR THE BOOTSTRAP DELTA AND RUNS WHEN IT DID NOT FAIL: skipped (a branch run grant,
+// which needs no bootstrap) or succeeded (an empty delta, or an applied one). A refused or untapped
+// delta fails that job, and the converge then does not run over subjects it cannot act on.
+data fleet_converge_gcp_iam_job_if: String = join([
+  "!cancelled() && needs.", fleet_converge_release_bins_job_id as String, ".result == 'success' && needs.", fleet_converge_gcp_iam_bootstrap_job_id as String,
+  ".result != 'failure' && (", fleet_converge_any_mode_step_if(modes: [GcpIamConverge, BranchRunGrant]), ")"], "")
 
 fn fleet_converge_branch_run_grant_env(with_converge_token: Bool) -> List<YamlKeyValue> {
   concat(
@@ -5722,4 +5733,113 @@ fn fleet_converge_workspace_image_upload_step() -> Step {
 fn fleet_converge_revision_job_image_upload_step() -> Step {
   fleet_converge_guest_image_upload_step(label: "revision-job", id: "revision_job_image_upload", name: revision_job_image_artifact_name,
     paths: revision_job_image_artifact_paths(), mode: RevisionJobImageBuild)
+}
+
+// ── THE GCP IAM BOOTSTRAP DELTA JOB (gunbc.auth.gcp_iam_bootstrap_delta_run) ─────────────────
+// Before the converge, in its OWN environment, so the only job that can mint the bootstrap pool's
+// token is this one (gunbc.auth.gcp_iam_bootstrap_federation). It federates first as iam-observe
+// through that pool, derives the whole roster's delta and files one request when it is nonempty; only
+// the approved output admits the second federation, as iam-bootstrap, and the apply step re-admits
+// the approval before the token is used. The converge job after it is the independent readback.
+data fleet_converge_gcp_iam_bootstrap_job_id: NonEmptyStr = "gcp_iam_bootstrap" as NonEmptyStr
+
+data fleet_converge_gcp_iam_bootstrap_step_if: String = fleet_converge_mode_step_if(mode: GcpIamConverge)
+
+data fleet_converge_gcp_iam_bootstrap_approved_if: String = join([fleet_converge_gcp_iam_bootstrap_step_if, " && steps.gcp_iam_bootstrap_request.outputs.", gcp_iam_bootstrap_delta_approved_output, " == 'true'"], "")
+
+fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
+  match approval_broker_host_under(realization: prod_role_actuated_realization()) {
+    ApprovalBrokerHostResolved { host } => fleet_converge_gcp_iam_bootstrap_job_on(host: host)
+    ApprovalBrokerHostRefused { cause } => {
+      let refused = fleet_converge_gcp_iam_converge_refused_job(cause: cause)
+      Job { id: fleet_converge_gcp_iam_bootstrap_job_id as String, name: refused.name, runner: refused.runner, environment: refused.environment,
+        steps: refused.steps, needs: fleet_converge_job_needs(id: fleet_converge_gcp_iam_bootstrap_job_id), env: refused.env, outputs: refused.outputs,
+        if_condition: refused.if_condition, timeout_minutes: refused.timeout_minutes, continue_on_error: refused.continue_on_error,
+        concurrency: refused.concurrency, permissions: refused.permissions }
+    }
+  }
+}
+
+fn fleet_converge_gcp_iam_bootstrap_job_on(host: NonEmptyStr) -> Job {
+  Job {
+    id: fleet_converge_gcp_iam_bootstrap_job_id as String,
+    name: none,
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+    environment: Present { value: gcp_iam_bootstrap_environment as String },
+    steps: [
+      fleet_converge_event_sha_checkout_step(),
+      ci_release_bins_download_step(),
+      ci_release_bins_unpack_verify_step(),
+      ci_wif_auth_step_for(
+        name: "WIF auth (OIDC -> dedicated gcp-iam-bootstrap pool -> iam-observe SA, access token only)",
+        provider_resource: gcp_iam_bootstrap_wif_provider_resource(),
+        service_account: iam_observe_service_account as String,
+      ),
+      RunStep {
+        name: Present { value: "GCP IAM bootstrap delta: classify the whole roster as iam-observe, file one request over exactly the missing cells, wait for the operator" },
+        id: Present { value: "gcp_iam_bootstrap_request" },
+        run: gunbc_ci_gcp_iam_bootstrap_delta_request_invoke(),
+        shell: none,
+        env: Present { value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))] },
+        working_directory: none,
+        if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
+        continue_on_error: none,
+        timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() }
+      },
+      UsesStep {
+        name: Present { value: "WIF auth (OIDC -> dedicated gcp-iam-bootstrap pool -> iam-bootstrap SA; only after a live approval)" },
+        id: Present { value: "wif_auth_iam_bootstrap" },
+        uses: google_auth_action,
+        with: Present {
+          value: [
+            kv(key: "workload_identity_provider", value: yaml_string(s: gcp_iam_bootstrap_wif_provider_resource())),
+            kv(key: "service_account", value: yaml_string(s: iam_bootstrap_service_account as String)),
+            kv(key: "token_format", value: yaml_string(s: "access_token")),
+            kv(key: "access_token_lifetime", value: yaml_string(s: concat(to_string(second_count(s: iam_converge_token_lifetime)), "s"))),
+            kv(key: "create_credentials_file", value: yaml_bool(b: false))
+          ]
+        },
+        env: none,
+        if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_approved_if },
+        continue_on_error: none,
+        timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+      },
+      RunStep {
+        name: Present { value: "GCP IAM bootstrap delta: re-derive, re-admit the approval, apply exactly the approved cells as iam-bootstrap and read each back" },
+        id: Present { value: "gcp_iam_bootstrap_apply" },
+        run: gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke(),
+        shell: none,
+        env: Present { value: [
+          kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+          kv(key: iam_bootstrap_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_bootstrap.outputs.access_token }}")),
+        ] },
+        working_directory: none,
+        if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_approved_if },
+        continue_on_error: none,
+        timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 10 }
+      },
+    ],
+    needs: fleet_converge_job_needs(id: fleet_converge_gcp_iam_bootstrap_job_id),
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
+    timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() + 20 },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: "gcp-iam-converge",
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: Present { value: PermRead },
+        id_token: Present { value: PermWrite },
+      }
+    }
+  }
 }

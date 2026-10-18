@@ -10,6 +10,15 @@ import gunbc.auth.gcp_iam_converge {
   iam_converge_bindings_over, iam_converge_reach_excludes_its_own_trust_over, iam_converge_reach_excludes_its_own_trust,
 }
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, iam_bootstrap_service_account_id, gcp_iam_bootstrap_wif_pool_id }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  iam_bootstrap_delta_role_permissions, iam_bootstrap_denied_permissions, iam_bootstrap_withheld_undeniable_permissions,
+  iam_bootstrap_delta_role_withholds_its_boundary, iam_bootstrap_delta_deny_rules, deny_permission_iam_spelling, iam_bootstrap_model_admitted,
+  iam_bootstrap_capability_bindings_over, IamBootstrapBinding, BootstrapProject,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_effect }
+import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, DivergesWithReason, gcp_iam_approval_enforced_in_reviewed_code }
+import gunbc.auth.authorization_pattern_selection { select_authorization_pattern, PatternSelected, OperatorApprovedCapability }
+import std.decl_ref { declaration_ref_display_key }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -55,4 +64,45 @@ test fn a_roster_edit_naming_the_bootstrap_pool_cannot_reach_it() -> Bool {
 // reach check refusing everything.
 test fn an_ordinary_roster_edit_is_admitted() -> Bool {
   reach_with(extra: target_naming(account: "unrelated@gunbai-secrets.iam.gserviceaccount.com", pool: "an-unrelated-pool"))
+}
+
+// ── iam-bootstrap's own reach: fixed, denied where deniable, and not a roster input ────────────
+
+fn bootstrap_project_cells(rs: List<IamBootstrapBinding>) -> List<String> {
+  map(filter(rs, b => match b.resource { BootstrapProject => true  _ => false }), b => b.cell.role)
+}
+
+// A ROSTER EDIT ALONE CANNOT ADD TO iam-bootstrap's REACH: its role is a constant, and widening every
+// roster input leaves the project cells -- the only cells that grant reach -- exactly as they were.
+test fn a_roster_edit_cannot_widen_the_bootstrap_identitys_reach() -> Bool {
+  let before = iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+  let widened = iam_bootstrap_capability_bindings_over(
+    targets: gcp_iam_converge_targets + [target_naming(account: "unrelated@gunbai-secrets.iam.gserviceaccount.com", pool: "an-unrelated-pool")],
+    grant_set_secrets: gcp_iam_converge_grant_set_secrets() + ["gunbc-self-grant-probe-secret"])
+  bootstrap_project_cells(rs: before) == bootstrap_project_cells(rs: widened)
+}
+
+// EVERYTHING DENIABLE IS DENIED AND NOTHING DENIED OR WITHHELD IS IN THE ALLOW ROLE.
+test fn the_bootstrap_identitys_boundary_is_denied_or_withheld() -> Bool {
+  let denied = map(iam_bootstrap_denied_permissions, p => deny_permission_iam_spelling(p: p))
+  iam_bootstrap_delta_role_withholds_its_boundary() && iam_bootstrap_model_admitted()
+    && all(["secretmanager.versions.access", "iam.serviceAccounts.getAccessToken", "iam.serviceAccounts.actAs", "iam.serviceAccounts.signBlob",
+      "iam.serviceAccounts.signJwt", "iam.serviceAccountKeys.create", "cloudresourcemanager.projects.setIamPolicy", "iam.roles.update", "iam.roles.create"], p => any(denied, d => d == p))
+    && count(iam_bootstrap_delta_deny_rules()) == 1
+}
+
+// RED CONTROL FOR THE BOUNDARY CHECK: an allow role that carried a denied permission is refused.
+test fn a_role_carrying_a_denied_permission_is_caught() -> Bool {
+  let denied = map(iam_bootstrap_denied_permissions, p => deny_permission_iam_spelling(p: p))
+  let leaky = iam_bootstrap_delta_role_permissions + ["secretmanager.versions.access"]
+  any(leaky, p => any(denied, d => d == p))
+}
+
+// THE CENSUS ROW MIRRORS THE CONVERGE'S: the selection asks for an operator-approved capability, the
+// site realizes a gated federated grant, and the divergence carries the converge's stated reason.
+test fn the_bootstrap_delta_census_row_diverges_with_the_converges_reason() -> Bool {
+  let rows = filter(privileged_effect_census, r => declaration_ref_display_key(ref: r.site) == "gunbc.auth.gcp_iam_bootstrap_delta_run::gcp_iam_bootstrap_delta_apply_wet")
+  count(rows) == 1
+    && (match select_authorization_pattern(e: bootstrap_delta_privileged_effect) { PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true  _ => false })
+    && all(rows, r => match site_verdict(row: r).conformance { DivergesWithReason { reason } => reason == gcp_iam_approval_enforced_in_reviewed_code  _ => false })
 }

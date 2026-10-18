@@ -12,11 +12,15 @@ import gunbc.auth.gcp_iam_converge {
   iam_observe_service_account, iam_converge_service_account, iam_converge_service_account_id,
   gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, iam_converge_reach_excludes_its_own_trust, same_key_set, cell_preimage,
 }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation, impersonation_cells }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, impersonation_cells, StandingPoolImpersonation, standing_impersonation_cell }
 import gunbc.auth.gcp_secret_access { secret_access_desired_cells }
+import gunbc.auth.gcp_iam_bootstrap_federation {
+  iam_bootstrap_service_account, iam_bootstrap_service_account_id, gcp_iam_bootstrap_wif_pool_id, gcp_iam_bootstrap_wif_provider_id,
+  gcp_iam_bootstrap_wif_pool_display_name, gcp_iam_bootstrap_wif_attribute_mapping, gcp_iam_bootstrap_wif_attribute_condition, gcp_iam_bootstrap_wif_principal_set,
+}
 
 // Bootstrap owns the job's trust. Ongoing iam-converge never receives authority over these subjects.
-type IamBootstrapRole = BootstrapApplyRole { role: IamConvergeRole } | BootstrapObservePool | BootstrapObserveAccount | BootstrapObserveSecret | BootstrapProbeToken
+type IamBootstrapRole = BootstrapApplyRole { role: IamConvergeRole } | BootstrapObservePool | BootstrapObserveAccount | BootstrapObserveSecret | BootstrapProbeToken | BootstrapDeltaRole
 
 type IamBootstrapResource = BootstrapProject | BootstrapPool { pool: NonEmptyStr } | BootstrapAccount { account: ServiceAccountEmail } | BootstrapSecret { secret: NonEmptyStr }
 
@@ -25,7 +29,7 @@ type IamBootstrapBinding { resource: IamBootstrapResource, cell: GcpIamBindingCe
 data iam_bootstrap_roles: List<IamBootstrapRole> = [
   BootstrapApplyRole { role: ConvergeCreateRole }, BootstrapApplyRole { role: ConvergeProviderRole },
   BootstrapApplyRole { role: ConvergeAccountPolicyRole }, BootstrapApplyRole { role: ConvergeSecretPolicyRole },
-  BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret, BootstrapProbeToken,
+  BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret, BootstrapProbeToken, BootstrapDeltaRole,
 ]
 
 fn iam_bootstrap_project_role_name(role_id: String) -> NonEmptyStr {
@@ -39,6 +43,7 @@ fn iam_bootstrap_role_name(role: IamBootstrapRole) -> NonEmptyStr {
     BootstrapObserveAccount => iam_bootstrap_project_role_name(role_id: "gunbcIamObserveAccount")
     BootstrapObserveSecret => iam_bootstrap_project_role_name(role_id: "gunbcIamObserveSecret")
     BootstrapProbeToken => iam_bootstrap_project_role_name(role_id: "gunbcIamBootstrapProbeToken")
+    BootstrapDeltaRole => iam_bootstrap_project_role_name(role_id: "gunbcIamBootstrapDelta")
   }
 }
 
@@ -55,6 +60,7 @@ fn iam_bootstrap_role_permissions(role: IamBootstrapRole) -> List<String> {
     BootstrapObserveAccount => filter(iam_observe_role_permissions, p => starts_with(s: p, prefix: "iam.serviceAccounts"))
     BootstrapObserveSecret => filter(iam_observe_role_permissions, p => starts_with(s: p, prefix: "secretmanager."))
     BootstrapProbeToken => ["iam.serviceAccounts.getAccessToken"]
+    BootstrapDeltaRole => iam_bootstrap_delta_role_permissions
   }
 }
 
@@ -74,6 +80,18 @@ fn iam_bootstrap_apply_federation() -> DedicatedFederation {
     service_account_member: federated_service_account_member(email: iam_converge_service_account), secret_grants: [] }
 }
 
+// THE BOOTSTRAP DELTA'S OWN FEDERATION (gunbc.auth.gcp_iam_bootstrap_federation): its own pool,
+// pinned to the gcp-iam-bootstrap environment, and the one account that pool may become. The ceremony
+// creates it and writes its trust once, like the converge job's own two; nothing else ever does.
+fn iam_bootstrap_delta_federation() -> DedicatedFederation {
+  DedicatedFederation { label: "gcp iam bootstrap delta federation", pool_id: gcp_iam_bootstrap_wif_pool_id, pool_display_name: gcp_iam_bootstrap_wif_pool_display_name,
+    provider_id: gcp_iam_bootstrap_wif_provider_id, attribute_mapping: gcp_iam_bootstrap_wif_attribute_mapping, attribute_condition: gcp_iam_bootstrap_wif_attribute_condition(),
+    impersonation: StandingPoolImpersonation { principal_set: gcp_iam_bootstrap_wif_principal_set() },
+    service_account: iam_bootstrap_service_account, service_account_id: iam_bootstrap_service_account_id,
+    service_account_display_name: "GCP IAM bootstrap delta (WIF-only, approval-gated, no keys)",
+    service_account_member: federated_service_account_member(email: iam_bootstrap_service_account), secret_grants: [] }
+}
+
 // One row per federation the identities stage may create. own_trust marks the job's own two, whose
 // providers and workload trust the bootstrap also owns; a target gets a bare pool and account only.
 type IamBootstrapIdentity { federation: DedicatedFederation, own_trust: Bool }
@@ -85,7 +103,7 @@ fn iam_bootstrap_identity_population() -> List<IamBootstrapIdentity> {
 }
 
 fn iam_bootstrap_identity_population_over(targets: List<DedicatedFederation>) -> List<IamBootstrapIdentity> {
-  map([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], f => IamBootstrapIdentity { federation: f, own_trust: true })
+  map([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation(), iam_bootstrap_delta_federation()], f => IamBootstrapIdentity { federation: f, own_trust: true })
     + map(targets, f => IamBootstrapIdentity { federation: f, own_trust: false })
 }
 
@@ -116,7 +134,10 @@ fn iam_bootstrap_capability_bindings() -> List<IamBootstrapBinding> {
 // THE ROSTER AS A FUNCTION OF ITS TWO DECLARED INPUTS, so the population the delta classifies is the
 // one these inputs derive and a witness can add a subject to either input and read what it costs.
 fn iam_bootstrap_capability_bindings_over(targets: List<DedicatedFederation>, grant_set_secrets: List<NonEmptyStr>) -> List<IamBootstrapBinding> {
-  let apply = [iam_bootstrap_binding(resource: BootstrapProject, role: BootstrapApplyRole { role: ConvergeCreateRole }, account: iam_converge_service_account)]
+  let apply = [
+      iam_bootstrap_binding(resource: BootstrapProject, role: BootstrapApplyRole { role: ConvergeCreateRole }, account: iam_converge_service_account),
+      iam_bootstrap_binding(resource: BootstrapProject, role: BootstrapDeltaRole, account: iam_bootstrap_service_account),
+    ]
     + flat_map(targets, f => [
       iam_bootstrap_binding(resource: BootstrapPool { pool: f.pool_id }, role: BootstrapApplyRole { role: ConvergeProviderRole }, account: iam_converge_service_account),
       iam_bootstrap_binding(resource: BootstrapAccount { account: f.service_account }, role: BootstrapApplyRole { role: ConvergeAccountPolicyRole }, account: iam_converge_service_account),
@@ -151,6 +172,15 @@ fn iam_bootstrap_bound_secrets() -> List<NonEmptyStr> {
 fn iam_bootstrap_trust_bindings() -> List<IamBootstrapBinding> {
   flat_map(filter(iam_bootstrap_identity_population(), i => i.own_trust), i =>
     map(impersonation_cells(f: i.federation), c => IamBootstrapBinding { resource: BootstrapAccount { account: i.federation.service_account }, cell: c }))
+    + [iam_bootstrap_delta_observer_trust()]
+}
+
+// THE BOOTSTRAP DELTA JOB ALSO PLANS AND RE-PLANS AS iam-observe, from its own environment, so the
+// bootstrap pool's principal set may become iam-observe -- read-only, the same reader the converge
+// job uses -- and the request the apply step re-derives is the one the operator approved.
+fn iam_bootstrap_delta_observer_trust() -> IamBootstrapBinding {
+  IamBootstrapBinding { resource: BootstrapAccount { account: iam_observe_service_account },
+    cell: standing_impersonation_cell(principal_set: gcp_iam_bootstrap_wif_principal_set()) }
 }
 
 data iam_bootstrap_deny_policy_id: NonEmptyStr = "gunbc-iam-converge-boundary"
@@ -166,23 +196,115 @@ fn iam_bootstrap_deny_rules() -> List<GcpDenyPolicyRule> {
   } } }]
 }
 
-fn iam_bootstrap_deny_matches(rules: List<GcpDenyPolicyRule>?) -> Bool {
-  match rules {
+// ONE DENY POLICY THE CEREMONY INSTALLS: its id at the project attachment point and its exact rules.
+type IamBootstrapDenyPolicy { policy_id: NonEmptyStr, rules: List<GcpDenyPolicyRule> }
+
+fn iam_bootstrap_deny_policies() -> List<IamBootstrapDenyPolicy> {
+  [
+    IamBootstrapDenyPolicy { policy_id: iam_bootstrap_deny_policy_id, rules: iam_bootstrap_deny_rules() },
+    IamBootstrapDenyPolicy { policy_id: iam_bootstrap_delta_deny_policy_id, rules: iam_bootstrap_delta_deny_rules() },
+  ]
+}
+
+fn deny_rule_matches(observed: GcpDenyRule, declared: GcpDenyRule) -> Bool {
+  same_key_set(a: observed.denied_principals, b: declared.denied_principals)
+    && same_key_set(a: observed.denied_permissions, b: declared.denied_permissions)
+    && match observed.exception_principals { Absent => true Present { value: xs } => count(xs) == 0 }
+    && match observed.exception_permissions { Absent => true Present { value: xs } => count(xs) == 0 }
+    && match observed.denial_condition { Absent => true  Present { value: _ } => false }
+}
+
+// EXACTLY THE DECLARED RULES, no more: an existing policy that differs is refused, never adopted.
+fn iam_bootstrap_deny_rules_match(observed: List<GcpDenyPolicyRule>?, declared: List<GcpDenyPolicyRule>) -> Bool {
+  match observed {
     Absent => false
-    Present { value: rows } => count(rows) == 1 && all(rows, row => match row.deny_rule {
+    Present { value: rows } => count(rows) == count(declared) && all(declared, d => match d.deny_rule {
       Absent => false
-      Present { value: rule } => same_key_set(a: rule.denied_principals,
-        b: [concat("principal://iam.googleapis.com/projects/-/serviceAccounts/", iam_converge_service_account as String)])
-        && same_key_set(a: rule.denied_permissions, b: iam_converge_denied_permissions)
-        && match rule.exception_principals { Absent => true Present { value: xs } => count(xs) == 0 }
-        && match rule.exception_permissions { Absent => true Present { value: xs } => count(xs) == 0 }
-        && match rule.denial_condition { Absent => true  Present { value: _ } => false }
+      Present { value: want } => any(rows, row => match row.deny_rule { Absent => false  Present { value: got } => deny_rule_matches(observed: got, declared: want) })
     })
   }
+}
+
+fn iam_bootstrap_deny_matches(rules: List<GcpDenyPolicyRule>?) -> Bool {
+  iam_bootstrap_deny_rules_match(observed: rules, declared: iam_bootstrap_deny_rules())
 }
 
 fn iam_bootstrap_model_admitted() -> Bool {
   iam_converge_reach_excludes_its_own_trust()
     && all(iam_bootstrap_roles, r => count(iam_bootstrap_role_permissions(role: r)) > 0)
-    && count(iam_bootstrap_trust_bindings()) == 2
+    && count(iam_bootstrap_trust_bindings()) == 4
+    && iam_bootstrap_delta_role_withholds_its_boundary()
+}
+
+// ── iam-bootstrap's reach and its boundary ───────────────────────────────────────────────────
+// THE ALLOW ROLE, BOUND ON THE PROJECT: create a missing subject bare, read its policy, and add the
+// roster's cells to it. Project-parented because the subjects it serves are named after it is
+// provisioned (gunbc.auth.gcp_iam_bootstrap_federation states the regress that makes this standing).
+// It holds no provider permission: providers decide who may federate and stay the converge's
+// approval-gated create.
+data iam_bootstrap_delta_role_permissions: List<String> = [
+  "secretmanager.secrets.create", "secretmanager.secrets.get", "secretmanager.secrets.getIamPolicy", "secretmanager.secrets.setIamPolicy",
+  "iam.serviceAccounts.create", "iam.serviceAccounts.get", "iam.serviceAccounts.getIamPolicy", "iam.serviceAccounts.setIamPolicy",
+  "iam.workloadIdentityPools.create", "iam.workloadIdentityPools.get", "iam.workloadIdentityPools.getIamPolicy", "iam.workloadIdentityPools.setIamPolicy",
+]
+
+// EVERYTHING DENIABLE PROJECT-WIDE IS DENIED, in the deny API's spelling. Each was found on GCP's
+// deny-supported list (https://cloud.google.com/iam/docs/deny-permissions-support, read 2026-10-18):
+// payload reads and writes, every way to become or sign as an account, account keys, the project's
+// own policy, custom roles (its own included), and any change to who may federate.
+data iam_bootstrap_denied_permissions: List<String> = [
+  "secretmanager.googleapis.com/versions.access",
+  "secretmanager.googleapis.com/versions.add",
+  "iam.googleapis.com/serviceAccounts.actAs",
+  "iam.googleapis.com/serviceAccounts.getAccessToken",
+  "iam.googleapis.com/serviceAccounts.getOpenIdToken",
+  "iam.googleapis.com/serviceAccounts.implicitDelegation",
+  "iam.googleapis.com/serviceAccounts.signBlob",
+  "iam.googleapis.com/serviceAccounts.signJwt",
+  "iam.googleapis.com/serviceAccountKeys.create",
+  "cloudresourcemanager.googleapis.com/projects.setIamPolicy",
+  "iam.googleapis.com/roles.create",
+  "iam.googleapis.com/roles.update",
+  "iam.googleapis.com/roles.delete",
+  "iam.googleapis.com/workloadIdentityPoolProviders.create",
+  "iam.googleapis.com/workloadIdentityPoolProviders.update",
+  "iam.googleapis.com/workloadIdentityPools.update",
+]
+
+// WITHHELD BUT NOT DENIABLE: deny policies and tag bindings do not appear on the deny-supported list
+// (same page, same read), so their exclusion rests on the allow role alone, and
+// iam_bootstrap_delta_role_withholds_its_boundary is what executes it.
+data iam_bootstrap_withheld_undeniable_permissions: List<String> = [
+  "iam.denypolicies.create", "iam.denypolicies.update", "iam.denypolicies.delete",
+  "resourcemanager.tagValueBindings.create", "resourcemanager.tagValueBindings.delete",
+]
+
+// The deny API spells a permission service/resource.verb; the IAM permission spelling drops the
+// ".googleapis.com/" and keeps the leading service name (secretmanager.versions.access).
+fn deny_permission_iam_spelling(p: String) -> String {
+  replace(s: p, from: ".googleapis.com/", to: ".")
+}
+
+fn iam_bootstrap_delta_role_withholds_its_boundary() -> Bool {
+  let denied = map(iam_bootstrap_denied_permissions, p => deny_permission_iam_spelling(p: p))
+  !any(iam_bootstrap_delta_role_permissions, p => any(denied, d => d == p) || any(iam_bootstrap_withheld_undeniable_permissions, w => w == p))
+}
+
+// THE TRUST ROOTS ARE WALLED BY THE ROUTE'S REFUSAL TODAY (gunbc.auth.gcp_iam_bootstrap_delta_route
+// trust_root_subject). Denial conditions "only recognize resource tag functions"
+// (https://cloud.google.com/iam/docs/deny-overview, read 2026-10-18); service accounts are taggable and
+// workload identity pools are not listed
+// (https://cloud.google.com/resource-manager/docs/tags/tags-supported-services, read 2026-10-18). So the
+// three accounts can climb to a tag-conditioned deny once the ceremony binds a trust-root tag on them,
+// and the two pools cannot: gunbc.rung_drop gcp_iam_bootstrap_trust_root_wall_in_code. No conditioned
+// rule is installed before its tag exists, because a deny matching no resource would be inert.
+data iam_bootstrap_delta_deny_policy_id: NonEmptyStr = "gunbc-iam-bootstrap-boundary"
+
+fn iam_bootstrap_delta_principal() -> String {
+  concat("principal://iam.googleapis.com/projects/-/serviceAccounts/", iam_bootstrap_service_account as String)
+}
+
+fn iam_bootstrap_delta_deny_rules() -> List<GcpDenyPolicyRule> {
+  [GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule { denied_principals: [iam_bootstrap_delta_principal()],
+    denied_permissions: iam_bootstrap_denied_permissions, exception_principals: none, exception_permissions: none, denial_condition: none } } }]
 }
