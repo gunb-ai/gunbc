@@ -1,7 +1,7 @@
 module v2.std.diagnostic
 
 import std.types { List }
-import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list }
+import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.node { Node, Symbol, symbol_lexeme }
 

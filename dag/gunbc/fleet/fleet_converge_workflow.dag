@@ -22,7 +22,7 @@ import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
 import gunbc.live_deploy.desired { prod_role_actuated_realization }
-import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, interpolate, serialize_expression }
+import extdeps.github.expressions { Expression, ContextAccess, Github, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, interpolate, serialize_expression }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
 import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
@@ -129,6 +129,8 @@ import gunbc.ci.ci_spec {
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
+  gunbc_ci_fleet_converge_plan_revision_invoke,
+  gunbc_ci_fleet_converge_checkout_verify_invoke,
   gunbc_ci_org_actions_inspect_invoke,
   gunbc_ci_app_control_plane_inspect_invoke,
   gunbc_ci_app_key_version_verify_mint_script,
@@ -965,7 +967,7 @@ fn fleet_converge_host_reset_return_job() -> Job {
     environment: none,
     steps: concat(
       concat(
-        fleet_converge_consumer_prelude_steps(),
+        fleet_converge_event_sha_consumer_prelude_steps(),
         [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step()]
       ),
       [fleet_converge_host_reset_return_step(), fleet_converge_host_reset_return_receipt_upload_step()]
@@ -1044,7 +1046,7 @@ data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"se
 // visible as such rather than silently costing the prelude allowance.
 fn fleet_converge_build_job_steps() -> List<Step> {
   concat(
-    ci_prelude_steps_with_checkout(checkout: fleet_converge_checkout_step(), exact_head_preflight: []),
+    ci_prelude_steps_with_checkout(checkout: fleet_converge_build_checkout_step(), exact_head_preflight: []),
     fleet_converge_build_job_own_steps(),
   )
 }
@@ -1187,10 +1189,131 @@ fn fleet_converge_build_job() -> Job {
     needs: fleet_converge_job_needs(id: fleet_converge_release_bins_job_id),
     env: none,
     outputs: Present {
-      value: [kv(key: release_bins_key_job_output, value: yaml_string(s: release_bins_key_expression()))]
+      value: [
+        kv(key: release_bins_key_job_output, value: yaml_string(s: release_bins_key_expression())),
+        kv(key: fleet_converge_plan_revision_output_name, value: yaml_string(s: interpolate(expression: fleet_converge_build_checkout_ref))),
+      ]
     },
     if_condition: Present { value: fleet_converge_build_job_if },
     timeout_minutes: Present { value: gunbc_fleet_converge_build_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: Present { value: PermRead },
+        id_token: none,
+      }
+    },
+  }
+}
+
+// ── THE PLAN-REVISION JOB ───────────────────────────────────────────────────────────────────
+// It exists in every run and does work in two modes. A job skipped by its own `if` skips every job
+// that needs it, so the job always runs and its steps carry the mode condition; in any other mode it
+// is a checkout and nothing else. In apply and dashboard_deploy it builds the compiler pair itself
+// (it cannot wait on `build`, which needs its answer), downloads the plan artifact by the run id the
+// dispatch names, and runs gunbc.fleet.fleet_converge_plan_revision resolve_plan_revision, whose
+// admitted revision is this job's one output.
+data fleet_converge_plan_revision_step_if: String = fleet_converge_any_mode_step_if(modes: [FleetApply, DashboardDeploy])
+
+fn fleet_converge_plan_revision_pair_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Build the compiler pair that resolves the plan's revision (claim_executor + gunbc)" },
+    id: Present { value: "pair_build" },
+    run: concat(compiler_pair_release_product().build_line, "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_plan_revision_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_release_build_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_plan_revision_download_step() -> Step {
+  UsesStep {
+    name: Present { value: "Download the plan artifact (carries the plan receipt) from the plan run" },
+    id: Present { value: "plan_revision_download" },
+    uses: download_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: gunbc_fleet_converge_plan_artifact_name)),
+        kv(key: "path", value: yaml_string(s: fleet_converge_plan_artifact_dir)),
+        kv(key: "github-token", value: yaml_string(s: "${{ secrets.GITHUB_TOKEN }}")),
+        kv(key: "run-id", value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+      ]
+    },
+    env: none,
+    if_condition: Present { value: fleet_converge_plan_revision_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_plan_revision_resolve_step() -> Step {
+  RunStep {
+    name: Present { value: "Admit the plan run's revision (receipt == GitHub's head_sha, on the default branch)" },
+    id: Present { value: "plan_revision" },
+    run: gunbc_ci_fleet_converge_plan_revision_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+        kv(key: fleet_converge_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_plan_revision_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE READBACK: the checkout this job is about to execute is the tree the plan receipt names. Placed
+// after the plan artifact is on disk and before anything actuates.
+fn fleet_converge_checkout_verify_step(if_condition: String?) -> Step {
+  RunStep {
+    name: Present { value: "Verify the checkout is the plan receipt's revision" },
+    id: Present { value: "checkout_verify" },
+    run: gunbc_ci_fleet_converge_checkout_verify_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: if_condition,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_plan_revision_steps() -> List<Step> {
+  concat(
+    ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
+    [
+      fleet_converge_plan_revision_pair_build_step(),
+      fleet_converge_plan_revision_download_step(),
+      fleet_converge_plan_revision_resolve_step(),
+    ]
+  )
+}
+
+fn fleet_converge_plan_revision_job() -> Job {
+  let steps = fleet_converge_plan_revision_steps()
+  Job {
+    id: fleet_converge_plan_revision_job_id as String,
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    environment: none,
+    steps: steps,
+    needs: fleet_converge_job_needs(id: fleet_converge_plan_revision_job_id),
+    env: none,
+    outputs: Present {
+      value: [kv(key: fleet_converge_plan_revision_output_name, value: yaml_string(s: "${{ steps.plan_revision.outputs.revision }}"))]
+    },
+    if_condition: none,
+    timeout_minutes: Present { value: fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present {
@@ -3460,6 +3583,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
           path: fleet_converge_apply_receipt_dir,
           run_id_expression: "${{ github.event.inputs.apply_workflow_run_id }}",
         ),
+        fleet_converge_checkout_verify_step(if_condition: none),
         fleet_converge_dashboard_deploy_step(),
         fleet_converge_receipt_upload_step(
           id: "dashboard_receipt_upload",
@@ -3558,7 +3682,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
     steps: concat(
-      fleet_converge_consumer_prelude_steps(),
+      fleet_converge_event_sha_consumer_prelude_steps(),
       [
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
@@ -3592,7 +3716,7 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
     steps: concat(
-      fleet_converge_consumer_prelude_steps(),
+      fleet_converge_event_sha_consumer_prelude_steps(),
       [
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
@@ -3809,14 +3933,41 @@ data fleet_converge_event_sha: Expression = ContextAccess { context: Github, pat
 // A DISPATCH CHECKS OUT THE EVENT SHA. expected_revision is a cross-check (admit_optional_expected_revision),
 // not a second revision authority and not a checkout selector (operator 2026-10-10). Apply's R is the
 // admitted plan receipt, not this expression.
-data fleet_converge_checkout_ref: Expression = fleet_converge_event_sha
+//
+// APPLY AND DASHBOARD_DEPLOY EXECUTE AT THE PLAN RUN'S REVISION R, NOT AT THE DISPATCHED COMMIT.
+// Plan and apply are separate runs and main moves between them; both are dispatched from main so
+// sign-in passes, but apply must run the bytes that were planned. The `plan-revision` job
+// (gunbc.fleet.fleet_converge_plan_revision resolve_plan_revision) admits R from GitHub's own record
+// of the plan run and emits it as a job output; `build` checks out and builds at it and re-exports it,
+// and every consumer checks out `needs.build.outputs.revision`, so the bins and the tree that runs
+// them are one revision. In every other mode the output is empty and the dispatched commit (the event
+// sha) is checked out, unchanged. The ref is job output, never a dispatch input: no typed text
+// selects these bytes.
+data fleet_converge_plan_revision_job_id: NonEmptyStr = "plan-revision" as NonEmptyStr
+
+data fleet_converge_plan_revision_output_name: String = "revision"
+
+data fleet_converge_plan_revision_output: Expression = ContextAccess {
+  context: Needs,
+  path: [fleet_converge_plan_revision_job_id as String, "outputs", fleet_converge_plan_revision_output_name],
+}
+
+data fleet_converge_build_revision_output: Expression = ContextAccess {
+  context: Needs,
+  path: ["build", "outputs", fleet_converge_plan_revision_output_name],
+}
+
+// build's own checkout: the plan's revision when plan-revision admitted one, else the event sha.
+data fleet_converge_build_checkout_ref: Expression = LogicalOr { left: fleet_converge_plan_revision_output, right: fleet_converge_event_sha }
+
+data fleet_converge_checkout_ref: Expression = LogicalOr { left: fleet_converge_build_revision_output, right: fleet_converge_event_sha }
 
 data fleet_converge_checkout_ref_expr: String = interpolate(expression: fleet_converge_checkout_ref)
 
 // THE BOOT JOB'S OWN CHECKOUT NAMES ONLY THE EVENT SHA, with no input in the expression at all.
 data fleet_converge_event_sha_checkout_ref_expr: String = interpolate(expression: fleet_converge_event_sha)
 
-data fleet_converge_declared_checkout_refs: List<Expression> = [fleet_converge_checkout_ref, fleet_converge_event_sha]
+data fleet_converge_declared_checkout_refs: List<Expression> = [fleet_converge_checkout_ref, fleet_converge_build_checkout_ref, fleet_converge_event_sha]
 
 fn fleet_converge_event_sha_checkout_step() -> Step {
   UsesStep {
@@ -3854,8 +4005,35 @@ fn fleet_converge_checkout_step() -> Step {
   }
 }
 
+// build's checkout is the same step under the same name (the capability closure reads the name), with
+// the ref that names the plan's revision when there is one.
+fn fleet_converge_build_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "fetch-depth", value: yaml_int(n: 0)),
+        checkout_ref_entry(ref_expression: fleet_converge_build_checkout_ref),
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE CONSUMERS THAT EXECUTE THE PLAN'S REVISION: apply (the shared job) and dashboard_deploy.
 fn fleet_converge_consumer_prelude_steps() -> List<Step> {
   [fleet_converge_checkout_step()]
+}
+
+// EVERY OTHER CONSUMER CHECKS OUT THE EVENT SHA: no mode but the two above reads a plan, so none has a
+// revision to follow.
+fn fleet_converge_event_sha_consumer_prelude_steps() -> List<Step> {
+  [fleet_converge_event_sha_checkout_step()]
 }
 
 // ── THE MT. COLLINS BOOT JOB (operator ruling 2026-09-23) ───────────────────────────────────
@@ -4225,6 +4403,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_workspace_image_upload_step(),
         fleet_converge_plan_upload_step(),
         fleet_converge_plan_download_step(),
+        fleet_converge_checkout_verify_step(if_condition: Present { value: fleet_converge_apply_step_if }),
         fleet_converge_apply_step(),
         fleet_converge_apply_receipt_upload_step(),
         fleet_converge_org_actions_step(),
@@ -4391,7 +4570,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
     environment: none,
     steps: concat(
       concat(
-        fleet_converge_consumer_prelude_steps(),
+        fleet_converge_event_sha_consumer_prelude_steps(),
         [
           ci_release_bins_download_step(),
           ci_release_bins_unpack_verify_step(),
@@ -4565,7 +4744,10 @@ data fleet_converge_release_bins_job_id: NonEmptyStr = "build" as NonEmptyStr
 // no job runs whatever binaries were lying on the host -- holds either way; what is refused is an
 // empty edge that is not rostered, and a rostered job whose steps do not build the pair
 // (test.claim.workflow_dispatch_input). The boot is the one such job: it runs only gunbc.
-data fleet_converge_in_job_compiler_pair_jobs: List<String> = [fleet_converge_mode_job_id(mode: MtCollins1Boot) as String]
+data fleet_converge_in_job_compiler_pair_jobs: List<String> = [
+  fleet_converge_mode_job_id(mode: MtCollins1Boot) as String,
+  fleet_converge_plan_revision_job_id as String,
+]
 
 // EVERY JOB THAT TOUCHES A HOST HAS A DECLARED SOURCE FOR ITS BINARIES: it waits for `build`, the
 // producer of the release pack, or it is rostered in fleet_converge_in_job_compiler_pair_jobs and
@@ -4573,7 +4755,8 @@ data fleet_converge_in_job_compiler_pair_jobs: List<String> = [fleet_converge_mo
 // empty. A row added here with no edge and no roster entry is visible as exactly that rather than
 // buried in a builder.
 data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
-  FleetConvergeJobEdge { id: fleet_converge_release_bins_job_id, needs: [] },
+  FleetConvergeJobEdge { id: fleet_converge_plan_revision_job_id, needs: [] },
+  FleetConvergeJobEdge { id: fleet_converge_release_bins_job_id, needs: [fleet_converge_plan_revision_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MtCollins1Boot), needs: [] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostResetReturn), needs: [fleet_converge_release_bins_job_id as String] },
@@ -4612,6 +4795,7 @@ fn fleet_converge_job_needs(id: NonEmptyStr) -> List<String> {
 
 fn fleet_converge_jobs() -> List<Job> {
   [
+    fleet_converge_plan_revision_job(),
     fleet_converge_build_job(),
     fleet_converge_job(),
     fleet_converge_mtcollins1_boot_job(),
