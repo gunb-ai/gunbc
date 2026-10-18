@@ -77,12 +77,19 @@ import gunbc.firmware_network_boot_standing {
   mechanism_name,
   ReadyEvidence,
   RedfishOneShotOverride,
-  BootEntry,
-  boot_entry,
-  network_entries_in,
-  NetworkEntryStanding,
-  NoNetworkEntry,
-  NetworkEntriesPresent,
+  BootOrderEntry,
+  BootOption,
+  boot_order_entry,
+  boot_option,
+  join_head_to_options,
+  HeadJoinStanding,
+  HeadJoinsEnabledOption,
+  HeadJoinsDisabledOption,
+  HeadOptionNotEnumerated,
+  HeadOrderEmpty,
+  HeadEnumerationEmpty,
+  available_network_options,
+  option_with_reference,
   firmware_network_boot_probe_frontier,
   firmware_network_boot_standing_consumer_frontier,
   firmware_network_boot_probe_producer_ref,
@@ -128,19 +135,59 @@ data witness_authority: CitedFigureStanding = CitedToAuthority {
 
 data witness_epoch: EpochMs = 1765000000000
 
-// TYPED FIXTURE PIECES. Every boot entry a fixture names carries the Redfish target KIND the BMC
-// protocol would report for it -- no fixture asks the seam to guess what a label means.
-fn pxe_stack() -> BootEntry { boot_entry(kind: BootTargetPxe, label: "UEFI Network Stack") }
-fn http_option() -> BootEntry { boot_entry(kind: BootTargetUefiHttp, label: "UEFI IPv4 HTTP") }
-fn disk(name: NonEmptyStr) -> BootEntry { boot_entry(kind: BootTargetHdd, label: name) }
-fn network_then_disk() -> List<BootEntry> { [pxe_stack(), disk("NVMe0")] }
+// TYPED FIXTURE PIECES, AND THE SHAPE IS THE POINT (merry-fox-82, blocker 1). The two BMC reads are
+// modelled as what they are: BOOT ORDER gives references in order and nothing else; BOOT OPTIONS give
+// reference, kind, label and enabled-ness. A fixture therefore cannot put a network KIND in the boot
+// order at all -- to say "the head boots the network" a fixture must list an enabled network OPTION
+// and make the order's head reference point at it. That is the whole repair, visible in the fixture
+// code: the false Ready the review found ([Hdd, Pxe] reading as Ready/Pxe) has no spelling here.
+//
+// REFERENCES ARE STABLE STRINGS AND THE SAME STRING IN BOTH READS. Two fixtures join when and only
+// when they share a reference; a fixture that renames a reference in one read lands in
+// HeadOptionNotEnumerated, which is a real firmware condition (a hidden option left in BootOrder).
+fn opt_http(reference: NonEmptyStr) -> BootOption {
+  boot_option(reference: reference, kind: BootTargetUefiHttp, label: "UEFI IPv4 HTTP", enabled: true)
+}
+fn opt_pxe(reference: NonEmptyStr) -> BootOption {
+  boot_option(reference: reference, kind: BootTargetPxe, label: "UEFI Network Stack", enabled: true)
+}
+fn opt_disabled_pxe(reference: NonEmptyStr) -> BootOption {
+  boot_option(reference: reference, kind: BootTargetPxe, label: "UEFI Network Stack", enabled: false)
+}
+fn opt_disk(reference: NonEmptyStr) -> BootOption {
+  boot_option(reference: reference, kind: BootTargetHdd, label: "NVMe0", enabled: true)
+}
+fn entry(reference: NonEmptyStr, label: NonEmptyStr) -> BootOrderEntry {
+  boot_order_entry(reference: reference, label: label)
+}
+
+// THE CANONICAL REFERENCES, spelled once. Http is 0001, pxe 0002, the disk 0003 -- so an ordering
+// fixture says which reference comes FIRST and the enumeration says what each reference IS.
+fn ref_http() -> NonEmptyStr { "0001" }
+fn ref_pxe() -> NonEmptyStr { "0002" }
+fn ref_disk() -> NonEmptyStr { "0003" }
+
+fn http_entry() -> BootOrderEntry { entry(reference: ref_http(), label: "UEFI IPv4 HTTP") }
+fn pxe_entry() -> BootOrderEntry { entry(reference: ref_pxe(), label: "ALTRAD8UD-1L2T") }
+fn disk_entry() -> BootOrderEntry { entry(reference: ref_disk(), label: "NVMe0") }
+
+// The happy unit's order: the HTTP option first, then the disk. Every unit that boots normally has
+// the disk first, and those fixtures now exist explicitly rather than being the happy path in
+// disguise -- which is what the two orderings below are for.
+fn network_then_disk() -> List<BootOrderEntry> { [http_entry(), disk_entry()] }
+fn disk_then_network() -> List<BootOrderEntry> { [disk_entry(), http_entry()] }
+
+// THE ENUMERATION the happy unit answers with: http and disk both enabled and present. Note the
+// PXE option is NOT in this list -- fixtures that need it ask for it by name, so a fixture cannot
+// accidentally become Ready by having an option it never claimed.
+fn good_options() -> List<BootOption> { [opt_http(ref_http()), opt_disk(ref_disk())] }
 
 // SYNTHETIC OBSERVATIONS. Fully-answered, network-bootable: the only input shape that may
 // produce a Ready.
 fn good_observation() -> FirmwareBootObservation {
   firmware_boot_observation(
     boot_order: BootOrderObserved { devices: network_then_disk() },
-    boot_options: BootOptionsObserved { options: [http_option()] },
+    boot_options: BootOptionsObserved { options: good_options() },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootDisabled,
     bios_version: BiosVersionObserved { version: "1.08" },
@@ -159,7 +206,7 @@ fn standing_of(observation: FirmwareBootObservation) -> FirmwareNetworkBootStand
 fn with_boot_order(boot_order: BootOrderObservation) -> FirmwareBootObservation {
   firmware_boot_observation(
     boot_order: boot_order,
-    boot_options: BootOptionsObserved { options: [http_option()] },
+    boot_options: BootOptionsObserved { options: good_options() },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootDisabled,
     bios_version: BiosVersionObserved { version: "1.08" },
@@ -179,7 +226,7 @@ fn with_boot_options(options: BootOptionsObservation) -> FirmwareBootObservation
 fn with_nics(nics: NicsObservation) -> FirmwareBootObservation {
   firmware_boot_observation(
     boot_order: BootOrderObserved { devices: network_then_disk() },
-    boot_options: BootOptionsObserved { options: [http_option()] },
+    boot_options: BootOptionsObserved { options: good_options() },
     nics: nics,
     secure_boot: SecureBootDisabled,
     bios_version: BiosVersionObserved { version: "1.08" },
@@ -189,7 +236,7 @@ fn with_nics(nics: NicsObservation) -> FirmwareBootObservation {
 fn with_secure_boot(secure_boot: SecureBootObservation) -> FirmwareBootObservation {
   firmware_boot_observation(
     boot_order: BootOrderObserved { devices: network_then_disk() },
-    boot_options: BootOptionsObserved { options: [http_option()] },
+    boot_options: BootOptionsObserved { options: good_options() },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: secure_boot,
     bios_version: BiosVersionObserved { version: "1.08" },
@@ -199,7 +246,7 @@ fn with_secure_boot(secure_boot: SecureBootObservation) -> FirmwareBootObservati
 fn with_bios(bios_version: BiosVersionObservation) -> FirmwareBootObservation {
   firmware_boot_observation(
     boot_order: BootOrderObserved { devices: network_then_disk() },
-    boot_options: BootOptionsObserved { options: [http_option()] },
+    boot_options: BootOptionsObserved { options: good_options() },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootDisabled,
     bios_version: bios_version,
@@ -230,21 +277,27 @@ test fn the_happy_unit_is_ready_and_carries_every_ready_field() -> Bool {
   }
 }
 
-// THE ORDER IS THE ANSWER. Two units, same two network options, opposite boot order: the verdicts
-// must name DIFFERENT targets. If the classifier returned a set, or the fold picked the option list's
-// first entry rather than the boot order's, both units report the same target and this fails -- and
-// the operator is told the wrong thing will boot.
+// THE ORDER IS THE ANSWER. Two units, SAME enumeration (both a PXE option and an HTTP option, both
+// enabled), opposite boot order: the verdicts must name DIFFERENT targets. If the fold picked the
+// enumeration's first entry rather than the boot order's head, both report the same target and this
+// fails -- and the operator is told the wrong thing will boot.
+//
+// The enumeration is deliberately identical in both fixtures: the ONLY difference is which reference
+// comes first in BootOrder. Under the old shape these two were indistinguishable, because the fold
+// filtered the order down to network kinds and took the first survivor -- both orders filtered to the
+// same thing (merry-fox-82, blocker 1).
 test fn the_ready_names_the_boot_order_head_not_the_first_option() -> Bool {
+  let both_network_options = [opt_pxe(ref_pxe()), opt_http(ref_http())]
   let http_first = firmware_boot_observation(
-    boot_order: BootOrderObserved { devices: [http_option(), pxe_stack()] },
-    boot_options: BootOptionsObserved { options: [pxe_stack(), http_option()] },
+    boot_order: BootOrderObserved { devices: [http_entry(), pxe_entry()] },
+    boot_options: BootOptionsObserved { options: both_network_options },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootDisabled,
     bios_version: BiosVersionObserved { version: "1.08" },
   )
   let pxe_first = firmware_boot_observation(
-    boot_order: BootOrderObserved { devices: [pxe_stack(), http_option()] },
-    boot_options: BootOptionsObserved { options: [pxe_stack(), http_option()] },
+    boot_order: BootOrderObserved { devices: [pxe_entry(), http_entry()] },
+    boot_options: BootOptionsObserved { options: both_network_options },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootDisabled,
     bios_version: BiosVersionObserved { version: "1.08" },
@@ -417,7 +470,7 @@ fn is_standing(standing: FirmwareNetworkBootStanding) -> Bool {
 // against the rows, so adding an un-rowed route anywhere breaks THIS test, not production.
 test fn every_route_the_seam_emits_is_cataloged() -> Bool {
   every_emitted_route_cataloged(standing_of(observation: with_boot_order(boot_order: BootOrderObserved { devices: [] })))
-    && every_emitted_route_cataloged(standing_of(observation: with_boot_order(boot_order: BootOrderObserved { devices: [disk("NVMe0"), disk("NVMe1")] })))
+    && every_emitted_route_cataloged(standing_of(observation: with_boot_order(boot_order: BootOrderObserved { devices: [disk_entry(), disk_entry()] })))
     && every_emitted_route_cataloged(standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [] })))
     && every_emitted_route_cataloged(standing_of(observation: with_secure_boot(secure_boot: SecureBootEnabled)))
     && every_emitted_route_cataloged(standing_of(observation: with_nics(nics: NicsObserved { nics: ["a", "b"] })))
@@ -922,8 +975,8 @@ fn names_bios_axis(gap: UnansweredAxis) -> Bool {
 // first axis ever survives the fold.
 test fn every_unanswered_axis_survives_the_fold_not_just_the_first() -> Bool {
   let observation = firmware_boot_observation(
-    boot_order: BootOrderObserved { devices: [pxe_stack()] },
-    boot_options: BootOptionsObserved { options: [http_option()] },
+    boot_order: BootOrderObserved { devices: [pxe_entry()] },
+    boot_options: BootOptionsObserved { options: [opt_pxe(ref_pxe())] },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootUnobserved { reason: "family cannot answer" },
     bios_version: BiosVersionUnobserved { reason: "no reader" },
@@ -947,7 +1000,7 @@ test fn every_unanswered_axis_survives_the_fold_not_just_the_first() -> Bool {
 test fn a_refusal_keeps_its_cause_and_reports_the_unasked_axes_too() -> Bool {
   let observation = firmware_boot_observation(
     boot_order: BootOrderRefused { refusal: VendorCommandRejected { detail: "ipmi vendor command rejected" } },
-    boot_options: BootOptionsObserved { options: [http_option()] },
+    boot_options: BootOptionsObserved { options: good_options() },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootUnobserved { reason: "never asked" },
     bios_version: BiosVersionObserved { version: "1.08" },
@@ -971,8 +1024,8 @@ test fn a_refusal_keeps_its_cause_and_reports_the_unasked_axes_too() -> Bool {
 // filed as 'nobody ran the probe' and nobody goes to fix the BMC.
 test fn the_kind_of_absence_is_typed_per_axis() -> Bool {
   let observation = firmware_boot_observation(
-    boot_order: BootOrderObserved { devices: [pxe_stack()] },
-    boot_options: BootOptionsObserved { options: [http_option()] },
+    boot_order: BootOrderObserved { devices: [pxe_entry()] },
+    boot_options: BootOptionsObserved { options: [opt_pxe(ref_pxe())] },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootUnobserved { reason: "never asked" },
     bios_version: BiosVersionRefused { refusal: AuthenticationRequired { detail: "credentials absent" } },
@@ -1017,8 +1070,15 @@ fn gap_was_refused(gap: UnansweredAxis) -> Bool {
 // persistent authoring route is not.
 test fn an_option_that_exists_but_is_not_selected_gets_a_redirect_not_a_persistent_write() -> Bool {
   let observation = firmware_boot_observation(
-    boot_order: BootOrderObserved { devices: [disk("NVMe0"), disk("NVMe1"), disk("SATA0")] },
-    boot_options: BootOptionsObserved { options: [http_option()] },
+    boot_order: BootOrderObserved {
+      devices: [entry(reference: "0003", label: "NVMe0"), entry(reference: "0004", label: "NVMe1"), entry(reference: "0005", label: "SATA0")],
+    },
+    // An ENABLED network option EXISTS (0001 http) but the order does not select it: that is 'not
+    // selected', answered by a redirect. The enumeration must also contain the order's head (0003,
+    // an enabled disk) -- otherwise the head is unenumerated and this fixture would test the
+    // disagreement refusal instead. This is exactly the distinction the old seam could not express:
+    // head-joins-disk + network-option-exists = redirect; head-joins-disk + none-exists = author.
+    boot_options: BootOptionsObserved { options: [opt_disk("0003"), opt_http(ref_http())] },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootDisabled,
     bios_version: BiosVersionObserved { version: "1.08" },
@@ -1052,8 +1112,13 @@ test fn an_option_that_exists_but_is_not_selected_gets_a_redirect_not_a_persiste
 // the same route; they now describe two states, get two different routes, and both are right.
 test fn an_absent_option_gets_the_authoring_route_and_never_a_redirect() -> Bool {
   let observation = firmware_boot_observation(
-    boot_order: BootOrderObserved { devices: [disk("NVMe0"), disk("NVMe1"), disk("SATA0")] },
-    boot_options: BootOptionsObserved { options: [disk("NVMe0")] },
+    boot_order: BootOrderObserved {
+      devices: [entry(reference: "0003", label: "NVMe0"), entry(reference: "0004", label: "NVMe1"), entry(reference: "0005", label: "SATA0")],
+    },
+    // Nothing usable-and-network EXISTS, so a redirect is not on the table. The head joins (0003 is
+    // enumerated and enabled, as a disk) which is what routes here through the kind gate rather than
+    // through the not-enumerated refusal.
+    boot_options: BootOptionsObserved { options: [opt_disk("0003")] },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootDisabled,
     bios_version: BiosVersionObserved { version: "1.08" },
@@ -1088,7 +1153,7 @@ test fn an_absent_option_gets_the_authoring_route_and_never_a_redirect() -> Bool
 // BootOptions list must NOT land here: that is the unconfigured-board case above, and refusing every
 // unconfigured board for a conflict nobody observed is how a seam becomes useless.
 test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guessed() -> Bool {
-  match standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [disk("NVMe0"), disk("NVMe1")] })) {
+  match standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [opt_disk("0009"), opt_disk("0010")] })) {
     Refused { cause: BootOrderNamesUnenumeratedNetworkOption { why: _ }, gaps: _ } => true
     // EVERY OTHER REFUSAL NAMED, so a wrong cause cannot satisfy this test. A `_ => false` here
     // would pass on Refused { cause: NoSuchUnit } -- which is a refusal, so the test would report
@@ -1114,52 +1179,66 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
 // THE TWO THINGS REVIEW 81711 FOUND, NOW WITNESSED DIRECTLY.
 // ---------------------------------------------------------------------------
 
-// NETWORK-NESS IS A KIND, NOT A SUBSTRING. Labels are made to mislead here on purpose: a firmware
-// can spell an iSCSI target 'IPv4', a diagnostics shell 'HTTP', or a USB recovery stick 'UEFI
-// Network Device', and the seam must be unmoved. The converse arm matters as much: an entry the
-// schema calls Pxe is network-bootable even when its label says nothing network-shaped at all, so a
-// unit is not stranded because a vendor named its option after the box it shipped in. If anyone
-// reintroduces label matching, one of these two arms goes red.
+// NETWORK-NESS IS A KIND, NOT A SUBSTRING -- and now, NOT A BOOT-ORDER PROPERTY EITHER. Labels are
+// made to mislead here on purpose: a firmware can spell an iSCSI target 'IPv4', a diagnostics shell
+// 'HTTP', or a USB recovery stick 'UEFI Network Device', and the seam must be unmoved. The converse
+// arm matters as much: an option the schema calls Pxe is network-bootable even when its label says
+// nothing network-shaped at all, so a unit is not stranded because a vendor named its option after
+// the box it shipped in. If anyone reintroduces label matching, one of these arms goes red.
+//
+// REWRITTEN AROUND THE JOIN (merry-fox-82, blocker 1). The old version asked a list of BootEntry
+// 'do any of you look network-ish', which is the question that produced the false Ready. It now asks
+// the two questions the seam actually asks: WHAT DOES THE HEAD JOIN TO, and WHICH OPTIONS ARE
+// USABLE. Each arm pins a field, because an arm-pinned-but-value-unpinned assertion is how
+// additional_count: 0 once shipped green (DESIGN 5: a field a reader credits and nothing measures is
+// a fabricated output).
 test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
-  let misleadingly_network_labels: List<BootEntry> = [
-    boot_entry(kind: BootTargetHdd, label: "IPv4 iSCSI target (SanDisk)"),
-    boot_entry(kind: BootTargetUsb, label: "UEFI Network Device: USB Recovery"),
-    boot_entry(kind: BootTargetCd, label: "HTTP Boot Diagnostics"),
-    boot_entry(kind: BootTargetBiosSetup, label: "Network Stack Setup"),
-    boot_entry(kind: BootTargetDiags, label: "PXE Diagnostics Shell"),
-    boot_entry(kind: BootTargetNone, label: "Network Boot (Disabled)"),
+  // Six options whose LABELS all shout network and whose KINDS all say otherwise.
+  let misleadingly_network_labels: List<BootOption> = [
+    boot_option(reference: "0011", kind: BootTargetHdd, label: "IPv4 iSCSI target (SanDisk)", enabled: true),
+    boot_option(reference: "0012", kind: BootTargetUsb, label: "UEFI Network Device: USB Recovery", enabled: true),
+    boot_option(reference: "0013", kind: BootTargetCd, label: "HTTP Boot Diagnostics", enabled: true),
+    boot_option(reference: "0014", kind: BootTargetBiosSetup, label: "Network Stack Setup", enabled: true),
+    boot_option(reference: "0015", kind: BootTargetDiags, label: "PXE Diagnostics Shell", enabled: true),
+    boot_option(reference: "0016", kind: BootTargetNone, label: "Network Boot (Disabled)", enabled: true),
   ]
-  let honestly_network_label: BootEntry = boot_entry(kind: BootTargetPxe, label: "ALTRAD8UD-1L2T")
+  // One option whose label says NOTHING network-shaped and whose kind says Pxe.
+  let honestly_network_label = boot_option(reference: "0017", kind: BootTargetPxe, label: "ALTRAD8UD-1L2T", enabled: true)
   length(xs: misleadingly_network_labels) == 6
-    // THE ARMS, NOT A BOOL (review 81853). The classifier's answer is matched, and the count is
-    // asserted too: a NoNetworkEntry that did not know how many it examined could not tell a
-    // conflict from an unconfigured board, which is the branch `decide` depends on.
-    && match network_entries_in(entries: misleadingly_network_labels) {
-         NoNetworkEntry { examined_count: examined } => examined == 6
-         NetworkEntriesPresent { head: _, additional_count: _ } => false
+    // NO LABEL MATCHES, so nothing is usable -- and the count says it looked at all six, which is
+    // what lets `decide` tell 'six options, none usable' from 'nobody configured anything'.
+    && match available_network_options(options: misleadingly_network_labels) {
+         NoAvailableNetworkOption { examined_count: examined } => examined == 6
+         AvailableNetworkOptionsPresent { head: _, additional_count: _ } => false
        }
-    && match network_entries_in(entries: [honestly_network_label]) {
-         // THE HEAD, IN THE ARM (review 81893): there is no `|> first` left to fail, which is the
-         // point -- the classifier walked to the head and is obliged to hand it over.
-         NetworkEntriesPresent { head: BootTargetPxe, additional_count: extra } => extra == 0
-         NetworkEntriesPresent { head: _, additional_count: _ } => false
-         NoNetworkEntry { examined_count: _ } => false
+    // THE KIND IS ENOUGH: a nameless-to-the-eye option is usable, and the head is HANDED OVER by the
+    // pattern (review 81893: there is no `|> first` left to fail).
+    && match available_network_options(options: [honestly_network_label]) {
+         AvailableNetworkOptionsPresent { head: first_option, additional_count: extra } =>
+           first_option.kind == BootTargetPxe && extra == 0
+         NoAvailableNetworkOption { examined_count: _ } => false
        }
-    // AND THE COUNT IS THE COUNT. The single-entry arm above cannot distinguish a real
-    // additional_count from a constant zero, so this one asks for two network entries and requires
-    // exactly one more. Without it, `additional_count: 0` shipped green -- a field that is decoration
-    // is worse than no field, because a reader credits it (DESIGN 5: no plausible output is
-    // fabricated).
-    && match network_entries_in(
-         entries: [
+    // AND THE COUNT IS THE COUNT -- two usable options must report exactly one MORE than the head.
+    // Without this arm a constant `additional_count: 0` passed every witness that ever existed.
+    && match available_network_options(
+         options: [
            honestly_network_label,
-           boot_entry(kind: BootTargetUefiHttp, label: "HTTP Boot"),
-           boot_entry(kind: BootTargetHdd, label: "NVMe0"),
+           boot_option(reference: "0018", kind: BootTargetUefiHttp, label: "HTTP Boot", enabled: true),
+           boot_option(reference: "0019", kind: BootTargetHdd, label: "NVMe0", enabled: true),
          ],
        ) {
-         NetworkEntriesPresent { head: BootTargetPxe, additional_count: more } => more == 1
-         NetworkEntriesPresent { head: _, additional_count: _ } => false
-         NoNetworkEntry { examined_count: _ } => false
+         AvailableNetworkOptionsPresent { head: first_option, additional_count: more } =>
+           first_option.kind == BootTargetPxe && more == 1
+         AvailableNetworkOptionsPresent { head: _, additional_count: _ } => false
+         NoAvailableNetworkOption { examined_count: _ } => false
+       }
+    // A DISABLED OPTION IS NOT USABLE, even when its kind is right. Counted separately from the
+    // label arms so 'disabled' cannot be quietly folded into 'not network'.
+    && match available_network_options(
+         options: [boot_option(reference: "0020", kind: BootTargetPxe, label: "PXE", enabled: false)],
+       ) {
+         NoAvailableNetworkOption { examined_count: examined } => examined == 1
+         AvailableNetworkOptionsPresent { head: _, additional_count: _ } => false
        }
     && match redfish_boot_target_network_standing(t: BootTargetUefiHttp) {
          NetworkBootTarget { via: _ } => true
@@ -1171,6 +1250,157 @@ test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
        }
 }
 
+// THE JOIN, TESTED DIRECTLY, ALL FIVE ARMS. This is the seam's most load-bearing function after
+// `decide` -- every Ready in the module passes through it -- so each arm is pinned with its fields,
+// not merely matched. Two of these arms exist ONLY to make merry-fox-82's blocker 1 unwritable:
+// a head that joins a network option by LABEL or by KIND rather than by reference is not
+// expressible, because there is no other input to compare.
+test fn the_head_joins_by_reference_and_only_by_reference() -> Bool {
+  // (a) THE ORDINARY CASE: the order's first reference is enumerated and enabled. The joined option
+  // travels out of the arm, so a fold that re-derived kind from anywhere else would be caught here.
+  match join_head_to_options(
+    devices: [entry(reference: "0001", label: "whatever the vendor calls it")],
+    options: [boot_option(reference: "0001", kind: BootTargetUefiHttp, label: "HTTP", enabled: true)],
+  ) {
+    HeadJoinsEnabledOption { head: joined } => joined.reference == "0001" && joined.kind == BootTargetUefiHttp
+    HeadJoinsDisabledOption { head: _ } => false
+    HeadOptionNotEnumerated { order_head_reference: _, enumerated_count: _ } => false
+    HeadOrderEmpty => false
+    HeadEnumerationEmpty { examined_count: _ } => false
+  }
+    // (b) THE ONE THAT USED TO READ READY: the order's head is the disk, and an enabled network
+    // option is present UNDER A DIFFERENT REFERENCE. The head joins the disk; the network option
+    // cannot be reached from here. Under the old fold these two fixtures were indistinguishable.
+    && match join_head_to_options(
+      devices: [entry(reference: "0003", label: "NVMe0"), entry(reference: "0001", label: "HTTP")],
+      options: [opt_http(ref_http()), opt_disk("0003")],
+    ) {
+      HeadJoinsEnabledOption { head: joined } => joined.kind == BootTargetHdd && joined.reference == "0003"
+      HeadJoinsDisabledOption { head: _ } => false
+      HeadOptionNotEnumerated { order_head_reference: _, enumerated_count: _ } => false
+      HeadOrderEmpty => false
+      HeadEnumerationEmpty { examined_count: _ } => false
+    }
+    // (c) LABELS ARE NOT IDENTITY: two options with IDENTICAL labels and different references, where
+    // the order names only the second. The join must find the second. A label-keyed join finds the
+    // first and reports the wrong kind -- and both look correct to a reader.
+    && match join_head_to_options(
+      devices: [entry(reference: "0002", label: "ALTRAD8UD-1L2T")],
+      options: [
+        boot_option(reference: "0001", kind: BootTargetHdd, label: "ALTRAD8UD-1L2T", enabled: true),
+        boot_option(reference: "0002", kind: BootTargetPxe, label: "ALTRAD8UD-1L2T", enabled: true),
+      ],
+    ) {
+      HeadJoinsEnabledOption { head: joined } => joined.kind == BootTargetPxe && joined.reference == "0002"
+      HeadJoinsDisabledOption { head: _ } => false
+      HeadOptionNotEnumerated { order_head_reference: _, enumerated_count: _ } => false
+      HeadOrderEmpty => false
+      HeadEnumerationEmpty { examined_count: _ } => false
+    }
+    // (d) DISABLED IS ITS OWN ARM: the firmware will not boot this entry. Not Ready (it does not),
+    // not absent (it exists), not a conflict (the reads agree).
+    && match join_head_to_options(
+      devices: [entry(reference: "0002", label: "PXE")],
+      options: [opt_disabled_pxe(ref_pxe())],
+    ) {
+      HeadJoinsDisabledOption { head: joined } => joined.reference == "0002" && !joined.enabled
+      HeadJoinsEnabledOption { head: _ } => false
+      HeadOptionNotEnumerated { order_head_reference: _, enumerated_count: _ } => false
+      HeadOrderEmpty => false
+      HeadEnumerationEmpty { examined_count: _ } => false
+    }
+    // (e) THE TWO READS DISAGREE, and the specifics travel on the arm. The reference and the count
+    // are asserted because they ARE the diagnosis -- 're-read BootOptions' without saying which
+    // reference went missing is a refusal that sends nobody anywhere.
+    && match join_head_to_options(
+      devices: [entry(reference: "0007", label: "ghost")],
+      options: [opt_http(ref_http()), opt_disk("0003"), opt_disabled_pxe(ref_pxe())],
+    ) {
+      HeadOptionNotEnumerated { order_head_reference: ghost_ref, enumerated_count: ghost_count } =>
+        ghost_ref == "0007" && ghost_count == 3
+      HeadJoinsEnabledOption { head: _ } => false
+      HeadJoinsDisabledOption { head: _ } => false
+      HeadOrderEmpty => false
+      HeadEnumerationEmpty { examined_count: _ } => false
+    }
+    // (f) EMPTY ORDER: nothing is selected. Distinct from (g) because an empty ORDER and an empty
+    // ENUMERATION are different facts with different remedies.
+    && match join_head_to_options(devices: [], options: [opt_http(ref_http())]) {
+         HeadOrderEmpty => true
+         HeadJoinsEnabledOption { head: _ } => false
+         HeadJoinsDisabledOption { head: _ } => false
+         HeadOptionNotEnumerated { order_head_reference: _, enumerated_count: _ } => false
+         HeadEnumerationEmpty { examined_count: _ } => false
+       }
+    // (g) EMPTY ENUMERATION WITH A NON-EMPTY ORDER. NOT a conflict: 'nobody ever configured this
+    // board' is what an empty BootOptions list answers, and it must not be refused as a disagreement
+    // -- refusing every unconfigured board is how a seam becomes useless.
+    && match join_head_to_options(devices: [entry(reference: "0001", label: "HTTP")], options: []) {
+         HeadEnumerationEmpty { examined_count: examined } => examined == 0
+         HeadJoinsEnabledOption { head: _ } => false
+         HeadJoinsDisabledOption { head: _ } => false
+         HeadOptionNotEnumerated { order_head_reference: _, enumerated_count: _ } => false
+         HeadOrderEmpty => false
+       }
+    // (h) THE LOOKUP ITSELF, WITH NO FUZZY SECOND PASS: a miss is Absent, not the nearest neighbour.
+    && match option_with_reference(options: [opt_http(ref_http())], reference: "9999") {
+         Absent => true
+         Present { value: _ } => false
+       }
+}
+
+// THE FALSE READY, AS A BLACK-BEHAVIOUR CLAIM. merry-fox-82's blocker 1 was a specific unit:
+// BootOrder [disk, PXE] reported Ready/Pxe. This test asks for the two orderings of the SAME
+// enumeration and requires the two verdicts to DIFFER -- because a fold that filters the order to
+// network kinds before taking the head gives them the same answer, and that fold shipped for five
+// review rounds with 40 green witnesses.
+test fn a_disk_first_boot_order_is_never_ready_where_a_network_first_one_is() -> Bool {
+  // One enumeration, enabled, containing BOTH an HTTP option and a disk.
+  let enumeration = [opt_http(ref_http()), opt_disk(ref_disk())]
+  let network_first = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [http_entry(), disk_entry()] },
+    boot_options: BootOptionsObserved { options: enumeration },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  let disk_first = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [disk_entry(), http_entry()] },
+    boot_options: BootOptionsObserved { options: enumeration },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  match standing_of(observation: network_first) {
+    // The network-first unit IS ready, and names the HTTP target it joined to.
+    Ready { firmware_mode: _, network_interface: "eth0", boot_target: BootTargetUefiHttp, evidence: _ } =>
+      match standing_of(observation: disk_first) {
+        // ...and the disk-first unit is NOT: same options, different selection, different verdict.
+        // NeedsPreparation is the only acceptable answer -- Refused would call a normal boot
+        // configuration an error, and Ready is the bug.
+        NeedsPreparation { route: r, blocking: b } =>
+          is_a_fleet_route(route: r)
+            // The disk IS selected and a usable network option EXISTS, so a redirect answers it; the
+            // persistent authoring write would be an uncaused BIOS change on a board that only needs
+            // one boot pointed at the network.
+            && match b {
+                 NetworkBootOptionNotSelected => true
+                 NetworkBootOptionAbsent => false
+                 NoInterfaceCarriesPxe => false
+                 SecureBootBlocksUnsignedChainloader => false
+                 OverrideMechanismUnsupported => false
+               }
+        Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
+        Unobserved { unanswered: _ } => false
+        Refused { cause: _, gaps: _ } => false
+      }
+    Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
+    Unobserved { unanswered: _ } => false
+    Refused { cause: _, gaps: _ } => false
+    NeedsPreparation { route: _, blocking: _ } => false
+  }
+}
+
 // THE UNIT THAT LOOKS BOOTABLE AND ISN'T: a board whose entire boot order is 'IPv4'-named disks must
 // not read Ready. Under the substring rule this exact observation produced a Ready, because 'IPv4'
 // was on the spelling list -- a unit scheduled for a network boot it could never perform.
@@ -1178,12 +1408,25 @@ test fn an_all_disk_boot_order_with_network_shaped_labels_is_not_ready() -> Bool
   let observation = firmware_boot_observation(
     boot_order: BootOrderObserved {
       devices: [
-        boot_entry(kind: BootTargetHdd, label: "IPv4 SanDisk NVMe"),
-        boot_entry(kind: BootTargetHdd, label: "UEFI Network Stack Data"),
-        boot_entry(kind: BootTargetCd, label: "HTTP Recovery"),
+        entry(reference: "0100", label: "IPv4 SanDisk NVMe"),
+        entry(reference: "0101", label: "UEFI Network Stack Data"),
+        entry(reference: "0102", label: "HTTP Recovery"),
       ],
     },
-    boot_options: BootOptionsObserved { options: [http_option()] },
+    // The enumeration says what those three LABELS actually are: two disks and a CD, all enabled --
+    // and separately lists an enabled HTTP option that the order never names. So this unit's head
+    // JOINS (as a disk, which the kind gate rejects) and a network option EXISTS (so the answer is
+    // 'not selected', a redirect, not the authoring write). The labels shout network at every arm;
+    // the kinds are the only thing consulted. If the enumeration did not contain the head reference
+    // at all, this fixture would test the disagreement refusal instead -- which is the OTHER test.
+    boot_options: BootOptionsObserved {
+      options: [
+        boot_option(reference: "0100", kind: BootTargetHdd, label: "IPv4 SanDisk NVMe", enabled: true),
+        boot_option(reference: "0101", kind: BootTargetHdd, label: "UEFI Network Stack Data", enabled: true),
+        boot_option(reference: "0102", kind: BootTargetCd, label: "HTTP Recovery", enabled: true),
+        opt_http(ref_http()),
+      ],
+    },
     nics: NicsObserved { nics: ["eth0"] },
     secure_boot: SecureBootDisabled,
     bios_version: BiosVersionObserved { version: "1.08" },
@@ -1541,7 +1784,13 @@ test fn a_frontier_fires_only_for_the_declaration_it_names() -> Bool {
     // THE MODULE AND THE EXPECTATION MUST AGREE, AND THE EXPECTATION IS THE AUTHORITY. A module fn
     // checked only against itself is self-consistent, never correct -- that is how the old
     // provisioning_arm_derive ref passed every test while naming a non-consumer.
-    declaration_ref_eq(
+    //
+    // THE `&&` HERE IS THE TEST (merry-fox-82, blocker 4). This block used to read
+    // `... == DissolutionFired` on one line and then start a NEW expression statement at
+    // declaration_ref_eq, so a block returns only its LAST expression and every Fired assertion
+    // above it was computed and discarded -- the witness was green whether or not the frontier ever
+    // fires. That is the failure mode this whole file exists to catch, living in the file itself.
+    && declaration_ref_eq(
       a: firmware_network_boot_standing_consumer_ref(),
       b: decl_ref(
         module_path: "gunbc.provisioning.network_boot_actuation",
