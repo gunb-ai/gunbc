@@ -475,11 +475,30 @@ fn firmware_attribute_name_from_read(
 // seam before any per-firmware attribute read exists: the BIOS-attribute routes answer Refused with
 // the read that would resolve them, rather than PATCHing a name nobody observed.
 type RouteBindingStanding
+  // THE ROW IS USABLE FOR THIS UNIT, with every firmware-side name established by a read.
   = RouteBound { route: FirmwareNetworkBootPreparationRoute }
-  // THE MECHANISM IS RIGHT AND ITS NAME IS NOT IN HAND. Deliberately NOT an Unobserved: the unit
-  // answered every axis it was asked, and this module still cannot name the key it would PATCH. That
-  // is a refusal with a specific remedy attached, not a coverage gap.
-  | RouteBindingUnresolvedRoute { mechanism: NonEmptyStr, owed_read: NonEmptyStr }
+  // THE MECHANISM IS RIGHT AND ITS NAME IS NOT IN HAND, and the read that would change that is named.
+  // Deliberately NOT an Unobserved: the unit answered every axis it was asked, and this module still
+  // cannot name the key it would PATCH. That is a refusal with a specific remedy attached, not a
+  // coverage gap -- and it is fail-closed, which is what makes it safe to ship this seam before any
+  // per-firmware attribute read exists.
+  // THE NAME IS REAL -- FOR ANOTHER BOARD. A transcription carries the BIOS version it was read
+  // against (MechanismNameGrounding), so a name transcribed before a BIOS update, or copied from a
+  // different family, is REFUSED instead of written. The two versions travel as typed fields rather
+  // than interpolated into a sentence, because the comparison a machine must make is between the
+  // fields, and prose that disagrees with its own payload is worse than no prose (DESIGN 5).
+  // THE TWO REFUSALS, GROUPED BEHIND ONE ARM. The grouping is not tidiness: what a not-executable row
+  // carries is a REFUSAL, and naming that separately makes 'this row cannot be driven, and here is a
+  // drivable route' unrepresentable rather than merely unused. The compiler proved the earlier shape
+  // wrong -- a match over the two refusals was forced to carry a `RouteBound` arm that no code path
+  // could ever produce, and an unreachable arm is a second thing to keep true for no benefit (§5).
+  | BindingRefused { refusal: RouteBindingRefusal }
+
+// WHAT THE BINDER MAY SAY WHEN IT WILL NOT BIND: the only thing a not-executable row carries. Two
+// arms, and a caller that reports why a unit is stuck has to be able to say which of the two it is --
+// 'read this' and 'your transcription is from another board' send the operator to different places.
+type RouteBindingRefusal
+  = RouteBindingUnresolvedRoute { mechanism: NonEmptyStr, owed_read: NonEmptyStr }
   // THE NAME IS REAL -- FOR ANOTHER BOARD. A transcription carries the BIOS version it was read
   // against (MechanismNameGrounding), so a name transcribed before a BIOS update, or copied from a
   // different family, is REFUSED instead of written. The two versions travel as typed fields rather
@@ -520,7 +539,7 @@ type RedirectTargetStanding
 // ones matches the first arm; a caller that reports why a unit is stuck reads the other two.
 type RouteReadinessStanding
   = RouteExecutable { route: FirmwareNetworkBootPreparationRoute, requires: List<ProcedureRequires> }
-  | RouteNotExecutable { mechanism: NonEmptyStr, standing: RouteBindingStanding }
+  | RouteNotExecutable { mechanism: NonEmptyStr, refusal: RouteBindingRefusal }
 
 type FirmwareNetworkBootPreparationRoute
   = EnableNetworkStack {
@@ -795,9 +814,11 @@ fn bind_route_from(
         // this blocker entirely, so arriving here means the two guards disagreed. The one that stops
         // a write is the one allowed to win.
         RedirectTargetAbsent { why: _ } =>
-          RouteBindingUnresolvedRoute {
-            mechanism: mechanism_name(route: route),
-            owed_read: "a BootOptions read that enumerates at least one network option this unit could be redirected to",
+          BindingRefused {
+            refusal: RouteBindingUnresolvedRoute {
+              mechanism: mechanism_name(route: route),
+              owed_read: "a BootOptions read that enumerates at least one network option this unit could be redirected to",
+            },
           }
       }
     // THE TWO ONE-SHOT OVERRIDES. Their only firmware-side name is the Redfish Boot object's
@@ -939,24 +960,13 @@ fn route_readiness_of(
   ) {
     RouteBound { route: bound } =>
       RouteExecutable { route: bound, requires: route_requires(route: bound) }
-    RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } =>
-      RouteNotExecutable {
-        mechanism: mechanism,
-        standing: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed },
-      }
-    RouteBindingStaleGrounding {
-      mechanism: mechanism,
-      grounded_for_bios_version: grounded,
-      observed_bios_version: seen,
-    } =>
-      RouteNotExecutable {
-        mechanism: mechanism,
-        standing: RouteBindingStaleGrounding {
-          mechanism: mechanism,
-          grounded_for_bios_version: grounded,
-          observed_bios_version: seen,
-        },
-      }
+    // ONE ARM FOR BOTH REFUSALS, because this fold does not distinguish them -- it asks only whether
+    // the row can be driven. The mechanism it reports is read off the ROUTE rather than copied out of
+    // the refusal, so there is no pair of fields here that could disagree about which row is being
+    // refused. Matching the wrapper rather than each refusal also means a future third refusal makes
+    // this match non-exhaustive instead of silently dropping a reason a caller needed.
+    BindingRefused { refusal: refusal } =>
+      RouteNotExecutable { mechanism: mechanism_name(route: route), refusal: refusal }
   }
 }
 
@@ -970,7 +980,7 @@ type AdmissibleRouteSelection {
   executable: Optional<FirmwareNetworkBootPreparationRoute>,
   // THE MOST-PREFERRED ROW THAT COULD NOT BE DRIVEN, which is the remedy to pursue: it belongs to the
   // same mechanism the fleet would have tried first, and it carries the read that ends it.
-  first_refusal: Optional<RouteBindingStanding>,
+  first_refusal: Optional<RouteBindingRefusal>,
 }
 
 // ONE SWEEP, ONE CLASSIFICATION PER ROW. Each row's arm is read ONCE, by this match, and decides which
@@ -998,12 +1008,12 @@ fn select_admissible(
             ),
             first_refusal: acc.first_refusal,
           }
-        RouteNotExecutable { mechanism: _, standing: standing } =>
+        RouteNotExecutable { mechanism: _, refusal: refusal } =>
           AdmissibleRouteSelection {
             executable: acc.executable,
             first_refusal: optional_prefer_first_present(
               left: acc.first_refusal,
-              right: Present { value: standing },
+              right: Present { value: refusal },
             ),
           }
       }
@@ -1029,7 +1039,11 @@ fn attribute_slot_refusal(
 ) -> Optional<RouteBindingStanding> {
   match attribute {
     MechanismNameUnbound { owed_read: owed } =>
-      Present { value: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } }
+      Present {
+        value: BindingRefused {
+          refusal: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed },
+        },
+      }
     MechanismNameBound { value: _, grounded_by: grounding } =>
       match grounding {
         // A BIOS ATTRIBUTE NAME CANNOT COME FROM A BOOT-OPTION ENUMERATION. Reaching this arm means
@@ -1055,9 +1069,11 @@ fn attribute_slot_refusal(
             // arrives here, which is what makes it safe for it to pass an absence.
             Absent =>
               Present {
-                value: RouteBindingUnresolvedRoute {
-                  mechanism: mechanism,
-                  owed_read: "GET the BIOS version from THIS unit: the attribute name is a transcription against an unspecified firmware version, and with nothing to compare it against it cannot be shown current",
+                value: BindingRefused {
+                  refusal: RouteBindingUnresolvedRoute {
+                    mechanism: mechanism,
+                    owed_read: "GET the BIOS version from THIS unit: the attribute name is a transcription against an unspecified firmware version, and with nothing to compare it against it cannot be shown current",
+                  },
                 },
               }
             // THE COMPARISON THAT MAKES A TRANSCRIPTION SAFE. Equal means the name is established for
@@ -1068,10 +1084,12 @@ fn attribute_slot_refusal(
                 Absent
               } else {
                 Present {
-                  value: RouteBindingStaleGrounding {
-                    mechanism: mechanism,
-                    grounded_for_bios_version: read_against,
-                    observed_bios_version: seen,
+                  value: BindingRefused {
+                    refusal: RouteBindingStaleGrounding {
+                      mechanism: mechanism,
+                      grounded_for_bios_version: read_against,
+                      observed_bios_version: seen,
+                    },
                   },
                 }
               }
@@ -1098,32 +1116,6 @@ fn bind_attribute_route(
     Present { value: refusal } => refusal
     Absent => RouteBound { route: route }
   }
-}
-
-// WHICH CATALOG ROUTES A PARTICULAR UNIT CAN DRIVE RIGHT NOW, and for the rest, why not. A fold over
-// the whole catalog rather than a Bool filter (DESIGN 4: the answer is a union with its reasons, not
-// a predicate a caller has to interrogate): a report asks 'what can we do to this unit today' and
-// reads the first arm, and a report asks 'why is this unit stuck' and reads the second with the
-// owed read spelled out. The binding inputs are the same two the fold itself supplies, so this can
-// never disagree with a verdict the seam emitted.
-fn route_readiness(
-  redirect_to: RedirectTargetStanding,
-  observed_bios_version: Optional<NonEmptyStr>
-) -> List<RouteReadinessStanding> {
-  list_map(
-    xs: firmware_network_boot_preparation_routes,
-    f: fn(route) {
-      match bind_route_from(
-        route: route,
-        redirect_to: redirect_to,
-        observed_bios_version: observed_bios_version,
-      ) {
-        RouteBound { route: bound } =>
-          RouteExecutable { route: bound, requires: route_requires(route: bound) }
-        unbound => RouteNotExecutable { mechanism: mechanism_name(route: route), standing: unbound }
-      }
-    },
-  )
 }
 
 // THE PROCEDURE IS CONSUMED, NOT JUST CARRIED. `blocker_of` says which blocker an author wrote a
@@ -1477,7 +1469,7 @@ type NetworkBootAttemptConstruction
   | AttemptRouteUnbound {
       blocker: PreparationBlockingOn,
       mechanism: NonEmptyStr,
-      standing: RouteBindingStanding,
+      refusal: RouteBindingRefusal,
     }
 
 fn network_boot_attempt(
@@ -1527,7 +1519,7 @@ fn network_boot_attempt(
               AttemptRouteUnbound {
                 blocker: blocker,
                 mechanism: mechanism,
-                standing: RouteBindingStaleGrounding {
+                refusal: RouteBindingStaleGrounding {
                   mechanism: mechanism,
                   grounded_for_bios_version: grounded,
                   observed_bios_version: seen,
@@ -1537,7 +1529,7 @@ fn network_boot_attempt(
               AttemptRouteUnbound {
                 blocker: blocker,
                 mechanism: mechanism,
-                standing: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed },
+                refusal: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed },
               }
             // UNREACHABLE: the sweep above filled BOTH fields from one walk, so a non-empty admissible
             // list cannot leave `first_refusal` empty while `executable` is also empty. It stays written
@@ -2014,6 +2006,9 @@ fn decide_from_joins(
         NetworkBootTarget { via: _ } =>
           ready_or_refuse_on_nics(
             head_option: head_option,
+            join: join,
+            available: available,
+            observed_bios_version: observed_bios_version,
             nics: nics,
             boot_mode: boot_mode,
             authority: authority,
@@ -2021,7 +2016,11 @@ fn decide_from_joins(
             observation: observation,
           )
         NotNetworkBootTarget { why: _ } =>
-          decide_absent(available: available, observed_bios_version: observed_bios_version)
+          decide_absent(
+            join: join,
+            available: available,
+            observed_bios_version: observed_bios_version,
+          )
       }
     // THE HEAD IS LISTED BUT DISABLED: the firmware will not boot it as things stand. Not a Ready
     // (the unit does not boot it), not a refusal (nothing is broken; this is a configuration the
@@ -2040,8 +2039,18 @@ fn decide_from_joins(
     // above, which required a non-empty enumeration to disagree with. Existence is answered before
     // selection because it decides which mechanism is possible: with nothing usable to point at, only
     // the authoring route can help, and the catalog has exactly one.
-    HeadOrderEmpty => decide_absent(available: available)
-    HeadEnumerationEmpty { examined_count: _ } => decide_absent(available: available)
+    HeadOrderEmpty =>
+      decide_absent(
+        join: join,
+        available: available,
+        observed_bios_version: observed_bios_version,
+      )
+    HeadEnumerationEmpty { examined_count: _ } =>
+      decide_absent(
+        join: join,
+        available: available,
+        observed_bios_version: observed_bios_version,
+      )
   }
 }
 
@@ -2085,6 +2094,13 @@ fn decide_absent(
 // pass -- the fold's whole job is getting these questions into the right order.
 fn ready_or_refuse_on_nics(
   head_option: BootOption,
+  // THE BINDING INPUTS TRAVEL THROUGH, and their presence in the signature is load-bearing rather than
+  // incidental: this fold answers SeveralNicCandidates by preparing a route, and a route cannot be
+  // prepared without the unit evidence the binder derives its names from. Had they been reconstructible
+  // here, this fold would have owned a second answer to 'what may this unit boot'.
+  join: HeadJoinStanding,
+  available: AvailableNetworkStanding,
+  observed_bios_version: Optional<NonEmptyStr>,
   nics: List<NonEmptyStr>,
   boot_mode: ClientNetworkBootMode,
   authority: CitedFigureStanding,
