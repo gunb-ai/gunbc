@@ -651,21 +651,22 @@ fn runner_host_file_mode_find_argv(path: String, mode: RemoteFileMode) -> List<S
   ["find", path, "-maxdepth", "0", "-type", "f", "-user", "root", "-group", "root", "-perm", remote_file_mode_octal(mode: mode)]
 }
 
-// A FIND THAT DID NOT SUCCEED OBSERVED NOTHING. TypedArgvExecConverged means a result came back, not that
-// the command succeeded, and classify_root_only_paths decides from stdout alone: exit 1 with an empty
-// stdout ("Permission denied") would read as a repairable mismatch and authorise a write, and a failed run
-// that happened to print the path would read as a match and adopt. So an unsuccessful execution is
-// unobservable BEFORE stdout is read; only a successful run may establish a match or a mismatch. find
-// exits 0 whether or not the predicate printed the path, so exit 0 is the whole success signal.
-fn classify_runner_host_find_result(requested: List<String>, exit_code: Int, stdout: String, stderr: String) -> RunnerHostPathMetadata {
+// A FIND THAT DID NOT SUCCEED OBSERVED NOTHING, FOR EVERY CALLER. The transport's "converged" means a result
+// came back, not that the command succeeded, and this classifier used to decide from stdout alone:
+// exit 1 with an empty stdout ("Permission denied") read as a repairable mismatch (a write), and a failed
+// run that happened to print the path read as a match (an adoption or a go-ahead to install). So an
+// unsuccessful execution is unobservable BEFORE stdout is read; only a successful run may establish a
+// match or a mismatch. find exits 0 whether or not the predicate printed a path, so exit 0 is the whole
+// success signal.
+fn classify_root_only_paths(requested: List<String>, exit_code: Int, stdout: String, stderr: String) -> RunnerHostPathMetadata {
   if exit_code != 0 {
     PathsUnobservable { reason: join(["the far-side find did not succeed, so its output establishes neither a match nor a mismatch; exit=", to_string(exit_code), " ", trim(s: stderr)], "") }
   } else {
-    classify_root_only_paths(requested: requested, exit_code: exit_code, stdout: stdout, stderr: stderr)
+    classify_printed_root_only_paths(requested: requested, exit_code: exit_code, stdout: stdout, stderr: stderr)
   }
 }
 
-fn classify_root_only_paths(requested: List<String>, exit_code: Int, stdout: String, stderr: String) -> RunnerHostPathMetadata {
+fn classify_printed_root_only_paths(requested: List<String>, exit_code: Int, stdout: String, stderr: String) -> RunnerHostPathMetadata {
   let printed = filter(map(split(s: stdout, delimiter: "\n"), l => trim(s: l)), l => l != "")
   let unsafe = filter(requested, r => !any(printed, p => p == r))
   if length(unsafe) == 0 {
@@ -1184,7 +1185,7 @@ fn observe_runner_host_paths(
   match run_runner_host_leg(subject: subject, context: context, leg: LegRootOnlyFind { paths: paths, kind: kind }) {
     TypedArgvExecRefused { reason: why } => PathsUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
-      classify_runner_host_find_result(requested: paths, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+      classify_root_only_paths(requested: paths, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
   }
 }
 
@@ -1197,7 +1198,7 @@ fn observe_runner_host_file_mode(
   match run_runner_host_leg(subject: subject, context: context, leg: LegFileModeFind { path: file.path as String, mode: file.mode }) {
     TypedArgvExecRefused { reason: why } => PathsUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
-      classify_runner_host_find_result(requested: [file.path as String], exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+      classify_root_only_paths(requested: [file.path as String], exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
   }
 }
 

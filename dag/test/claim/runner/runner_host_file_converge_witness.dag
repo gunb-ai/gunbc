@@ -141,7 +141,6 @@ import gunbc.runner.runner_host_file_converge {
   SlotFabricMemberNotARunner,
   SlotFabricMemberRunsARunner,
   classify_root_only_paths,
-  classify_runner_host_find_result,
   RunnerHostFileObservation,
   HostFileLeaveInPlace,
   HostFileWrite,
@@ -566,9 +565,9 @@ test fn a_path_find_did_not_print_is_not_root_only() -> Bool {
     PathsNotApplicable => false
   }
   let missing = match classify_root_only_paths(requested: ["/etc/needrestart/conf.d"], exit_code: 1, stdout: "", stderr: "find: '/etc/needrestart/conf.d': No such file or directory") {
-    PathsNotRootOnly { paths: ps, detail: _ } => ps == ["/etc/needrestart/conf.d"]
+    PathsUnobservable { reason: r } => string_contains(s: r, pattern: "did not succeed")
+    PathsNotRootOnly { paths: _, detail: _ } => false
     PathsRootOnly => false
-    PathsUnobservable { reason: _ } => false
     PathsNotApplicable => false
   }
   all_safe && one_unsafe && missing
@@ -1617,7 +1616,7 @@ test fn the_file_leg_asks_for_the_exact_desired_mode_not_merely_no_other_writer(
 // RED: identical bytes, root-owned, mode 0644 against a 0440 desire. find (exact -perm 440) does not
 // print the path, the classifier reads NotRootOnly, and the action is a repair WRITE -- never an adoption.
 test fn identical_bytes_at_the_wrong_mode_do_not_adopt() -> Bool {
-  match classify_runner_host_find_result(requested: ["/etc/sudoers.d/gunbc-ghrunner"], exit_code: 0, stdout: "", stderr: "") {
+  match classify_root_only_paths(requested: ["/etc/sudoers.d/gunbc-ghrunner"], exit_code: 0, stdout: "", stderr: "") {
     PathsNotRootOnly { paths: ps, detail: d } =>
       ps == ["/etc/sudoers.d/gunbc-ghrunner"]
         && is_write(a: action_of(content: HostFileIdentical, file_metadata: PathsNotRootOnly { paths: ps, detail: d }, ancestors: PathsRootOnly))
@@ -1629,7 +1628,7 @@ test fn identical_bytes_at_the_wrong_mode_do_not_adopt() -> Bool {
 
 // Positive: identical bytes at exactly 0440 (find prints the path) adopt.
 test fn identical_bytes_at_the_desired_mode_adopt() -> Bool {
-  match classify_runner_host_find_result(requested: ["/etc/sudoers.d/gunbc-ghrunner"], exit_code: 0, stdout: "/etc/sudoers.d/gunbc-ghrunner\n", stderr: "") {
+  match classify_root_only_paths(requested: ["/etc/sudoers.d/gunbc-ghrunner"], exit_code: 0, stdout: "/etc/sudoers.d/gunbc-ghrunner\n", stderr: "") {
     PathsRootOnly => is_leave(a: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
     PathsNotRootOnly { paths: _, detail: _ } => false
     PathsUnobservable { reason: _ } => false
@@ -1646,7 +1645,7 @@ test fn an_unavailable_mode_observation_refuses_rather_than_adopts_or_writes() -
 // RED: after a write whose bytes read back identical, a wrong or unreadable mode refuses at the
 // metadata readback; only a root-only-at-mode reading converges.
 test fn a_wrong_or_unreadable_mode_after_the_write_refuses_at_the_metadata_readback() -> Bool {
-  let refused = readback_refused(m: classify_runner_host_find_result(requested: ["/p"], exit_code: 0, stdout: "", stderr: ""))
+  let refused = readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 0, stdout: "", stderr: ""))
   refused
     && readback_refused(m: PathsUnobservable { reason: "x" })
     && !readback_refused(m: PathsRootOnly)
@@ -1666,7 +1665,7 @@ fn readback_refused(m: RunnerHostPathMetadata) -> Bool {
 fn result_action(content: RunnerHostFileStanding, exit_code: Int, stdout: String) -> RunnerHostFileAction {
   action_of(
     content: content,
-    file_metadata: classify_runner_host_find_result(requested: ["/p"], exit_code: exit_code, stdout: stdout, stderr: "find: '/p': Permission denied"),
+    file_metadata: classify_root_only_paths(requested: ["/p"], exit_code: exit_code, stdout: stdout, stderr: "find: '/p': Permission denied"),
     ancestors: PathsRootOnly,
   )
 }
@@ -1690,7 +1689,7 @@ test fn only_a_successful_find_establishes_a_mismatch_or_a_match() -> Bool {
 
 // RED: the post-write readback of a failed find refuses; a successful matching one does not.
 test fn a_failed_post_write_metadata_read_refuses_at_the_metadata_readback() -> Bool {
-  readback_refused(m: classify_runner_host_find_result(requested: ["/p"], exit_code: 1, stdout: "/p\n", stderr: "boom"))
-    && readback_refused(m: classify_runner_host_find_result(requested: ["/p"], exit_code: 1, stdout: "", stderr: "boom"))
-    && !readback_refused(m: classify_runner_host_find_result(requested: ["/p"], exit_code: 0, stdout: "/p\n", stderr: ""))
+  readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 1, stdout: "/p\n", stderr: "boom"))
+    && readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 1, stdout: "", stderr: "boom"))
+    && !readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 0, stdout: "/p\n", stderr: ""))
 }
