@@ -16,9 +16,6 @@ use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
 };
 pub use crate::v1_compiler_infer_sigs::{ResolvedFormals, ResolvedFuncSig};
-use crate::v1_compiler_infer_types::TextJudgment::TextNotAsked;
-use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes;
-pub use crate::v1_compiler_infer_types::{TextJudgment, TextNotAskedReason};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::Arrow;
@@ -694,7 +691,7 @@ pub fn gi_module_rows(
         let module_file = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
         let sig_rows = Rc::new({
             let mut __result = Vec::new();
-            for sig in Rc::new(v1_rt::map_values(&m.func_env.clone().local.clone()))
+            for sig in Rc::new(v1_rt::map_values(&m.func_env.local.clone()))
                 .iter()
                 .cloned()
             {
@@ -734,7 +731,7 @@ pub fn gi_all_sigs(
         v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
         |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, m: Rc<TypedModule>| {
             let module_file = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
-            Rc::new(v1_rt::map_values(&m.func_env.clone().local.clone()))
+            Rc::new(v1_rt::map_values(&m.func_env.local.clone()))
                 .iter()
                 .cloned()
                 .fold(
@@ -1043,26 +1040,14 @@ pub fn gi_supplied_node_reading_lines(
             Rc::new(vec!["T".to_string()]),
             si.clone(),
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            Rc::new(TextJudgment::TextNotAsked {
-                reason: TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes,
-            }),
-            "v1.tests.claim.generic_identity_census".to_string(),
-        )
-        .subst
-        .clone();
+        );
         let bound_by_name_alone = crate::v1_compiler_infer::unify_generics(
             renamed_xs.substitution_basis.clone(),
             list_of_int.clone(),
             Rc::new(vec!["M".to_string()]),
             si.clone(),
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            Rc::new(TextJudgment::TextNotAsked {
-                reason: TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes,
-            }),
-            "v1.tests.claim.generic_identity_census".to_string(),
-        )
-        .subst
-        .clone();
+        );
         let renamed_child_key = match gi_first_child(renamed_xs.substitution_basis.clone()) {
             Some(c) => gi_declaration_label(c.declaration.clone()),
             std::option::Option::None => "no child".to_string(),
@@ -1073,15 +1058,15 @@ pub fn gi_supplied_node_reading_lines(
                 v1_rt::concat(
                     v1_rt::concat(
                         if (gi_declaration_label(substituted.declaration.clone())
-                            == gi_declaration_label(xs.declared_type.clone().declaration.clone()))
+                            == gi_declaration_label(xs.declared_type.declaration.clone()))
                         {
                             "kept ".to_string()
                         } else {
                             "CHANGED from ".to_string()
                         },
-                        gi_declaration_label(xs.declared_type.clone().declaration.clone()),
+                        gi_declaration_label(xs.declared_type.declaration.clone()),
                     ),
-                    if (gi_declaration_label(xs.declared_type.clone().declaration.clone())
+                    if (gi_declaration_label(xs.declared_type.declaration.clone())
                         == "none".to_string())
                     {
                         " (vacuous: the input carried no declaration to lose)".to_string()
@@ -1388,7 +1373,7 @@ pub fn gi_result_carrier_observation(
                     why: v1_rt::concat("no item named ".to_string(), function_name.clone()),
                 })
             }
-            Some(hit) => match hit.item.clone().body.clone() {
+            Some(hit) => match hit.item.body.clone() {
                 std::option::Option::None => {
                     Rc::new(ResultCarrierObservation::ResultCarrierUnobserved {
                         why: v1_rt::concat(function_name.clone(), " has no body".to_string()),
@@ -1408,10 +1393,7 @@ pub fn gi_result_carrier_observation(
                         let ctx = Rc::new(GenericIdentityContext {
                             module_file: hit.module_file.clone(),
                             enclosing: function_name.clone(),
-                            generic_names: gi_generic_names(
-                                hit.item.clone().params.clone(),
-                                si.clone(),
-                            ),
+                            generic_names: gi_generic_names(hit.item.params.clone(), si.clone()),
                             si: si.clone(),
                             sigs: sigs.clone(),
                         });
