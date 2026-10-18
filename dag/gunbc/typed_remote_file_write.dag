@@ -436,7 +436,7 @@ fn remote_file_converged_from_report(
   report: RemoteFileComparisonReport,
 ) -> TypedRemoteFileConvergence
   admit_callers: [
-    decl_ref(module_path: "gunbc.typed_remote_file_write", decl_name: "converge_typed_remote_file"),
+    decl_ref(module_path: "gunbc.typed_remote_file_write", decl_name: "converge_typed_remote_file_validated"),
   ]
   = match report {
       ComparisonIdentical =>

@@ -58,6 +58,7 @@ import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, runne
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir }
 import gunbc.runner.runner_host_deploy { runner_index_seq }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.runner.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner.runner_unit { runner_unit_name_of_registration }
 import gunbc.host.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
@@ -470,6 +471,29 @@ fn runner_host_refused_sudoers_content(spec: RunnerHostSpec, cause: String, arti
       ops: runner_host_refused_privileged_operations(spec: spec),
     ),
   ], "")
+}
+
+// THE ONE DECISION between the found, refused-width and unmodeled renderings of a host's sudoers file.
+// It lived inline in gunbc.tier_o_artifact_emit, which cannot be imported by the converge route that
+// installs the file (it pulls the witness modules in, closing a cycle); both now consume this.
+type RunnerHostSudoersBody
+  = RunnerHostSudoersBodyProduced { content: String }
+  | RunnerHostSudoersBodyRefused { reason: String }
+
+fn runner_host_sudoers_body(host: HostIdentity, artifact_path: String) -> RunnerHostSudoersBody {
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployFound { deploy } =>
+      RunnerHostSudoersBodyProduced { content: runner_host_sudoers_content(deploy: deploy, artifact_path: artifact_path) }
+    RunnerHostDeployUnmodeled { host: unmodeled } =>
+      RunnerHostSudoersBodyRefused { reason: concat("no runner host deploy row for enrolled host ", unmodeled as String) }
+    RunnerHostDeployRefused { host: refused, cause: why } =>
+      match runner_host_spec_for(host: refused) {
+        RunnerHostSpecFound { spec: spec } =>
+          RunnerHostSudoersBodyProduced { content: runner_host_refused_sudoers_content(spec: spec, cause: why, artifact_path: artifact_path) }
+        RunnerHostSpecAbsent { host: h } =>
+          RunnerHostSudoersBodyRefused { reason: concat("runner host refused with no spec: ", h as String) }
+      }
+  }
 }
 
 fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) -> String {

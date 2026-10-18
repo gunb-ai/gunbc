@@ -133,10 +133,9 @@ import gunbc.runner.runner_slot_retirement {
   CgroupEventsBatchRead,
   CgroupEventsBatchUnread,
 }
-import gunbc.runner.runner_host_grants {  bootstrap_principal_is_not_the_grantee }
+import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_grantee, runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.generated_artifact { RunnerHostSudoersArtifact }
-import gunbc.tier_o_artifact_emit { tier_o_artifact_body, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO }
+import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 
 // THE HOST FILES A RUNNER HOST MUST CARRY FOR ITS SLOTS TO BE TORN DOWN WHOLE, CONVERGED OVER THE
 // FLEET EDGE AS THE HOST'S ADMINISTRATOR.
@@ -276,8 +275,8 @@ fn runner_host_depriv_file(depriv: String) -> RunnerHostFileDesired {
 }
 
 // THE SUDOERS DROP-IN IS THE RENDERED ARTIFACT'S BYTES, FROM THE ONE PRODUCER OF THEM. The content is
-// gunbc.tier_o_artifact_emit tier_o_artifact_body over RunnerHostSudoersArtifact -- the same fold
-// that decides, per host, between runner_host_sudoers_content and the refused-width variant, and the
+// gunbc.runner.runner_host_grants runner_host_sudoers_body -- the same fold
+// tier_o_artifact_emit consumes, that decides, per host, between runner_host_sudoers_content and the refused-width variant, and the
 // one the drift watch compares the committed file with -- so what lands on the host is what is
 // committed, never a second rendering. It is installed by the ADMINISTRATOR, which holds its own
 // root through the bootstrap edge and so does not need the grants this file confers (the grantee
@@ -291,8 +290,8 @@ type RunnerHostSudoersDesired
   | SudoersFileWithheld { withheld: RunnerHostFileWithheld }
 
 fn runner_host_sudoers_desired(host: HostIdentity) -> RunnerHostSudoersDesired {
-  match tier_o_artifact_body(a: RunnerHostSudoersArtifact { host: host }) {
-    TierOArtifactProduced { content: c } =>
+  match runner_host_sudoers_body(host: host, artifact_path: artifact_path(a: RunnerHostSudoersArtifact { host: host })) {
+    RunnerHostSudoersBodyProduced { content: c } =>
       SudoersFileDesired {
         file: RunnerHostFileDesired {
           subject: "runner-host-sudoers" as NonEmptyStr,
@@ -302,18 +301,11 @@ fn runner_host_sudoers_desired(host: HostIdentity) -> RunnerHostSudoersDesired {
           validation: VisudoCheck,
         },
       }
-    TierOArtifactRefused { reason: r } =>
+    RunnerHostSudoersBodyRefused { reason: r } =>
       SudoersFileWithheld {
         withheld: RunnerHostFileWithheld {
           subject: "runner-host-sudoers" as NonEmptyStr,
           cause: concat("runner_host_file_converge: the rendered sudoers body is refused, so nothing is installed: ", r) as NonEmptyStr,
-        },
-      }
-    TierOArtifactNotTierO =>
-      SudoersFileWithheld {
-        withheld: RunnerHostFileWithheld {
-          subject: "runner-host-sudoers" as NonEmptyStr,
-          cause: "runner_host_file_converge: the sudoers artifact has no Tier O body" as NonEmptyStr,
         },
       }
   }
