@@ -266,6 +266,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_executable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_directory_command"),
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_group_names_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_uid_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_version_command"),
     decl_ref(module_path: "extdeps.virtualization.qemu", decl_name: "qemu_version_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_run_config_command"),
@@ -284,6 +285,9 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.git", decl_name: "git_maintenance_auto_disabled_config_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_repack_quiet_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_pack_refs_all_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_local_config_get_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_branch_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_show_ref_verify_quiet_command"),
 
     decl_ref(module_path: "extdeps.git", decl_name: "git_clone_shallow_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_shallow_revision_command"),

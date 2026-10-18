@@ -58,6 +58,15 @@ fn id_group_names_command(user: NonEmptyStr) -> ArgvCommand {
   argv_command(program: id_program(), arguments: ["-nG", "--", user as String])
 }
 
+// -u WITH NO OPERAND: the uid of THE CALLING PROCESS, which is the account the transport actually
+// reached -- the counterpart of id_user_name_argv's no-operand rule, in numeric form. install(1) takes a
+// numeric owner, and a witness that seeds a tree must seed it with the owner it is actually allowed to
+// claim; asking the account database for a name and guessing the number is how a witness ends up
+// asserting a mode it never had.
+fn id_uid_command() -> ArgvCommand {
+  argv_command(program: id_program(), arguments: ["-u"])
+}
+
 // -u WITH AN OPERAND: the named account's numeric uid, from the account database (as above).
 fn id_uid_of_command(user: NonEmptyStr) -> ArgvCommand {
   argv_command(program: id_program(), arguments: ["-u", "--", user as String])

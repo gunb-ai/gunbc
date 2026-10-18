@@ -355,14 +355,18 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let steps = dashboard_instance_worker_git_subtree_migration(instance: lab)
   let all_args = fold(steps, init: [] as List<String>, f: (acc, c) => concat(acc, c.arguments))
-  // The two arms of each child's pair: the re-group step (chgrp) and the mode step (chmod g+w + g+s on
-  // directories). Named so a leg can say which arm carries which bit instead of quantifying wrongly
-  // over both and failing on the arm that legitimately lacks the flag.
-  let regroup_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == "chgrp"))
-  let chmod_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == "g+s"))
+  // WHICH STEPS WALK WHICH SUBTREE, split by whether the target appears in the argv at all -- so a leg
+  // about objects' prunes cannot be answered by a refs or logs step that has no business carrying them,
+  // and vice versa. Within objects, the re-group arm (chgrp) and the mode arm (chmod g+w, and g+s guarded
+  // by -type d) are named separately because each carries a bit the other legitimately lacks.
   let objects_child: NonEmptyStr = ".git/objects"
+  let objects_target = lab_subtree_target(instance: lab, child: objects_child)
   let objects_paths = anchored_pruned_paths(instance: lab, child: objects_child)
-  let refs_and_logs_steps = filter(xs: steps, predicate: c => !any(c.arguments, a => a == lab_subtree_target(instance: lab, child: objects_child)))
+  let objects_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == objects_target))
+  let objects_chgrp_steps = filter(xs: objects_steps, predicate: c => any(c.arguments, a => a == "chgrp"))
+  let objects_chmod_steps = filter(xs: objects_steps, predicate: c => any(c.arguments, a => a == "g+s"))
+  let chmod_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == "g+s"))
+  let refs_and_logs_steps = filter(xs: steps, predicate: c => !any(c.arguments, a => a == objects_target))
   // (a) the measured pre-migration state is refused by the model and the post-migration state accepted:
   //     0775-without-setgid is not a grant, 02775 is, a 0664 file is and a 0666 file is not.
   dashboard_git_worker_directory_mode_is_unmigrated(mode: measured_srv1_unmigrated_mode)
@@ -409,8 +413,8 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     at ANY depth, so at 2dc2b8de the walk pruned a branch named pack, info, hooks or branches and
     //     its owner could never update it. The prune is `<target>/pack`, a path, not a pattern.
     && all(steps, c => occurrences(words: c.arguments, wanted: "-path") == occurrences(words: c.arguments, wanted: "-prune"))
-    && all(chmod_steps, c => all(objects_paths, p => any(c.arguments, a => a == p)))
-    && all(regroup_steps, c => all(objects_paths, p => any(c.arguments, a => a == p)))
+    && all(objects_steps, c => all(objects_paths, p => any(c.arguments, a => a == p)))
+    && all(objects_steps, c => occurrences(words: c.arguments, wanted: "-path") == occurrences(words: c.arguments, wanted: "-prune"))
     && all(refs_and_logs_steps, c => !any(c.arguments, a => a == "-path" || a == "-prune"))
     && !any(all_args, a => a == "*/hooks" || a == "*/info" || a == "*/branches" || a == "*/pack"
       || a == "*/hooks/*" || a == "*/info/*" || a == "*/branches/*" || a == "*/pack/*")
