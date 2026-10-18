@@ -3,17 +3,12 @@ module gunbc.instruments.native_serve_device_crypto_probe
 import std.types { Int, List, String, Bool, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { Cons, Empty }
-import extdeps.crypto.signature { VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth }
 import extdeps.standards.rfc_6979 {
-  rfc6979_a25_p256_public_key, rfc6979_a25_message_sample, rfc6979_a25_message_test, rfc6979_a25_p256_sha256_sample_signature,
+  rfc6979_a25_message_sample, rfc6979_a25_message_test, rfc6979_a25_p256_sha256_sample_signature,
 }
-import extdeps.apple.app_attest {
-  AttestKeyId, AttestationExpectation, AssertionExpectation, AttestationDecoded, AttestationDecode, AttestationDecodeOk, AttestationDecodeRefused,
-  AppAttestDevelopment, app_attest_app_id, AppIdPrefix, decode_attestation, base64_of,
-}
-import extdeps.apple.app_attest_sample_ios_14_4 {
-  sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_client_data,
-  sample_team_identifier, sample_bundle_identifier,
+import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets, sample_assertion_octets, sample_client_data }
+import gunbc.auth.approval_device_crypto_self_check {
+  octets_text, first_octet_changed, rfc6979_check, sample_attestation_expectation, sample_assertion_expectation,
 }
 import gunbc.native_serve_probe_plan {
   NativeServePhase, native_serve_phase_refusals, NativeServeWire, native_serve_wire_parse, no_observation, native_serve_probe_not_held_code,
@@ -72,69 +67,6 @@ fn native_serve_probe_release_revision() -> String {
 // and no case here is a budget case.
 fn native_serve_probe_request_deadline_ms() -> String {
   "30000"
-}
-
-// ── The carriers ─────────────────────────────────────────────────────────────────────────────
-fn rfc6979_key() -> VerifyingKey {
-  VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: octets_text(octets: rfc6979_a25_p256_public_key, url_safe: true) as NonEmptyStr }
-}
-
-fn octets_text(octets: List<Int>, url_safe: Bool) -> String {
-  match base64_of(octets: octets, url_safe: url_safe) {
-    Present { value: t } => t
-    Absent => ""
-  }
-}
-
-fn rfc6979_signature(octets: List<Int>) -> SignatureBytes {
-  SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: octets_text(octets: octets, url_safe: true) as NonEmptyStr }
-}
-
-fn first_octet_changed(octets: List<Int>) -> List<Int> {
-  match octets {
-    Cons { head: h, tail: rest } => concat([(h + 1) % 256], rest)
-    Empty => []
-  }
-}
-
-fn rfc6979_check(octets: List<Int>, message: String) -> SignatureCheck {
-  SignatureCheck { key: rfc6979_key(), signature: rfc6979_signature(octets: octets), message: message as NonEmptyStr }
-}
-
-fn sample_app_id() -> NonEmptyStr {
-  app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier)
-}
-
-fn sample_attestation_expectation(client_data: NonEmptyStr) -> AttestationExpectation {
-  AttestationExpectation {
-    key_id: sample_key_id_b64 as AttestKeyId,
-    client_data: client_data,
-    app_id: sample_app_id(),
-    environment: AppAttestDevelopment,
-    observed_at: "2021-01-23T12:13:35Z",
-    admitted_validation_categories: [2, 3, 4],
-    expected_bundle_version: "1" as NonEmptyStr,
-  }
-}
-
-// The assertion's key is the attestation's credential key, as gunbc.instruments.native_app_attest
-// joins them: the assertion expectation is the attestation's, plus that key.
-fn sample_assertion_expectation() -> AssertionExpectation {
-  AssertionExpectation {
-    key_id: sample_key_id_b64 as AttestKeyId,
-    public_key_point_b64url: sample_credential_point(),
-    client_data: sample_client_data,
-    app_id: sample_app_id(),
-    admitted_validation_categories: [2, 3, 4],
-    expected_bundle_version: "1" as NonEmptyStr,
-  }
-}
-
-fn sample_credential_point() -> NonEmptyStr {
-  match decode_attestation(object: sample_attestation_octets) {
-    AttestationDecodeOk { decoded: d } => octets_text(octets: d.leaf.tbs.spki_public_key, url_safe: true) as NonEmptyStr
-    AttestationDecodeRefused { cause: _ } => "x" as NonEmptyStr
-  }
 }
 
 // ── The cases ────────────────────────────────────────────────────────────────────────────────

@@ -19281,6 +19281,15 @@ fn native_entry_function_name(modules: List<TypedModule>) -> String? {
 }
 
 data native_serve_entry_function: String = "native_serve_handle"
+// The optional startup fold's name is gunbc.native_serve native_serve_startup_entry_function's; like the
+// handler's, the emitter spells it where the rendered main imports it. The main runs it only when the
+// entry's own module declares it, so a driver that declares none renders exactly what it did.
+data native_serve_startup_function: String = "native_serve_startup"
+
+fn native_serve_declares_startup(modules: List<TypedModule>, pipeline_module: String) -> Bool {
+  count(native_effect_decl_sites(modules: modules, kind: ModuleItemFunction, name: native_serve_startup_function)
+    |> filter(site => site.module_name == pipeline_module)) > 0
+}
 data native_cli_entry_function: String = "v2_cli_main"
 data native_claim_entry_function: String = "native_claim_report"
 
@@ -19439,7 +19448,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module))
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -19764,12 +19773,33 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // transport error): at startup the main refuses before announcing, so /livez is never answered by a
 // process that cannot serve; a failed replacement ends the process with
 // native_serve_worker_replacement_exit_code once the request in hand is answered.
-fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>) -> TextFile {
+fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let effectful = (bindings |> count) > 0
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
   let handler_effect_args = bindings |> map(b => concat(", ", b.argument)) |> join(separator: "")
   let effect_failed_import = if effectful { " native_serve_effect_failed," } else { "" }
+  let startup_import = if startup {
+    concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup;", "\n",
+      "use ", crate_name, "::gunbc_native_serve::{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};", "\n")
+  } else { "" }
+  let startup_run = if startup {
+    concat(
+      "    // The startup fold runs before any bind: the host reads the executable's octets and the fold judges them.", "\n",
+      "    match std::env::current_exe().and_then(std::fs::read) \{", "\n",
+      "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
+      "            NativeServeStartup::NativeServeStartupPassed \{ note \} => eprintln!(\"\{\}\", native_serve_startup_passed_line(note.clone())),", "\n",
+      "            NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
+      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "            \}", "\n",
+      "        \},", "\n",
+      "        Err(cause) => \{", "\n",
+      "            eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
+      "            std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "        \}", "\n",
+      "    \}", "\n")
+  } else { "" }
   let worker_realize = if effectful {
     concat(
       "        let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() \{", "\n",
@@ -19807,6 +19837,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    NativeServeRoute, NativeServeStart,", "\n",
       "\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::native_serve_handle;", "\n",
+      startup_import,
       "\n",
       "// What a worker hands back across the thread boundary: owned plain values, because the compiled", "\n",
       "// handler's values are reference-counted and stay on the worker's thread.", "\n",
@@ -19985,6 +20016,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
+      startup_run,
       "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
       "        Ok(listener) => listener,", "\n",
       "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",

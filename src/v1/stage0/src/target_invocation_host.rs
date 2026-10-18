@@ -524,6 +524,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-serve-startup-refusal"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_refusal_fixture.dag",
+            },
+        ),
+        (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
         ),

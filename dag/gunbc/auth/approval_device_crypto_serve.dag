@@ -2,11 +2,8 @@ module gunbc.auth.approval_device_crypto_serve
 
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha }
 import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
-import std.bignat { bignat_zero_limbs, bignat_one, bignat_sub }
 import extdeps.http.server { ServeWireResponse }
-import gunbc.native_serve { native_serve_application_json }
-import extdeps.crypto.nist_p256 { p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine }
-import extdeps.crypto.nist_prime_curve { jacobian_is_infinity }
+import gunbc.native_serve { native_serve_application_json, NativeServeStartup }
 import extdeps.crypto.signature {
   verify_signature, SignatureVerification, SignatureVerified, SignatureInvalid, SignatureMalformed,
   VerifyingKeyMalformed, SignatureSuiteMismatch, VerifyingKeyUndecodable, SignatureUndecodable,
@@ -22,6 +19,8 @@ import extdeps.apple.app_attest {
   AssertionRefusal, AssertionSignatureInvalid, AssertionAppIdMismatch, AssertionValidationCategoryRefused,
   AssertionValidationCategoryAbsent, AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable,
 }
+import gunbc.auth.approval_device_crypto_self_check { p256_multiple_is_infinity, device_crypto_startup }
+import gunbc.auth.approval_device_crypto_realization { device_crypto_obligations }
 import gunbc.auth.approval_device_wire { WireDecode, WireDecoded, WireRefused }
 import gunbc.auth.approval_device_crypto_wire {
   device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path, device_crypto_p256_order_path,
@@ -48,7 +47,7 @@ import gunbc.auth.approval_device_crypto_wire {
 // handler in process, at which point the broker calls the folds directly and the wire has no consumer.
 // Until then this entry is the only route by which a device-crypto obligation can be discharged
 // natively. The realization row stays NativeDeviceCryptoUnavailable; flipping it to bound is a later
-// change that also carries the startup self-check minting the handler receipt.
+// change that consumes the receipt native_serve_startup mints.
 data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
 
 fn crypto_response(status: Int, body: String) -> ServeWireResponse {
@@ -128,21 +127,6 @@ fn assertion_answer(v: AssertionVerification) -> ServeWireResponse {
   }
 }
 
-// n times the base point is infinity; (n - 1) times it is not. The scalar is the curve's own order
-// (p256_n), named by the request and never carried by it.
-fn p256_multiple_is_infinity(m: P256Multiple) -> Bool {
-  let g = p256_affine(x: p256_gx, y: p256_gy)
-  let zero = bignat_zero_limbs()
-  match m {
-    OrderItself => jacobian_is_infinity(p: p256_double_scalar(u1: p256_n, g: g, u2: zero, q: g))
-    OrderMinusOne =>
-      match bignat_sub(a: p256_n, b: bignat_one()) {
-        Present { value: nm1 } => jacobian_is_infinity(p: p256_double_scalar(u1: nm1, g: g, u2: zero, q: g))
-        Absent => false
-      }
-  }
-}
-
 fn order_answer(m: P256Multiple) -> ServeWireResponse {
   if p256_multiple_is_infinity(m: m) { crypto_answered(verdict: CryptoInfinity, arm: "Infinity") }
   else { crypto_answered(verdict: CryptoFinite, arm: "Finite") }
@@ -188,4 +172,12 @@ fn native_serve_handle(method: String, path: String, body: String, tailscale_ide
   else if path == device_crypto_assertion_path { assertion_route(body: body) }
   else if path == device_crypto_p256_order_path { order_route(body: body) }
   else { crypto_response(status: 404, body: concat("no verifier route ", concat(path, "\n"))) }
+}
+
+// THE STARTUP SELF-CHECK (gunbc.native_serve native_serve_startup_entry_function): the rendered main runs this once
+// before it binds, with the octets of this very executable, and refuses to bind when it refuses. Every obligation of
+// device_crypto_obligations is executed on the real folds and the receipt minted over them carries the binary's
+// SHA-256 as its exact revision (gunbc.auth.approval_device_crypto_self_check device_crypto_startup).
+fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup {
+  device_crypto_startup(obligations: device_crypto_obligations, executable_octets: executable_octets)
 }
