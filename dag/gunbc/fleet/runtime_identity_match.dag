@@ -130,26 +130,35 @@ type RuntimeIdentityAxisRow {
 //   and section 3b calls unauditable. `Absent` is the row saying so. It is a weaker claim than the
 //   serial's key, which is why this row is Corroborating and what it can ever claim is that two strings
 //   agree.
-// - NicSet reads Eui48Address and binds through TWO independent authorities, because an address names an
-//   interface on two separate grounds and neither one implies the other:
-//     * `mac_is_permanent_interface_identity` (reading_authority's own module) owns what the six OCTETS can
-//       say -- unicast, universally administered, and not the all-zero null address the flags alone accept;
-//     * `AddressProvenance` (this module) owns what the SOURCE can say -- that the address was read from a
-//       place that establishes permanence rather than assigned by software. Octets cannot show that: software
-//       can set any address it likes and the flags will look perfect, so a Decisive weight borrowed from the
-//       octets alone was a Decisive weight resting on a spoofable fact.
-//   Both must hold for an address to reach the comparison, and `usable_addresses` is the only place that
-//   decides it. WHAT THE ROW STILL DOES NOT CLAIM: no home in this corpus publishes a permanent-address
-//   reading (a Linux `addr_assign_type`/`perm_addr` pair), so a probe that reads current address state must
-//   say so by handing over `PermanenceNotEstablished`, and the axis reports a located gap instead of a
-//   verdict. A future home that publishes it becomes a constructor of `AddressProvenance` plus a probe that
-//   uses it -- no row and no fn here changes, because the gap was already modelled.
+// - NicSet reads Eui48Address, and its two citation slots name two DIFFERENT homes, because an address
+//   names an interface on two separate grounds and neither one implies the other. `reading_authority`
+//   cites the EUI-48 type -- the home of the six OCTETS. `binding_authority` cites
+//   `mac_is_permanent_interface_identity`, the octet test that licenses binding at all: unicast,
+//   universally administered, and not the all-zero null address the flags alone accept. Two slots naming
+//   one declaration twice is the decorative citation the census below checks away, and these are two
+//   declarations.
+//   THE SECOND GROUND IS CARRIED AS DATA, NOT CITED -- and saying so here is the honest form of it.
+//   `AddressProvenance` (this module) decides what the SOURCE can say: that the address came from a place
+//   that establishes permanence rather than being assigned by software. Octets cannot show that; software
+//   can set any address it likes and the flags will look perfect, so a Decisive weight resting on the
+//   octets alone was a weight resting on a spoofable fact. It is deliberately NOT a third citation on
+//   this row, for two reasons. A module naming itself as the authority over its own claim is
+//   self-attestation, the same scope defect DESIGN section 3b refuses in other people's citations; and no
+//   home in this corpus publishes a permanent-address reading (a Linux `addr_assign_type`/`perm_addr`
+//   pair) that could be cited in its place. So the claim is made where it can actually be discharged: in
+//   the observation, by a probe handing over `PermanenceEstablished` together with the statement of where
+//   it read. A probe holding only current address state hands over `PermanenceNotEstablished`, and the
+//   axis reports a located gap instead of a verdict. Both grounds must hold for an address to reach the
+//   comparison, and `usable_addresses` is the only place that decides it. A future home that DOES publish
+//   a permanent-address reading becomes a constructor of `AddressProvenance` plus a probe that uses it; if
+//   it ever becomes the thing that licenses binding, its name goes in this row's `binding_authority`, and
+//   that is a data edit -- no fn here changes, because the gap was already modelled.
 //
-// A future requirement to make a fourth axis decisive adds a row with a different weight and TWO homes that
-// own those two claims; no fn here changes, which is what makes the policy reviewable without reading the
-// fold. Whether a home really OWNS its claim is a human judgment no fn can audit, so it is argued here and
-// cited as data; what the witness can and does check mechanically is uniqueness and that no row satisfies
-// the two-home requirement by naming one declaration twice.
+// A future requirement to make a fifth axis decisive adds a row with a different weight and two homes -- a
+// reading home and a distinct binding home; no fn here changes, which is what makes the policy reviewable
+// without reading the fold. Whether a home really OWNS its claim is a human judgment no fn can audit, so it
+// is argued here and cited as data; what the witness can and does check mechanically is uniqueness and that
+// no row satisfies the two-home requirement by naming one declaration twice.
 data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
   RuntimeIdentityAxisRow {
     axis: BoardSerialAxis,
