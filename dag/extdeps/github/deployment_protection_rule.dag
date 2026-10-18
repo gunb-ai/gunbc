@@ -41,6 +41,7 @@ import std.types {
   List,
   NonEmptyStr,
   HttpStatus,
+  commit_sha_text_holds,
 }
 
 import std.decl_ref {
@@ -123,8 +124,15 @@ data spec_authority: ExternalAuthority = ExternalAuthority {
 data spec_pinned_commit: NonEmptyStr = "bb754941722779d8a5b3a2f25a5fbb7ce794e1ea"
 data spec_pinned_path: NonEmptyStr = "descriptions/api.github.com/api.github.com.json"
 
-fn spec_is_pinned_to_a_commit(commit: NonEmptyStr) -> Bool {
-  commit == spec_pinned_commit
+// THE PIN AS A CLAIM ABOUT A REVISION, not as a string equal to itself. `commit == spec_pinned_commit`
+// could only go red if someone edited the row and forgot the function, and it said nothing about
+// whether the value pins anything: a locator of "main" would have passed it. So the check is the SHAPE
+// that makes it a pin at all, asked of the one authority for the shape in this repository —
+// std.types.commit_sha_text_holds, whose per-character oracle is witnessed in
+// test.claim.std_commit_sha_text_witness. A branch name, a truncated hash, or an uppercase hash is not
+// a commit, and the row would be caught by THIS rather than by a matching literal.
+fn spec_pin_is_a_commit_revision() -> Bool {
+  commit_sha_text_holds(head: spec_pinned_commit as String)
 }
 
 // The REST reference page carrying both review endpoints and the pending-deployments poll.
@@ -382,7 +390,7 @@ data rule_delivery_documented_guarantee: DocumentedGuarantee = GuaranteeUndocume
   surfaces_checked: [
     "rest/api/actions — review-custom-deployment-protection-rules-for-a-workflow-run",
     "webhooks-and-events/webhooks — deployment_protection_rule event",
-    "pinned OpenAPI operation — /actions/runs/{run_id}/deployment_protection_rule",
+    "pinned OpenAPI operation — POST .../actions/runs/RUN_ID/deployment_protection_rule",
   ],
 }
 
@@ -550,10 +558,6 @@ data review_documented_example_body: DeploymentProtectionRuleReview = Deployment
   environment_name: "prod-eus",
   state: Approved,
   comment: Present { value: "All health checks passed." },
-}
-
-fn review_documented_example_is_complete() -> Bool {
-  (review_body_field_names(review: review_documented_example_body) |> count) == 3
 }
 
 // The version header the reference sends with the call. Typed as a name/value pair so a fold can
@@ -882,10 +886,6 @@ data custom_rule_timeout_run_conclusion: RunConclusion = RunFailure
 
 // The two review calls differ by one path segment. A refactor that collapsed them would silently
 // send an App review to the human queue, so the distinction is asserted, not assumed.
-fn the_two_review_endpoints_are_distinct() -> Bool {
-  review_endpoint_path != human_review_endpoint_path
-}
-
 // The environment this review releases, as an ACCESSOR returning NonEmptyStr — not a check, and not
 // Optional. That is the construction guarantee: a review with no environment cannot be built, so
 // there is no "did you remember to set it" validator left to forget (§5).
@@ -952,25 +952,6 @@ data poll_success_status: HttpStatus = 200
 // approval it never received. This fold is what stage 2 calls on the response.
 fn review_call_succeeded(status: HttpStatus) -> Bool {
   status == review_call.success_status
-}
-
-// The two authorities answer with different codes, so a caller cannot tell them apart by "was it a
-// 2xx". Asserting the difference here rather than leaving two rows that happen to differ.
-fn the_two_success_statuses_are_not_the_same() -> Bool {
-  review_call.success_status != human_review_call.success_status
-}
-
-// The review call and the poll are DIFFERENT CALLS even though the poll's path and the human
-// reviewer's path are the same resource reached by different methods. Method is part of the fact:
-// GET pending_deployments is a read any repo reader may make; POST pending_deployments is a human
-// decision; POST deployment_protection_rule is the App answering its own rule.
-fn the_three_calls_are_distinguishable() -> Bool {
-  review_call.path != pending_deployments_poll_call.path
-    && review_call.method == POST
-    && pending_deployments_poll_call.method == GET
-    && human_review_call.method == POST
-    && human_review_call.path == pending_deployments_poll_call.path
-    && human_review_call.method != pending_deployments_poll_call.method
 }
 
 // ---------------------------------------------------------------------------

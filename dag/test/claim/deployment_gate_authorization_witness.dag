@@ -44,6 +44,7 @@ import extdeps.github.deployment_protection_rule {
   RuleOwningApp,
   EnvironmentRuleOwnership,
   NotOwnedByGateApp,
+  NoRuleBelongsToThisApp,
   review_call,
   human_review_call,
   pending_deployments_poll_call,
@@ -156,7 +157,7 @@ fn minted_ownership() -> EnvironmentRuleOwnership {
 }
 
 fn unattributed_ownership() -> EnvironmentRuleOwnership {
-  NotOwnedByGateApp { because: "the readback listed no enabled rule for this App" }
+  NotOwnedByGateApp { because: NoRuleBelongsToThisApp }
 }
 
 // The wait, as the poll reports it: the environment as an OBJECT, a short configured timer, and the

@@ -264,6 +264,10 @@ test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refuse
     // trial by name rather than being told "no".
     && (match reviewer_removal_obstacle(admission: RemovalRefused { missing: NoRejectingReview }) {
           Present { value: NoRejectingReview } => true
+          // Every OTHER reason is a different blocker, and this test would be wrong to report it as
+          // the missing rejection. Listing the arms is the point: a fold that mixed reasons up would
+          // land here and fail.
+          Present { value: _ } => false
           Absent => false
         })
     && (match admitted_pair() {

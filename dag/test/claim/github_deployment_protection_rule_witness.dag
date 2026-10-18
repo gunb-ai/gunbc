@@ -28,6 +28,7 @@ import std.types {
   Bool,
   NonEmptyStr,
   HttpStatus,
+  commit_sha_text_holds,
 }
 
 import std.measure {
@@ -111,7 +112,6 @@ import extdeps.github.deployment_protection_rule {
   human_review_endpoint_path,
   review_endpoint_method,
   human_review_endpoint_method,
-  the_two_review_endpoints_are_distinct,
   review_endpoint_body_state_field,
   review_endpoint_body_environment_name_field,
   review_endpoint_body_comment_field,
@@ -123,15 +123,12 @@ import extdeps.github.deployment_protection_rule {
   review_permission_is_satisfied,
   review_required_permission,
   review_documented_example_body,
-  review_documented_example_is_complete,
   review_body_field_names,
   review_decision,
   ReviewApiVersionHeader,
   review_documented_api_version_header,
   review_api_version_header_is_pinned,
   review_call_succeeded,
-  the_two_success_statuses_are_not_the_same,
-  the_three_calls_are_distinguishable,
   rule_incompatible_job_setting,
   environment_protection_types_are_read_from,
   deployment_protection_rule_fact_citations,
@@ -149,7 +146,7 @@ import extdeps.github.deployment_protection_rule {
   spec_authority,
   spec_pinned_commit,
   spec_pinned_path,
-  spec_is_pinned_to_a_commit,
+  spec_pin_is_a_commit_revision,
 }
 import extdeps.github.app {
   GitHubAppPermission,
@@ -289,7 +286,10 @@ test fn a_review_without_a_comment_is_still_sendable() -> Bool {
 // GitHub's worked example, verbatim from the REST reference. Transcribed as a value of the type, so
 // "the example is a complete request" is a computation and not a claim about a comment.
 test fn the_documented_example_is_a_value_of_the_type() -> Bool {
-  review_documented_example_is_complete()
+  // The example is a value of the type, so "complete" is decided by CONSTRUCTION and by the one fold
+  // that derives field names from a review — not by counting fields of a constant, which could only
+  // fail when someone edited the constant and forgot the counter.
+  (review_body_field_names(review: review_documented_example_body) |> count) == 3
     && (review_documented_example_body.environment_name as String) == "prod-eus"
     && review_decision(review: review_documented_example_body) == Approved
     && review_documented_example_body.comment != none
@@ -306,7 +306,11 @@ test fn the_documented_example_is_a_value_of_the_type() -> Bool {
 // the wrong thing: the human endpoint cannot be called by an App, and a 200 read as an accepted rule
 // review reports an approval that was never given.
 test fn the_app_and_human_review_endpoints_do_not_collapse() -> Bool {
-  the_two_review_endpoints_are_distinct()
+  // The distinction is a fact about the SUPPLIED path and body values, asked of the folds that consume
+  // them — not a helper comparing two rows to each other. The two paths differ, each carries its own
+  // distinguishing segment, and the two bodies are different TYPES: an App body that took
+  // environment_ids, or a human body that took environment_name, would not type-check at all.
+  (review_endpoint_path as String) != (human_review_endpoint_path as String)
     && review_endpoint_method == POST
     && human_review_endpoint_method == POST
     && (review_endpoint_path as String) != (human_review_endpoint_path as String)
@@ -785,15 +789,31 @@ test fn upstream_states_only_the_endpoint_minimum() -> Bool {
 // RestCall values are distinguishable by path AND by status, so a caller cannot select one by asking
 // "was it a 2xx".
 test fn success_is_one_status_on_the_right_call() -> Bool {
-  review_call.success_status == 204 as HttpStatus
+  // EVERY CLAIM HERE GOES THROUGH A CONSUMER WITH A SUPPLIED INPUT. `the_two_success_statuses_are_not
+  // _the_same` and `the_three_calls_are_distinguishable` compared rows in this file to rows in this
+  // file and could only fail if someone edited one row and forgot the other; deleted. What survives is
+  // the behaviour that matters: which statuses `review_call_succeeded` accepts, fed statuses it might
+  // actually receive — including 200, which is what the poll and the human reviewer answer, and which
+  // must NOT read as an accepted rule review.
+  review_call_succeeded(status: 204 as HttpStatus)
+    && !review_call_succeeded(status: 200 as HttpStatus)
+    && !review_call_succeeded(status: 201 as HttpStatus)
+    && !review_call_succeeded(status: 304 as HttpStatus)
+    && !review_call_succeeded(status: 500 as HttpStatus)
+    && review_call.success_status == 204 as HttpStatus
     && human_review_call.success_status == 200 as HttpStatus
-    && the_two_success_statuses_are_not_the_same()
-    && the_three_calls_are_distinguishable()
+    && pending_deployments_poll_call.success_status == 200 as HttpStatus
     && review_call_succeeded(status: review_call.success_status)
     && !review_call_succeeded(status: human_review_call.success_status)
     && !review_call_succeeded(status: pending_deployments_poll_call.success_status)
+    // Method is part of the triple: GET pending_deployments is a read any repo reader may make, POST
+    // pending_deployments is the HUMAN review. Same path, different act, so a caller that selected a
+    // call by path alone would issue a human review as a poll.
     && review_call.method == POST
     && pending_deployments_poll_call.method == GET
+    && human_review_call.method == POST
+    && human_review_call.path == pending_deployments_poll_call.path
+    && human_review_call.method != pending_deployments_poll_call.method
     && (review_call.path |> contains("deployment_protection_rule"))
     && (pending_deployments_poll_call.path |> contains("pending_deployments"))
 }
@@ -831,9 +851,14 @@ test fn the_citation_table_names_only_live_declarations() -> Bool {
 // requires ..." claim in this file is about one revision. The red is the branch locator: an authority
 // that points at main is not a pinned authority, however well the rest of the row reads.
 test fn the_openapi_is_pinned_to_a_commit_and_not_to_a_branch() -> Bool {
-  spec_is_pinned_to_a_commit(commit: spec_pinned_commit)
-    && !spec_is_pinned_to_a_commit(commit: "main")
-    && !spec_is_pinned_to_a_commit(commit: "blob/main")
+  // The pin must be a COMMIT, which is a property of the value rather than an equality against itself.
+  // `spec_is_pinned_to_a_commit(commit: spec_pinned_commit)` was `x == x` in disguise: "main" passed it
+  // as long as the row said "main". Now the row is measured by std.types' own commit-shape predicate,
+  // so a branch name, a truncated hash or an uppercase hash is not a pin.
+  spec_pin_is_a_commit_revision()
+    && !commit_sha_text_holds(head: "main")
+    && !commit_sha_text_holds(head: "bb754941")
+    && !commit_sha_text_holds(head: "BB754941722779D8A5B3A2F25A5FBB7CE794E1EA")
     && (spec_authority.uri.locator |> contains(spec_pinned_commit as String))
     && (spec_authority.uri.locator |> contains("blob/"))
     && !(spec_authority.uri.locator |> contains("/main/"))
@@ -872,11 +897,11 @@ test fn the_model_scope_cites_the_published_authorities() -> Bool {
 // The plan carrier this model implements has to be reachable through the registry authority. This fails
 // if it is unregistered, if its name changes, or if it is registered twice.
 test fn the_plan_is_registered_in_the_authority_registry() -> Bool {
-  (all_plans |> filter(p => (p.plan.slug as String) == "ntfy-deployment-gate-approval") |> count) == 1
+  (all_plans |> filter(p => (p.slug as String) == "ntfy-deployment-gate-approval") |> count) == 1
     && (all_plans
-        |> filter(p => (p.plan.slug as String) == "ntfy-deployment-gate-approval")
+        |> filter(p => (p.slug as String) == "ntfy-deployment-gate-approval")
         |> fold(init: 0, f: (acc, p) => acc + 1)) == 1
     && (all_plans
-        |> filter(p => (p.plan.slug as String) == "ntfy-deployment-gate-approval")
-        |> fold(init: "", f: (acc, p) => if acc == "" { p.plan.title } else { acc })) != ""
+        |> filter(p => (p.slug as String) == "ntfy-deployment-gate-approval")
+        |> fold(init: "", f: (acc, p) => if acc == "" { p.title } else { acc })) != ""
 }
