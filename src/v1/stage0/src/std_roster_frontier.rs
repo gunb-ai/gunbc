@@ -2,6 +2,7 @@
 // Source module: std.roster_frontier
 
 use self::FrontierSubject::*;
+pub use crate::std_algebra::collection_map_shape;
 use crate::std_decl_ref::DeclField::{NamedField, WholeDeclaration};
 pub use crate::std_decl_ref::{
     decl_field_ref, decl_ref, declaration_ref_display_key, declaration_ref_eq,

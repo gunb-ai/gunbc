@@ -1,0 +1,112 @@
+module gunbc.native_serve_probe_plan
+
+import std.types { String, List, Bool, Int }
+import std.algebra { Cons, Empty }
+import std.process { ProcessExit, ExitFailure }
+
+// WHAT ONE NATIVE-SERVE PROBE RUNS AND WHICH READER JUDGES IT, AS A ROW FIELD OF THE BINDING.
+// gunbc.target_binding NativeServeProgramProducer carries a NativeServeProbe, so the host's one
+// serve producer reads the reader module and the phase set from the row and branches on no
+// binding. The phases are the three the fixture's probe (gunbc.native_serve_probe) has always run;
+// a service that has nothing to say in a phase declares it absent rather than the host guessing.
+//   NativeServePeerInstance: a second instance of the entry is started first and its bound port
+//     is handed to the reader's requests (the fixture's bound REST handler is pointed at it).
+//   NativeServeRefusedLaunch: one launch with the reader's refused release revision, which the
+//     door must refuse before it binds.
+//   NativeServeStuckCeilingExit: the subject is awaited, bounded, to exit by itself after the
+//     reader's last request drives it past the stuck-worker ceiling.
+type NativeServePhase
+  = NativeServePeerInstance
+  | NativeServeRefusedLaunch
+  | NativeServeStuckCeilingExit
+
+type NativeServeProbe {
+  reader: String
+  phases: List<NativeServePhase>
+}
+
+fn native_serve_phase_name(p: NativeServePhase) -> String {
+  match p {
+    NativeServePeerInstance => "peer-instance"
+    NativeServeRefusedLaunch => "refused-launch"
+    NativeServeStuckCeilingExit => "stuck-ceiling-exit"
+  }
+}
+
+// THE JOIN BETWEEN WHAT A ROW DECLARES AND WHAT ITS READER JUDGES. The reader exports the phases it
+// has cases for (its native_serve_probe_phases) and the row declares the phases the host will run,
+// both as phase names. A declared phase the reader cannot judge would run and be ignored, and a
+// judged phase nobody runs would read defaults as observations; either is a refusal naming the
+// phase, evaluated by the host before it spawns anything, so a binding that declares a phase its
+// probe cannot satisfy stops the line (DESIGN section 5).
+fn native_serve_phase_names(phases: List<NativeServePhase>) -> List<String> {
+  map(phases, p => native_serve_phase_name(p: p))
+}
+
+fn native_serve_phase_refusals(declared: List<String>, judged: List<NativeServePhase>) -> List<String> {
+  let judged_names = native_serve_phase_names(phases: judged)
+  concat(
+    map(filter(declared, d => !contains(judged_names, d)), d => concat("declared but not judged by the reader: ", d)),
+    map(filter(judged_names, j => !contains(declared, j)), j => concat("judged by the reader but not declared: ", j))
+  )
+}
+
+// The three answers the host reads off a row to decide which phases to run, so no phase name is
+// restated in the host.
+fn native_serve_declares_peer(probe: NativeServeProbe) -> Bool {
+  any(probe.phases, p => p == NativeServePeerInstance)
+}
+
+fn native_serve_declares_refused_launch(probe: NativeServeProbe) -> Bool {
+  any(probe.phases, p => p == NativeServeRefusedLaunch)
+}
+
+fn native_serve_declares_stuck_ceiling_exit(probe: NativeServeProbe) -> Bool {
+  any(probe.phases, p => p == NativeServeStuckCeilingExit)
+}
+
+// ── WHAT EVERY READER OF A NATIVE-SERVE RUN SHARES: the three terminations and the parse of one raw
+// HTTP/1.1 response the host hands back unjudged. A reader's verdicts are its own; the framing it reads
+// them through and the exit codes it ends in are the door's, so they live once, here, beside the
+// declaration of what a reader is.
+//
+// THE THREE TERMINATIONS: success is held; code 1 is a case the service answered wrongly; code 2 is no
+// observation (the service never announced, the responses do not join the cases one for one, a
+// declared phase did not run as declared).
+data native_serve_probe_not_held_code: Int = 1
+data native_serve_probe_no_observation_code: Int = 2
+
+fn no_observation(reason: String) -> ProcessExit {
+  ExitFailure { code: native_serve_probe_no_observation_code, reason: concat("no observation: ", reason) }
+}
+
+type NativeServeWire {
+  status: Int
+  head_lines: List<String>
+  body: String
+}
+
+// The head binder is re-bound with its type because the builtin split over it still refuses as not in
+// scope when the binder is used directly (checked by execution 2026-10-16: removing the re-bind gives
+// "function 'split' not found in scope"). The scrutinee here is a builtin's List<String>, not a declared
+// coproduct, so the restored declared-variant binder typing does not reach it; this is a distinct
+// remaining reason, not the retired drop (gunbc.recurring_failure_mode
+// builtin_list_arm_binder_still_untyped_in_its_use).
+fn native_serve_wire_parse(response: String) -> NativeServeWire? {
+  match split(s: response, delimiter: "\r\n\r\n") {
+    Cons { head: head, tail: rest } =>
+      let head_text: String = head
+      let head_lines = split(s: head_text, delimiter: "\r\n")
+      let status_text = if starts_with(s: head, prefix: "HTTP/1.1 ") && string_length(s: head) >= 12 {
+        substring(s: head, start: 9, end: 12)
+      } else {
+        ""
+      }
+      match parse_int(s: status_text) {
+        Present { value: status } => Present { value: NativeServeWire { status: status, head_lines: head_lines, body: join(rest, "\r\n\r\n") } }
+        Absent => none
+      }
+    Empty => none
+  }
+}
+
