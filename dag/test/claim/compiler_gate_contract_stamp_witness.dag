@@ -21,7 +21,11 @@ import gunbc.witness.compiler_gate_contract_stamp {
   compiler_gate_contract_stamp_evidence_case_proceeds,
   compiler_gate_contract_stamp_evidence_cases,
   compiler_gate_contract_stamp_evidence_emit_refused_poison,
-  compiler_gate_contract_stamp_evidence_fail_marker_path,
+  compiler_gate_contract_stamp_evidence_fail_marker_name,
+  compiler_gate_contract_stamp_evidence_fail_marker_var,
+  compiler_gate_contract_stamp_evidence_dir_var,
+  compiler_gate_contract_stamp_evidence_transcript_name,
+  compiler_gate_contract_stamp_evidence_transcript_var,
   compiler_gate_contract_stamp_evidence_harness_path,
   compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger,
   compiler_gate_contract_stamp_evidence_shell_emit_scaffold,
@@ -544,7 +548,15 @@ test fn the_evidence_step_carries_the_dissolution_marker_and_refuses_on_the_mark
   let body = evidence_step_body()
   string_contains(s: body, pattern: "dissolve-on: ")
     && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_harness_path)
-    && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_fail_marker_path)
+    && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_fail_marker_name)
+    // THE VERDICT CHANNELS ARE PER-RUN (review 82230): concurrent runner slots share /tmp, so a fixed
+    // marker path let one slot's --prepare delete another slot's marker and turn a real refusal green.
+    // The step must reference the per-run vars, never a literal /tmp path.
+    && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_fail_marker_var)
+    && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_transcript_var)
+    && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_dir_var)
+    && string_contains(s: body, pattern: "RUNNER_TEMP")
+    && !string_contains(s: body, pattern: "/tmp/")
     && string_contains(s: body, pattern: "exit 1")
     // THE VERDICT CHANNEL IS THE MARKER, not parsed prose: `[ -e marker ]` is a shape the bash node
     // serializer supports, while `if ! <command>` has no node representation at all
@@ -569,7 +581,7 @@ test fn the_evidence_step_carries_the_dissolution_marker_and_refuses_on_the_mark
     && string_contains(s: body, pattern: "'--run-token'")
     // the transcript is cleared as well as the marker, or a stale transcript could reach the modelled
     // count on a runner that executed nothing
-    && string_contains(s: body, pattern: "--transcript' '/tmp/gunbc-contract-stamp-evidence.log'")
+    && string_contains(s: body, pattern: "--transcript' \"$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG\"")
     && !string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_emit_refused_poison)
 }
 

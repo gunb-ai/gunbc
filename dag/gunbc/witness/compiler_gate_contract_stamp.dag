@@ -963,13 +963,14 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
         bash_build_word_lit(text: "bash"),
         bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_harness_path),
         bash_build_word_lit(text: "--prepare"),
-        bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_path),
+        bash_build_word_lit(text: "--fail-marker"),
+        bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL"),
         // THE TRANSCRIPT IS CLEARED TOO, not just the marker. /tmp survives between steps on a reused
         // runner, so a transcript left by an earlier run would make the count below reach the modelled
         // number even if THIS run executed nothing -- a third fail-open of the same shape, found while
         // auditing the first two.
         bash_build_word_lit(text: "--transcript"),
-        bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_transcript_path)
+        bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_EVIDENCE_LOG")
       ]
     )
   ]
@@ -1004,29 +1005,24 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
           bash_build_word_var(name: "GITHUB_RUN_ATTEMPT")
         ]
       )
-    )
-  ]
-  let count_check = [
-    bash_build_assign(
-      name: "GUNBC_CONTRACT_STAMP_CASES_RAN",
-      value: bash_build_word_cmdsubst(
-        body: bash_build_or_else(
-          left: bash_build_command_with_words(
-            words: [
-              bash_build_word_lit(text: "grep"),
-              bash_build_word_lit(text: "-c"),
-              bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_RUN_TOKEN"),
-              bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_transcript_path)
-            ]
-          ),
-          right: bash_build_command_from_lits(lits: ["true"])
-        )
-      )
     ),
-    // THE TOKEN MUST EXIST BEFORE ITS COUNT MEANS ANYTHING. Outside Actions -- the step's bytes run by
+    // THE VERDICT CHANNELS ARE PER-RUN TOO (review 82230). The count was keyed to the run identity but
+    // the MARKER was not, and the marker is the channel that carries failure: with fixed /tmp names,
+    // slot A leaves a marker, slot B's --prepare deletes it before A reads it, A exits green with a
+    // failed case. A silent widen is a hard reject under DESIGN 5, and this job already admits slots
+    // share a host -- "Isolate toolchain homes" exists because "concurrent runner slots stop sharing
+    // one toolchain". The old text in this comment claimed clearing the marker here protected the run;
+    // it protected a REUSED runner and exposed a CONCURRENT one.
+    //
+    // RUNNER_TEMP is Actions' per-job scratch; GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT makes it per-ATTEMPT,
+    // because a retried job reuses RUNNER_TEMP. Both assignment values are built from var words, so
+    // the serializer renders them as "$RUNNER_TEMP"'/x' (the fleet-converge axis block is the golden)
+    // instead of a literal that could never expand.
+    // THE TOKEN MUST EXIST BEFORE ANYTHING IS KEYED TO IT. Outside Actions -- the step's bytes run by
     // hand -- both vars are unset and the token degenerates to the single character "-", which a
-    // transcript full of hyphens would satisfy. Refuse on an empty token rather than grep a meaningless
-    // one.
+    // transcript full of hyphens would satisfy, and the per-run DIRECTORY would degenerate the same
+    // way. Checked here, at the top, rather than in the count at the bottom: the directory and both
+    // verdict channels are derived from the token, so an empty one must be refused before it is used.
     bash_build_if_from_stmts(
       cond: bash_build_test_bracket(
         words: [
@@ -1043,7 +1039,8 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
               text: join(
                 [
                   "REFUSED gunbc contract stamp evidence: no run token (GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT ",
-                  "unset), so the transcript count could not tell this run from a stale transcript."
+                  "unset), so neither the transcript count nor the fail marker could tell this run from ",
+                  "a stale one."
                 ],
                 ""
               )
@@ -1052,6 +1049,110 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
         ),
         bash_build_exit(code: "1")
       ]
+    ),
+    // THE VERDICT CHANNELS ARE PER-RUN TOO (review 82230, claude/opus[1m], REQUEST_CHANGES). The count
+    // was keyed to the run identity but the MARKER was not, and the marker is the channel that carries
+    // FAILURE: with fixed /tmp names, slot A leaves a marker, slot B's --prepare deletes it before A
+    // reads it, and A exits green with a failed case. Run the interleaving the other way and a stale
+    // marker reddens a clean run. A silent widen is a hard reject under DESIGN 5, and this very job
+    // admits slots share a host -- "Isolate toolchain homes" exists because "concurrent runner slots
+    // stop sharing one toolchain". What the earlier comment here called protection (clearing the marker
+    // in --prepare) protected a REUSED runner and exposed a CONCURRENT one.
+    //
+    // RUNNER_TEMP is Actions' per-job scratch and GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT makes it
+    // per-ATTEMPT, because a retried job reuses RUNNER_TEMP. Values are built from var words so the
+    // serializer renders "$RUNNER_TEMP"'/name' (the fleet-converge axis block is the golden) rather
+    // than a single-quoted literal that could never expand.
+    bash_build_assign(
+      name: "GUNBC_CONTRACT_STAMP_EVIDENCE_DIR",
+      value: bash_build_word_concat_from_nodes(
+        parts: [
+          bash_build_word_var(name: "RUNNER_TEMP"),
+          bash_build_word_lit(text: "/gunbc-contract-stamp-"),
+          bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_RUN_TOKEN")
+        ]
+      )
+    ),
+    // NO RUNNER_TEMP, NO SHARED ROOT. If RUNNER_TEMP were empty the concatenation above would be
+    // "/gunbc-contract-stamp-<token>" -- still unique per run, but written into the filesystem ROOT by
+    // a step that is not entitled to write there, and it would fail as a permission error rather than
+    // as a located refusal. Refuse on the empty value instead of discovering it through the wrong
+    // diagnostic.
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(
+        words: [
+          bash_build_word_lit(text: "-z"),
+          bash_build_word_var(name: "RUNNER_TEMP")
+        ]
+      ),
+      then_stmts: [
+        bash_build_command_with_words(
+          words: [
+            bash_build_word_lit(text: "printf"),
+            bash_build_word_lit(text: "%s\n"),
+            bash_build_word_lit(
+              text: join(
+                [
+                  "REFUSED gunbc contract stamp evidence: RUNNER_TEMP is unset, so the per-run ",
+                  "transcript and fail marker would have no home."
+                ],
+                ""
+              )
+            )
+          ]
+        ),
+        bash_build_exit(code: "1")
+      ]
+    ),
+    bash_build_command_with_words(
+      words: [
+        bash_build_word_lit(text: "mkdir"),
+        bash_build_word_lit(text: "-p"),
+        bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_EVIDENCE_DIR")
+      ]
+    ),
+    // THE TWO CHANNELS ARE DERIVED FROM THE DIRECTORY, AND ASSIGNED -- not merely named. Every variable
+    // the step references must be set by a statement in the step: an earlier revision referenced
+    // GUNBC_CONTRACT_STAMP_RUN_TOKEN without ever assigning it, and the omission survived a green
+    // witness claim because no claim runs on the required path. run_evidence.sh now refuses if any of
+    // these three is referenced without an assignment, so this class cannot ship again unnoticed.
+    bash_build_assign(
+      name: "GUNBC_CONTRACT_STAMP_EVIDENCE_LOG",
+      value: bash_build_word_concat_from_nodes(
+        parts: [
+          bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"),
+          bash_build_word_lit(text: "/"),
+          bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_transcript_name)
+        ]
+      )
+    ),
+    bash_build_assign(
+      name: "GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL",
+      value: bash_build_word_concat_from_nodes(
+        parts: [
+          bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"),
+          bash_build_word_lit(text: "/"),
+          bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_name)
+        ]
+      )
+    )
+  ]
+  let count_check = [
+    bash_build_assign(
+      name: "GUNBC_CONTRACT_STAMP_CASES_RAN",
+      value: bash_build_word_cmdsubst(
+        body: bash_build_or_else(
+          left: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "grep"),
+              bash_build_word_lit(text: "-c"),
+              bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_RUN_TOKEN"),
+              bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_EVIDENCE_LOG")
+            ]
+          ),
+          right: bash_build_command_from_lits(lits: ["true"])
+        )
+      )
     ),
     bash_build_if_from_stmts(
       cond: bash_build_test_bracket(
@@ -1076,8 +1177,8 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
                   compiler_gate_contract_stamp_evidence_transcript_marker,
                   " case lines, expected ",
                   to_string(length(compiler_gate_contract_stamp_evidence_cases())),
-                  " modelled cases FOR THIS RUN -- the harness is missing, crashed, or ran a table that is not the model's. See ",
-                  compiler_gate_contract_stamp_evidence_transcript_path
+                  " modelled cases FOR THIS RUN -- the harness is missing, crashed, or ran a table that is not the model's. See $",
+                  compiler_gate_contract_stamp_evidence_transcript_var
                 ],
                 ""
               )
@@ -1093,7 +1194,7 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
       cond: bash_build_test_bracket(
         words: [
           bash_build_word_lit(text: "-e"),
-          bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_path)
+          bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL")
         ]
       ),
       then_stmts: [
@@ -1136,9 +1237,9 @@ fn compiler_gate_contract_stamp_evidence_case_command(c: CompilerGateContractSta
       bash_build_word_lit(text: c.expected_exit),
       bash_build_word_lit(text: c.expected_finding),
       bash_build_word_lit(text: "--transcript"),
-      bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_transcript_path),
+      bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_EVIDENCE_LOG"),
       bash_build_word_lit(text: "--fail-marker"),
-      bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_path),
+      bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL"),
       bash_build_word_lit(text: "--marker"),
       bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_transcript_marker),
       bash_build_word_lit(text: "--run-token"),
@@ -1160,7 +1261,28 @@ fn compiler_gate_contract_stamp_evidence_subject_text(s: CompilerGateContractSta
   }
 }
 
-data compiler_gate_contract_stamp_evidence_transcript_path: String = "/tmp/gunbc-contract-stamp-evidence.log"
+// THE PATHS ARE PER-RUN, AND THEY ARE VAR NAMES RATHER THAN LITERAL PATHS.
+// Review 82230 (claude/opus[1m], REQUEST_CHANGES) filed as blocking that both files sat at FIXED /tmp
+// names while this very job carries an "Isolate toolchain homes" step because "concurrent runner slots
+// stop sharing one toolchain". The run token protected the case COUNT; it did not protect the MARKER.
+// Slot A leaves a failure marker, slot B's --prepare deletes it before A reads it, and A exits green
+// with a failed case -- a silent widen, which DESIGN 5 rejects outright. Run the interleaving the other
+// way and a stale marker from another slot reddens a clean run. So each run owns a directory keyed by
+// the same run identity the count is keyed to: one identity, both channels, no shared path.
+//
+// They are modelled as VAR NAMES because the value must be built at run time from RUNNER_TEMP and the
+// run identity, and the serializer single-quotes literal words -- a literal here could never expand.
+data compiler_gate_contract_stamp_evidence_dir_var: String = "GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"
+
+data compiler_gate_contract_stamp_evidence_transcript_var: String = "GUNBC_CONTRACT_STAMP_EVIDENCE_LOG"
+
+data compiler_gate_contract_stamp_evidence_fail_marker_var: String = "GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL"
+
+// The file names inside that directory. Fixed, because the directory is already unique per run; these
+// are how the harness and the step agree on which two files of that directory they mean.
+data compiler_gate_contract_stamp_evidence_transcript_name: String = "gunbc-contract-stamp-evidence.log"
+
+data compiler_gate_contract_stamp_evidence_fail_marker_name: String = "gunbc-contract-stamp-evidence.fail"
 
 // The harness creates this on ANY failing case. The step's refusal reads its EXISTENCE rather than
 // parsing its own verdict prose, so a harness that crashes mid-case -- or is deleted, or is never
@@ -1176,7 +1298,7 @@ data compiler_gate_contract_stamp_evidence_transcript_path: String = "/tmp/gunbc
 // make a partial run look complete.
 data compiler_gate_contract_stamp_evidence_transcript_marker: String = "gunbc-contract-stamp-evidence-case"
 
-data compiler_gate_contract_stamp_evidence_fail_marker_path: String = "/tmp/gunbc-contract-stamp-evidence.fail"
+// (the fixed /tmp paths this row used to hold were the review 82230 defect; see the var rows above)
 
 data compiler_gate_contract_stamp_evidence_verdict_ok: String = "ALL ASSERTIONS HELD"
 

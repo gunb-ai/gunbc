@@ -65,7 +65,8 @@
 #                    invocation cannot satisfy the tally; the token's shape is checked here because the
 #                    step only checks it is non-empty, and grep for "-" matches almost anything.
 #                    It compares and, on failure, creates the fail marker.
-#   --prepare <path> Clear a stale fail marker left by an earlier run on the same runner.
+#   --prepare --fail-marker <p> --transcript <p>
+#                    Clear this run's fail marker and transcript before the cases run.
 #
 # THE FAIL MARKER IS THE VERDICT CHANNEL. The generated step's refusal is `[ -e <fail-marker> ]`
 # rather than `if ! grep ...`, because bash_fold_serialize_negation_inner admits only
@@ -95,8 +96,38 @@ evidence_step_name='- name: Execute the contract-stamp guard against the recorde
 placeholder='${{ env.GUNBC_COMPILER_GATE_CONTRACT_STAMP }}'
 running_probe_token="__FROM_WORKFLOW__"
 case_token_default="gunbc-contract-stamp-evidence-case"
-transcript="${GUNBC_CONTRACT_STAMP_EVIDENCE_TRANSCRIPT:-/tmp/gunbc-contract-stamp-evidence.log}"
-fail_marker="${GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER:-/tmp/gunbc-contract-stamp-evidence.fail}"
+# THE PATHS ARE PER-RUN, AND DERIVED HERE EXACTLY AS THE MODEL DERIVES THEM (review 82230).
+# The step passes --transcript/--fail-marker explicitly, so argv normally decides. But local mode and
+# --prepare can be reached without them, and if this file fell back to a FIXED /tmp name while the model
+# used a per-run one, the two spellings of one fact would disagree -- the step would write where this
+# file is not looking, and report "nothing ran" about a run that ran. So the fallback is the same
+# RUNNER_TEMP + run-identity directory the model builds, and it refuses rather than guessing.
+#
+# The defect the model change closes: with fixed names, slot A leaves a failure marker, slot B's
+# --prepare deletes it before A reads it, and A exits GREEN with a failed case -- a silent widen, which
+# DESIGN 5 rejects outright. The run token guarded the case COUNT; the marker is the channel that
+# carries FAILURE, so it needed the same key.
+evidence_dir="${GUNBC_CONTRACT_STAMP_EVIDENCE_DIR:-}"
+if [ -z "$evidence_dir" ]; then
+  if [ -n "${RUNNER_TEMP:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_RUN_ATTEMPT:-}" ]; then
+    evidence_dir="$RUNNER_TEMP/gunbc-contract-stamp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+  fi
+fi
+transcript="${GUNBC_CONTRACT_STAMP_EVIDENCE_TRANSCRIPT:-${evidence_dir:+$evidence_dir/}gunbc-contract-stamp-evidence.log}"
+fail_marker="${GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER:-${evidence_dir:+$evidence_dir/}gunbc-contract-stamp-evidence.fail}"
+# NO HOME, NO VERDICT. If neither the model's argv nor RUNNER_TEMP gives us a per-run directory, this
+# file has nowhere legitimate to put a verdict, and a fixed /tmp name is exactly the shared-path bug.
+# Refusing here is the harness declining to be the weak link; the emitted step refuses on the same
+# condition, so the two sides fail the same way for the same reason.
+if [ -z "$evidence_dir" ]; then
+  case "$transcript" in
+    */tmp/gunbc-contract-stamp-evidence*|/tmp/*)
+      echo "FAIL: no per-run evidence directory (set GUNBC_CONTRACT_STAMP_EVIDENCE_DIR, or RUNNER_TEMP + GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT)." >&2
+      echo "      Refusing to use a fixed /tmp path: concurrent runner slots share /tmp, so one slot's" >&2
+      echo "      --prepare can delete another slot's fail marker and turn a real refusal green (review 82230)." >&2
+      exit 1 ;;
+  esac
+fi
 
 fail=0
 guard_template="$(mktemp)"
@@ -214,16 +245,14 @@ extract_block "$committed" "$evidence_step_name" > "$tmpdir/evidence_step.sh" \
 extract_block "$committed" "$guard_step_name" > "$guard_template" \
   || bail "could not extract the guard from the committed workflow"
 
-# DERIVE THE STEP'S OWN PATHS, then demand they agree with this harness's defaults. The step gets its
-# transcript and marker paths from model rows (compiler_gate_contract_stamp_evidence_transcript_path /
-# _fail_marker_path); this file has its own hardcoded defaults. If those two spellings ever disagree --
-# a model row edited, an env override left set -- the step writes to one file while this count reads
-# another, and local mode reports "nothing ran" for a run that ran perfectly. One fact, two spellings
-# (§3): counted, not assumed. Bail names the override rather than leaving a mystery.
-# Both quoting shapes, because the serializer quotes a literal word but NOT a var word: the same flag
-# appears as '--transcript /path' and as "--transcript "$VAR"". Matching only the quoted shape would
-# report "declares no --transcript path" for a perfectly good step -- a false refusal, which is the
-# worse direction for a check that is supposed to be honest rather than strict-by-accident.
+# ONE FACT, TWO SPELLINGS, SO COMPARE THE SPELLINGS (review 82230 follow-up).
+# The step gets its channels from model rows via per-run vars; this file derives its own from
+# RUNNER_TEMP + the run identity. If the two derivations ever disagree -- a model row edited, an env
+# override left set -- the step writes to one file while this count reads another, and local mode
+# reports "nothing ran" about a run that ran perfectly. Since the step now passes VAR words rather than
+# literals, comparing strings is useless; what can be compared is the DERIVATION: the channel must be
+# built from the directory, the directory from RUNNER_TEMP and the run token, and the leaf file names
+# must be exactly the ones this file writes.
 step_arg() {
   awk -v flag="$1" -v q="'" '
   {
@@ -234,14 +263,53 @@ step_arg() {
     for (i = 1; i < n; i++) if (v[i] == "--" flag) { print v[i + 1]; exit }
   }' "$tmpdir/evidence_step.sh"
 }
+step_assign() {
+  grep -m1 "$1=" "$tmpdir/evidence_step.sh" | sed 's/^[ ]*//' || true
+}
 step_transcript="$(step_arg transcript)"
 step_marker="$(step_arg fail-marker)"
 [ -n "$step_transcript" ] || bail "the modelled evidence step declares no --transcript path; nothing can be counted"
-# THE STEP MUST ASSIGN WHAT IT COUNTS. Found by execution, not by the claim that should have caught it:
-# the model once built the token assignment and never appended it to the statement list, so the step
-# grepped for a variable nothing had set and its own fail-closed -z arm refused every run. A claim would
-# have caught it too -- but no claim is evaluated on the required path, so the check lives HERE, in the
-# thing that actually runs.
+[ -n "$step_marker" ]     || bail "the modelled evidence step declares no --fail-marker path; the verdict channel is missing"
+case "$step_transcript" in
+  *GUNBC_CONTRACT_STAMP_EVIDENCE_LOG*) : ;;
+  *) bail "the step's --transcript is not the per-run channel var: '$step_transcript'" ;;
+esac
+case "$step_marker" in
+  *GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL*) : ;;
+  *) bail "the step's --fail-marker is not the per-run channel var: '$step_marker'" ;;
+esac
+# the chain, not just the names
+dir_assign="$(step_assign GUNBC_CONTRACT_STAMP_EVIDENCE_DIR)"
+case "$dir_assign" in
+  *RUNNER_TEMP*GUNBC_CONTRACT_STAMP_RUN_TOKEN*|*GUNBC_CONTRACT_STAMP_RUN_TOKEN*RUNNER_TEMP*) : ;;
+  *) bail "the per-run directory is not derived from RUNNER_TEMP AND the run token: '$dir_assign'" ;;
+esac
+# and the leaf names must be the ones this harness writes into the same directory
+log_name="${transcript##*/}"; fail_name="${fail_marker##*/}"
+case "$(step_assign GUNBC_CONTRACT_STAMP_EVIDENCE_LOG)" in
+  *"$log_name"*) : ;;
+  *) bail "the step's transcript leaf differs from this harness's '$log_name'" ;;
+esac
+case "$(step_assign GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL)" in
+  *"$fail_name"*) : ;;
+  *) bail "the step's fail-marker leaf differs from this harness's '$fail_name'" ;;
+esac
+# NO FIXED /tmp PATH ANYWHERE IN THE STEP. Concurrent runner slots share /tmp, so a fixed name there is
+# the review 82230 defect regardless of how many other guards are in place.
+if grep -q '/tmp/' "$tmpdir/evidence_step.sh"; then
+  bail "the modelled evidence step still references a fixed /tmp path -- channels must be per-run"
+fi
+echo "== step channels agreed: dir from RUNNER_TEMP+token, leaves $log_name / $fail_name"
+
+# ALL THREE PER-RUN CHANNELS MUST BE ASSIGNED, not merely referenced. This is the check that would have
+# caught the shipped omission (the step counted GUNBC_CONTRACT_STAMP_RUN_TOKEN which nothing assigned),
+# applied to the transcript and the fail marker too -- a marker path that is never set is a verdict
+# channel that silently points nowhere.
+for required_assign in GUNBC_CONTRACT_STAMP_RUN_TOKEN GUNBC_CONTRACT_STAMP_EVIDENCE_DIR \
+                       GUNBC_CONTRACT_STAMP_EVIDENCE_LOG GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL; do
+  grep -q "${required_assign}=" "$tmpdir/evidence_step.sh" \
+    || bail "the modelled evidence step uses ${required_assign} but never assigns it"
+done
 token_assign="$(grep -m1 'GUNBC_CONTRACT_STAMP_RUN_TOKEN=' "$tmpdir/evidence_step.sh" || true)"
 [ -n "$token_assign" ] || bail "the modelled evidence step counts GUNBC_CONTRACT_STAMP_RUN_TOKEN but never assigns it -- the step cannot tell one run from a stale transcript"
 # AND IT MUST EXPAND. The serializer single-quotes LITERAL words and leaves var words bare: an
@@ -273,18 +341,6 @@ esac
 model_cases="$(grep -c -- "--case" "$tmpdir/evidence_step.sh" || true)"
 echo "== modelled case invocations in the step: $model_cases"
 [ "$model_cases" -gt 0 ] || bail "the extracted evidence step invokes no --case at all"
-[ -n "$step_marker" ]     || bail "the modelled evidence step declares no --fail-marker path; the verdict channel is missing"
-if [ "$step_transcript" != "$transcript" ]; then
-  echo "FAIL: the step writes its transcript to '$step_transcript' but this harness counts '$transcript'." >&2
-  echo "      Two spellings of one fact; run with GUNBC_CONTRACT_STAMP_EVIDENCE_TRANSCRIPT='$step_transcript'" >&2
-  exit 1
-fi
-if [ "$step_marker" != "$fail_marker" ]; then
-  echo "FAIL: the step sets its fail marker at '$step_marker' but this harness inspects '$fail_marker'." >&2
-  echo "      Two spellings of one fact; run with GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER='$step_marker'" >&2
-  exit 1
-fi
-echo "== step paths agreed: transcript=$step_transcript marker=$step_marker"
 [ -s "$guard_template" ] || bail "extracted guard is empty"
 
 RUNNING="$(grep -o 'GUNBC_COMPILER_GATE_CONTRACT_STAMP: [0-9a-f]\{16\}' "$committed" | head -1 | awk '{print $2}')"
@@ -409,20 +465,28 @@ fi
 # runner must not redden a clean run, and its absence must be meaningful.
 # ---------------------------------------------------------------------------------------------
 if [ "${1:-}" = "--prepare" ]; then
-  marker="${2:-}"
-  [ -n "$marker" ] || bail "--prepare needs the fail-marker path"
-  shift 2
-  prep_transcript=""
+  # FLAGS ONLY, for both paths. The step once passed the marker POSITIONALLY here while the transcript
+  # came as a flag; a caller that forgot the positional got a silent empty marker and "prepared"
+  # nothing. Now both arrive by name, exactly as the model emits them, and a missing one refuses --
+  # including the harness's own default, so the two spellings of one fact cannot disagree.
+  shift
+  prep_marker=""; prep_transcript=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
+      --fail-marker) prep_marker="$2"; shift 2 ;;
       --transcript) prep_transcript="$2"; shift 2 ;;
       *) bail "--prepare: unknown argument $1" ;;
     esac
   done
+  [ -n "$prep_marker" ] || prep_marker="$fail_marker"
+  [ -n "$prep_transcript" ] || prep_transcript="$transcript"
+  [ -n "$prep_marker" ] || bail "--prepare needs --fail-marker"
+  [ -n "$prep_transcript" ] || bail "--prepare needs --transcript"
   rm -f "$marker"
-  # Both /tmp artifacts are cleared: the marker so a stale failure cannot redden a clean run, and the
+  # Both artifacts are cleared: the marker so a stale failure cannot redden a clean run, and the
   # TRANSCRIPT so a stale success cannot GREEN a run that executed nothing. The generated step counts
   # lines in it, so leaving an old one behind would let the count reach the modelled number by itself.
+  # Both are per-run (see the paths block above), so this clears THIS run's files, not a neighbour's.
   [ -n "$prep_transcript" ] && : > "$prep_transcript"
   printf 'gunbc contract stamp evidence: prepared (stale fail marker and transcript cleared)\n'
   exit 0
@@ -452,9 +516,19 @@ rm -f "$fail_marker"
 # exists. Both are digits, matching the shape the --case mode admits.
 : "${GITHUB_RUN_ID:=$(date +%s)$$}"
 : "${GITHUB_RUN_ATTEMPT:=1}"
+# The step derives its channels from RUNNER_TEMP and refuses if it is unset, so local mode has to look
+# like a job in that respect too -- same reason the run identity is synthesized above.
+: "${RUNNER_TEMP:=$tmpdir/runner-temp}"
+mkdir -p "$RUNNER_TEMP"
 case "$GITHUB_RUN_ID" in ""|*[!0-9]*) echo "FAIL: synthesized GITHUB_RUN_ID is not digits: '$GITHUB_RUN_ID'" >&2; exit 1 ;; esac
-export GITHUB_RUN_ID GITHUB_RUN_ATTEMPT
+export GITHUB_RUN_ID GITHUB_RUN_ATTEMPT RUNNER_TEMP
 run_token="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+# THE HARNESS AND THE STEP MUST MEAN THE SAME TWO FILES. The step derives them from RUNNER_TEMP + the
+# run identity; derive them identically here rather than trusting the defaults, so a divergence in either
+# derivation is a loud disagreement and not a count of a file that was never written.
+transcript="$RUNNER_TEMP/gunbc-contract-stamp-$run_token/gunbc-contract-stamp-evidence.log"
+fail_marker="$RUNNER_TEMP/gunbc-contract-stamp-$run_token/gunbc-contract-stamp-evidence.fail"
+mkdir -p "$(dirname "$transcript")"
 echo "== run token: $run_token"
 out="$(cd "$repo" && bash "$stepdir/evidence_step.sh" 2>&1)"; rc=$?
 printf '%s\n' "$out"
