@@ -342,7 +342,7 @@ fn compiler_gate_contract_stamp_refusal_line(verdict: CompilerGateContractStampR
     )
     StampMismatch { running: running, tree: tree_stamp } => join(
       [
-        "REFUSED gunbc contract stamp: StampMismatch {running=",
+        "REFUSED gunbc contract stamp: StampMismatch \{running=",
         running,
         ", tree=",
         tree_stamp,
@@ -481,7 +481,7 @@ fn compiler_gate_contract_stamp_tree_file() -> String {
 fn compiler_gate_contract_stamp_literal_no_env() -> String {
   join(
     [
-      "\"REFUSED gunbc contract stamp: StampUnreadable {the executing workflow carries no ",
+      "\"REFUSED gunbc contract stamp: StampUnreadable \{the executing workflow carries no ",
       compiler_gate_contract_stamp_env_key,
       " in its environment, so it was not generated with an invocation contract. ",
       compiler_gate_contract_stamp_provenance,
@@ -512,7 +512,7 @@ fn compiler_gate_contract_stamp_literal_mismatch() -> String {
   // tree-influenced file appears anywhere in the step.
   join(
     [
-      "\"REFUSED gunbc contract stamp: StampMismatch {running=$STAMP_RUNNING, tree=$STAMP_TREE}. ",
+      "\"REFUSED gunbc contract stamp: StampMismatch \{running=$STAMP_RUNNING, tree=$STAMP_TREE}. ",
       "The workflow executing was generated from a DIFFERENT revision than the tree it is judging: the ",
       "instruction came from the merge ref, and the ",
       compiler_gate_contract_stamp_provenance,
