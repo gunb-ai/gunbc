@@ -16,6 +16,45 @@ data one_type_variable_bound_to_two_distinct_coproducts: RecurringFailureMode = 
 
     "AUTHORED ON THE V1 .dag AND NOW EXECUTED ON THE SEED (review 80480; superseded at the 2751b200 seed regeneration of #14152). v1.compiler.infer unify_generics returns UnifyGenericsAcc and names a later actual that node_type_equals rejects, and the shipped mirror src/v1/stage0/src/v1_compiler_infer.rs now carries that same fold (its unify_generics returns Rc<UnifyGenericsAcc> and emits the two-leg diagnostic (v1.compiler.infer unify_generics rebind-branch diagnostic construction, mirrored in src/v1/stage0/src/v1_compiler_infer.rs)). The pre-regen state described below was true of fa06f6b45ca and is false of 2751b200.",
 
+    "MAIN IS A SILENT FAIL-OPEN ON THIS CLASS, AND THIS PR IS THE FIRST THING THAT MAKES IT OBSERVABLE
+(stern-bat-401, 2026-10-18; the RFM row for that class is this one, so it is UPDATED here rather than a
+second row minted for the same invalid state). Measured on main, not reasoned: `fn unify_generics(formal:
+Node, actual: Node, generic_names: List<String>, source_indices: ..., acc: Map<String, Node>) ->
+Map<String, Node>` -- it returns a subst map and, in the arm that binds a variable already bound, evaluates
+`Present { _ } => acc`. That is first-wins on a CONFLICTING rebind: the second actual's type is dropped, no
+diagnostic is constructed, and there is no refusal path to take. So main reporting ZERO type-mismatch hard
+diagnostics for this class does NOT mean the class is absent on main; it means nothing on main can report
+it. main's own emitted closure logs contain 0 lines matching 'type mismatch' (checked against the
+green main run at 9d46ce6a2f7, gh run 39140679005), which is the fail-open showing up as a green floor.",
+
+    "THE RED FOR THIS CLASS IS THE CONFLICT-PATH DIAGNOSTIC, and it is counted per module and compared with
+main BY IDENTITY rather than by census row count (stern-bat-401's gate: a row count says nothing about a
+module the census never emitted -- source_root_eval is exactly such a module). At the PR head the emitted
+self-host closure reports 76 hard diagnostics, 17 distinct identities, across 13 modules, where main reports
+0. Identity = (file, bind name, bound-side head constructor, first leaf) -- deliberately NOT the whole printed
+tree, which runs past 700 characters and would report the same refusal as new whenever any nested type
+changes. Per module, all 13 NEW against main: dag/std/algebra.dag 35, src/v2/std/diagnostic.dag 9,
+src/v2/std/qualified_name.dag 7, src/v2/extdeps/languages/python.dag 5, <kernel:Map> 4,
+src/v2/compiler/program_assembly.dag 4, src/v2/compiler/dependency_demand_census.dag 3,
+src/v2/compiler/source_authority.dag 2, src/v2/compiler/type_declaration_use_census.dag 2,
+src/v2/std/integer.dag 2, src/v2/std/text.dag 1, src/v2/std/demand_engine.dag 1,
+src/v2/std/compilers/target_model.dag 1. The instrument is
+instruments/hard_diag_by_identity.py; it refuses to report a count while any 'type mismatch' line fails to
+parse, because under-counting is how a red turns into a green-looking zero. Two closures are in scope
+(//gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli); the CI job died in the first and
+never reached the second, so the second is measured locally -- a closure whose log never arrives is
+indistinguishable from one that emitted nothing, and that reads as green.",
+
+    "WHAT THE DISPOSITION IS NOT: these 76 are not the arms admitting things they should not. Measured, twice
+over: config A, which withdraws the two arms entirely, shows the SAME 33 Map(Primitive(K),Primitive(V)) rows,
+and the per-row probe reports ownBound=0 with rootOwnParams='' on all 38 such rows -- the predicate never
+fires on them. The arms only ever reduce refusals (215 -> 97, newly-refused 0). What changed the NUMBER of
+hard diagnostics is the fold's return type becoming UnifyGenericsAcc { subst, diagnostics }, i.e. the
+observability this row has been asking for since its first receipt. The consequence for the PR is honest and
+unpleasant: making the class visible makes the floor red, so the 76 must be dispositioned module by module
+before the head can be green, and the row-level claim 'the fold refuses' is now backed by diagnostics the
+compiler itself raises rather than by a fold-local counter.",
+
     "RUNG, STATED HONESTLY (review 81093 finding 2; DESIGN section 4b meta-obligation 1, the reported rung equals the rung established by EXECUTED evidence): the fold's refusal was ESTABLISHED ONCE BY EXECUTION and its REGRESSION IS UNENFORCED. Both halves are load-bearing and the second is not a hedge.",
 
     "WHAT THE FIRST HALF MEANS, precisely. On head 2751b200 the four reject controls were run twice with the seed's execution as the only variable (both seed variants shipped as files, because the runner's git base is not the PR head and `git checkout <ref> -- path` there silently writes base content -- it produced one fake RED before this was caught). Against the pre-regen seed fa06f6b45ca: same_arm_two_distinct_coproducts_refuses_with_the_fold_message FAILED, same_arm_int_bool_refuses_with_the_fold_message FAILED, applied_constructor_same_head_differing_argument_list_refuses FAILED, probe_one_t_two_coproducts_compiles_to_a_refusal FAILED. Against the regenerated seed: all four ok, with every accept control ok on BOTH sides (int/int, same coproduct, Box<Int> twice, List<Int> twice, lambdas, Option, Outcome, and the probe's both-P1 control). The controls assert the fold's OWN diagnostic shape -- 'bound as' plus '(first argument)' plus '(later argument)', the rebind-branch expected/got construction of v1.compiler.infer unify_generics -- so they cannot go green on a fold that never emits it. Matched on shape rather than on a variable letter because the fold names the generic's own name: a hardcoded 'T' made the Box<Int> vs Box<Bool> row read green on both seeds while the fold was in fact refusing it under the name A, which is a near-miss that would have made a passing row look like a failing one.",
