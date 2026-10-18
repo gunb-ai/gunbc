@@ -68,6 +68,14 @@ data lost_boot_sweep_prelude_allowance: Second = second(count: 120)
 data lost_boot_sweep_per_registration_allowance: Second = second(count: 60)
 data lost_boot_sweep_registration_ceiling: Int = 40
 
+fn sweep_exceeds_ceiling(selected: Int) -> Bool {
+  selected > lost_boot_sweep_registration_ceiling
+}
+
+fn sweep_ceiling_refusal_text(selected: Int) -> String {
+  join(["lost-boot sweep: ", to_string(selected), " registrations selected, above the ", to_string(lost_boot_sweep_registration_ceiling), " the step timeout allows; nothing was deregistered"], "")
+}
+
 fn lost_boot_sweep_step_timeout_minutes() -> Minute {
   let secs = second_count(s: lost_boot_sweep_prelude_allowance)
     + lost_boot_sweep_registration_ceiling * second_count(s: lost_boot_sweep_per_registration_allowance)
@@ -264,7 +272,9 @@ fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, t
     listing: sweep_listing_of_roster(report: organization_runner_roster_report_via_rest(org: organization.login, page_size: github_max_page_size, token: token.token)),
   ) {
     LostBootSweepRefused { refusal } => exit_failure(reason: sweep_refusal_text(refusal: refusal))
-    LostBootSweepSelected { subjects, untouched } => {
+    LostBootSweepSelected { subjects, untouched } => if sweep_exceeds_ceiling(selected: length(xs: subjects)) {
+      exit_failure(reason: sweep_ceiling_refusal_text(selected: length(xs: subjects)))
+    } else {
       let outcomes = subjects |> map(subject => ensure_jit_runner_deregistered(
         token: token,
         authority: sweep_authority(),

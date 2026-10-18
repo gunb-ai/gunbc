@@ -1,5 +1,6 @@
 module test.claim.runner.runner_lost_boot_sweep_run_witness
 
+import std.algebra { string_contains }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -28,6 +29,7 @@ import gunbc.runner.runner_lost_boot_sweep_run {
   LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input,
   sweep_authority, sweep_host_standing, SweepHostBound, SweepHostNotManaged,
   sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, sweep_listing_of_roster,
+  sweep_exceeds_ceiling, sweep_ceiling_refusal_text, lost_boot_sweep_registration_ceiling,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -299,4 +301,11 @@ test fn only_an_observed_roster_becomes_the_sweep_listing() -> Bool {
     RestRefused { refusal: _ } => true
     RestAnswered { answer: _ } => false
   })
+}
+
+test fn a_selection_above_the_step_ceiling_refuses_before_any_deletion() -> Bool {
+  sweep_exceeds_ceiling(selected: lost_boot_sweep_registration_ceiling + 1)
+    && !sweep_exceeds_ceiling(selected: lost_boot_sweep_registration_ceiling)
+    && !sweep_exceeds_ceiling(selected: 0)
+    && string_contains(s: sweep_ceiling_refusal_text(selected: 41), pattern: "nothing was deregistered")
 }
