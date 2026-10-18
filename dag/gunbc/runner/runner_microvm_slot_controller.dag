@@ -427,10 +427,13 @@ fn slot_controller_on_reservation(
   }
 }
 
-// Both the broker and direct controller must admit the current purpose before any JIT mint.
+// Both the broker and direct controller must admit the current purpose before any JIT mint. THIS FN IS THE MINT'S ENTRY, so it is
+// admitted only from slot_controller_on_reservation, whose microvm_ci_admission gate (withdrawn cell, recovery, executor, purpose,
+// slot/snapshot join) a caller holding a genuine snapshot would otherwise skip.
 fn slot_controller_launch_admitted(slot: RunnerSlotIdentity, snapshot: RequiredBuildCellSnapshot,
   bins: LocusBinaries, image: GuestImageSources, invocation_id: NonEmptyStr) -> SlotControllerOutcome
   uses net: Network, fs: Filesystem
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "slot_controller_on_reservation")]
 {
   if !path_is_executable(path: bins.firecracker) {
     SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } }

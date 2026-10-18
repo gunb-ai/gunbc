@@ -165,7 +165,7 @@ fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int 
 data control_source: String = "module probe_service_slot_mint_control\nimport std.types { Bool }\nimport gunbc.runner.runner_service_slot_controller { ServiceSlotMintAdmission, ServiceSlotKeyHeld, ServiceSlotListenerIsolated }\nfn nothing() -> Bool { true }\n"
 
 data sealed_records: List<String> = ["ServiceSlotMintAdmission", "ServiceSlotKeyHeld", "ServiceSlotListenerIsolated", "ServiceSlotPassId", "JitMintBinding"]
-data admitted_fns: List<String> = ["service_slot_pass", "service_slot_admit", "service_slot_key_standing_of", "service_slot_isolate_listener_as", "run_listener_with", "service_slot_pass_id_of", "jit_mint_binding", "service_slot_mint_binding", "attempt_mint_binding", "mint_attempt_credential"]
+data admitted_fns: List<String> = ["service_slot_pass", "service_slot_admit", "service_slot_key_standing_of", "service_slot_isolate_listener_as", "run_listener_with", "service_slot_pass_id_of", "jit_mint_binding", "service_slot_mint_binding", "attempt_mint_binding", "mint_attempt_credential", "slot_controller_launch_admitted"]
 
 test fn a_source_that_only_names_the_modules_forges_nothing() -> Bool {
   let c = census_of(source: control_source)
@@ -238,14 +238,23 @@ fn isolate_as(row: HostCredentialCustodyRow, user: String) -> ServiceSlotIsolati
 // A numeric key (getent passwd 0) answers the entry whose uid field is the key, not whose name is: the reading matches
 // the key by name OR uid, and the zero it grounds is the owner's, so the listener is refused; an admitted different uid
 // beside it is isolated.
+fn isolation_tag(i: ServiceSlotIsolation) -> String {
+  match i {
+    ServiceSlotIsolated { isolated: _ } => "isolated"
+    ServiceSlotListenerCouldReadKey { user: _ } => "could_read_key"
+    ServiceSlotListenerUserUnspecified { host: _ } => "user_unspecified"
+    ServiceSlotIdentityUngrounded { name: _, cause: _ } => "ungrounded"
+  }
+}
+
 test fn a_numeric_key_is_read_by_its_uid_field_into_isolation() -> Bool {
   let row = host_credential_custody_row(c: ServiceSlotAppKey)
   let zero = runner_job_user_uid_reading(job_user: "0" as NonEmptyStr, exit_code: 0, stdout: "root:x:0:0:root:/root:/bin/bash\n", stderr: "")
   let other = runner_job_user_uid_reading(job_user: "gunbc-runner" as NonEmptyStr, exit_code: 0, stdout: "gunbc-runner:x:1001:1001::/home/gunbc-runner:/bin/bash\n", stderr: "")
   let wrong = runner_job_user_uid_reading(job_user: "5" as NonEmptyStr, exit_code: 0, stdout: "root:x:0:0:root:/root:/bin/bash\n", stderr: "")
-  !is_isolated(i: isolate_as_readings(row: row, user: "0", listener: zero))
-    && is_isolated(i: isolate_as_readings(row: row, user: "gunbc-runner", listener: other))
-    && !is_isolated(i: isolate_as_readings(row: row, user: "5", listener: wrong))
+  isolation_tag(i: isolate_as_readings(row: row, user: "0", listener: zero)) == "could_read_key"
+    && isolation_tag(i: isolate_as_readings(row: row, user: "gunbc-runner", listener: other)) == "isolated"
+    && isolation_tag(i: isolate_as_readings(row: row, user: "5", listener: wrong)) == "ungrounded"
 }
 
 fn is_isolated(i: ServiceSlotIsolation) -> Bool {

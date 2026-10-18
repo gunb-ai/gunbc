@@ -10,7 +10,10 @@ import gunbc.runner.runner_unit_file { RunnerJobUserUidReading }
 import gunbc.runner.runner_jit_mint_binding { JitMintBinding, JitBoundMint, jit_mint_binding, mint_for_binding, mint_under_observed_group }
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject, JitRegistrationSubjectStanding }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState }
-import gunbc.runner.runner_microvm_slot_controller { attempt_mint_binding, mint_attempt_credential }
+import gunbc.runner.runner_microvm_slot_controller { attempt_mint_binding, mint_attempt_credential, slot_controller_launch_admitted, LocusBinaries, GuestImageSources, SlotControllerOutcome }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellSnapshot }
+import std.resources { Filesystem, Network }
 import gunbc.runner.runner_microvm_attempt { MicroVmCellBinding, bind_owned_attempt, MicroVmAttempt }
 import gunbc.github_effect_perform { JitMintPerformance }
 import std.types { Int, List, String, NonEmptyStr }
@@ -105,4 +108,12 @@ fn outside_attempt_binding(attempt: MicroVmAttempt) -> JitMintBinding {
 // (o) THE MICROVM ATTEMPT'S MINT WRAPPER, called from outside the same chain. Refuses at mint_attempt_credential.
 fn outside_attempt_mint(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance {
   mint_attempt_credential(binding: binding, state: state)
+}
+
+// (p) THE MICROVM LAUNCH ENTRY, called with a genuine snapshot but not through slot_controller_on_reservation, so the
+// admission gate is skipped. Refuses at slot_controller_launch_admitted.
+fn outside_launch(slot: RunnerSlotIdentity, snapshot: RequiredBuildCellSnapshot, bins: LocusBinaries, image: GuestImageSources, invocation_id: NonEmptyStr) -> SlotControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  slot_controller_launch_admitted(slot: slot, snapshot: snapshot, bins: bins, image: image, invocation_id: invocation_id)
 }
