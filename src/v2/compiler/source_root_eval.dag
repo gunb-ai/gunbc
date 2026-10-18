@@ -3375,7 +3375,7 @@ fn native_census_binding_loci(positions: NativeCensusPositionTable, path: Symbol
 // record, so a wave that binds it can be joined occurrence by occurrence on the source locus.
 fn native_census_unbound_lines(positions: NativeCensusPositionTable, entry: NativeCensusModule, first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>) -> List<String> {
   fold_list(xs: Cons { head: first, tail: rest }, empty: [], cons: fn(acc, chain) {
-    if symbol_lexeme(sym: diagnostics_fatal_reason(d: chain)) == "resolve_reason_unbound_symbol" {
+    if diagnostics_fatal(d: chain).reason == ^resolve_reason_unbound_symbol {
       match native_census_unbound_spelling(at: diagnostics_fatal(d: chain).at) {
         Present { value: spelling } =>
           list_snoc_item(xs: acc, item: "binding_unbound\t" + entry.module + "\t" + spelling + "\t" + native_census_at_text(at: native_census_locate_fatal(chain: chain, path: entry.path, positions: positions)))
