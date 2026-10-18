@@ -223,6 +223,13 @@ if [ "${SHIP_MIRRORS:-0}" = "1" ]; then
   echo "   git-named changed mirrors: $(echo $CHANGED | tr '\n' ' ')"
   ( cd src/v1/stage0/src && tar -c $(for f in $CHANGED; do basename $f; done) 2>/dev/null ) | gzip -9 | base64 -w0 > $LOGS/stage0_regen.b64
   echo "   staged tar: $(wc -c < $LOGS/stage0_regen.b64) base64 bytes"
+  # EMIT IT NOW, as its own block. The single END-OF-RUN tar also carries sh.log (~1.2 MB of self-host
+  # diagnostics), and the run that did that produced ONE base64 line 1,646,100 characters long, truncated
+  # by ctrl-build's output cap -- BEGIN-TAR present, END-TAR never arrived, every artifact in the run lost
+  # to a 36-minute dispatch. The cap is on TOTAL command output, so splitting into more blocks does not
+  # help; what helps is (a) shipping the 300 KB payload while the output budget is still free and (b) not
+  # shipping a megabyte of diagnostic log in ship mode at all (see the exclude below).
+  echo "=== BEGIN-TAR ==="; cat $LOGS/stage0_regen.b64; echo; echo "=== END-TAR ==="
   # The HAND_MAINTAINED pair must NOT be in that list. Asserted, not trusted: if the emitter ever produces a
   # cli_run/module_path_index candidate and the loop installs it, this dispatch stops rather than ship it.
   if echo "$CHANGED" | grep -qE 'cli_run|module_path_index'; then
@@ -363,7 +370,9 @@ echo "=== BEGIN-TAR ==="
 # $LOGS cannot ride along), which meant the SHIP_MIRRORS block could stage the regenerated seed and the
 # dispatch could report "staged tar: 301552 base64 bytes" and STILL ship nothing -- the artifact existed in
 # $LOGS and was simply not in the list. A gate that prints a size is not a gate that ships the bytes.
-( cd $LOGS && tar -c sh_${MODE}.log census_${MODE}.json census_${MODE}.txt suite_${MODE}.txt tb_${MODE}.log rr_${MODE}_1.log rr_${MODE}_2.log src_04_infer.dag my_04_types.dag stage0_regen.b64 2>/dev/null | base64 -w0 )
+( cd $LOGS && tar -c $( [ "${SHIP_MIRRORS:-0}" = "1" ] && echo "" || echo "sh_${MODE}.log" ) \
+    census_${MODE}.json census_${MODE}.txt suite_${MODE}.txt tb_${MODE}.log rr_${MODE}_1.log rr_${MODE}_2.log \
+    src_04_infer.dag my_04_types.dag stage0_regen.b64 sh_${MODE}_head.txt sh_${MODE}_tail.txt 2>/dev/null | base64 -w0 )
 echo
 echo "=== END-TAR ==="
 echo "AB_${MODE}_DONE"
