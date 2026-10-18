@@ -4143,12 +4143,24 @@ fn build_cache_fold_op_executed(
         LegStopped { executed: stopped } =>
           BuildCacheEnsureFold { executed: stopped, digest_line: acc.digest_line }
         LegPassed =>
-          if op.kind == ReadDigest {
-            // THE DIGEST GATE, AT THE POINT THE READ ANSWERED, AND IN THE ONE PLACE BOTH ROUTES PASS THROUGH.
-            // The gate is a function of its own rather than an expression here, and not for tidiness: the
-            // decision needs to bind the line before it can ask the authority about it, and a binding in an
-            // arm's expression position is not something this grammar accepts (the compiler refuses it with
-            // `expected expression, found Eq`). As its own fn it is also the thing a witness can name.
+          // THE DIGEST GATE, AT THE POINT THE READ ANSWERED, AND IN THE ONE PLACE BOTH ROUTES PASS THROUGH.
+          // The gate is a function of its own rather than an expression here, and not for tidiness: the
+          // decision needs to bind the line before it can ask the authority about it, and a binding in an
+          // arm's expression position is not something this grammar accepts (the compiler refuses it with
+          // `expected expression, found Eq`). As its own fn it is also the thing a witness can name.
+          //
+          // THE PARENTHESES ARE LOAD-BEARING, NOT DECORATIVE, AND THIS IS THE THIRD GRAMMAR TRAP IN THIS ONE
+          // ARM. With the condition written bare -- `if op.kind == ReadDigest {` -- the compiler reports
+          // `expected RParen, found Colon` and the whole module fails to load, pointing at the FIRST LABEL of
+          // the call inside the then-block rather than at the condition. The reason is the constructor brace:
+          // a condition whose right-hand side is a bare constructor name leaves `{` after it, which the parser
+          // takes for the start of a record literal, so the then-block is swallowed as that literal's body and
+          // the labelled call inside it is parsed where a record field was expected. Parenthesising ends the
+          // expression before the brace. Measured, not guessed: the identical call under `if o.stdout ==
+          // "yes" {` compiles, the identical call under a record-literal then-tail compiles, and this shape
+          // with the parentheses compiles -- the only variable is the bare `ReadDigest {`. So do not "tidy"
+          // the parentheses away; the failure looks nothing like its cause.
+          if (op.kind == ReadDigest) {
             build_cache_read_leg_gate(o: o, plan: plan, digest: digest)
           } else {
             BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: acc.digest_line }
