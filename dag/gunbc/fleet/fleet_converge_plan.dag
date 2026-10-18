@@ -196,7 +196,11 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
+  RetirementWireDecoded,
+  RetirementWireUndecodable,
   retirement_baseline_header_rows,
+  retirement_standing_admits_drift,
+  retirement_standing_from_wire,
   retirement_unit_standing_rows,
   transition_baseline_rows,
 }
@@ -875,17 +879,35 @@ fn retirement_unit_planned(rows: List<String>, unit: String) -> Bool {
   match retirement_row_for_unit(rows: rows, unit: unit) { Absent => false  Present { value: _ } => true }
 }
 
+fn retirement_undecodable_line(unit: String, wire: String) -> String {
+  concat("retirement undecodable: ", unit, " has wire standing '", wire, "' that no standing renders to")
+}
+
+fn retirement_decoded_drift_line(unit: String, planned: RunnerRetirementStanding, observed: RunnerRetirementStanding, planned_wire: String, observed_wire: String) -> String {
+  if retirement_standing_admits_drift(planned: planned, observed: observed) {
+    ""
+  } else {
+    concat("retirement drift: ", unit, " planned ", planned_wire, ", now ", observed_wire)
+  }
+}
+
 fn retirement_standing_drift_line(planned: String, observed: String?) -> String {
+  let unit = retirement_row_unit(row: planned)
+  let planned_wire = retirement_row_standing(row: planned)
   match observed {
-    Absent => concat("retirement drift: ", retirement_row_unit(row: planned), " planned ", retirement_row_standing(row: planned), ", now unobserved (absent from the observation)")
-    Present { value: o } =>
-      if retirement_row_standing(row: planned) == retirement_row_standing(row: o) {
-        ""
-      } else if retirement_row_standing(row: planned) == "pending" && retirement_row_standing(row: o) == "complete" {
-        ""
-      } else {
-        concat("retirement drift: ", retirement_row_unit(row: planned), " planned ", retirement_row_standing(row: planned), ", now ", retirement_row_standing(row: o))
+    Absent => concat("retirement drift: ", unit, " planned ", planned_wire, ", now unobserved (absent from the observation)")
+    Present { value: o } => {
+      let observed_wire = retirement_row_standing(row: o)
+      match retirement_standing_from_wire(unit: unit, wire: planned_wire) {
+        RetirementWireUndecodable { unit: u, wire: w } => retirement_undecodable_line(unit: u, wire: w)
+        RetirementWireDecoded { standing: p } =>
+          match retirement_standing_from_wire(unit: unit, wire: observed_wire) {
+            RetirementWireUndecodable { unit: u, wire: w } => retirement_undecodable_line(unit: u, wire: w)
+            RetirementWireDecoded { standing: q } =>
+              retirement_decoded_drift_line(unit: unit, planned: p, observed: q, planned_wire: planned_wire, observed_wire: observed_wire)
+          }
       }
+    }
   }
 }
 

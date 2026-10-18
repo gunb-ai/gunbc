@@ -1,7 +1,7 @@
 module gunbc.runner.runner_slot_retirement
 
 import std.types { Bool, List, String, NonEmptyStr, list_length }
-import std.algebra { trim }
+import std.algebra { trim, list_head }
 import gunbc.host.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
@@ -1176,6 +1176,48 @@ fn retirement_standing_wire(s: RunnerRetirementStanding) -> String {
     RetirementComplete { unit: _ } => "complete"
     RetirementPendingDrain { unit: _, cause: _ } => "pending"
     RetirementUnobserved { unit: _, cause: _ } => "unobserved"
+  }
+}
+
+// THE ONE INVERSE OF retirement_standing_wire. A wire text is decoded by asking which standing renders
+// to it, so no second copy of the encoding exists; text no standing renders to is undecodable, never a
+// default. The cause carried is the decode's own: the plan text holds the wire, not the original cause.
+type RetirementWireDecode
+  = RetirementWireDecoded { standing: RunnerRetirementStanding }
+  | RetirementWireUndecodable { unit: String, wire: String }
+
+fn retirement_standing_from_wire(unit: String, wire: String) -> RetirementWireDecode {
+  let candidates = [
+    RetirementComplete { unit: unit },
+    RetirementPendingDrain { unit: unit, cause: "decoded from plan wire" },
+    RetirementUnobserved { unit: unit, cause: "decoded from plan wire" },
+  ]
+  match list_head(xs: filter(candidates, c => retirement_standing_wire(s: c) == wire)) {
+    Absent => RetirementWireUndecodable { unit: unit, wire: wire }
+    Present { value: c } => RetirementWireDecoded { standing: c }
+  }
+}
+
+// THE MONOTONE ORDER. Teardown is rendered from a plan-time RetirementComplete and apply re-checks
+// nothing, so only planned pending / observed complete may drift: it under-actuates (the plan withheld
+// that teardown and still does). Every other pair is explicit so a new standing cannot inherit an answer.
+fn retirement_standing_admits_drift(planned: RunnerRetirementStanding, observed: RunnerRetirementStanding) -> Bool {
+  match planned {
+    RetirementComplete { unit: _ } => match observed {
+      RetirementComplete { unit: _ } => true
+      RetirementPendingDrain { unit: _, cause: _ } => false
+      RetirementUnobserved { unit: _, cause: _ } => false
+    }
+    RetirementPendingDrain { unit: _, cause: _ } => match observed {
+      RetirementComplete { unit: _ } => true
+      RetirementPendingDrain { unit: _, cause: _ } => true
+      RetirementUnobserved { unit: _, cause: _ } => false
+    }
+    RetirementUnobserved { unit: _, cause: _ } => match observed {
+      RetirementComplete { unit: _ } => false
+      RetirementPendingDrain { unit: _, cause: _ } => false
+      RetirementUnobserved { unit: _, cause: _ } => true
+    }
   }
 }
 

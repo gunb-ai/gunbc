@@ -2974,3 +2974,19 @@ test fn retirement_pending_then_unobserved_refuses() -> Bool {
 test fn retirement_pending_plan_renders_no_teardown_for_the_unit() -> Bool {
   !removes_retired_tree(lines: witness_open_transition_delta_apply(standings: [witness_pending()]))
 }
+
+// An unknown wire text in plan.txt is undecodable, never read as drift and never defaulted.
+test fn retirement_unknown_wire_in_plan_refuses_as_undecodable_not_drift() -> Bool {
+  let body = witness_retirement_plan_body(planned: witness_srv1_evidence(standings: [witness_open_transition_delta_complete_standing()]))
+  let t = fleet_converge_retirement_drift_text(
+    plan_body: join(split(s: body, delimiter: "=complete"), "=bogus"),
+    observed: witness_identity_request(
+      slots: [],
+      standings: runner_unit_standings_unobserved_no_transaction,
+      retirement: witness_srv1_evidence(standings: [witness_open_transition_delta_complete_standing()]),
+    ),
+  )
+  string_contains(s: t, pattern: "retirement undecodable: ")
+    && string_contains(s: t, pattern: "'bogus'")
+    && !string_contains(s: t, pattern: "retirement drift: ")
+}
