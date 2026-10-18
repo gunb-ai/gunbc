@@ -26,6 +26,7 @@ import gunbc.runner.runner_host_unit_slot {
   host_unit_slot_for, host_unit_slot_listener_argv, service_slot_name_parse, service_slot_selected_workflow,
 }
 import gunbc.machine_intake.host_capture_envelope { KernelBootId }
+import extdeps.uuid { uuid_of }
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
 import gunbc.runner.runner_jit_deregistration {
   JitSlotExit, SlotJobCompleted, SlotJobFailed, SlotNeverLaunched, JitRegistration, JitDeregistration, JitRunnerDeregistered,
@@ -236,7 +237,10 @@ fn service_slot_controller_main() -> ProcessExit
               match service_slot_env(name: service_slot_boot_env_name) {
                 Absent => exit_failure(reason: join(["service slot ", unit, ": ", service_slot_boot_env_name, " is not set"], ""))
                 Present { value: kernel_boot_id } =>
-                  match service_boot_id_of(run: KernelBootId { boot_id: kernel_boot_id as NonEmptyStr }) {
+                  match uuid_of(text: kernel_boot_id) {
+                    Absent => exit_failure(reason: join(["service slot ", unit, ": ", service_slot_boot_env_name, " is not a uuid"], ""))
+                    Present { value: uuid } =>
+                  match service_boot_id_of(run: KernelBootId { boot_id: uuid }) {
                     Absent => exit_failure(reason: join(["service slot ", unit, ": no service boot id"], ""))
                     Present { value: boot } =>
                       match service_slot_rebuild(host: control, identity: identity, boot: boot, unit: unit) {
@@ -245,6 +249,7 @@ fn service_slot_controller_main() -> ProcessExit
                         ServiceSlotNotBound { refusal: _ } => exit_failure(reason: join(["service slot ", unit, ": the slot is not bound"], ""))
                         ServiceSlotUnitNotRebuilt { listed: l, rebuilt: r } => exit_failure(reason: join(["service slot ", l, ": rebuilds as ", r], ""))
                       }
+                  }
                   }
               }
           }
