@@ -43,12 +43,20 @@ type HostGrantObservation {
   installed: InstalledSudoersRead
 }
 
-type HostGrantStanding
+// STANDING IS NESTED SO THAT "BLOCKS APPLY" IS AN ARM, NOT A PREDICATE: a covered rule has no
+// blocking reason to render, and a blocking reason has no covered source.
+type GrantCoveredSource
   = GrantCoveredByRenderedSudoers
   | GrantCoveredOutsideTheModel
   | GrantCoveredSourceUnobserved { cause: NonEmptyStr }
-  | GrantMissing
+
+type GrantBlockReason
+  = GrantMissing
   | GrantUnobserved { cause: NonEmptyStr }
+
+type HostGrantStanding
+  = GrantCovered { source: GrantCoveredSource }
+  | GrantBlocking { reason: GrantBlockReason }
 
 type HostGrantRow {
   rule: NonEmptyStr
@@ -64,18 +72,18 @@ data host_grant_observation_unobserved_no_transaction: HostGrantObservation = Ho
 
 fn host_grant_standing(observation: HostGrantObservation, rule: NonEmptyStr, rendered_line: NonEmptyStr) -> HostGrantStanding {
   match observation.listing {
-    GrantListingUnread { cause: why } => GrantUnobserved { cause: why }
+    GrantListingUnread { cause: why } => GrantBlocking { reason: GrantUnobserved { cause: why } }
     GrantListingRead { text: listing } =>
       if !sudo_nopasswd_grant_list_admits_probe(listing: listing, probe: rule as SudoNopasswdGrantListProbeShape) {
-        GrantMissing
+        GrantBlocking { reason: GrantMissing }
       } else {
         match observation.installed {
-          InstalledSudoersUnreadable { cause: why } => GrantCoveredSourceUnobserved { cause: why }
+          InstalledSudoersUnreadable { cause: why } => GrantCovered { source: GrantCoveredSourceUnobserved { cause: why } }
           InstalledSudoersText { text: installed } =>
             if any(xs: split(s: installed, delimiter: "\n"), predicate: l => trim(s: l) == (rendered_line as String)) {
-              GrantCoveredByRenderedSudoers
+              GrantCovered { source: GrantCoveredByRenderedSudoers }
             } else {
-              GrantCoveredOutsideTheModel
+              GrantCovered { source: GrantCoveredOutsideTheModel }
             }
         }
       }
@@ -109,11 +117,11 @@ fn host_grant_rows(host: NonEmptyStr, observation: HostGrantObservation) -> List
 
 fn host_grant_standing_tag(standing: HostGrantStanding) -> String {
   match standing {
-    GrantCoveredByRenderedSudoers => "covered-by-rendered-sudoers"
-    GrantCoveredOutsideTheModel => "covered-outside-the-model"
-    GrantCoveredSourceUnobserved { cause: _ } => "covered-source-unobserved"
-    GrantMissing => "missing"
-    GrantUnobserved { cause: _ } => "unobserved"
+    GrantCovered { source: GrantCoveredByRenderedSudoers } => "covered-by-rendered-sudoers"
+    GrantCovered { source: GrantCoveredOutsideTheModel } => "covered-outside-the-model"
+    GrantCovered { source: GrantCoveredSourceUnobserved { cause: _ } } => "covered-source-unobserved"
+    GrantBlocking { reason: GrantMissing } => "missing"
+    GrantBlocking { reason: GrantUnobserved { cause: _ } } => "unobserved"
   }
 }
 
@@ -123,52 +131,31 @@ fn host_grant_baseline_rows(rows: List<HostGrantRow>) -> List<String> {
   map(rows, r => join(["host-grant:", r.rule as String, "=", host_grant_standing_tag(standing: r.standing)], ""))
 }
 
-fn host_grant_blocks_apply(standing: HostGrantStanding) -> Bool {
-  match standing {
-    GrantCoveredByRenderedSudoers => false
-    GrantCoveredOutsideTheModel => false
-    GrantCoveredSourceUnobserved { cause: _ } => false
-    GrantMissing => true
-    GrantUnobserved { cause: _ } => true
+fn host_grant_blocking_text(rule: NonEmptyStr, reason: GrantBlockReason) -> String {
+  match reason {
+    GrantMissing => join(["missing sudoers rule: ", rule as String], "")
+    GrantUnobserved { cause: why } => join(["unobserved sudoers rule (", why as String, "): ", rule as String], "")
   }
 }
 
-fn host_grant_blocking_text(row: HostGrantRow) -> String {
-  match row.standing {
-    GrantMissing => join(["missing sudoers rule: ", row.rule as String], "")
-    GrantUnobserved { cause: why } => join(["unobserved sudoers rule (", why as String, "): ", row.rule as String], "")
-    GrantCoveredByRenderedSudoers => ""
-    GrantCoveredOutsideTheModel => ""
-    GrantCoveredSourceUnobserved { cause: _ } => ""
-  }
-}
-
-fn host_grant_blocking_rows(rows: List<HostGrantRow>) -> List<HostGrantRow> {
-  filter(rows, r => host_grant_blocks_apply(standing: r.standing))
+// ONE TEXT PER BLOCKING ROW; a covered row contributes nothing by construction.
+fn host_grant_blocking_texts(rows: List<HostGrantRow>) -> List<String> {
+  flat_map(rows, r => match r.standing {
+    GrantBlocking { reason: reason } => [host_grant_blocking_text(rule: r.rule, reason: reason)]
+    GrantCovered { source: _ } => []
+  })
 }
 
 // THE CAPABILITY ApplyAwaitingCapability / AwaitingCapability CARRY. Present exactly when some
 // host-wide grant is missing or unobserved; it names every such rule, so the refusal says what to
 // install and apply never reaches the `sudo -n` that would fail mid-script.
 fn host_grant_awaiting_capability(rows: List<HostGrantRow>) -> String? {
-  let blocking = host_grant_blocking_rows(rows: rows)
-  if length(xs: blocking) == 0 {
+  let texts = host_grant_blocking_texts(rows: rows)
+  if length(xs: texts) == 0 {
     Absent
   } else {
-    Present {
-      value: concat(
-        "host-wide-sudo-grants: ",
-        join(map(blocking, r => host_grant_blocking_text(row: r)), "; "),
-      ),
-    }
+    Present { value: concat("host-wide-sudo-grants: ", join(texts, "; ")) }
   }
-}
-
-fn host_grant_rules_with(rows: List<HostGrantRow>, tag: String) -> List<String> {
-  map(
-    filter(rows, r => host_grant_standing_tag(standing: r.standing) == tag),
-    r => r.rule as String,
-  )
 }
 
 fn host_grant_rules_line(label: String, rules: List<String>) -> String {
@@ -181,12 +168,31 @@ fn host_grant_rules_line(label: String, rules: List<String>) -> String {
 
 // plan.txt LINES, ONE PER STANDING THAT NEEDS AN OPERATOR'S EYE. Covered-outside-the-model is the
 // countable fact (a rule the host honors that this repository did not render), printed on its own
-// line per host so adopting or replacing it is a decision made on a number, not a surprise.
+// line per host so adopting or replacing it is a decision made on a number, not a surprise. Each
+// line selects its rows by matching the standing, never by comparing a wire tag.
 fn host_grant_plan_lines(rows: List<HostGrantRow>) -> List<String> {
   [
-    host_grant_rules_line(label: "covered-outside-the-model", rules: host_grant_rules_with(rows: rows, tag: "covered-outside-the-model")),
-    host_grant_rules_line(label: "covered-source-unobserved", rules: host_grant_rules_with(rows: rows, tag: "covered-source-unobserved")),
-    host_grant_rules_line(label: "missing", rules: host_grant_rules_with(rows: rows, tag: "missing")),
-    host_grant_rules_line(label: "unobserved", rules: host_grant_rules_with(rows: rows, tag: "unobserved")),
+    host_grant_rules_line(label: "covered-outside-the-model", rules: flat_map(rows, r => match r.standing {
+      GrantCovered { source: GrantCoveredOutsideTheModel } => [r.rule as String]
+      GrantCovered { source: GrantCoveredByRenderedSudoers } => []
+      GrantCovered { source: GrantCoveredSourceUnobserved { cause: _ } } => []
+      GrantBlocking { reason: _ } => []
+    })),
+    host_grant_rules_line(label: "covered-source-unobserved", rules: flat_map(rows, r => match r.standing {
+      GrantCovered { source: GrantCoveredSourceUnobserved { cause: _ } } => [r.rule as String]
+      GrantCovered { source: GrantCoveredByRenderedSudoers } => []
+      GrantCovered { source: GrantCoveredOutsideTheModel } => []
+      GrantBlocking { reason: _ } => []
+    })),
+    host_grant_rules_line(label: "missing", rules: flat_map(rows, r => match r.standing {
+      GrantBlocking { reason: GrantMissing } => [r.rule as String]
+      GrantBlocking { reason: GrantUnobserved { cause: _ } } => []
+      GrantCovered { source: _ } => []
+    })),
+    host_grant_rules_line(label: "unobserved", rules: flat_map(rows, r => match r.standing {
+      GrantBlocking { reason: GrantUnobserved { cause: _ } } => [r.rule as String]
+      GrantBlocking { reason: GrantMissing } => []
+      GrantCovered { source: _ } => []
+    })),
   ]
 }
