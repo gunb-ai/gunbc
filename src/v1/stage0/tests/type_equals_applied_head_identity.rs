@@ -8,9 +8,9 @@ use v1_compiler::v1_std_core::{
     make_expr_node, Connective, ExprData, InferredNode, Node, SourceSpan,
 };
 
-// Behavioural RED at the authority itself: node_type_equals is pure, so the head-declaration-identity
-// arm (an applied spelling against an unapplied one) and the element-wise descent (two applied
-// spellings) are driven with built nodes. The consumer of the arm is the #14152 rebind fold; this
+// Behavioural RED at the authority itself: node_type_equals is pure, so the refusal of an application
+// against any non-applied spelling and the element-wise descent (two applied spellings) are driven with
+// built nodes. The consumer of the arm is the #14152 rebind fold; this
 // file is the v1-test class receipt, deleted with src/v1 (DESIGN.md 7, seed shrinks toward zero).
 
 fn named(name: &str, connective: Connective, children: Vec<Rc<Node>>) -> Node {
@@ -142,8 +142,8 @@ fn expansion_of(application: &Rc<Node>) -> Rc<Node> {
 }
 
 // An expansion RETAINS NO ARGUMENTS (slots replaced by name, params cleared), so an application refuses
-// even its own expansion, in both orders. The accepting twin of this refusal is the hand-built pair
-// below, whose Disj retains its arguments positionally in children.
+// even its own expansion, in both orders. The hand-built Disj pair below refuses too: an application
+// against a non-applied spelling is unsupported whatever the other side carries.
 #[test]
 fn an_application_refuses_its_own_expansion_in_both_orders() {
     let int_box = box_application("Int");
@@ -174,8 +174,8 @@ fn an_application_refuses_the_expansion_of_another_instantiation_in_both_orders(
 
 // gentle-carp-16's #14152 control shape: both operands hand-built, declaration None and inferred None,
 // the Disj side carrying its arguments positionally in children. An application against a non-applied
-// spelling is not equality whatever its inferred state, so the former accept twin (Box<Int> vs
-// Disj Box<Int>) is a refusal control too: no expansion evidence must not reopen a comparison against
+// spelling is not equality whatever its inferred state, so Box<Int> against a hand-built
+// Disj Box<Int> is a refusal control too: no expansion evidence must not reopen a comparison against
 // the other side's children, which may be fields or variants.
 fn disj_with_arguments(name: &str, args: Vec<Rc<Node>>) -> Rc<Node> {
     Rc::new(named(name, Connective::Disj, args))
