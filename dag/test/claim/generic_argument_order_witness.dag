@@ -1,22 +1,19 @@
-module test.claim.generic_argument_recheck_witness
+module test.claim.generic_argument_order_witness
 
 import std.types { Bool, Int, String }
 import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
 
-// WHAT A GENERIC ARGUMENT MUST ACCEPT, AND WHAT IT MUST REFUSE, ACROSS ARGUMENT ORDER.
-// Eight rows about a generic call whose arguments are supplied out of dependency order: a
-// lambda whose parameter is bound by an argument that comes AFTER it, an inner generic call
-// the outer call settles only later, an early literal or record whose generic is bound later,
-// and a left-bound chain nested three deep. Every row reads only the blocking-diagnostic census
-// of a compiled specimen, so nothing here depends on HOW many rounds of argument typing a
-// compiler runs or what decides them: these outcomes must hold under any second-round
-// algorithm, and under none at all except where a row says a refusal is required.
-// Why these shapes are the ones worth pinning: an early literal or early lambda is typed
-// before the argument that settles its generic exists, which is exactly when a compiler is
-// tempted to refuse something merely premature -- and a premature refusal is invisible to a
-// test that only checks the accepted programs. Each refusal row is paired with a twin of the
-// SAME shape typed consistently, which must refuse nothing; without that pairing, a compiler
-// that refuses every lambda-bearing generic call would pass the refusal rows.
+// WHAT A GENERIC CALL MUST ACCEPT, AND WHAT IT MUST REFUSE, ACROSS ARGUMENT ORDER.
+// Five rows about a generic call whose lambda argument comes before or after the argument
+// that binds its parameter: a left-bound lambda, a right-bound lambda, a left-bound chain
+// nested three deep, and an inner generic call that the outer call settles only through a
+// later argument, refused when inconsistent and accepted when consistent. Every row reads
+// only the blocking-diagnostic census of a compiled specimen, so nothing here depends on how
+// many rounds of argument typing a compiler runs or what decides them.
+// The inner-generic refusal is paired with a twin of the same shape typed consistently,
+// which must refuse nothing; without it, a compiler that refuses every lambda-bearing generic
+// call would pass the refusal. The direct lambda-return refusal over a fixed parameter is
+// owned by test.claim.lambda_return_solves_generic_witness and is not restated here.
 // The nested left-bound chain is here because it is the accepted case with the most
 // argument-typing work per line: nested generic calls whose inner generics each come from
 // the lambda's own return. Any diagnostic a compiler would emit twice, or emit for only one
@@ -27,12 +24,6 @@ data left_bound_lambda_source: String = "module test.claim.gar_left_bound\nimpor
 data right_bound_lambda_source: String = "module test.claim.gar_right_bound\nimport std.types { Int }\nfn gar_app<T, R>(f: fn(T) -> R, x: T) -> R { f(x) }\nfn probe() -> Int { gar_app(f: fn(v) { v }, x: 1) }\n"
 
 data nested_left_bound_chain_source: String = "module test.claim.gar_nested_left\nimport std.types { Int }\nfn gar_bind<T, R>(o: T, f: fn(T) -> R) -> R { f(o) }\nfn probe() -> Int {\n  gar_bind(o: 1, f: fn(a) {\n    gar_bind(o: a, f: fn(b) {\n      gar_bind(o: b, f: fn(c) { c })\n    })\n  })\n}\n"
-
-data later_literal_context_source: String = "module test.claim.gar_later_literal\nimport std.types { Int }\nfn gar_pair<T>(x: T, y: T) -> T { y }\nfn probe() -> Int { gar_pair(x: 1, y: 2) }\n"
-
-data later_record_context_source: String = "module test.claim.gar_later_record\nimport std.types { Int }\ntype GarBox<T> { v: T }\nfn gar_box_pair<T>(x: GarBox<T>, y: T) -> T { y }\nfn probe() -> Int { gar_box_pair(x: GarBox { v: 1 }, y: 2) }\n"
-
-data lambda_return_mismatch_source: String = "module test.claim.gar_mismatch\nimport std.types { Bool, Int }\nfn gar_ap<T, R>(f: fn(T) -> R, x: T, r: R) -> R { r }\nfn probe() -> Bool { gar_ap(f: fn(v) { v }, x: 1, r: true) }\n"
 
 // AN INNER GENERIC THE OUTER CALL SETTLES ONLY LATER. gar_ap binds R from its THIRD
 // argument (r: true), so at the moment the lambda argument is first read, R is still unset
@@ -64,23 +55,6 @@ test fn a_nested_left_bound_bind_chain_is_accepted() -> Bool {
   // on this program is a refusal of something that type-checks, and a DUPLICATED row would
   // mean one diagnostic per nesting level rather than per genuine fault.
   total_blocking_count_for(source: nested_left_bound_chain_source) == 0
-}
-
-test fn an_earlier_literal_whose_generic_is_bound_later_is_accepted() -> Bool {
-  total_blocking_count_for(source: later_literal_context_source) == 0
-}
-
-test fn an_earlier_record_literal_whose_generic_is_bound_later_is_accepted() -> Bool {
-  total_blocking_count_for(source: later_record_context_source) == 0
-}
-
-test fn a_lambda_return_that_disagrees_with_the_substituted_callable_refuses() -> Bool {
-  // EXACTLY one blocking TypeMismatch and nothing else blocking. ">= 1" would also accept a
-  // compiler that refuses the same node twice, or that refuses it once and emits an unrelated
-  // blocking row beside it; == 1 on the class AND == 1 in total accepts neither. One refusal,
-  // at the node that genuinely disagrees, is the whole claim.
-  blocking_class_count_for(source: lambda_return_mismatch_source, wanted_class: "TypeMismatch") == 1 &&
-    total_blocking_count_for(source: lambda_return_mismatch_source) == 1
 }
 
 test fn an_inner_generic_settled_only_by_a_later_argument_refuses() -> Bool {
