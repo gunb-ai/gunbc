@@ -183,8 +183,8 @@ fn type_summary_values(index: TypeSummaryIndex) -> List<TypeSummary> {
 type FieldClone = FieldCloneShallow | FieldCloneOwned | FieldCloneDeclared { applied_to_owned: Bool }
 
 fn field_clone_head_leaf(name: String) -> String {
-  match string_index_of(haystack: name, needle: "<") {
-    Present { value: i } => substring(s: name, start: 0, end: i)
+  match split(s: name, delimiter: "<") |> first {
+    Present { value: head } => head
     Absent => name
   }
 }
