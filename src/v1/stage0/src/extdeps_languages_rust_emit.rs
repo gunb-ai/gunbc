@@ -91,6 +91,12 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MachineWordLowering {
+    pub owner_module: String,
+    pub apply_fn: String,
+    pub operator_param: String,
+    pub width_param: String,
+    pub a_param: String,
+    pub b_param: String,
     pub operator_label_fn: String,
     pub width_bits_fn: String,
     pub template: String,
@@ -99,7 +105,7 @@ pub struct MachineWordLowering {
 pub fn rust_machine_word_lowering() -> Rc<MachineWordLowering> {
     thread_local! {
         static CACHED: Rc<MachineWordLowering> = {
-            serde_json::from_str("{\"operator_label_fn\": \"machine_word_operator_label\", \"width_bits_fn\": \"word_width_bits\", \"template\": \"machine_word_operate_at::<{machine_word_row_index(\\\"{label}\\\")}, {bits}>({a}, {b})\"}")
+            serde_json::from_str("{\"owner_module\": \"std.machine_word\", \"apply_fn\": \"machine_word_apply\", \"operator_param\": \"op\", \"width_param\": \"width\", \"a_param\": \"a\", \"b_param\": \"b\", \"operator_label_fn\": \"machine_word_operator_label\", \"width_bits_fn\": \"word_width_bits\", \"template\": \"machine_word_operate_at::<{machine_word_row_index(\\\"{label}\\\")}, {bits}>({a}, {b})\"}")
                 .expect("valid data definition")
         };
     }
