@@ -136,19 +136,31 @@ fail_marker="${GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER:-${evidence_dir:+$evide
 # too would refuse the model's own well-formed invocation only after the model had been proven correct
 # elsewhere, which is strictness with no failure mode behind it.
 require_per_run_channels() {
-  # Called with the paths a mode actually settled on, when those paths came from THIS file's defaults
-  # rather than from argv. A fixed /tmp name here is the review 82230 bug: concurrent runner slots share
-  # /tmp, so one slot's --prepare deletes another slot's fail marker and a real refusal goes green.
+  # Called with the paths a mode settled on when those paths came from THIS file's defaults rather than
+  # from argv. A fixed name here is the review 82230 bug: concurrent runner slots share /tmp, so one
+  # slot's --prepare deletes another slot's fail marker and a real refusal goes green.
+  #
+  # THE TEST IS MEMBERSHIP OF THE PER-RUN DIRECTORY, not "is not under /tmp". The first version rejected
+  # any path containing /tmp/, which would have refused the very layout this fix exists to require --
+  # RUNNER_TEMP is a directory someone else chooses, and a runner (or a developer) that puts it under
+  # /tmp would have been told its own correct path was the bug. Being under /tmp is not the defect;
+  # being SHARED is.
+  if [ -z "$evidence_dir" ]; then
+    echo "FAIL: no per-run evidence directory for '$1'." >&2
+    echo "      Set GUNBC_CONTRACT_STAMP_EVIDENCE_DIR, or RUNNER_TEMP + GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT." >&2
+    echo "      Concurrent runner slots share /tmp: one slot's --prepare can delete another slot's fail" >&2
+    echo "      marker and turn a real refusal green (review 82230)." >&2
+    exit 1
+  fi
   case "$1" in
-    */tmp/*|/tmp/*)
-      echo "FAIL: no per-run evidence directory (set GUNBC_CONTRACT_STAMP_EVIDENCE_DIR, or RUNNER_TEMP" >&2
-      echo "      + GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT). Refusing the fixed path '$1'." >&2
-      echo "      Concurrent runner slots share /tmp: one slot's --prepare can delete another slot's fail" >&2
-      echo "      marker and turn a real refusal green (review 82230)." >&2
+    "$evidence_dir"/*)
+      return 0 ;;
+    *)
+      echo "FAIL: '$1' is outside the per-run evidence directory '$evidence_dir'." >&2
+      echo "      A verdict channel no run owns is a channel two runs can share (review 82230)." >&2
       exit 1 ;;
   esac
 }
-
 fail=0
 guard_template="$(mktemp)"
 tmpdir="$(mktemp -d)"
