@@ -934,6 +934,10 @@ test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
     && accepts(crypt_digest: "$6$saltsaltX$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6d!9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "x$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$saltsalt$")
     && accepts(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     // '.' and '/' both occur in real digests; an alphabet missing either would refuse these.
     && accepts(crypt_digest: "$6$sa.lt/sa$d7hkejY7HJ5ZGqHGdfuXgD/tCnk8xlC1ExIqtNkaEkqudX/tH4520c9i883Ib3JvJBsBfcFvy.XSsiW.zAtL01")
@@ -997,6 +1001,31 @@ fn cause_of(crypt_digest: String) -> Optional<AdminPasswordRefusalCause> {
   match admin_password_hash_receipt(crypt_digest: crypt_digest as NonEmptyStr) {
     ReceiptRefused { cause: cause } => Present { value: cause }
     ReceiptAccepted { receipt: _ } => Absent
+  }
+}
+
+// THREE CANDIDATES, EACH DEFECTIVE IN EXACTLY ONE WAY, AND THE BLAME MUST LAND ON THAT PART. Refusing is half
+// the job: a refusal naming the wrong part sends the operator off to fix something that is not broken, and on a
+// headless board the only diagnosis is the one this returns. These three exist because the one-line mutations
+// that disabled the digest-alphabet check, the leading-segment check and the segment-count check all came back
+// GREEN at 58/58 -- every candidate already on file was defective in several ways at once and was rejected by an
+// earlier check, so no witness could see the arm that had been switched off. Isolating one defect per candidate
+// is what makes each check load-bearing (DESIGN §4b: an obligation nobody can falsify is not a test).
+test fn a_single_defect_candidate_is_blamed_on_the_part_that_is_broken() -> Bool {
+  // 86 characters and otherwise well formed, so ONLY the digest-alphabet check can reject it.
+  match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6d!9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+    Present { value: DigestNotInCryptAlphabet } =>
+      // four well-formed segments; fails only because the leading segment is not empty.
+      match cause_of(crypt_digest: "x$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+        Present { value: NotACryptDigest } =>
+          // nothing after the final separator: the digest is absent, not malformed.
+          match cause_of(crypt_digest: "$6$saltsalt$") {
+            Present { value: DigestAbsent } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
   }
 }
 
