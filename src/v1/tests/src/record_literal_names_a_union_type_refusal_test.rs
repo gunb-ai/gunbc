@@ -324,23 +324,27 @@ fn an_imported_variant_name_is_accepted_under_a_pool_collision() {
                 .to_string(),
         }),
         Rc::new(SourceFile {
-            // Constructed in FIELD POSITION of an outer record, which is how the real witness does it
-            // (SlotStartCompleted { exec_main_status: UnitPropertyRead { value: status }, .. }). The
-            // position matters for what this control proves: a top-level `data x: Union = Arm { .. }`
-            // is settled by the expected-variant route and never reaches this refusal under EITHER
-            // lookup, so an unnested fixture is green for both and discriminates nothing. In field
-            // position the question "does this head name a record constructor" is live, and only the
-            // resolution decides the answer.
+            // The arm, constructed in FIELD POSITION inside a record literal whose declared field type
+            // is the union, and consumed by a match on that field -- the shape the real site uses
+            // (SlotStartCompleted { exec_main_status: UnitPropertyRead { value: status }, .. } in
+            // test.claim.workspace_commissioning_apply_readback_witness). Position matters: a
+            // top-level `data x: Union = Arm { .. }` is settled by the expected-variant route before
+            // this refusal runs, so an unnested fixture says nothing about resolution at all.
+            //
+            // WHAT THIS FIXTURE DOES AND DOES NOT ESTABLISH. It is a total-acceptance control: the
+            // three-module program compiles with NO gate-blocking diagnostic, so no refusal --
+            // this one or any other -- fires on a legal construction whose arm name collides with an
+            // unrelated union elsewhere in the pool. It is NOT the evidence that the narrowed
+            // resolution is what makes it pass: measured at this head, reverting record_lit_name_declares_union
+            // to its pre-narrowing text (global pool lookup, no arm exemption) leaves this fixture
+            // GREEN too. The pool overlay answers only for names bound nowhere in the chain, and the
+            // whole-corpus index that made the real site resolve to the colliding union is not
+            // reproducible from a three-module unit compile. The discrimination for that ruling is
+            // the whole-corpus census: pre-narrowing it produced the 2 false refusals at
+            // test.claim.workspace_commissioning_apply_readback_witness (PR body, Run 1), and at this
+            // head it produces 0 (Run 3/4) -- same loader, same tree, opposite counts.
             path: "zz_consumer.dag".to_string(),
-            content: "module zz_consumer\n\
-                      import zz_owner { UnitPropertyReading, UnitPropertyRead, UnitPropertyUnread, ZzTag }\n\
-                      type ZzHolder { exec_main_status: UnitPropertyReading }\n\
-                      data zz_owner_status: Bool =\n\
-                      \x20 (ZzHolder { exec_main_status: UnitPropertyRead { value: \"running\", tag: ZzTag { name: \"s\" } } })\n\
-                      \x20   .exec_main_status == UnitPropertyRead { value: \"running\", tag: ZzTag { name: \"s\" } }\n\
-                      data zz_owner_unread: Bool =\n\
-                      \x20 (ZzHolder { exec_main_status: UnitPropertyUnread { property: \"ExecMainStatus\", detail: \"unreadable\" } })\n\
-                      \x20   .exec_main_status == UnitPropertyUnread { property: \"ExecMainStatus\", detail: \"unreadable\" }\n"
+            content: "module zz_consumer\nimport zz_owner { UnitPropertyReading, UnitPropertyRead, UnitPropertyUnread, ZzTag }\ntype ZzHolder { exec_main_status: UnitPropertyReading }\nfn read_exec(holder: ZzHolder) -> Bool {\n  match holder.exec_main_status {\n    UnitPropertyRead { value, tag } => value == \"running\"\n    UnitPropertyUnread { property, detail } => property == \"ExecMainStatus\"\n  }\n}\ndata zz_owner_status: Bool = read_exec(holder: ZzHolder { exec_main_status: UnitPropertyRead { value: \"running\", tag: ZzTag { name: \"s\" } } })\ndata zz_owner_unread: Bool = read_exec(holder: ZzHolder { exec_main_status: UnitPropertyUnread { property: \"ExecMainStatus\", detail: \"unreadable\" } })\n"
                 .to_string(),
         }),
     ];
