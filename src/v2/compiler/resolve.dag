@@ -13,7 +13,7 @@ import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, Occ
 import v2.extdeps.languages.dag { dag_kernel_string_type_spelling, dag_string_literal_value_optional, dag_kernel_type_binding_optional, dag_kernel_type_declaration_binding_optional, dag_kernel_type_foreign_declaration, ForeignDeclarationBinds, ForeignDeclarationRefuses, dag_node_is_float_literal_atom, dag_node_is_int_literal_atom, dag_symbol_literal_name_optional, dag_string_literal_value_symbol_optional, dag_node_is_module_root_conj, dag_resolve_preserve_module_metadata_subtree, dag_surface_module_header_metadata_edge, dag_surface_operator_canonicalization_lookup, namespace_graft_spine_body_optional, qualified_name_from_module_node }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
 import v2.std.witness { map_get_checked }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.optional_layers { wrap_type_node_occupancy_at }
@@ -2745,10 +2745,15 @@ type ResolveNodeWalk
       first: NonEmptyDiagnostics
       rest: List<NonEmptyDiagnostics>
       observation: ObservationCompleteness
+      // THE PARTIAL RECORD: the binding entries the walk's ACCEPTED sites recorded before and beside
+      // the refusals. A refused tree is never returned, and this does not make it accepted: it is read
+      // only by the binding census as binding_partial rows (v2.compiler.occurrence_binding_census),
+      // so a wave that moves one name of a still-refused module is judged at occurrence grain.
+      partial: List<OccurrenceBindingEntry>
     }
 
 fn resolve_walk_refused_one(chain: NonEmptyDiagnostics) -> ResolveNodeWalk {
-  ResolveWalkRefused { first: chain, rest: [], observation: ObservationComplete }
+  ResolveWalkRefused { first: chain, rest: [], observation: ObservationComplete, partial: [] }
 }
 
 fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
@@ -2765,7 +2770,7 @@ fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
 fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, bindings: _ } => Accepted { value: v, diagnostics: d }
-    ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
+    ResolveWalkRefused { first: f, rest: _, observation: _, partial: _ } => Rejected { diagnostics: f }
   }
 }
 
@@ -2785,7 +2790,7 @@ fn resolved_tree_outcome(
         value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, module_outcomes: module_outcomes, outcome_index: outcome_index, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, bindings: l),
         diagnostics: d
       }
-    ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
+    ResolveWalkRefused { first: f, rest: _, observation: _, partial: _ } => Rejected { diagnostics: f }
   }
 }
 
@@ -2798,11 +2803,12 @@ fn resolve_walk_prefix_pending(pending: Diagnostics, w: ResolveNodeWalk) -> Reso
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, bindings: l } =>
       ResolveWalkAccepted { value: v, diagnostics: diagnostics_merge(outer: pending, inner: d), bindings: l }
-    ResolveWalkRefused { first: f, rest: r, observation: o } =>
+    ResolveWalkRefused { first: f, rest: r, observation: o, partial: p } =>
       ResolveWalkRefused {
         first: rejected_with_pending(pending: pending, rejected: f),
         rest: r,
-        observation: o
+        observation: o,
+        partial: p
       }
   }
 }
@@ -2837,7 +2843,8 @@ fn child_walk_refused(
   w: ChildWalk,
   first: NonEmptyDiagnostics,
   rest: List<NonEmptyDiagnostics>,
-  observation: ObservationCompleteness
+  observation: ObservationCompleteness,
+  partial: List<OccurrenceBindingEntry>
 ) -> ChildWalk {
   ChildWalk {
     ordinal: w.ordinal + 1,
@@ -2849,7 +2856,7 @@ fn child_walk_refused(
     ),
     observation: observation_meet(a: w.observation, b: observation),
     scope_prerequisite_refused: w.scope_prerequisite_refused,
-    bindings: w.bindings
+    bindings: list_append(left: w.bindings, right: partial)
   }
 }
 
@@ -2882,8 +2889,8 @@ fn child_walk_unobservable(w: ChildWalk, reason: Symbol) -> ChildWalk {
 
 fn child_walk_step(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> ChildWalk {
   match r {
-    ResolveWalkRefused { first: f, rest: rs, observation: o } =>
-      child_walk_refused(w: w, first: f, rest: rs, observation: o)
+    ResolveWalkRefused { first: f, rest: rs, observation: o, partial: p } =>
+      child_walk_refused(w: w, first: f, rest: rs, observation: o, partial: p)
     ResolveWalkAccepted { value: t, diagnostics: ed, bindings: l } =>
       child_walk_accepted(w: w, edge: Edge { label: e.label, target: t }, d: ed, bindings: l)
   }
@@ -2900,7 +2907,7 @@ fn child_walk_step_prerequisite(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> Ch
     failures: stepped.failures,
     observation: stepped.observation,
     scope_prerequisite_refused: match r {
-      ResolveWalkRefused { first: _, rest: _, observation: _ } => true
+      ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => true
       ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => false
     },
     bindings: stepped.bindings
@@ -2930,7 +2937,7 @@ fn child_walk_node(w: ChildWalk, n: Node) -> ResolveNodeWalk {
           }))
       }
     Cons { head: first, tail: rest } =>
-      ResolveWalkRefused { first: first, rest: rest, observation: w.observation }
+      ResolveWalkRefused { first: first, rest: rest, observation: w.observation, partial: w.bindings }
   }
 }
 
@@ -3341,7 +3348,7 @@ fn resolve_construct_walk_with_tag(
 ) -> ResolveNodeWalk {
   let tag_path = match tag {
     ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: _ } => declaration_reference_path_optional(node: resolved)
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => Absent
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => Absent
   }
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     if edge_is_core(e: e, marker: ConstructTagEdge) {
@@ -3716,7 +3723,7 @@ fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, entries: List<MapIn
           })
           let carrier = node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: n.occurrence_id)
           match child_walk_node(w: walked, n: carrier) {
-            ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
+            ResolveWalkRefused { first: f, rest: r, observation: o, partial: p } => ResolveWalkRefused { first: f, rest: r, observation: o, partial: p }
             ResolveWalkAccepted { value: resolved, diagnostics: d, bindings: l } =>
               match resolve_map_pairs(pairs: resolve_map_pair_targets(items: resolved.children)) {
                 ResolveMapPairMalformed { at: p } => resolve_anonymous_record_refused(n: p, reason: ^resolve_anonymous_map_entry_malformed)
@@ -4217,7 +4224,7 @@ fn resolve_no_admitted_kinds() -> List<InstantiationPosition> {
 fn resolve_instantiation_head_kinds(ctx: ResolveContext, head_walk: ResolveNodeWalk) -> InstantiationKinds {
   match head_walk {
     ResolveWalkAccepted { value: head, diagnostics: _, bindings: _ } => resolve_instantiation_argument_kinds(ctx: ctx, head: head)
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => InstantiationKindsOutsideCheck
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => InstantiationKindsOutsideCheck
   }
 }
 
@@ -4345,7 +4352,7 @@ fn resolve_type_application(ctx: ResolveContext, walked: ResolveNodeWalk) -> Res
           }
         Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
       }
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => walked
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => walked
   }
 }
 
@@ -4960,7 +4967,7 @@ fn resolve_type_param_binder_kind(ctx: ResolveContext, binder: Node, identity: S
             diagnostics: d,
             bindings: l
           }
-        ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
+        ResolveWalkRefused { first: f, rest: r, observation: o, partial: p } => ResolveWalkRefused { first: f, rest: r, observation: o, partial: p }
       }
   }
 }
@@ -5211,7 +5218,7 @@ fn resolve_arrow_resource_requirements(ctx: ResolveContext, requirements: Node) 
 // names declarations.
 fn resolve_arrow_resource_requirement_members(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
   match resolve_node_walk(ctx: ctx, n: requirements) {
-    ResolveWalkRefused { first: f, rest: rs, observation: o } => ResolveWalkRefused { first: f, rest: rs, observation: o }
+    ResolveWalkRefused { first: f, rest: rs, observation: o, partial: p } => ResolveWalkRefused { first: f, rest: rs, observation: o, partial: p }
     ResolveWalkAccepted { value: resolved, diagnostics: d, bindings: l } =>
       match resolve_requirement_member_refusal_optional(index: ctx.namespace.symbol_index, members: resolved.children) {
         Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
@@ -5459,7 +5466,7 @@ fn resolve_occupancy(ctx: ResolveContext, walked: ResolveNodeWalk) -> ResolveNod
         Absent => walked
         Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
       }
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => walked
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => walked
   }
 }
 

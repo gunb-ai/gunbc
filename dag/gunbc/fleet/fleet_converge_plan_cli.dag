@@ -1,6 +1,6 @@
 module gunbc.fleet.fleet_converge_plan_cli
 
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
 
 import gunbc.fleet.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
@@ -875,7 +875,7 @@ fn fleet_converge_plan_scoped_bound_wet(
     }
   } else if (scope == WorkspaceAllocationOnly) {
     observe_workspace_allocation_plan_request_wet(host: subject_host,
-      release_dir: approval_broker_release_dir(root: microvm_controller_root,
+      release_dir: release_locus_dir(root: microvm_controller_root,
         revision: RevisionBoundAtEmission { revision: run.run_revision as CommitSha }) as NonEmptyStr)
   } else { observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: subject_host) }
   match observed {

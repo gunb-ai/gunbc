@@ -1,6 +1,7 @@
 module gunbc.rust_emitted_edge
 
 import std.types { List, String }
+import std.algebra { collection_join_shape }
 
 // THE EDGES THE RUST EMITTER WRITES, ONE HOME FOR THEIR PROVENANCE. v1.compiler.emit_rust renders
 // module paths; the crate partition (v2.workflow.rust_crate_partition) must see every module edge

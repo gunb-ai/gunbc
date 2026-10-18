@@ -56,6 +56,15 @@ fn cargo_build_release_bin_offline_command(package: String, bin: String) -> Argv
   argv_command(program: cargo_program(), arguments: ["build", "--release", "-p", package, "--bin", bin, "--locked", "--offline"])
 }
 
+// `cargo run`: the same offline, locked release build for a package named by its manifest, into a
+// target directory the caller names, then the package's binary run with cargo's own exit status --
+// for a package outside the workspace the caller sits in. Build output goes to stderr and the
+// program's to stdout. The source replacement is still configuration cargo discovers from the
+// working directory.
+fn cargo_run_release_manifest_offline_command(manifest_path: String, target_dir: String) -> ArgvCommand {
+  argv_command(program: cargo_program(), arguments: ["run", "--release", "--manifest-path", manifest_path, "--target-dir", target_dir, "--locked", "--offline"])
+}
+
 // THE DEPENDENCY SOURCES A LOCKFILE PINS, written to a directory. `--locked` refuses a lockfile that
 // would change; `--versioned-dirs` names each crate directory with its version so two versions of
 // one crate cannot collide. Its output layout and .cargo-checksum.json files are cargo's, so a

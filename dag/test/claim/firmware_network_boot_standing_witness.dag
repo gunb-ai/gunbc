@@ -1042,6 +1042,22 @@ test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
          NetworkEntriesPresent { head: _, additional_count: _ } => false
          NoNetworkEntry { examined_count: _ } => false
        }
+    // AND THE COUNT IS THE COUNT. The single-entry arm above cannot distinguish a real
+    // additional_count from a constant zero, so this one asks for two network entries and requires
+    // exactly one more. Without it, `additional_count: 0` shipped green -- a field that is decoration
+    // is worse than no field, because a reader credits it (DESIGN 5: no plausible output is
+    // fabricated).
+    && match network_entries_in(
+         entries: [
+           honestly_network_label,
+           boot_entry(kind: BootTargetUefiHttp, label: "HTTP Boot"),
+           boot_entry(kind: BootTargetHdd, label: "NVMe0"),
+         ],
+       ) {
+         NetworkEntriesPresent { head: BootTargetPxe, additional_count: more } => more == 1
+         NetworkEntriesPresent { head: _, additional_count: _ } => false
+         NoNetworkEntry { examined_count: _ } => false
+       }
     && match redfish_boot_target_network_standing(t: BootTargetUefiHttp) {
          NetworkBootTarget { via: _ } => true
          NotNetworkBootTarget { why: _ } => false
