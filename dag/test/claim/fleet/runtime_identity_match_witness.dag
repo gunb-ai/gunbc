@@ -750,6 +750,31 @@ test fn test_swapping_the_pair_swaps_only_the_reported_keys() -> Bool {
     && same_verdict_kind(left: forward, right: backward)
 }
 
+// THE KEYS ARE CARRIED BY EVERY ARM, NOT JUST THE KIND ONE. The test above reaches only `Match`, so the
+// Mismatch and Unprovable arms could each have been built from `pre.unit` alone -- a fabricated pairing in
+// the two arms an operator most trusts to say what happened -- and nothing here would have noticed. Each arm
+// is pinned separately, under DISTINCT keys, so a fold that substitutes one side for the other is caught in
+// that arm alone. `verdict_units` reads all three arms and so cannot tell them apart on its own.
+test fn test_mismatch_reports_the_keys_of_the_two_sides_that_diverged() -> Bool {
+  let pre = pre_with_unit(fixture_unit)
+  let post = post_with_other_serial_under_unit(fixture_other_unit)
+  match runtime_identity_match(pre: pre, post: post) {
+    Mismatch { diverged: ds, pre_unit: pu, post_unit: pu2 } =>
+      ds.length() == 1 && pu == fixture_unit && pu2 == fixture_other_unit
+    _ => false
+  }
+}
+
+test fn test_unprovable_reports_the_keys_of_the_two_sides_it_could_not_settle() -> Bool {
+  let pre = pre_with_unit(fixture_unit)
+  let post = post_with_serial_unobserved_under_unit(fixture_other_unit)
+  match runtime_identity_match(pre: pre, post: post) {
+    Unprovable { why: gaps, pre_unit: pu, post_unit: pu2 } =>
+      gaps.length() == 1 && pu == fixture_unit && pu2 == fixture_other_unit
+    _ => false
+  }
+}
+
 // ---------------------------------------------------------------------------
 // THE CONSUMER FRONTIER, ASSERTED AS A STATUS RATHER THAN DESCRIBED IN PROSE
 // ---------------------------------------------------------------------------
@@ -1044,6 +1069,33 @@ fn pre_with_unit(key: UnitKey) -> PreBootIdentityStanding {
 
 fn post_with_unit(key: UnitKey) -> PostBootIdentityReport {
   let base = post_agreeing()
+  PostBootIdentityReport {
+    unit: key,
+    reported_over: base.reported_over,
+    board_serial: base.board_serial,
+    bios_version: base.bios_version,
+    model: base.model,
+    nics: base.nics,
+  }
+}
+
+// THE NON-AGREEING FIXTURES UNDER AN EXPLICIT KEY. Rebuilding them here rather than editing the fixtures
+// themselves, so the ~20 tests that read them stay untouched -- and so a key can be made to disagree with
+// the rest of the record while every axis keeps the value that test is about.
+fn post_with_other_serial_under_unit(key: UnitKey) -> PostBootIdentityReport {
+  let base = post_with_other_serial()
+  PostBootIdentityReport {
+    unit: key,
+    reported_over: base.reported_over,
+    board_serial: base.board_serial,
+    bios_version: base.bios_version,
+    model: base.model,
+    nics: base.nics,
+  }
+}
+
+fn post_with_serial_unobserved_under_unit(key: UnitKey) -> PostBootIdentityReport {
+  let base = post_with_serial_unobserved()
   PostBootIdentityReport {
     unit: key,
     reported_over: base.reported_over,
