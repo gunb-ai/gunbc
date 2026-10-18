@@ -1,5 +1,6 @@
 module gunbc.live_deploy.apply
 
+import gunbc.fleet.fleet_converge_plan_revision { observe_actions_run_binding_at_checkout }
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.runner.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 
@@ -166,7 +167,7 @@ import gunbc.command_runner { run_shell_commands }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.actions_run_binding {
-  ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
+  ActionsRunBinding, ActionsRunBound, ActionsRunUnbound,
   admit_optional_expected_revision, RunRevisionAdmitted, RunRevisionRefused,
 }
 import gunbc.fleet.fleet_converge_receipt {
@@ -1502,7 +1503,7 @@ fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: Deplo
 }
 
 fn live_deploy_transaction_admitted_wet_with_access(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
-  match observe_actions_run_binding() {
+  match observe_actions_run_binding_at_checkout() {
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>

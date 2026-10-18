@@ -374,13 +374,15 @@ test fn observe_on_srv1_lists_open_transition_retirees() -> Bool {
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
         && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-03.service")
-        && length(s.retired_units) == 47
+        && length(s.retired_units) == 46
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-03.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-04.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-12.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-13.service")
+        && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-14.service")
         && any(s.fabric_units, u => (u as String) == "actions-runner@srv1-13.service")
+        && any(s.fabric_units, u => (u as String) == "actions-runner@srv1-14.service")
   }
 }
 

@@ -24,7 +24,7 @@ import v2.std.arrow_signature {
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   Arrow,
   Atom,
   ComputationNode,
@@ -46,7 +46,6 @@ import v2.std.node {
   StructuralLabel,
 }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node_query { node_positional_child_targets }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

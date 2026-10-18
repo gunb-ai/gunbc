@@ -18,7 +18,7 @@ import gunbc.fleet.fleet_converge_workflow {
   RunnerBrowserToolchainConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_build_job_own_steps,
-  fleet_converge_job_edges, fleet_converge_release_bins_job_id, FleetConvergeJobEdge, fleet_converge_mode_job_id,
+  fleet_converge_job_edges, fleet_converge_release_bins_job_id, fleet_converge_plan_revision_job_id, FleetConvergeJobEdge, fleet_converge_mode_job_id,
   fleet_converge_in_job_compiler_pair_jobs, fleet_converge_mtcollins1_boot_pair_build_step,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
@@ -256,7 +256,7 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // an edge row no rostered mode reaches, and a rostered mode's job with no edge row -- so a red names
 // its identities rather than two unequal lists.
 fn fleet_converge_expected_job_ids() -> List<String> {
-  concat([fleet_converge_release_bins_job_id as String],
+  concat([fleet_converge_plan_revision_job_id as String, fleet_converge_release_bins_job_id as String],
     map(fleet_converge_workflow_modes, m => fleet_converge_mode_job_id(mode: m) as String))
 }
 
@@ -280,7 +280,7 @@ fn fleet_converge_job_edges_hold(edges: List<FleetConvergeJobEdge>, expected: Li
     && fleet_converge_job_roster_extra(edges: edges, expected: expected) == []
     && fleet_converge_job_roster_duplicated(edges: edges) == []
     && all(edges, e => if (e.id as String) == (fleet_converge_release_bins_job_id as String) {
-      e.needs == []
+      e.needs == [fleet_converge_plan_revision_job_id as String]
     } else if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
       e.needs == []
     } else {
