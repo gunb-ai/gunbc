@@ -33,6 +33,7 @@ import extdeps.languages.css.properties {
   GridArea, Height, Margin, MaxWidth, Opacity, Outline, Overflow, Padding, Position, TextDecoration, Transform, WhiteSpace, Width,
   RawProperty,
 }
+import std.host_text { chars }
 
 // BuildMeter: one attempt's recorded work as a quiet visual link. It draws a strip of the recent
 // rounds, one small gunbai worker at the working edge and a mark for how the attempt stands, and

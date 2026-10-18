@@ -66,6 +66,7 @@ import v2.std.node {
 }
 import v2.std.node_query { find_named_child }
 import v2.std.witness { Holds, Violates, Witness, list_nth }
+import std.host_text { chars }
 
 type GhaFoldStepBundle {
   production_binding: Symbol,

@@ -75,6 +75,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
+import std.host_text { chars }
 
 type LeanDeclarationKind
   = LeanDef
