@@ -108,7 +108,7 @@ fn fixture_mac_group() -> Eui48Address {
 
 // THE NULL ADDRESS. What a stack reports when it has NO address; the flags say
 // universally-administered-and-individual, so a screen that only reads the flags accepts it. This is
-// the fixture that must never be able to bind two sightings (merry-fox-82's side-chat verdict on d5a72591).
+// the fixture that must never be able to bind two sightings.
 fn fixture_mac_null() -> Eui48Address {
   mac_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 0)
 }

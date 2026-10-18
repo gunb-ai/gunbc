@@ -105,7 +105,7 @@ type RuntimeIdentityAxisRow {
 // What each home is asked to own, and why that one:
 // - BoardSerial reads BoardSerialObservation (the field, its source, and that it may be absent) and names
 //   bind_unit_key as its binding home -- WITH ITS SCOPE STATED, because the citation is easy to over-read
-//   (merry-fox-82's side-chat verdict on head d5a72591). `bind_unit_key` is the fn that mints a UnitKey from a serial and refuses when
+//   `bind_unit_key` is the fn that mints a UnitKey from a serial and refuses when
 //   a serial is absent, duplicated across units, or contradictory; THIS MODULE DOES NOT RUN THOSE CHECKS and
 //   cannot, because it sees two readings and no ledger of other units. What it borrows is the home's
 //   *concept* -- a serial is a unit identifier only under that home's authority -- not the home's whole
@@ -127,7 +127,7 @@ type RuntimeIdentityAxisRow {
 //   agree.
 // - NicSet reads Eui48Address and binds through mac_is_permanent_interface_identity, the predicate that
 //   owns when an address is a permanent interface identity at all -- which now includes excluding the
-//   all-zero NULL address, which the flags alone accept (merry-fox-82's side-chat verdict on d5a72591). A shared address can only bind two
+//   all-zero NULL address, which the flags alone accept. A shared address can only bind two
 //   sightings if an address can name an interface, so the row's Decisive weight is borrowed from that
 //   predicate and nothing else. WHAT THE ROW DOES NOT CLAIM: both sides are read from a *current* address
 //   source, not from a permanent-address source (a Linux `addr_assign_type`/`perm_addr` reading, which has
@@ -156,7 +156,7 @@ data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
     // has a `bios_version` field, and that is the whole of what this axis reads. It used to cite
     // subject.FirmwareManifest, which is a set of firmware ENTRIES plus content DIGESTS -- a digest over
     // manifest entries does not license comparing a version string, and the citation made the axis look
-    // audited against a home that owns a different fact (merry-fox-82's side-chat verdict on d5a72591).
+    // audited against a home that owns a different fact (DESIGN section 3b, scope mismatch).
     reading_authority: decl_ref(
       module_path: "gunbc.machine_intake.supermicro_h11ssl_first_contact",
       decl_name: "H11sslBmcReportedIdentity",
@@ -307,8 +307,9 @@ fn examination_axis(e: AxisExamination) -> RuntimeIdentityAxis {
   }
 }
 
-// THE ONE MATCH PER AXIS, and the only place an AxisExamination is built. Both arms cover every combination
-// of the two standings, so the fold can never be handed a reading it has no policy for.
+// THE MATCH THE THREE TEXT AXES SHARE, and one of exactly two places an AxisExamination is built (the other
+// is `nic_examination`, which has to screen before it compares). Its arms cover every combination of the two
+// standings, so the fold can never be handed a reading it has no policy for.
 fn examine_axis<T>(
   row: RuntimeIdentityAxisRow,
   pre: AxisStanding<T>,
@@ -325,7 +326,7 @@ fn examine_axis<T>(
   }
 }
 
-// WHY THIS IS ITS OWN FN AND NOT THREE COPIES OF ONE LITERAL. `examination_axis` cannot bind the report to
+// WHY THIS IS ITS OWN FN AND NOT THREE COPIES OF ONE LITERAL. `examine_axis` cannot bind the report to
 // a name and still match on it exhaustively, so the three quiet arms call this. Writing the AxisUnanswered
 // literal out three times is the DESIGN section 3 fork this avoids: a fifth AxisReport arm would then have
 // to be noticed in three places instead of one.
@@ -595,49 +596,86 @@ fn axes_agree(pair: AxisReadingPair) -> Bool {
 // BEFORE intersecting, which is what makes the row's Decisive weight earned rather than claimed. Filtering
 // is intersection-only: it can turn an agreement into a non-agreement, never the reverse, and the fold
 // reports that as a divergence an operator sees rather than as silence.
-// THE NIC AXIS IS SCREENED BEFORE IT IS COMPARED, which is why it cannot use `examine_axis` like the
-// three text axes: for a text axis, an answer is evidence, but for this axis an ANSWER CAN FAIL TO BE
-// EVIDENCE, and the two cases have different verdicts.
+// THE NIC AXIS IS SCREENED BEFORE IT IS COMPARED, which is why it cannot share `examine_axis` with the
+// three text axes: for a text axis an answer IS evidence, but for this axis an ANSWER CAN FAIL TO BE
+// EVIDENCE, and those two cases must not share a verdict.
 //
 // WHAT EACH OUTCOME MEANS, and what it used to be:
-//  - both sides keep at least one permanent address and share one   -> AxisCompared, agrees  -> Match
+//  - both sides keep at least one permanent address and share one   -> AxisCompared, agrees   -> Match
 //  - both sides keep at least one and share none                    -> AxisCompared, diverges -> Mismatch
 //  - either side keeps NOTHING                                      -> a located gap on THAT side -> Unprovable
-// The middle row is the only one that may call itself a divergence, because it is the only one where two
-// pieces of evidence actually contradict each other. The third row used to fall through the comparison and
-// come out as a Mismatch, which condemned a unit twice over: two sides that both answered 00:00:00:00:00:00
-// (the null address, which the IEEE reserves and which is what a stack reports when it has NO address --
-// `extdeps.network.mac.mac_address_is_null`) agreed, and two sides where the OS reported an empty list
-// disagreed with a firmware that had plenty. Neither is a divergence; both mean "this axis did not answer",
-// and now they say which side failed and how, so an operator can tell a mute NIC from a probe that read the
-// wrong file. The screen is not re-implemented here: `mac_is_permanent_interface_identity` is the authority,
-// and it excludes null, locally administered and group addresses together (merry-fox-82's side-chat verdict on d5a72591).
+// Only the middle row may call itself a divergence, because it is the only one where two pieces of evidence
+// contradict each other. The third row used to fall through the comparison and come out as a Mismatch, which
+// condemned a unit twice over: two sides that both answered 00:00:00:00:00:00 (the null address, which the
+// IEEE reserves as the absence of an address -- see `extdeps.network.mac.mac_address_is_null`) AGREED, and
+// two sides where the OS reported an empty list "disagreed" with a firmware that had plenty. Neither is a
+// divergence; both mean this axis did not answer, and now each says WHICH side and HOW MUCH it reported, so
+// an operator can tell a mute NIC from a probe reading the wrong file. The screen is not re-implemented
+// here: `mac_is_permanent_interface_identity` is the authority and excludes null, locally administered and
+// group addresses together.
+//
+// WHY THIS PATH IS CONCRETE AND NOT SHARED WITH THE GENERIC `examine_axis`. The v2 resolver does not
+// substitute a type variable carried out of a generic fn inside a sum type: taking `AxisReport<T>` apart at
+// a call site where T is `List<Eui48Address>` leaves the payload typed `Primitive(T)` and every method on it
+// fails to resolve. So the address axis answers its own four combinations instead of borrowing the generic
+// report. The duplication this leaves is two lines -- which standing arm maps to which `RuntimeIdentityAbsence`
+// -- and both arms project onto the SAME absence type the generic path uses, so a new `AxisStanding` arm is
+// still compulsory in both places rather than silently missing in one. When nested generic instantiation
+// lands, this fn collapses back onto `standing_report` and the four arms go away.
+type NicSideEvidence
+  = NicDidNotAnswer { absence: RuntimeIdentityAbsence }
+  | NicAnswered { reported_count: Int, eligible: List<Eui48Address> }
+
+fn nic_side_evidence(standing: AxisStanding<List<Eui48Address>>) -> NicSideEvidence {
+  match standing {
+    AxisStayedSilent { reason: r } => NicDidNotAnswer { absence: Unread { reason: r } }
+    AxisWasRefused { refusal: f } => NicDidNotAnswer { absence: ControllerRefused { refusal: f } }
+    AxisWasRead { value: v } => NicAnswered {
+      reported_count: v.length(),
+      eligible: v.filter(a => mac_is_permanent_interface_identity(addr: a)),
+    }
+  }
+}
+
 fn nic_examination(
   row: RuntimeIdentityAxisRow,
   pre: AxisStanding<List<Eui48Address>>,
   post: AxisStanding<List<Eui48Address>>,
 ) -> AxisExamination {
-  let report = standing_report(pre: pre, post: post)
-  match report {
-    BothAnswered { pre_value: pv, post_value: ov } =>
-      examine_screened_addresses(
-        row: row,
-        pre_reported: pv.length(),
-        post_reported: ov.length(),
-        pre_eligible: pv.filter(a => mac_is_permanent_interface_identity(addr: a)),
-        post_eligible: ov.filter(a => mac_is_permanent_interface_identity(addr: a)))
-    PreQuiet { absence: _ } => unanswered(row: row, report: report)
-    PostQuiet { absence: _ } => unanswered(row: row, report: report)
-    BothQuiet { pre_absence: _, post_absence: _ } => unanswered(row: row, report: report)
+  let left = nic_side_evidence(standing: pre)
+  let right = nic_side_evidence(standing: post)
+  match left {
+    NicAnswered { reported_count: pr, eligible: pe } => match right {
+      NicAnswered { reported_count: or_, eligible: oe } =>
+        examine_screened_addresses(row: row, pre_reported: pr, post_reported: or_, pre_eligible: pe, post_eligible: oe)
+      NicDidNotAnswer { absence: a } =>
+        AxisUnanswered { axis: row.axis, gaps: [gap_on_os_side(row: row, absence: a)], weight: row.weight }
+    }
+    NicDidNotAnswer { absence: a } => match right {
+      NicAnswered { reported_count: _, eligible: _ } =>
+        AxisUnanswered { axis: row.axis, gaps: [gap_on_firmware_side(row: row, absence: a)], weight: row.weight }
+      NicDidNotAnswer { absence: b } => AxisUnanswered {
+        axis: row.axis,
+        // firmware side first, the reading order the fold uses everywhere
+        gaps: [gap_on_firmware_side(row: row, absence: a), gap_on_os_side(row: row, absence: b)],
+        weight: row.weight,
+      }
+    }
   }
 }
 
-// THE FIVE OUTCOMES OF THE SCREENED PAIR, with the pre-side gap listed first so a both-sides-empty pair
-// reports the firmware side first -- the same reading order the fold uses everywhere else.
-// ONE GAP FOR A SIDE THAT ANSWERED WITH NON-EVIDENCE. Written once because all four combinations of
-// (pre short, post short) must say the SAME thing about the side that failed, with the same counts and the
-// same located side; four inline copies is the DESIGN section 3 fork, and one of them drifting would be a
-// gap that reports the wrong count for the firmware side only.
+fn gap_on_firmware_side(row: RuntimeIdentityAxisRow, absence: RuntimeIdentityAbsence) -> RuntimeIdentityGap {
+  RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, absence: absence }
+}
+
+fn gap_on_os_side(row: RuntimeIdentityAxisRow, absence: RuntimeIdentityAbsence) -> RuntimeIdentityGap {
+  RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, absence: absence }
+}
+
+// THE THREE OUTCOMES OF A SCREENED PAIR, both sides holding evidence or one of them not. One gap
+// constructor serves all the short cases so the two sides cannot drift in wording or in the count they
+// report: four inline copies is the DESIGN section 3 fork, and a drifting one would report the wrong count
+// for one side only.
 fn no_eligible_gap(row: RuntimeIdentityAxisRow, side: IdentitySide, reported: Int) -> RuntimeIdentityGap {
   RuntimeIdentityGap {
     axis: row.axis, side: side,
@@ -652,12 +690,10 @@ fn examine_screened_addresses(
   pre_eligible: List<Eui48Address>,
   post_eligible: List<Eui48Address>,
 ) -> AxisExamination {
-  // The gaps for the sides that came back with non-evidence, in firmware-then-OS order. Both are built
-  // unconditionally through the one constructor so the two sides cannot drift in wording, counts or side.
-  let pre_gap = no_eligible_gap(row: row, side: PreBootFirmwareSide, reported: pre_reported)
-  let post_gap = no_eligible_gap(row: row, side: PostBootOsSide, reported: post_reported)
   let pre_short = pre_eligible.length() == 0
   let post_short = post_eligible.length() == 0
+  let pre_gap = no_eligible_gap(row: row, side: PreBootFirmwareSide, reported: pre_reported)
+  let post_gap = no_eligible_gap(row: row, side: PostBootOsSide, reported: post_reported)
   if pre_short || post_short {
     let gaps =
       if pre_short && post_short { [pre_gap, post_gap] }
@@ -666,8 +702,8 @@ fn examine_screened_addresses(
     AxisUnanswered { axis: row.axis, gaps: gaps, weight: row.weight }
   } else {
     // Both sides hold evidence, so whatever follows is a real answer about the machine. The pair carries
-    // the SCREENED lists, because those are what the rule compared: reporting raw readings here would
-    // show an operator addresses that were never part of the decision.
+    // the SCREENED lists, because those are what the rule compared: reporting raw readings here would show
+    // an operator addresses that were never part of the decision.
     AxisCompared {
       axis: row.axis,
       pair: AddressSetPair { pre_addresses: pre_eligible, post_addresses: post_eligible },
