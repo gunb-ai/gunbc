@@ -1241,10 +1241,6 @@ fn retirement_unit_standing_rows(evidence: SlotRetirementEvidence) -> List<Strin
   }
 }
 
-fn retirement_baseline_rows(evidence: SlotRetirementEvidence) -> List<String> {
-  concat(retirement_baseline_header_rows(evidence: evidence), retirement_unit_standing_rows(evidence: evidence))
-}
-
 // THE TRANSITION'S OWN IDENTITY IS BOUND TOO, so a plan for one transition cannot admit against a
 // reobservation of a different one whose standings happen to look similar. The required set is the
 // transition's observable content: a changed prior width or target changes these rows even when every
