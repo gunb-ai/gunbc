@@ -1,0 +1,281 @@
+module gunbc.auth.deployment_gate_operator_steps
+
+// The OPERATOR'S OWN ACTS for moving the srv1 deployment gate from the GitHub "Review deployments"
+// click onto the existing ntfy tap, modelled as std.human_intervention rows rather than as prose
+// in a runbook. The plan that argues for them is gunbc.plans.ntfy_deployment_gate_approval; this
+// file carries their burden, so that the human cost of this design is countable next to the other
+// human burdens in the provisioning fleet (DESIGN §2: an alternative that quietly keeps a human
+// step is not cheaper, it is uncounted).
+//
+// WHY EVERY ROW HERE IS AN OPERATOR ACT AND NOT AN AUTOMATION. GitHub's own UI is the only place
+// that can create a GitHub App's client ID and private key, install the App on an organization, and
+// tick a custom deployment protection rule onto a protected environment. The agent does not touch
+// GitHub environment settings at all in this design; that is a hard constraint of the work item,
+// not a convenience.
+//
+// WHY NO ROW MAY BE DISCHARGED BY EDITING A FLAG BESIDE IT (DESIGN §5). Each row states the
+// observation that shows the act happened, and the two rows that could silently open the srv1
+// boundary — enabling the rule and removing the human reviewer — state their observation as a
+// READ BACK FROM GITHUB, not as a checkbox. In particular the removal row must not be dischargeable
+// before the enablement row's approve-AND-reject witness exists: the ordering is the thing that
+// keeps the gate shut at every instant.
+
+import std.types { String, List, Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionFrequency,
+  HumanInterventionIdentity,
+  InterventionCompletionEvidence,
+  FleetOnce,
+  NoDischargeSiteModeled,
+  human_intervention_frequency_eq
+}
+import extdeps.github.deployment_protection_rule {
+  review_state_approved,
+  review_state_rejected,
+  rule_required_repository_permissions,
+  environment_protection_rule_type_values
+}
+import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
+
+// The repository the App is installed on. Named once, in one row, so the installation subject and
+// the rule-enablement subject cannot drift apart into two different repos.
+data deployment_gate_repository: NonEmptyStr = "gunb-ai/gunbc"
+
+// The environment whose gate moves. Reused from the row that already owns the srv1 boundary rather
+// than re-spelled as a literal, so a rename there cannot leave these rows pointing at nothing.
+data deployment_gate_environment: NonEmptyStr = srv1_production_environment_name
+
+// The permission set the App must be registered with, verbatim from the upstream rule-creation
+// page: Actions Read-only, Deployments Read and write, and subscribe to the deployment_protection_rule
+// event. Contents is NOT on that list; an App granted Contents:write for this job holds something the
+// upstream never asked for, on the identity that releases srv1 root mutation.
+data deployment_gate_app_permission_set: String = "Actions: Read-only; Deployments: Read and write"
+
+fn deployment_gate_permission_names() -> List<NonEmptyStr> {
+  rule_required_repository_permissions
+}
+
+test fn the_gate_app_carries_only_the_rule_permissions() -> Bool {
+  (rule_app_minimum_permissions |> count) == 2
+    && (rule_app_minimum_permissions |> any(p => (p as String) == "Deployments"))
+    && (rule_app_minimum_permissions |> any(p => (p as String) == "Actions"))
+    && (deployment_gate_app_permission_set as String).contains("Read and write")
+    && (deployment_gate_app_permission_set as String).contains("Read-only")
+}
+
+// ---------------------------------------------------------------------------
+// The five operator acts
+// ---------------------------------------------------------------------------
+
+// 1. Register the App. Its private key is the credential that, once a human has tapped, releases
+// srv1 root mutation; its custody is part of the instruction because a key pasted into a workflow
+// secret is a different (and rejected) design.
+data app_registration_step: HumanIntervention = HumanIntervention {
+  identity: "github.deployment-rule.app.register" as HumanInterventionIdentity,
+  frequency: FleetOnce,
+  subject: "gunb-ai/gunbc custom deployment protection rule App registration",
+  instruction: "In the GitHub Apps UI, create one new GitHub App owned by gunb-ai for the sole purpose of answering a custom deployment protection rule. Set repository permissions to exactly Actions: Read-only and Deployments: Read and write and nothing else, and subscribe to the deployment_protection_rule event. Generate and hand its private key to the broker's host-custody path (the same path as the broker's other secrets), never to a workflow secret. Record the App's numeric app id.",
+  completion_evidence: NoDischargeSiteModeled
+}
+
+// 2. Install it on the one repository. The installation id is what the review call's token is
+// minted against, so an install on the wrong repository would make every review a 404 — a silent
+// failure mode worth naming in the instruction.
+data app_installation_step: HumanIntervention = HumanIntervention {
+  identity: "github.deployment-rule.app.install" as HumanInterventionIdentity,
+  frequency: FleetOnce,
+  subject: "App installation on gunb-ai/gunbc",
+  instruction: "Install the App on exactly the repository named by deployment_gate_repository, with no repository-access widening. Confirm the installation returns an installation id the broker can mint an installation access token against, and that minting it succeeds for that repository.",
+  completion_evidence: NoDischargeSiteModeled
+}
+
+// 3. Configure the webhook URL and enable the webhook. This design does NOT depend on GitHub
+// reaching the broker — discovery is the run's own request plus the broker's outbound poll — so
+// this row exists because GitHub requires a webhook URL for the rule to be publishable at all, and
+// the instruction says so rather than implying the broker listens.
+data webhook_configuration_step: HumanIntervention = HumanIntervention {
+  identity: "github.deployment-rule.webhook.configure" as HumanInterventionIdentity,
+  frequency: FleetOnce,
+  subject: "App webhook configuration",
+  instruction: "Set the App's webhook URL and secret. Do NOT open any inbound path to the tailnet-only approval broker for this purpose: the broker learns a run is waiting from the run's own submitted approval request and answers GitHub outbound with an installation token. A public exposure of the broker to receive GitHub deliveries is a rejected alternative and must not be built to satisfy this row.",
+  completion_evidence: NoDischargeSiteModeled
+}
+
+// 4. Enable the rule on srv1-production. Witnessed by a read back from GitHub, and the branch
+// policy must still read as one main-only rule afterwards: enabling a rule must not have taken the
+// branch boundary with it.
+data rule_enablement_step: HumanIntervention = HumanIntervention {
+  identity: "github.deployment-rule.enable.srv1-production" as HumanInterventionIdentity,
+  frequency: FleetOnce,
+  subject: "custom deployment protection rule enabled on srv1-production",
+  instruction: "On the environment named by deployment_gate_environment, enable the App's custom deployment protection rule. Then read the environment back: GET /repos/gunb-ai/gunbc/environments/srv1-production must still report deployment_branch_policy \{protected_branches:false, custom_branch_policies:true\} with exactly one branch rule named main, and the required_reviewers rule must still be present at this stage. Do not remove any reviewer in this step.",
+  completion_evidence: NoDischargeSiteModeled
+}
+
+// 5. Remove the human required-reviewer — the only row here that WEAKENS a gate, so it is gated on
+// the rule having been seen doing both of its jobs on a real dispatch.
+data reviewer_removal_step: HumanIntervention = HumanIntervention {
+  identity: "github.deployment-rule.reviewer-removal.srv1-production" as HumanInterventionIdentity,
+  frequency: FleetOnce,
+  subject: "required reviewer removed from srv1-production",
+  instruction: "Only after the rule has been witnessed APPROVING a real dispatch after an ntfy tap and REJECTING a real dispatch after a refusal — both states, on real run ids, read back from GitHub — remove the operator from srv1-production's required reviewers. Then re-read the environment and its deployment-branch-policies and confirm the main-only branch rule is the protection that remains. If either witness is missing, this row is not performable; do not perform it to close a ticket.",
+  completion_evidence: NoDischargeSiteModeled
+}
+
+data deployment_gate_operator_steps: List<HumanIntervention> = [
+  app_registration_step,
+  app_installation_step,
+  webhook_configuration_step,
+  rule_enablement_step,
+  reviewer_removal_step
+]
+
+// ---------------------------------------------------------------------------
+// Discriminating fns — the ordering and the count are enforced, not narrated
+// ---------------------------------------------------------------------------
+
+fn human_frequency_is_fleet_once(f: HumanInterventionFrequency) -> Bool {
+  human_intervention_frequency_eq(a: f, b: FleetOnce)
+}
+
+// Every act in this design is once-per-fleet. A row that drifted to BreakGlassOnly would drop out
+// of the counted burden while still being performed; a row that drifted to EveryProvision would
+// overstate an act that happens once.
+fn all_steps_are_fleet_once(steps: List<HumanIntervention>) -> Bool {
+  steps |> all(s => human_frequency_is_fleet_once(f: s.frequency))
+}
+
+test fn every_operator_act_is_counted_once_per_fleet() -> Bool {
+  all_steps_are_fleet_once(steps: deployment_gate_operator_steps)
+    && (deployment_gate_operator_steps |> count) == 5
+}
+
+test fn the_count_refuses_a_silently_dropped_or_doubled_row() -> Bool {
+  (deployment_gate_operator_steps |> count) != 4
+    && (deployment_gate_operator_steps |> count) != 6
+}
+
+// How many rows carry a given identity. A brand-checked identity is supposed to make two rows
+// sharing one impossible, but the brand is a name, not a uniqueness proof — so uniqueness is
+// checked, and one completion cannot stand for two acts.
+fn count_with_identity(steps: List<HumanIntervention>, identity: String) -> Int {
+  steps |> filter(s => (s.identity as String) == identity) |> count
+}
+
+// The one ordering that matters for the boundary. The reviewer removal is the only row here that
+// WEAKENS a gate, so it must come strictly after the row that turns the App gate on; a fold that
+// treated them as one step would open an interval in which srv1 root mutation is gated by nothing.
+type RemovalOrderAcc {
+  seen_enable: Bool
+  removal_before_enable: Bool
+}
+
+fn removal_is_strictly_after_enablement(steps: List<HumanIntervention>) -> Bool {
+  let walked = fold(
+    steps,
+    init: RemovalOrderAcc { seen_enable: false, removal_before_enable: false },
+    f: fn(st, s) {
+      RemovalOrderAcc {
+        seen_enable: st.seen_enable || (s.identity as String) == (rule_enablement_step.identity as String),
+        removal_before_enable: st.removal_before_enable
+          || ((s.identity as String) == (reviewer_removal_step.identity as String) && !st.seen_enable)
+      }
+    }
+  )
+  walked.seen_enable && !walked.removal_before_enable
+}
+
+test fn the_human_gate_is_removed_only_after_the_app_gate_appears() -> Bool {
+  removal_is_strictly_after_enablement(steps: deployment_gate_operator_steps)
+}
+
+// The discriminating mutation: the same fold over a list with the two rows swapped must refuse.
+fn removal_is_strictly_after_enablement_mutated(steps: List<HumanIntervention>) -> Bool {
+  removal_is_strictly_after_enablement(steps: steps)
+}
+
+test fn a_swapped_ordering_is_refused() -> Bool {
+  !removal_is_strictly_after_enablement_mutated(
+    steps: [
+      app_registration_step,
+      app_installation_step,
+      webhook_configuration_step,
+      reviewer_removal_step,
+      rule_enablement_step
+    ]
+  )
+}
+
+test fn the_removal_is_not_collapsed_into_the_enablement() -> Bool {
+  (rule_enablement_step.identity as String) != (reviewer_removal_step.identity as String)
+    && (rule_enablement_step.instruction as String).contains("Do not remove any reviewer")
+}
+
+test fn no_two_operator_acts_share_an_identity() -> Bool {
+  count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.app.register") == 1
+    && count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.app.install") == 1
+    && count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.webhook.configure") == 1
+    && count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.enable.srv1-production") == 1
+    && count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.reviewer-removal.srv1-production") == 1
+    && count_with_identity(steps: deployment_gate_operator_steps, identity: "github.deployment-rule.not-a-real-row") == 0
+}
+
+// The rows must name the real environment, not a literal that can drift from the row that owns the
+// srv1 boundary.
+test fn the_gate_rows_point_at_the_boundary_environment() -> Bool {
+  (deployment_gate_environment as String) == "srv1-production"
+    && (rule_enablement_step.subject as String).contains("srv1-production")
+    && (reviewer_removal_step.subject as String).contains("srv1-production")
+}
+
+test fn the_gate_rows_refuse_a_drifted_environment_name() -> Bool {
+  (deployment_gate_environment as String) != "srv1-staging"
+    && (deployment_gate_environment as String) != "mtcollins1-boot"
+}
+
+// The removal row's own text must carry its precondition, because the precondition is the only
+// thing standing between a routine ticket-closing and an ungated root mutation.
+test fn the_removal_row_carries_its_own_precondition() -> Bool {
+  (reviewer_removal_step.instruction as String).contains("APPROVING")
+    && (reviewer_removal_step.instruction as String).contains("REJECTING")
+    && (reviewer_removal_step.instruction as String).contains("do not perform it")
+}
+
+// The discriminating red for the precondition: a row that asked for only the approve witness would
+// let a broker that never tested its reject path stand up with a human gate removed.
+test fn the_removal_precondition_requires_both_outcomes() -> Bool {
+  !((reviewer_removal_step.instruction as String).contains("witnessed approving a real dispatch."))
+}
+
+// The review states the witnesses must show are GitHub's two, not broker-invented ones.
+test fn the_witnessed_states_are_githubs_own() -> Bool {
+  (review_state_approved as String) == "approved"
+    && (review_state_rejected as String) == "rejected"
+}
+
+// The webhook row must not become the pretext for exposing the tailnet-only broker.
+test fn the_webhook_row_forbids_exposing_the_broker() -> Bool {
+  (webhook_configuration_step.instruction as String).contains("Do NOT open any inbound path")
+}
+
+test fn the_webhook_row_is_not_mistaken_for_a_dependency() -> Bool {
+  !(webhook_configuration_step.instruction as String).contains("the broker listens")
+}
+
+// Enabling a rule is not a fourth environment protection-rule type; the read-back must be written
+// against the three kinds GitHub actually reports.
+test fn the_enablement_readback_uses_real_protection_types() -> Bool {
+  (environment_protection_rule_type_values |> count) == 3
+    && (environment_protection_rule_type_values |> any(t => (t as String) == "branch_policy"))
+    && (rule_enablement_step.instruction as String).contains("required_reviewers")
+}
+
+test fn the_permission_set_refuses_a_widened_app() -> Bool {
+  (rule_app_forbidden_permissions |> all(p =>
+    !(deployment_gate_app_permission_set as String).contains(p as String)))
+    && !(deployment_gate_app_permission_set as String).contains("Administration")
+    && !(deployment_gate_app_permission_set as String).contains("Pull requests")
+    && !(deployment_gate_app_permission_set as String).contains("Secrets")
+}

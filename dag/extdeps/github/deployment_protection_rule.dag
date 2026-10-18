@@ -1,0 +1,346 @@
+module extdeps.github.deployment_protection_rule
+
+// GitHub's CUSTOM DEPLOYMENT PROTECTION RULES, modeled from the upstream before any gunbc wiring
+// (DESIGN.md §3b "model-before-implement": an upstream claim is authored by reading the upstream,
+// and it names the field or endpoint it is about). This file states what GitHub accepts and
+// returns when a deployment environment is gated by a GitHub App instead of by RequiredReviewers.
+// It states no gunbc policy and grants nothing.
+//
+// WHY A SEPARATE MODULE FROM extdeps.github.deployment_environments (which already models
+// GitHubEnvironmentProtectionSettings): that file models the ENVIRONMENT side of the boundary —
+// what protection is configured on an environment. This file models the DEPLOYMENT-RULE side — the
+// webhook GitHub emits when a run reaches such an environment, the REST call that answers it, and
+// the poll that shows what is waiting. They dissolve and change on different upstream clocks, and
+// folding the rule into the environment file would let a change to the environment projection
+// quietly carry a claim about the review API (§3: one authority per subject).
+//
+// THE ONE THING THIS MODEL MUST KEEP STRAIGHT: there are TWO review endpoints and they are NOT
+// interchangeable. POST .../deployment_protection_rule answers a rule published by a GitHub App,
+// and an App may answer ONLY its own rule; POST .../pending_deployments answers a human/team
+// RequiredReviewers gate. Getting these backwards is this feature's whole failure mode: an App
+// calling the human reviewer endpoint either fails, or — worse — succeeds while a human is still
+// being asked, which is two authorities for one decision.
+
+import std.types { String, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// ---------------------------------------------------------------------------
+// Authority anchors (each a page read on 2026-10-18)
+// ---------------------------------------------------------------------------
+
+// The how-to for building the rule: repository permissions, the webhook contract, and the
+// installation-token step.
+data rule_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/create-custom-protection-rules"
+  }
+}
+
+// The REST reference page carrying both review endpoints and the pending-deployments poll.
+data rest_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/workflow-runs"
+  }
+}
+
+// The webhook event reference for the `deployment_protection_rule` payload.
+data webhook_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/webhooks/webhook-events-and-payloads"
+  }
+}
+
+// The environment REST reference: protection_rules[].type values and the wait_timer range.
+data environment_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/deployments/environments"
+  }
+}
+
+// The machine-readable source the field-level claims below were checked against.
+data openapi_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/github/rest-api-description/blob/main/descriptions/api.github.com/api.github.com.json"
+  }
+}
+
+// Where the rule is ENABLED on an environment, and where the 30-day wait is stated. Read on
+// 2026-10-18; this is the page the operator's UI steps are drawn from.
+data enablement_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/configure-custom-protection-rules"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The webhook GitHub emits when a run reaches a rule-gated environment
+// ---------------------------------------------------------------------------
+
+// The event and its ONLY published activity type. A receiver that did not filter on the action
+// would answer any future activity type with a review.
+data rule_webhook_event_name: NonEmptyStr = "deployment_protection_rule"
+data rule_webhook_action: NonEmptyStr = "requested"
+
+// The payload's field names in the upstream's own spelling. A receiver may read only these.
+data rule_webhook_field_repository: NonEmptyStr = "repository"
+data rule_webhook_field_run_id: NonEmptyStr = "run_id"
+data rule_webhook_field_run_url: NonEmptyStr = "run_url"
+data rule_webhook_field_environment: NonEmptyStr = "environment"
+data rule_webhook_field_deployment_callback_url: NonEmptyStr = "deployment_callback_url"
+data rule_webhook_field_deployment: NonEmptyStr = "deployment"
+data rule_webhook_field_app_id: NonEmptyStr = "app_id"
+data rule_webhook_field_installation_id: NonEmptyStr = "installation_id"
+
+// `deployment_callback_url` is GitHub's own pointer at the review endpoint for THIS run, so a
+// receiver that posts there cannot aim the review at a different run.
+data rule_webhook_callback_url_meaning: String = "The URL to send a POST request to when the App responds to the deployment protection rule; posting there approves or declines that deployment."
+
+// The payload is the upstream's own source of the App/installation pair, and the docs direct the
+// App to mint its installation token from it rather than from a configured constant.
+data rule_installation_id_source: String = "the installation ID from the deployment_protection_rule webhook payload"
+
+// A rule is not compatible with a job whose environment is set to `deployment: false`, so an
+// environment-bearing job is the only kind this rule can ever gate.
+data rule_incompatible_job_setting: NonEmptyStr = "deployment: false"
+
+// ---------------------------------------------------------------------------
+// The REST calls
+// ---------------------------------------------------------------------------
+
+// The App's review call. Path params owner, repo, run_id. Success is 204 with no body — so "it
+// returned 204" is the entire witness, and nothing about the deployment's fate can be read out of
+// the response.
+data review_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/deployment_protection_rule"
+data review_endpoint_method: NonEmptyStr = "POST"
+data review_endpoint_success_status: Int = 204
+
+// The body, from components/schemas in the OpenAPI description. It is an anyOf of two shapes, and
+// the required pair differs between them:
+//   review-custom-gates-state-required   required = [environment_name, state]   (comment optional)
+//   review-custom-gates-comment-required required = [environment_name, comment] (no state at all)
+// So the pair that carries a DECISION is [environment_name, state]; the other alternative is the
+// shape used when no state is being asserted. `environment_name` is required in BOTH alternatives —
+// it is the environment this review releases, and it is never inferable from the run id.
+data review_endpoint_body_state_field: NonEmptyStr = "state"
+data review_endpoint_body_comment_field: NonEmptyStr = "comment"
+data review_endpoint_body_environment_name_field: NonEmptyStr = "environment_name"
+data review_endpoint_body_required_fields: List<NonEmptyStr> = ["environment_name", "state"]
+data review_endpoint_body_optional_fields: List<NonEmptyStr> = ["comment"]
+data review_endpoint_body_alternatives: List<NonEmptyStr> = [
+  "review-custom-gates-state-required",
+  "review-custom-gates-comment-required"
+]
+
+// The App's fine-grained requirement for that call, from the REST reference's own note: this
+// endpoint "works with the following fine-grained token types: GitHub App installation access
+// tokens" and "The fine-grained token must have the following permission set: \"Deployments\"
+// repository permissions (write)". The rule-creation page states the App's own permission setup,
+// verbatim: "To the right of \"Actions,\" click the drop down menu and select Access: Read-only.
+// To the right of \"Deployments,\" click the drop down menu and select Access: Read and write."
+// Contents is NOT on that list — an App granted Contents:write for this job has been granted
+// something the upstream never asked for. The same page's NOTE says GitHub Apps can only review
+// their OWN custom deployment protection rules — a rule created by another app is not answerable
+// by this identity.
+data review_required_repository_permission: NonEmptyStr = "Deployments"
+data review_required_permission_level: NonEmptyStr = "write"
+data review_accepted_token_type: NonEmptyStr = "GitHub App installation access tokens"
+data rule_required_repository_permissions: List<NonEmptyStr> = ["Actions", "Deployments"]
+data rule_permission_levels: List<NonEmptyStr> = ["read-only", "read and write"]
+// The documented minimum for the rule App: Actions read-only, Deployments read and write, and
+// nothing else. Anything wider — Contents, Administration, Pull requests — is an unrequested grant
+// on the identity that releases the srv1 root boundary.
+data rule_app_minimum_permissions: List<NonEmptyStr> = ["Actions", "Deployments"]
+data rule_app_forbidden_permissions: List<NonEmptyStr> = [
+  "Contents",
+  "Administration",
+  "Pull requests",
+  "Secrets",
+  "Security events"
+]
+
+// The same REST page states the alternative that policy forbids here rather than the API:
+// "OAuth app tokens and personal access tokens (classic) need the `repo` scope to use this endpoint
+// with a private repository." So an operator's own token COULD drive it; it is excluded below.
+data review_oauth_classic_scope: NonEmptyStr = "repo"
+
+// GitHub's own worked example for this call, from the REST reference: the body carries all three
+// fields and the response is 204. It is the shape a broker should emit, and it is what the
+// discriminating red mutates — swap environment_name for another environment and the review must
+// not release this one.
+data review_documented_example_body: NonEmptyStr = "environment_name=prod-eus, state=approved, comment=All health checks passed."
+data review_documented_api_version_header: NonEmptyStr = "X-GitHub-Api-Version: 2026-03-10"
+
+// The two and only two accepted values. Anything else is not a third outcome; it is a request that
+// will not be accepted, leaving the deployment exactly where it was.
+data review_state_approved: NonEmptyStr = "approved"
+data review_state_rejected: NonEmptyStr = "rejected"
+data review_accepted_states: List<NonEmptyStr> = [review_state_approved, review_state_rejected]
+
+// The poll that shows what is waiting for protection rules to pass. Read access to the repository
+// is enough; no permission grant is needed to SEE the gate.
+data pending_deployments_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/pending_deployments"
+data pending_deployments_endpoint_method: NonEmptyStr = "GET"
+data pending_deployments_field_environment: NonEmptyStr = "environment"
+data pending_deployments_field_wait_timer: NonEmptyStr = "wait_timer"
+data pending_deployments_field_wait_timer_started_at: NonEmptyStr = "wait_timer_started_at"
+data pending_deployments_field_current_user_can_approve: NonEmptyStr = "current_user_can_approve"
+data pending_deployments_field_reviewers: NonEmptyStr = "reviewers"
+
+// The HUMAN/team reviewer endpoint, named so it is never confused with the App's. A GitHub App does
+// not use this to answer its own rule, and its body shape is different (`environment_ids`).
+data human_review_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/pending_deployments"
+data human_review_body_required_fields: List<NonEmptyStr> = ["environment_ids", "state", "comment"]
+
+// The environment projection's protection-rule types: the enum carries only these three built-in
+// kinds. An enabled custom App rule is NOT a fourth `type` value here; it is a separate resource
+// under .../deployment_protection_rules. Claiming a `custom_deployment_protection_rules` type
+// would be inventing a field the upstream does not have.
+data environment_protection_rule_type_values: List<NonEmptyStr> = [
+  "required_reviewers",
+  "wait_timer",
+  "branch_policy"
+]
+data environment_protection_type_field: NonEmptyStr = "type"
+
+// How long GitHub holds a triggered rule before it gives up on the App. The configure-custom-
+// protection-rules page, verbatim: "When a custom deployment protection rule is triggered it will
+// wait for up to 30 days for a webhook event response before it times out and the workflow job
+// fails." Failure of the rule is therefore a job FAILURE, never a silent approval — the fail-closed
+// arm the broker depends on. But note the honest cost: a permanently unreachable App leaves the run
+// WAITING for up to a month, so a broker outage is fail-closed yet not prompt.
+data rule_timeout_days: Int = 30
+data rule_timeout_outcome: String = "it will wait for up to 30 days for a webhook event response before it times out and the workflow job fails"
+
+// ---------------------------------------------------------------------------
+// Discriminating fns — the upstream facts a witness mutates. The tests live in
+// dag/test/claim/github_deployment_protection_rule_witness.dag, where every other
+// witness in this repository lives.
+// ---------------------------------------------------------------------------
+
+// A review state outside the enum is not "treat it as a rejection"; it is a call that will not be
+// accepted. The caller must find that out before it sends anything.
+fn review_state_is_accepted(state: String) -> Bool {
+  review_accepted_states |> any(s => (s as String) == state)
+}
+
+// The review body's required fields. The plausible shortcut — send `state` and `comment` and let
+// GitHub work out which environment you mean, because the run id is already in the path — is a
+// request GitHub does not accept: environment_name is required in both body alternatives.
+fn review_body_is_complete(fields: List<String>) -> Bool {
+  review_endpoint_body_required_fields
+    |> all(r => fields |> any(f => f == (r as String)))
+}
+
+// The decision-bearing shape specifically. A body that carries environment_name and comment but no
+// state is a legal alternative in the schema and asserts NO decision; a broker that built that body
+// would leave the deployment waiting forever and read its own 204 as an approval.
+fn review_body_carries_a_decision(fields: List<String>) -> Bool {
+  fields |> any(f => f == (review_endpoint_body_state_field as String))
+}
+
+// The environment this review releases is a body field, never a path parameter: the path carries
+// only owner, repo and run_id. So an environment_name taken from the wrong source is invisible to
+// any check that looks only at the path.
+fn review_body_binds_an_environment(fields: List<String>) -> Bool {
+  fields |> any(f => f == (review_endpoint_body_environment_name_field as String))
+}
+
+// The human-reviewer endpoint needs `environment_ids`, not the App's two-field body. A caller that
+// hands the App body to the human endpoint is mixing two authorities.
+fn human_review_body_is_complete(fields: List<String>) -> Bool {
+  human_review_body_required_fields
+    |> all(r => fields |> any(f => f == (r as String)))
+}
+
+// The two review calls differ by one path segment. A refactor that collapsed them would silently
+// send an App review to the human queue, so the distinction is asserted, not assumed.
+fn the_two_review_endpoints_are_distinct() -> Bool {
+  review_endpoint_path != human_review_endpoint_path
+}
+
+// Only three protection-rule types exist in the environment projection.
+fn environment_protection_type_is_known(value: String) -> Bool {
+  environment_protection_rule_type_values |> any(t => (t as String) == value)
+}
+
+// A receiver that ignored the action would answer any future activity type with a review.
+fn rule_webhook_is_an_answerable_request(event: String, action: String) -> Bool {
+  event == (rule_webhook_event_name as String)
+    && action == (rule_webhook_action as String)
+}
+
+// A timeout must be read as a job failure, never as an approval. A fold that let a timeout answer
+// `approved` would approve a deployment nobody tapped.
+fn rule_timeout_is_a_refusal(outcome: String) -> Bool {
+  outcome.contains("fails") && !outcome.contains("approved")
+}
+
+// ---------------------------------------------------------------------------
+// Cited scope rows
+// ---------------------------------------------------------------------------
+
+data review_endpoint_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.github.deployment_protection_rule",
+  decl_name: "review_endpoint_path",
+  field: WholeDeclaration
+}
+
+data review_state_enum_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.github.deployment_protection_rule",
+  decl_name: "review_accepted_states",
+  field: WholeDeclaration
+}
+
+data pending_deployments_endpoint_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.github.deployment_protection_rule",
+  decl_name: "pending_deployments_endpoint_path",
+  field: WholeDeclaration
+}
+
+data human_review_endpoint_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.github.deployment_protection_rule",
+  decl_name: "human_review_endpoint_path",
+  field: WholeDeclaration
+}
+
+data rule_webhook_fields_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.github.deployment_protection_rule",
+  decl_name: "rule_webhook_field_environment",
+  field: WholeDeclaration
+}
+
+data environment_protection_types_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.github.deployment_protection_rule",
+  decl_name: "environment_protection_rule_type_values",
+  field: WholeDeclaration
+}
+
+data rule_timeout_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.github.deployment_protection_rule",
+  decl_name: "rule_timeout_days",
+  field: WholeDeclaration
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = rule_authority
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: review_endpoint_ref
+  },
+  first_citation: extdeps.github.deployment_protection_rule.extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.github.deployment_protection_rule.rest_authority,
+    extdeps.github.deployment_protection_rule.webhook_authority,
+    extdeps.github.deployment_protection_rule.environment_authority,
+    extdeps.github.deployment_protection_rule.openapi_authority,
+    extdeps.github.deployment_protection_rule.enablement_authority
+  ]
+}
