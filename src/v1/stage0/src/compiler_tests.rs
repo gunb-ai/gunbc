@@ -1132,6 +1132,7 @@ mod compiler_tests {
                 let int = ty("p_int");
                 let box_int = ty("p_box_int");
                 let box_int2 = ty("p_box_int2");
+                let box_bool = ty("p_box_bool");
                 let tv_t = with_inferred(&int, crate::v1_std_core::InferredNode::TypeVariable { id: "T".to_string() });
                 let tv_t2 = with_inferred(&int, crate::v1_std_core::InferredNode::TypeVariable { id: "T".to_string() });
                 let tv_u = with_inferred(&int, crate::v1_std_core::InferredNode::TypeVariable { id: "U".to_string() });
@@ -1155,6 +1156,7 @@ mod compiler_tests {
                     ("a type variable against Int", &tv_t, &int),
                     ("a compiler-error side against Int", &err, &int),
                 ];
+                assert!(!identical(&box_int, &box_bool), "Boxed<Int> against Boxed<Bool> must stay refused by applied_argument_agrees");
                 for (case, a, b) in permissive {
                     assert!(compatible(a, b), "{} must be a pair node_type_compatible admits, or this witness proves nothing", case);
                     assert!(!identical(a, b), "{} must not pass as generic-argument identity", case);
