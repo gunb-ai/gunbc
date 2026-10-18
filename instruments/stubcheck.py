@@ -36,6 +36,15 @@ REAL_NODE = '''
 #[derive(Debug, Clone, PartialEq)] pub enum Connective { __CONNECTIVE__ }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)] pub enum Cardinality { One, ZeroOrOne, Many, CardOptional }
 #[derive(Debug, Clone, PartialEq)] pub enum InferredNode { __INFERRED__ }
+#[derive(Debug, Clone, PartialEq)] pub struct ExprData;
+// Opaque unit stubs for real Node fields this probe family never reads. They exist so the
+// stub's field SET equals the real struct's: an absent field makes the gate red for a probe
+// that would have compiled, which is a failure for the wrong reason. Types here are unit
+// structs on purpose -- if a probe ever DOES read one, rustc's mismatch tells me the stub is
+// too thin, and I deepen it then rather than guessing its shape now.
+#[derive(Debug, Clone, PartialEq)] pub struct DeclarationMarker;
+#[derive(Debug, Clone, PartialEq)] pub struct MatchPattern;
+#[derive(Debug, Clone, PartialEq)] pub enum ParsedModuleItemKind { Item }
 #[derive(Debug, Clone, PartialEq)] pub struct DeclarationRef { pub module_path: String, pub decl_name: String }
 #[derive(Debug, Clone, PartialEq)] pub struct NewlineIndex { pub lines: Rc<Vec<i64>> }
 #[derive(Debug, Clone, PartialEq)] pub struct Node {
@@ -57,6 +66,10 @@ REAL_NODE = '''
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
     pub declaration: Option<Rc<DeclarationRef>>,
+    pub expr_data: Rc<ExprData>,
+    pub declaration_marker: DeclarationMarker,
+    pub match_pattern: Option<Rc<MatchPattern>>,
+    pub module_item_kind: ParsedModuleItemKind,
 }
 #[derive(Debug, Clone, PartialEq)] pub struct TypeEnv {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -223,12 +236,54 @@ def derive_enums(mirror_path):
     return out
 
 
+def real_node_fields(mirror_path):
+    """Field names of the real `pub struct Node`, parsed from the emitted mirror.
+
+    Why: the stub Node here is a hand-written copy, and a field that exists in the real struct but not in
+    the copy makes the gate RED for a probe that would have compiled fine -- while a field the copy invents
+    makes it GREEN for one that would not. Both failures are silent. So the two field sets are compared, and
+    a mismatch is reported before rustc is even run.
+    """
+    import os
+    path = os.environ.get("GUNBC_STUB_MIRROR", mirror_path)
+    if not os.path.exists(path):
+        return None
+    text = open(path, encoding="utf-8").read()
+    m = re.search(r"pub struct Node \{(.+?)\n\}", text, re.S)
+    if not m:
+        return None
+    return {f.group(1) for f in re.finditer(r"pub ([A-Za-z_0-9]+):", m.group(1))}
+
+
+def stub_node_fields(text):
+    m = re.search(r"pub struct Node \{(.+?)\n\}", text, re.S)
+    if not m:
+        return set()
+    return {f.group(1) for f in re.finditer(r"pub ([A-Za-z_0-9]+):", m.group(1))}
+
+
 def main(patcher_path):
     enums = derive_enums(MIRROR_DEFAULT)
     print("stub enums DERIVED from the mirror: Connective = {%s} ; InferredNode = {%s}"
           % (enums["Connective"], enums["InferredNode"]))
     preamble = PREAMBLE_TMPL.replace("__CONNECTIVE__", enums["Connective"]) \
                             .replace("__INFERRED__", enums["InferredNode"])
+    # Stub-vs-reality field check, BEFORE rustc. A probe that reads a field the stub lacks would fail here
+    # for the wrong reason; a probe that reads an invented field would pass here and die remotely.
+    real = real_node_fields(MIRROR_DEFAULT)
+    stub = stub_node_fields(preamble)
+    if real is not None:
+        missing = sorted(real - stub)
+        extra = sorted(stub - real)
+        print("stub Node vs real Node: %d stub fields, %d real fields; missing=%s extra=%s"
+              % (len(stub), len(real), missing or "-", extra or "-"))
+        if missing:
+            print("STUBCHECK FAIL: the stub is missing real Node fields %s -- a probe reading them would "
+                  "fail here and not because the probe is wrong" % missing)
+            return 1
+        # 'extra' is not fatal: the stub may legitimately omit fields no probe reads... but say so loudly.
+    else:
+        print("STUBCHECK WARN: could not parse the real Node struct; the stub was NOT cross-checked")
     spec = importlib.util.spec_from_file_location("patcher", patcher_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
