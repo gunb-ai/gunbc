@@ -950,6 +950,12 @@ test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
     && refuses(crypt_digest: "x$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$saltsalt$")
+    // AN EMPTY SALT WITH OTHERWISE-EVERYTHING-VALID. Four segments, a legal scheme token, a legal 86-character
+    // digest: the ONLY defect is that the salt holds no character at all, so only the width floor can reject it.
+    // Without this candidate, deleting the too-short check was invisible (measured GREEN at 60/60) — every other
+    // short-salt string on file also broke an earlier rule. An empty salt is the case that matters most: shadow
+    // would store a digest with no salt, which makes every credential sharing that digest identical.
+    && refuses(crypt_digest: "$6$$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     // THE COST FIELD, AS ITS CLASS IS WRITTEN: `rounds=[1-9][0-9]+` within 1000..999,999,999. Both bounds are
     // powers of ten, so the range is decidable from the digit COUNT — which is why a single digit, three digits
     // and ten digits are each refused without the door ever converting the text to a number. "rounds=5" is not a
@@ -1099,6 +1105,15 @@ test fn each_refusal_arm_names_the_part_that_failed() -> Bool {
                           && match cause_of(crypt_digest: "$6$123456789012345678$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
                             Present { value: SaltTooLong { length: longer, ceiling: same_ceiling } } =>
                               longer == chars(18) && same_ceiling == chars(16)
+                              // AND THE FLOOR MUST BLAME THE ABSENT SALT, not the digest: four segments, a legal
+                              // token, a legal 86-character digest, and a salt holding no character at all. Only
+                              // the width floor can reject that, so it is blamed on SaltAbsent by name -- a
+                              // refusal that reached DigestAbsent instead would send the operator to re-paste a
+                              // digest that is already correct.
+                              && match cause_of(crypt_digest: "$6$$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                                Present { value: SaltAbsent } => true
+                                _ => false
+                              }
                             _ => false
                           }
                         _ => false
