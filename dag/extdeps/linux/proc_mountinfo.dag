@@ -159,8 +159,11 @@ fn mountinfo_entries(content: String) -> MountinfoEntries {
 // that mount as its parent and hides it, together with everything mounted beneath it. So the visible holder of
 // a path starts at the one root (the mount whose parent is no listed mount) and repeatedly takes the child
 // that holds the path: a child mounted at its parent's own mount point covers the parent and wins outright (the
-// parent's other children are beneath it), otherwise the child with the longest mount point. A longest-path
-// choice over the flat list instead picks a noswap mount a later covering mount has hidden.
+// parent's other children are beneath it), otherwise the child with the SHORTEST mount point:
+// a mount's parent is the mount that held its mount point WHEN IT WAS MOUNTED, so two children of one parent
+// whose points nest are in hiding order, the shallower one mounted later and hiding the deeper (a deeper mount
+// made after the shallower one would have the shallower as its parent). A longest-path choice over the flat
+// list instead picks a noswap mount a later covering mount has hidden.
 // VISIBILITY THAT CANNOT BE RESOLVED IS A REFUSAL, never a guess: no unique root, two children tying for the
 // same visible position, or a descent that does not settle within one step per listed mount.
 fn mountinfo_holds_path(entry: MountinfoEntry, path: String) -> Bool {
@@ -185,12 +188,12 @@ fn mountinfo_covers(e: MountinfoEntry, parent: MountinfoEntry) -> Bool {
   e.mount_point == parent.mount_point
 }
 
-fn mountinfo_longer(m: Int, k: MountinfoEntry) -> Int {
-  if string_length(s: k.mount_point) > m { string_length(s: k.mount_point) } else { m }
+fn mountinfo_shorter(m: Int, k: MountinfoEntry) -> Int {
+  if m < 0 || string_length(s: k.mount_point) < m { string_length(s: k.mount_point) } else { m }
 }
 
-fn mountinfo_is_deepest(k: MountinfoEntry, deepest: Int) -> Bool {
-  string_length(s: k.mount_point) == deepest
+fn mountinfo_is_shallowest(k: MountinfoEntry, shallowest: Int) -> Bool {
+  string_length(s: k.mount_point) == shallowest
 }
 
 fn mountinfo_descent_from(cur: MountinfoEntry, kids: List<MountinfoEntry>) -> MountinfoDescent {
@@ -203,8 +206,8 @@ fn mountinfo_descent_from(cur: MountinfoEntry, kids: List<MountinfoEntry>) -> Mo
         DescentUnresolved { cause: "two mounts are mounted over the same mount, so which one is visible is not decided" as NonEmptyStr }
       }
     Absent => {
-      let deepest = fold(kids, init: 0, f: (m, k) => mountinfo_longer(m: m, k: k))
-      let tops = filter(kids, k => mountinfo_is_deepest(k: k, deepest: deepest))
+      let shallowest = fold(kids, init: 0 - 1, f: (m, k) => mountinfo_shorter(m: m, k: k))
+      let tops = filter(kids, k => mountinfo_is_shallowest(k: k, shallowest: shallowest))
       match tops[0] {
         Absent => DescentSettled { entry: cur }
         Present { value: t } =>

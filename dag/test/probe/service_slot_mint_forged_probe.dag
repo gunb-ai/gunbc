@@ -10,6 +10,9 @@ import gunbc.runner.runner_unit_file { RunnerJobUserUidReading }
 import gunbc.runner.runner_jit_mint_binding { JitMintBinding, JitBoundMint, jit_mint_binding, mint_for_binding, mint_under_observed_group }
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject, JitRegistrationSubjectStanding }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.runner.runner_microvm_slot_controller { attempt_mint_binding, mint_attempt_credential }
+import gunbc.runner.runner_microvm_attempt { MicroVmCellBinding, bind_owned_attempt, MicroVmAttempt }
+import gunbc.github_effect_perform { JitMintPerformance }
 import std.types { Int, List, String, NonEmptyStr }
 import extdeps.auth.jws { JwsSigningKeyRef }
 import extdeps.github.actions_jit_runner { EncodedJitConfig }
@@ -90,4 +93,16 @@ fn outside_service_binding(a: ServiceSlotMintAdmission, k: ServiceSlotKeyHeld) -
 // (m) A BINDING AS A RECORD, bypassing the constructor. Refuses at JitMintBinding.
 fn forged_binding(subject: JitRegistrationSubjectStanding, group: NonEmptyStr, workflow: NonEmptyStr, signer: JwsSigningKeyRef) -> JitMintBinding {
   JitMintBinding { subject: subject, runner_group_name: group, selected_workflow: workflow, signer: signer }
+}
+
+// (n) THE MICROVM ATTEMPT'S BINDING BUILDER, called from outside the controller's snapshot-holding launch. A caller can
+// manufacture a VmBoundToOwnedCell (bind_owned_attempt takes a Bool), so the builder is admitted only along the chain
+// that derives its binding from the sealed reservation snapshot. Refuses at attempt_mint_binding.
+fn outside_attempt_binding(attempt: MicroVmAttempt) -> JitMintBinding {
+  attempt_mint_binding(binding: bind_owned_attempt(attempt: attempt, owned: true))
+}
+
+// (o) THE MICROVM ATTEMPT'S MINT WRAPPER, called from outside the same chain. Refuses at mint_attempt_credential.
+fn outside_attempt_mint(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance {
+  mint_attempt_credential(binding: binding, state: state)
 }

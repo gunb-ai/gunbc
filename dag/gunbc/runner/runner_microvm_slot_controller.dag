@@ -312,10 +312,16 @@ fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
 
 // ── stage 4: the credential ─────────────────────────────────────────────────────────────────────
 
+// THE BINDING IS DERIVED ONLY WHERE THE SEALED RESERVATION SNAPSHOT IS HELD. MicroVmCellBinding is an unsealed union and
+// bind_owned_attempt(owned: true) mints its owned arm from a caller's Bool, so this builder and mint_attempt_credential
+// are admitted only along slot_controller_launch_admitted, which obtains the binding from bind_microvm_to_cell over the
+// RequiredBuildCellSnapshot (the cell's ownership observation) before the mint.
 // The microVM attempt's binding of the shared mint rule (gunbc.runner.runner_jit_mint_binding): its
 // subject is the sealed cell-bound attempt, its group the shakedown group, its signer the
 // controller-custodied key.
-fn attempt_mint_binding(binding: MicroVmCellBinding) -> JitMintBinding {
+fn attempt_mint_binding(binding: MicroVmCellBinding) -> JitMintBinding admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
+] {
   jit_mint_binding(
     subject: microvm_registration_subject(binding: binding),
     runner_group_name: microvm_shakedown_runner_group_name,
@@ -335,6 +341,7 @@ fn observe_app_control_plane() -> GitHubAppControlPlaneState
 
 fn mint_attempt_credential(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance
   uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "slot_controller_launch_admitted")]
 {
   mint_for_binding(binding: attempt_mint_binding(binding: binding), state: state).performance
 }
