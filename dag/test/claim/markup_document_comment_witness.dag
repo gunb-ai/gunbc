@@ -7,21 +7,31 @@ module test.claim.markup_document_comment_witness
 //  1. The delimiters come from the MEDIUM, not from a module that happens to emit a comment. Checked
 //     by rendering the same MarkupComment through two media that spell comments differently (HTML and
 //     JSX-shaped): if either delimiter were hardcoded in std.markup, the two renderings would agree.
-//  2. A comment body cannot terminate its own comment. comment_hazard refuses a body containing the
-//     terminator or ending in "-", and the guarded route refuses it — so a page cannot ship a comment
-//     whose remainder is parsed as markup.
-//  3. A Document puts the doctype OUTSIDE <html>, on its own line, spelled by the medium. And the two
-//     guards walk into a Document's root rather than certifying it unread.
+//  2. A comment body cannot terminate its own comment. comment_body_hazard refuses a body containing the
+//     medium's terminator or ending in "-" (where that closes), and every guarded route refuses it — so a
+//     page cannot ship a comment whose remainder is parsed as markup.
+//  3. A document puts the doctype OUTSIDE <html>, on its own line, spelled by the medium; and it is only
+//     writable through serialize_document_with, whose refusal is a typed result. The two guards walk into
+//     the document's root rather than certifying it unread.
+//
+// WHY THERE IS NO DOCUMENT ARM IN THE FRAGMENT WALKERS ANY MORE. Document was a Fragment arm, which made
+// a document reachable from any fragment route — including the unguarded JSX ones, where it would have
+// reached a seam labelled unreachable that in fact diverged (review 82244 on #14351). MarkupDocument is a
+// type of its own now, so those walkers have no arm to check and these claims assert the document through
+// its own route. Three claims and seventeen walker arms were deleted with the shape that made them
+// expressible; each deletion is recorded where it happened rather than silently.
 //
 // RED CONTROLS (run once each; the mutation is named so it can be re-run, and the refusals recorded).
 //   C1  std.markup's MarkupComment arm: replace medium.comment_grammar.open with the literal "<!-- ".
 //       witness_comment_delimiters_come_from_the_medium goes red (the JSX-shaped medium renders <!--).
 //   C2  std.markup comment_body_hazard: return HazardFree unconditionally.
 //       witness_comment_terminator_is_refused, witness_comment_trailing_dash_is_refused,
-//       witness_guarded_route_refuses_a_self_terminating_comment and the two JSX route claims go red.
-//   C6  std.markup fragment_hazard's Document arm: match only DeclaresDocument (drop the
-//       NoDocumentGrammar arm's refusal, e.g. treat every grammar as declaring).
-//       witness_jsx_guarded_route_refuses_a_document_declaration goes red.
+//       witness_guarded_route_refuses_a_self_terminating_comment, the JSX route claim and
+//       witness_comment_in_a_document_still_checked_for_early_close go red.
+//   C6  std.markup serialize_document_with: drop the NoDocumentGrammar arm (treat every grammar as
+//       declaring, e.g. reuse the DeclaresDocument keyword branch unconditionally).
+//       witness_a_document_medium_refuses_to_write_a_document goes red. The pair claim
+//       witness_a_declaring_medium_writes_the_document stays green, which is why both exist.
 //   C7  std.markup comment_body_hazard: ignore grammar.trailing_dash_closes (always apply the rule).
 //       witness_medium_grammar_decides_the_dash_rule goes red -- the claim that the dash rule is read
 //       from the grammar rather than hardcoded in the walker.
@@ -31,30 +41,33 @@ module test.claim.markup_document_comment_witness
 //       attempting the mutation and reading the compile refusal, not by a claim that can only pass.
 //   C8  extdeps.languages.react_jsx try_serialize_jsx_component: drop the fragment_hazard match and
 //       return JsxOk after the URL pass alone. witness_jsx_guarded_route_refuses_a_comment_that_closes_
-//       early and ..._a_document_declaration go red. (This is the pre-review-82181 shape; it is the
-//       control that would have caught the original finding.)
-//   C3  extdeps.uri_validation find_first_rejected_url: return Absent for the Document arm.
-//       witness_url_guard_walks_into_the_document goes red (the javascript: href inside the root is
-//       no longer found) while witness_url_guard_passes_a_clean_document stays green — which is the
-//       point: a guard that always passes is only caught by the claim that expects a refusal.
-//   C4  std.markup Document arm: drop the DeclaresDocument keyword, emitting only the name.
+//       early goes red. (This is the pre-review-82181 shape; it is the control that would have caught the
+//       original finding. The document case is no longer exercisable here: a Fragment cannot hold one.)
+//   C3  extdeps.languages.html try_serialize_html_document: pass a node other than doc.root to the URL
+//       pass (e.g. skip the root). witness_url_guard_walks_into_the_document goes red (the javascript:
+//       href inside the root is no longer found) while witness_url_guard_passes_a_clean_document stays
+//       green -- which is the point: a guard that always passes is only caught by the claim that expects
+//       a refusal. The walk itself has no Document arm to mutate any more: a Fragment cannot contain one.
+//   C4  std.markup serialize_document_with's DeclaresDocument branch: drop the keyword, emitting only
+//       the name.
 //       witness_document_declares_its_type_before_the_root goes red.
 //   C5  extdeps.languages.html html_comment_terminator: change "-->" to " -->".
 //       witness_comment_terminator_is_refused goes red for the trailing-dash body. The emitter's
 //       delimiter and the tokenizer's terminator are two rows on purpose.
 
 import std.markup {
-  Fragment, Element, FragmentText, MarkupComment, Document, MarkupMedium, MarkupBracket,
+  Fragment, Element, FragmentText, MarkupComment, MarkupDocument, MarkupMedium, MarkupBracket,
   EscapeHtml, OmitClose, attr, serialize_fragment_with,
 }
 import extdeps.languages.html {
-  try_serialize_html_source, EmitOk, EmitRejected,
+  try_serialize_html_source, try_serialize_html_document, EmitOk, EmitRejected,
   html_markup_medium, html_comment_open_sequence, html_comment_close_sequence,
   html_comment_terminator, html_doctype_open_sequence, html_doctype_name, canonical_html_spellings,
 }
 import std.markup {
   HazardFree, HazardFound,
   fragment_hazard, comment_body_hazard, doctype_name_hazard,
+  serialize_document_with, Serialized, Rejected,
 }
 import extdeps.uri_validation { find_first_rejected_url }
 import extdeps.languages.react_jsx {
@@ -117,8 +130,8 @@ fn empty_html() -> Fragment {
   Element { tag: "html", attributes: [], children: [] }
 }
 
-fn document_with_root(root: Fragment) -> Fragment {
-  Document { doctype: html_doctype_name, root: root }
+fn document_with_root(root: Fragment) -> MarkupDocument {
+  MarkupDocument { doctype: html_doctype_name, root: root }
 }
 
 // ── 1. the delimiters are the medium's ────────────────────────────────────────────────────────
@@ -225,8 +238,11 @@ test fn witness_guarded_route_emits_a_clean_comment() -> Bool {
 // ── 3. the document, and the guards that must walk into it ────────────────────────────────────
 
 test fn witness_document_declares_its_type_before_the_root() -> Bool {
-  serialize_fragment_with(frag: document_with_root(root: empty_html()), medium: html_markup_medium())
-    == join([html_doctype_open_sequence as String, html_doctype_name as String, ">", "\n", "<html></html>"], "")
+  match serialize_document_with(doc: document_with_root(root: empty_html()), medium: html_markup_medium()) {
+    Serialized { html: out } =>
+      out == join([html_doctype_open_sequence as String, html_doctype_name as String, ">", "\n", "<html></html>"], "")
+    Rejected { reason: _ } => false
+  }
 }
 
 // The doctype is a SIBLING of <html> — neither an attribute of it nor inside it. Asserted by the
@@ -235,19 +251,26 @@ test fn witness_document_declares_its_type_before_the_root() -> Bool {
 // check would also pass on "<html><head><!DOCTYPE html>" style output, which is the defect it should
 // catch.
 test fn witness_doctype_line_precedes_the_root_element() -> Bool {
-  let out = serialize_fragment_with(
-    frag: document_with_root(root: comment_in_html(body: "inner")),
+  let out = match serialize_document_with(
+    doc: document_with_root(root: comment_in_html(body: "inner")),
     medium: html_markup_medium(),
-  )
+  ) {
+    Serialized { html: h } => h
+    // A refusal here would produce no text to test, and the claim fails -- it does not pass vacuously.
+    Rejected { reason: _ } => ""
+  }
   starts_with(s: out, prefix: join([html_doctype_open_sequence as String, html_doctype_name as String, ">", "\n", "<html"], ""))
 }
 
-// THE GUARD MUST WALK IN. A Document is how a whole page reaches find_first_rejected_url, so an arm
-// returning Absent for it would leave every page unguarded while looking like it was checked.
+// THE GUARD MUST WALK IN. A whole page reaches the URL pass through the document route, so a route that
+// checked only its doctype, or skipped the root, would leave every page unguarded while looking like it
+// was checked -- the shape §5 calls worse than no guard. Asserted through the ROUTE (not by calling
+// find_first_rejected_url on the root by hand) so a regression in the route's wiring is red, not just a
+// regression in the walker.
 test fn witness_url_guard_walks_into_the_document() -> Bool {
-  match find_first_rejected_url(node: document_with_root(root: bad_link_root())) {
-    Present { value: _ } => true
-    Absent => false
+  match try_serialize_html_document(doc: document_with_root(root: bad_link_root())) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
   }
 }
 
@@ -265,10 +288,12 @@ fn bad_link_root() -> Fragment {
   }
 }
 
+// The other half of the pair: the route still ACCEPTS a clean page, so the refusal above is not a
+// blanket rejection that would satisfy both claims.
 test fn witness_url_guard_passes_a_clean_document() -> Bool {
-  match find_first_rejected_url(node: document_with_root(root: good_link_root())) {
-    Absent => true
-    Present { value: _ } => false
+  match try_serialize_html_document(doc: document_with_root(root: good_link_root())) {
+    EmitOk { html: _ } => true
+    EmitRejected { reason: _ } => false
   }
 }
 
@@ -296,7 +321,7 @@ test fn witness_guard_does_not_read_a_comment_as_a_reference() -> Bool {
 }
 
 test fn witness_comment_in_a_document_still_checked_for_early_close() -> Bool {
-  match try_serialize_html_source(node: document_with_root(root: comment_in_html(body: "x --> y"))) {
+  match try_serialize_html_document(doc: document_with_root(root: comment_in_html(body: "x --> y"))) {
     EmitRejected { reason: _ } => true
     EmitOk { html: _ } => false
   }
@@ -407,10 +432,33 @@ test fn witness_jsx_guarded_route_refuses_a_comment_that_closes_early() -> Bool 
   }
 }
 
-test fn witness_jsx_guarded_route_refuses_a_document_declaration() -> Bool {
-  match try_serialize_jsx_component(fn_name: "C", node: Document { doctype: "html", root: jsx_root_with_comment(body: "ok") }) {
-    JsxRejected { reason: _ } => true
-    JsxOk { tsx: _ } => false
+// A DOCUMENT IS NOT A JSX CHILD, AND CANNOT BE MADE ONE. This claim used to hand a Document to
+// try_serialize_jsx_component and expect JsxRejected -- which was validation on one route while the
+// unguarded serialize_jsx_fragment/serialize_jsx_component beside it called the serializer directly and
+// reached a seam labelled unreachable that in fact diverged (review 82244 on #14351). std.markup made
+// MarkupDocument a type of its own, so a Fragment cannot contain a document and those routes cannot be
+// handed one: there is no longer a call to refuse. What remains assertable is the ONE place a document is
+// written -- serialize_document_with -- and it refuses a medium with NoDocumentGrammar with a typed,
+// located reason instead of a divergent seam.
+test fn witness_a_document_medium_refuses_to_write_a_document() -> Bool {
+  match serialize_document_with(
+    doc: MarkupDocument { doctype: html_doctype_name, root: jsx_root_with_comment(body: "ok") },
+    medium: jsx_markup_medium(),
+  ) {
+    Rejected { reason: r } => string_contains(s: r, pattern: "no document grammar")
+    Serialized { html: _ } => false
+  }
+}
+
+// And the HTML medium, whose grammar DOES declare a document type, accepts the same document -- so the
+// refusal above is the medium's grammar deciding, not the function refusing everything.
+test fn witness_a_declaring_medium_writes_the_document() -> Bool {
+  match serialize_document_with(
+    doc: MarkupDocument { doctype: html_doctype_name, root: jsx_root_with_comment(body: "ok") },
+    medium: html_markup_medium(),
+  ) {
+    Serialized { html: _ } => true
+    Rejected { reason: _ } => false
   }
 }
 

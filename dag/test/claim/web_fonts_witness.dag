@@ -88,7 +88,6 @@ fn head_children(page: Fragment) -> List<Fragment> {
         FragmentText { content: _ } => []
         RawNode { content: _ } => []
         MarkupComment { body: _ } => []
-        Document { doctype: _, root: _ } => []
       })
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
@@ -96,7 +95,6 @@ fn head_children(page: Fragment) -> List<Fragment> {
     // Walked: the outer arm already descends into an Element's children to find <head>, and a page
     // built as a Document keeps <head> inside its root. Skipping it would report "no head children"
     // for a well-formed page, which is the silent-pass shape.
-    Document { doctype: _, root: r } => head_children(page: r)
   }
 }
 
@@ -106,7 +104,6 @@ fn attribute_values(nodes: List<Fragment>, name: String) -> List<String> {
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
     MarkupComment { body: _ } => []
-    Document { doctype: _, root: _ } => []
   })
 }
 

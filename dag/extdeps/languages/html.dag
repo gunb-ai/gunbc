@@ -7,14 +7,14 @@ import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.types { NonEmptyStr }
 import std.markup {
-  Fragment, Element, FragmentText, RawNode, Attribute, attr,
+  Fragment, Element, FragmentText, RawNode, Attribute, attr, MarkupDocument,
   MarkupBracket, MarkupMedium, CommentGrammar, DocumentGrammar, DeclaresDocument, EscapeHtml,
   VoidTagRendering, OmitClose,
   serialize_fragment_with, tag_in_set,
   unescape_text, unescape_attribute, unescape_url,
   attr_is_url_attr,
   HazardFree, HazardFound,
-  fragment_hazard,
+  fragment_hazard, document_hazard, serialize_document_with, MarkupSerializeResult, Serialized, Rejected,
 }
 import extdeps.uri_validation {
   validate_href, SafeHref, RejectedHref,
@@ -392,6 +392,28 @@ fn try_serialize_html_source(node: Fragment) -> HtmlEmitResult {
     Absent =>
       match fragment_hazard(node: node, medium: html_markup_medium()) {
         HazardFree => EmitOk { html: serialize_html_source(node: node) }
+        HazardFound { reason: why } => EmitRejected { reason: why }
+      }
+  }
+}
+
+// A WHOLE PAGE, doctype included. Before this, the two sites that serve a page concatenated
+// "<!DOCTYPE html>\n" onto the serialized string, so the doctype line sat OUTSIDE every guard and its
+// spelling was one more hand-typed copy of "<!DOCTYPE" (§6b). It now rides the model to the one function
+// allowed to write a document, and passes the same three guards as a fragment -- the URL pass over the
+// root, the doctype-name check, and the comment/raw-text walk. The URL pass does not look at the doctype
+// NAME: find_first_rejected_url flags attributes that carry URLs, and a doctype name is not one (a
+// name holding "<", ">" or a space is refused by doctype_name_hazard before anything is written).
+fn try_serialize_html_document(doc: MarkupDocument) -> HtmlEmitResult {
+  match find_first_rejected_url(node: doc.root) {
+    Present { value: r } =>
+      EmitRejected { reason: r.url }
+    Absent =>
+      match document_hazard(doc: doc, medium: html_markup_medium()) {
+        HazardFree => match serialize_document_with(doc: doc, medium: html_markup_medium()) {
+          Serialized { html: out } => EmitOk { html: out }
+          Rejected { reason: why } => EmitRejected { reason: why }
+        }
         HazardFound { reason: why } => EmitRejected { reason: why }
       }
   }

@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_hierarchy_view_witness
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
-import std.markup { Document, Fragment, Element, FragmentText, RawNode }
+import std.markup { Fragment, Element, FragmentText, RawNode }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.harness.harness_throughput { RoundsUnobserved }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapEdge, MemberOf, AdmittedRoot, section_group }
@@ -312,22 +312,11 @@ test fn witness_rendered_issue_page_links_only_canonical_routes() -> Bool {
 // The document shell around this (issue_detail_page_for, which adds the stylesheet and the launch
 // context) is not run here: measured 2026-10-05 it costs over twice a new claim's whole budget and
 // none of it is the chain.
-// A whole page wrapped as a Document must yield the SAME links as the bare root. This is the claim
-// control C6 turns red: if hv_nav_hrefs' Document arm returned [] instead of walking root, every
-// document-wrapped page would report zero links, which is the silent-pass shape a page-level guard
-// can fall into. It is asserted by equality with the unwrapped page, so the claim cannot be satisfied
-// by a fixed expectation that stops matching when the page changes.
-test fn witness_nav_scan_walks_into_a_document_root() -> Bool {
-  let page = issue_detail_page(view: hv_row(id: "hv-mid", title: "Mid title"), hierarchy: hv_view(id: "hv-mid"), observation: ObservationsNominal, attempts: [], events: [], viewer: "", recents: [], expected_revision: "")
-  let wrapped = hv_nav_hrefs(node: Document { doctype: "html", root: page })
-  // ONE conjunct, measured against two mutations. C6 (arm returns []) makes it red. A second
-  // conjunct -- the expected-links membership test -- was written, measured (C9: dropping it left
-  // the claim green), found to be subsumed by this equality, and deleted rather than kept as
-  // decoration: equality with the unwrapped scan already says "these exact links, in this order".
-  // What the equality IS the claim: wrapping a page in a Document changes nothing about what the
-  // scan sees. The other half of that is C6 -- without the walk, the scan sees nothing.
-  join(wrapped, ",") == join(hv_nav_hrefs(node: page), ",")
-}
+// A CLAIM WAS DELETED HERE. witness_nav_scan_walks_into_a_document_root wrapped a page in a Document and
+// asserted the scan still saw the same links. std.markup made MarkupDocument a type of its own (review
+// 82244 on #14351), so a Fragment cannot contain a document and the claim is no longer expressible: the
+// walk it exercised, and the arm it red-controlled (C6), were both deleted with the shape that made them
+// reachable. A scan of a whole page is a scan of its root Fragment, which the claims above already cover.
 
 fn hv_nav_hrefs(node: Fragment) -> List<String> {
   match node {

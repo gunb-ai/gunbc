@@ -27,20 +27,6 @@ type Fragment
   // is refused rather than filtered — see extdeps.languages.html comment_hazard, which every
   // guarded route consults before serializing.
   | MarkupComment { body: String }
-  // A whole document: the document-type declaration and the root element. This is the HTML parser's
-  // own node ("the Document node is the root node, with the doctype and <html> as children", HTML
-  // Living Standard §13.2.4), and it is why the doctype is an ARM and not a Fragment variant: a
-  // doctype is not an element and is not inside <html>, so Element or FragmentText could only model
-  // it wrongly. It is also why it is not spelled at the call site — the two sites that emit one
-  // today concatenate "<!DOCTYPE html>\n" OUTSIDE the serializer, so they cannot be guarded, and
-  // they no longer do.
-  // The keyword is the NAME after <!DOCTYPE ("html" selects standards mode); the "<!DOCTYPE " prefix
-  // is the medium's doctype_open spelling, so a document cannot carry its own punctuation.
-  // The name is NonEmptyStr, not String: the declaration's name is what selects the parsing mode,
-  // so an empty one is not a document type at all. A refinement type makes that a COMPILE refusal
-  // (measured: `Document { doctype: "", ... }` is rejected with "expected 'Product(NonEmptyStr)',
-  // got 'Primitive(String)'"), which is why no hazard check anywhere asks whether the name is empty.
-  | Document { doctype: NonEmptyStr, root: Fragment }
 
 fn escape_text(s: String) -> String {
   replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
@@ -178,6 +164,31 @@ fn escape_text_for(mode: EscapeMode, s: String) -> String {
   }
 }
 
+// A WHOLE DOCUMENT: the document-type declaration and the root element. This is the HTML parser's own
+// node ("the Document node is the root node, with the doctype and <html> as children", HTML Living
+// Standard §13.2.4), which is why the doctype is a FIELD of a document node and not an element: a doctype
+// is not an element and is not inside <html>, so Element or FragmentText could only model it wrongly.
+//
+// WHY IT IS A TYPE OF ITS OWN AND NOT A FRAGMENT ARM. As a Fragment arm it was representable anywhere a
+// Fragment was, including a JSX expression container, where "<!DOCTYPE html>" is not valid TSX. Nothing in
+// the type said "only a medium with a document grammar may hold this", so the refusal had to be written on
+// each route -- and review 82244 on #14351 found the route that had not been written (the unguarded
+// serialize_jsx_fragment / serialize_jsx_component called the serializer directly and would have reached a
+// seam labelled unreachable that in fact diverges). §5: "Stronger than catching a wrong state is making it
+// unwritable." A Fragment now CANNOT contain a document, so:
+//   - serialize_fragment_with is TOTAL (it returns String and has no refusal to skip and no divergent arm),
+//   - every Fragment walker loses the Document arm it had to carry (seventeen of them, all added by this
+//     change and all now deleted -- the arms existed only because the type allowed the shape),
+//   - a document is serialized only through serialize_document_with, whose refusal is a typed result.
+// The keyword is the NAME after <!DOCTYPE ("html" selects standards mode); the "<!DOCTYPE " prefix is the
+// medium's spelling, so a document cannot carry its own punctuation. The name is NonEmptyStr: an empty
+// name is not a document type, and `MarkupDocument { doctype: "", .. }` fails to resolve (measured), so no
+// check anywhere asks whether it is empty.
+type MarkupDocument {
+  doctype: NonEmptyStr
+  root: Fragment
+}
+
 type TagLookup
   = FoundTag { delim: TagDelimiter }
   | NoTag
@@ -204,21 +215,6 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
     FragmentText { content: c } => escape_text_for(mode: medium.text_escape, s: c)
     RawNode { content: c } => c
     MarkupComment { body: b } => join([medium.comment_grammar.open as String, b, medium.comment_grammar.close as String], "")
-    Document { doctype: d, root: r } => match medium.document_grammar {
-      DeclaresDocument { open: kw } =>
-        join(
-          [kw as String, d as String, medium.bracket.tag_close, document_line_ending(), serialize_fragment_with(frag: r, medium: medium)],
-          "",
-        )
-      // A document-type declaration has no spelling in a medium that declares no document grammar, so
-      // there is no string to return. Reaching this arm means an UNGUARDED serializer was handed a node
-      // its medium forbids -- the guarded routes refuse it first (fragment_hazard's Document arm, claimed
-      // by witness_jsx_guarded_route_refuses_a_document_declaration), so this is a call-site bug, not a
-      // runtime condition. The repo's convention for one is the divergent seam: it never returns, so it
-      // cannot fabricate the bytes this arm has no authority to write (§5: "no plausible output is
-      // fabricated", and a dropped declaration would silently change how the document parses).
-      NoDocumentGrammar => pure_dag_seam_unreachable_string()
-    }
     Element { tag: t, attributes: attrs, children: kids } => {
       let attrs_str = serialize_attributes_with(attrs: attrs, bracket: medium.bracket)
       if is_void_tag(tag: t, void_tags: medium.void_tags) {
@@ -239,46 +235,44 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
           FoundTag { delim: d } =>
             join([d.open, inner, d.close], "")
           NoTag =>
-            join([
-              medium.bracket.tag_open,
-              t,
-              attrs_str,
-              medium.bracket.tag_close,
-              inner,
-              medium.bracket.end_tag_open,
-              t,
-              medium.bracket.tag_close
-            ], "")
+            join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close, inner, medium.bracket.end_tag_open, t, medium.bracket.tag_close], "")
         }
       }
     }
   }
 }
 
-fn attr_is_url_attr(name: String) -> Bool {
-  name == "href" || name == "src"
-}
-
-fn attribute_escape_context(name: String) -> EscapeContext {
-  if attr_is_url_attr(name: name) {
-    UrlContext
-  } else {
-    AttributeContext
+// THE ONLY WAY A DOCUMENT IS SERIALIZED. Returns a TYPED RESULT rather than a String for one reason: a
+// medium with NoDocumentGrammar has no spelling for a document-type declaration, so there is no string to
+// return, and the alternative (a labelled-unreachable seam) was measured to diverge. Review 82244 on
+// #14351: the guard lived on one route and the unguarded routes reached the seam. Here there is no route
+// around it -- serialize_fragment_with cannot be handed a document at all -- and the refusal is a value
+// the caller must match on (§5: "every path succeeds fully or fails with a typed, located diagnostic").
+fn serialize_document_with(doc: MarkupDocument, medium: MarkupMedium) -> MarkupSerializeResult {
+  match medium.document_grammar {
+    NoDocumentGrammar =>
+      // Located: it names the medium's own grammar as the reason, and what to do instead.
+      Rejected { reason: "this medium declares no document grammar (DocumentGrammar is NoDocumentGrammar), so a document-type declaration has no spelling in it — serialize the root Fragment instead" }
+    DeclaresDocument { open: kw } =>
+      Serialized { html: join(
+        [kw as String, doc.doctype as String, medium.bracket.tag_close, document_line_ending(), serialize_fragment_with(frag: doc.root, medium: medium)],
+        "",
+      ) }
   }
 }
 
-fn attr(name: String, value: String) -> Attribute {
-  Attribute {
-    name: name,
-    ctx: attribute_escape_context(name: name),
-    value: value,
+// The document half of the hazard walk, kept beside the type it checks. The doctype NAME is checked here
+// (a bare token, or the document parses in the wrong mode) and the root is handed to the fragment walk, so
+// a URL or a self-terminating comment inside a document's subtree is found by the same code as anywhere
+// else. No "does this medium allow documents" test: serialize_document_with owns that refusal, and asking
+// twice is how two answers get to disagree (§3).
+fn document_hazard(doc: MarkupDocument, medium: MarkupMedium) -> MarkupHazard {
+  match doctype_name_hazard(keyword: doc.doctype) {
+    HazardFound { reason: rs } => HazardFound { reason: rs }
+    HazardFree => fragment_hazard(node: doc.root, medium: medium)
   }
 }
 
-// The line break between a document's doctype line and its root element. NOT spelled as a literal
-// here: derived from std.layout, which already renders a line break for every generated document in
-// the repo, so markup and layout cannot disagree about what ends a line. The protocol is the flat
-// one, because a lone DocLine never consults indent_unit (nesting is what reads it).
 fn document_line_ending() -> String {
   render(doc: DocLine, proto: LayoutProtocol { indent_unit: "" })
 }
@@ -375,40 +369,26 @@ fn raw_text_children_text(children: List<Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
     FragmentText { content: t } => concat(acc, t)
     RawNode { content: t } => concat(acc, t)
-    // A comment is not character data of the raw-text element, and a Document inside one is not
-    // legitimate markup; neither contributes text to the close-sequence check, which is about what
-    // the raw-text element's own content would terminate early.
+    // A comment is not character data of the raw-text element, so it contributes no text to the
+    // close-sequence check, which is about what the raw-text element's own content would terminate early.
     MarkupComment { body: _ } => acc
-    Document { doctype: _, root: _ } => acc
     Element { tag: _, attributes: _, children: _ } => acc
   })
 }
 
-// THE ONE WALK. Exhaustive over Fragment by construction — a new arm is a compile error here, which
-// is the point: an arm that quietly passed would certify an unchecked shape, and a guard that looks
-// like it checked is worse than one that is absent.
+// THE ONE WALK, over FRAGMENTS ONLY. Exhaustive by construction — a new Fragment arm is a compile error
+// here, which is the point: an arm that quietly passed would certify an unchecked shape, and a guard that
+// looks like it checked is worse than one that is absent.
+//
+// It does not walk documents, and cannot be handed one: MarkupDocument is a type of its own, so the shape
+// does not exist inside a Fragment. That is what removed this function's Document arm and the seventeen
+// others across the repo (review 82244 on #14351). document_hazard is the document half, and it calls here
+// for the subtree.
 fn fragment_hazard(node: Fragment, medium: MarkupMedium) -> MarkupHazard {
   match node {
     FragmentText { content: _ } => HazardFree
     RawNode { content: _ } => HazardFree
     MarkupComment { body: b } => comment_body_hazard(body: b, grammar: medium.comment_grammar)
-    // THE ARM THAT REPLACES THE BOOL. Before review 82209 this read `if !medium.document_declaration_allowed`
-    // against a medium that also carried a doctype keyword it had called "not applicable" -- the runtime
-    // test recovering a distinction the type had thrown away. Matching on the grammar means the refusal
-    // and the spelling are the same fact: a medium with NoDocumentGrammar has no keyword to name in the
-    // diagnostic, and says so by what it cannot say.
-    Document { doctype: d, root: r } => match medium.document_grammar {
-      NoDocumentGrammar =>
-        // Refused, not stripped. Dropping the declaration would hand back bytes that claim a different
-        // document than the caller built, and silently dropping part of a page is the degradation §5
-        // counts. The caller asked for a document type in a medium that has no such thing.
-        HazardFound { reason: "a document-type declaration has no meaning in this medium — it declares ECMAScript/JSX-style modules, not documents; emit the root fragment instead" }
-      DeclaresDocument { open: _ } =>
-        match doctype_name_hazard(keyword: d) {
-          HazardFound { reason: rs } => HazardFound { reason: rs }
-          HazardFree => fragment_hazard(node: r, medium: medium)
-        }
-    }
     Element { tag: t, attributes: _, children: kids } =>
       if tag_in_set(tag: t, tags: medium.raw_text_tags) {
         if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {

@@ -337,7 +337,6 @@ fn fragment_text_labels(frag: Fragment) -> List<NonEmptyStr> {
       }
     RawNode { content: _ } => []
     MarkupComment { body: _ } => []
-    Document { doctype: _, root: r } => fragment_text_labels(frag: r)
     Element { tag: _, attributes: _, children: kids } =>
       fold(kids, init: [], f: fn(acc, k) {
         concat(acc, fragment_text_labels(frag: k))
