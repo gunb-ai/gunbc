@@ -346,6 +346,62 @@ data unclassified_packages: List<PackageIntent> = [
   },
 ]
 
+// THE UNCLASSIFIED ARM WITH A CLEAN HEAD — the same shape unseeded_tzdata_packages gives the open-question
+// arm. A scan that stops at the head, or drops the tail, reports the seed non-interactive here and installs a
+// board that hangs on the first debconf question with nobody at the console.
+data clean_head_then_unclassified_tail: List<PackageIntent> = [
+  QuestionAnswered {
+    package: PostfixPackage,
+    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
+  },
+  UnclassifiedPackage {
+    name: "some-fleet-exporter" as NonEmptyStr,
+    debconf_seed: Absent,
+  },
+]
+
+// A BLOCKER HIDING BEHIND A CLEAN HEAD STILL REFUSES THE SEED, AND NAMES A PACKAGE FROM THE LIST. Both arms
+// are checked; each is checked on its own list so a defect in one arm cannot be covered by the other. Which
+// of two simultaneous blockers a scan reports first is deliberately NOT pinned — package order is not
+// semantic for the digest (see package_order_does_not_move_the_digest), so freezing a scan direction would
+// turn an implementation detail into a contract.
+test fn a_blocker_anywhere_in_the_list_refuses_the_seed() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      audit_refuses_naming_one_of_its_own_packages(
+        packages: unseeded_tzdata_packages,
+        entry: entry,
+      )
+        && audit_refuses_naming_one_of_its_own_packages(
+          packages: clean_head_then_unclassified_tail,
+          entry: entry,
+        )
+    Absent => false
+  }
+}
+
+// ONE AUDIT, THE CLAIM STATED AS A SUM-TYPE MATCH. The green arm must be false, and the only true arms are the
+// two causes naming the packages these fixtures actually contain ("tzdata" and "some-fleet-exporter"); every
+// other cause is false, so the witness cannot be satisfied by an unrelated refusal leaking in from elsewhere in
+// the seed, nor by a cause naming a package nobody asked for. Called only on those two fixtures.
+fn audit_refuses_naming_one_of_its_own_packages(
+  packages: List<PackageIntent>,
+  entry: AdminAccessAuthorisation,
+) -> Bool {
+  match audit_altra_autoinstall_seed( network: network_posture, install_packages: packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+    SeedIsNonInteractive => false
+    SeedRefused { cause: cause } =>
+      match cause {
+        PackagePrompts { name: named, question: _ } => named == "tzdata" as NonEmptyStr
+        PackagePromptingUnclassified { name: named } =>
+          named == "some-fleet-exporter" as NonEmptyStr
+        AddressingIsInstallerManaged => false
+        ArchiveMirrorAbsent => false
+        NoEntrypointAtAll { keys: _, console_entry: _ } => false
+      }
+  }
+}
+
 // THE SAME UNCHECKED PACKAGE, WITH AN ANSWER ATTACHED. The answer cannot make it classifiable: what is missing
 // is not a value but the knowledge of whether the package asks anything at all, and a seed must not be able to
 // launder that by stuffing a string into the field.

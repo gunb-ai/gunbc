@@ -579,16 +579,9 @@ fn admin_password_handle(secret_locator: NonEmptyStr, secret_version: NonEmptySt
 // WHY "NO PASSWORD" IS AN AFFIRMATIVE ARM AND NOT AN ABSENCE. On a headless board, declining a password
 // is a decision someone made (keys are the only way in, or the console is open), and recording it as
 // `none` would make a policy and an oversight indistinguishable — the exact confusion that lets a seed
-// ship with no way in. The wire spelling is derived from the posture by autoinstall_password_auth, never
+// ship with no way in. The wire spelling is derived from the posture by credential_diagnostic, never
 // stored next to it.
 type AdminCredentialPosture = PasswordHandle { handle: AdminPasswordHandle } | PasswordUnset
-
-fn autoinstall_password_auth(posture: AdminCredentialPosture) -> Bool {
-  match posture {
-    PasswordHandle { handle: _ } => true
-    PasswordUnset => false
-  }
-}
 
 // THE SECRET NEVER TRAVELS WITH THE SEED, AND THE TYPE SAYS SO. The payload projection upstream demands
 // a NonEmptyStr hashed_password; rather than fork that shape or fabricate a string, this module's
@@ -1032,19 +1025,19 @@ fn prompt_over_locale(locale: SeedLocale) -> Optional<NonEmptyStr> {
 // problem, and there is no `_` arm for an unknown package to fall through into. Removing the string-keyed
 // lookup is the actual fix: it could only answer "is this in the table", and its fail-open `_ => Absent` was
 // read by the audit as "nothing to answer", so an unclassified package earned the green arm.
+// ONE PASS, ONE VERDICT PER INTENT. This walks the list and asks `blocking_refusal` exactly once per
+// intent, stopping at the first cause. It used to filter through a Bool predicate that recomputed the same
+// answer `blocking_refusal` was about to give, so the two could drift and every intent paid for the
+// question twice. A cause is never dropped: the recursion returns the FIRST Present, and Absent only when
+// every intent answered its own question.
 fn first_blocking_refusal(intents: List<PackageIntent>) -> Optional<SeedInteractiveCause> {
-  match intents.filter(intent => intent_leaves_a_question(intent: intent)).first() {
-    Present { value: intent } => blocking_refusal(intent: intent)
-    Absent => Absent
-  }
-}
-
-// THE FILTER PREDICATE FOR THE ABOVE, total over PackageIntent so a new arm must state whether it leaves a
-// question open; the refusal itself is produced only by blocking_refusal, so the two can never disagree.
-fn intent_leaves_a_question(intent: PackageIntent) -> Bool {
-  match blocking_refusal(intent: intent) {
-    Present { value: _ } => true
-    Absent => false
+  match intents {
+    Empty => Absent
+    Cons { head: head, tail: rest } =>
+      match blocking_refusal(intent: head) {
+        Present { value: cause } => Present { value: cause }
+        Absent => first_blocking_refusal(intents: rest)
+      }
   }
 }
 
