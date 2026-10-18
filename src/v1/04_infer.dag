@@ -107,7 +107,7 @@ import v1.compiler.infer_types {
   bare_map_node, bare_set_node,
   callable_inferred,
   normalize_access_type_node,
-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
+  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, alias_identity_in_judgment,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   is_product_type,
   node_type_deps,
@@ -4472,6 +4472,10 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if alias_identity_in_judgment(
+      left: declared, right: produced, source_indices: source_indices,
+      text: TextJudgedIn { env: scope.type_env }) {
+    Inhabits
   } else if carrier_verdict == Present { value: true } {
     Inhabits
   } else if produced_is_kernel_grounded_carrier_or_its_alias(declared_name: declared_name, produced_name: produced_name, env: scope.type_env) {
@@ -4922,8 +4926,8 @@ fn nominal_product_inhabitance_refusal(
   let produced_head = nominal_product_head_name(n: produced, scope: scope)
   if declared_head == "" || produced_head == "" {
     none
-  } else if nominal_product_head_names_agree(
-      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+  } else if nominal_product_heads_agree(
+      declared: declared, produced: produced, declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
     Present { value: RefusedDistinctProductConstructor }
   } else if applied_type_arguments_conflict(
       declared: declared, produced: produced, scope: scope) {
@@ -5055,8 +5059,8 @@ fn nominal_coproduct_applied_argument_conflict(
   let produced_head = nominal_coproduct_application_head_name(n: produced, scope: scope)
   if declared_head == "" || produced_head == "" {
     false
-  } else if nominal_product_head_names_agree(
-      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+  } else if nominal_product_heads_agree(
+      declared: declared, produced: produced, declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
     false
   } else if (declared.children |> count) == 0 || (declared.children |> count) != (produced.children |> count) {
     false
@@ -5130,6 +5134,13 @@ fn nominal_coproduct_application_head_name(n: Node, scope: InferScope) -> String
       _ => ""
     }
   }
+}
+
+// HEAD AGREEMENT IS DECIDED BY THE DECLARATION EACH SIDE SETTLES TO FIRST (alias_identity_in_judgment: an alias and its expansion are
+// one head), and only a pair that names no common declaration falls to the spelled-name relation below.
+fn nominal_product_heads_agree(declared: Node, produced: Node, declared_name: String, produced_name: String, scope: InferScope) -> Bool {
+  alias_identity_in_judgment(left: declared, right: produced, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env })
+    || nominal_product_head_names_agree(declared_name: declared_name, produced_name: produced_name, scope: scope)
 }
 
 fn nominal_product_head_names_agree(
@@ -5235,8 +5246,8 @@ fn applied_type_argument_conflicts(
       || applied_type_argument_identity_known(name: p_name, scope: scope) == false {
       false
     } else {
-      nominal_product_head_names_agree(
-        declared_name: d_name, produced_name: p_name, scope: scope) == false
+      nominal_product_heads_agree(
+        declared: d, produced: p, declared_name: d_name, produced_name: p_name, scope: scope) == false
     }
   }
 }

@@ -254,17 +254,17 @@ pub use crate::v1_compiler_infer_sigs::{
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
 use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedInVariantFieldSummary;
 pub use crate::v1_compiler_infer_types::{
-    bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
-    collection_carrier_node, emit_map_has, extract_optional_inner_node, for_each_element_type_node,
-    infer_binop_type_node, infer_literal_node, is_declared_container_alias_spelling,
-    is_fully_resolved, is_product_type, is_type_expr_annotation, kernel_profile_lookup,
-    make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
-    node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
-    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
-    normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
-    resolved_type, structural_carrier_template_name, subtraction_refinement_of,
-    template_return_has_variables, template_return_is_receiver_self, KernelTypeBuild, TextJudgment,
-    TextNotAskedReason,
+    alias_identity_in_judgment, bare_map_node, bare_set_node, callable_inferred,
+    callable_return_type, child_type_node, collection_carrier_node, emit_map_has,
+    extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
+    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved, is_product_type,
+    is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
+    method_receiver_element_node, node_is_collection, node_is_element_collection,
+    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
+    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
+    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
+    structural_carrier_template_name, subtraction_refinement_of, template_return_has_variables,
+    template_return_is_receiver_self, KernelTypeBuild, TextJudgment, TextNotAskedReason,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
@@ -6317,56 +6317,62 @@ pub fn declared_type_inhabitance(
     reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
 })
                             } else {
-                                if (carrier_verdict.clone() == Some(true)) {
+                                if crate::v1_compiler_infer_types::alias_identity_in_judgment(
+                                    declared.clone(),
+                                    produced.clone(),
+                                    source_indices.clone(),
+                                    Rc::new(TextJudgment::TextJudgedIn {
+                                        env: scope.type_env.clone(),
+                                    }),
+                                ) {
                                     Rc::new(InhabitanceVerdict::Inhabits)
                                 } else {
-                                    if produced_is_kernel_grounded_carrier_or_its_alias(
-                                        declared_name.clone(),
-                                        produced_name.clone(),
-                                        scope.type_env.clone(),
-                                    ) {
+                                    if (carrier_verdict.clone() == Some(true)) {
                                         Rc::new(InhabitanceVerdict::Inhabits)
                                     } else {
-                                        if (carrier_verdict.clone() == Some(false)) {
-                                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                        if produced_is_kernel_grounded_carrier_or_its_alias(
+                                            declared_name.clone(),
+                                            produced_name.clone(),
+                                            scope.type_env.clone(),
+                                        ) {
+                                            Rc::new(InhabitanceVerdict::Inhabits)
+                                        } else {
+                                            if (carrier_verdict.clone() == Some(false)) {
+                                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedDistinctProductConstructor,
 })
-                                        } else {
-                                            if declared_realizes_as_kernel_numeric(
-                                                declared.clone(),
-                                                produced.clone(),
-                                                source_indices.clone(),
-                                            ) {
-                                                Rc::new(InhabitanceVerdict::Inhabits)
                                             } else {
-                                                if collection_versus_established_identity(
+                                                if declared_realizes_as_kernel_numeric(
                                                     declared.clone(),
                                                     produced.clone(),
-                                                    scope.clone(),
+                                                    source_indices.clone(),
                                                 ) {
-                                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
-    reason: InhabitanceRefusalReason::RefusedCollectionAtEstablishedIdentity,
-})
+                                                    Rc::new(InhabitanceVerdict::Inhabits)
                                                 } else {
-                                                    if product_at_scalar_declared_type(
+                                                    if collection_versus_established_identity(
                                                         declared.clone(),
                                                         produced.clone(),
                                                         scope.clone(),
                                                     ) {
                                                         Rc::new(InhabitanceVerdict::InhabitanceRefused {
-    reason: InhabitanceRefusalReason::RefusedProductAtScalar,
+    reason: InhabitanceRefusalReason::RefusedCollectionAtEstablishedIdentity,
 })
                                                     } else {
-                                                        if product_versus_coproduct_head_mismatch(
+                                                        if product_at_scalar_declared_type(
                                                             declared.clone(),
                                                             produced.clone(),
                                                             scope.clone(),
                                                         ) {
                                                             Rc::new(InhabitanceVerdict::InhabitanceRefused {
-    reason: InhabitanceRefusalReason::RefusedProductCoproductHeadMismatch,
+    reason: InhabitanceRefusalReason::RefusedProductAtScalar,
 })
                                                         } else {
-                                                            match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
+                                                            if product_versus_coproduct_head_mismatch(declared.clone(), produced.clone(), scope.clone()) {
+                                                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
+    reason: InhabitanceRefusalReason::RefusedProductCoproductHeadMismatch,
+})
+                                                            } else {
+                                                                match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
     Some(RefinementInhabitance::RefinementWidensToDeclaredBase) => Rc::new(InhabitanceVerdict::Inhabits),
     Some(RefinementInhabitance::RefinementNarrowsToDeclaredBrand) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
     reason: InhabitanceUndecidableReason::UndecidableRefinementIntroduction,
@@ -6375,24 +6381,25 @@ pub fn declared_type_inhabitance(
     reason: InhabitanceUndecidableReason::UndecidableRefinementPeerChains,
 }),
     std::option::Option::None => if kernel_value_declared_type_mismatch(declared.clone(), produced.clone(), scope.type_env.clone(), source_indices.clone()) {
-                                                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
 })
-                                                            } else {
-                                                                if coproduct_payload_where_parent_required(declared.clone(), produced.clone(), scope.clone()) {
-                                                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                                } else {
+                                                                    if coproduct_payload_where_parent_required(declared.clone(), produced.clone(), scope.clone()) {
+                                                                        Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
 })
-                                                                } else {
-                                                                    match nominal_product_inhabitance_refusal(declared.clone(), produced.clone(), scope.clone()) {
+                                                                    } else {
+                                                                        match nominal_product_inhabitance_refusal(declared.clone(), produced.clone(), scope.clone()) {
     Some(r) => Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: r.clone(),
 }),
     std::option::Option::None => Rc::new(InhabitanceVerdict::Inhabits),
 }
-                                                                }
-                                                            },
+                                                                    }
+                                                                },
 }
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -6790,7 +6797,9 @@ pub fn nominal_product_inhabitance_refusal(
         {
             std::option::Option::None
         } else {
-            if (nominal_product_head_names_agree(
+            if (nominal_product_heads_agree(
+                declared.clone(),
+                produced.clone(),
                 declared_head.clone(),
                 produced_head.clone(),
                 scope.clone(),
@@ -7000,7 +7009,9 @@ pub fn nominal_coproduct_applied_argument_conflict(
         {
             false
         } else {
-            if (nominal_product_head_names_agree(
+            if (nominal_product_heads_agree(
+                declared.clone(),
+                produced.clone(),
                 declared_head.clone(),
                 produced_head.clone(),
                 scope.clone(),
@@ -7132,6 +7143,27 @@ pub fn nominal_coproduct_application_head_name(n: Rc<Node>, scope: Rc<InferScope
     }
 }
 
+pub fn nominal_product_heads_agree(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    declared_name: String,
+    produced_name: String,
+    scope: Rc<InferScope>,
+) -> bool {
+    (crate::v1_compiler_infer_types::alias_identity_in_judgment(
+        declared.clone(),
+        produced.clone(),
+        scope.type_env.clone().source_indices.clone(),
+        Rc::new(TextJudgment::TextJudgedIn {
+            env: scope.type_env.clone(),
+        }),
+    ) || nominal_product_head_names_agree(
+        declared_name.clone(),
+        produced_name.clone(),
+        scope.clone(),
+    ))
+}
+
 pub fn nominal_product_head_names_agree(
     declared_name: String,
     produced_name: String,
@@ -7241,7 +7273,9 @@ pub fn applied_type_argument_conflicts(
                 {
                     false
                 } else {
-                    (nominal_product_head_names_agree(
+                    (nominal_product_heads_agree(
+                        d.clone(),
+                        p.clone(),
                         d_name.clone(),
                         p_name.clone(),
                         scope.clone(),

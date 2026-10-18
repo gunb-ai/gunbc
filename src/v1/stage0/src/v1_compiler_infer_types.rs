@@ -22,6 +22,7 @@ use crate::std_coercion::SubtractionRefinement::{
     SubtractionEscapesTo, SubtractionRefinementAmbiguous, SubtractionStaysInOperandAlgebra,
 };
 pub use crate::std_coercion::{dag_subtraction_refinement, SubtractionRefinement};
+pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
@@ -2681,17 +2682,83 @@ pub fn alias_identity_in_judgment(
     }
 }
 
+pub fn applied_argument_opaque_identity(left: Rc<Node>, right: Rc<Node>) -> Option<bool> {
+    {
+        if (left.return_cardinality.clone() != right.return_cardinality.clone()) {
+            return Some(false);
+        }
+        match left.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::CompilerError { .. }) => Some(false),
+            Some(InferredNode::TypeVariable { id: left_id, .. }) => {
+                match right.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::TypeVariable { id: right_id, .. }) => {
+                        match left.declaration.clone() {
+                            Some(l) => match right.declaration.clone() {
+                                Some(r) => Some(crate::std_decl_ref::declaration_ref_eq(
+                                    l.clone(),
+                                    r.clone(),
+                                )),
+                                std::option::Option::None => Some(false),
+                            },
+                            std::option::Option::None => match right.declaration.clone() {
+                                Some(_) => Some(false),
+                                std::option::Option::None => {
+                                    Some((left_id.clone() == right_id.clone()))
+                                }
+                            },
+                        }
+                    }
+                    _ => Some(false),
+                }
+            }
+            _ => match right.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::CompilerError { .. }) => Some(false),
+                Some(InferredNode::TypeVariable { id: _, .. }) => Some(false),
+                _ => std::option::Option::None,
+            },
+        }
+    }
+}
+
 pub fn applied_argument_agrees(
     left: Rc<Node>,
     right: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     text: Rc<TextJudgment>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*text.clone()).clone() {
-            TextJudgment::TextJudgedIn { env: e, .. } => {
-                match crate::v1_compiler_infer_env::settled_type(
+    match applied_argument_opaque_identity(left.clone(), right.clone()) {
+        Some(verdict) => verdict.clone(),
+        std::option::Option::None => applied_argument_declared_agrees(
+            left.clone(),
+            right.clone(),
+            source_indices.clone(),
+            text.clone(),
+        ),
+    }
+}
+
+pub fn applied_argument_declared_agrees(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    match (*text.clone()).clone() {
+        TextJudgment::TextJudgedIn { env: e, .. } => {
+            match crate::v1_compiler_infer_env::settled_type(
+                left.clone(),
+                source_indices.clone(),
+                e.clone(),
+                16,
+            ) {
+                std::option::Option::None => node_type_compatible(
                     left.clone(),
+                    right.clone(),
+                    source_indices.clone(),
+                    text.clone(),
+                ),
+                Some(_) => match crate::v1_compiler_infer_env::settled_type(
+                    right.clone(),
                     source_indices.clone(),
                     e.clone(),
                     16,
@@ -2702,43 +2769,30 @@ pub fn applied_argument_agrees(
                         source_indices.clone(),
                         text.clone(),
                     ),
-                    Some(_) => match crate::v1_compiler_infer_env::settled_type(
+                    Some(_) => crate::v1_compiler_infer_env::alias_settled_agree(
+                        left.clone(),
                         right.clone(),
                         source_indices.clone(),
                         e.clone(),
-                        16,
-                    ) {
-                        std::option::Option::None => node_type_compatible(
-                            left.clone(),
-                            right.clone(),
-                            source_indices.clone(),
-                            text.clone(),
-                        ),
-                        Some(_) => crate::v1_compiler_infer_env::alias_settled_agree(
-                            left.clone(),
-                            right.clone(),
-                            source_indices.clone(),
-                            e.clone(),
-                            |a, b| {
-                                applied_argument_agrees(
-                                    child_type_node(a.clone()),
-                                    child_type_node(b.clone()),
-                                    source_indices.clone(),
-                                    text.clone(),
-                                )
-                            },
-                        ),
-                    },
-                }
+                        |a, b| {
+                            applied_argument_agrees(
+                                child_type_node(a.clone()),
+                                child_type_node(b.clone()),
+                                source_indices.clone(),
+                                text.clone(),
+                            )
+                        },
+                    ),
+                },
             }
-            TextJudgment::TextNotAsked { reason: _, .. } => node_type_compatible(
-                left.clone(),
-                right.clone(),
-                source_indices.clone(),
-                text.clone(),
-            ),
         }
-    })
+        TextJudgment::TextNotAsked { reason: _, .. } => node_type_compatible(
+            left.clone(),
+            right.clone(),
+            source_indices.clone(),
+            text.clone(),
+        ),
+    }
 }
 
 pub fn prefer_specific_type(

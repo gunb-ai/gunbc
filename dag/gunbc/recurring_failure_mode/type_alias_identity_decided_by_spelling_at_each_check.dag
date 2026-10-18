@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.type_alias_identity_decided_by_spelling_at_each_check
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data type_alias_identity_decided_by_spelling_at_each_check: RecurringFailureMode = RecurringFailureMode {
+  identity: "type_alias_identity_decided_by_spelling_at_each_check" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a type alias and its expansion are one type, yet each check that compares two types decided it separately. node_type_compatible compared spelled shape and took no symbol table; transparent_alias_identity_agrees was bolted on at individual call sites; the ExprIf join had none and refused an alias against its expansion. One-site patches in sequence: #13941 #14069 #13974 #14043 #14057, then #13939 added an Optional-specific identity leaf.",
+    "HARM: a lawful program refused at whichever check lacked the fallback (surfaced by a private-repo PR after #13939 changed Present{} typing), and the fix at the prompting site left every sibling refusing. Roughly 35 alias-peel helpers in v1 inference and 30 in the Rust emitter each answered the same question.",
+    "DISTINGUISHING FACTS: the alias-and-expansion pair pushed through every check (if, match arm, argument, record field, return, list element, nested container element, function type; bare and applied; alias of a primitive and of a record) in dag/test/claim/alias_identity_every_check_witness.dag is the census. A name seam keyed on a bare string cannot settle an alias the consuming module never imported (ParseTree = Node read through another module's record field); the settled identity must come from the node's carried declaration.",
+    "RUNG FOUND AT: mitigatable per site. CURRENT RUNG: structurally guaranteed in the v1 seed -- node_type_compatible settles both sides to a DeclarationRef (settled_type) and compares by declaration_ref_eq under a declared-arity rule, with the strict-identity REDs (type variables, error sides, cardinality) kept; v2 already has the single rule. CEILING: structurally guaranteed; decidable from the two declarations.",
+    "NEXT-RUNG TRIGGER: delete the remaining spelling-keyed peel helpers in 04_infer and 05_emit_rust once infer carries a declared-return alias's type application; the TextNotAsked callers (variant field summary, synthetic witness nodes) take an env or stay named residuals.",
+  ],
+  evidence: [
+    decl_ref(module_path: "v1.compiler.infer_env", decl_name: "alias_settled_agree"),
+    decl_ref(module_path: "v1.compiler.infer_types", decl_name: "alias_identity_in_judgment"),
+  ],
+}

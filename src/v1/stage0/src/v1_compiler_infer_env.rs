@@ -3575,7 +3575,7 @@ pub fn settled_type(
     fuel: i64,
 ) -> Option<Rc<SettledType>> {
     {
-        let reading = match n.declaration.clone() {
+        let read = match n.declaration.clone() {
             Some(dn) => Rc::new(
                 TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
                     declaration: dn.clone(),
@@ -3584,6 +3584,29 @@ pub fn settled_type(
             std::option::Option::None => {
                 type_reference_declaration_reading(n.clone(), source_indices.clone(), env.clone())
             }
+        };
+        let reading = match (*read.clone()).clone() {
+            TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => {
+                match v1_rt::map_get(
+                    &env.symbol_index.clone().file_modules.clone(),
+                    n.span.clone().file.clone(),
+                ) {
+                    Some(authoring) => match declaration_named_in_module(
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                        authoring.clone(),
+                        env.clone(),
+                    ) {
+                        Some(d) => Rc::new(
+                            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                                declaration: d.clone(),
+                            },
+                        ),
+                        std::option::Option::None => read.clone(),
+                    },
+                    std::option::Option::None => read.clone(),
+                }
+            }
+            _ => read.clone(),
         };
         match (*reading.clone()).clone() {
             TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
@@ -3736,11 +3759,93 @@ pub fn alias_rhs_of_declaration(
                 Some(item) => match transparent_alias_rhs(item.clone()) {
                     Some(rhs) => match rhs.declaration.clone() {
                         Some(_) => Some(rhs.clone()),
-                        std::option::Option::None => std::option::Option::None,
+                        std::option::Option::None => alias_rhs_with_index_identity(
+                            rhs.clone(),
+                            item_ref.module_path.clone(),
+                            env.clone(),
+                        ),
                     },
                     std::option::Option::None => std::option::Option::None,
                 },
             },
+        }
+    }
+}
+
+pub fn alias_rhs_with_index_identity(
+    rhs: Rc<Node>,
+    owner_module: String,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    {
+        let spelled = crate::v1_std_core::authored_name_at(env.source_indices.clone(), rhs.clone());
+        match declaration_named_in_module(spelled.clone(), owner_module.clone(), env.clone()) {
+            std::option::Option::None => std::option::Option::None,
+            Some(d) => Some(Rc::new(Node {
+                occurrence_identity: rhs.occurrence_identity.clone(),
+                name: rhs.name.clone(),
+                span: rhs.span.clone(),
+                ident_span: rhs.ident_span.clone(),
+                children: rhs.children.clone(),
+                connective: rhs.connective.clone(),
+                params: rhs.params.clone(),
+                inferred: rhs.inferred.clone(),
+                return_cardinality: rhs.return_cardinality.clone(),
+                uses: rhs.uses.clone(),
+                body: rhs.body.clone(),
+                transport: rhs.transport.clone(),
+                properties: rhs.properties.clone(),
+                type_annotation: rhs.type_annotation.clone(),
+                is_self_recursive: rhs.is_self_recursive.clone(),
+                has_non_tail_self_call: rhs.has_non_tail_self_call.clone(),
+                match_pattern: rhs.match_pattern.clone(),
+                module_item_kind: rhs.module_item_kind.clone(),
+                declaration_marker: rhs.declaration_marker.clone(),
+                declaration: Some(d.clone()),
+                expr_data: rhs.expr_data.clone(),
+                ident: None,
+            })),
+        }
+    }
+}
+
+pub fn declaration_named_in_module(
+    name: String,
+    module_path: String,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    if (name.clone() == "".to_string()) {
+        std::option::Option::None
+    } else {
+        if (qualified_all_but_last(name.clone()) != "".to_string()) {
+            match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                Some(_) => Some(crate::std_decl_ref::decl_ref(
+                    qualified_all_but_last(name.clone()),
+                    crate::v1_std_core::qualified_last_segment(name.clone()),
+                )),
+                std::option::Option::None => std::option::Option::None,
+            }
+        } else {
+            match symbol_index_named_import_source(
+                env.symbol_index.clone(),
+                module_path.clone(),
+                name.clone(),
+            ) {
+                Some(m) => Some(crate::std_decl_ref::decl_ref(m.clone(), name.clone())),
+                std::option::Option::None => match symbol_index_lookup(
+                    env.symbol_index.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(module_path.clone(), ".".to_string()),
+                        name.clone(),
+                    ),
+                ) {
+                    Some(_) => Some(crate::std_decl_ref::decl_ref(
+                        module_path.clone(),
+                        name.clone(),
+                    )),
+                    std::option::Option::None => std::option::Option::None,
+                },
+            }
         }
     }
 }
