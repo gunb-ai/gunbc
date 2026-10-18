@@ -328,7 +328,7 @@ pub fn service_methods_inside_class(spec: Rc<LanguageSpec>) -> bool {
 pub fn service_return_str(spec: Rc<LanguageSpec>, ret_type: String) -> String {
     match (*spec.service_return.clone()).clone() {
         ServiceReturnStrategy::ArrowReturn => {
-            v1_rt::concat(spec.items.clone().return_arrow.clone(), ret_type.clone())
+            v1_rt::concat(spec.items.return_arrow.clone(), ret_type.clone())
         }
         ServiceReturnStrategy::ErrorTupleReturn { error_type: et, .. } => v1_rt::concat(
             v1_rt::concat(
