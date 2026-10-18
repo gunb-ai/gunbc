@@ -126,7 +126,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { transparent_alias_rhs, alias_head_reaches, alias_rhs_head_of_declaration, type_names_settle_to_one_declaration, overlay_skips_kernel_name,
+import v1.compiler.infer_env { settled_type, transparent_alias_rhs, alias_head_reaches, alias_rhs_head_of_declaration, type_names_settle_to_one_declaration, overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -11275,7 +11275,13 @@ fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarati
   let spelling = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: n))
   let carried = declaration_carried_through_resolution(n: n, hops: 3)
   match carried {
-    Present { value: d } => if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+    Present { value: d } =>
+      // The declaration a reference carries is settled through any transparent alias (alias_settled_agree's own reading),
+      // so an alias of std Optional reads as Optional by the one relation instead of by a leaf of its own.
+      match settled_type(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env, fuel: 16) {
+        Present { value: settled } => if declaration_is_std_optional(d: settled.head) { IsStdOptional } else { IsOtherType }
+        Absent => if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+      }
     Absent => optional_reading_by_census(n: n, scope: scope, spelling: spelling)
   }
 }
