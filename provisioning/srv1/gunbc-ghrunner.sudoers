@@ -97,6 +97,7 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 00700 -o root -g root /etc/
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -m 0400 -o root -g root /var/lib/gunbc/fleet-converge/workspace-launch-srv1-13.json /etc/credstore/gunbc-workspace-srv1-13
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start gunbc-microvm-slot@srv1-13.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start gunbc-microvm-slot-reserve.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start gunbc-revision-job-runner@srv1-14.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 00755 -o briansrls -g briansrls /opt/actions-runner
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 00755 -o briansrls -g briansrls /opt/actions-runner-cache
