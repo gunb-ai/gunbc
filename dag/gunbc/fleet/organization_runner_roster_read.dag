@@ -777,9 +777,15 @@ fn organization_runner_roster_report(org: NonEmptyStr, page_size: PageSize) -> O
 // Link target: it pages by upstream's documented page/per_page offset
 // (docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api) and ends when
 // page * per_page reaches total_count. An offset walk over a population that changes between
-// requests can skip or repeat a row; classify_roster_walk is the guard that matters there, because
-// distinct ids must equal total_count and every page must agree on it, so a shifted listing is
-// RosterObservedPartial and never Observed.
+// requests can skip or repeat a row, and the classifier does NOT always detect it: it establishes a
+// CLOSED, CARDINALITY-CONSISTENT page walk (pages agree on total_count, no id was read with disagreeing
+// payloads, distinct ids equal total_count), nothing stronger. Counter-example, page size 1:
+// page 1 reads [A] of [A, B], then A is removed and C added, page 2 reads [C] of [B, C]; the walk
+// closes with two distinct ids and agreeing totals, Observed [A, C], and B was never read. The
+// concurrent-mutation limitation is therefore UNRESOLVED here and in the Link walk alike (both are
+// snapshots of nothing). What a caller may conclude is scoped by what it acts on: a registration it
+// selected and then confirmed absent by readback is absent; an UNREAD registration is not shown to be
+// absent or present by this read.
 fn nonempty_of(s: String) -> NonEmptyStr? {
   if s == "" { none } else { Present { value: s as NonEmptyStr } }
 }
