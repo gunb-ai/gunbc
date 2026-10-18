@@ -342,7 +342,6 @@ import gunbc.host.build_cache_daemon_ensure {
   build_cache_daemon_ensure_plan,
   build_cache_daemon_presence_command,
   build_cache_daemon_stats_command,
-  build_cache_ensure_fold_digest_line,
   build_cache_ensure_leg_verdict,
   build_cache_ensure_fold_is_progressing,
   build_cache_ensure_run,
@@ -3937,35 +3936,33 @@ fn build_cache_ensure_executed(
           ops: prefix,
           unit_bytes: unit_bytes,
           transport: transport,
+          plan: ops,
+          digest: digest,
         )
+        // ONE DECISION SITE, NOT TWO. Pass two used to consult the gate here, over the line the fold carried
+        // back, and so said nothing new -- but a second site consulting the same authority is still a site, and
+        // the thing that keeps `build_cache_ensure_run` authoritative is that there is exactly one place a read
+        // line is turned into permission or refusal. That place is now the pure step, at the leg where the host
+        // answered, which both this loop and the witness fold call. What is left here is not a gate: it is
+        // "some prefix leg stopped the sequence, so pass two does not run", which is about the SEQUENCE and is
+        // read off the carrier rather than re-derived.
         let outcome =
           if !build_cache_ensure_fold_is_progressing(fold_state: first) {
-            // A leg of the prefix itself stopped the sequence — a fetch that could not download, a read
-            // that could not hash the file. That arm names the operation and the host's own capture, and
-            // pass two does not run.
+            // A leg of the prefix itself stopped the sequence — a fetch that could not download, a read that
+            // could not hash the file, or the read answering with a digest that is not the pinned one. The arm
+            // names the operation and carries the host's own capture or both digests, and pass two does not
+            // run, so there is no extraction, no move into /usr/local/bin and no chmod.
             first.executed
           } else {
-            match build_cache_ensure_run(
-              ops: ops,
+            let rest = build_cache_plan_remainder(all: ops, already_run: list_length(items: prefix))
+            build_cache_run_ensure_ops(
+              state: first,
+              ops: rest,
+              unit_bytes: unit_bytes,
+              transport: transport,
+              plan: ops,
               digest: digest,
-              observed_digest_line: build_cache_ensure_fold_digest_line(fold_state: first),
-            ) {
-              // THE GATE REFUSED: the line the read produced does not match the pinned release. This is
-              // reported and NOTHING AFTER THE READ RUNS — no extraction, no move into /usr/local/bin, no
-              // chmod — and the refusal carried both digests. The legs permitted here are exactly the ones
-              // pass one already ran, so this arm is not merely a report bolted onto a sequence that
-              // installed anyway.
-              RefusedBeforeInstall { legs: _, op: gate, refusal: why } => EnsureDigestRefused { op: gate, refusal: why }
-              Runs { legs: legs } => {
-                let rest = build_cache_plan_remainder(all: legs, already_run: list_length(items: prefix))
-                build_cache_run_ensure_ops(
-                  state: first,
-                  ops: rest,
-                  unit_bytes: unit_bytes,
-                  transport: transport,
-                ).executed
-              }
-            }
+            ).executed
           }
         let _ = run_argv_over_host_effect_transport(command: discard, transport: transport)
         outcome
@@ -3993,6 +3990,8 @@ fn build_cache_run_ensure_ops(
   ops: List<BuildCacheEnsureOp>,
   unit_bytes: String,
   transport: HostEffectTransport,
+  plan: List<BuildCacheEnsureOp>,
+  digest: Digest,
 ) -> BuildCacheEnsureFold {
   fold(
     ops,
@@ -4013,12 +4012,68 @@ fn build_cache_run_ensure_ops(
             stdin_payload: unit_bytes,
             transport: transport,
           ),
+          plan: plan,
+          digest: digest,
         )
       } else {
         build_cache_fold_op_executed(
           acc: acc,
           op: op,
           ran: run_argv_over_host_effect_transport(command: op.argv, transport: transport),
+          plan: plan,
+          digest: digest,
+        )
+      },
+  )
+}
+
+// ONE LEG, AS THE HOST ANSWERED IT: the operation the effect offered, and what came back. A record rather
+// than a tuple because this grammar has no tuple patterns, and a RECORD rather than two parallel lists
+// because a fold over two lists that might differ in length is exactly the kind of thing that goes quietly
+// wrong -- with this shape, a leg with no outcome is simply absent, and an absent leg never runs.
+type BuildCacheEnsureSuppliedOutcome {
+  op: BuildCacheEnsureOp
+  ran: RunArgvTransportOutcome
+}
+
+// THE SAME SEQUENCE, DECIDED WITHOUT A TRANSPORT -- the split realize_live_deploy_ensure_dependency_on_host
+// (#14174) landed for the same reason. `build_cache_run_ensure_ops` is the loop that ACTUATES: it asks a
+// transport for each leg. This is that sequence with the asking taken out; the outcomes are handed in and
+// every rule is the same pure step the loop calls, so the two cannot hold different rules about what stops
+// an ensure. It exists because the digest gate has to be testable at all: a fetch that succeeded and a read
+// that reported a digest which is not the pinned one is a host state a witness can describe perfectly well,
+// and there is no reason it should be reachable only by downloading something -- the mock arm of shell.Exec
+// was deleted by operator ruling 2026-08-23, so "supply the outcome" is the ONLY hermetic route to a leg
+// that ran and answered. It actuates nothing: no transport, no host, no file, and it is not a second path
+// beside the modeled route -- the loop above calls the very same `build_cache_fold_op_executed`.
+//
+// A SHORTER SUPPLIED LIST IS NOT A SUCCESS: the fold stops where outcomes run out, so a claim can supply the
+// two prefix legs and show that no install leg was reached. That asymmetry is the question the gate exists
+// to answer, and it is why "no outcome" is absent rather than zero-exit.
+fn build_cache_fold_ensure_ops_with_outcomes(
+  state: BuildCacheEnsureFold,
+  plan: List<BuildCacheEnsureOp>,
+  digest: Digest,
+  supplied: List<BuildCacheEnsureSuppliedOutcome>,
+) -> BuildCacheEnsureFold {
+  fold(
+    supplied,
+    init: state,
+    f: (acc, given) =>
+      // THE CARRIER DECIDES, at every step. Delegating this to the pure step alone would still be correct,
+      // but the sequence's own guard is what makes "nothing after a stopped leg" visible in the loop that
+      // reads like the loop the transport runs.
+      // ONE RULE, SHARED: the step below is the same step the transport loop calls. Nothing here decides
+      // anything of its own, which is the entire reason these witnesses are about the real route.
+      if !build_cache_ensure_fold_is_progressing(fold_state: acc) {
+        acc
+      } else {
+        build_cache_fold_op_executed(
+          acc: acc,
+          op: given.op,
+          ran: given.ran,
+          plan: plan,
+          digest: digest,
         )
       },
   )
@@ -4029,7 +4084,21 @@ fn build_cache_run_ensure_ops(
 // leg's DECLARED kind, so the second pass is decided by a pure fn over a recorded observation rather than
 // by an if buried in the loop. A leg of any other kind leaves the line untouched — inventing a digest line
 // from a fetch or a chmod would be the same silent default this effect removes.
-fn build_cache_fold_op_executed(acc: BuildCacheEnsureFold, op: BuildCacheEnsureOp, ran: RunArgvTransportOutcome) -> BuildCacheEnsureFold {
+fn build_cache_fold_op_executed(
+  acc: BuildCacheEnsureFold,
+  op: BuildCacheEnsureOp,
+  ran: RunArgvTransportOutcome,
+  plan: List<BuildCacheEnsureOp>,
+  digest: Digest,
+) -> BuildCacheEnsureFold {
+  // NO GUARD HERE, DELIBERATELY. "A leg has stopped the sequence, so this leg does not happen" is a rule about
+  // the SEQUENCE, and it is asked once by each route that walks one -- by `build_cache_run_ensure_ops` before
+  // it starts a transport, and by `build_cache_fold_ensure_ops_with_outcomes` before it applies a supplied
+  // answer. Both ask the same predicate, `build_cache_ensure_fold_is_progressing`; a third copy inside the step
+  // would be redundancy of exactly the kind DESIGN 3 is about, and it would also make the routes untestable
+  // against each other, because mutating one route's guard would be silently covered by the step and no claim
+  // could tell. What lives HERE is only what a leg's own answer means, which is why the digest gate is below:
+  // it is a rule about an ANSWER, not about a sequence.
   match ran {
     RunArgvTransportRefused { reason: r } =>
       BuildCacheEnsureFold {
@@ -4050,9 +4119,22 @@ fn build_cache_fold_op_executed(acc: BuildCacheEnsureFold, op: BuildCacheEnsureO
           BuildCacheEnsureFold { executed: stopped, digest_line: acc.digest_line }
         LegPassed =>
           if op.kind == ReadDigest {
-            BuildCacheEnsureFold {
-              executed: EnsureCompleted,
-              digest_line: Present { value: o.stdout },
+            // THE DIGEST GATE, AT THE POINT THE READ ANSWERED, AND IN THE ONE PLACE BOTH ROUTES PASS THROUGH.
+            // The line the host printed is not itself permission: it is handed to `build_cache_ensure_run`, the
+            // single authority in the module that owns this effect, and that authority either admits the rest
+            // of the plan or refuses it carrying both digests. Repeating its rule here would be the DESIGN 3
+            // defect this lane exists to remove -- a second copy could pass every witness while the route that
+            // runs disagreed -- so this site asks, and acts. Keeping it HERE rather than in the loop or in the
+            // executor's pass boundary is what makes the decision auditable dry: a claim can hand the fold a
+            // successful fetch, a read that answered with the wrong digest, and every install leg succeeding,
+            // and still see that no install leg was reached.
+            let read_line = Present { value: o.stdout }
+            match build_cache_ensure_run(ops: plan, digest: digest, observed_digest_line: read_line) {
+              Runs { legs: _ } => BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: read_line }
+              RefusedBeforeInstall { legs: _, op: gate, refusal: why } => BuildCacheEnsureFold {
+                executed: EnsureDigestRefused { op: gate, refusal: why },
+                digest_line: read_line,
+              }
             }
           } else {
             BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: acc.digest_line }

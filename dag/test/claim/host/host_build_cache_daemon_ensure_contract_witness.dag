@@ -70,7 +70,14 @@ import gunbc.host.host_effect {
   HostEffectTransport,
   ThinInvocation,
 }
-import gunbc.host.host_effect_realize { build_cache_run_ensure_ops }
+import gunbc.host.host_effect_realize {
+  BuildCacheEnsureSuppliedOutcome,
+  RunArgvTransportObserved,
+  RunArgvTransportRefused,
+  ShellExecObserved,
+  build_cache_fold_ensure_ops_with_outcomes,
+  build_cache_run_ensure_ops,
+}
 import gunbc.host.verified_binary_install { AlreadyInstalled, InstallNeeded, VerifiedBinaryInstallPresence }
 import gunbc.shell_command_text { shell_command_text_of_argv }
 import extdeps.exec.command { argv_words }
@@ -815,30 +822,182 @@ test fn a_digest_that_was_never_read_never_admits_an_install_leg() -> Bool {
 }
 
 // --------------------------------------------------------------------------------
-// THE EXECUTING PAIRING FOR THE DIGEST GATE (stern-bat-401, item 5).
+// THE DRY FOLD'S INPUTS, SUPPLIED. Mirrors what `live_deploy_ensure_package_legs` does for the #14174
+// effect: the legs come from the REAL plan (never hand-written, so a plan that loses its fetch leg cannot be
+// papered over here), the outcomes come from the claim, and the thing that decides is the production fold.
 //
-// WHY THIS IS HERE AT ALL. Everything above decides what the plan PERMITS; none of it opens a transport.
-// DESIGN's interface/realization/policy rule asks that a policy decision be witnessed on the route that
-// ACTUATES it too, so deleting the integration between the gate and the sequence that runs must turn
-// something red. These two claims are that pairing.
+// WHICH LEG ANSWERED WHAT IS NOT HARD-CODED. The fold branches on the leg's declared kind, so each leg is
+// given an outcome by its own kind: the read answers with `line` (or nothing, for the never-read case) and
+// every other leg answers exit 0. That is the whole point of the pairing -- the install legs are supplied as
+// SUCCESSES. A fold that reached them would report them completed; the only thing that can keep the terminal
+// arm off EnsureCompleted is the gate refusing, which is why these claims are a check on the gate and not on
+// whether the host happened to be reachable.
+fn build_cache_contract_outcome(op: BuildCacheEnsureOp, line: Optional<String>) -> BuildCacheEnsureSuppliedOutcome {
+  BuildCacheEnsureSuppliedOutcome {
+    op: op,
+    ran: RunArgvTransportObserved {
+      observed: ShellExecObserved {
+        exit_code: 0,
+        success: true,
+        stdout: match op.kind {
+          // THE ONLY LEG WHOSE ANSWER MATTERS. An empty answer stands for "the read ran and printed nothing",
+          // which is the unread case; a supplied line stands for a host that printed a digest.
+          ReadDigest => match line { Present { value: read } => read  Absent => "" }
+          _ => ""
+        },
+        stderr: "",
+      },
+    },
+  }
+}
+
+fn build_cache_contract_dry_fold(ops: List<BuildCacheEnsureOp>, line: Optional<String>) -> BuildCacheEnsureFold {
+  build_cache_fold_ensure_ops_with_outcomes(
+    state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+    plan: ops,
+    digest: sccache_release_0_15_0.digest_x86_64,
+    supplied: fold(
+      ops,
+      init: [],
+      f: (acc, op) => append(acc, items: [build_cache_contract_outcome(op: op, line: line)]),
+    ),
+  )
+}
+
+// --------------------------------------------------------------------------------
+// THE DRY-FOLD PAIRING (stern-bat-401 item 5, closed the way #14174 closed it).
 //
-// WHAT THEY CANNOT DO, STATED RATHER THAN PAPERED OVER. The full executor
-// `gunbc.host.host_effect_realize.build_cache_ensure_executed` cannot be driven hermetically from a claim:
-// its first act is to run the fetch through `run_argv_over_host_effect_transport`, and that function has NO
-// mock arm — `shell.Exec.RunArgv` is a real execution, and the mock arm was deleted by operator ruling
-// 2026-08-23 (see the comment above `shell.Exec` in dag/extdeps/shell/exec.dag: a mock "allows production
-// callers to silently get hermetic simulated results"). The only transport arm that refuses without
-// touching anything is `EmitArtifactThenThinRun`, so a hermetic fold stops at LEG ONE — before the read,
-// before the digest line exists, and therefore before the gate can be consulted. That is why the fold is
-// driven directly here rather than the executor, and why a claim of the form "the executor refused to
-// install on a mismatch" is NOT shipped: it would be true only because nothing could run at all, which is
-// the silent default this lane exists to remove. What covers the executor's gate instead is measured and
-// reported in the PR body, and it is asserted at the seam the executor itself calls — the fold's stop rule.
+// WHAT WAS ADDED TO PRODUCTION TO MAKE THIS POSSIBLE, and why it is not a second path. The transport loop
+// `build_cache_run_ensure_ops` asks a transport for each leg, and the decision about what a leg's answer MEANS
+// was already a pure step (`build_cache_fold_op_executed`); but the set-e guard sat in the LOOP and the digest
+// gate sat in the EXECUTOR between its two passes, so that pair could only be observed by executing. Both
+// rules now live in one pure sequence fold, `build_cache_fold_ensure_ops_with_outcomes`, which the loop and
+// these claims share: the guard consults the carrier (the same carrier the loop consults before starting a
+// leg), and at the read leg the fold ASKS `build_cache_ensure_run` -- the single authority that turns a read
+// line into permission or refusal, unchanged -- instead of restating it. Restating it would have been the
+// exact defect DESIGN 3 exists to prevent, and a fold that restated it could pass every claim here while the
+// route that runs disagreed.
+//
+// THE SENTENCE THIS REPLACES. An earlier revision of this module said the executor could not be driven from a
+// claim at all, because its first leg needs a transport and shell.Exec has no mock arm (deleted by operator
+// ruling 2026-08-23). That was true of the LOOP, and it was where I stopped; it was the wrong stopping point,
+// because the question was never "can a leg run" but "can the decision be reached", and a decision needs the
+// host's ANSWERS, which a claim can hand over. The loop still owns actuation, and it still refuses to start a
+// leg after one has stopped -- what moved is where the rule saying so is kept.
 // --------------------------------------------------------------------------------
 
-data ensure_refusal_transport: HostEffectTransport = EmitArtifactThenThinRun {
-  bootstrap: BootstrapFragment { script: "true" },
-  invocation: ThinInvocation { argv: ["true"] },
+test fn a_supplied_digest_mismatch_stops_the_fold_before_any_install_leg() -> Bool {
+  // THE RED stern-bat-401 asked for. Every leg is handed to the fold as a SUCCESSFUL answer -- fetch ok, read
+  // ok printing a digest that is NOT the pinned one, every install leg ok, every unit leg ok -- and the fold
+  // must still refuse and must still have reached nothing installable. Supplying the install legs as successes
+  // is what makes this a check on the GATE rather than on reachability: there is no "the host never got that
+  // far" to hide behind, and with the gate deleted from the fold the identical inputs come back
+  // EnsureCompleted. That deletion is mutation D9, executed, not asserted.
+  let ops = build_cache_contract_install_plan()
+  let mismatch = "0000000000000000000000000000000000000000000000000000000000000000  /tmp/sccache-download/sccache"
+  match build_cache_contract_dry_fold(ops: ops, line: Present { value: mismatch }).executed {
+    EnsureDigestRefused { op: gate, refusal: why } =>
+      // THE GATE IS THE READ ITSELF, and the refusal carries BOTH digests: what was pinned and what the host
+      // said. A refusal that drops either one cannot be acted on by whoever reads the report.
+      gate.kind == ReadDigest
+        && match why {
+             DigestRefused { reason: why_text, expected_hex: expected, observed_line: read } =>
+               string_contains(s: why_text, pattern: "digest")
+                 && expected == sccache_release_0_15_0.digest_x86_64.hex as String
+                 && string_contains(s: read, pattern: "0000000000000000000000000000000000000000000000000000000000000000")
+           }
+    // EVERY OTHER ARM IS A FAIL-OPEN HERE. EnsureCompleted is the mutation's signature; a transport arm would
+    // mean the fold reached for something outside its inputs, which it must never do.
+    EnsureCompleted => false
+    EnsureSkipped => false
+    EnsurePlanRefused { reason: _ } => false
+    EnsureFailed { op: _, observed: _ } => false
+    EnsureTransportBlocked { op: _, reason: _ } => false
+  }
+}
+
+test fn a_supplied_matching_digest_lets_the_fold_reach_every_leg() -> Bool {
+  // THE CONTROL THAT MAKES THE CLAIM ABOVE MEAN SOMETHING. Same plan, same fold, same all-success answers; the
+  // only input that changes is the line the read printed, and this time it IS the pinned digest. Now every leg
+  // must be reached and the terminal arm must be completion. Without this, the mismatch claim could be
+  // satisfied by a fold that refuses EVERYTHING -- the failure mode this lane's earlier review called out, and
+  // the reason a RED is never reported without its green twin.
+  let ops = build_cache_contract_install_plan()
+  let matched = sccache_release_0_15_0.digest_x86_64.hex as String
+    + "  /tmp/sccache-download/sccache"
+  match build_cache_contract_dry_fold(ops: ops, line: Present { value: matched }).executed {
+    EnsureCompleted => list_length(items: ops) > 2
+    // A refusal on a MATCHING digest is not conservative, it is a broken comparator: the operator gets a host
+    // that never receives its cache and a reason text that blames the host for it.
+    EnsureDigestRefused { op: _, refusal: _ } => false
+    EnsureSkipped => false
+    EnsurePlanRefused { reason: _ } => false
+    EnsureFailed { op: _, observed: _ } => false
+    EnsureTransportBlocked { op: _, reason: _ } => false
+  }
+}
+
+test fn the_transport_loop_and_the_dry_fold_reach_the_same_verdict_on_the_same_answers() -> Bool {
+  // THE INHABITANCE PAIRING: these claims are about the route that ACTUATES, not a copy of it. The dry fold and
+  // the transport loop must not be free to disagree about what identical answers mean, so each is given the
+  // same situation -- every leg answered by a refusal, for the same reason -- and the two must land on the same
+  // arm, the same leg, and the reason they were handed rather than one each invented. The loop half really is
+  // the loop: it runs against `ensure_refusal_transport`, the one transport arm that refuses without touching
+  // anything, so this is hermetic without being a second implementation.
+  //
+  // WHAT IT CATCHES: the loop delegating its own way again -- step logic reintroduced beside the fold rather
+  // than calling it -- drifts the two halves and this refuses. WHAT IT DOES NOT CATCH, STATED: the executor's
+  // own two-pass sequencing sits behind a transport that cannot run here, so a deleted integration there is
+  // covered by the D5 mutation on the loop's stop guard, not by this claim.
+  let ops = build_cache_contract_install_plan()
+  let reason = "both halves must say the same thing"
+  let via_loop = build_cache_run_ensure_ops(
+    state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+    ops: ops,
+    unit_bytes: "",
+    transport: ensure_refusal_transport,
+    plan: ops,
+    digest: sccache_release_0_15_0.digest_x86_64,
+  )
+  let via_fold = build_cache_fold_ensure_ops_with_outcomes(
+    state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+    plan: ops,
+    digest: sccache_release_0_15_0.digest_x86_64,
+    supplied: fold(
+      ops,
+      init: [],
+      f: (acc, op) =>
+        append(acc, items: [BuildCacheEnsureSuppliedOutcome {
+          op: op,
+          ran: RunArgvTransportRefused { reason: reason },
+        }]),
+    ),
+  )
+  match via_loop.executed {
+    EnsureTransportBlocked { op: loop_op, reason: loop_reason } =>
+      match via_fold.executed {
+        EnsureTransportBlocked { op: fold_op, reason: fold_reason } =>
+          // SAME LEG, and each side's reason is the one it was GIVEN: the fold got `reason`, the loop got the
+          // transport's own text. Neither is free to invent one, which is what the arm's shape is for -- a
+          // pass-through that a later edit could replace with a canned string is exactly the silent default
+          // this pairing is here to catch.
+          loop_op.kind == fold_op.kind
+            && fold_reason == reason
+            && string_contains(s: loop_reason, pattern: "EmitArtifactThenThinRun")
+        // A different verdict on identical answers: the two routes have drifted apart.
+        EnsureCompleted => false
+        EnsureSkipped => false
+        EnsurePlanRefused { reason: _ } => false
+        EnsureFailed { op: _, observed: _ } => false
+        EnsureDigestRefused { op: _, refusal: _ } => false
+      }
+    // The loop did not stop at the first refusal, so there is nothing to compare it against.
+    EnsureCompleted => false
+    EnsureSkipped => false
+    EnsurePlanRefused { reason: _ } => false
+    EnsureFailed { op: _, observed: _ } => false
+    EnsureDigestRefused { op: _, refusal: _ } => false
+  }
 }
 
 test fn the_fold_runs_no_leg_after_a_leg_has_stopped_the_sequence() -> Bool {
@@ -858,6 +1017,10 @@ test fn the_fold_runs_no_leg_after_a_leg_has_stopped_the_sequence() -> Bool {
     ops: ops,
     unit_bytes: "",
     transport: ensure_refusal_transport,
+    // THE LOOP ASKS THE SAME TWO QUESTIONS THE DRY FOLD IS ASKED: which plan, and against which pinned
+    // release. Passing them is not bookkeeping -- it is what makes the loop and the fold comparable at all.
+    plan: ops,
+    digest: sccache_release_0_15_0.digest_x86_64,
   )
   // There has to BE a later leg for this to mean anything.
   list_length(items: ops) > 1
