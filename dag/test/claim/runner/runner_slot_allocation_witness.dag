@@ -138,7 +138,7 @@ test fn srv1_runner_host_deploy_count_is_the_derived_width() -> Bool {
   match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
     RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
     RunnerHostDeployAdmitted { deploy } =>
-      deploy.runner_count == 3
+      deploy.runner_count == 4
         && deploy.runner_count == host_memory_admitted_width(host: operator_host_srv1)
   }
 }
@@ -624,7 +624,7 @@ test fn the_fabric_members_are_authored_identities_not_a_top_index_rule() -> Boo
     && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv4), k: n => n == 2)
     && srv1_microvm_shakedown_slot().slot_index == 13
     && (srv1_microvm_shakedown_slot().host as String) == (operator_host_srv1 as String)
-    && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv1), k: n => n == 1)
+    && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv1), k: n => n == 2)
     && resolution_is_unresolved(r: host_fabric_slot_count(host: operator_host_srv2))
 }
 
@@ -750,9 +750,11 @@ test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> 
   match gunbc_runner_committed_width(host: operator_host_srv1) {
     RunnerWidthUnresolved { cause: _ } => false
     RunnerWidthDerived { slots: w } =>
-      srv1_membership_is(slot_index: 13, expect_member: true, expect_fabric: true)
-        && srv1_membership_is(slot_index: w - 1, expect_member: true, expect_fabric: false)
-        && srv1_membership_is(slot_index: w, expect_member: false, expect_fabric: false)
+      w == 4
+        && srv1_membership_is(slot_index: 13, expect_member: true, expect_fabric: true)
+        && srv1_membership_is(slot_index: 14, expect_member: true, expect_fabric: true)
+        && srv1_membership_is(slot_index: w - 2, expect_member: true, expect_fabric: false)
+        && srv1_membership_is(slot_index: w - 1, expect_member: false, expect_fabric: false)
   }
 }
 

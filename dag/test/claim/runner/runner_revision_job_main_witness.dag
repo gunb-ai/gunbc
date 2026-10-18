@@ -23,7 +23,7 @@ fn run(text: String, slot: String) -> String {
 
 test fn the_job_refuses_a_malformed_spec_and_an_undeclared_slot_before_any_effect() -> Bool {
   run(text: "not json", slot: "srv1-14") == "spec-not-admitted"
-    && run(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: ""), slot: "srv1-14") == "slot-not-declared:srv1-14"
+    && run(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: ""), slot: "srv1-15") == "slot-not-declared:srv1-15"
     && run(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: ""), slot: "srv1-13") == "slot-not-declared:srv1-13"
 }
 
