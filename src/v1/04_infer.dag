@@ -14893,21 +14893,29 @@ fn generic_type_unify_unfold(n: Node, text: TextJudgment, depth: Int, source_ind
   }
 }
 
-// The alias peel, measured rather than assumed. peel_alias_rhs_once (v1.compiler.types,
-// src/v1/04_types.dag:995) is the corpus's ONE authority for 'what does this spelling denote',
-// and the field it reads is DEAD: all 52 TypeBinding producers in v1.compiler.infer and
-// v1.compiler.env set 'alias_rhs: none' (the four other occurrences merely copy the field from a
-// binding that is itself none), so peel's Present arm is unreachable and it returns the node
-// unchanged for EVERY alias. Measured consequence at the regenerated head: the accept control
-// same_arm_alias_and_its_applied_expansion_is_accepted -- a childless 'QualifiedName' against
-// 'FreeMonoid<Symbol>', in a module declaring 'type QualifiedName = FreeMonoid<Symbol>'
-// (src/v1/tests/src/cross_coproduct_generic_locate_test.rs:255) -- FAILED while node_type_equals
-// was the relation, because nothing ever peeled the alias to its right-hand side.
+// The alias peel, measured rather than assumed -- and its justification CORRECTED once.
 //
-// So this peel puts the SAME question to the SAME authority and reads the field that IS
-// populated: TypeBinding.resolved, set by every producer to the binding's own type. That is not
+// I first wrote here that peel_alias_rhs_once (v1.compiler.types, src/v1/04_types.dag:995) reads a
+// DEAD field: "all 52 TypeBinding producers set alias_rhs: none", hence an unreachable Present arm.
+// THAT WAS WRONG, and the error was a method error, not a typo: I counted with `grep -c`, which
+// counts LINES NOT OCCURRENCES, and I censored the matches whose line did not literally contain
+// 'TypeBinding::new' as a zero-dispatch join. Measured properly, a full-tree scan gives 50
+// constructions of TypeBinding, of which 40 set none, 8 PROPAGATE the field from another binding,
+// and 2 are origins -- alias_rhs_reference, which can and does return Present. The field has
+// exactly one reader, peel_alias_rhs_once. So the Present arm is REACHABLE, and the item this
+// belonged to is "is alias_rhs reachable from a fold-visible module", which is still open and is NOT
+// "delete the field". The consequence I claimed as evidence (that the then-accept control for an
+// alias against its own applied expansion failed BECAUSE of the dead field) is therefore also
+// withdrawn: that row no longer isolates this question at all, having been inverted to assert
+// REFUSAL under stern-bat-401's ruling (msg_ad1a90c2) once #14256 @ 740eac5d64 deleted the mixed
+// application-vs-non-application acceptance -- it now refuses at the type authority for a different
+// reason, so it cannot witness for or against the peel.
+//
+// WHAT STILL SUPPORTS THIS PEEL, and it is a weaker and truer claim than the one above: it puts the
+// SAME question to the SAME authority and reads the field that is populated on EVERY producer,
+// TypeBinding.resolved, rather than the one that is populated on TWO. That is not
 // a second meaning route (DESIGN section 3) -- peel_alias_rhs_once already performs exactly this
-// lookup_binding_by_name(env, authored_name_at(n)) and only asks the dead field, so reading the
+// lookup_binding_by_name(env, authored_name_at(n)) and only asks the rarer field, so reading the
 // live one through the same lookup cannot let a local alias shadow an imported one any more than
 // that lookup already can. The shadowing defect review 80660 finding 1 named lives in the lookup
 // itself, which is reused unchanged rather than reimplemented.

@@ -233,30 +233,48 @@ fn same_arm_string_and_free_monoid_int_still_refuses() {
 }
 
 #[test]
-fn same_arm_bare_head_and_its_application_is_accepted() {
-    // The CI class: 'Outcome' (unapplied head) against 'Outcome<Int>' (the same carrier,
-    // applied). node_type_equals has no arm relating head to application (measured).
+fn same_arm_bare_head_and_its_application_refuses() {
+    // INVERTED FROM AN ACCEPT LOCK, per stern-bat-401 (msg_ad1a90c2, 2026-10-18): "a test asserting
+    // acceptance that FLIPS when #14256 lands becomes a red that asserts obsolete behaviour. Don't keep
+    // it as a lock. Once #14256 is on your base, invert it to assert REFUSAL (matching the current
+    // authority) or delete it."
+    //
+    // It was green on the pre-S0 base and went red the moment S0 landed on main as cca99de010f: its last
+    // mixed application-vs-non-application acceptance is deleted at 740eac5d64, so 'Outcome' (bare head)
+    // and 'Outcome<Int>' (applied) are now two spellings that node_type_equals_core refuses. Measured at
+    // config A of the A/B at this base (suite 27 passed / 3 failed), which is what makes this an
+    // OBSOLETENESS record rather than an assertion about my fold: the refusal comes from the type
+    // authority, NOT from the arms this PR adds. If anyone restores a head-vs-application acceptance at
+    // the authority, this row goes red and says so.
     let msgs = blocking_messages(
         "module locate.head\ntype Outcome<T>\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe(o: Outcome, oi: Outcome<Int>) -> Bool { same_arm(a: o, b: oi) }\n",
     );
     assert!(
-        !has_generic_rebind(&msgs),
-        "a bare carrier head must unify with an application of the same carrier: {msgs:?}"
+        has_generic_rebind(&msgs),
+        "a bare carrier head against an application of the same carrier must refuse at the current \
+         authority (#14256 @ 740eac5d64 deleted the mixed-spelling acceptance): {msgs:?}"
     );
 }
 
 #[test]
-fn same_arm_alias_and_its_applied_expansion_is_accepted() {
-    // Coproduct(FreeMonoid) vs FreeMonoid<X> class, spelled as the corpus spells it: an
-    // alias whose right-hand side is APPLIED. The equality's alias arm unfolds only an
-    // UNAPPLIED spelling, so the alias never reached a comparable pair (measured:
-    // 'Node(QualifiedName<Symbol>)' vs 'UnresolvedDecl(FreeMonoid<Symbol>)').
+fn same_arm_alias_and_its_applied_expansion_refuses() {
+    // INVERTED FROM AN ACCEPT LOCK for the same reason, and by the same ruling (msg_ad1a90c2): green on
+    // the pre-S0 base, red from cca99de010f on.
+    //
+    // Coproduct(FreeMonoid) vs FreeMonoid<X> class, spelled as the corpus spells it: an alias whose
+    // right-hand side is APPLIED. The equality's alias arm unfolds only an UNAPPLIED spelling, so the
+    // alias never reaches a comparable pair (measured: 'Node(QualifiedName<Symbol>)' vs
+    // 'UnresolvedDecl(FreeMonoid<Symbol>)'), and #14256 does not rely on alias peeling either. So this
+    // row refuses at the current authority; it is NOT evidence about my fold, and the fold-decl control
+    // (fold_replaces_a_binding_that_is_the_generic_declarations_own_form) is where acceptance is carried.
+    // Its twin same_arm_alias_and_foreign_expansion_still_refuses covers the different-expansion case.
     let msgs = blocking_messages(
         "module locate.alias\ntype Symbol\ntype QualifiedName = FreeMonoid<Symbol>\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe(q: QualifiedName, f: FreeMonoid<Symbol>) -> Bool { same_arm(a: q, b: f) }\n",
     );
     assert!(
-        !has_generic_rebind(&msgs),
-        "an alias must unify with its own applied expansion: {msgs:?}"
+        has_generic_rebind(&msgs),
+        "an alias against its own APPLIED expansion must refuse: the equality's alias arm unfolds only an \
+         unapplied spelling, and #14256 does not rely on alias peeling: {msgs:?}"
     );
 }
 
