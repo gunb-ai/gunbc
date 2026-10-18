@@ -11,13 +11,11 @@ pub use crate::gunbc_namespace_cut_reference_derived_candidate::{ReferenceDerive
 pub use crate::std_types::{SourceSpan};
 pub use crate::v1_compiler_compile::{SourceFile, compile_to_resolved};
 pub use crate::v1_compiler_emit_rust::{reference_derived_row_diagnostics, ReferenceDerivedCensus, reference_derived_candidate_disposition, reference_derived_disposition_name, reference_derived_census, emit_rust_reference_derived_rows, emit_rust_reference_derived_census, build_module_index};
-pub use crate::v1_compiler_infer_emit_info::{FieldClone};
 pub use crate::v1_compiler_infer_emit_info::{TypeSummary, TypeSummaryIndex, empty_emit_graph_info, empty_type_summary_index, type_summary_index_insert, TypeRepr};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind};
 pub use crate::v1_std_core::{ErrorNode, no_span, diagnostic_to_message, is_error_diagnostic};
 pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex};
 use crate::gunbc_namespace_cut_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{CandidateSurvived, CandidateOwnModule, CandidateRegistryAbsent, CandidateExportProofFailed, CandidateVariantDelegatedToParent, CandidateVariantParentUnresolved};
-use crate::v1_compiler_infer_emit_info::FieldClone::*;
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr};
 use crate::v1_compiler_infer_items::ItemKind::{FnItem};
 use crate::v1_std_core::LeafOwner::*;
@@ -219,7 +217,6 @@ pub fn fixture_variant_type_summaries() -> Rc<TypeSummaryIndex> {
             repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
             field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
             field_type_map: v1_rt::rc_empty_map::<String, String>(),
-            field_clone_map: v1_rt::rc_empty_map::<String, Rc<FieldClone>>(),
             field_import_surface_names: Rc::new(vec![]),
             variant_name_set: v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, bool>(),
@@ -279,7 +276,6 @@ pub fn fixture_colliding_variant_type_summaries() -> Rc<TypeSummaryIndex> {
             repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
             field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
             field_type_map: v1_rt::rc_empty_map::<String, String>(),
-            field_clone_map: v1_rt::rc_empty_map::<String, Rc<FieldClone>>(),
             field_import_surface_names: Rc::new(vec![]),
             variant_name_set: v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, bool>(),

@@ -13,15 +13,10 @@ import gunbc.emit_state_threading_specimen { spec_build, spec_walk_tokens }
 // NativeEffectRealizationAdmission). `gunbc test //gunbc/instruments:native-allocation-observation`
 // emits this closure, builds it and runs it in one process; nothing is interpreted.
 //
-// THE ENROLLED CALIBRATION SUITE is this entry's whole body: the meter (an empty window reads zero, a
-// window around a known allocation reads it on both axes), the declared reference walk, a deliberately
-// cloning walk that must read ABOVE the reference, and the specimen's own walk. COPY WIDTH IS AN UNREAD
-// AXIS, NOT ZERO: the meter counts allocator operations and bytes requested, so a repair that trades an
-// allocation for a wider by-value copy (the clone-allocation-free record fact) lowers both counts here
-// while raising the words moved per clone, and this reading cannot see that cost. The emit+build wall of
-// the label does NOT judge it either: that wall runs the compiler's build, not the changed records. The
-// cost is read by no label today: it is the declared rung drop gunbc.rung_drop flipped_record_copy_width_unread,
-// evidenced by a one-off runtime comparison of prebuilt base and head binaries on one fixed workload.
+// THIS READING IS BLIND TO COPY WIDTH: it counts allocator operations and bytes requested, so a repair that
+// trades an allocation for a wider by-value copy lowers both counts while raising the cost of every
+// container slot that holds the record. That was measured, not hypothesized: gunbc.recurring_failure_mode
+// by_value_record_widens_container_slots.
 //
 // FOUR ANSWERS, NOT ONE VERDICT, because a bound that reds when the repair succeeds punishes the repair:
 //   AVAILABILITY  the selecting main registered the counting allocator before any read

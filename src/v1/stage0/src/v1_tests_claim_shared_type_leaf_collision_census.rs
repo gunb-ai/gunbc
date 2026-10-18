@@ -13,8 +13,8 @@ use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{
     TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared,
 };
 pub use crate::v1_compiler_infer_emit_info::{
-    empty_type_summary_index, type_decl_identities_of_leaf, type_summary_at_key, EmitGraphInfo,
-    TypeSummary, TypeSummaryLookup,
+    type_decl_identities_of_leaf, type_summary_at_key, EmitGraphInfo, TypeSummary,
+    TypeSummaryLookup,
 };
 pub use crate::v1_compiler_infer_items::ResolvedGraph;
 pub use crate::v1_compiler_languages::sharing_for_target;
@@ -132,12 +132,10 @@ pub fn declaration_would_share(
 ) -> bool {
     v1_rt::set_contains(
         &crate::v1_compiler_emit_rust::maybe_mark_shared_type(
-            crate::v1_compiler_infer_emit_info::empty_type_summary_index(),
             v1_rt::rc_empty_set::<String>(),
             summary.clone(),
             recursive_type_set.clone(),
             needs_sharing.clone(),
-            false,
         ),
         summary.name.clone(),
     )
@@ -229,7 +227,7 @@ pub fn collisions_of_graph(graph: Rc<ResolvedGraph>) -> Rc<Vec<Rc<LeafCollisionR
             .clone();
         Rc::new({
             let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(
-                &info.type_decl_items.clone().identities_by_leaf.clone(),
+                &info.type_decl_items.identities_by_leaf.clone(),
             ))
             .iter()
             .cloned()

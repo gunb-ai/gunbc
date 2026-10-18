@@ -84,6 +84,7 @@ import v1.compiler.artifact { RenderTarget, Rust, RustModuleRenderSelection, Ren
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
   rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates,
+  rust_machine_word_lowering,
   rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
   HigherOrderMethodSpec, rust_higher_order_methods,
   rust_value_binding_candidate, fresh_rust_value_binding_name,
@@ -237,7 +238,6 @@ import v1.compiler.infer {
   caller_resource_requirements, established_resource_binding
 }
 import v1.compiler.infer_emit_info {
-  FieldClone, FieldCloneShallow, FieldCloneOwned, FieldCloneDeclared,
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, TypeSummaryQuestion, QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf,
   lookup_emit_type_summary, empty_emit_graph_info,
   TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf,
@@ -1657,18 +1657,6 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
     }
     }
   }
-}
-
-// THE DRIVER-MAIN TEMPLATES READ THE SHARING DECISION, they do not restate it. A template names a record
-// type in two forms and each is one function over shared_types, the set build_shared_types decided: the
-// type spelling and the construction. Neither branches on the decision in the template. No template
-// derefs a record (`&*x`): every deref site holds a non-unit enum, which is shared by construction.
-fn driver_record_type(type_name: String, shared_types: Set<String>) -> String {
-  render_rust_shared_type_if_needed(type_name: type_name, rendered: type_name, shared_types: shared_types)
-}
-
-fn driver_record_new(type_name: String, expr: String, shared_types: Set<String>) -> String {
-  if set_contains(shared_types, type_name) { rust_shared_wrap_ctor(inner_expr: expr) } else { expr }
 }
 
 fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared_types: Set<String>) -> String {
@@ -3402,91 +3390,14 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Set<String>) -> Bo
   }
 }
 
-// FACT F -- CLONE-ALLOCATION-FREE RECORD. A record whose every field clones without allocating is
-// cloned by copying its fields, so it needs no box of its own: the box bought only a pointer-sized
-// clone, and it is paid on every construction (one heap allocation per built value). F reads the
-// per-field clone fact each summary stores (FieldClone in v1.compiler.infer_emit_info), decided from
-// the target's realization of the field's type reference: Shallow (Copy, host numeric, shared
-// collection carrier) passes, Owned (the host String and any owning or refused realization, including
-// a declared type applied to an owned argument such as Optional<String>) fails closed, and a Declared
-// field passes when its summary is decided under the sharing decision. Structure still excludes the
-// recursive record (no finite by-value layout), generics, fn fields (Rc<dyn Fn> identity) and the
-// empty record. RESIDUE, declared: the nested-record lookup is leaf-keyed as field_type_map is
-// (gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer) and the
-// shared-collection test names the container-template roster; both dissolve with field_type_map's
-// own trigger (declaration identities, not spellings). It is the field-agnostic generalisation of
-// is_type_constant, the special case whose fields are all Copy. WHAT IT TRADES: allocation goes
-// down and COPY WIDTH goes up -- a clone now moves every field word instead of one pointer. No
-// enrolled producer reads that axis; it is the declared rung drop gunbc.rung_drop
-// flipped_record_copy_width_unread, whose restoration trigger is a modeled elapsed-time observation
-// in the emitted native entry. Rc::ptr_eq/rc_ptr_eq on a record is the one identity use; it takes
-// Rc<T> and so refuses loudly at the rustc boundary for a flipped type rather than answering
-// differently. The next rung is S (strict linear unwrap with field-grain last-use of dying owned
-// records), the roadmap node emission-ownership-facts-survive-lowering: it removes the clones
-// instead of narrowing them.
-// THE SHARED COLLECTION CARRIERS, ONE ANSWER for the sharing decision and for F.
-fn shared_collection_leaves() -> List<String> {
-  sorted_map_keys(rust_container_templates)
-    |> filter(k => k != "optional" && k != "boolean_algebra")
-    |> map(k => to_pascal(name: k))
-}
-
-fn field_clone_is_shallow(type_summaries: TypeSummaryIndex, type_name: String, clone: FieldClone) -> Bool {
-  match clone {
-    FieldCloneShallow => true
-    FieldCloneOwned => false
-    FieldCloneDeclared { applied_to_owned: owned } =>
-      let leaf = match string_index_of(haystack: type_name, needle: "<") {
-        Present { value: i } => substring(s: type_name, start: 0, end: i)
-        Absent => type_name
-      }
-      if shared_collection_leaves() |> any(c => c == leaf) { true }
-      else if owned { false }
-      else { nested_record_is_decided(type_summaries: type_summaries, leaf: leaf) }
-  }
-}
-
-fn nested_record_is_decided(type_summaries: TypeSummaryIndex, leaf: String) -> Bool {
-  let keys = type_summary_keys_of_leaf(index: type_summaries, leaf: leaf)
-  (keys |> count) > 0 && keys |> all(key =>
-    match type_summary_decided(index: type_summaries, key: key) {
-      Present { value: _ } => true
-      Absent => false
-    }
-  )
-}
-
-fn is_clone_allocation_free(type_summaries: TypeSummaryIndex, summary: TypeSummary, recursive_type_set: Set<String>) -> Bool {
-  match summary.repr {
-    EnumRepr { unit_only: _ } => false
-    StructRepr =>
-      if set_contains(recursive_type_set, summary.name) || (summary.generic_param_names |> count) > 0 || summary.has_fn_fields { false }
-      else {
-        let field_count = sorted_map_keys(summary.field_summaries) |> count
-        let ft_count = sorted_map_keys(summary.field_type_map) |> count
-        field_count > 0 && ft_count >= field_count
-          && sorted_map_keys(summary.field_type_map) |> all(f =>
-            match map_get(summary.field_clone_map, f) {
-              Present { value: c } =>
-                match map_get(summary.field_type_map, f) {
-                  Present { value: tn } => field_clone_is_shallow(type_summaries: type_summaries, type_name: tn, clone: c)
-                  Absent => false
-                }
-              Absent => false
-            }
-          )
-      }
-  }
-}
-
-fn maybe_mark_shared_type(type_summaries: TypeSummaryIndex, acc: Set<String>, summary: TypeSummary, recursive_type_set: Set<String>, target_needs_sharing: Bool, by_value_records: Bool) -> Set<String> {
+fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Set<String> {
   let needs_sharing = target_needs_sharing && match summary.repr {
     StructRepr => true
     EnumRepr { unit_only: unit_only } => unit_only == false
   }
   if summary_declares_grounded_coproduct_native_alias(summary: summary) {
     acc
-  } else if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) && !(by_value_records && is_clone_allocation_free(type_summaries: type_summaries, summary: summary, recursive_type_set: recursive_type_set)) {
+  } else if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) {
     set_insert(acc, summary.name)
   } else {
     acc
@@ -3501,25 +3412,28 @@ fn maybe_mark_shared_type(type_summaries: TypeSummaryIndex, acc: Set<String>, su
 // elsewhere needs sharing. The set is one of the indexes
 // gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer still
 // names as leaf-keyed; this rule is what makes its leaf answer independent of fold order.
-fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recursive_type_set: Set<String>, target_needs_sharing: Bool, by_value_records: Bool) -> Bool {
+fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Bool {
   type_summary_keys_of_leaf(index: type_summaries, leaf: name) |> all(key =>
     match type_summary_decided(index: type_summaries, key: key) {
-      Present { value: summary } => set_contains(maybe_mark_shared_type(type_summaries: type_summaries, acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing, by_value_records: by_value_records), name)
+      Present { value: summary } => set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing), name)
       Absent => true
     }
   )
 }
 
-fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<String>, target: RenderTarget, by_value_records: Bool) -> Set<String> {
+fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<String>, target: RenderTarget) -> Set<String> {
 
   let sharing = sharing_for_target(target: target)
   let user_shared = type_summary_values(index: type_summaries) |> fold(init: empty_set(), f: (acc, summary) =>
-    if shared_by_every_declarer(type_summaries: type_summaries, name: summary.name, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing, by_value_records: by_value_records) {
-      maybe_mark_shared_type(type_summaries: type_summaries, acc: acc, summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing, by_value_records: by_value_records)
+    if shared_by_every_declarer(type_summaries: type_summaries, name: summary.name, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing) {
+      maybe_mark_shared_type(acc: acc, summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing)
     } else { acc }
   )
 
-  (if sharing.needs_sharing { shared_collection_leaves() } else { [] }) |> fold(init: user_shared, f: (acc, pascal) =>
+  let collection_keys = sorted_map_keys(rust_container_templates)
+    |> filter(k => sharing.needs_sharing && k != "optional" && k != "boolean_algebra")
+  collection_keys |> fold(init: user_shared, f: (acc, key) =>
+    let pascal = to_pascal(name: key)
     set_insert(acc, pascal)
   )
 }
@@ -3701,7 +3615,7 @@ type EmitRustContext {
 fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let base_info = build_emit_graph_info(modules: typed.modules, registry: typed.item_registry)
   let ownership = build_ownership_results(modules: typed.modules)
-  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust, by_value_records: !compiler_pipeline_entry_is_retained_host(modules: typed.modules))
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let closure_source_indices = merged_module_source_indices(modules: typed.modules)
   let clone_bounded = v1_clone_bounded_type_params(
     type_decl_items: base_info.type_decl_items,
@@ -3726,6 +3640,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: typed.modules, data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
+    fn_decl_identity_items: base_info.fn_decl_identity_items,
     fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: closure_source_indices),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
@@ -3905,7 +3820,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   if native_effect_refusals |> count > 0 {
     return EmitResult { files: [], diagnostics: native_effect_refusals, emitted_edges: [], rust_crates: [] }
   }
-  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name, effects: native_effects, shared_types: shared_types)
+  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name, effects: native_effects)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
@@ -4406,7 +4321,7 @@ fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bo
 
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let base_info = build_emit_graph_info(modules: [typed_module], registry: registry)
-  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust, by_value_records: false)
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let clone_bounded = v1_clone_bounded_type_params(
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
@@ -4430,6 +4345,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: [typed_module], data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
+    fn_decl_identity_items: base_info.fn_decl_identity_items,
     fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: merged_module_source_indices(modules: [typed_module])),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
@@ -5891,6 +5807,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
@@ -7959,6 +7876,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             type_decl_items: emit_info.type_decl_items,
             data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
             fn_decl_items: emit_info.fn_decl_items,
+            fn_decl_identity_items: emit_info.fn_decl_identity_items,
             fn_map_key_bounds: emit_info.fn_map_key_bounds,
             recursive_type_set: emit_info.recursive_type_set,
             fielded_variants: emit_info.fielded_variants,
@@ -8437,28 +8355,13 @@ fn emit_sealed_struct_accessors(name: String, type_params: String, generic_param
   concat("\nimpl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
-// By-value clone-free records (is_clone_allocation_free) are decided for every corpus except the
-// retained-host driver's, whose hand-authored host Rust pins the Rc representation (see
-// compiler_pipeline_entry_is_retained_host). The exclusion dissolves as that hand Rust migrates.
-// A record that is not Rc-shared derives Copy only when it is a Copy constant; the clone-allocation-free
-// records of is_clone_allocation_free are by-value but hold Rc fields, so they take the heap roster
-// (Clone, no Copy). Asked of the same summary the sharing decision read, never re-derived from fields.
-fn struct_derives_heap(name: String, shared_types: Set<String>, emit_info: EmitGraphInfo) -> Bool {
-  set_contains(shared_types, name) || type_summary_keys_of_leaf(index: emit_info.type_summaries, leaf: name) |> any(key =>
-    match type_summary_decided(index: emit_info.type_summaries, key: key) {
-      Present { value: summary } => !is_type_constant(summary: summary, recursive_type_set: emit_info.recursive_type_set)
-      Absent => true
-    }
-  )
-}
-
 fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, header_clone_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, deserialize_forbidden: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
   let surface = v1_emit_struct_from_capability_table(
     module_path: env.module_path,
     name: name,
     children: children,
-    heap_derives: struct_derives_heap(name: name, shared_types: shared_types, emit_info: emit_info),
+    shared_types: shared_types,
     has_fn_fields: has_fn_fields,
     map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
     generic_param_names: generic_param_names,
@@ -12081,8 +11984,30 @@ fn item_forbids_deserialize(item: Node, emit_info: EmitGraphInfo, source_indices
 // coproduct already carries an EnumAccessor arm rendering exactly `base.field()`, so the
 // seal does not introduce a second way to render a read -- it selects the existing one
 // for a product base. One producer for one fact.
+// A FIELD READ IS A PLACE WHEN IT IS THE RECEIVER OF ANOTHER FIELD READ. `r.window.w0` selects one
+// field out of `r.window`; cloning `r.window` first copied the whole record to read one field and
+// dropped the copy (`gunbc.recurring_failure_mode`
+// `emitter_clones_a_whole_record_to_read_one_field`). `as_receiver` asks the plain stored-field arm
+// for the place expression, so only the outermost read clones. Every other arm (tuple, optional,
+// enum accessor, sealed accessor, boxed deref, anonymous record) already yields a value and ignores it.
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  emit_typed_field_access_as(base: base, field: field, summary: summary, as_receiver: false, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+}
+
+fn emit_typed_field_access_as(base: Node, field: String, summary: FieldSummary?, as_receiver: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let base_str = match base.expr_data {
+    ExprFieldAccess { summary: inner_summary } =>
+      let inner_is_optional = resolved_type(n: base).return_cardinality == CardOptional || (match inner_summary {
+        Present { value: fs } => match fs.value_shape { OptionalValue => true, _ => false }
+        Absent => true
+      })
+      if inner_is_optional || is_typed_service_call_receiver(receiver: base, source_indices: scope.type_env.source_indices) {
+        emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      } else {
+        emit_typed_field_access_as(base: field_access_base(texpr: base), field: field_access_field_at(texpr: base, source_indices: scope.type_env.source_indices), summary: inner_summary, as_receiver: true, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      }
+    _ => emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  }
   let base_is_anon_record = match base.inferred {
     Present { value: Resolved { node: bt } } =>
       let is_product = is_product_type(n: bt)
@@ -12128,7 +12053,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
               concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
             } else if field_is_boxed {
               apply_type_template1(template: sharing.deref_clone, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
-            } else if base_is_owned {
+            } else if base_is_owned || as_receiver {
               concat(base_str, ".", emit_ident(name: field, target: Rust))
             } else {
               apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
@@ -13349,11 +13274,150 @@ fn rust_emit_length_on_host_string(call_target: CallTargetIdentity, func: String
   }
 }
 
+// The source spelling of a bare constructor argument, or "" for anything else (an expression, a call,
+// a variable that is not a variant constructor), so only a literal can select a lowering row.
+fn declared_param_position(params: List<Node>, name: String) -> Int {
+  match params |> enumerate |> filter(pair => pair.second.name == name) |> first {
+    Present { value: pair } => pair.first
+    Absent => 0 - 1
+  }
+}
+
+fn constructor_literal_parent(n: Node) -> String {
+  match n.expr_data {
+    ExprVar { binding_kind: bk } =>
+      match variant_parent_from_binding_kind(binding_kind: bk) {
+        Present { value: parent } => parent
+        Absent => ""
+      }
+    _ => ""
+  }
+}
+
+fn constructor_literal_leaf(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.expr_data {
+    ExprVar { binding_kind: bk } =>
+      if variant_parent_from_binding_kind(binding_kind: bk) != none {
+        value_ref_qualified_leaf(name: expr_var_name_at(texpr: n, source_indices: source_indices))
+      } else { "" }
+    _ => ""
+  }
+}
+
+// THE LITERAL RESULT OF A DECLARED fn AT A CONSTRUCTOR LITERAL, READ FROM ITS DECLARATION. Folds only a fn
+// whose body is ONE match over its sole value parameter with nullary-constructor arms and literal
+// results (machine_word_operator_label, word_width_bits); anything else answers none and takes the
+// normal path. Exhaustiveness is the type checker's, so the named arm exists. No partial evaluator.
+fn arm_names_constructor(arm: Node, parent: String, constructor: String) -> Bool {
+  match arm_pattern(n: arm) {
+    VariantPattern { name: arm_name, parent_enum: arm_parent, field_bindings: _, parent_identity: _ } => (match arm_parent {
+      Present { value: arm_parent_name } => arm_parent_name == parent
+      Absent => false
+    }) && value_ref_qualified_leaf(name: arm_name) == constructor
+    _ => false
+  }
+}
+
+fn literal_text_of(result: Node) -> String? {
+  match expr_literal_string_optional(expr: result) {
+    Present { value: text } => Present { value: text }
+    Absent =>
+      match expr_literal_int_optional(expr: result) {
+        Present { value: number } => Present { value: to_string(value: number) }
+        Absent => none
+      }
+  }
+}
+
+fn arm_is_nullary_variant(arm: Node) -> Bool {
+  match arm_pattern(n: arm) {
+    VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } => (bindings |> count) == 0
+    _ => false
+  }
+}
+
+fn declared_literal_match_result(owner_module: String, fn_name: String, parent: String, constructor: String, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  match map_get(emit_info.fn_decl_identity_items, type_decl_identity(owner_module: owner_module, decl_name: fn_name)) {
+    Absent => none
+    Present { value: item } =>
+      match item.body {
+        Absent => none
+        Present { value: body } =>
+          match body.expr_data {
+            ExprMatch =>
+              let value_params = function_value_params(params: item.params)
+              let arms = match_arm_nodes(texpr: body)
+              let sole_param_scrutinee = (value_params |> count) == 1 && match value_params |> first {
+                Present { value: p } => p.name == expr_var_name_at(texpr: match_scrutinee(texpr: body), source_indices: source_indices)
+                Absent => false
+              }
+              if sole_param_scrutinee && (arms |> all(arm => arm_is_nullary_variant(arm: arm))) {
+                match arms |> filter(arm => arm_names_constructor(arm: arm, parent: parent, constructor: constructor)) |> first {
+                  Present { value: arm } => literal_text_of(result: arm_body(n: arm))
+                  Absent => none
+                }
+              } else { none }
+            _ => none
+          }
+      }
+  }
+}
+
+// A CALL TO std.machine_word machine_word_apply WHOSE OPERATOR AND WIDTH ARE CONSTRUCTOR LITERALS IS
+// THE HOST'S OWN OPERATOR, NOT A SEAM CALL. The call's target is the declaration (resolution already
+// decided it). The operator's label and the width's bit count are folded out of
+// the declarations that own them (`rust_machine_word_lowering` names which; they are read by module-qualified identity from `fn_decl_identity_items`, never by bare leaf), and the row's template
+// selects the runtime's operator row by that label at build time. No general inliner: a call with a
+// non-literal operator or width, or a declaration that does not fold, keeps the declared call.
+fn emit_machine_word_lowered_call(call_target: CallTargetIdentity, func: String, args: List<Node>, call_semantics: CallSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
+  let owner = match call_target {
+    SourceDeclarationCall { owner_module_path: owner_path, decl_name: decl } => if decl == rust_machine_word_lowering.apply_fn { owner_path } else { "" }
+    _ => ""
+  }
+  if owner != rust_machine_word_lowering.owner_module { none } else {
+    let ordered = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
+    let apply_params = match map_get(emit_info.fn_decl_identity_items, type_decl_identity(owner_module: owner, decl_name: rust_machine_word_lowering.apply_fn)) {
+      Present { value: apply_item } => function_value_params(params: apply_item.params)
+      Absent => []
+    }
+    let op_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.operator_param)
+    let width_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.width_param)
+    let a_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.a_param)
+    let b_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.b_param)
+    if (ordered |> count) != (apply_params |> count) || op_at < 0 || width_at < 0 || a_at < 0 || b_at < 0 { none } else {
+      let si = scope.type_env.source_indices
+      let op_arg = arg_value(n: (ordered |> skip(op_at) |> first).value)
+      let width_arg = arg_value(n: (ordered |> skip(width_at) |> first).value)
+      let op_leaf = constructor_literal_leaf(n: op_arg, source_indices: si)
+      let width_leaf = constructor_literal_leaf(n: width_arg, source_indices: si)
+      let op_parent = constructor_literal_parent(n: op_arg)
+      let width_parent = constructor_literal_parent(n: width_arg)
+      let label = if op_leaf == "" { none } else { declared_literal_match_result(owner_module: owner, fn_name: rust_machine_word_lowering.operator_label_fn, parent: op_parent, constructor: op_leaf, emit_info: emit_info, source_indices: si) }
+      let bits = if width_leaf == "" { none } else { declared_literal_match_result(owner_module: owner, fn_name: rust_machine_word_lowering.width_bits_fn, parent: width_parent, constructor: width_leaf, emit_info: emit_info, source_indices: si) }
+      match label {
+        Present { value: label_text } =>
+          match bits {
+            Present { value: bits_text } =>
+              let a_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(a_at) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+              let b_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(b_at) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+              Present { value: apply_named_template(template: rust_machine_word_lowering.template, bindings: seed_bindings(key: "a", value: a_str) |> map_insert("b", b_str) |> map_insert("label", label_text) |> map_insert("bits", bits_text)) }
+            Absent => none
+          }
+        Absent => none
+      }
+    }
+  }
+}
+
 fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call_semantics: CallSemantics?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
   let target_is_runtime = call_target_is_runtime_primitive(target: call_target)
+  match emit_machine_word_lowered_call(call_target: call_target, func: func, args: args, call_semantics: call_semantics, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
+    Present { value: word_call } => return word_call
+    Absent => {}
+  }
   if target_is_runtime && func == "get" {
     let get_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
     let get_list = get_args |> first
@@ -13927,6 +13991,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               type_decl_items: emit_info.type_decl_items,
               data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
               fn_decl_items: emit_info.fn_decl_items,
+              fn_decl_identity_items: emit_info.fn_decl_identity_items,
               fn_map_key_bounds: emit_info.fn_map_key_bounds,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
@@ -13965,6 +14030,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               type_decl_items: emit_info.type_decl_items,
               data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
               fn_decl_items: emit_info.fn_decl_items,
+              fn_decl_identity_items: emit_info.fn_decl_identity_items,
               fn_map_key_bounds: emit_info.fn_map_key_bounds,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
@@ -19223,11 +19289,6 @@ fn compiler_pipeline_entry_module_name(modules: List<TypedModule>) -> String {
   }
 }
 
-// The retained-host driver is the seed's own realization: its main and the stage0 host Rust beside it
-// are hand-authored and pin the Rc representation of the record types they name, which is the boundary
-// by_value_records stops at. The exclusion dissolves as that hand Rust migrates. Every other driver arm
-// renders its main from this emitter's templates, which spell record types through driver_record_type
-// and driver_record_new and so follow the sharing decision.
 fn compiler_pipeline_entry_is_retained_host(modules: List<TypedModule>) -> Bool {
   match compiler_pipeline_entry_decl(modules: modules) {
     Present { value: d } => d.driver == compiler_entry_retained_host_driver
@@ -19388,6 +19449,15 @@ fn native_entry_function_name(modules: List<TypedModule>) -> String? {
 }
 
 data native_serve_entry_function: String = "native_serve_handle"
+// The optional startup fold's name is gunbc.native_serve native_serve_startup_entry_function's; like the
+// handler's, the emitter spells it where the rendered main imports it. The main runs it only when the
+// entry's own module declares it, so a driver that declares none renders exactly what it did.
+data native_serve_startup_function: String = "native_serve_startup"
+
+fn native_serve_declares_startup(modules: List<TypedModule>, pipeline_module: String) -> Bool {
+  count(native_effect_decl_sites(modules: modules, kind: ModuleItemFunction, name: native_serve_startup_function)
+    |> filter(site => site.module_name == pipeline_module)) > 0
+}
 data native_cli_entry_function: String = "v2_cli_main"
 data native_claim_entry_function: String = "native_claim_report"
 
@@ -19521,7 +19591,7 @@ fn native_effect_bindings(effects: NativeEntryEffects?, crate_name: String) -> L
   }
 }
 
-fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String, effects: NativeEntryEffects?, shared_types: Set<String>) -> TextFile {
+fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String, effects: NativeEntryEffects?) -> TextFile {
   let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules: modules)
   let pipeline_module = compiler_pipeline_entry_module_name(modules: modules)
   if compiler_pipeline_entry_is_ambiguous(modules: modules) {
@@ -19537,7 +19607,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
   }
   if corpus_has_compiler_pipeline(modules: modules) && (retained_host_pipeline == false) {
     if compiler_pipeline_entry_is_source_root_eval(modules: modules) {
-      return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, shared_types: shared_types)
+      return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
     }
     if compiler_pipeline_entry_is_native_cli(modules: modules) {
       return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
@@ -19546,7 +19616,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), shared_types: shared_types)
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module))
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -19668,7 +19738,7 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 // this shim. The adjudicating run asks for a CLOSURE (native_lane_acquire); the census verbs ask for
 // the POPULATION their roots hold (native_lane_census_ingest). The native CLI invokes its entire entry
 // fold instead.
-fn emit_host_acquisition_rs(crate_name: String, shared_types: Set<String>) -> String {
+fn emit_host_acquisition_rs(crate_name: String) -> String {
   concat(
     "fn host_filesystem() -> ", crate_name, "::extdeps_filesystem_filesystem_io::Filesystem {\n",
     "    ", crate_name, "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default())\n",
@@ -19678,7 +19748,7 @@ fn emit_host_acquisition_rs(crate_name: String, shared_types: Set<String>) -> St
     "    match tokio::runtime::Builder::new_current_thread().build() { Ok(runtime) => runtime, Err(cause) => { eprintln!(\"REFUSED: native filesystem executor: {}\", cause); std::process::exit(2); } }\n",
     "}\n",
     "\n",
-    "fn read_census_ingest(source_roots: &[String]) -> Vec<", driver_record_type(type_name: "DagSourceReadWitness", shared_types: shared_types), "> {\n",
+    "fn read_census_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> {\n",
     "    let filesystem = host_filesystem();\n",
     "    let observed = host_executor().block_on(native_lane_census_ingest(Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n",
     "    match observed {\n",
@@ -19693,7 +19763,7 @@ fn emit_host_acquisition_rs(crate_name: String, shared_types: Set<String>) -> St
     "}\n",
     "\n",
     "// THE SCOPED CENSUS ASKS FOR THE UNION OF ITS SUBJECTS' CLOSURES, acquired once around its blocks (native_lane_census_scoped_ingest).\n",
-    "fn read_census_scoped_ingest(subject: &str, subjects_rest: &[String], source_roots: &[String]) -> ", driver_record_type(type_name: "NativeCensusScoped", shared_types: shared_types), " {\n",
+    "fn read_census_scoped_ingest(subject: &str, subjects_rest: &[String], source_roots: &[String]) -> Rc<NativeCensusScoped> {\n",
     "    let filesystem = host_filesystem();\n",
     "    let observed = host_executor().block_on(native_lane_census_scoped_ingest(subject.to_string(), Rc::new(subjects_rest.iter().cloned().collect()), Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n",
     "    match observed {\n",
@@ -19707,7 +19777,7 @@ fn emit_host_acquisition_rs(crate_name: String, shared_types: Set<String>) -> St
     "    }\n",
     "}\n",
     "\n",
-    "fn acquire_native_lane(source_roots: &[String], pattern: ", driver_record_type(type_name: "TargetPattern", shared_types: shared_types), ") -> ", driver_record_type(type_name: "NativeLaneAcquisition", shared_types: shared_types), " {\n",
+    "fn acquire_native_lane(source_roots: &[String], pattern: Rc<TargetPattern>) -> Rc<NativeLaneAcquisition> {\n",
     "    let filesystem = host_filesystem();\n",
     "    let observed = host_executor().block_on(native_lane_acquire(Rc::new(source_roots.iter().cloned().collect()), pattern, &filesystem));\n",
     "    match observed {\n",
@@ -19871,12 +19941,33 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // transport error): at startup the main refuses before announcing, so /livez is never answered by a
 // process that cannot serve; a failed replacement ends the process with
 // native_serve_worker_replacement_exit_code once the request in hand is answered.
-fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, shared_types: Set<String>) -> TextFile {
+fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let effectful = (bindings |> count) > 0
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
   let handler_effect_args = bindings |> map(b => concat(", ", b.argument)) |> join(separator: "")
   let effect_failed_import = if effectful { " native_serve_effect_failed," } else { "" }
+  let startup_import = if startup {
+    concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup;", "\n",
+      "use ", crate_name, "::gunbc_native_serve::\{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};", "\n")
+  } else { "" }
+  let startup_run = if startup {
+    concat(
+      "    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
+      "    match std::fs::read(\"/proc/self/exe\") \{", "\n",
+      "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
+      "            NativeServeStartup::NativeServeStartupPassed \{ note \} => println!(\"\{\}\", native_serve_startup_passed_line(note.clone())),", "\n",
+      "            NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
+      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "            \}", "\n",
+      "        \},", "\n",
+      "        Err(cause) => \{", "\n",
+      "            eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
+      "            std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "        \}", "\n",
+      "    \}", "\n")
+  } else { "" }
   let worker_realize = if effectful {
     concat(
       "        let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() \{", "\n",
@@ -19914,6 +20005,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    NativeServeRoute, NativeServeStart,", "\n",
       "\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::native_serve_handle;", "\n",
+      startup_import,
       "\n",
       "// What a worker hands back across the thread boundary: owned plain values, because the compiled", "\n",
       "// handler's values are reference-counted and stay on the worker's thread.", "\n",
@@ -20035,11 +20127,11 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "\n",
       "enum Exchange \{", "\n",
       "    Idle,", "\n",
-      "    Answer(", driver_record_type(type_name: "ServeWireResponse", shared_types: shared_types), "),", "\n",
+      "    Answer(Rc<ServeWireResponse>),", "\n",
       "    Handle(HandlerCall),", "\n",
       "\}", "\n",
       "\n",
-      "fn exchange(stream: &std::net::TcpStream, contract: &", driver_record_type(type_name: "NativeServeContract", shared_types: shared_types), ", bound_host: &str, bound_port: i64) -> Exchange \{", "\n",
+      "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64) -> Exchange \{", "\n",
       "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;", "\n",
       "    let mut reader = std::io::BufReader::new(stream.take(limit));", "\n",
       "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;", "\n",
@@ -20092,6 +20184,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
+      startup_run,
       "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
       "        Ok(listener) => listener,", "\n",
       "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
@@ -20325,7 +20418,7 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, b
 //   operations above, which needs a `.dag` driver to receive host effects as values.
 // Until then the growth is bounded to this function; a new mode or phase is a new clause here, not
 // a new driver.
-fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: String, shared_types: Set<String>) -> TextFile {
+fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let native_route_mod = module_to_filename(name: "v2.workflow.v2_native_route")
   let frontier_mod = module_to_filename(name: "v2.workflow.native_frontier_ratchet")
@@ -20406,7 +20499,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::", type_census_mod, "::\{type_census_receipt, type_census_run_add, type_census_run_empty\};", "\n",
       "use ", crate_name, "::std_compiler_entry::NativeClaimTerminal;", "\n",
       "\n",
-      emit_host_acquisition_rs(crate_name: crate_name, shared_types: shared_types),
+      emit_host_acquisition_rs(crate_name: crate_name),
       "fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String \{", "\n",
       "    match facts.get(key) \{", "\n",
       "        Some(value) => value.clone(),", "\n",
@@ -20501,9 +20594,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        emitted_closure_identity: host_fact(&facts, \"emitted_closure_identity\"),", "\n",
       "        executable_path: host_fact(&facts, \"executable_path\"),", "\n",
       "        executable_identity: host_fact(&facts, \"executable_identity\"),", "\n",
-      "        old_route_control: ", driver_record_new(type_name: "NativeRouteOldRouteControl", expr: "old_route_control", shared_types: shared_types), ",", "\n",
-      "        malformed_control: ", driver_record_new(type_name: "NativeRouteMalformedControl", expr: "malformed_control", shared_types: shared_types), ",", "\n",
-      "        emitted_build: ", driver_record_new(type_name: "NativeRouteEmittedBuild", expr: "emitted_build", shared_types: shared_types), ",", "\n",
+      "        old_route_control: Rc::new(old_route_control),", "\n",
+      "        malformed_control: Rc::new(malformed_control),", "\n",
+      "        emitted_build: Rc::new(emitted_build),", "\n",
       "    \}", "\n",
       "\}", "\n",
       "\n",
@@ -20757,17 +20850,17 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "// A BASELINE IS A PUBLISHED RUN RECORD (the host's CensusRunRecordFile), and the host alone decides", "\n",
       "// which one -- by the status field it wrote (latest_complete_census_record). This only reads the", "\n",
       "// census_run_comparable row back as the same type; a file without one is a stated cause, never an empty diff.", "\n",
-      "fn census_baseline_record(path: &str) -> Result<", driver_record_type(type_name: "CensusComparableRecord", shared_types: shared_types), ", String> \{", "\n",
+      "fn census_baseline_record(path: &str) -> Result<Rc<CensusComparableRecord>, String> \{", "\n",
       "    let text = std::fs::read_to_string(path).map_err(|cause| format!(\"reading \{path\}: \{cause\}\"))?;", "\n",
       "    let file: serde_json::Value = serde_json::from_str(&text).map_err(|cause| format!(\"\{path\} is not one JSON value: \{cause\}\"))?;", "\n",
       "    let row = file.get(\"rows\").and_then(|r| r.as_array()).and_then(|rows| rows.iter().find_map(|row| row.get(\"census_run_comparable\").cloned()))", "\n",
       "        .ok_or_else(|| format!(\"\{path\} carries no census_run_comparable row\"))?;", "\n",
-      "    serde_json::from_value::<CensusComparableRecord>(row).map(|record| ", driver_record_new(type_name: "CensusComparableRecord", expr: "record", shared_types: shared_types), ").map_err(|cause| format!(\"\{path\} census_run_comparable does not read back: \{cause\}\"))", "\n",
+      "    serde_json::from_value::<CensusComparableRecord>(row).map(Rc::new).map_err(|cause| format!(\"\{path\} census_run_comparable does not read back: \{cause\}\"))", "\n",
       "\}", "\n",
       "", "\n",
       "struct CensusScopedWalk \{", "\n",
       "    label: String,", "\n",
-      "    scope: ", driver_record_type(type_name: "NativeCensusScope", shared_types: shared_types), ",", "\n",
+      "    scope: Rc<NativeCensusScope>,", "\n",
       "    digests: Vec<String>,", "\n",
       "    against: Option<String>,", "\n",
       "    subjects_rest: Vec<String>,", "\n",
@@ -20806,7 +20899,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "// the whole-corpus run, which also feeds the type census and marks each root against the subject", "\n",
       "// closure; a scoped run does neither, and its terminal names its scope instead, with the label it was", "\n",
       "// given so the instrument can check the subject it observed against the one it bound.", "\n",
-      "fn census_infer_walk(reads: Vec<", driver_record_type(type_name: "DagSourceReadWitness", shared_types: shared_types), ">, scope: Option<CensusScopedWalk>) \{", "\n",
+      "fn census_infer_walk(reads: Vec<Rc<DagSourceReadWitness>>, scope: Option<CensusScopedWalk>) \{", "\n",
       "    let corpus_reads = reads.len();", "\n",
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
       "    let mut context = match &*native_test_context_from_ingest(ingest.clone()) \{", "\n",
@@ -20839,7 +20932,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let mut residual_rows: u64 = 0;", "\n",
       "    let mut inferred: u64 = 0;", "\n",
       "    let mut infer_refused: u64 = 0;", "\n",
-      "    let mut obligation_rows: Vec<", driver_record_type(type_name: "CensusObligationRow", shared_types: shared_types), "> = Vec::new();", "\n",
+      "    let mut obligation_rows: Vec<Rc<CensusObligationRow>> = Vec::new();", "\n",
       "    for entry in modules.iter() \{", "\n",
       "        let started = Instant::now();", "\n",
       "        let step = native_census_module_inference(context.clone(), refusal_index.clone(), entry.clone());", "\n",
@@ -21121,7 +21214,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "// impossible. The pre-epoch refusal that guarded the old wall-clock read is DELETED with it,", "\n",
       "// because the hazard it named cannot arise on this clock -- production handling dissolves on", "\n",
       "// the climb (DESIGN section 4b(4)); no evidence is retired here, since that arm had none.", "\n",
-      "fn run_adjudication(facts_path: &str, pattern: ", driver_record_type(type_name: "TargetPattern", shared_types: shared_types), ", source_roots: &[String]) \{", "\n",
+      "fn run_adjudication(facts_path: &str, pattern: Rc<TargetPattern>, source_roots: &[String]) \{", "\n",
       "    let driver_start = cpu_mark();", "\n",
       "    let driver_wall_start = Instant::now();", "\n",
       "    // A MISSING GITHUB_SHA IS ABSENT, NOT \"local\" (review 64181). The receipt line carries this", "\n",
@@ -21328,7 +21421,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // the prepare and eval rows, entered separately per module so the number the profile", "\n",
       "    // lane prices -- the eval row -- is the sum of native_lane_identity_row", "\n",
       "    // and nothing else: not ingest, not resolve, not infer.", "\n",
-      "    let mut population: Vec<", driver_record_type(type_name: "NativeRouteMemberRow", shared_types: shared_types), "> = Vec::new();", "\n",
+      "    let mut population: Vec<Rc<NativeRouteMemberRow>> = Vec::new();", "\n",
       "    let mut prepare_total_nanos: u128 = 0;", "\n",
       "    let mut evaluate_total_nanos: u128 = 0;", "\n",
       "    let mut prepare_samples: Vec<u128> = Vec::new();", "\n",
@@ -21473,7 +21566,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        universe.clone(),", "\n",
       "        Rc::new(population.clone().into()),", "\n",
       "        native_lane_controls(context.clone()),", "\n",
-      "        ", driver_record_new(type_name: "NativeLaneHostFacts", expr: "facts", shared_types: shared_types), ",", "\n",
+      "        Rc::new(facts),", "\n",
       "    );", "\n",
       "    let admission = native_route_admission(receipt.clone());", "\n",
       "    let summary = native_route_admission_summary(admission.clone());", "\n",
@@ -21686,7 +21779,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                NativeDriverVerb::NativeDriverCensusInfer \{ .. \} => run_census_infer(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverDemandCensus \{ .. \} => run_demand_census(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, subjects_rest, against, .. \} => run_census_scoped(subject, &subjects_rest.iter().cloned().collect::<Vec<String>>(), against.clone(), &source_roots),", "\n",
-      "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, ", driver_record_new(type_name: "TargetPattern", expr: "TargetPattern::clone(pattern)", shared_types: shared_types), ", &source_roots),", "\n",
+      "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),", "\n",
       "            \}", "\n",
       "        \}", "\n",
       "    \}", "\n",
