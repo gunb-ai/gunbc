@@ -8,11 +8,18 @@ use self::TypeDeclResolution::*;
 use self::TypeRepr::*;
 use self::TypeSummaryLookup::*;
 use self::TypeSummaryQuestion::*;
+pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{
     dissolution_description, unbound_dissolution, DissolutionCondition,
+};
+use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
+    KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
+};
+pub use crate::std_literal_elaboration::{
+    kernel_mint_declaration_for, KernelMintDeclarationLookup,
 };
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
@@ -28,9 +35,7 @@ pub use crate::v1_compiler_infer_env::{
     BareOccurrenceBinding, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
-use crate::v1_compiler_infer_types::TextNotAskedReason::{
-    TextNotAskedForCallableComponentResidue, TextNotAskedInVariantFieldSummary,
-};
+use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedInVariantFieldSummary;
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node, resolved_type,
     TextJudgment, TextNotAskedReason,
@@ -723,6 +728,27 @@ pub fn type_decl_qualifier_declarer(index: Rc<TypeDeclIndex>, authored: String) 
     }
 }
 
+pub fn type_decl_kernel_mint_declarer(index: Rc<TypeDeclIndex>, leaf: String) -> Option<String> {
+    match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+        kernel_mint_declaration_rows(),
+        leaf.clone(),
+    ))
+    .clone()
+    {
+        KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
+            let identity = type_decl_identity(d.module_path.clone(), d.decl_name.clone());
+            match v1_rt::map_get(&index.by_identity.clone(), identity.clone()) {
+                Some(_) => Some(identity.clone()),
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+        KernelMintDeclarationLookup::KernelMintDeclarationAbsent => std::option::Option::None,
+        KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: _, .. } => {
+            std::option::Option::None
+        }
+    }
+}
+
 pub fn type_decl_spelling_route(
     index: Rc<TypeDeclIndex>,
     authored: String,
@@ -760,7 +786,9 @@ pub fn type_decl_occurrence_identity(
         TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
             identity: identity, ..
         } => Some(identity.clone()),
-        TypeDeclOccurrenceBinding::OccurrenceIsKernelName => std::option::Option::None,
+        TypeDeclOccurrenceBinding::OccurrenceIsKernelName => {
+            type_decl_kernel_mint_declarer(index.clone(), leaf.clone())
+        }
         TypeDeclOccurrenceBinding::OccurrenceImported {
             identity: identity, ..
         } => Some(identity.clone()),

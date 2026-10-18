@@ -22,7 +22,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParamete
 import std.types { is_kernel_type }
 import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, bare_occurrence_binding }
 import v1.compiler.infer_types {
-  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
+  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
   normalize_access_type_node, resolved_type,
   child_type_node, emit_map_has, node_type_equals
 }

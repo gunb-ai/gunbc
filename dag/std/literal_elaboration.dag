@@ -4,6 +4,7 @@ import std.optional { Present, Absent }
 import std.types { List, String, Bool, Int, NonEmptyStr, range }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
+import std.algebra { collection_concat_shape, collection_count_shape }
 
 // THE EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT, as a model (DESIGN section 4: one
 // decision procedure, emission and ingestion are the same homomorphism check read in two directions).

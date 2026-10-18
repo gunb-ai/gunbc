@@ -1,0 +1,192 @@
+module gunbc.auth.approval_device_crypto_serve
+
+import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha }
+import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
+import std.bignat { BigNat, bignat_zero_limbs, bignat_one, bignat_sub }
+import extdeps.http.server { ServeWireResponse }
+import gunbc.native_serve { native_serve_application_json }
+import extdeps.crypto.nist_p256 { p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine }
+import extdeps.crypto.nist_prime_curve { jacobian_is_infinity }
+import extdeps.crypto.signature {
+  verify_signature, SignatureVerification, SignatureVerified, SignatureInvalid, SignatureMalformed,
+  VerifyingKeyMalformed, SignatureSuiteMismatch, VerifyingKeyUndecodable, SignatureUndecodable,
+}
+import extdeps.apple.app_attest {
+  verify_attestation, verify_assertion,
+  AttestationVerification, AttestationVerified, AttestationRefused,
+  AttestationRefusal, AttestationFormatUnexpected, AttestationChainUntrusted, AttestationNonceMismatch,
+  AttestationKeyIdMismatch, AttestationAppIdMismatch, AttestationCounterNonZero, AttestationEnvironmentUnexpected,
+  AttestationCredentialIdMismatch, AttestationValidationCategoryRefused, AttestationValidationCategoryAbsent,
+  AttestationBundleVersionAbsent, AttestationBundleVersionUnexpected, AttestationUndecodable,
+  AssertionVerification, AssertionAuthentic, AssertionRefused,
+  AssertionRefusal, AssertionSignatureInvalid, AssertionAppIdMismatch, AssertionValidationCategoryRefused,
+  AssertionValidationCategoryAbsent, AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable,
+}
+import gunbc.auth.approval_device_wire { WireDecode, WireDecoded, WireRefused }
+import gunbc.auth.approval_device_crypto_wire {
+  device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path, device_crypto_p256_order_path,
+  SignatureCheck, AttestationCheck, AssertionCheck, P256Multiple, OrderItself, OrderMinusOne,
+  decode_signature_check, decode_attestation_check, decode_assertion_check, decode_p256_multiple,
+  DeviceCryptoAnswer, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, CryptoFinite,
+  device_crypto_answer_json, device_crypto_wire_refusal_body,
+}
+
+// THE DEVICE-CRYPTO VERIFIER SERVICE: the approval broker's verifier for the four obligations of
+// gunbc.auth.approval_device_crypto_realization (DeviceCryptoObligation), served as its own natively
+// emitted unit because the broker itself runs interpreted by the v1 seed, and one interpreted P-256
+// verification is minutes and gigabytes (gunbc.auth.approval_device_redemption
+// ecdsa_verification_realization_frontier). The code that verifies is the .dag folds themselves --
+// extdeps.crypto.signature verify_signature, extdeps.apple.app_attest verify_attestation and
+// verify_assertion, extdeps.crypto.nist_p256 p256_double_scalar -- emitted and run natively as
+// //gunbc/instruments:native-crypto-vectors and :native-app-attest already do; this module only
+// frames them (gunbc.auth.approval_device_crypto_wire) behind the native serve door
+// (gunbc.native_serve), adding no cryptographic decision of its own.
+//
+// DISSOLUTION CONDITION. This module's verifiers dissolve into nothing: they ARE the extdeps folds
+// and stay. What dissolves is the SEPARATE UNIT -- this entry, its wire and its listener -- when the
+// native broker (the native serve door carrying the approval broker's own handler) links the verifier
+// handler in process, at which point the broker calls the folds directly and the wire has no consumer.
+// Until then this entry is the only route by which a device-crypto obligation can be discharged
+// natively. The realization row stays NativeDeviceCryptoUnavailable; flipping it to bound is a later
+// change that also carries the startup self-check minting the handler receipt.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
+
+fn crypto_response(status: Int, body: String) -> ServeWireResponse {
+  ServeWireResponse { status: status, content_type_label: native_serve_application_json, body: body, headers: [] }
+}
+
+fn crypto_answered(verdict: DeviceCryptoVerdict, arm: String) -> ServeWireResponse {
+  crypto_response(status: 200, body: device_crypto_answer_json(a: DeviceCryptoAnswer { verdict: verdict, arm: arm }))
+}
+
+// ── Each fold's answer, named by its own arm ──────────────────────────────────────────────────
+fn signature_answer(v: SignatureVerification) -> ServeWireResponse {
+  match v {
+    SignatureVerified { verified: _ } => crypto_answered(verdict: CryptoVerified, arm: "SignatureVerified")
+    SignatureInvalid { suite: _ } => crypto_answered(verdict: CryptoInvalid, arm: "SignatureInvalid")
+    SignatureMalformed { declared: _, expected: _ } => crypto_answered(verdict: CryptoRefused, arm: "SignatureMalformed")
+    VerifyingKeyMalformed { declared: _, expected: _ } => crypto_answered(verdict: CryptoRefused, arm: "VerifyingKeyMalformed")
+    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => crypto_answered(verdict: CryptoRefused, arm: "SignatureSuiteMismatch")
+    VerifyingKeyUndecodable { point_b64url: _ } => crypto_answered(verdict: CryptoRefused, arm: "VerifyingKeyUndecodable")
+    SignatureUndecodable { b64url: _ } => crypto_answered(verdict: CryptoRefused, arm: "SignatureUndecodable")
+  }
+}
+
+fn attestation_refusal_arm(r: AttestationRefusal) -> String {
+  match r {
+    AttestationFormatUnexpected { declared: _ } => "AttestationFormatUnexpected"
+    AttestationChainUntrusted { detail: _ } => "AttestationChainUntrusted"
+    AttestationNonceMismatch => "AttestationNonceMismatch"
+    AttestationKeyIdMismatch { declared: _ } => "AttestationKeyIdMismatch"
+    AttestationAppIdMismatch { expected_app_id: _ } => "AttestationAppIdMismatch"
+    AttestationCounterNonZero { counter: _ } => "AttestationCounterNonZero"
+    AttestationEnvironmentUnexpected { expected: _ } => "AttestationEnvironmentUnexpected"
+    AttestationCredentialIdMismatch { declared: _ } => "AttestationCredentialIdMismatch"
+    AttestationValidationCategoryRefused { category: _ } => "AttestationValidationCategoryRefused"
+    AttestationValidationCategoryAbsent => "AttestationValidationCategoryAbsent"
+    AttestationBundleVersionAbsent => "AttestationBundleVersionAbsent"
+    AttestationBundleVersionUnexpected { declared: _ } => "AttestationBundleVersionUnexpected"
+    AttestationUndecodable { cause: _ } => "AttestationUndecodable"
+  }
+}
+
+fn attestation_answer(v: AttestationVerification) -> ServeWireResponse {
+  match v {
+    AttestationVerified { verified: _ } => crypto_answered(verdict: CryptoVerified, arm: "AttestationVerified")
+    AttestationRefused { cause: c } => crypto_answered(verdict: CryptoRefused, arm: attestation_refusal_arm(r: c))
+  }
+}
+
+fn assertion_refusal_verdict(r: AssertionRefusal) -> DeviceCryptoVerdict {
+  match r {
+    AssertionSignatureInvalid => CryptoInvalid
+    AssertionAppIdMismatch { expected_app_id: _ } => CryptoRefused
+    AssertionValidationCategoryRefused { category: _ } => CryptoRefused
+    AssertionValidationCategoryAbsent => CryptoRefused
+    AssertionBundleVersionAbsent => CryptoRefused
+    AssertionBundleVersionUnexpected { declared: _ } => CryptoRefused
+    AssertionUndecodable { cause: _ } => CryptoRefused
+  }
+}
+
+fn assertion_refusal_arm(r: AssertionRefusal) -> String {
+  match r {
+    AssertionSignatureInvalid => "AssertionSignatureInvalid"
+    AssertionAppIdMismatch { expected_app_id: _ } => "AssertionAppIdMismatch"
+    AssertionValidationCategoryRefused { category: _ } => "AssertionValidationCategoryRefused"
+    AssertionValidationCategoryAbsent => "AssertionValidationCategoryAbsent"
+    AssertionBundleVersionAbsent => "AssertionBundleVersionAbsent"
+    AssertionBundleVersionUnexpected { declared: _ } => "AssertionBundleVersionUnexpected"
+    AssertionUndecodable { cause: _ } => "AssertionUndecodable"
+  }
+}
+
+fn assertion_answer(v: AssertionVerification) -> ServeWireResponse {
+  match v {
+    AssertionAuthentic { authentic: _ } => crypto_answered(verdict: CryptoVerified, arm: "AssertionAuthentic")
+    AssertionRefused { cause: c } => crypto_answered(verdict: assertion_refusal_verdict(r: c), arm: assertion_refusal_arm(r: c))
+  }
+}
+
+// n times the base point is infinity; (n - 1) times it is not. The scalar is the curve's own order
+// (p256_n), named by the request and never carried by it. A scalar that cannot be formed has no
+// point to judge: it is a typed refusal, never an answer.
+fn p256_multiple_scalar(m: P256Multiple) -> BigNat? {
+  match m {
+    OrderItself => Present { value: p256_n }
+    OrderMinusOne => bignat_sub(a: p256_n, b: bignat_one())
+  }
+}
+
+fn order_answer(m: P256Multiple) -> ServeWireResponse {
+  match p256_multiple_scalar(m: m) {
+    Absent => crypto_answered(verdict: CryptoRefused, arm: "ScalarUnrepresentable")
+    Present { value: scalar } => {
+      let g = p256_affine(x: p256_gx, y: p256_gy)
+      if jacobian_is_infinity(p: p256_double_scalar(u1: scalar, g: g, u2: bignat_zero_limbs(), q: g)) { crypto_answered(verdict: CryptoInfinity, arm: "Infinity") }
+      else { crypto_answered(verdict: CryptoFinite, arm: "Finite") }
+    }
+  }
+}
+
+// ── Routing ──────────────────────────────────────────────────────────────────────────────────
+fn crypto_unreadable(at: String, cause: String) -> ServeWireResponse {
+  crypto_response(status: 400, body: device_crypto_wire_refusal_body(at: at as NonEmptyStr, cause: cause as NonEmptyStr))
+}
+
+fn signature_route(body: String) -> ServeWireResponse {
+  match decode_signature_check(text: body) {
+    WireRefused { at: a, cause: c } => crypto_unreadable(at: a as String, cause: c as String)
+    WireDecoded { value: r } => signature_answer(v: verify_signature(key: r.key, signature: r.signature, message: r.message))
+  }
+}
+
+fn attestation_route(body: String) -> ServeWireResponse {
+  match decode_attestation_check(text: body) {
+    WireRefused { at: a, cause: c } => crypto_unreadable(at: a as String, cause: c as String)
+    WireDecoded { value: r } => attestation_answer(v: verify_attestation(object: r.object, e: r.expectation))
+  }
+}
+
+fn assertion_route(body: String) -> ServeWireResponse {
+  match decode_assertion_check(text: body) {
+    WireRefused { at: a, cause: c } => crypto_unreadable(at: a as String, cause: c as String)
+    WireDecoded { value: r } => assertion_answer(v: verify_assertion(object: r.object, e: r.expectation))
+  }
+}
+
+fn order_route(body: String) -> ServeWireResponse {
+  match decode_p256_multiple(text: body) {
+    WireRefused { at: a, cause: c } => crypto_unreadable(at: a as String, cause: c as String)
+    WireDecoded { value: m } => order_answer(m: m)
+  }
+}
+
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
+  if method != "POST" { crypto_response(status: 405, body: "the verifier answers POST only\n") }
+  else if path == device_crypto_signature_path { signature_route(body: body) }
+  else if path == device_crypto_attestation_path { attestation_route(body: body) }
+  else if path == device_crypto_assertion_path { assertion_route(body: body) }
+  else if path == device_crypto_p256_order_path { order_route(body: body) }
+  else { crypto_response(status: 404, body: concat("no verifier route ", concat(path, "\n"))) }
+}

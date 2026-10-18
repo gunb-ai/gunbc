@@ -1,6 +1,7 @@
 module gunbc.fleet.fleet_converge_plan_cli
 
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.fleet.fleet_converge_plan_revision { observe_actions_run_binding_at_checkout }
+import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
 
 import gunbc.fleet.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
@@ -869,15 +870,15 @@ fn fleet_converge_plan_scoped_bound_wet(
     GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
     GenerationAdmitted { generation: prior_generation } => {
   let observed = if (scope == WorkspaceSlotCommissioningOnly) {
-    match workspace_dispatch_observe(host: subject_host, revision: run.run_revision as CommitSha) {
+    match workspace_dispatch_observe(host: subject_host, revision: run.execution_revision as CommitSha) {
       WorkspaceCommissioningFleetObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceSlotCommissioningConverge { basis: basis } }
       WorkspaceCommissioningFleetDependencyObserved { plan } => FleetConvergeRequestObserved { request: WorkspaceCommissioningDependencyConverge { plan: plan } }
       WorkspaceCommissioningFleetRefused { reason } => FleetConvergeRequestUnobserved { reason: concat("commissioning privileged observation refused: ", reason) }
     }
   } else if (scope == WorkspaceAllocationOnly) {
     observe_workspace_allocation_plan_request_wet(host: subject_host,
-      release_dir: approval_broker_release_dir(root: microvm_controller_root,
-        revision: RevisionBoundAtEmission { revision: run.run_revision as CommitSha }) as NonEmptyStr)
+      release_dir: release_locus_dir(root: microvm_controller_root,
+        revision: RevisionBoundAtEmission { revision: run.execution_revision as CommitSha }) as NonEmptyStr)
   } else { observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: subject_host) }
   match observed {
     FleetConvergeRequestUnobserved { reason: why } =>
@@ -1002,7 +1003,7 @@ fn fleet_converge_plan_scoped_bound_wet(
 // final join can pair them without re-deriving anything.
 fn fleet_converge_apply_wet() -> ProcessExit
 {
-  match observe_actions_run_binding() {
+  match observe_actions_run_binding_at_checkout() {
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["fleet_converge_apply: RunUnbound — ", v, " ", d, "; the apply mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
@@ -1275,6 +1276,7 @@ fn observe_operator_local_run_binding() -> OperatorLocalRunBinding
             workflow_ref: fleet_converge_operator_local_workflow_ref,
             run_id: join(["local-", now as String], ""),
             run_revision: head.sha as String,
+            execution_revision: head.sha as String,
           },
         }
     }
@@ -1358,7 +1360,7 @@ fn fleet_converge_operator_cli_entry(
       if mode == fleet_converge_operator_mode_deploy {
         match observe_operator_local_run_binding() {
           OperatorLocalRunBound { binding: b } =>
-            join(["deploy-converged host=", trim(s: host), " candidate=", b.run_revision, " branch=", trim(s: candidate_branch), "\n"], "")
+            join(["deploy-converged host=", trim(s: host), " candidate=", b.execution_revision, " branch=", trim(s: candidate_branch), "\n"], "")
           OperatorLocalRunUnbound { reason: why } => join(["deploy-converged host=", trim(s: host), " candidate=unread: ", why, "\n"], "")
         }
       } else {
@@ -1453,7 +1455,7 @@ fn fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> Pro
               run: run,
               plan_run_id: plan_run_id,
               plan_receipt: plan_receipt,
-              expected_revision_admitted: run.run_revision,
+              expected_revision_admitted: run.execution_revision,
             )
         }
       }
