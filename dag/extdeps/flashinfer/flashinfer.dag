@@ -4,6 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.content_hash { Sha256Digest, Sha256DigestHex, sha256_hex_digest }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.optional { Present }
 
 // FLASHINFER IS ITS OWN UPSTREAM. It is independently versioned, released and published, so its facts
 // live here rather than as a bare version string inside the product that consumes it (DESIGN section 3,

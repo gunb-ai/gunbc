@@ -15,6 +15,7 @@ import gunbc.harness.harness_turn {
 }
 import gunbc.roadmap.roadmap_submission { submission_text, WorkerSubmission, SubmissionBlocked }
 import gunbc.harness.harness_cli { harness_turn_exit }
+import std.optional { Present }
 
 // A TURN THAT PRODUCED ITS ARTIFACT IS COMPLETE AND EXITS ZERO; the budget-exhausted turn beside it
 // still exits one. The first live review run wrote a verdict at round 19 and then failed on budget at

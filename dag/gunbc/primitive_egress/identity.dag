@@ -6,6 +6,7 @@ import std.primitive_identity {
   PrimitiveSurfaceAuthority, BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, InterpreterDispatch, EmitHandler,
   primitive_identity_lookup, primitive_identity_eq,
 }
+import std.optional { Present }
 
 // CANONICAL IDENTITY BEFORE CLASSIFICATION. Every spelling on every surface and every resolved
 // consumer edge joins ONE PrimitiveIdentity here, and only that identity is classified. The join

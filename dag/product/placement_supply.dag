@@ -5,6 +5,7 @@ import std.measure { RackUnit }
 import std.decl_ref { DeclarationRef }
 import extdeps.dhcp.v4 { MacAddress }
 import product.host_identity { HostIdentity, host_identity_eq }
+import std.optional { Absent, Present }
 
 type PhysicalAssetIdentity = NonEmptyStr where brand("PhysicalAssetIdentity")
 type SiteIdentity = NonEmptyStr where brand("SiteIdentity")

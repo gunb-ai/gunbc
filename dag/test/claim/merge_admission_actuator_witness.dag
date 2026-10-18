@@ -1,5 +1,7 @@
 module test.claim.merge_admission_actuator_witness
 
+import std.optional { Present }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

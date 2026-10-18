@@ -69,6 +69,7 @@ import std.decision {
   CausalModelPopulation,
   DecisionStanding,
 }
+import std.optional { Present }
 
 fn standing_settled(s: DecisionStanding) -> Bool {
   match accept_settled_policy(standing: s) {

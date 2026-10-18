@@ -95,6 +95,7 @@ import gunbc.runner.runner_width_transition {
 }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
+import std.optional { Absent, Present }
 
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {

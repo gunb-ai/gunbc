@@ -81,6 +81,7 @@ import v2.test.claim.manual.connective_anchors {
   stub_empty_disj,
   stub_empty_transform
 }
+import std.optional { Present }
 fn lbe_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },

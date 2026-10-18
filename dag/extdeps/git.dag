@@ -8,6 +8,7 @@ import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
 import std.algebra { length, skip, trim }
 import std.resources { Network }
+import std.optional { Absent, Present }
 
 // HOME AND GIT CONFIG ARE ARGV `env` WORDS, not a Map the seed spawn never applies (review 79196).
 // The token stays out of argv: only the private HOME path is named, and netrc lives under that HOME.

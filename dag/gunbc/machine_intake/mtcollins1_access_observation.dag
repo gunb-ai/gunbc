@@ -27,6 +27,7 @@ import extdeps.bmc.access_profile {
   SurfaceOemRestRemoteMedia,
   SurfaceSystemInventory,
 }
+import std.optional { Present }
 
 // THE FIRST LANDED BmcAccessObservation IN THE REPOSITORY, and that is a fact about the corpus
 // rather than about this unit: extdeps.bmc.access_profile has carried BmcAccessObservation, the

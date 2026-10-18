@@ -1,5 +1,7 @@
 module gunbc.file_access
 
+import std.optional { Absent }
+
 
 type FileTreeScope {
   root_path: NonEmptyStr

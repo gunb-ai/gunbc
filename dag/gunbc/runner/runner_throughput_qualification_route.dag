@@ -15,6 +15,7 @@ import gunbc.runner.runner_throughput_qualification {
   WorkspaceBacking, RamBackedTmpfs, FloorWorkloadPin,
   RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority, leg_is_wired,
 }
+import std.optional { Present }
 
 // THE EXECUTION ROUTE IS A TYPED STAGE PLAN, AND EVERY STAGE SAYS WHAT IT MUTATES AND UNDER WHOM.
 //

@@ -26,6 +26,7 @@ import std.reference_binding_observation {
   UnrelatedLoadedFileObservation,
 }
 import std.types { Bool, FilePath, Int, List, String }
+import std.optional { Absent, Present }
 
 type ReferenceDerivedClosureCapability
   = SameFileEarlierNeighbourVisible

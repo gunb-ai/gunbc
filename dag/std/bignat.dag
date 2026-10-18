@@ -2,6 +2,7 @@ module std.bignat
 
 import std.types { Int, List, String, Bool }
 import std.algebra { Cons, Empty }
+import std.optional { Present }
 
 // A MULTI-LIMB UNSIGNED NATURAL over the substrate's 64-bit Int, which refuses on overflow.
 //

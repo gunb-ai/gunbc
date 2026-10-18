@@ -1,5 +1,7 @@
 module test.claim.posix_principal_allocation_witness
 
+import std.optional { Present }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // CONTROLS OVER THE NEW ARMS, authored because their absence is what made the previous attempt

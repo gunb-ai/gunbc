@@ -12,6 +12,7 @@ import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_observe_cas_slot
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_evidence_json, workspace_gateway_evidence_decode, workspace_gateway_refusal }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import std.optional { Present }
 
 type WorkspaceGatewayRead
   = WorkspaceGatewayEvidenceRead { evidence: WorkspaceGatewayEvidence }

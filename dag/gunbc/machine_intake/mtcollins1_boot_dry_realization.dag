@@ -33,6 +33,7 @@ import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { millisecond }
 import v2.std.operation_argv { InputText, InputTextList }
+import std.optional { Present }
 
 // THE DRY REALIZATION OF ONE mtcollins1 BOOT ATTEMPT'S WHOLE EFFECT DEMAND. The scenario world
 // composes the one BMC model with what the worker running the attempt has around it: its filesystem

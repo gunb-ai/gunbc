@@ -57,6 +57,7 @@ import gunbc.scm.checkout {
   ObjectIsCorpusManifest,
   checkout_node_target,
 }
+import std.optional { Present }
 
 // FIFTEEN DEPENDENCY KINDS ARE NOT ONE CLOSURE ALGEBRA, so this module declares its OWN total
 // classifier over the shared vocabulary -- it does not mint a second one. An earlier revision

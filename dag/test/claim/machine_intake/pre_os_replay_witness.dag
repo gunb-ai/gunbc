@@ -17,6 +17,7 @@ import gunbc.machine_intake.pre_os_replay { pre_os_sel_cursor, pre_os_ingest_sel
 import gunbc.machine_intake.pre_os_timeline { pre_os_cycle_anchor, pre_os_console_span, pre_os_utf8_size, PreOsReplayObservation, PreOsConsoleText, PreOsTimelineRow, pre_os_machine_timeline, pre_os_timeline_view, pre_os_captured_cycles }
 import gunbc.machine_intake.pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_inventory_question }
 import test.claim.machine_intake.pre_os_observer_witness { observer_test_boot_payload }
+import std.optional { Absent, Present }
 
 fn replay_fixture(seq: Nat, generation: NonEmptyStr, record: NonEmptyStr) -> ObservationEnvelope {
   let base = t_envelope(ownership: t_owner(fencing: t_unfenced), chunk: t_chunk(seq: seq, generation: 4, payload: "identical-payload", first: 0, len: 100),

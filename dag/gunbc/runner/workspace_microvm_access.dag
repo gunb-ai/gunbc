@@ -20,6 +20,7 @@ import gunbc.runner.runner_microvm_cell_readiness { WorkspaceWorkload, GitHubRun
 import gunbc.runner.runner_microvm_lifecycle_realize {
   AttemptLaunch, VmmStarted, bind_attempt_console, AttemptConsoleBound, AttemptConsoleUnbound, AttemptConsoleNotStarted,
 }
+import std.optional { Present }
 
 type WorkspaceConnection sole_constructor {
   identity: AttemptIdentity

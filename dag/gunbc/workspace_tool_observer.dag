@@ -13,6 +13,7 @@ import gunbc.runner.runner_microvm_slot_unit { microvm_controller_vmm_binary, mi
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import std.optional { Present }
 
 type WorkspaceToolsObserved sole_constructor { host: NonEmptyStr, observed_at: Timestamp, release_dir: NonEmptyStr, standing: FirecrackerHostStanding }
 type WorkspaceToolsRead = WorkspaceToolsReady { observation: WorkspaceToolsObserved } | WorkspaceToolsUnobserved { reason: NonEmptyStr }

@@ -27,6 +27,7 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
 }
+import std.optional { Absent, Present }
 
 // RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): the belt's run state and the launch
 // admission's spawn mode were ONE concept, migrated at the root (DESIGN 3 replacement migration) --

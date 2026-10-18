@@ -23,6 +23,7 @@ import std.import_statement {
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.workflow.parsed_import_statement_production { parsed_import_statements_live }
+import std.optional { Absent, Present }
 
 // EXECUTED EVIDENCE FOR THE STILL-LIVE TYPED PARSE AND REWRITE CAPABILITY. The v1 canary receipt,
 // classifier and production mint are deleted, but their deletion cannot retire these discriminating

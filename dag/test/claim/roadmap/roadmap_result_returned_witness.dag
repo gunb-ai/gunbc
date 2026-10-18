@@ -54,6 +54,7 @@ import gunbc.roadmap.roadmap_result_returned {
 import gunbc.roadmap.roadmap_belt_tick_cli { belt_tick_exit_with_snapshot_closes }
 import gunbc.roadmap.roadmap_event_carrier { SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
 import test.claim.roadmap.roadmap_belt_actuate_witness { completed_attempt_progress }
+import std.optional { Present }
 
 data rr_attempt: String = "feedfacefeedface"
 

@@ -20,6 +20,7 @@ import product.supplier.ubicloud {
 import extdeps.gpu.types { Cuda }
 import extdeps.cloud.vast_ai { VastAiOffer }
 import extdeps.gpu.types { GpuRuntime }
+import std.optional { Present }
 
 // VAST.AI AS A SUPPLIER: BINDING OVER extdeps.cloud.vast_ai, NOTHING RESTATED AND NO POLICY. The generic
 // carriers (SupplierOfferProjection, OfferBinding, ReadinessObservation) are consumed from the first

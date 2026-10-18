@@ -41,6 +41,7 @@ import extdeps.os.ubuntu_kernel_nic_coverage {
   Noble2404HweLinux617,
   r8169_claims_pci_device,
 }
+import std.optional { Absent, Present }
 
 type PxeNetworkObservation {
   dhcp_offers_bootloader: Bool

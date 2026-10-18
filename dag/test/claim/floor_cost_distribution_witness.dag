@@ -118,6 +118,7 @@ import gunbc.floor_cost_distribution {
   identity_dispositions,
   split_disposition_identities
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

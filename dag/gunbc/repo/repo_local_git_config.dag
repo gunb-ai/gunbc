@@ -32,6 +32,7 @@ import std.realization_reconcile {
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.optional { Present }
 
 
 // Repository-local Git configuration desired state for gunbc integration-policy projections

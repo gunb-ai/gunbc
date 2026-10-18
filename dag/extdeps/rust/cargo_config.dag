@@ -8,6 +8,7 @@ import extdeps.languages.toml.types {
   TomlString, TomlInteger, TomlBool, TomlInlineTable,
   toml_strings
 }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

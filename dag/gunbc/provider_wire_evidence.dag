@@ -11,6 +11,7 @@ import extdeps.tools.sha512sum {
   Sha512FileObserved,
   Sha512FileObservationRefused,
 }
+import std.optional { Present }
 
 // Durable private wire evidence for provider account-standing captures. Publication is exclusive
 // under an evidence root: 0700 directory → unique same-directory temporary file → write raw bytes →

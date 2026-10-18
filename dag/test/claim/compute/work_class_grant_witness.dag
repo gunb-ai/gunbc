@@ -32,6 +32,7 @@ import gunbc.compute.work_provider_local {
   compute_ceiling_retry_reference, compute_failed_unit_outcome,
   ComputeListing, GrantExceededCount, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable, grant_exceeded_count_decide,
 }
+import std.optional { Present }
 
 // ── THE PRODUCER: what systemd-run --wait said about the unit ─────────────────────────────────
 

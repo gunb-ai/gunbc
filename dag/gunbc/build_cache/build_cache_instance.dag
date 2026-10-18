@@ -13,6 +13,7 @@ import gunbc.host.host_layout {
   CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
   gunbc_compile_pool_placement,
 }
+import std.optional { Present }
 
 data build_cache_instance_scope_disposition: ConstructionMechanism = SingleAuthority
 

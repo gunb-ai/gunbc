@@ -9,6 +9,7 @@ import extdeps.pricing.regional_compute {
 }
 import std.measure { basis_point, BasisPoint, hardware_thread_count_value }
 import std.nat { Nat }
+import std.optional { Present }
 
 // The read the regional rows exist for: what the SAME machine costs in region X versus a baseline
 // region, as a basis-point premium. Derived at read time from cited rows, never stored (DESIGN

@@ -24,6 +24,7 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.optional { Absent, Present }
 
 // THE NATIVE APP ATTEST PROGRAM: extdeps.apple.app_attest verify_attestation and verify_assertion --
 // the folds #11989 authored, not a second fold -- executed over Apple's published iOS 14.4 sample

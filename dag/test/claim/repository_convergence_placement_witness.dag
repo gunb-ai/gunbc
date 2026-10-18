@@ -63,6 +63,7 @@ import gunbc.live_deploy.repository_convergence_placement {
   placement_receipt_of_convergence,
   placement_receipt_text,
 }
+import std.optional { Present }
 
 // EVERY WITNESS HERE IS PURE, AND SAYING SO IS WHAT MAKES THEM RUN. The floor's default disposition
 // is fail-closed -- a file that declares none is treated as ReadsLiveTree and DECLINED, discovered

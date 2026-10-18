@@ -10,6 +10,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.host.host_phase_status { observation_verdict_eq }
 import gunbc.readback_independence { readback_evidence_verdict, proc_swaps_read_probe }
 import product.host_identity { HostIdentity }
+import std.optional { Absent }
 
 // THE host swap-BACKING axis, and it exists because the corpus already converges a swap CAP over a
 // resource whose existence nothing models. gunbc.runner.runner_slot_allocation declares memory_swap_max =

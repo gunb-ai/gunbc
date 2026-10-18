@@ -29,6 +29,7 @@ import gunbc.membership_reconcile {
   membership_tally,
 }
 import gunbc.ownership { Ownership, Ensured }
+import std.optional { Present }
 
 type CliToolPinMemberAt = NonEmptyStr
 

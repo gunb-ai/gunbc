@@ -44,6 +44,7 @@ import gunbc.scm.object_store {
   empty_path_unique_entries, path_unique_with_path_bound,
   object_id_eq,
 }
+import std.optional { Present }
 
 // PRESENCE IS A STATE OF THE PATH, NOT AN OPTIONAL AROUND A LOCATOR, and the difference is that this
 // type's equality is total over both arms. An `AuthoredSourceTarget?` would make absence a property

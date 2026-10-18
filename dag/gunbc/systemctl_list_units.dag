@@ -4,6 +4,7 @@ import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.systemd.systemctl
+import std.optional { Present }
 
 fn systemctl_list_units_local(instance_glob: NonEmptyStr) -> String? {
   systemctl_list_units_local_typed(instance_glob: instance_glob, unit_type: "service")

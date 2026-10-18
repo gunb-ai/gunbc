@@ -122,6 +122,7 @@ import gunbc.compute.work_request {
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
+import std.optional { Present }
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
 // realization and knows nothing the contract does not: it resolves the subject, observes the

@@ -19,6 +19,7 @@ import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
+import std.optional { Present }
 
 // WHERE A NEW ATTEMPT STARTS FROM. Until 2026-09-05 every attempt of a node started fresh from the
 // instance's base ref with the node's brief, so a worker that spent its round budget mid-task was

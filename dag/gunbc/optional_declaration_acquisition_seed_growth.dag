@@ -1,0 +1,28 @@
+module gunbc.optional_declaration_acquisition_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Seed-route acquisition of gunbc.structural_realization_bindings optional_declaration_ref: T? is
+// a parse fact (raw type node return_cardinality CardOptional), consumed by the closure walk.
+// No ambient prelude. Rust because the collector runs inside the seed resolve path, before any
+// v2 carrier that would itself need this closure to evaluate.
+data optional_declaration_acquisition_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.entry_resolve",
+      decl_name: "raw_parse_demands_optional_declaration",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "optional_declaration_acquisition_missing",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "The seed compile closure must load the declaration T? denotes (optional_declaration_ref) without minting a kernel Optional. Detection is a parse fact on ParsedFileReferences; module_paths_of_references adds that module path; a pool that does not hold it refuses typed. The collector runs inside v1's own resolve path, the same bootstrap ordering that keeps the rest of parsed_file_references in the seed. Hand-item delta +2 (one walk, one refusal constructor). ParsedFileReferences.demands_optional_declaration is a struct field, not a citable item. Existing items parsed_file_references, module_paths_of_references, reference_pull_paths_for_source and referenced_module_paths_of_source are ExistingSeedItemModified, not netted. Two controls in annotation_erased_scan_projection (existing module) execute the parse fact and the missing-module refusal.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these two items when the seed compile closure is derived from a v2 carrier that already owes optional_declaration_ref by identity (v2.std.optional_layers occupancy_declaration_spelling and v2.compiler.module_acquisition) without first evaluating through the v1 walk. Partial migration is not admissible: a seed mint beside a v2 spelling is two authorities for one declaration.",
+  current_boundary: "src/v1/stage0/src/cli_run/entry_resolve.rs parsed_file_references / raw_parse_demands_optional_declaration -> src/v1/stage0/src/cli_run.rs module_paths_of_references and reference_pull_paths_for_source"
+}

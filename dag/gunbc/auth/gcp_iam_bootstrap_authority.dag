@@ -8,6 +8,7 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before, utc_instant_seconds_after }
 import gunbc.auth.gcp_iam_converge { cell_preimage }
+import std.optional { Present }
 
 // The operator authorized this named human principal. No caller-controlled member, role, or
 // project is accepted. Ongoing iam-converge is never the beneficiary of bootstrap authority.

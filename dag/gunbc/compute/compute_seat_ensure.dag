@@ -31,6 +31,7 @@ import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   filesystem_listing_observation, filesystem_listing_entry_names,
 }
+import std.optional { Present }
 
 // A COMPUTE SEAT HELD BY AN ATTEMPT THAT ENDED IS ENSURED RETURNED, THROUGH THE ONE DISCHARGE DOOR
 // (gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge).

@@ -18,6 +18,7 @@ import extdeps.toolchain.types { Architecture }
 import gunbc.boot_artifact { BootArtifact }
 import gunbc.machine_intake.subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey }
 import gunbc.machine_intake.phase { IntakePhase, QualificationRefusalOwner, intake_phase_label, intake_phase_rank, refusal_owner_label }
+import std.optional { Present }
 
 // THE RECEIPT SPINE (machine-intake ruling 2026-08-29 §12). Every phase emits one normalized
 // envelope plus references to raw evidence by digest. Required properties, each a field or a

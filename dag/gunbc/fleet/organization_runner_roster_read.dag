@@ -59,6 +59,7 @@ import gunbc.fleet.fleet_runner_connectivity {
   RosterReadUnavailable,
   organization_runner_roster_from_page
 }
+import std.optional { Present }
 
 // THE LIVE ORGANIZATION RUNNER ROSTER. This is the producer the planner's roster parameter was
 // waiting for: GET /orgs/{org}/actions/runners, read through the gh CLI under the gunbai-ci App

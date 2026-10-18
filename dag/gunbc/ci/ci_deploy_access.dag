@@ -47,6 +47,7 @@ import gunbc.ci.ci_deploy_target_host {
   deploy_target_proof,
   deploy_target_host_preflight_block,
 }
+import std.optional { Present }
 
 type PrivilegedCommand {
   grant: PosixSudoGrant

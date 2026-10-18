@@ -1,5 +1,7 @@
 module test.claim.diverging_match_arm_join_witness
 
+import std.optional { Absent, Present }
+
 // The discriminating RED for the diverging-arm join defect, kept verbatim as the
 // reproduction that found it. Before `v1.compiler.infer` excluded diverging arms
 // from the match's join, `probe_cell` below could not be authored at all: the

@@ -75,6 +75,7 @@ import extdeps.llm.codex_app_server {
   CodexAppServerAccountRateLimitsRead,
   codex_app_server_method_wire_name,
 }
+import std.optional { Present }
 
 data witness_note: String = "Hermetic press carriers: account-trip itinerary (3) vs turn-target itinerary (5) + projected stdio binding + preflight subject + terminal/cause adjudication RED. AccountReady gates on native limit_id codex bucket capacity (usedPercent below 100), never an empty rateLimits object, never sibling-bucket availability alone, and never turn_started. Live multi-bucket exhausted specimen enrolled under dag/test/fixture/provider_terminal/. Live JSON-RPC turn execution remains open."
 

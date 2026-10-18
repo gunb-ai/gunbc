@@ -8,6 +8,7 @@ import v2.workflow.required_floor {
   ModulePrefixMatch, ModulePrefixMatched, ModulePrefixUnmatched, first_module_prefix_match, long_home_prefixes, fixture_home_prefixes,
 }
 import v2.workflow.floor_cost_debt { floor_cost_debt_holds }
+import std.optional { Present }
 
 // THE CANONICAL TEST PROCESS, PURE HALF: which witnesses a pattern selects and which of them the
 // floor's own home policy would run. A witness MODULE is a test target: its label is its package

@@ -38,6 +38,7 @@ import extdeps.bmc.capability {
   bmc_firmware_release_identity_eq,
   release_row_has_capability,
 }
+import std.optional { Present }
 
 // THE OUT-OF-BAND BOOT HANDOFF: the operation a converge program performs against a host it cannot
 // reach THROUGH. Every existing transport in this repository — gunbc.host.host_effect LocalShell and

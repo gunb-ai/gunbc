@@ -21,6 +21,7 @@ import product.pcb.stackup {
   stackup_copper_layer_count,
   stackup_copper_layers,
 }
+import std.optional { Present }
 
 // COPPER REALIZES A NET; IT DOES NOT DEFINE ONE. The logical net authority is
 // product.electrical.connectivity's ElectricalNet, and this module consumes it. A second net type

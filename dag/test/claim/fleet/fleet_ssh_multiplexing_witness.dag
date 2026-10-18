@@ -26,6 +26,7 @@ import test.claim.typed_remote_file_write_fleet_ssh_fixture {
   fleet_ssh_execution_context_at_witness_fixture,
   fixture_multiplex_directory_path,
 }
+import std.optional { Present }
 
 // KEY-SESSION LEGS SHARE ONE AUTHENTICATED CONNECTION PER (CONTEXT, TARGET), the route's answer to
 // srv1 run 38767890891 (two of five slot legs reset at kex past sshd MaxStartups). Every fleet key

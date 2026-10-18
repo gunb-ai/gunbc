@@ -1,6 +1,7 @@
 module test.claim.interpreter_constructed_present_match_witness
 
 import std.types { Bool, Int, String }
+import std.optional { Present }
 
 // A MATCH OVER AN OPTIONAL SEES THE PRESENT VALUE WHERE THE CHECKER SAYS IT DOES, WHICHEVER WAY
 // THE OPTIONAL WAS BUILT. Which arms see it is ONE predicate, v1.compiler.infer

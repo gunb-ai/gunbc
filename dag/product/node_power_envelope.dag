@@ -51,6 +51,7 @@ import gunbc.memory_provisioning {
   PartialChannel,
   PopulationOption,
 }
+import std.optional { Present }
 
 // WHAT A NODE DRAWS AND WHAT ITS MEMORY DELIVERS — the electrical and bandwidth half of a build,
 // kept apart from what the build COSTS (product.build_fulfillment). They answer different questions;

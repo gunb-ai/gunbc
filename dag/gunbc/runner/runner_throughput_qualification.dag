@@ -35,6 +35,7 @@ import v2.workflow.floor_eval_step_calibration {
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import std.optional { Present }
 
 // A RUNNER-THROUGHPUT ASSESSMENT SAYS WHETHER A SELECTED OFFER DELIVERS, AND NOTHING ELSE.
 //

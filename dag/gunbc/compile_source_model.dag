@@ -1,5 +1,7 @@
 module gunbc.compile_source_model
 
+import std.optional { Absent, Present }
+
 
 type DependencyPoolIndex
   = StrictPoolIndex

@@ -30,6 +30,7 @@ import gunbc.live_deploy.readiness {
   ProcessRevisionMismatch, HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused,
   service_readiness_with_tailnet_door, service_readiness_reason, live_deploy_healthz_get_for_socket,
 }
+import std.optional { Present }
 
 fn door_revision() -> ReleaseRevisionBinding {
   RevisionBoundAtEmission { revision: "b2dd729f92954e50e3d8d9bbd65022c2d58f14dd" as CommitSha }

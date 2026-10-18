@@ -26,6 +26,7 @@ import gunbc.payroll.period_accrual {
   AccrualRefusal, ContributionCause, PositionUnavailableForBase, AccrualCurrencyMismatch,
   accrue_period,
 }
+import std.optional { Present }
 
 // THE DISCRIMINATING CLAIMS.
 //

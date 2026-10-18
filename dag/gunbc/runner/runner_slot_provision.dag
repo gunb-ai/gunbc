@@ -78,6 +78,7 @@ import gunbc.runner.runner_slot_retirement {
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
   retirement_unit,
 }
+import std.optional { Absent, Present }
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).

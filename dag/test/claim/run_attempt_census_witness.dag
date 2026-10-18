@@ -12,6 +12,7 @@ import gunbc.ci.run_attempt_census {
   ProviderTotalUnstable, ProviderTotalUnreconciled, CensusReadRefused,
   admit_census, admit_census_over_fold, census_is_closed, census_refusal_text
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

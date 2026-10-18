@@ -67,6 +67,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltWorkflowAttemptEvidences, WorkflowAttemptEvidencesObserved, WorkflowAttemptEvidencesRefused,
   belt_workflow_attempt_history_evidences_observe_for_instance,
 }
+import std.optional { Present }
 
 // THE DOGFOOD ROUTE, AS ONE ACCEPTANCE CASE (operator ruling 2026-10-03). A request enters the
 // factory and leaves as an independently reviewed, published candidate. Every stage is established

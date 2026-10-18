@@ -23,6 +23,7 @@ import gunbc.roadmap.workspace_allocation_wire { workspace_write_unavailable_wir
 import gunbc.workspace_allocation_policy { workspace_installed_policy }
 
 import gunbc.roadmap.workspace_allocation_http { workspace_http_create_over, workspace_http_list_over, workspace_http_get_over, workspace_http_release_over, workspace_http_reason, workspace_http_json }
+import std.optional { Present }
 
 // THE ALLOCATION WRITES REQUIRE THE TAILNET PATH. This row is the deployment-path conjunct both
 // write routes hand the write law; the shared seam (gunbc.roadmap.roadmap_serve

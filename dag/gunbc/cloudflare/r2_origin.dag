@@ -20,6 +20,7 @@ import std.human_intervention {
   FleetOnce,
   NoDischargeSiteModeled,
 }
+import std.optional { Present }
 
 // WHOSE ACCOUNT, WHICH BUCKET, AND UNDER WHOSE CREDENTIAL -- DECLARED, BECAUSE A CALL SITE THAT
 // SUPPLIES THEM IS A SECOND AUTHORITY FOR THE SAME FACTS. extdeps.cloudflare.r2 owns the SHAPE of an

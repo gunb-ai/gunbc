@@ -10,6 +10,7 @@ import gunbc.workspace_commissioning_executor_journal {
 }
 import gunbc.workspace_commissioning_executor_fence { workspace_executor_submission_identity_matches }
 import test.claim.workspace_executor_journal_witness { journal_fixture, journal_invocation }
+import std.optional { Present }
 
 fn fenced_fixture() -> WorkspaceExecutorRecord {
   journal_fixture(phase: ExecutorSubmissionFenced, invocation: "")

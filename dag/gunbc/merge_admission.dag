@@ -60,6 +60,7 @@ import gunbc.merge_admission_subject {
   TestedSubject,
   walk_attempt_id_eq,
 }
+import std.optional { Present }
 
 type MergeStrategy
   = SquashMerge

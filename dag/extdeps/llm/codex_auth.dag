@@ -8,6 +8,7 @@ import extdeps.uuid { Uuid }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.auth.jwt { JwtCompactSerialization, NumericDate }
 import extdeps.auth.oidc { OidcIdTokenClaims }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

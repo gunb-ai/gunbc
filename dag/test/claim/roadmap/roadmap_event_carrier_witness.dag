@@ -17,6 +17,7 @@ import gunbc.roadmap.roadmap_event_log { Progress, roadmap_history_unordered_rea
 import gunbc.roadmap.roadmap_event_cli { roadmap_event_record_exit, roadmap_event_record_unordered_refusal }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.roadmap.roadmap_event_log { roadmap_event_wire_text }
+import std.optional { Present }
 
 fn self_claimed(node: RoadmapNodeId, author: String, at: String) -> RoadmapEventEnvelope {
   let ref = PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: author as NonEmptyStr }

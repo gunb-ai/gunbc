@@ -19,6 +19,7 @@ import gunbc.live_deploy.revision {
   DivergedHistories,
   RelationUnverifiable,
 }
+import std.optional { Present }
 
 // After fleet-desired withdrawal the admitted revision is what has landed on origin/main.
 // Every landing passed the required witnesses job on its PR. Standing is ancestry against

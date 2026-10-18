@@ -36,6 +36,7 @@ import v2.workflow.floor_diff_observe {
 }
 import extdeps.git { TwoDot }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

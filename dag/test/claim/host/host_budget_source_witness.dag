@@ -55,6 +55,7 @@ import gunbc.compute.unit_bounds {
   CgroupUnreadable,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

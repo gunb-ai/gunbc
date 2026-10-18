@@ -33,6 +33,7 @@ import gunbc.machine_intake.pre_os_bringup_verdict {
   sel_window_after_cursor,
   sol_capture_reading,
 }
+import std.optional { Present }
 
 // MT. COLLINS UNIT 1 AFTER THE OPERATOR RESTORED THE SIXTEEN PROVEN MODULES, 2026-09-12/13: THE
 // SECOND HALF OF THE PRE-OS BRING-UP REGRESSION CORPUS. gunbc.machine_intake.mtcollins1_32dimm_bringup_observation

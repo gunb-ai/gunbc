@@ -46,6 +46,7 @@ import gunbc.runner.runner_microvm_network_sanitation_observe { slot_network_tun
 import gunbc.host.host_kernel_dependency { HostKernelDependencyPlan, HostKernelCapabilitySatisfied, HostKernelDependencyPlanned, HostKernelDependencyRefused }
 import gunbc.host.host_kernel_dependency_observe { host_tun_kernel_dependency_observe }
 import gunbc.host.host_kernel_dependency_wire { host_kernel_dependency_row_prefix, host_kernel_dependency_from_text }
+import std.optional { Present }
 
 // This is a read-only fleet subject, never a readiness permit or supply offer. The constructor
 // is available only here, after actual host and protected-store observations, not fixture input.

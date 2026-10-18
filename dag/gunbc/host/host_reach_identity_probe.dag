@@ -39,6 +39,7 @@ import std.upsert_decision {
   Inaccessible,
   UnknownRefused,
 }
+import std.optional { Present }
 
 // ONE wet probe, two phase cells (DESIGN §2: one observation, N consumers). An
 // authenticated short-hostname read over the host's management transport is

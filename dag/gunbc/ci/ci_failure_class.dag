@@ -48,6 +48,7 @@ import gunbc.merge_admission {
   GateRosterHash,
 }
 import extdeps.git.object_store { GitObjectId }
+import std.optional { Present }
 
 type InfraSignature
   = ResourceTemporarilyUnavailable

@@ -14,6 +14,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   JsonString,
 }
+import std.optional { Present }
 
 // THE EXACT WORK CONTRACT, FIRST SLICE (roadmap row compute-exact-work-contract). A request names
 // the exact tree it applies to, the operation, and the toolchain that will serve it; the answer is

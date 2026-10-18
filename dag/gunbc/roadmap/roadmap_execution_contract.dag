@@ -12,6 +12,7 @@ import extdeps.languages.json.emit {
   json_object,
   json_array,
 }
+import std.optional { Present }
 
 type ExecutionCapability
   = GitWorkspaceCapability

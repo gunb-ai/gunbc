@@ -2,6 +2,7 @@ module gunbc.runner.runner_host_hardware_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.pci.identity { PciAddress, PciClassCode, PciDeviceId, PciVendorId }
+import std.optional { Present }
 
 // WHAT THE UNIT PRESENTED, AT A GRAIN A BUILDER CAN CONSUME. The first version of this module
 // carried every load-bearing value inside two String fields named `finding` and

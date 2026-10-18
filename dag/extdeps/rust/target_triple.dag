@@ -20,6 +20,7 @@ import extdeps.toolchain.types {
   Gnu,
   Musl,
 }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

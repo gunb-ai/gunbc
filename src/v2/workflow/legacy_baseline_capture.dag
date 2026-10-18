@@ -39,6 +39,7 @@ import v2.workflow.legacy_binding_observation {
   ObservationRefused,
   admit_complete_observation
 }
+import std.optional { Present }
 
 // A COMMIT IDENTITY AND THE SEVEN SUBJECT DIGESTS ANSWER DIFFERENT QUESTIONS, AND NEITHER REPLACES
 // THE OTHER. The commit says WHICH REVISION WAS MATERIALIZED; the digests say WHAT SUBJECT WAS

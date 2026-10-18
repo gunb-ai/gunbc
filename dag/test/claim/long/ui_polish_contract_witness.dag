@@ -11,6 +11,7 @@ import gunbc.principal_projection { PrincipalRef, principal_ref_eq, fabric_workf
 import gunbc.roadmap.roadmap_presentation { issue_status_label, issue_status_details, WorkRowView, OpenLifecycle, DoneLifecycle, ReviewLifecycle, SchedulingReady, SchedulingNotReady, NoActiveWork, ActivityUnobservable, CompletedWork, ActiveWorkRefused, ActionView, NoDisclosure, ActivityEvidenceRow }
 import gunbc.roadmap.roadmap_event_log { NodeOpen }
 import gunbc.harness.harness_throughput { RoundsUnobserved }
+import std.optional { Present }
 
 fn element_count(f: Fragment, tag_name: String, attribute: String, value: String) -> Int {
   match f {

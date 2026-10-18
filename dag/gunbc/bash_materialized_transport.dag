@@ -6,6 +6,7 @@ import v2.workflow.effect_plan_bash_materialize {
   EffectPlanBashMaterialized,
   EffectPlanBashMaterializationRefused,
 }
+import std.optional { Absent, Present }
 
 // THE EMITTED-BASH ROUTE to a TransportScript, and the second of the two decls named in
 // extdeps.shell.exec.transport_script_seal's admit_callers.

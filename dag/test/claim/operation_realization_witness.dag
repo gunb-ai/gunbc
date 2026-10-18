@@ -36,6 +36,7 @@ import gunbc.bmc_model {
 import gunbc.bmc_dry_realization {
   bmc_dry_realization, bmc_ipmi_operation, bmc_chassis_power_control_handler,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

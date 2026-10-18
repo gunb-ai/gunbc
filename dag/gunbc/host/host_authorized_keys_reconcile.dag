@@ -13,6 +13,7 @@ import gunbc.membership_reconcile {
   membership_reconcile,
   membership_plan_admitting_outcome,
 }
+import std.optional { Present }
 
 type HostAuthorizedKeysMemberAt = NonEmptyStr
 

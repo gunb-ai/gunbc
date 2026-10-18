@@ -31,6 +31,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialFetchRefused,
   SecretCredentialResolvedVersionMismatch,
 }
+import std.optional { Present }
 
 // THE OBSERVATION THAT HAS TO HAPPEN BEFORE ANY WRITE GRANT CAN BE DECLARED. Cloudflare's public
 // permission reference names the groups but PUBLISHES NO IDS, so the id of a write-capable R2 group

@@ -13,6 +13,7 @@ import extdeps.apple.app_attest {
   IntermediateCaAuthorityStep,
 }
 import test.claim.app_attest_verifier_witness { sample_leaf, sample_ca, sample_fold_inputs, sample_expectation }
+import std.optional { Present }
 
 // THE SUBJECT IS ONE INTERFACE, rfc_5280 x509_ca_authority (§6.1.4 (k), (m), (n)). The positive
 // control is Apple's real App Attestation intermediate; each RED is that same certificate with ONE

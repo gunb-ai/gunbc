@@ -22,7 +22,6 @@ pub use crate::v1_compiler_infer_types::{
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::NoExprData;
@@ -30,9 +29,8 @@ use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
-    bool_type, error_type, hash_type, int_type, no_span, string_type, unit_type,
-    with_optional_cardinality, Cardinality, Connective, DeclarationMarker, ErrorNode, ExprData,
-    InferredNode, Node,
+    bool_type, error_type, hash_type, int_type, no_span, optional_of, string_type, unit_type,
+    Connective, DeclarationMarker, ErrorNode, ExprData, InferredNode, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -235,7 +233,6 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -337,7 +334,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: crate::v1_std_core::with_optional_cardinality(string_type()),
+        returns: crate::v1_std_core::optional_of(string_type()),
     }));
                 __m.insert("sha256_hex_of_text".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -440,7 +437,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: crate::v1_std_core::with_optional_cardinality(int_type()),
+        returns: crate::v1_std_core::optional_of(int_type()),
     }));
                 __m.insert("char_at".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -464,7 +461,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: crate::v1_std_core::with_optional_cardinality(string_type()),
+        returns: crate::v1_std_core::optional_of(string_type()),
     }));
                 __m.insert("chars_to_string".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -702,8 +699,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: bool_type(),
     }));
-                __m.insert("lookup".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "lookup".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("map_value".to_string()))));
-                __m.insert("map_get".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "map_get".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("map_value".to_string()))));
+                __m.insert("lookup".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "lookup".to_string(), crate::v1_std_core::optional_of(type_variable_node("map_value".to_string()))));
+                __m.insert("map_get".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "map_get".to_string(), crate::v1_std_core::optional_of(type_variable_node("map_value".to_string()))));
                 __m.insert("Some".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "value".to_string(),
@@ -711,7 +708,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         id: "some_inner".to_string(),
     }),
     })]),
-        returns: crate::v1_std_core::with_optional_cardinality(type_variable_node("some_inner".to_string())),
+        returns: crate::v1_std_core::optional_of(type_variable_node("some_inner".to_string())),
     }));
                 __m.insert("map_keys".to_string(), derived_signature(Rc::new(vec!["m".to_string()]), "map_keys".to_string(), list_of_type_variable("collection_element".to_string())));
                 __m.insert("sorted_map_keys".to_string(), Rc::new(BuiltinSignature {
@@ -724,7 +721,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         returns: list_of_type_variable("collection_element".to_string()),
     }));
                 __m.insert("map_values".to_string(), derived_signature(Rc::new(vec!["m".to_string()]), "map_values".to_string(), list_of_type_variable("collection_element".to_string())));
-                __m.insert("get".to_string(), derived_signature_in(AlgebraProfile::FreeMonoidCollectionProfile, Rc::new(vec!["xs".to_string(), "index".to_string()]), "get".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("collection_element".to_string()))));
+                __m.insert("get".to_string(), derived_signature_in(AlgebraProfile::FreeMonoidCollectionProfile, Rc::new(vec!["xs".to_string(), "index".to_string()]), "get".to_string(), crate::v1_std_core::optional_of(type_variable_node("collection_element".to_string()))));
                 __m.insert("reverse".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "reverse".to_string(), list_of_type_variable("collection_element".to_string())));
                 __m.insert("list_push".to_string(), derived_signature(Rc::new(vec!["xs".to_string(), "item".to_string()]), "list_push".to_string(), list_of_type_variable("collection_element".to_string())));
                 __m.insert("hash_combine".to_string(), Rc::new(BuiltinSignature {

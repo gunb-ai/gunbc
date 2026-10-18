@@ -44,6 +44,7 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_pre_compare_steps,
   typed_remote_file_compare_argv,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

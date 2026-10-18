@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr }
 import std.content_hash {
   Fnv1a64Structural, Fnv1a64, Sha256Hash, Sha1Hash, Sha512Hash, content_hash_of_value, content_hash_combine_structural,
 }
+import std.optional { Absent, Present }
 
 // Shared reviewed artifact identity. Runtime adapters can verify the exact same two byte
 // streams without importing the complete fleet planner or constructing a new plan.

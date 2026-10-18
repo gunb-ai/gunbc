@@ -1,5 +1,7 @@
 module test.claim.extdeps_llm_type_grounding_witness
 
+import std.optional { Present }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_openai_tool_call_type_known() -> Bool {

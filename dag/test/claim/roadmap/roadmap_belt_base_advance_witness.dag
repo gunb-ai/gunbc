@@ -31,6 +31,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_scm_intake_base_for, BeltIntakeBaseReady, BeltIntakeBaseRefused, BeltIntakeBasePoisoned,
 }
 import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head, mb_intake_base }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -49,6 +49,7 @@ import extdeps.currency.currency { Usd, Eur, currency_code_eq }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -85,6 +85,7 @@ import extdeps.languages.json.emit {
   json_kv,
   serialize_json,
 }
+import std.optional { Present }
 
 // The single authority for WHAT a verification run is run AGAINST, kept separate from whether that
 // run passed. Verify used to be hardcoded pending, so a finished agent left an uncommitted diff and

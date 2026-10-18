@@ -74,6 +74,7 @@ import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import test.fixture.recorded_required_floor_log_excerpt {
   recorded_required_floor_log_excerpt, recorded_floor_log_slot_unit,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

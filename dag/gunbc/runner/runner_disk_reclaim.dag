@@ -6,6 +6,7 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 import gunbc.ownership { Ownership, Owned }
 import std.algebra { list_flat_map }
+import std.optional { Present }
 
 // GROUND TRUTH FIRST, MODEL SECOND. gunbc.runner.runner_lifecycle's ADD path states the rule this module
 // follows: read the deployed artifact as ground truth for what it does, then subsume it through

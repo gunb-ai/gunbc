@@ -33,6 +33,7 @@ import gunbc.fleet.fleet_revision_acceptance {
   accept_required_ci_merge_group_runs,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

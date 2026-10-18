@@ -7,6 +7,7 @@ import extdeps.ebay.ebay { production_api_base }
 import extdeps.ietf.http_semantics { HttpMethod }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

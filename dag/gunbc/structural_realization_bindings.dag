@@ -3,7 +3,7 @@ module gunbc.structural_realization_bindings
 import std.optional { Present, Absent }
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding }
 import std.coercion { ConversionPlan, UnfoldPhase, InverseUnfoldPhase }
 import std.operator_realization { StructuralOrderingBinding }
 
@@ -120,12 +120,8 @@ data kernel_grounding_rows: List<KernelGrounding> = [
   KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat"), min: Present { value: 0 }, max: Absent }
 ]
 
-// KernelMintDeclaration). The seed's kernel Optional -- what `T?` resolves to -- is
-// v2.std.optional Optional, the corpus's one declaration of that coproduct. Bound here so a
-// Present or Absent arm carries that declaration's identity whether it was reached through the
-// sugar or through an import. This table is the Optional mint only.
-data kernel_optional_mint_name: String = "Optional"
-
-data kernel_mint_declaration_rows: List<KernelMintDeclaration> = [
-  KernelMintDeclaration { minted_name: kernel_optional_mint_name as NonEmptyStr, declaration: decl_ref(module_path: "std.optional", decl_name: "Optional") }
-]
+// THE DECLARATION `T?` DENOTES (ruling gunbc.design_ruling optional_sugar_is_declaration_bound): the corpus's one
+// declaration of the optional coproduct. The sugar and a bare Present or Absent at an optional position bind to it BY
+// IDENTITY and introduce it as an acquisition dependency; there is no kernel mint standing for it. Every route reads
+// this one row (the seed's inference, its closure walk and the v2 resolver).
+data optional_declaration_ref: DeclarationRef = decl_ref(module_path: "std.optional", decl_name: "Optional")

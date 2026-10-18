@@ -21,6 +21,7 @@ import extdeps.cache.sccache {
   sccache_binary_artifact_content_identity,
   sccache_published_musl_arch_key_of,
 }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "github.com/mozilla/sccache/releases" }

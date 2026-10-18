@@ -31,6 +31,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemExactPathKindUnrecognized,
   FilesystemPermissionDenied,
 }
+import std.optional { Absent, Present }
 
 // WITNESSES FOR THE FLEET PROBE/ENROLLMENT POSIX CUTOVER (DP-M2, PR3). Every shell row these
 // retire — the getent|cut pipeline, `echo "$HOME"`, `command -v gcloud || echo absent`, the

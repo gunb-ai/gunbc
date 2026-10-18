@@ -52,6 +52,7 @@ import gunbc.measurement_provenance {
   observe,
   observation_is_bound,
 }
+import std.optional { Present }
 
 // WHAT THIS WITNESS COVERS. observe folds two devboot work statuses into an Observation<Value>.
 // Two claims are under test. The first is unchanged: the bound arm (Observed) is reachable only

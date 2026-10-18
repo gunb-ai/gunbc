@@ -41,6 +41,7 @@ import extdeps.memory.microchip_at24cm02 { at24cm02 }
 import extdeps.memory.macronix_mx25l25673g { mx25l25673g }
 import extdeps.connector.samtec_ftsh_105_01_l_dv { ftsh_105_01_l_dv }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

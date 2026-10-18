@@ -103,6 +103,7 @@ import product.altra_motherboard.minimal_design {
   board_governing_intent,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

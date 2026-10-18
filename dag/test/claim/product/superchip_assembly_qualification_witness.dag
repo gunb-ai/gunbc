@@ -51,6 +51,7 @@ import product.superchip_assembly_qualification {
   GpuMemoryClaimed,
   p4261_k1_carrier,
 }
+import std.optional { Absent, Present }
 
 fn mentions(lines: List<NonEmptyStr>, fragment: String) -> Bool {
   any(lines, l => (l as String).contains(fragment))

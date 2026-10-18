@@ -60,6 +60,7 @@ import gunbc.runner.runner_microvm {
 import gunbc.command_runner {
   run_shell_commands, LocalExec,
 }
+import std.optional { Present }
 
 data runner_guest_image_disposition: ConstructionMechanism = SingleAuthority
 

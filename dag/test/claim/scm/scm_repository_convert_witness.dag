@@ -53,6 +53,7 @@ import gunbc.scm.repository_envelope {
   repository_object_identity_rule_tag,
 }
 import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head, mb_root_of }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -104,6 +104,7 @@ import extdeps.bmc.ipmi_channel {
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

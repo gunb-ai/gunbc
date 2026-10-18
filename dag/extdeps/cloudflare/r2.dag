@@ -16,6 +16,7 @@ import extdeps.cloudflare.account_api_tokens {
   CloudflarePermissionGrant,
   permission_groups_from_grants
 }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

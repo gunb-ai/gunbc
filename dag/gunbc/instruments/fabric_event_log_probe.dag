@@ -17,6 +17,7 @@ import gunbc.fabric.fabric_event_log {
   EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire,
 }
+import std.optional { Present }
 
 // THE LIVE RECEIPT FOR THE CARRIER, against a fabric DB. Two entries, one sequence of steps:
 //

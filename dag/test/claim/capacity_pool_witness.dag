@@ -12,6 +12,7 @@ import product.capacity.pool {
   PoolReading, PoolRead, PoolReadingRefused, LeaseStanding, LeaseLive, LeaseLapsed, LeaseTermUnknown,
   pool_of, pool_acquire, pool_settle, pool_release, lapse_pass, pool_reading_at, lease_standing_at, observe_upstream_remaining, pool_refusal_wire,
 }
+import std.optional { Present }
 
 type Seats = Measure<Count, One, Nat>
 

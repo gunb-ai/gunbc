@@ -17,6 +17,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_state_path_for_instance }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventId }
+import std.optional { Present }
 
 // THE ATTEMPT'S REQUEST RECORD: the durable, create-only fact of which request an attempt answers.
 // It is its own module, below the event carrier, because two readers on opposite sides of that

@@ -16,6 +16,7 @@ import gunbc.merge_admission_subject {
   merge_admission_tested_subject_path,
   render_tested_subject_wire,
 }
+import std.optional { Present }
 
 // This wet capture entry imports only the walk-attempt/tested-subject identity carrier plus typed
 // git/filesystem services. Merge classification, commit-roster hashing, and CI failure taxonomy are

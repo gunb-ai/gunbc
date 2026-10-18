@@ -13,6 +13,7 @@ import product.electrical.connectivity {
   terminal_ref_equal,
 }
 import std.measure { Measure, Resistance, Capacitance, Volt, Kilo, Nano }
+import std.optional { Present }
 
 // THE ANALOG CIRCUIT INTENT, LANGUAGE-NEUTRAL. This replaces a BoardSlice that the board article
 // used to hold directly — a type imported from the SPICE projection, carrying SPICE NodeRefs,

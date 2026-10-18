@@ -9,6 +9,7 @@ import extdeps.accounting.encumbrance { Encumbrance, EncumbranceLedger, Held, Ex
 import extdeps.accounting.budget { Appropriation }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonString, JsonNumber, JsonArray, JsonObject, json_object, json_kv, json_string, json_int, json_array }
 import extdeps.languages.json.parse { json_field, json_field_string, json_field_int, json_field_value }
+import std.optional { Present }
 fn workspace_money_string(v: JsonValue, key: String) -> String? {
   json_field_value(r: json_field_string(obj: v, key: key))
 }

@@ -33,6 +33,7 @@ import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approv
 import gunbc.fleet.fleet_converge_workflow {
   ApprovalDeviceEnrolmentCodeIssue, fleet_converge_workflow_mode_wire, fleet_converge_workflow_modes, fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyConsumed,
 }
+import std.optional { Present }
 
 // THE CODE NEVER REACHES THE STEP LOG (decision msg_a1d8d1b9), asserted over the producer and not
 // over a receipt the claim builds: deliver_enrolment_code runs the publish through

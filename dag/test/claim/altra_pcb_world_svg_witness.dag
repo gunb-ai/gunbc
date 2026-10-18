@@ -141,6 +141,7 @@ import extdeps.cpu.ampere_altra_package {
   altra_package_body_height,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

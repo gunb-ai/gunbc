@@ -14,6 +14,7 @@ import extdeps.languages.json.parse {
   JsonDocumentParsed,
   JsonDocumentUnreadable,
 }
+import std.optional { Absent, Present }
 
 // THE PROCESS IS THE AUTHORITY FOR WHAT IS DEPLOYED, AND THIS MODULE IS THAT AUTHORITY'S WIRE FORM.
 // `gunbc serve` binds its compiled graph ONCE at process start, so the only fact that answers 'what

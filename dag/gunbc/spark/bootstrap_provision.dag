@@ -27,6 +27,7 @@ import std.access {
   AccessRefusal, AccessRefusalLocation,
   AccessActionNotGranted, AccessObjectNotGranted, AccessEvidenceAbsent, AccessSubjectNotRecognized
 }
+import std.optional { Present }
 
 // The Spark bootstrap credential population, as convergence subjects rather than as callable
 // mutation tools. An earlier revision of this module carried two patterns that dispatched

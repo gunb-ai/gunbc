@@ -11,6 +11,7 @@ import product.fabric.sanitation {
 }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner.runner_microvm_attempt_identity { MicroVmAttempt, runner_microvm_attempt_unit_name }
+import std.optional { Present }
 
 data runner_microvm_cell_readiness_disposition: ConstructionMechanism = SingleAuthority
 

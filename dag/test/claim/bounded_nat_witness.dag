@@ -10,6 +10,7 @@ import std.bounded_nat {
   bounded_nat, bounded_nat_admit, bounded_nat_add, bounded_nat_sub, bounded_nat_mul,
   bounded_nat_div, bounded_nat_rem, bounded_nat_add_mod, bounded_nat_mul_mod,
 }
+import std.optional { Present }
 
 // The widths are SUPPLIED here, as every caller must supply one until reification can read a
 // declaration's own width (DESIGN 3's witness rule: the inputs belong at the boundary as values).

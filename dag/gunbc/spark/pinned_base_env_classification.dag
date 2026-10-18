@@ -14,6 +14,7 @@ import gunbc.container.registry_image_config {
   read_docker_hub_image_config_at_digest,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Present }
 
 // WHAT THIS CLASSIFIES: Env entries decoded from a ContainerImageConfig against a modeled
 // syntactic class (name markers and PEM headers). EnvSecretShapeUnmatched is that class

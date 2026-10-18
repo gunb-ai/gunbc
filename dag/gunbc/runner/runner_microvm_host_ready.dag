@@ -48,6 +48,7 @@ import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_deploy {
   RunnerHostSpec, RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for,
 }
+import std.optional { Present }
 
 // THE HOST HALF OF THE RUNNER MICRO-VM, OBSERVED BEFORE ANYTHING IS BUILT ON IT. gunbc.runner.runner_microvm
 // models what a runner guest is and admits a VM config; nothing had ever asked a host whether it

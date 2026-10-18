@@ -31,6 +31,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
 }
+import std.optional { Present }
 
 // THE FIRST REALIZATION OF std.fabric_storage: ONE FILE-BACKED STORE, ONE LINEARIZATION POINT.
 //

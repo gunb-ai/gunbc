@@ -32,6 +32,7 @@ import extdeps.github.app {
   permission_access_in
 }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import std.optional { Present }
 
 type DeclaredGitHubApp {
   owner_login: NonEmptyStr

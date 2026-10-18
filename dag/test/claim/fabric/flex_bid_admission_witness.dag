@@ -66,6 +66,7 @@ import extdeps.cloud.vast_ai {
 import test.claim.fabric.provider_use_fixture {
   fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

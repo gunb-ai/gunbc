@@ -15,6 +15,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.optional { Present }
 
 // WHAT A REALIZED EFFECT IS ALLOWED TO BE ON THE FAR SIDE.
 //

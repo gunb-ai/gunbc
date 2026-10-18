@@ -10,6 +10,7 @@ import extdeps.llm.cli_lifecycle {
   ToolExecutionReadiness,
   ToolExecutionReadinessUnobserved,
 }
+import std.optional { Present }
 
 type WorkerTerminalOutcome
   = WorkerTerminalCompleted

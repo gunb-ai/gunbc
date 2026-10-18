@@ -56,6 +56,7 @@ import gunbc.fleet.fleet_fan_converge_routes {
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.firmware.types { firmware_semantic_version }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

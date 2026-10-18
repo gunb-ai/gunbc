@@ -37,6 +37,7 @@ import gunbc.machine_intake.prior_life_boundary {
   prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_archive, prior_life_receipt_realization,
   prior_life_archive_digest, prior_life_archive_body, baseline_cursor_sel_final_record, baseline_cursor_archive, baseline_cursor_log_services,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -34,6 +34,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   attempt_launch_record_of_json, AttemptLaunchBound, AttemptLaunchUnbound, AttemptLaunchUnreadable,
   launch_identity_node_id_text, launch_identity_instance_text, launch_identity_revision_hex,
 }
+import std.optional { Present }
 
 // THE SERVICE EVIDENCE RECEIPT (roadmap node service-evidence-capture). One joined reading per
 // attempt over every field the node lists, bound to ONE attempt of ONE node on ONE dashboard

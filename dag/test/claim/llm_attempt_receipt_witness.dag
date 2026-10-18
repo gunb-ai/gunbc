@@ -43,6 +43,7 @@ import std.algebra { FieldOfFractions }
 import std.measure { nanosecond, token_count, token_count_value }
 import std.types { Bool, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

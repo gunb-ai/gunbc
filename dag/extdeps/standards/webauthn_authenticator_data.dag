@@ -6,6 +6,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.rfc_8949 { CborValue, CborDecode, CborDecoded, CborRefused, CborRefusal, cbor_decode_item }
+import std.optional { Present }
 
 // W3C Web Authentication: An API for accessing Public Key Credentials, Level 3, §6.1 Authenticator
 // Data. The byte layout an authenticator emits and a relying party parses:

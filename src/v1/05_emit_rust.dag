@@ -1,5 +1,7 @@
 module v1.compiler.emit_rust
 
+import std.optional { Present, Absent, Optional }
+
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
@@ -35,7 +37,7 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 
 import std.algebra { trim, AlgebraFieldTemplate }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
-import v1.std.core { Unmarked, expr_literal_int_optional,
+import v1.std.core { type_is_optional, optional_payload, Unmarked, expr_literal_int_optional,
   call_semantics_target,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
@@ -73,8 +75,8 @@ import v1.std.core { Unmarked, expr_literal_int_optional,
   lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base,
   index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
-  binop_left, binop_right, no_span, with_required_cardinality, Connective, Conj, Disj,
-  NoConnective, Arrow, Cardinality, Required, CardOptional, is_rest_transport,
+  binop_left, binop_right, no_span,  Connective, Conj, Disj,
+  NoConnective, Arrow, is_rest_transport,
   transport_base_path, empty_intern_table,
   LeafOwner, SingleOwner, LeafAmbiguous
 }
@@ -200,9 +202,9 @@ import std.operator_realization {
   OperandDemand, DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
   operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label
 }
-import gunbc.structural_realization_bindings { structural_ordering_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
+import gunbc.structural_realization_bindings { structural_ordering_rows, kernel_grounding_rows, optional_declaration_ref }
 import gunbc.rust_source_type_bindings { rust_host_option_carrier_declarations }
-import std.literal_elaboration { KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous, kernel_mint_ownership, DeclarationOwnsTheMint, DeclarationDoesNotOwnTheMint, KernelMintOwnershipAmbiguous, kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
+import std.literal_elaboration { KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -620,18 +622,15 @@ fn rust_declaration_realizes_as_native_alias(module_path: String, decl_name: Str
 }
 
 // WHICH DECLARATION IS THE HOST OPTION is a fact about the declaration, read from the one row that
-// binds it: the declaration the kernel optional mint stands for
-// (gunbc.structural_realization_bindings kernel_mint_declaration_rows), the same reading
+// names it (gunbc.structural_realization_bindings optional_declaration_ref), the same reading
 // host_option_arm_reading makes for a pattern arm. A declaration that is not that one is not the host
 // option, whatever it is named: a coproduct a module declares as `Optional` emits as its own enum.
-// Two rows binding the kernel optional decide no declaration, and none is answered as the host
-// option here (the pattern side refuses that state, HostOptionArmBindingAmbiguous).
 fn declaration_owns_host_option(module_path: String, decl_name: String) -> Bool {
-  match kernel_mint_ownership(rows: kernel_mint_declaration_rows, minted_name: kernel_optional_mint_name, declaration: decl_ref(module_path: module_path, decl_name: decl_name)) {
-    DeclarationOwnsTheMint => true
-    DeclarationDoesNotOwnTheMint => false
-    KernelMintOwnershipAmbiguous { row_count: _ } => false
-  }
+  declaration_ref_eq(a: optional_declaration_ref, b: decl_ref(module_path: module_path, decl_name: decl_name))
+}
+
+fn optional_declaration_leaf() -> String {
+  optional_declaration_ref.decl_name as String
 }
 
 // A type reference that carries the declaration it names is decided by that declaration. A reference
@@ -650,12 +649,7 @@ fn unstamped_reference_is_host_option(n: Node, source_indices: Map<String, Newli
     BareOccurrenceDeclaredInItsFile { declaration: decl } => declaration_node_owns_host_option(decl: decl, source_indices: source_indices, env: env)
     BareOccurrenceImportedByName { module_path: from_module, declaration: decl } =>
       declaration_owns_host_option(module_path: from_module, decl_name: leaf) || declaration_node_owns_host_option(decl: decl, source_indices: source_indices, env: env)
-    BareOccurrenceIsKernelName =>
-      match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: leaf) {
-        KernelMintDeclarationFound { declaration: d } => declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
-        KernelMintDeclarationAbsent => false
-        KernelMintDeclarationAmbiguous { row_count: _ } => false
-      }
+    BareOccurrenceIsKernelName => false
     BareOccurrenceUndecided => false
   }
 }
@@ -1766,7 +1760,7 @@ fn rust_carrier_is_at_shared_layer(n: Node, source_indices: Map<String, NewlineI
   let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   leaf != ""
     && !rust_carrier_realizes_as_machine_scalar(n: n, type_name: leaf)
-    && n.return_cardinality != CardOptional
+    && !type_is_optional(n: n)
     && set_contains(shared_types, leaf)
 }
 
@@ -1906,7 +1900,7 @@ fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decision: TypeRealiza
 // -- returned the bare name, so `get: K?` in a generic record emitted `K`: an absent value had no
 // representation (gunbc.recurring_failure_mode optional_type_parameter_emitted_without_its_cardinality).
 fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
-  let is_optional = n.return_cardinality == CardOptional
+  let is_optional = type_is_optional(n: n)
   if is_optional {
     concat("Option<", rendered, ">")
   } else {
@@ -2170,7 +2164,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -4382,9 +4376,9 @@ fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<Strin
 fn emit_inferred_type_leaf_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Present { value: Resolved { node: rt } } =>
-      let is_optional = rt.return_cardinality == CardOptional
+      let is_optional = type_is_optional(n: rt)
       if is_optional {
-        authored_name_at(source_indices: source_indices, node: with_required_cardinality(n: rt))
+        authored_name_at(source_indices: source_indices, node: optional_payload(n: rt))
       } else { authored_name_at(source_indices: source_indices, node: rt) }
     _ => ""
   }
@@ -4819,8 +4813,8 @@ fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, Ne
     _ =>
       let from_inferred_list = match n.inferred {
         Present { value: Resolved { node: rt } } =>
-          let is_optional = rt.return_cardinality == CardOptional
-          let peeled_rt = if is_optional { with_required_cardinality(n: rt) } else { rt }
+          let is_optional = type_is_optional(n: rt)
+          let peeled_rt = if is_optional { optional_payload(n: rt) } else { rt }
           collect_type_node_import_surface_names(n: peeled_rt, source_indices: source_indices)
         _ => []
       }
@@ -7946,9 +7940,9 @@ fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<S
     if coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: name, target: Rust), dag_name: name) != name { false }
     else { set_contains(recursive_types, name) }
   } else {
-    let is_optional = n.return_cardinality == CardOptional
+    let is_optional = type_is_optional(n: n)
     if is_optional {
-      needs_box_wrapping(n: with_required_cardinality(n: n), recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices)
+      needs_box_wrapping(n: optional_payload(n: n), recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices)
     } else {
       false
     }
@@ -10177,7 +10171,7 @@ fn emit_rust_fn_body_expr(texpr: Node, return_is_unit: Bool, registry: Map<Strin
 
 fn inferred_expr_is_optional(texpr: Node) -> Bool {
   match texpr.inferred {
-    Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    Present { value: Resolved { node: rt } } => type_is_optional(n: rt)
     _ => false
   }
 }
@@ -10728,7 +10722,7 @@ fn is_optional_like_parent_name(name: String) -> Bool {
     declaration_owns_host_option(module_path: module_path, decl_name: decl_name)
       || declaration_ref_in_list(target: decl_ref(module_path: module_path, decl_name: decl_name), refs: rust_host_option_carrier_declarations)
   } else {
-    name == kernel_optional_mint_name || is_host_diagnostics_carrier_alias(name: name)
+    name == optional_declaration_leaf() || is_host_diagnostics_carrier_alias(name: name)
   }
 }
 
@@ -10872,7 +10866,7 @@ fn unresolved_variant_pattern_refusal(name: String, scrut_type: String) -> Strin
 
 // WHETHER A PATTERN ARM IS AN ARM OF THE HOST OPTION, decided by the identity inference carried.
 // An arm whose owner is the declaration the kernel optional mint stands for
-// (gunbc.structural_realization_bindings kernel_mint_declaration_rows), or a declaration the Rust
+// (gunbc.structural_realization_bindings optional_declaration_ref), or a declaration the Rust
 // target realizes as its host option (gunbc.rust_source_type_bindings
 // rust_host_option_carrier_declarations), lowers to Some/None. An arm
 // whose owner is ANY OTHER identified declaration does not, whatever it is spelled: an identified
@@ -10889,21 +10883,16 @@ type HostOptionArmReading
   = HostOptionArmIsHostOption
   | HostOptionArmIsNot
   | HostOptionArmSpelledWithoutIdentity
-  | HostOptionArmBindingAmbiguous
 
 fn host_option_arm_reading(identity: VariantParentIdentity, bare_name: String, inferred_parent: String?, resolved_parent: String?) -> HostOptionArmReading {
-  let inferred_is_kernel_optional = inferred_parent == Present { value: kernel_optional_mint_name }
+  let inferred_is_kernel_optional = inferred_parent == Present { value: optional_declaration_leaf() }
   match identity {
     VariantParentIdentified { key: key } =>
       match key {
         VariantParentDeclaration { declaration: d } =>
-          match kernel_mint_ownership(rows: kernel_mint_declaration_rows, minted_name: kernel_optional_mint_name, declaration: d) {
-            KernelMintOwnershipAmbiguous { row_count: _ } => HostOptionArmBindingAmbiguous
-            DeclarationOwnsTheMint => HostOptionArmIsHostOption
-            DeclarationDoesNotOwnTheMint =>
-              if declaration_ref_in_list(target: d, refs: rust_host_option_carrier_declarations) { HostOptionArmIsHostOption }
-              else { HostOptionArmIsNot }
-          }
+          if declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
+            || declaration_ref_in_list(target: d, refs: rust_host_option_carrier_declarations) { HostOptionArmIsHostOption }
+          else { HostOptionArmIsNot }
         VariantParentKernelType { kernel_name: _ } => HostOptionArmIsNot
       }
     _ =>
@@ -10929,10 +10918,6 @@ fn emit_resolved_variant_pattern(name: String, parent_enum: String?, parent_iden
   let bare_name = qualified_last_segment(name: name)
   let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
   let host_option = host_option_arm_reading(identity: parent_identity, bare_name: bare_name, inferred_parent: parent_enum, resolved_parent: resolved_parent)
-  let binding_ambiguous = host_option == HostOptionArmBindingAmbiguous
-  if binding_ambiguous {
-    return emit_rust_compile_error_expr(message: concat("variant realization: more than one gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds the kernel optional, so the owner of the pattern arm `", bare_name, "` cannot be decided; the arm is refused rather than lowered"))
-  }
   let spelled_without_identity = host_option == HostOptionArmSpelledWithoutIdentity
   if spelled_without_identity {
     return emit_rust_compile_error_expr(message: concat("variant realization: the pattern arm `", bare_name, "` was read by inference against the kernel optional, but no declaration identity came with that reading; the arm is refused rather than lowered by spelling"))
@@ -11149,7 +11134,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
     analyze_rc_pattern(pattern: arm_pattern(n: arm), scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
   )
   let scrutinee_is_optional = match scrutinee.inferred {
-    Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    Present { value: Resolved { node: rt } } => type_is_optional(n: rt)
     _ => false
   }
   let scrutinee_is_rc_wrapped = match scrutinee.inferred {
@@ -11162,7 +11147,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   let scrutinee_is_rc_modeled_optional = match scrutinee.inferred {
     Present { value: Resolved { node: rt } } =>
       is_optional_like_parent_name(name: authored_name_at(source_indices: source_indices, node: rt))
-        && rt.return_cardinality != CardOptional
+        && !type_is_optional(n: rt)
         && rust_carrier_is_at_shared_layer(n: rt, source_indices: source_indices, shared_types: shared_types)
     _ => false
   }
@@ -11197,10 +11182,6 @@ fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, pa
   let bare_name = qualified_last_segment(name: name)
   let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
   let host_option = host_option_arm_reading(identity: parent_identity, bare_name: bare_name, inferred_parent: parent_enum, resolved_parent: resolved_parent)
-  let binding_ambiguous = host_option == HostOptionArmBindingAmbiguous
-  if binding_ambiguous {
-    return emit_rust_compile_error_expr(message: concat("variant realization: more than one gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds the kernel optional, so the owner of the pattern arm `", bare_name, "` cannot be decided; the arm is refused rather than lowered"))
-  }
   let spelled_without_identity = host_option == HostOptionArmSpelledWithoutIdentity
   if spelled_without_identity {
     return emit_rust_compile_error_expr(message: concat("variant realization: the pattern arm `", bare_name, "` was read by inference against the kernel optional, but no declaration identity came with that reading; the arm is refused rather than lowered by spelling"))
@@ -11404,7 +11385,7 @@ fn field_binding_with_pattern(field_binding: Node, pattern: MatchPattern) -> Nod
     occurrence_identity: field_binding.occurrence_identity, name: field_binding.name, ident: field_binding.ident,
     span: field_binding.span, ident_span: field_binding.ident_span, children: field_binding.children,
     connective: field_binding.connective, params: field_binding.params, inferred: field_binding.inferred,
-    return_cardinality: field_binding.return_cardinality, uses: field_binding.uses, body: field_binding.body,
+    uses: field_binding.uses, body: field_binding.body,
     transport: field_binding.transport, properties: field_binding.properties, type_annotation: field_binding.type_annotation,
     is_self_recursive: field_binding.is_self_recursive, has_non_tail_self_call: field_binding.has_non_tail_self_call,
     match_pattern: Present { value: pattern }, module_item_kind: field_binding.module_item_kind,
@@ -11501,7 +11482,7 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
 }
 
 fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
-  let is_optional = inferred_node.return_cardinality == CardOptional
+  let is_optional = type_is_optional(n: inferred_node)
   if is_optional {
     let result = type_name
     return result
@@ -11635,10 +11616,10 @@ fn effective_variant_parent_from_enum_lookup(leaf_name: String, rt: Node, bindin
 }
 
 fn effective_variant_parent_from_resolved(leaf_name: String, rt: Node, binding_kind: VarBindingKind?, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
-  match rt.return_cardinality {
-    CardOptional =>
+  if type_is_optional(n: rt) {
       if is_optional_variant_name(name: leaf_name) { Present { value: "Optional" } } else { effective_variant_parent_from_enum_lookup(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices) }
-    _ => effective_variant_parent_from_enum_lookup(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
+  } else {
+    effective_variant_parent_from_enum_lookup(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
   }
 }
 
@@ -11729,9 +11710,10 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
 fn emit_none_keyword_for_resolved_type(resolved_type: InferredNode?) -> String {
   match resolved_type {
     Present { value: Resolved { node: rt } } =>
-      match rt.return_cardinality {
-        CardOptional => emit_keyword(key: "null", target: Rust)
-        _ => emit_error_expr(message: "none/None with non-optional resolved carrier — refuse fail-open null default", target: Rust)
+      if type_is_optional(n: rt) {
+       emit_keyword(key: "null", target: Rust)
+      } else {
+       emit_error_expr(message: "none/None with non-optional resolved carrier — refuse fail-open null default", target: Rust)
       }
     _ => emit_error_expr(message: "none/None with undetermined carrier — refuse fail-open null default", target: Rust)
   }
@@ -12596,7 +12578,7 @@ fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 // MyOpt::Present built inside `fn f(..) -> String?` emitted `Some(..)`, overriding an
 // effective_parent that had ALREADY correctly resolved to the user enum. It also falsified this
 // note's own claim to key on the resolved parent rather than the spelling. The disjunct was deleted
-// rather than gated: `resolved_type.return_cardinality == CardOptional` is the expression-local
+// rather than gated: `type_is_optional(n: resolved_type)` is the expression-local
 // statement of the same fact, and executing all seven poles with the function-wide arm removed
 // showed it was load-bearing for NONE of them -- it was a second representation of an
 // expression-local fact (DESIGN section 3), not a needed fallback. Its negative control is
@@ -12856,10 +12838,10 @@ fn contextual_variant_parent_from_type_name(variant_name: String, resolved_type:
 }
 
 fn contextual_variant_parent_absent(variant_name: String, resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
-  match resolved_type.return_cardinality {
-    CardOptional =>
+  if type_is_optional(n: resolved_type) {
       if is_optional_variant_name(name: variant_name) { Present { value: "Optional" } } else { contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices) }
-    _ => contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
+  } else {
+    contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   }
 }
 
@@ -13043,8 +13025,8 @@ fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo
       match function_value_params(params: info.params) |> skip(idx) |> first {
         Present { value: param } =>
           let param_type = param_node_type_expr(n: param)
-          let param_required = param_type.return_cardinality != CardOptional && !is_host_optional_carrier_type(n: param_type, source_indices: source_indices, env: empty_type_env()) && !rust_param_type_is_type_variable(param_type: param_type, source_indices: source_indices)
-          let arg_optional = resolved_type(n: arg).return_cardinality == CardOptional && !rust_call_arg_is_function_value(arg: arg)
+          let param_required = !type_is_optional(n: param_type) && !is_host_optional_carrier_type(n: param_type, source_indices: source_indices, env: empty_type_env()) && !rust_param_type_is_type_variable(param_type: param_type, source_indices: source_indices)
+          let arg_optional = type_is_optional(n: resolved_type(n: arg)) && !rust_call_arg_is_function_value(arg: arg)
           if param_required && arg_optional {
             concat(arg_str, ".expect(\"fail-closed: an optional value flowed into non-optional parameter ", to_string(value: idx), " of ", func, " (empty Optional at runtime)\")")
           } else {
@@ -14072,7 +14054,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let recv_is_optional = match receiver.inferred {
-    Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    Present { value: Resolved { node: rt } } => type_is_optional(n: rt)
     _ => false
   }
   if recv_is_optional {
@@ -14297,7 +14279,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
       let si = scope.type_env.source_indices
       let filled_args = fill_op_default_args(ordered: args, op_params: op_params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       let optional_param_set = op_params
-        |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
+        |> filter(p => type_is_optional(n: param_node_type_expr(n: p)))
         |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: si), true))
       let json_param_set = op_params
         |> filter(p => coerce_primitive_type(decision: type_reference_realization(n: param_node_type_expr(n: p), dag_name: authored_name_at(source_indices: si, node: param_node_type_expr(n: p)), target: Rust), dag_name: authored_name_at(source_indices: si, node: param_node_type_expr(n: p))) == "serde_json::Value")
@@ -14357,7 +14339,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
         emit_rust_first_method_call(receiver: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else {
         let recv_str_raw = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-        let recv_is_optional = resolved_type(n: receiver).return_cardinality == CardOptional
+        let recv_is_optional = type_is_optional(n: resolved_type(n: receiver))
         let recv_str = if recv_is_optional {
           concat(recv_str_raw, concat(".expect(\"fail-closed: Optional receiver for method ", concat(method_name, " (empty Optional at runtime)\")")))
         } else { recv_str_raw }
@@ -15137,9 +15119,9 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   let scrut_str = emit_typed_expr(texpr: scrutinee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let scrut_type = match scrutinee.inferred {
     Present { value: Resolved { node: rt } } =>
-      let is_optional = rt.return_cardinality == CardOptional
+      let is_optional = type_is_optional(n: rt)
       if is_optional {
-        authored_name_at(source_indices: scope.type_env.source_indices, node: with_required_cardinality(n: rt))
+        authored_name_at(source_indices: scope.type_env.source_indices, node: optional_payload(n: rt))
       } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
     _ => ""
   }
@@ -15489,10 +15471,10 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
         true
       } else {
         match texpr.inferred {
-          Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+          Present { value: Resolved { node: rt } } => type_is_optional(n: rt)
           _ =>
             match map_get(scope.locals, n) {
-              Present { value: binding } => binding.resolved.return_cardinality == CardOptional
+              Present { value: binding } => type_is_optional(n: binding.resolved)
               Absent => false
             }
         }
@@ -15521,20 +15503,20 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
               true
             } else {
               match texpr.inferred {
-                Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+                Present { value: Resolved { node: rt } } => type_is_optional(n: rt)
                 _ => false
               }
             }
           _ =>
             match texpr.inferred {
-              Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+              Present { value: Resolved { node: rt } } => type_is_optional(n: rt)
               _ => false
             }
         }
       }
     _ =>
       match texpr.inferred {
-        Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+        Present { value: Resolved { node: rt } } => type_is_optional(n: rt)
         _ => false
       }
   }
@@ -15911,7 +15893,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
         return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
-      let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional)
+      let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || type_is_optional(n: resolved_type))
       let rust_tn = if optional_variant {
         rust_optional_variant_spelling(name: variant_surface_name)
       } else { tn }
@@ -16308,7 +16290,7 @@ fn emit_rust_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node
 fn expr_realizes_as_refusing_int(e: Node, env: TypeEnv) -> Bool {
   match e.inferred {
     Present { value: Resolved { node: rt } } =>
-      if rt.return_cardinality == CardOptional {
+      if type_is_optional(n: rt) {
         false
       } else {
         let normed = normalize_access_type_node(n: rt)
@@ -16337,7 +16319,7 @@ fn expr_realizes_as_refusing_int(e: Node, env: TypeEnv) -> Bool {
 
 fn is_optional_typed_expr(e: Node) -> Bool {
   match e.inferred {
-    Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    Present { value: Resolved { node: rt } } => type_is_optional(n: rt)
     _ => false
   }
 }
@@ -16362,7 +16344,7 @@ fn is_optional_typed_expr(e: Node) -> Bool {
 // be one word and never a splice. Two consumers, one reason: a string is an atom to both of them even
 // though its carrier is a sequence.
 fn type_node_is_ordered_element_run(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  n.return_cardinality != CardOptional
+  !type_is_optional(n: n)
     && node_is_element_collection(n: n, source_indices: source_indices)
     && !node_is_set_collection(n: n, source_indices: source_indices)
     && !is_rust_string_like(n: n, source_indices: source_indices)
@@ -16462,8 +16444,8 @@ fn is_optional_string_ordering(op: BinOp, left: Node, right: Node, source_indice
 fn is_string_typed_expr(e: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match e.inferred {
     Present { value: Resolved { node: rt } } =>
-      let is_optional = rt.return_cardinality == CardOptional
-      let inner = if is_optional { with_required_cardinality(n: rt) } else { rt }
+      let is_optional = type_is_optional(n: rt)
+      let inner = if is_optional { optional_payload(n: rt) } else { rt }
       is_rust_string_like(n: inner, source_indices: source_indices)
     _ => false
   }
@@ -16472,8 +16454,8 @@ fn is_string_typed_expr(e: Node, source_indices: Map<String, NewlineIndex>) -> B
 fn is_host_text_typed_expr(e: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match e.inferred {
     Present { value: Resolved { node: rt } } =>
-      let is_optional = rt.return_cardinality == CardOptional
-      let inner = if is_optional { with_required_cardinality(n: rt) } else { rt }
+      let is_optional = type_is_optional(n: rt)
+      let inner = if is_optional { optional_payload(n: rt) } else { rt }
       is_host_text_carrier_type(n: inner, source_indices: source_indices)
     _ => false
   }
@@ -16707,9 +16689,9 @@ fn pattern_binder_names(pattern: MatchPattern, si: Map<String, NewlineIndex>) ->
 fn tco_match_scrut_type_name(scrutinee: Node, si: Map<String, NewlineIndex>) -> String {
   match scrutinee.inferred {
     Present { value: Resolved { node: rt } } =>
-      let is_optional = rt.return_cardinality == CardOptional
+      let is_optional = type_is_optional(n: rt)
       if is_optional {
-        authored_name_at(source_indices: si, node: with_required_cardinality(n: rt))
+        authored_name_at(source_indices: si, node: optional_payload(n: rt))
       } else { authored_name_at(source_indices: si, node: rt) }
     _ => ""
   }
@@ -17307,9 +17289,10 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
                 _ =>
                   concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
               }
-              match ch.return_cardinality {
-                CardOptional => concat(raw, "\nlet ", field_name, " = Some(", field_name, ");")
-                _ => raw
+              if type_is_optional(n: ch) {
+               concat(raw, "\nlet ", field_name, " = Some(", field_name, ");")
+              } else {
+               raw
               }
             )
             let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
@@ -17902,7 +17885,7 @@ fn emit_exit_arm(prop: Node, result_fields: List<ShellResultField>, source_indic
 fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, result_fields: List<ShellResultField>, op_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let argv = transport.children
   let optional_params = op_node.params
-    |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
+    |> filter(p => type_is_optional(n: param_node_type_expr(n: p)))
     |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), true))
   let argv_scope = shell_argv_emit_scope(env: env, registry: registry)
   let has_stdin = match transport_stdin(t: transport, source_indices: source_indices) {
@@ -18652,7 +18635,7 @@ fn data_row_type_forbids_deserialize(type_node: Node, emit_info: EmitGraphInfo, 
 
 // Named rather than inlined because `if x == Variant {` parses as a record literal in .dag.
 fn data_row_declares_optional(type_node: Node) -> Bool {
-  type_node.return_cardinality == CardOptional
+  type_is_optional(n: type_node)
 }
 
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {

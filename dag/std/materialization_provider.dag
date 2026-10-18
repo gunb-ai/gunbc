@@ -127,6 +127,7 @@ import gunbc.compute.work_request {
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_content_hash }
 import extdeps.crypto.sha2 { sha256_computed_digest }
 import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.optional { Absent, Present }
 
 // The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one
 // interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed

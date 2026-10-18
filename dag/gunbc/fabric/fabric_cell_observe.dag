@@ -45,6 +45,7 @@ import gunbc.fabric.fabric_cell_converge {
   fabric_cell_refusal_insert_ordered,
   fabric_cell_canonical_refusals,
 }
+import std.optional { Present }
 
 data fabric_cell_observe_authority_disposition: ConstructionMechanism = SingleAuthority
 

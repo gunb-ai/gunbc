@@ -77,6 +77,7 @@ import gunbc.harness.harness_throughput {
   HarnessThroughput, HarnessRoundLedger, RoundsUnobserved, throughput_cell_text, harness_throughput_from_ledger,
   RoundSegment, RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound, round_segments,
 }
+import std.optional { Present }
 
 // THE PRESENTATION SEAM (A2, operator-directed 2026-08-01).
 // One projection layer between the

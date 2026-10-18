@@ -37,6 +37,7 @@ import v2.std.node {
   ArrowBodyEdge,
   core_edge_label,
 }
+import std.optional { Absent }
 
 // WHAT THIS FILE ESTABLISHES: a fn's body is judged at its declared return. v2.compiler.infer
 // infer_arrow_declared_return_check builds a DeclaredTypeObligation at PositionDeclaredReturn for

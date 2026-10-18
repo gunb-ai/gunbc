@@ -13,6 +13,7 @@ import gunbc.fabric.fabric_witness_run {
   bind_fabric_ci_work, build_lane_run_command, witnesses_lane_run_command,
   required_witnesses_build_work,
 }
+import std.optional { Present }
 
 test fn production_required_witnesses_build_work_is_possessed() -> Bool {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {

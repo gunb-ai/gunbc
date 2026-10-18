@@ -39,6 +39,7 @@ import product.pcb.physical {
 }
 import extdeps.programmable_logic.ice40.subject { ice40_tq144_package }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

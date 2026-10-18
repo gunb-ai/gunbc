@@ -7,6 +7,7 @@ import std.measure {
   Nanosecond,
   HardwareThreadCount,
 }
+import std.optional { Absent, Present }
 
 type DomainId = NonEmptyStr where brand("DomainId")
 type LevelId = NonEmptyStr where brand("LevelId")

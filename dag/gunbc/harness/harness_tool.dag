@@ -16,6 +16,7 @@ import gunbc.harness.harness_tool_kind {
   harness_tool_wire_name,
   HarnessToolRecognized, HarnessToolUnrecognized, harness_tool_of_wire_name,
 }
+import std.optional { Present }
 
 // THE HARNESS TOOL SURFACE, and the rule every disposition below is one instance of:
 // A TOOL'S CONTRACT IS CARRIED IN ITS DECLARED SHAPE, AND ANY LIMIT IT ENFORCES IS REPORTED IN ITS

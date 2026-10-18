@@ -17,6 +17,7 @@ import product.printed_chassis.manufacturing_manifest {
   owned_printer_inventory,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn a1_mini_catalog() -> DeclarationRef {

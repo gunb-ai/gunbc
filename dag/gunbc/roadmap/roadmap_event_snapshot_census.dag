@@ -20,6 +20,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_event_snapshot_namespace, roadmap_event_snapshot_path_owned,
   carrier_exec, CarrierExecOk, CarrierExecFailed,
 }
+import std.optional { Present }
 
 // THE CENSUS OF ONE INSTANCE'S EVENT-LOG SNAPSHOT WORKTREES. Every carrier operation works in a
 // private worktree created under its layout's namespace

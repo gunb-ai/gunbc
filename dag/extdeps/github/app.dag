@@ -29,6 +29,7 @@ import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serial
 import std.algebra { fold_list, map_lookup }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
+import std.optional { Present }
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

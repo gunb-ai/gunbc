@@ -1,5 +1,7 @@
 module v2.test.claim.execution.eval_bind_non_bind_interpreter_rejects
 
+import std.optional { Absent }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

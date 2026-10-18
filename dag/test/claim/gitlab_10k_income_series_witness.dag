@@ -119,6 +119,7 @@ import gunbc.econ.margin_envelope {
 import std.measure { BasisPoint, basis_point, money_per_month_micros }
 import std.nat { Nat }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

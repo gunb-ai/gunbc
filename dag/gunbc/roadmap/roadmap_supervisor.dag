@@ -18,6 +18,7 @@ import extdeps.languages.json.parse {
   json_document_gap_text,
 }
 import gunbc.roadmap.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
+import std.optional { Present }
 
 // THE SUPERVISOR IS A MODELED SESSION ROLE, NOT A HUMAN PAGER (docs/plans/harness-work-lifecycle.md,
 // "Resource policy"). A budget is the alignment cadence, never a failure measure: when a lineage

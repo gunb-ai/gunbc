@@ -5,6 +5,7 @@ import std.scoped_authorization { AttemptIdentity }
 import std.decimal { decimal_digits_only }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name }
 import gunbc.actions_run_binding { actions_variable_trimmed }
+import std.optional { Present }
 
 fn attempt_identity_of(run_id: String, run_attempt: String) -> AttemptIdentity? {
   if run_id != "" && run_attempt != "" && decimal_digits_only(s: run_id) && decimal_digits_only(s: run_attempt) {

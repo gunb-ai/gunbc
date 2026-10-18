@@ -74,6 +74,7 @@ import gunbc.deploy_transition {
   transition_phase_wire,
   transition_phase_of_wire,
 }
+import std.optional { Present }
 
 fn subject() -> TransitionSubject {
   TransitionSubject {

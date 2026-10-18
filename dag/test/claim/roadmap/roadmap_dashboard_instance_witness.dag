@@ -118,6 +118,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_linux_toolchain,
   dispatch_worker_memory_ceiling,
 }
+import std.optional { Present }
 
 test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
   let lab = srv1_lab_dashboard_instance()

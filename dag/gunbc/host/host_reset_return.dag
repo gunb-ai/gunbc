@@ -10,6 +10,7 @@ import std.content_hash {
   ContentHashEqual,
   compare_content_hash,
 }
+import std.optional { Absent, Present }
 
 // A HOST DRIVEN BACK TO A KNOWN STATE BY ITS CONTROLLER, AND MEASURED COMING BACK. The canary
 // receipt gunbc.runner.runner_first_job_receipt establishes that a job reaches this machine,

@@ -137,6 +137,7 @@ import gunbc.machine_intake.bmc_secure {
   derive_bmc_secure,
   observed_bmc_credential_rotation,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

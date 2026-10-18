@@ -19,6 +19,7 @@ import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused, RedemptionRefusal }
 import gunbc.bmc_model { BmcWorld, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access, bmc_ipmi_get_user_access }
+import std.optional { Present }
 
 data bmc_rotation_route_disposition: Disposition = Terminal {
   reason: "The rotation route standing is the terminal form of the AccessDiscover route answer (docs/plans/managed-host-untangle.md, cut O1a): one sealed standing per controller and firmware build, bound to the evidence that grounds it, and the separate qualification effect that is the only crossing from a candidate to an executed-request grounding. It replaces the family-keyed rotation answer that gunbc.bmc.bmc_implementation_dispatch used to give; nothing here is staged pending a different construction." as NonEmptyStr,

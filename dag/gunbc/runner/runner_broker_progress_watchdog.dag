@@ -5,6 +5,7 @@ import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Sc
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
+import std.optional { Absent, Present }
 
 data runner_broker_progress_watchdog_authority_disposition: ConstructionMechanism = SingleAuthority
 

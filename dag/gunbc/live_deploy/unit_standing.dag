@@ -12,6 +12,7 @@ import extdeps.systemd.unit_file {
   SystemdServiceDirective,
   SystemdPathDirective, PathUnit, DirectoryNotEmpty, PathChanged, MakeDirectory,
 }
+import std.optional { Present }
 
 // EXACT SYSTEMD UNIT STANDING, MODELED ON WHAT THE EMITTED UNITS ACTUALLY ARE. Readiness alone
 // cannot prove the belt's units are installed and armed. The RLM-2 ruling (section 7) keeps unit

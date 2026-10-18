@@ -8,6 +8,7 @@ import gunbc.roadmap.roadmap_execution_contract {
   WorkItemExecutionContract,
   gunbc_claim_execution_contract,
 }
+import std.optional { Present }
 
 // THE TWO-NODE CANARY OF THE ROADMAP LAUNCH MVP, DECLARED INERT (RLM-0 of
 // docs/plans/roadmap-launch-mvp-plan.md). Nothing here is a row of gunbc.roadmap.roadmap_authority: the

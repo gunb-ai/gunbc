@@ -7,6 +7,7 @@ import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import std.optional { Present }
 
 // ── `ntfy access`: the server's access-control list, as the upstream CLI prints it ───────────
 // Cited to the upstream source at a pinned tag, because the listing is a text rendering and its

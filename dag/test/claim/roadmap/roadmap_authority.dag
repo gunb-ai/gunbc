@@ -134,6 +134,7 @@ import gunbc.roadmap.roadmap_spawner { readiness_graph, node_readiness_in_graph 
 import gunbc.roadmap.roadmap_readiness { NodeReadiness, ReadyToDispatch, NotReady, ReadinessGap, GapDependencies }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

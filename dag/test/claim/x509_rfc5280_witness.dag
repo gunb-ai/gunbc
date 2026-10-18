@@ -27,6 +27,7 @@ import extdeps.standards.rfc_9052 { CoseEc2P256KeyRead, CoseEc2P256KeyRefused, c
 import extdeps.standards.webauthn_authenticator_data { AuthenticatorDataDecoded, AuthenticatorDataRefused, decode_authenticator_data }
 import extdeps.apple.app_attest { apple_app_attestation_root_ca_pem, apple_app_attestation_root_ca_sha256_hex, app_attest_nonce_extension_oid, app_attest_nonce_extension_context_tag }
 import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets, sample_assertion_octets, sample_client_data_hash_b64 }
+import std.optional { Present }
 
 // THE X.509 READER'S INHABITANCE CLAIMS run over the two certificates inside Apple's real
 // attestation object and over Apple's published root: what the reader establishes is compared

@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, brand }
 import std.nat { Nat }
 import gunbc.guarantee_rung { GuaranteeRung, MechanicallyPreventable, OutsideTheLadder, guarantee_rung_index }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
+import std.optional { Present }
 
 // STAGE 0 OF THE GUARANTEE SPINE: the vocabulary probes and claims meet through, and nothing else
 // (operator spine verdict 2026-08-01; roadmap node ladder-measurement-schema; gap analysis sec 12

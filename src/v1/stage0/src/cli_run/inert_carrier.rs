@@ -87,9 +87,8 @@ use crate::v1_std_core::{
     has_child_named, inferred_to_node, intern, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
-    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
-    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
-    Node,
+    param_node_name_at, param_node_type_expr, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 

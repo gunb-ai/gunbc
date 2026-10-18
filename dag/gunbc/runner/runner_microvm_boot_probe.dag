@@ -41,6 +41,7 @@ import gunbc.runner.runner_microvm_host_ready {
 import gunbc.command_runner {
   ProcessObservation, run_shell_command_observe, run_shell_commands, LocalExec,
 }
+import std.optional { Present }
 
 data runner_microvm_boot_probe_disposition: ConstructionMechanism = SingleAuthority
 

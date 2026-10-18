@@ -68,6 +68,7 @@ import extdeps.llm.anthropic_messages_api {
   AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
   ModelContextWindowExceeded,
 }
+import std.optional { Present }
 
 // THE TURN LOOP: post a request, and while the response stops on tool use, execute the tools and
 // post the results back. Everything else in this module exists to make that sentence honest.

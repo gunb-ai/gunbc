@@ -29,6 +29,7 @@ import gunbc.machine_intake.mount_establishment {
   mount_standing_as_of,
   remote_media_mount_standing,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

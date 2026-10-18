@@ -7,6 +7,7 @@ import extdeps.ietf.http_semantics { POST }
 import std.resources { Network }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
+import std.optional { Present }
 
 // ── The publish binding: transport and address, in the layer that owns them ──────────────────
 // DESIGN §3 puts the interface shape in extdeps and the TRANSPORT in realization -- "one of N,

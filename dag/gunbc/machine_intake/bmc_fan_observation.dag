@@ -46,6 +46,7 @@ import product.fan_policy_standing {
   HostPoweredOnPrePost,
 }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import std.optional { Absent, Present }
 
 // THE OBSERVATION PRODUCER THAT MAKES THE FAILSAFE-TO-CURVE TRANSITION A MEASUREMENT.
 //

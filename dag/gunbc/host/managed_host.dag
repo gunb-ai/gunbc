@@ -25,6 +25,7 @@ import gunbc.machine_intake.ampere_smpro_observation {
   SmproSiteStanding, SmproSiteAdmitted, SmproSiteRefused, SmproPassSubjectStanding, smpro_pass_subject,
 }
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import std.optional { Present }
 
 // A HOST THIS FLEET DRIVES THROUGH ITS BASEBOARD CONTROLLER, and the one record a host-generic
 // procedure takes instead of a unit's constants (docs/plans/managed-host-untangle.md, cut 0). It is

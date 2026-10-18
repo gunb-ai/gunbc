@@ -64,6 +64,7 @@ import product.compute_board.article {
   BoardArticleIdentity,
   BoardPowerInterfaceArticle,
 }
+import std.optional { Present }
 
 // SPICE AS A PROJECTION OF A LANGUAGE-NEUTRAL ANALOG INTENT. Every piece of SPICE spelling for this
 // article lives in this module and nowhere upstream: element letter, node names, reference node

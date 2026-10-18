@@ -16,6 +16,7 @@ import extdeps.languages.go.go_mod {
   go_semver_to_version_identity,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

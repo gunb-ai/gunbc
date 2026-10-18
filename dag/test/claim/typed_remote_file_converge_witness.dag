@@ -41,6 +41,7 @@ import gunbc.typed_remote_file_write {
   ComparisonUnavailable,
   typed_remote_file_write_seal,
 }
+import std.optional { Present }
 
 data unit_dir_scope: FileTreeScope = FileTreeScope { root_path: "/home/gunbc/.config/systemd/user" as NonEmptyStr }
 

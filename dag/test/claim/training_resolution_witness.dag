@@ -26,6 +26,7 @@ import std.measure { money_amount_micro, hardware_thread_count }
 import std.nat { Nat }
 import std.types { NonEmptyStr, Bool }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -76,6 +76,7 @@ import gunbc.review_sheet_operator {
   ReviewSheetEstateUnresolved,
   ReviewSheetOperatorRefused,
 }
+import std.optional { Absent, Present }
 
 // ONE realization of the review-sheet projection: Google Sheets values.get as independent
 // readback, values.batchUpdate only for the derived write plan. Auth is ADC / a SecretRef under

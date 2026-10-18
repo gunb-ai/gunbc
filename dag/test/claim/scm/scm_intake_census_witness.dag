@@ -100,6 +100,7 @@ import gunbc.scm.squash_merge {
 }
 import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_at, mb_intake_base, mb_intake_advance }
 import test.fixture.legacy_intake_scene { legacy_corrective_scene, legacy_ref }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

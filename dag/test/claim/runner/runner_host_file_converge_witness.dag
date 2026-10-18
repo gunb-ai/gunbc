@@ -193,6 +193,7 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_file_run_succeeded,
   runner_host_file_write_admission,
 }
+import std.optional { Present }
 
 // Every claim here is a function of declared rows except the route test, whose every remote leg is
 // answered by the hermetic ssh mock; nothing reads the live tree.

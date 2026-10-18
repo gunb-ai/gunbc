@@ -34,6 +34,7 @@ import std.primitive_identity {
 import std.primitive_projection { PrimitiveIdentity }
 import std.types { Int, List, String }
 import std.logic { Bool }
+import std.optional { Present }
 
 // THE MODELED COST AND THE REALIZED COST ARE TWO FACTS, AND NOTHING JOINED THEM.
 //

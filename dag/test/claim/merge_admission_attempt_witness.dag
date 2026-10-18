@@ -67,6 +67,7 @@ import gunbc.merge_admission_produce {
   parse_gate_roster_hash_wire,
   stamp_floor_receipt_with_conclusion,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

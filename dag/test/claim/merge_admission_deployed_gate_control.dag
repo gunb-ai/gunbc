@@ -1,5 +1,7 @@
 module test.claim.merge_admission_deployed_gate_control
 
+import std.optional { Present }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

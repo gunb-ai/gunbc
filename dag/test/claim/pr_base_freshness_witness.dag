@@ -1,5 +1,7 @@
 module test.claim.pr_base_freshness_witness
 
+import std.optional { Absent }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

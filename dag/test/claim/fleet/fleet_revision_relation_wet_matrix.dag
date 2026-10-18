@@ -21,6 +21,7 @@ import gunbc.fleet.origin_main_revision_observe {
   TreeLandedUnobserved,
 }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -5,6 +5,7 @@ import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.optional { Absent, Present }
 
 type CostCoverageIngestVerdict
   = IngestParsedClean

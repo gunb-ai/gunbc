@@ -18,6 +18,7 @@ import extdeps.vllm.kv_cache {
   VllmResolvedKvFormat, ResolvedFp8DsMla, ResolvedUnobserved, vllm_resolved_kv_format_is_observed,
   VllmCapPoolObservation, vllm_cap_pool_observation
 }
+import std.optional { Present }
 
 // WHAT IS DELIBERATELY NOT CHECKED HERE, STATED SO ITS ABSENCE IS NOT READ AS AN OVERSIGHT.
 //

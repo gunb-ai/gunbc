@@ -15,7 +15,7 @@ use v1_compiler::v1_compiler_dag_collect_support::{
 };
 use v1_compiler::v1_rt::atom_identity_hash;
 use v1_compiler::v1_std_core::empty_node_list;
-use v1_compiler::v1_std_core::{Cardinality, Connective, ExprData, Node, SourceSpan};
+use v1_compiler::v1_std_core::{Connective, ExprData, Node, SourceSpan};
 
 type WitnessCase = (&'static str, fn());
 
@@ -59,7 +59,6 @@ fn shell_node(
         connective,
         params: Rc::new(params.into()),
         inferred: None,
-        return_cardinality: Cardinality::Required,
         uses: empty_node_list(),
         body: None,
         transport: None,

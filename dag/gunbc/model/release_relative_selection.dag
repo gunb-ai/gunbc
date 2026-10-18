@@ -4,6 +4,7 @@ import std.types { Bool, List, Int }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.nat { Nat }
 import gunbc.model.publication { ReleaseIdentity, release_identity_equal }
+import std.optional { Present }
 
 // THE RUNTIME-NEUTRAL HALF OF SERVING SELECTION, AND THE REASON IT IS A SEPARATE AUTHORITY.
 //

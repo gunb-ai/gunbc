@@ -25,6 +25,7 @@ import gunbc.principal_projection {
 }
 import extdeps.auth.oidc { OidcIdTokenVerified }
 import test.fixture.data_handling_map_fixture { sealed_fixture_map }
+import std.optional { Present }
 
 fn claims() -> OidcIdTokenClaims {
   OidcIdTokenClaims {

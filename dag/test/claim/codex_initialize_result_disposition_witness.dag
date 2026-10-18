@@ -46,6 +46,7 @@ import extdeps.languages.json.emit {
   json_string,
   json_int,
 }
+import std.optional { Present }
 
 // A PRESENT INITIALIZE RESULT WHOSE userAgent IS NOT A STRING IS MALFORMED, NOT MISSING. The two
 // were one disposition until review 59089 traced where the conflation goes: AccountTripMissing

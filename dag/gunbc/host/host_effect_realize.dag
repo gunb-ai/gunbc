@@ -536,6 +536,7 @@ import extdeps.tools.gnu_coreutils {
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
+import std.optional { Present }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 

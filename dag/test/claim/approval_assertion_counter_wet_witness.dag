@@ -14,6 +14,7 @@ import gunbc.auth.approval_assertion_counter {
   AssertionCounterAdmission, AssertionCounterAdmitted, AssertionCounterReplayed, AssertionCounterRaced, AssertionCounterStoreRefused,
   admit_assertion_counter, assertion_counter_commit, assertion_counter_refusal_status,
 }
+import std.optional { Absent, Present }
 
 // THE ASSERTION COUNTER STANDING, EXECUTED AGAINST A REAL FILESYSTEM through
 // gunbc.durable_cas_file_store: each claim owns a fresh store under a throwaway /tmp directory and

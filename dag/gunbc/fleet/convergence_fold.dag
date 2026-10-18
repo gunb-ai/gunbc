@@ -24,6 +24,7 @@ import gunbc.host_convergence_census {
   IdentityDuplicatedInCensus,
   census_identity_join,
 }
+import std.optional { Present }
 
 // THE CONVERGENCE FOLD, READ-ONLY CORE (docs/plans/managed-host-untangle.md, cut O1c-1). One shared
 // home for ordering several domain-owned convergence steps as ONE run, with the arrival prefix as its

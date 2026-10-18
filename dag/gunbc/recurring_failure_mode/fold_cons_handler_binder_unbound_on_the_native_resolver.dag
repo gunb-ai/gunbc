@@ -3,6 +3,7 @@ module gunbc.recurring_failure_mode.fold_cons_handler_binder_unbound_on_the_nati
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.optional { Absent }
 
 data fold_cons_handler_binder_unbound_on_the_native_resolver: RecurringFailureMode = RecurringFailureMode {
   identity: "fold_cons_handler_binder_unbound_on_the_native_resolver" as NonEmptyStr,

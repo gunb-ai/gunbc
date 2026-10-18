@@ -1,5 +1,7 @@
 module v1.compiler.compile
 
+import std.optional { Present, Absent, Optional }
+
 import extdeps.languages.dag.syntax { dag_parse_environment }
 
 import std.syntax { LiteralValue, BinOp, ParseEnvironment }
@@ -9,9 +11,9 @@ import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
   is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
   diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span, Connective,
-  NoConnective, Arrow, Cardinality, resource_use_name_at, resource_use_resource,
+  NoConnective, Arrow, resource_use_name_at, resource_use_resource,
   param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
-  field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value,
+  field_node_name_at, field_node_type_expr, field_node_default_value,
   field_node_from_key, field_node_span, module_imports, module_items, import_is_all,
   import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode,
   Resolved, CompilerError, TypeVariable, VarBindingKind,
@@ -624,13 +626,6 @@ fn json_bool(value: Bool) -> String {
   if value { "true" } else { "false" }
 }
 
-fn cardinality_name(value: Cardinality) -> String {
-  match value {
-    Required => "Required"
-    CardOptional => "CardOptional"
-  }
-}
-
 fn field_access_style_name(value: FieldAccessStyle) -> String {
   match value {
     StoredField => "StoredField"
@@ -1090,7 +1085,6 @@ fn serialize_field(field: Node, source_indices: Map<String, NewlineIndex>, key_t
   concat(
     "{\"name\": ", json_quote(s: field_node_name_at(n: field, source_indices: source_indices)),
     ", \"type_expr\": ", serialize_node_ref(node: field_node_type_expr(n: field), key_to_id: key_to_id),
-    ", \"cardinality\": ", json_quote(s: cardinality_name(value: field_node_cardinality(n: field))),
     ", \"default_value\": ", json_optional_node_ref(value: field_node_default_value(n: field), key_to_id: key_to_id),
     ", \"from_key\": ", json_optional_string(value: field_node_from_key(n: field, source_indices: source_indices)),
     ", \"span\": ", serialize_span(span: field_node_span(n: field)),
@@ -1147,7 +1141,6 @@ fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, 
     },
     ", \"params\": ", serialize_node_params_json(node: node, source_indices: source_indices, key_to_id: key_to_id),
     ", \"inferred\": ", json_optional_inferred_node_ref(value: node.inferred, key_to_id: key_to_id),
-    ", \"return_cardinality\": ", json_quote(s: cardinality_name(value: node.return_cardinality)),
     ", \"uses\": ", json_list(items: node.uses |> map(item => serialize_resource_use(resource_use: item, source_indices: source_indices, key_to_id: key_to_id))),
     ", \"body\": ", json_optional_node_ref(value: node.body, key_to_id: key_to_id),
     ", \"transport\": ", json_optional_node_ref(value: node.transport, key_to_id: key_to_id),
@@ -1417,7 +1410,7 @@ fn census_heads_node(node: Node, children: List<Node>, body: Node?) -> Node {
     connective: node.connective,
     params: node.params,
     inferred: node.inferred,
-    return_cardinality: node.return_cardinality,
+   
     uses: [],
     body: body,
     transport: node.transport,

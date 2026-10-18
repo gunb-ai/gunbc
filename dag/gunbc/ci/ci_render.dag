@@ -20,6 +20,7 @@ import std.symbols {
   BoxCornerBottomLeft,
   BoxCornerBottomRight,
 }
+import std.optional { Present }
 
 fn glyph_for(id: SymbolId, tier: Tier) -> String {
   match resolve_symbol(id: id, tier: tier) {

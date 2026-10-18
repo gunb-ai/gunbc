@@ -36,6 +36,7 @@ import gunbc.host.host_compile_pool {
   CompilePoolSliceAbsent,
   CompilePoolObservationUnavailable,
 }
+import std.optional { Present }
 
 data compile_pool_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 

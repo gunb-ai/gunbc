@@ -18,6 +18,7 @@ import gunbc.spark.fabric_switch_desired {
   Crs812LaneIntent, LaneCarriesLeg, LaneOwnedByItsPair,
   fabric_switch_intent,
 }
+import std.optional { Absent }
 
 // THE SWITCH AS A CONVERGENCE SUBJECT, WHICH IS A DIFFERENT SUBJECT FROM THE CABLE PLANT.
 //

@@ -105,6 +105,7 @@ import extdeps.transports.rest {
   RestExchangeUndecodable,
   classify_rest_refusal,
 }
+import std.optional { Present }
 
 // WHAT THIS MODULE IS FOR. Creating a GitHub App by hand is a form with a name, a URL, a webhook
 // block and twenty-two permission toggles, and the operator has done it repeatedly because nothing

@@ -61,7 +61,6 @@ pub use crate::v1_compiler_languages::{
 pub use crate::v1_compiler_runtime_go::go_runtime_source;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Conj, Disj};
 pub use crate::v1_std_core::DeclaredCallableIdentity;
 use crate::v1_std_core::ExprData::{
@@ -94,9 +93,9 @@ pub use crate::v1_std_core::{
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
     module_items, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
     resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
-    transport_env, with_required_cardinality, Cardinality, Connective, DeclaredFuncSig, ExprData,
-    FieldAccessStyle, FieldSummary, InferredNode, MatchPattern, MethodSemantics, NewlineIndex,
-    Node, ParsedModuleItemKind, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    transport_env, Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
+    StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

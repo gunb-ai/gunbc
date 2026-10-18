@@ -1,5 +1,7 @@
 module gunbc.host.host_converge_delta
 
+import std.optional { Present }
+
 
 data gunbc_converge_target_byte_normalization_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

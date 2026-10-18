@@ -13,6 +13,7 @@ use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
+pub use crate::gunbc_structural_realization_bindings::optional_declaration_ref;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_import_statement::ImportStatementParseCause::{
     ImportParseInstrumentAnomaly, ImportStatementMalformed, ModuleDeclarationPathMalformed,
@@ -39,6 +40,7 @@ pub use crate::std_occurrence_identity::{
     OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry,
     OccurrenceProjection, OccurrenceTransport, ReferenceOccurrence,
 };
+pub use crate::std_optional::Optional;
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::BodyKind::{
@@ -56,7 +58,6 @@ use crate::std_target_representation::VariantParentIdentity::VariantParentBefore
 pub use crate::std_types::{is_container_type, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::{TestMarked, Unmarked};
@@ -86,23 +87,22 @@ pub use crate::v1_std_core::{
     arg_name_at, arg_value, authored_name_at, byte_to_line_col, empty_intern_table, error_type,
     expr_call_func_at, expr_var_name_at, field_access_base, field_access_field_at,
     field_access_spine, field_binding_pattern, field_from_key_property_name, field_init_node_value,
-    field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, file_transport_node, import_node, intern,
-    intern_table_with_authored_token_ordinals, is_compiler_error, kernel_span, leaf_node_with_span,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_field_node,
-    make_interp_part_node, make_named_expr_node, make_param_node,
-    make_pattern_binder_declaration_node, make_resource_use_node, make_text_part_node,
-    make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
-    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
-    shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
-    transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
+    field_node_default_value, field_node_from_key, field_node_name_at, field_node_type_expr,
+    file_transport_node, import_node, intern, intern_table_with_authored_token_ordinals,
+    is_compiler_error, kernel_span, leaf_node_with_span, local_transport_node, make_arg_node,
+    make_arm_node, make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_pattern_binder_declaration_node, make_resource_use_node,
+    make_text_part_node, make_variant_node, module_node, no_span, node_name_span,
+    optional_application_node, optional_payload, param_node_default_value, param_node_type_expr,
+    pre_intern_tokens, rest_transport_node, service_config_properties, shell_transport_node,
+    transport_auth_basic_key, transport_body_key, transport_headers_key, transport_method_key,
+    transport_path_key, transport_path_template_key, transport_query_key,
     transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
-    type_param_kind_property_name, variant_node_fields, variant_node_name_at,
-    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
-    ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable,
-    MatchPattern, NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, StringPart, Token,
-    TokenShape, UnaryOpKind,
+    type_is_optional, type_param_kind_property_name, variant_node_fields, variant_node_name_at,
+    CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind,
+    FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
+    OperationModifier, ParsedModuleItemKind, StringPart, Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -233,8 +233,8 @@ pub struct ParseContext {
     pub intern_table: Rc<InternTable>,
     pub occurrence_allocator: OccurrenceIdAllocator,
     pub occurrence_index: Option<Rc<OccurrenceIndex>>,
-    pub declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
-    pub reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
+    pub declaration_occurrences: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    pub reference_occurrences: Rc<Vec<Rc<ReferenceOccurrence>>>,
     pub heads_only: bool,
     pub env: Rc<ParseEnvironment>,
     pub source_extents: Rc<ParseSourceExtentState>,
@@ -855,27 +855,21 @@ pub fn parse_context_occurrence_index(ctx: Rc<ParseContext>) -> Rc<OccurrenceInd
 pub fn parse_context_declaration_occurrences(
     ctx: Rc<ParseContext>,
 ) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
-    match ctx.declaration_occurrences.clone() {
-        Some(occurrences) => occurrences.clone(),
-        std::option::Option::None => Rc::new(vec![]),
-    }
+    ctx.declaration_occurrences.clone()
 }
 
 pub fn parse_context_reference_occurrences(
     ctx: Rc<ParseContext>,
 ) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
-    match ctx.reference_occurrences.clone() {
-        Some(occurrences) => occurrences.clone(),
-        std::option::Option::None => Rc::new(vec![]),
-    }
+    ctx.reference_occurrences.clone()
 }
 
 pub fn parse_context_with_occurrence_state(
     ctx: Rc<ParseContext>,
     occurrence_allocator: OccurrenceIdAllocator,
     occurrence_index: Option<Rc<OccurrenceIndex>>,
-    declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
-    reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
+    declaration_occurrences: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    reference_occurrences: Rc<Vec<Rc<ReferenceOccurrence>>>,
 ) -> Rc<ParseContext> {
     Rc::new(ParseContext {
         source_indices: ctx.source_indices.clone(),
@@ -918,7 +912,6 @@ pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
         connective: node.connective.clone(),
         params: node.params.clone(),
         inferred: node.inferred.clone(),
-        return_cardinality: node.return_cardinality.clone(),
         uses: node.uses.clone(),
         body: node.body.clone(),
         transport: node.transport.clone(),
@@ -2314,7 +2307,6 @@ pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -
                         children: Rc::new(vec![]),
                         params: Rc::new(vec![]),
                         inferred: std::option::Option::None,
-                        return_cardinality: Cardinality::Required,
                         uses: Rc::new(vec![]),
                         body: std::option::Option::None,
                         connective: Connective::NoConnective,
@@ -2355,7 +2347,6 @@ pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -
                 connective: n.connective.clone(),
                 params: n.params.clone(),
                 inferred: n.inferred.clone(),
-                return_cardinality: n.return_cardinality.clone(),
                 uses: n.uses.clone(),
                 body: n.body.clone(),
                 transport: n.transport.clone(),
@@ -3170,7 +3161,6 @@ pub fn leaf_type_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -3201,7 +3191,6 @@ pub fn literal_width_nat_type_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -3313,7 +3302,6 @@ pub fn node_inferred_to_outputs(
                                 ch.clone(),
                             ),
                             child_inferred_or_empty(ch.clone()),
-                            Cardinality::Required,
                             ch.body.clone(),
                             Rc::new(vec![]),
                             ch.span.clone(),
@@ -3331,7 +3319,6 @@ pub fn node_inferred_to_outputs(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "value".to_string(),
             rt.clone(),
-            Cardinality::Required,
             std::option::Option::None,
             Rc::new(vec![]),
             rt.span.clone(),
@@ -3824,7 +3811,7 @@ pub fn parse_context_record_occurrence(
             ctx.clone(),
             ctx.occurrence_allocator.clone(),
             ctx.occurrence_index.clone(),
-            Some(v1_rt::rc_list_push(
+            v1_rt::rc_list_push(
                 parse_context_declaration_occurrences(ctx.clone()),
                 Rc::new(DeclarationOccurrence {
                     occurrence: occurrence.clone(),
@@ -3832,7 +3819,7 @@ pub fn parse_context_record_occurrence(
                     category: category.clone(),
                     diagnostic_span: diagnostic_span.clone(),
                 }),
-            )),
+            ),
             ctx.reference_occurrences.clone(),
         ),
         ParsedOccurrenceRole::ParsedOccurrenceReference {
@@ -3842,7 +3829,7 @@ pub fn parse_context_record_occurrence(
             ctx.occurrence_allocator.clone(),
             ctx.occurrence_index.clone(),
             ctx.declaration_occurrences.clone(),
-            Some(v1_rt::rc_list_push(
+            v1_rt::rc_list_push(
                 parse_context_reference_occurrences(ctx.clone()),
                 Rc::new(ReferenceOccurrence {
                     occurrence: occurrence.clone(),
@@ -3850,7 +3837,7 @@ pub fn parse_context_record_occurrence(
                     category: category.clone(),
                     diagnostic_span: diagnostic_span.clone(),
                 }),
-            )),
+            ),
         ),
         ParsedOccurrenceRole::ParsedOccurrenceUnclassified => ctx.clone(),
     }
@@ -4239,8 +4226,8 @@ pub fn parse_context_for_tokens(
         occurrence_index: Some(Rc::new(OccurrenceIndex {
             entries: Rc::new(vec![]),
         })),
-        declaration_occurrences: Some(Rc::new(vec![])),
-        reference_occurrences: Some(Rc::new(vec![])),
+        declaration_occurrences: Rc::new(vec![]),
+        reference_occurrences: Rc::new(vec![]),
         heads_only: heads_only.clone(),
         env: env.clone(),
         source_extents: parse_source_extent_state_empty(),
@@ -4507,7 +4494,6 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             connective: Connective::NoConnective,
             params: imports.clone(),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -4964,7 +4950,6 @@ pub fn parse_unmarked_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
     children: Rc::new(vec![]),
     params: Rc::new(vec![]),
     inferred: std::option::Option::None,
-    return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
     body: std::option::Option::None,
     connective: Connective::NoConnective,
@@ -5151,7 +5136,6 @@ pub fn parse_item_by_form(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -5264,7 +5248,6 @@ pub fn field_to_child_node(
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: ret_type.clone(),
             })),
-            return_cardinality: crate::v1_std_core::field_node_cardinality(field.clone()),
             uses: Rc::new(vec![]),
             body: crate::v1_std_core::field_node_default_value(field.clone()),
             transport: std::option::Option::None,
@@ -5308,7 +5291,6 @@ pub fn variant_to_child_node(
             },
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -5348,7 +5330,6 @@ pub fn outputs_to_inferred(
                 connective: Connective::Conj,
                 params: Rc::new(vec![]),
                 inferred: std::option::Option::None,
-                return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: std::option::Option::None,
                 transport: std::option::Option::None,
@@ -5412,7 +5393,6 @@ pub fn make_operation_node(
                 __result
             }),
             inferred: outputs_to_inferred(outputs.clone(), span.clone(), source_indices.clone()),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -5461,7 +5441,6 @@ pub fn make_capability_node(
             __result
         }),
         inferred: outputs_to_inferred(outputs.clone(), span.clone(), source_indices.clone()),
-        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         connective: Connective::NoConnective,
@@ -5490,7 +5469,6 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -5538,7 +5516,6 @@ pub fn parse_type_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -5589,7 +5566,6 @@ pub fn parse_type_after_kw(
                     children: Rc::new(vec![]),
                     params: type_params.clone(),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     connective: Connective::NoConnective,
@@ -5653,7 +5629,6 @@ pub fn parse_type_after_kw(
                     connective: Connective::Conj,
                     params: type_params.clone(),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -5719,7 +5694,6 @@ pub fn parse_type_after_kw(
                                     name_span.clone(),
                                 ),
                             })),
-                            return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
                             body: std::option::Option::None,
                             transport: std::option::Option::None,
@@ -5764,7 +5738,6 @@ pub fn parse_type_body_from_prefix(
             children: Rc::new(vec![]),
             params: type_params.clone(),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -5840,7 +5813,6 @@ pub fn parse_type_body_from_prefix(
                     connective: Connective::Conj,
                     params: type_params.clone(),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -5906,7 +5878,6 @@ pub fn parse_type_body_from_prefix(
                                     name_span.clone(),
                                 ),
                             })),
-                            return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
                             body: std::option::Option::None,
                             transport: std::option::Option::None,
@@ -5959,7 +5930,6 @@ pub fn type_item_from_alias_rhs(
             connective: Connective::Conj,
             params: type_params.clone(),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -5984,7 +5954,6 @@ pub fn type_item_from_alias_rhs(
             connective: Connective::NoConnective,
             params: type_params.clone(),
             inferred: Some(Rc::new(InferredNode::Resolved { node: te.clone() })),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -6022,7 +5991,6 @@ pub fn parse_type_body_after_eq(
             children: Rc::new(vec![]),
             params: type_params.clone(),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -6103,7 +6071,6 @@ pub fn parse_type_body_after_eq(
                     connective: Connective::Disj,
                     params: type_params.clone(),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -6200,7 +6167,6 @@ pub fn parse_type_body_after_eq(
                                     connective: Connective::Disj,
                                     params: type_params.clone(),
                                     inferred: std::option::Option::None,
-                                    return_cardinality: Cardinality::Required,
                                     uses: Rc::new(vec![]),
                                     body: std::option::Option::None,
                                     transport: std::option::Option::None,
@@ -6388,7 +6354,6 @@ pub fn try_where_clause(
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -6412,7 +6377,6 @@ pub fn try_where_clause(
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -7095,7 +7059,7 @@ pub fn parse_positional_variant_type_fields(
     from: tokens.clone(),
     to: r.tokens.clone(),
 }));
-let field = crate::v1_std_core::make_field_node(minted.identity.clone(), "0".to_string(), r.type_expr.clone(), Cardinality::Required, std::option::Option::None, Rc::new(vec![]), r.type_expr.clone().span.clone(), crate::v1_std_core::kernel_span("0".to_string()));
+let field = crate::v1_std_core::make_field_node(minted.identity.clone(), "0".to_string(), r.type_expr.clone(), std::option::Option::None, Rc::new(vec![]), r.type_expr.clone().span.clone(), crate::v1_std_core::kernel_span("0".to_string()));
 Rc::new(FieldsResult {
     fields: Rc::new(vec![field.clone()]),
     tokens: r.tokens.clone(),
@@ -7379,7 +7343,6 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -7542,7 +7505,6 @@ pub fn parse_callable_type_expr(
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: ret.type_expr.clone(),
             })),
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -7691,7 +7653,6 @@ pub fn finish_type_expr_from_name(
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -7896,7 +7857,6 @@ pub fn with_type_param_kind_property(param: Rc<Node>, kind: Option<Rc<Node>>) ->
                 connective: param.connective.clone(),
                 params: param.params.clone(),
                 inferred: param.inferred.clone(),
-                return_cardinality: param.return_cardinality.clone(),
                 uses: param.uses.clone(),
                 body: param.body.clone(),
                 transport: param.transport.clone(),
@@ -7976,36 +7936,27 @@ pub fn maybe_optional(
 ) -> Rc<TypeResult> {
     match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectQuestion))).clone() {
         EatResult::EatConsumed { tokens: __ec, .. } => {
-            let ctx = parse_context_record_node_from(
+            let inner_ctx = parse_context_record_node_from(
                 ctx.clone(),
                 te.clone(),
                 start_span.clone(),
                 __ec.clone(),
             );
-            let ote = Rc::new(Node {
-                occurrence_identity: te.occurrence_identity.clone(),
-                name: te.name.clone(),
-                span: te.span.clone(),
-                ident_span: te.ident_span.clone(),
-                children: te.children.clone(),
-                connective: te.connective.clone(),
-                params: te.params.clone(),
-                inferred: te.inferred.clone(),
-                return_cardinality: Cardinality::CardOptional,
-                uses: te.uses.clone(),
-                body: te.body.clone(),
-                transport: te.transport.clone(),
-                properties: te.properties.clone(),
-                type_annotation: te.type_annotation.clone(),
-                is_self_recursive: te.is_self_recursive.clone(),
-                has_non_tail_self_call: te.has_non_tail_self_call.clone(),
-                match_pattern: te.match_pattern.clone(),
-                module_item_kind: te.module_item_kind.clone(),
-                declaration_marker: te.declaration_marker.clone(),
-                declaration: te.declaration.clone(),
-                expr_data: te.expr_data.clone(),
-                ident: None,
-            });
+            let minted = mint_parsed_node_identity(
+                inner_ctx.clone(),
+                Rc::new(ParsedExtentAt::CompletedLater),
+            );
+            let ote = crate::v1_std_core::optional_application_node(
+                minted.identity.clone(),
+                te.clone(),
+                start_span.clone(),
+            );
+            let ctx = parse_context_record_node_from(
+                minted.ctx.clone(),
+                ote.clone(),
+                start_span.clone(),
+                __ec.clone(),
+            );
             Rc::new(TypeResult {
                 type_expr: ote.clone(),
                 tokens: __ec.clone(),
@@ -8102,7 +8053,6 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                 "".to_string(),
                 start_span.clone(),
             ),
-            Cardinality::Required,
             std::option::Option::None,
             Rc::new(vec![]),
             start_span.clone(),
@@ -8182,7 +8132,6 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                     minted.identity.clone(),
                     name.clone(),
                     te.clone(),
-                    te.return_cardinality.clone(),
                     Some(r4.expr.clone()),
                     from_key_properties.clone(),
                     start_span.clone(),
@@ -8207,7 +8156,6 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                     minted.identity.clone(),
                     name.clone(),
                     te.clone(),
-                    te.return_cardinality.clone(),
                     std::option::Option::None,
                     from_key_properties.clone(),
                     start_span.clone(),
@@ -8399,7 +8347,6 @@ pub fn parse_fn_body_from_prefix(
             children: Rc::new(vec![]),
             params: all_params.clone(),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: prefix.uses.clone(),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -8495,7 +8442,6 @@ pub fn parse_fn_body_from_prefix(
             children: Rc::new(vec![]),
             params: all_params.clone(),
             inferred: inferred.clone(),
-            return_cardinality: Cardinality::Required,
             uses: prefix.uses.clone(),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
@@ -8539,7 +8485,6 @@ pub fn parse_block_body_from_prefix(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -8580,7 +8525,6 @@ pub fn parse_block_body_from_prefix(
             children: Rc::new(vec![]),
             params: params.clone(),
             inferred: inferred.clone(),
-            return_cardinality: Cardinality::Required,
             uses: uses.clone(),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
@@ -8625,7 +8569,6 @@ pub fn parse_no_body_from_prefix(
             children: Rc::new(vec![]),
             params: prefix.params.clone(),
             inferred: prefix.inferred.clone(),
-            return_cardinality: Cardinality::Required,
             uses: prefix.uses.clone(),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -8803,7 +8746,6 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     children: r3.type_expr.clone().children.clone(),
                     params: r3.type_expr.clone().params.clone(),
                     inferred: r3.type_expr.clone().inferred.clone(),
-                    return_cardinality: r3.type_expr.clone().return_cardinality.clone(),
                     uses: r3.type_expr.clone().uses.clone(),
                     body: r3.type_expr.clone().body.clone(),
                     connective: r3.type_expr.clone().connective.clone(),
@@ -9015,7 +8957,6 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -9063,7 +9004,6 @@ pub fn parse_service_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -9105,7 +9045,6 @@ pub fn parse_service_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -9204,7 +9143,6 @@ pub fn parse_service_after_kw(
             children: r.operations.clone(),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -11615,9 +11553,9 @@ pub fn node_to_name_str(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = crate::v1_std_core::type_is_optional(n.clone());
         let effective_n = if is_optional.clone() {
-            crate::v1_std_core::with_required_cardinality(n.clone())
+            crate::v1_std_core::optional_payload(n.clone())
         } else {
             n.clone()
         };
@@ -12600,7 +12538,6 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -12648,7 +12585,6 @@ pub fn parse_resource_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -12683,7 +12619,6 @@ pub fn parse_resource_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -12749,7 +12684,6 @@ pub fn parse_resource_after_kw(
             children: r.capabilities.clone(),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13400,7 +13334,6 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13448,7 +13381,6 @@ pub fn parse_alias_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13483,7 +13415,6 @@ pub fn parse_alias_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13565,7 +13496,6 @@ pub fn parse_alias_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13604,7 +13534,6 @@ pub fn parse_data_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13639,7 +13568,6 @@ pub fn parse_data_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13712,7 +13640,6 @@ pub fn parse_data_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: Some(r.expr.clone()),
             connective: Connective::NoConnective,
@@ -14533,7 +14460,6 @@ pub fn parse_constrained_assignment(
                     children: Rc::new(vec![r3.expr.clone()]),
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     connective: Connective::NoConnective,
@@ -14630,7 +14556,6 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
                     inferred: ret.inferred.clone(),
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -14701,7 +14626,6 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                     children: Rc::new(vec![r3.expr.clone()]),
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     connective: Connective::NoConnective,
@@ -18273,7 +18197,6 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,

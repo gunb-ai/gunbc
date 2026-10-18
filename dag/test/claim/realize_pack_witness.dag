@@ -10,6 +10,7 @@ import std.realize_pack {
   realize_pack_width, realize_verdict_width, realize_fits_budget,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

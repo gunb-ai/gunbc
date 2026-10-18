@@ -37,6 +37,7 @@ import test.fixture.compile_phase_frontier_receipt_fixture {
   synthetic_compile_phase_receipt,
   synthetic_successor_receipt
 }
+import std.optional { Present }
 
 // THE SUBJECT OF EVERY PROBE BELOW IS THE JOIN, NOT A SECOND CENSUS. Each one builds the live
 // observation FROM THE LATEST PERSISTED RECEIPT'S OWN POPULATIONS and then perturbs exactly one

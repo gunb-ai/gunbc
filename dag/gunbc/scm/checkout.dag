@@ -57,6 +57,7 @@ import gunbc.scm.object_store {
   resolve_manifest_entry_source,
   resolve_manifest_entry_source_of,
 }
+import std.optional { Present }
 
 // A COMMIT IS A ROOT IDENTITY AND NOTHING ELSE. No parent, no author, no timestamp, no message, no
 // branch. Those are facts about proposals and acceptances -- about who asked for something and who

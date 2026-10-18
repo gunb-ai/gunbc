@@ -39,6 +39,7 @@ import std.content_hash {
   content_hash_combine_structural,
   content_hash_eq_structural,
 }
+import std.optional { Present }
 // Git realization of an exact affected-set comparison window. Producers observe merge-base(head,
 // target_generation) in a Git worktree and persist a head- and window-identity-addressed receipt;
 // consumers (gunbc.diff_baseline, floor_diff_observe) read the path named by

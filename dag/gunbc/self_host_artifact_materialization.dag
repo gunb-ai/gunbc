@@ -34,6 +34,7 @@ import v2.compiler.self_host.generation {
   ArtifactNotMaterialized,
   observed_artifact_digest
 }
+import std.optional { Present }
 
 // SH-C: turning a cargo build into the artifact axis of a compiler generation, with no step that
 // predicts a path instead of observing one. The chain is build -> the path cargo NAMED -> a digest

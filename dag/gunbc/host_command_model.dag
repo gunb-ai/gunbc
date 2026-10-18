@@ -9,6 +9,7 @@ import v2.std.operation_realization {
 }
 import extdeps.transports.shell { ShellExchangeObservation }
 import extdeps.exec.command { ArgvCommand, argv_words }
+import std.optional { Present }
 
 // AN OPERATION THAT CARRIES A WHOLE COMMAND AS ITS INPUT, AND WHAT THE FAR SIDE ANSWERS. Some
 // operations are one identity for every command they run: extdeps.shell.exec shell.Exec.RunArgv

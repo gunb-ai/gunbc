@@ -17,6 +17,7 @@ pub use crate::std_algebra::{
 pub use crate::std_decl_ref::{decl_ref, DeclarationRef};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_optional::Optional;
 use crate::std_primitive_projection::ProjectionFidelity::{
     DivergentProjection, HostRealizedSeam, ModeledProjection,
 };
@@ -75,7 +76,6 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
-use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::FieldAccessStyle::OptionalUnwrap;
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
@@ -86,11 +86,10 @@ use crate::v1_std_core::MethodSemantics::{
 pub use crate::v1_std_core::ResolvedFormal;
 pub use crate::v1_std_core::{
     authored_name_at, error_type, find_child_named, has_child_named,
-    is_interpreter_blocking_diagnostic, param_node_name_at, param_node_type_expr,
-    preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
-    with_required_cardinality, CallTargetIdentity, Cardinality, Connective,
-    DeclaredCallableIdentity, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, MethodSemantics, NewlineIndex, Node,
+    is_interpreter_blocking_diagnostic, optional_of, optional_payload, param_node_name_at,
+    param_node_type_expr, preserve_outer_optional, qualified_last_segment, type_is_optional,
+    CallTargetIdentity, Connective, DeclaredCallableIdentity, ErrorNode, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, MethodSemantics, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -793,15 +792,14 @@ pub fn census_declaration_bound_formals(
                             type_env.source_indices.clone(),
                         ),
                         declared_type: declared_type.clone(),
-                        declaration_bound_conformance:
-                            crate::v1_std_core::preserve_outer_optional_cardinality(
+                        declaration_bound_conformance: crate::v1_std_core::preserve_outer_optional(
+                            declared_type.clone(),
+                            crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
                                 declared_type.clone(),
-                                crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                                    declared_type.clone(),
-                                    declaration_env.clone(),
-                                    owner_module_path.clone(),
-                                ),
+                                declaration_env.clone(),
+                                owner_module_path.clone(),
                             ),
+                        ),
                         substitution_basis:
                             crate::v1_compiler_infer_env::declaration_substitution_basis(
                                 declared_type.clone(),
@@ -1012,10 +1010,10 @@ pub fn lookup_field_type_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = crate::v1_std_core::type_is_optional(n.clone());
         if is_optional.clone() {
             {
-                let inner = crate::v1_std_core::with_required_cardinality(n.clone());
+                let inner = crate::v1_std_core::optional_payload(n.clone());
                 if (field_name.clone() == "value".to_string()) {
                     Some(inner.clone())
                 } else {
@@ -1024,9 +1022,9 @@ pub fn lookup_field_type_node(
                         field_name.clone(),
                         source_indices.clone(),
                     ) {
-                        Some(inner_result) => Some(crate::v1_std_core::with_optional_cardinality(
-                            inner_result.clone(),
-                        )),
+                        Some(inner_result) => {
+                            Some(crate::v1_std_core::optional_of(inner_result.clone()))
+                        }
                         std::option::Option::None => std::option::Option::None,
                     }
                 }
@@ -1067,7 +1065,7 @@ pub fn lookup_field_type_node(
                                                     )
                                                 }
                                             };
-                                            Some(crate::v1_std_core::with_optional_cardinality(
+                                            Some(crate::v1_std_core::optional_of(
                                                 value_child.clone(),
                                             ))
                                         }
@@ -1209,7 +1207,7 @@ pub fn resolve_scrutinee_type_node_seen(
         {
             match normed.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
-                    crate::v1_std_core::preserve_outer_optional_cardinality(
+                    crate::v1_std_core::preserve_outer_optional(
                         normed.clone(),
                         resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone()),
                     )
@@ -1242,7 +1240,7 @@ pub fn resolve_scrutinee_type_node_seen(
                                     {
                                         normed.clone()
                                     } else {
-                                        crate::v1_std_core::preserve_outer_optional_cardinality(
+                                        crate::v1_std_core::preserve_outer_optional(
                                             normed.clone(),
                                             resolve_scrutinee_type_node_seen(
                                                 env.clone(),
@@ -1287,7 +1285,7 @@ pub fn resolve_scrutinee_type_node_seen(
                                         {
                                             normed.clone()
                                         } else {
-                                            crate::v1_std_core::preserve_outer_optional_cardinality(
+                                            crate::v1_std_core::preserve_outer_optional(
                                                 normed.clone(),
                                                 resolve_scrutinee_type_node_seen(
                                                     env.clone(),
@@ -1378,7 +1376,7 @@ pub fn field_summary_for_type(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let resolved = resolve_scrutinee_type_node(env.clone(), base_type.clone());
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(resolved.clone());
-        let normed_opt = (normed.return_cardinality.clone() == Cardinality::CardOptional);
+        let normed_opt = crate::v1_std_core::type_is_optional(normed.clone());
         if ((field.clone() == "value".to_string()) && normed_opt.clone()) {
             Some(Rc::new(FieldSummary {
                 access_style: FieldAccessStyle::OptionalUnwrap,
@@ -1387,7 +1385,7 @@ pub fn field_summary_for_type(
         } else {
             if normed_opt.clone() {
                 {
-                    let inner = crate::v1_std_core::with_required_cardinality(normed.clone());
+                    let inner = crate::v1_std_core::optional_payload(normed.clone());
                     match field_summary_for_type(inner.clone(), env.clone(), field.clone()) {
                         Some(inner_summary) => Some(Rc::new(FieldSummary {
                             access_style: inner_summary.access_style.clone(),
@@ -1466,10 +1464,10 @@ pub fn map_lookup_result_type(
     {
         match product_field_result_type(field.clone()) {
             Some(raw) => {
-                if (raw.return_cardinality.clone() == Cardinality::CardOptional) {
+                if crate::v1_std_core::type_is_optional(raw.clone()) {
                     Some(raw.clone())
                 } else {
-                    Some(crate::v1_std_core::with_optional_cardinality(raw.clone()))
+                    Some(crate::v1_std_core::optional_of(raw.clone()))
                 }
             }
             std::option::Option::None => std::option::Option::None,

@@ -34,6 +34,7 @@ import gunbc.runner.runner_microvm_slot_controller {
 }
 import gunbc.runner.runner_microvm_host_ready { MicrovmHostBound, MicrovmHostBindingRefused }
 import gunbc.runner.runner_microvm_network { SlotNetworkSanitationSubject }
+import std.optional { Present }
 
 // The reviewed artifacts are one immutable protected CAS value, published by fleet dispatch.
 type WorkspaceExecutorInput sole_constructor {

@@ -42,6 +42,7 @@ import gunbc.auth.approval_device_wire {
 import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, stored_request_json, claims_for, approval_mac_key_id, approval_operator_login, ApprovalKeyLoaded,
 }
+import std.optional { Present }
 
 data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
 data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }

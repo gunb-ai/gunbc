@@ -55,6 +55,7 @@ import product.node_platform_selection {
 }
 import product.superchip_assembly_qualification { SuperchipAssembly, first_assembly }
 import test.claim.product.superchip_assembly_qualification_witness { booted_and_measured, booted_and_measured_at, a_workload_below_the_incumbent_assembly }
+import std.optional { Absent, Present }
 
 fn need_mentions(need: SelectionEvidenceNeed, fragment: String) -> Bool {
   match need {

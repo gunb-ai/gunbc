@@ -13,6 +13,7 @@ import gunbc.merge_admission {
   GateRosterHash,
   merge_admission_fixture_git_tree_from_tagged,
 }
+import std.optional { Absent, Present }
 
 // Lifecycle DYNAMICS over the gunbc.merge_admission authority — no second admission predicate
 // (DESIGN 2: derive, never restate). gunbc.merge_admission owns the static question (is THIS

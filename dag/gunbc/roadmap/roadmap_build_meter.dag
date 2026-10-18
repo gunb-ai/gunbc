@@ -39,6 +39,7 @@ import gunbc.site.element.build_meter {
   FailureDigest, FailureTarget, FailureStageGroup, failure_target_anchor, failure_target_round, failure_target_key, CompactWorkSummary,
   build_meter_kind_key, build_meter_evidence_key, build_meter_pose_key, failure_kind_key,
 }
+import std.optional { Present }
 
 // THE COMPACT WORK SUMMARY OF AN ISSUE, derived here and only drawn by the BuildMeter element
 // (gunbc.site.element.build_meter). Every field is read from one attempt's progress projection

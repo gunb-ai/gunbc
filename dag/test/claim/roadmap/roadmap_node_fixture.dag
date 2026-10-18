@@ -10,6 +10,7 @@ import gunbc.roadmap.roadmap_status {
 }
 import gunbc.roadmap.roadmap_authority { roadmap_node }
 import gunbc.roadmap.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
+import std.optional { Present }
 
 // FIXTURE CONSTRUCTORS FOR ROADMAP WITNESSES, built on the one production constructor
 // (gunbc.roadmap.roadmap_authority roadmap_node). Production has a single node constructor with optional

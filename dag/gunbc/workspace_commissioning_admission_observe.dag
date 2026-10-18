@@ -23,6 +23,7 @@ import std.durable_exclusive_hold { HoldSlotAbsent, HoldObservationUnavailable, 
 import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import gunbc.fleet.fleet_host_budget { HostAllocationConserves }
+import std.optional { Present }
 
 // The installed controller calls this under its slot incarnation and the fleet apply's host
 // mutation exclusion. Intent fields never stand in for host observations. No operation writes.

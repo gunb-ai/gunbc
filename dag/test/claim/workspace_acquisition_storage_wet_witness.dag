@@ -17,6 +17,7 @@ import gunbc.workspace_acquisition_invocation {
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceAcquiring, WorkspaceRetired, WorkspaceReleased, workspace_owner_key, workspace_allocation_json, WorkspaceStoreWritten, WorkspaceStoreWriteRefused }
 import gunbc.workspace_allocation_acquisition { workspace_settle_unelected_retirement }
 import test.claim.workspace_launch_directive_witness { launch_fixture_allocation }
+import std.optional { Present }
 
 fn acquisition_fixture_write(store: FabricStorageBinding, key: NonEmptyStr, value: NonEmptyStr) -> Bool {
   match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: value) {

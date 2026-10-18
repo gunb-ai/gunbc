@@ -1,5 +1,7 @@
 module v1.compiler.emit
 
+import std.optional { Present, Absent, Optional }
+
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.compiler_entry {
   CompilerEntryDriver, RetainedHostCliKernel, DirectIngestDriver, SourceRootEvalDriver, NativeCliDriver, NativeClaimDriver, NativeServeDriver,
@@ -11,7 +13,7 @@ import std.coercion { TypeRealizationDecision }
 import std.unicode.scalar { ascii_lowercase }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
-import v1.std.core {
+import v1.std.core { type_is_optional, optional_payload,
   call_semantics_target, callable_identity, DeclaredCallableIdentity,
   CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
@@ -39,8 +41,8 @@ import v1.std.core {
   expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport,
   is_file_transport, is_local_transport, TransportKind, RestTransport, ShellTransport,
   FileTransport, LocalTransport, classify_transport, transport_verb, transport_base_path, transport_has_auth, field_init_operation_modifier,
-  operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named,
-  Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
+  operation_modifier_name,  tuple_type_name, find_child_named,
+  Connective, Conj, Disj, NoConnective, Arrow
 }
 
 import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration }
@@ -418,9 +420,9 @@ fn has_nested_records_node(n: Node, source_indices: Map<String, NewlineIndex>) -
   if is_product {
     true
   } else if is_coproduct {
-    let is_optional = n.return_cardinality == CardOptional
+    let is_optional = type_is_optional(n: n)
     if is_optional {
-      has_nested_records_node(n: with_required_cardinality(n: n), source_indices: source_indices)
+      has_nested_records_node(n: optional_payload(n: n), source_indices: source_indices)
     } else { false }
   } else {
     let is_map = node_is_keyed_collection(n: n, source_indices: source_indices)
@@ -886,9 +888,9 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     return result
   }
 
-  let is_optional = n.return_cardinality == CardOptional
+  let is_optional = type_is_optional(n: n)
   if is_optional {
-    let inner_str = render_node_type(n: with_required_cardinality(n: n), target: target, shared_types: shared_types, source_indices: source_indices)
+    let inner_str = render_node_type(n: optional_payload(n: n), target: target, shared_types: shared_types, source_indices: source_indices)
     let opt_str = emit_container(name: "optional", inner: inner_str, target: target)
     return opt_str
   }
@@ -1303,7 +1305,7 @@ fn bind_file_verb(t: Node, op_node: Node, source_indices: Map<String, NewlineInd
 
 fn bind_file_result_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> FileResultField? {
   match file_result_channel_of_key(key: file_output_channel_of_field(ch: ch, source_indices: source_indices)) {
-    Present { value: c } => Present { value: FileResultField { channel: c, optional: ch.return_cardinality == CardOptional } }
+    Present { value: c } => Present { value: FileResultField { channel: c, optional: type_is_optional(n: ch) } }
     Absent => none
   }
 }
@@ -1507,7 +1509,7 @@ fn shell_output_channel_of_field(ch: Node, source_indices: Map<String, NewlineIn
 
 fn shell_bind_result_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> ShellResultField? {
   match shell_result_channel_of_key(key: shell_output_channel_of_field(ch: ch, source_indices: source_indices)) {
-    Present { value: c } => Present { value: ShellResultField { channel: c, optional: ch.return_cardinality == CardOptional } }
+    Present { value: c } => Present { value: ShellResultField { channel: c, optional: type_is_optional(n: ch) } }
     Absent => none
   }
 }
@@ -2856,8 +2858,8 @@ fn param_type_is_stderr_capture_policy_declaration(p: Node, env: TypeEnv) -> Boo
 fn param_is_required_stderr_capture_policy(p: Node, env: TypeEnv) -> Bool {
   let ty = param_node_type_expr(n: p)
   param_node_name_at(n: p, source_indices: env.source_indices) == "stderr_capture"
-    && p.return_cardinality == Required
-    && ty.return_cardinality == Required
+    && !type_is_optional(n: p)
+    && !type_is_optional(n: ty)
     && !node_is_collection(n: ty, source_indices: env.source_indices)
     && param_type_is_stderr_capture_policy_declaration(p: p, env: env)
 }
@@ -3370,7 +3372,7 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 fn transparent_representation_root(n: Node, env: TypeEnv, target: RenderTarget, fuel: Int) -> Node {
   if fuel <= 0 {
     n
-  } else if n.return_cardinality == CardOptional {
+  } else if type_is_optional(n: n) {
     n
   } else if is_where_refinement_type(ty: n) {
     match n.children |> first {

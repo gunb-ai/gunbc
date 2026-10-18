@@ -30,6 +30,7 @@ import extdeps.github.expressions {
   FormatArityNotOneSubstitution,
   github_path_key
 }
+import std.optional { Present }
 
 // THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
 // "i would much prefer if it was all handled within the witnesses step and within the gunbc

@@ -18,6 +18,7 @@ import gunbc.runner.runner_slot_allocation {
   SlotServesGitHubActions,
   SlotServesFabricExecution,
 }
+import std.optional { Absent, Present }
 
 data gunbc_runner_local_state_scope_disposition: ConstructionMechanism = SingleAuthority
 

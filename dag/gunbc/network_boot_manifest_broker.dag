@@ -59,6 +59,7 @@ import gunbc.network_boot_delivery {
   ManifestVerificationSuite,
   ManifestVerificationTrust,
 }
+import std.optional { Present }
 
 // Protocol id bound into the HMAC preimage so a tag from another envelope cannot verify here.
 data boot_manifest_protocol: NonEmptyStr = "gunbc.signed-boot-manifest.v1" as NonEmptyStr

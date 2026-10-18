@@ -33,6 +33,7 @@ import extdeps.auth.oidc {
   OidcIdTokenEmailUnverified, OidcIdTokenHostedDomainMismatch,
   verify_oidc_id_token,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -59,6 +59,7 @@ import gunbc.scm.write_spine {
 import gunbc.scm.object_store {
   path_unique_of_record, path_unique_with_path_removed, store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
 }
+import std.optional { Present }
 
 // THE FIXTURE IS FALLIBLE FOR THE REASON THE STAGING FIXTURE'S HEADER GIVES AND THIS FILE INHERITS
 // RATHER THAN RESTATES: a setup step that failed must stop the claim, never hand it a substitute

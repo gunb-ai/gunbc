@@ -38,6 +38,7 @@ import extdeps.standards.rfc_5280 {
   oid_ecdsa_with_sha256, oid_ecdsa_with_sha384, oid_prime256v1, oid_secp384r1,
 }
 import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, pem_certificate_label }
+import std.optional { Present }
 
 // DeviceCheck DCAppAttestService, and Apple's server-side validation procedure for its attestation
 // objects. Cited pages: "Establishing your app's integrity", "Validating apps that connect to your

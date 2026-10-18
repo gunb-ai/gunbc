@@ -26,6 +26,7 @@ import gunbc.fleet.fleet_ssh_credential_verify {
   expected_public_key_line,
   classify_derived_public_key_line,
 }
+import std.optional { Present }
 
 data fixture_attempt_raw: String = "typed-remote-file-write-witness"
 

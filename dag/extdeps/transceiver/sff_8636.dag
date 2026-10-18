@@ -11,6 +11,7 @@ import extdeps.ethernet.link_mode {
   ieee_25gbase_cr, ieee_100gbase_cr4, ieee_50gbase_cr2,
   ieee_50gbase_cr, ieee_100gbase_cr2, ieee_200gbase_cr4,
 }
+import std.optional { Present }
 
 // THE MANAGEMENT EEPROM OF A QSFP MODULE OR CABLE LEG -- AND THE REASON A PART NUMBER IS NOT A LINK
 // CONTRACT.

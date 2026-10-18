@@ -54,6 +54,7 @@ import gunbc.host.host_memory_qualification {
   PartSampleQualificationRequired, PlatformTrainingFailure, InferredFromSequencePosition, HostMemoryStanding, ClassSupportedByBoard, PartQualificationUnobserved,
   TrainingOutcomeUnobserved, BootOutcomeUnobserved, ListedInVendorAvl, TrainingOperational, BootReachedOperatingSystem,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -33,6 +33,7 @@ import gunbc.auth.session {
   SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
   SessionClientTrackerWeb, SessionClientApprovalsWeb,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

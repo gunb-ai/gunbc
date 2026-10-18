@@ -86,9 +86,8 @@ use crate::v1_std_core::{
     has_child_named, inferred_to_node, intern, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
-    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
-    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
-    Node,
+    param_node_name_at, param_node_type_expr, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -274,7 +273,6 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         connective,
         params,
         inferred,
-        return_cardinality,
         uses,
         body,
         transport,
@@ -416,7 +414,6 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         connective: connective.clone(),
         params: list(params)?,
         inferred,
-        return_cardinality: return_cardinality.clone(),
         uses: list(uses)?,
         body: opt(body)?,
         transport: opt(transport)?,

@@ -91,6 +91,7 @@ import gunbc.scm.checkout {
   CheckedOut,
   CheckoutRefused,
 }
+import std.optional { Present }
 
 fn atom_node(identity: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])

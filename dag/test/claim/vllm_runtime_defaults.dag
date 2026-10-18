@@ -20,6 +20,7 @@ import extdeps.vllm.runtime_defaults {
   ResolvedVllmPrefixCaching, PrefixCachingResolved, PrefixCachingUnresolvable,
   resolve_vllm_prefix_caching,
 }
+import std.optional { Present }
 
 // THE SUBJECT IS "WHO DECIDED THIS VALUE", and every witness below is written so it can answer
 // differently. A module that resolved every field to the same number no matter what was asked would

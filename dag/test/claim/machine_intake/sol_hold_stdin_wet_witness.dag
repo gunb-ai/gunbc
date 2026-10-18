@@ -21,6 +21,7 @@ import gunbc.machine_intake.mtcollins1_sol_notice {
   SolNoticePaths, SolNoticeDelivery, SolNoticeDelivered, SolNoticeDeliveryFailed, SolNoticeLiveLog,
   sol_notice_pass, sol_notice_channel_key, sol_notice_marker_path, mtcollins1_sol_notice_watch, mtcollins1_sol_notice_stop_suffix, sol_notice_finish,
 }
+import std.optional { Present }
 
 // THE COLLECTOR, EXECUTED RATHER THAN SPELLED. Each test runs the real gunbc.machine_intake.sol_hold
 // ActivateHeld launch -- its fifo, fd plumbing, supervisor, pid+starttime publication and

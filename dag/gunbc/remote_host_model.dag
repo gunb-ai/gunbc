@@ -10,6 +10,7 @@ import extdeps.exec.command { argv_words }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import gunbc.host_command_model { dispatched_words, ssh_session_exec_portable_words_operation }
+import std.optional { Present }
 
 // A MODELED REMOTE HOST reached over extdeps.ssh.session ssh.Session.ExecPortableWords. The SSH client
 // arguments are shaped as `<options...> <endpoint> -- <remote words...>` (gunbc.fleet.fleet_known_hosts_anchor

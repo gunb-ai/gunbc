@@ -299,6 +299,7 @@ import gunbc.dispatch_attempt_launch { SnapshotFreeLaunch, CodexWithoutSnapshot 
 import gunbc.compute.compute_seat_ensure { SeatDischargeSkipped }
 import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
 import test.claim.roadmap.roadmap_dispatch_actuator_witness { fx_prepared_launch, sized_derivable, fixture_ready_resolution }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

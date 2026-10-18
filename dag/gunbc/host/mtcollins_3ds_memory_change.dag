@@ -25,6 +25,7 @@ import gunbc.host.mtcollins_memory_change {
 }
 import gunbc.host.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
 import gunbc.host.memory_change_report { explain_memory_change }
+import std.optional { Present }
 
 // PR #11189 / 4f9f6e7c305. Observed tokens are not a Samsung catalog guarantee.
 data mtcollins_3ds_capture_path: NonEmptyStr = "artifacts/bmc/mtcollins1-sol-3ds-mixture-refusal-2026-09-12.txt"

@@ -10,6 +10,7 @@ import gunbc.runner.runner_microvm_slot_controller { workspace_slot_from_ledger,
 import test.claim.workspace_acquisition_storage_wet_witness { acquisition_fixture_write }
 import test.claim.workspace_launch_directive_witness { launch_fixture_allocation }
 import test.claim.workspace_allocation_lifecycle_witness { allocation_test_request }
+import std.optional { Present }
 
 // Executes the actual controller boundary against durable owner state. The hold authority is
 // unreadable in this fixture, so expiry must retire intent but cannot release capacity or quota.

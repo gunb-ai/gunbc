@@ -26,6 +26,7 @@ import extdeps.linux.procfs {
   procfs_path_literal,
   procfs_availability,
 }
+import std.optional { Present }
 
 data host_budget_source_authority_disposition: Disposition = Terminal {
   reason: "Single authority for the inputs to the host memory PLANNING ceiling the v1 governor uses for scheduling. This is not an RSS cap. The observed values stay where measured (cgroup reads or sysctl); an operator environment value is separately a request that may narrow an observation but never replace or widen it. This module owns whether a source is observed, whether it is enforced, whether it is degraded, and how it renders."

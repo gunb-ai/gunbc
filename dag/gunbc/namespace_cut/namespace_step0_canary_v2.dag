@@ -15,6 +15,7 @@ import gunbc.namespace_cut.namespace_step0_binding_provenance_contract {
   BindingProvenanceUnobservable,
   step0_binding_provenance_consequence
 }
+import std.optional { Absent, Present }
 
 // THE STEP-0 STRIP-ENTRY CANARY, SECOND CONTRACT. The first one is superseded rather than edited,
 // and the defect that superseded it is worth stating exactly, because it is the failure this

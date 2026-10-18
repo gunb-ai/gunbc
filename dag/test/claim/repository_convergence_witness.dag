@@ -31,6 +31,7 @@ import gunbc.live_deploy.repository_convergence {
   repository_convergence_verdict,
   repository_convergence_converged,
 }
+import std.optional { Absent, Present }
 
 data old_sha: String = "1111111111111111111111111111111111111111"
 data new_sha: String = "2222222222222222222222222222222222222222"

@@ -58,6 +58,7 @@ import gunbc.review_sheet_format_actuator {
   format_review_sheet,
   standing_admitted_color,
 }
+import std.optional { Present }
 
 fn forged_located_tab_over_the_constant_sheet_id(spreadsheet_id: NonEmptyStr) -> LocatedReviewTab {
   LocatedReviewTab {

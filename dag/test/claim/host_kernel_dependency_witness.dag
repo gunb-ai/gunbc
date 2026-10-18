@@ -24,6 +24,7 @@ import gunbc.fleet.fleet_converge_plan {
 }
 import gunbc.fleet.fleet_converge_terminal { AwaitingCapability }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
+import std.optional { Present }
 
 // SUPPLIED AT THE BOUNDARY: observations below are adversarial inputs to the production
 // dependency fold, not evidence about this machine. Actual ioctl execution has its own wet

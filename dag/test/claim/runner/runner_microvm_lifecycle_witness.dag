@@ -61,6 +61,7 @@ import gunbc.runner.runner_microvm_lifecycle {
   TeardownReadbackSubjectUnobservable, UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
   SubjectInvocation, attempt_teardown_readback, settle_teardown,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

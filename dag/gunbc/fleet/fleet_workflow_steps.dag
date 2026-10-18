@@ -86,6 +86,7 @@ import gunbc.workflow_capability_closure {
   provides_only,
   consumes_only,
 }
+import std.optional { Present }
 
 fn ci_checkout_step() -> Step {
   UsesStep {

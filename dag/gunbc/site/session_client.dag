@@ -5,6 +5,7 @@ import extdeps.languages.typescript.program {
   ts_arrow, ts_block, ts_const, ts_return, ts_if,
   ts_new, ts_prefix, ts_object, ts_field,
 }
+import std.optional { Present }
 
 // THE ONE SESSION READ (2026-09-27): the emitted client names GET /auth/session ONCE — a single
 // promise every consumer rides. Before this module, the tracker bundle's inline assignment and

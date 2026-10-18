@@ -77,6 +77,7 @@ import extdeps.toolchain.icestorm.subject {
   roster_pin_occurrences,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

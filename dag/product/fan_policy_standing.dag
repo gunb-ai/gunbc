@@ -24,6 +24,7 @@ import product.acoustic_ceiling {
   FanDatasheetPosition,
   acoustic_level_against_ceiling,
 }
+import std.optional { Absent, Present }
 
 // WHAT A CONTROLLER IS DOING WITH ITS FANS, AT ONE HOST, AS A STANDING RATHER THAN A STORY.
 //

@@ -13,6 +13,7 @@ import product.printed_chassis.assembly_inventory { InspectionEvidence, Required
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import product.printed_chassis.assembly_inventory { decode_inventory }
 import std.goal_assessment { ObservationRefused }
+import std.optional { Present }
 
 fn revision() -> PreparedRevision {PreparedRevision {cad_manifest:Sha256Digest {hex:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},project:Sha256Digest {hex:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}
 fn changed_project() -> PreparedRevision {PreparedRevision {cad_manifest:revision().cad_manifest,project:Sha256Digest {hex:"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}}}

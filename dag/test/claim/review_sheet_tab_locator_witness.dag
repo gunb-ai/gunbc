@@ -26,6 +26,7 @@ import gunbc.review_sheet_tab_locator {
   ClassifiedUnreadable,
   review_tab_standing_of_outcome,
 }
+import std.optional { Present }
 
 // THE RESPONSES ARE SUPPLIED AT THIS INTERFACE AND THAT IS THE RULE RATHER THAN A SHORTCUT.
 // DESIGN section 3's witness rule: a claim discriminates at ONE interface, and its inputs belong

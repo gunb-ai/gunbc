@@ -3,6 +3,7 @@ module gunbc.machine_intake.phase
 import std.types { Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import gunbc.deployment_risk { DeploymentRiskClass, ProdRisk, TestRisk }
+import std.optional { Present }
 
 // THREE TRANSACTIONS, ONE LIFECYCLE (machine-intake ruling 2026-08-29 §4). Hardware
 // qualification, OS provisioning and placement commissioning are separate transactions: they

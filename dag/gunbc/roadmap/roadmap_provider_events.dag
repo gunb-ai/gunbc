@@ -35,6 +35,7 @@ import extdeps.llm.claude_code_stream_json {
   ClaudeCodeLineUnreadable,
   claude_code_stream_line,
 }
+import std.optional { Present }
 
 // THE HARNESS ARMS ARE THE READ SIDE OF gunbc.harness.harness_tool_kind. A harness tool use is
 // written with an item type derived from its HarnessTool, and provider_item_activity inverts that same

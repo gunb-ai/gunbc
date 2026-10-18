@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.decl_index { ItemKind }
 import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import gunbc.primitive_egress.category { PrimitiveCategory, ReplacementLane, category_owner_lane }
+import std.optional { Present }
 
 // THE FIVE SEMANTIC DISPOSITIONS OF PRIMITIVE-EGRESS-0 (gunbc#11626) ARE DERIVED, NEVER
 // AUTHORED. An author records EVIDENCE about an identity -- what it observes outside the value

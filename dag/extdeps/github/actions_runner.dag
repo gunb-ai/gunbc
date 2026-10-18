@@ -25,6 +25,7 @@ import extdeps.languages.json.parse {
 import extdeps.languages.json.emit { JsonString }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

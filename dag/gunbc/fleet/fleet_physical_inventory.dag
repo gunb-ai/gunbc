@@ -69,6 +69,7 @@ import product.installed_bom_reconcile {
   dimm_reconcile_verdict,
   processor_reconcile_verdict,
 }
+import std.optional { Present }
 
 // SPATIAL-0 owned inventory bindings: extdeps rows cite vendor facts; this module binds allocated
 // PhysicalAssetIdentity and HostIdentity instances to catalog declarations and rack residence.

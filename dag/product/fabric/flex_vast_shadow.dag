@@ -48,6 +48,7 @@ import extdeps.cloud.vast_ai {
 }
 import std.rational { NonzeroNatFraction }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import std.optional { Present }
 
 // Read-only Vast observation plus M0 admission recorded as a shadow receipt. The create and destroy
 // writes live in product.fabric.flex_vast_loop; writes are gated on Wet AND a readable instance list

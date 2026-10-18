@@ -24,6 +24,7 @@ import gunbc.self_host_compile_phase_frontier {
   phase_board_from_census_identities,
   PersistedPhaseBoardFold
 }
+import std.optional { Present }
 
 // Shared internal data. Evaluated once when the module is loaded.
 // 3 well-formed E0308 identities; the board is derived from these

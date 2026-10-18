@@ -109,6 +109,7 @@ import gunbc.scm.commit_closure {
   NotWellKinded,
   well_kinded_nodes,
 }
+import std.optional { Present }
 
 fn child_node() -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: ^closure_witness_child } }, children: [])

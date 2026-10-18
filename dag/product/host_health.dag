@@ -27,6 +27,7 @@ import std.goal_assessment {
   assess_by_deviations_and_unknowns,
 }
 import std.algebra { non_empty_to_list }
+import std.optional { Present }
 
 // ONE HOST'S FITNESS AGAINST A DECLARED HEALTH GOAL, ASSESSED FROM A BOUNDED READ-ONLY WINDOW.
 //

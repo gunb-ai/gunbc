@@ -19,6 +19,7 @@ import gunbc.spark.retired_serving_container_names {
   spark_pair_head_unit_name, spark_pair_worker_unit_name,
   spark_pair_retired_head_unit, spark_pair_retired_worker_unit,
 }
+import std.optional { Present }
 
 // ── A SPARK EFFECT WITH A MEMORY OR GPU NEED IS ADMITTED BY OCCUPANCY AS WELL AS BY OWNERSHIP ──
 //

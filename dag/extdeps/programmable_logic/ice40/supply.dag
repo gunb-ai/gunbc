@@ -7,6 +7,7 @@ import std.measure { Millivolt, millivolt, millivolt_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.optional { Present }
 
 // THE SUPPLY RAILS THE DEVICE REQUIRES, from Table 4.2 Recommended Operating Conditions and Table
 // 4.12 sysI/O Recommended Operating Conditions of iCE40 LP/HX Family Data Sheet FPGA-DS-02029,

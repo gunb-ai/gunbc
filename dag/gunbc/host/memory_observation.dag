@@ -12,6 +12,7 @@ import extdeps.crypto.hash { sha256sum_line_digest }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.host.memory_configuration { MemoryConfiguration, MemoryPosition }
 import gunbc.host.host_memory_qualification { HostMemoryStanding, PlatformTrainingFailure }
+import std.optional { Present }
 
 // An identity binding for a token actually printed by this captured firmware.
 // An observed unsuffixed identity is not an exact manufacturer-catalog join.

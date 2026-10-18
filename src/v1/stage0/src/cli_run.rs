@@ -78,9 +78,9 @@ use crate::v1_std_core::{
     has_child_named, inferred_to_node, intern, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
-    param_node_name_at, param_node_type_expr, type_reference_identity, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    LeafOwner, MatchPattern, NewlineIndex, Node, TypeDeclarationProvenance, TypeReferenceIdentity,
+    param_node_name_at, param_node_type_expr, type_reference_identity, CompilerDiagnostic,
+    Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, LeafOwner,
+    MatchPattern, NewlineIndex, Node, TypeDeclarationProvenance, TypeReferenceIdentity,
 };
 use serde::Serialize;
 
@@ -19181,7 +19181,6 @@ mod closure_bare_disposition_tests {
             connective: crate::v1_std_core::Connective::NoConnective,
             params: crate::v1_std_core::empty_node_list(),
             inferred: None,
-            return_cardinality: crate::v1_std_core::Cardinality::Required,
             uses: crate::v1_std_core::empty_node_list(),
             body: None,
             transport: None,

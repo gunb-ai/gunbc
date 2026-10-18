@@ -50,6 +50,7 @@ import gunbc.srv3.srv3_actuate_shell_paths { srv3_bmcweb_token_path }
 import gunbc.systemd_run_transient { systemd_run_transient_read, SystemdRunTransientStarted, SystemdRunTransientRefused }
 import gunbc.systemctl_stop_run { systemctl_stop_run, SystemctlStopped, SystemctlStopRefused }
 import gunbc.systemctl_is_active_read { systemctl_is_active_read, UnitIsActiveCapture, UnitIsActiveCaptured, UnitIsActiveCaptureRefused }
+import std.optional { Absent, Present }
 
 data host_effect_nbd_proxy_serve_disposition: Disposition = Terminal {
   reason: "systemd transient-unit realize transport for Srv3NbdProxyServe (P6 Part 2; operator ruling 2026-07-14: no trap/&/$! ShellStmt vocabulary). Actuate side routes through gunbc.systemd_run_transient (RunTransient) and gunbc.systemctl_stop_run (Stop), both typed-argv dispatch over the cited extdeps.systemd.systemd_run / extdeps.systemd.systemctl authorities. Observe side routes through gunbc.systemctl_is_active_read (IsActive) against the transient unit name, which is this scope's identity anchor. Token bridge: start_units materializes BMCWEB session token from srv3_bmcweb_token_path via Filesystem.Read into websocat argv. Formerly host_effect_nbd_proxy_serve_dissolution_trigger / host_effect_nbd_proxy_serve_scaffold (WitnessBin systemd-run scaffolding + unconditional PortInaccessible observe stub); both conditions of that trigger are now met and it is retired in favor of this Terminal disposition."

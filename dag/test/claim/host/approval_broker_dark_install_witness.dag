@@ -43,6 +43,7 @@ import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.tools.findutils { find_untrusted_entries_command }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

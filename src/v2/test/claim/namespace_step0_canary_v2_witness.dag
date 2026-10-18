@@ -121,6 +121,7 @@ import gunbc.namespace_cut.namespace_step0_canary_v2 {
   step0_v2_entered_prefix,
   step0_v2_pre_strip_prefix
 }
+import std.optional { Present }
 
 // THE EXECUTED EVIDENCE FOR THE SECOND CANARY CONTRACT'S CLASSIFIER. Every witness here is a
 // FIXTURE receipt authored through the fixture door and scored by the production classifier; none

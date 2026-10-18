@@ -18,6 +18,7 @@ import extdeps.external_authority {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
+import std.optional { Absent, Present }
 
 // The datasheet the product page links ("Read the Datasheet"), document 3773000, MAR25.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

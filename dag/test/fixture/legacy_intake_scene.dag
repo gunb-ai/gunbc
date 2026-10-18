@@ -44,6 +44,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
 import test.fixture.scm_repository_builder {
   MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head, mb_at, mb_intake_advance, mb_capture, mb_remove,
 }
+import std.optional { Present }
 
 data legacy_r0_hex: String = "d012e00a3f1accbfbdafa732a7f9eb892ffa1e44"
 data legacy_r1_hex: String = "b7f9070ca82026ba63fbf55960a9e3a0266b3285"

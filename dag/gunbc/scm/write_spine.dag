@@ -55,6 +55,7 @@ import gunbc.scm.staging {
   FreezableChange,
   stage_standing,
 }
+import std.optional { Present }
 
 // THE STAGING OUTCOME. Each refusal names a different owner and a different repair, which is why the
 // two collision arms are not folded together: a source-locator collision says the object table

@@ -1,6 +1,7 @@
 module gunbc.fleet.fleet_tailnet
 
 import std.types { NonEmptyStr, String, Port }
+import std.optional { Present }
 
 // THE FLEET'S TAILNET DOMAIN, as a leaf. gunbc.fleet.fleet_intent_network fleet_intent_network carries it
 // as its topology's tailnet_domain, and the approval broker composes its public address from it

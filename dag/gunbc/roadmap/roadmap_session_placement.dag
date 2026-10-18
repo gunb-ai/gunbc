@@ -60,6 +60,7 @@ import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
   JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_nat, json_field_int, json_field_string_list,
 }
+import std.optional { Present }
 
 // G5 OF THE DOGFOOD ROUTE: THE AGENT SESSION HOLDS A PLACEMENT GRANT AND RUNS INSIDE ITS BOUNDS.
 //

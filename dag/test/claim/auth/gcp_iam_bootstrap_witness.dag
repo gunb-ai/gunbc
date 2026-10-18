@@ -45,6 +45,7 @@ import gunbc.auth.gcp_iam_converge { PolicyUnreadable, PolicyObserved, PolicyRes
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_input_refusals }
 import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation }
 import extdeps.cloud.gcp.iam_admin { workload_identity_pool_display_name_admitted, workload_identity_resource_id_admitted }
+import std.optional { Absent, Present }
 
 test fn bootstrap_role_drift_never_authorizes_adoption() -> Bool {
   all(iam_bootstrap_roles, role => {

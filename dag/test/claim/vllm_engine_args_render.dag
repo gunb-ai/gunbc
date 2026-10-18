@@ -8,6 +8,7 @@ import extdeps.vllm.engine_args {
   PrefixCachingOmitted, PrefixCachingExplicit,
   vllm_memory_request_argv, vllm_prefix_caching_argv, VllmPromptTokensDetailsRequest, PromptTokensDetailsOmitted, PromptTokensDetailsReported, vllm_prompt_tokens_details_argv, vllm_basis_point_fraction_wire,
 }
+import std.optional { Present }
 
 // ── THE FLAGS A REQUEST RENDERS TO ─────────────────────────────────────────────────────────────
 //

@@ -45,6 +45,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import std.algebra { trim }
 import gunbc.workspace_commissioning_fleet { workspace_commissioning_basis_observe, WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetDependencyObserved, WorkspaceCommissioningFleetRefused }
+import std.optional { Present }
 
 type WorkspaceExecutorPreparation
   = WorkspaceExecutorPrepared { directive: String }

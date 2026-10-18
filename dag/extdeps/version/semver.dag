@@ -1,5 +1,6 @@
 module extdeps.version.semver
 
+import std.optional { Present, Absent, Optional }
 import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
 import std.algebra { Ordering, Less, Equal, Greater, trim }
 import std.integer { NonNegativeInt }

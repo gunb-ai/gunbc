@@ -8,6 +8,7 @@ import extdeps.crypto.mac {
 }
 import std.types { NonEmptyStr, Secret }
 import std.logic { Bool }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

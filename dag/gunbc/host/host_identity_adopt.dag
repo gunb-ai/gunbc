@@ -1,6 +1,7 @@
 module gunbc.host.host_identity_adopt
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Present }
 
 
 type HostIdentityAdoptReceipt {

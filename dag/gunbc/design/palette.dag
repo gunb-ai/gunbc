@@ -10,6 +10,7 @@ import extdeps.accessibility.wcag_contrast {
   wcag_aa_large_text_and_graphics_hundredths,
   wcag_aaa_normal_text_hundredths,
 }
+import std.optional { Present }
 
 // L2 palette-catalogue machinery (design-register-library.md). A SwatchSet is register-independent
 // catalog data; admissibility against the house register (gunbc.site.tokens quiet_envelope_hsl_pct)

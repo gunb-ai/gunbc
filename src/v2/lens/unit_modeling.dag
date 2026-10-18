@@ -14,6 +14,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.diagnostic { node_locus, outcome_accepted, outcome_rejected }
 import std.optional { optional_absent, optional_present, optional_prefer_first_present }
+import std.optional { Present }
 
 type UnitFieldRow {
   field: Symbol

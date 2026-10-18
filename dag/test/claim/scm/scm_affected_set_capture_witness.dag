@@ -59,6 +59,7 @@ import gunbc.scm.write_spine {
 }
 import test.claim.scm_repository_save_witness { scm_sv_v7_fixture_path, scm_sv_v8_fixture_path, scm_sv_v9_fixture_path }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

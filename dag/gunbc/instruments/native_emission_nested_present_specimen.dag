@@ -1,6 +1,7 @@
 module gunbc.instruments.native_emission_nested_present_specimen
 
 import std.types { Bool, String }
+import std.optional { Absent, Present }
 
 // AN EXPECTING-RED SPECIMEN for gunbc.recurring_failure_mode
 // emitter_nested_variant_pattern_inside_present_drops_the_rc_deref. It is NOT enrolled in

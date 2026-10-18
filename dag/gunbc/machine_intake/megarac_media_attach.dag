@@ -38,6 +38,7 @@ import extdeps.languages.json.parse {
   parse_json_document,
   some_json_value,
 }
+import std.optional { Present }
 
 // ATTACHING A REMOTE IMAGE, AS A MODELED OPERATION RATHER THAN A SHELL SCRIPT. extdeps.bmc.megarac
 // described this API in prose for months and carried no transport, so the first attach against a

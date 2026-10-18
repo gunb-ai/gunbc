@@ -56,6 +56,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.minted_identity { minted_id_eq }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

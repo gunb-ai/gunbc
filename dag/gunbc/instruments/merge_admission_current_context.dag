@@ -31,6 +31,7 @@ import gunbc.merge_admission_subject {
   merge_admission_merge_base_ref,
 }
 import gunbc.merge_admission_produce { parse_receipt_wire_v2 }
+import std.optional { Present }
 
 fn optional_env(name: NonEmptyStr) -> String? {
   let observed = shell.Env.Get(name: name)

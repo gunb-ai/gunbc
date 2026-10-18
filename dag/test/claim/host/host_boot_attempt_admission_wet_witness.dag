@@ -20,6 +20,7 @@ import gunbc.host.host_boot_attempt_admission {
   ReceiptOrderingViolated, AttemptSlotKeyNotAddressable, AttemptSlotPreconditionIncoherent, AttemptSlotStoreRefused,
   consume_attempt_slot, attempt_slot_key,
 }
+import std.optional { Present }
 
 // WET CONTROLS FOR THE CREATE-ONCE ATTEMPT SLOT, against a throwaway temp directory (no network, no
 // remote host): the real file CAS decides each answer. Enrolled on the local-repo wet lane.

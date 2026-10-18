@@ -78,6 +78,7 @@ import gunbc.provider_account {
   codex_roadmap_account_evidence,
   admitted_single_session_binding,
 }
+import std.optional { Absent, Present }
 
 // Slice A selection kernel (operator execution-profile directive 2026-08-01, addendum 2026-08-01).
 // This carrier names the three-valued coproduct ExecutionProfile; the operator also names the same

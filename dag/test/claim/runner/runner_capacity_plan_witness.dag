@@ -56,6 +56,7 @@ import gunbc.runner.runner_capacity_plan {
   GitHubSlotPopulationForeignRegistration,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

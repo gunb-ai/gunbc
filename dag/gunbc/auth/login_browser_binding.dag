@@ -7,6 +7,7 @@ import extdeps.auth.oidc { OidcLoginTransaction }
 import extdeps.crypto.sha2 { sha256_hex }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.auth.session { session_cookie_id_of_header, SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed }
+import std.optional { Present }
 
 // THE LOGIN-BINDING COOKIE'S ONE NAME, read by both the parse and the Set-Cookie construction.
 // The __Host- prefix (RFC 6265bis section 4.1.3.2) binds it to this origin with Secure and Path=/.

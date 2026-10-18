@@ -14,6 +14,7 @@ import extdeps.zhipu.glm_5_3 {
   GlmMoeDsaShape, glm_5_3_hub_repo, glm_5_3_native_manifest,
   glm_5_3_moe_layer_count, glm_5_3_routed_expert_projection_count, glm_5_3_routed_expert_params,
 }
+import std.optional { Present }
 
 // ── THE LAYERING DECISION, STATED RATHER THAN DEFAULTED ──────────────────────────────────────
 //

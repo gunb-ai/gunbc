@@ -129,6 +129,7 @@ import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.workflow_runs { workflow_run_conclusion_wire_label }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import std.optional { Present }
 
 // The one fleet workflow file, named through the generated-artifact authority so the subject and
 // every witness cite the same path.

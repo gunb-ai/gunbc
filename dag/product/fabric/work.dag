@@ -11,6 +11,7 @@ import std.nat { Nat }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.measure { HardwareThreadCount, hardware_thread_count_value, byte_size_count }
 import product.fabric.identity { FabricIdentity, WorkKey }
+import std.optional { Present }
 
 // Work is WHAT is computed, and it is provider-neutral by construction: no field
 // here can name a repository, a pull request, a branch or a commit, because those

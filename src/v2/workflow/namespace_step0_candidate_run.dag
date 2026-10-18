@@ -92,6 +92,7 @@ import gunbc.namespace_cut.namespace_step0_canary_v2 {
   step0_v2_entered_prefix,
   step0_v2_pre_strip_prefix
 }
+import std.optional { Absent, Present }
 
 // THE ONE-DISPATCH CANDIDATE COMMAND. Everything the receipt names is observed by THIS run: the
 // revision and its tree and the compiler's bytes, the population collected out of that revision, the

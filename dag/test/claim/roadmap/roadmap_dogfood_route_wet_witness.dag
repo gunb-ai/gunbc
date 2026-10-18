@@ -41,6 +41,7 @@ import gunbc.roadmap.roadmap_belt_tick_cli { belt_start_record_exit }
 import gunbc.roadmap.roadmap_served_observation { served_observation_issue_query_surface, IssueQueryRows }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_projection }
 import gunbc.roadmap.roadmap_belt_actuate { WorkflowAttemptsObserved }
+import std.optional { Present }
 
 // WET CONTROLS FOR THE DOGFOOD START RECEIPT'S STORE (side-chat ruling on #13077 at e7e9ca9b). Each
 // claim builds a FRESH instance layout under a temporary directory and runs the production recorder

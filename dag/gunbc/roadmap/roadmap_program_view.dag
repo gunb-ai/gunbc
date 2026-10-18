@@ -15,6 +15,7 @@ import gunbc.roadmap.roadmap_execution_contract {
 import gunbc.roadmap.roadmap_status { line_ticket }
 import gunbc.v1.v1_deletion_plan { V1FinishLine, V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_key }
 import std.graph { GraphEdge, CallGraph, reverse_adjacency, dfs_collect_component, SccComponentAcc }
+import std.optional { Absent, Present }
 
 // THE PROGRAM-NAVIGATION PROJECTION AUTHORITY, V0 (operator requirements 2026-08-02): the derived
 // model that answers, for one program, what are we doing / where are we exactly / how much remains

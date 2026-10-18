@@ -22,8 +22,8 @@ import v1.std.core {
   field_access_field_at, method_receiver, expr_field_access_summary,
   expr_method_call_semantics, record_lit_type_name_at, lambda_body, cast_expr, cast_target,
   return_value, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
-  index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality,
-  Connective, Conj, Disj, CardOptional, is_rest_transport, is_shell_transport
+  index_base, index_expr, slice_base, slice_start, slice_end, 
+  Connective, Conj, Disj, is_rest_transport, is_shell_transport
 }
 
 import v1.compiler.artifact { RenderTarget, Go }

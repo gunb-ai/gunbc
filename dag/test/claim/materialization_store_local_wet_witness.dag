@@ -65,6 +65,7 @@ import std.measure { byte_size }
 import std.measure { measure_count }
 import std.render_repeat_string_bootstrap { repeat_string }
 import extdeps.filesystem.filesystem_io { FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_entry_names }
+import std.optional { Present }
 
 // WET CONTROLS FOR THE LOCAL PERSISTENT REALIZATION: every control of the provider-spine brief,
 // executed against a REAL filesystem through extdeps.realization.materialization_store_local. Each

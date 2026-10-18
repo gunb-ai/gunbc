@@ -20,6 +20,7 @@ import std.measure {
 }
 import std.nat { Nat, nat_max, nat_min, nat_ceil_div }
 import std.types { Bool, List, NonEmptyStr, list_length }
+import std.optional { Present }
 
 // How to compute an SCM's serving bill from workload primitives instead of guessing at a monthly
 // number. Four axes, each derived from the profile and each priced by its own cited vendor row

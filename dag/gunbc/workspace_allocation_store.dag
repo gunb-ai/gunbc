@@ -15,6 +15,7 @@ import extdeps.languages.json.emit { JsonValue, JsonArray, JsonNull, JsonString,
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, json_object_unique_member, JsonMemberFound, FieldRead, FieldAbsent, FieldMalformed }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_json, workspace_reservation_plan_from_json, workspace_reservation_plan_request, workspace_reservation_plan_reservation }
 import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceReservation, workspace_request_json, workspace_request_from_json, workspace_reservation_json, workspace_reservation_from_json }
+import std.optional { Present }
 
 // One CAS head per owner serializes admission against release and preserves every idempotency key.
 // A digest only locates the owner; every decoded request is checked against the full principal.

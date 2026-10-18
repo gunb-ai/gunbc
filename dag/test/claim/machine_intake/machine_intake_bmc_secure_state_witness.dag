@@ -151,6 +151,7 @@ import gunbc.machine_intake.bmc_secure {
   dry_read_bmc_account_state,
   dry_apply_bmc_account_plan,
 }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

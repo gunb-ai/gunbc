@@ -39,6 +39,7 @@ import std.cache_interface {
   ProviderNativeReplacement,
 }
 import std.disposition { Disposition, Terminal }
+import std.optional { Present }
 
 // Witness-realization plan P2 (pure-spec half): the content-addressed artifact store - the corpus's
 // first CacheProvider whose eviction field is READ (memory-control audit F5: eviction was

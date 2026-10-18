@@ -18,6 +18,7 @@ import extdeps.languages.json.parse {
 }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.llm.cursor_sdk_errors { parse_cursor_sdk_error_code, CursorSdkErrorCode }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

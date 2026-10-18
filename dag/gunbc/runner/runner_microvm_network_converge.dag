@@ -47,6 +47,7 @@ import gunbc.runner.runner_microvm_network {
   slot_network_subject, runner_microvm_nft_read_operation, runner_slot_subnet,
   render_converged_slot_network,
 }
+import std.optional { Present }
 
 data runner_microvm_network_converge_disposition: ConstructionMechanism = SingleAuthority
 

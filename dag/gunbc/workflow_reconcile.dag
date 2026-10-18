@@ -19,6 +19,7 @@ import gunbc.membership_reconcile {
   membership_plan_admitting_outcome,
 }
 import gunbc.ownership { Ownership, Ensured }
+import std.optional { Present }
 
 type WorkflowFactMemberAt = WorkflowFactKey
 

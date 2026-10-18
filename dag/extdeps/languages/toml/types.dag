@@ -3,6 +3,7 @@ module extdeps.languages.toml.types
 import std.types { Bool, String, List, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

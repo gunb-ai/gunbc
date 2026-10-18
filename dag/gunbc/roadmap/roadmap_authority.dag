@@ -77,6 +77,7 @@ import std.markdown {
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap.roadmap_lineage { lineage_walk_in, lineage_index }
 import gunbc.roadmap.roadmap_readiness { node_readiness, readiness_only_contract_missing, readiness_may_be_only_contract_missing }
+import std.optional { Present }
 
 fn nid(s: String) -> RoadmapNodeId { s }
 

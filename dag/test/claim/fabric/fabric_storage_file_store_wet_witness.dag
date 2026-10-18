@@ -27,6 +27,7 @@ import gunbc.fabric.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused,
   fabric_storage_file_put, fabric_storage_file_get, fabric_storage_file_head, fabric_storage_file_advance, fabric_storage_file_closure, fabric_storage_object_path,
 }
+import std.optional { Present }
 
 // Wet controls for the file-backed fabric DB: a throwaway temp directory, no network. This is the
 // real path every other fabric DB claim supplies values for -- the store publishing, reading and

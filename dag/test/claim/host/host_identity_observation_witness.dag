@@ -1,5 +1,7 @@
 module test.claim.host.host_identity_observation_witness
 
+import std.optional { Present }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv1_os_target() -> NodeControlPlane {

@@ -14,6 +14,7 @@ import extdeps.transports.shell { ShellProcessExited }
 import extdeps.filesystem.filesystem_io {
   FilesystemNotFound, FilesystemAlreadyExists, FilesystemNotDirectory, FilesystemOtherFailure, FilesystemPermissionDenied,
 }
+import std.optional { Present }
 
 // A MODELED FILESYSTEM: the subset of POSIX file behaviour the file transport realizes, as a pure
 // value a modeled operation realization embeds in its scenario state. It is generic -- a hold store,

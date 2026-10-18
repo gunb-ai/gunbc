@@ -25,6 +25,7 @@ import v2.workflow.effect_plan_bash_materialize {
   bash_bind_operation_invocation_host_env_executable,
   effect_plan_bash_materialize
 }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

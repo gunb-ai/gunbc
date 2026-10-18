@@ -10,6 +10,7 @@ import extdeps.toolchain.architecture_profile { BigEndian }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.unicode.types { unicode_scalar, unicode_scalar_utf8_octet_count }
+import std.optional { Present }
 
 type Encoding
   = ASCII

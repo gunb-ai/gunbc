@@ -1,5 +1,6 @@
 module gunbc.site.choice_client
 import extdeps.languages.typescript.program { TsStmt, ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_index, ts_call, ts_arrow, ts_block, ts_const, ts_return, ts_expr_stmt, ts_if, ts_new, ts_cond, ts_prefix, ts_object, ts_field, ts_binop }
+import std.optional { Present }
 
 // Shared rich and compact selection grammar. Selection emits intent; it never posts.
 fn choice_bind_statements() -> List<TsStmt> {

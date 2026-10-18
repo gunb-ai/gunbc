@@ -27,6 +27,7 @@ import gunbc.fabric.fabric_memory_grant_policy {
   gunbc_microvm_memory_compatibility_permit, gunbc_microvm_memory_compatibility_default,
 }
 import gunbc.runner.runner_microvm { GuestCacheAllowance, AllowanceDerived, AllowanceUnderivable, gunbc_runner_microvm_guest_cache_allowance }
+import std.optional { Present }
 
 // THE SUBJECT IS ONE INTERFACE AND ITS INPUTS ARE SUPPLIED (DESIGN 3). Every claim below but the
 // last three constructs its policy, its requirement and its identities rather than deriving them by

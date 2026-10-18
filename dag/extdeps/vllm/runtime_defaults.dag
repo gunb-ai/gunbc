@@ -14,6 +14,7 @@ import extdeps.vllm.engine_args {
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.optional { Present }
 
 // WHAT A LAUNCH OMITS IS STILL A DECISION, AND UNTIL NOW NOTHING COULD SAY WHOSE. The GLM canary's
 // serve line carries no --gpu-memory-utilization and no --kv-cache-memory, and its engine reports an

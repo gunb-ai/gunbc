@@ -59,6 +59,7 @@ import gunbc.machine_intake.bmc_secure {
   derive_bmc_secure,
   observed_bmc_credential_rotation,
 }
+import std.optional { Present }
 
 // UNIT-1 INTAKE SUBJECT ON THE PUBLIC PATH. The unit key is minted only by
 // gunbc.machine_intake.subject bind_unit_key from the FRU board serial and the host SMBIOS
