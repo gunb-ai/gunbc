@@ -1264,6 +1264,39 @@ test fn test_model_divergence_is_a_corroborating_mismatch() -> Bool {
   }
 }
 
+// THE HOLD'S FIRST EXAMPLE ROW, VERBATIM IN SHAPE: a firmware side that answered with only the null
+// address, and an OS side whose query was REFUSED. Fail-closed alone was never the question -- the verdict
+// already refused -- the question is whether it reports BOTH failures. It must not quietly reduce to "the
+// controller refused" and drop the fact that the firmware handed over an address that cannot name anything,
+// because an operator told only about the refusal will fix the controller and come back to the same unit
+// still unidentified.
+test fn test_an_ineligible_reading_survives_a_refusal_on_the_other_side() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [octet_ineligible_report(addr: fixture_mac_null())] },
+  }
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRefused {
+      refusal: AuthenticationFailed { detail: "the session closed before the NIC listing" },
+    },
+  }
+  match runtime_identity_match(pre: pre, post: post) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.length() == 2
+        && one_no_eligible_gap_on(gaps: gaps.filter(g => g.side == PreBootFirmwareSide), side: PreBootFirmwareSide, count: 1)
+        && gaps.filter(g => g.side == PostBootOsSide && gap_is_refusal(gap: g)).length() == 1
+    _ => false
+  }
+}
+
 // ---------------------------------------------------------------------------
 // PROVENANCE: the octets are not the whole claim
 // ---------------------------------------------------------------------------
