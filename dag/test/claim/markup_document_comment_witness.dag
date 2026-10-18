@@ -14,16 +14,21 @@ module test.claim.markup_document_comment_witness
 //     guards walk into a Document's root rather than certifying it unread.
 //
 // RED CONTROLS (run once each; the mutation is named so it can be re-run, and the refusals recorded).
-//   C1  std.markup's MarkupComment arm: replace medium.comment_open with the literal "<!-- ".
+//   C1  std.markup's MarkupComment arm: replace medium.comment_grammar.open with the literal "<!-- ".
 //       witness_comment_delimiters_come_from_the_medium goes red (the JSX-shaped medium renders <!--).
 //   C2  std.markup comment_body_hazard: return HazardFree unconditionally.
 //       witness_comment_terminator_is_refused, witness_comment_trailing_dash_is_refused,
 //       witness_guarded_route_refuses_a_self_terminating_comment and the two JSX route claims go red.
-//   C6  std.markup fragment_hazard's Document arm: skip the document_declaration_allowed test.
+//   C6  std.markup fragment_hazard's Document arm: match only DeclaresDocument (drop the
+//       NoDocumentGrammar arm's refusal, e.g. treat every grammar as declaring).
 //       witness_jsx_guarded_route_refuses_a_document_declaration goes red.
-//   C7  std.markup comment_body_hazard: ignore medium.comment_trailing_dash_closes (always apply the
-//       rule). witness_medium_grammar_decides_the_dash_rule goes red -- the claim that the dash rule is
-//       read from the medium rather than hardcoded in the walker.
+//   C7  std.markup comment_body_hazard: ignore grammar.trailing_dash_closes (always apply the rule).
+//       witness_medium_grammar_decides_the_dash_rule goes red -- the claim that the dash rule is read
+//       from the grammar rather than hardcoded in the walker.
+//   C9  std.markup CommentGrammar's fields: drop NonEmptyStr for String on `terminator`. The empty
+//       value becomes expressible again, and the DELETED claim above would be needed once more; the
+//       checker refusing `terminator: ""` is the measurement that the construction holds. Verified by
+//       attempting the mutation and reading the compile refusal, not by a claim that can only pass.
 //   C8  extdeps.languages.react_jsx try_serialize_jsx_component: drop the fragment_hazard match and
 //       return JsxOk after the URL pass alone. witness_jsx_guarded_route_refuses_a_comment_that_closes_
 //       early and ..._a_document_declaration go red. (This is the pre-review-82181 shape; it is the
@@ -32,7 +37,7 @@ module test.claim.markup_document_comment_witness
 //       witness_url_guard_walks_into_the_document goes red (the javascript: href inside the root is
 //       no longer found) while witness_url_guard_passes_a_clean_document stays green — which is the
 //       point: a guard that always passes is only caught by the claim that expects a refusal.
-//   C4  std.markup Document arm: drop medium.doctype_open, emitting only the keyword.
+//   C4  std.markup Document arm: drop the DeclaresDocument keyword, emitting only the name.
 //       witness_document_declares_its_type_before_the_root goes red.
 //   C5  extdeps.languages.html html_comment_terminator: change "-->" to " -->".
 //       witness_comment_terminator_is_refused goes red for the trailing-dash body. The emitter's
@@ -81,16 +86,19 @@ data jsx_like_medium: MarkupMedium = MarkupMedium {
   void_tags: [],
   void_rendering: OmitClose,
   raw_text_tags: [],
-  comment_open: "{/* ",
-  comment_close: " */}",
-  doctype_open: "<!DOCTYPE ",
-  // The comment grammar of THIS adversarial medium, spelled as JSX spells it. This medium exists to
-  // prove the serializer has no HTML delimiter hidden in it; the hazard fields are what let the same
-  // medium then be asked whether a comment terminated early, so a serializer that ignored a medium's
-  // terminator would be caught by these claims rather than by the HTML medium alone.
-  comment_terminator: "*/",
-  comment_trailing_dash_closes: false,
-  document_declaration_allowed: true,
+  // The comment grammar of THIS adversarial medium, spelled the way JSX spells it. The medium exists to
+  // prove the serializer has no HTML delimiter hidden in it (witness_comment_delimiters_come_from_the_
+  // medium), so its delimiters are deliberately unlike HTML's -- and its terminator is what lets the same
+  // medium be asked whether a comment closed early (witness_medium_grammar_decides_the_dash_rule).
+  comment_grammar: CommentGrammar {
+    open: "{/* ",
+    close: " */}",
+    terminator: "*/",
+    trailing_dash_closes: false,
+  },
+  // Declares a doctype ON PURPOSE, unlike the real JSX medium: a claim serializes a Document through this
+  // medium to show the keyword comes from the medium too. The real jsx_markup_medium says NoDocumentGrammar.
+  document_grammar: DeclaresDocument { open: "<!DOCTYPE " },
 }
 
 fn comment_node(body: String) -> Fragment {
@@ -128,7 +136,7 @@ test fn witness_comment_delimiters_come_from_the_medium() -> Bool {
 
 test fn witness_html_delimiter_rows_match_the_medium() -> Bool {
   let m = html_markup_medium()
-  m.comment_open == html_comment_open_sequence && m.comment_close == html_comment_close_sequence
+  m.comment_grammar.open == html_comment_open_sequence && m.comment_grammar.close == html_comment_close_sequence
 }
 
 // The emitter's delimiter and the tokenizer's terminator are deliberately different rows: a body must
@@ -147,7 +155,7 @@ test fn witness_comment_body_is_emitted_verbatim() -> Bool {
 // ── 2. a comment cannot terminate itself ──────────────────────────────────────────────────────
 
 test fn witness_clean_comment_body_is_accepted() -> Bool {
-  match comment_body_hazard(body: "a note about the header", medium: html_markup_medium()) {
+  match comment_body_hazard(body: "a note about the header", grammar: html_markup_medium().comment_grammar) {
     HazardFree => true
     HazardFound { reason: _ } => false
   }
@@ -158,7 +166,7 @@ test fn witness_clean_comment_body_is_accepted() -> Bool {
 // "-->" unrefused, and the serializer would then emit a comment the browser closes early.
 test fn witness_comment_terminator_is_refused() -> Bool {
   all(["before --> after", "ends abruptly -->", "a-->b"],
-    b => match comment_body_hazard(body: b, medium: html_markup_medium()) {
+    b => match comment_body_hazard(body: b, grammar: html_markup_medium().comment_grammar) {
       HazardFound { reason: _ } => true
       HazardFree => false
     })
@@ -168,7 +176,7 @@ test fn witness_comment_trailing_dash_is_refused() -> Bool {
   // "--" before the delimiter's own "-" also closes a comment, so a body ending in "-" is refused even
   // though it contains no " -->" anywhere. Read from the medium: the same body is fine in a medium
   // whose comment grammar has no abrupt-close state (witness_medium_grammar_decides_the_dash_rule).
-  match comment_body_hazard(body: "trailing dash-", medium: html_markup_medium()) {
+  match comment_body_hazard(body: "trailing dash-", grammar: html_markup_medium().comment_grammar) {
     HazardFound { reason: _ } => true
     HazardFree => false
   }
@@ -180,9 +188,9 @@ test fn witness_comment_trailing_dash_is_refused() -> Bool {
 // grammar would be decoration.
 test fn witness_medium_grammar_decides_the_dash_rule() -> Bool {
   let body = "trailing dash-"
-  match comment_body_hazard(body: body, medium: jsx_like_medium) {
+  match comment_body_hazard(body: body, grammar: jsx_like_medium.comment_grammar) {
     HazardFree =>
-      match comment_body_hazard(body: body, medium: html_markup_medium()) {
+      match comment_body_hazard(body: body, grammar: html_markup_medium().comment_grammar) {
         HazardFound { reason: _ } => true
         HazardFree => false
       }
@@ -192,8 +200,8 @@ test fn witness_medium_grammar_decides_the_dash_rule() -> Bool {
 
 // A refusal that says only "bad" is not located (§5): the terminator must be named in the diagnostic.
 test fn witness_comment_hazard_names_the_terminator() -> Bool {
-  match comment_body_hazard(body: "x --> y", medium: html_markup_medium()) {
-    HazardFound { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminator)
+  match comment_body_hazard(body: "x --> y", grammar: html_markup_medium().comment_grammar) {
+    HazardFound { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminator as String)
     HazardFree => false
   }
 }
@@ -202,7 +210,7 @@ test fn witness_comment_hazard_names_the_terminator() -> Bool {
 // between a typed refusal and a comment that silently becomes markup in a served page.
 test fn witness_guarded_route_refuses_a_self_terminating_comment() -> Bool {
   match try_serialize_html_source(node: comment_in_html(body: "a --> <script>alert(1)</script>")) {
-    EmitRejected { reason: r } => string_contains(s: r, pattern: html_comment_terminator)
+    EmitRejected { reason: r } => string_contains(s: r, pattern: html_comment_terminator as String)
     EmitOk { html: _ } => false
   }
 }
@@ -218,7 +226,7 @@ test fn witness_guarded_route_emits_a_clean_comment() -> Bool {
 
 test fn witness_document_declares_its_type_before_the_root() -> Bool {
   serialize_fragment_with(frag: document_with_root(root: empty_html()), medium: html_markup_medium())
-    == join([html_doctype_open_sequence, html_doctype_name, ">", "\n", "<html></html>"], "")
+    == join([html_doctype_open_sequence as String, html_doctype_name as String, ">", "\n", "<html></html>"], "")
 }
 
 // The doctype is a SIBLING of <html> — neither an attribute of it nor inside it. Asserted by the
@@ -231,7 +239,7 @@ test fn witness_doctype_line_precedes_the_root_element() -> Bool {
     frag: document_with_root(root: comment_in_html(body: "inner")),
     medium: html_markup_medium(),
   )
-  starts_with(s: out, prefix: join([html_doctype_open_sequence, html_doctype_name, ">", "\n", "<html"], ""))
+  starts_with(s: out, prefix: join([html_doctype_open_sequence as String, html_doctype_name as String, ">", "\n", "<html"], ""))
 }
 
 // THE GUARD MUST WALK IN. A Document is how a whole page reaches find_first_rejected_url, so an arm
@@ -297,14 +305,19 @@ test fn witness_comment_in_a_document_still_checked_for_early_close() -> Bool {
 // ── 4. the doctype name is a production, not free text ────────────────────────────────────────
 
 test fn witness_clean_doctype_name_is_accepted() -> Bool {
-  match doctype_name_hazard(keyword: "html") {
+  match doctype_name_hazard(keyword: html_doctype_name) {
     HazardFree => true
     HazardFound { reason: _ } => false
   }
 }
 
 test fn witness_doctype_name_rejects_non_token_names() -> Bool {
-  all(["", "html system", "html>", "<html"],
+  // The empty name is NOT in this list, because it is no longer expressible: Document.doctype is
+  // NonEmptyStr and `Document { doctype: "", root: _ }` fails to resolve (measured against the checker).
+  // Asserting a refusal of it here would be asserting an invalid value as expected output -- a claim
+  // that can only pass is not a claim. The type is the guarantee. What remains are the characters a
+  // length bound cannot exclude.
+  all(["html system", "html>", "<html"],
     k => match doctype_name_hazard(keyword: k) {
       HazardFound { reason: _ } => true
       HazardFree => false
@@ -327,7 +340,7 @@ test fn witness_doctype_name_rejects_non_token_names() -> Bool {
 // first claim red.
 test fn witness_marker_refusal_carries_no_joinable_text() -> Bool {
   match approval_broker_marker_comment(body: "token --> <script>alert(1)</script>") {
-    MarkerCommentRefused { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminator)
+    MarkerCommentRefused { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminator as String)
     MarkerCommentRendered { text: _ } => false
   }
 }
@@ -389,7 +402,7 @@ fn jsx_root_with_comment(body: String) -> Fragment {
 
 test fn witness_jsx_guarded_route_refuses_a_comment_that_closes_early() -> Bool {
   match try_serialize_jsx_component(fn_name: "C", node: jsx_root_with_comment(body: "x */ <b>code</b>")) {
-    JsxRejected { reason: r } => string_contains(s: r, pattern: jsx_comment_terminator)
+    JsxRejected { reason: r } => string_contains(s: r, pattern: jsx_comment_terminator as String)
     JsxOk { tsx: _ } => false
   }
 }
@@ -410,29 +423,10 @@ test fn witness_jsx_guarded_route_still_accepts_a_clean_component() -> Bool {
   }
 }
 
-// A medium cannot opt out of the check by leaving its terminator unset. An empty terminator would make
-// the containment test vacuously false (nothing contains ""), i.e. every comment passes — §5's silent
-// widen — so the absence is itself a located finding naming the field.
-test fn witness_a_medium_without_a_terminator_refuses_rather_than_passes() -> Bool {
-  match comment_body_hazard(body: "anything at all", medium: unterminated_medium) {
-    HazardFound { reason: r } => string_contains(s: r, pattern: "comment_terminator")
-    HazardFree => false
-  }
-}
+// TWO CLAIMS WERE DELETED HERE RATHER THAN KEPT GREEN, and the reason is the point of this section.
+// witness_a_medium_without_a_terminator_refuses_rather_than_passes, and the unterminated_medium it read,
+// existed to prove the walk refused a medium whose comment_terminator was "". CommentGrammar's fields are
+// NonEmptyStr, so that medium no longer typechecks and the claim could only ever pass -- which is the
+// inverse of a guarantee. The typecheck IS the witness for that state; the control roster records it.
+// The same reasoning removed the `keyword: ""` case from witness_doctype_name_rejects_non_token_names.
 
-data unterminated_medium: MarkupMedium = MarkupMedium {
-  tag_overrides: [],
-  bracket: jsx_like_bracket,
-  text_escape: EscapeHtml,
-  void_tags: [],
-  void_rendering: OmitClose,
-  raw_text_tags: [],
-  comment_open: "<!-- ",
-  comment_close: " -->",
-  doctype_open: "<!DOCTYPE ",
-  // Deliberately the degenerate value, to be the thing the walk refuses. This is not an invalid value
-  // asserted as EXPECTED output — the claim asserts the REFUSAL.
-  comment_terminator: "",
-  comment_trailing_dash_closes: true,
-  document_declaration_allowed: true,
-}

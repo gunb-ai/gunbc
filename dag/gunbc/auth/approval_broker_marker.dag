@@ -173,7 +173,7 @@ fn approval_broker_marker_comment(body: String) -> BrokerMarkerComment {
   // The SAME walk the guarded document routes run, on this one node, against the HTML medium. The
   // check stays explicit here because the serializer's guarded route is a whole-document route and
   // this is a fragment appended to an existing body -- but the RULE is not a second copy: it is
-  // std.markup's fragment_hazard reading MarkupMedium.comment_terminator, the same function the HTML
+  // std.markup's fragment_hazard reading CommentGrammar.terminator, the same function the HTML
   // and JSX routes call. Before review 82181 this module reached past the medium into a language
   // module's own hazard fn, which is how the two came to disagree about what a comment was.
   let comment = MarkupComment { body: body }

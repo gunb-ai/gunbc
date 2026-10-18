@@ -4,7 +4,7 @@ import std.types { List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
-import std.markup { HazardFree, HazardFound, fragment_hazard }
+import std.markup { HazardFree, HazardFound, fragment_hazard, CommentGrammar, DeclaresDocument }
 import extdeps.languages.html {
   canonical_html_spellings,
   html_comment_open_sequence,
@@ -157,21 +157,19 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
     void_tags: [],
     void_rendering: OmitClose,
     raw_text_tags: [],
-    // READ, not retyped. CommonMark passes an HTML comment through as an HTML block (CommonMark 0.30
-    // §6.6 lists "<!--" among the block start conditions) and sends a line starting "<!DOCTYPE"
-    // through the same way (§4.2), so a Markdown comment IS the HTML spelling and a Markdown doctype
-    // IS the HTML doctype. Importing the HTML rows is what makes that sentence enforced rather than
-    // aspirational: re-typing "<!-- " here would be a second home for one fact (§3).
-    comment_open: html_comment_open_sequence,
-    comment_close: html_comment_close_sequence,
-    doctype_open: html_doctype_open_sequence,
-    // Read, as the delimiters are: CommonMark hands both the comment and its termination to the HTML
-    // tokenizer, so Markdown cannot have a different terminator while it passes HTML blocks through.
-    comment_terminator: html_comment_terminator,
-    comment_trailing_dash_closes: html_comment_trailing_dash_closes,
-    // CommonMark §4.2 hands "<!DOCTYPE" through as an HTML block, so a document type is expressible
-    // and the same single-token rule applies.
-    document_declaration_allowed: true,
+    // Read, not retyped, and read as ONE value: CommonMark passes an HTML comment through as an HTML
+    // block (0.30 §6.6 lists "<!--" among the block start conditions) and sends a line starting
+    // "<!DOCTYPE" through the same way (§4.2), so Markdown's comment grammar IS HTML's and a Markdown
+    // doctype IS the HTML doctype. Importing is what makes that sentence enforced rather than
+    // aspirational: re-typing "<!-- " here was a second home for one fact (§3), which review 82174 on
+    // #14351 caught.
+    comment_grammar: CommentGrammar {
+      open: html_comment_open_sequence,
+      close: html_comment_close_sequence,
+      terminator: html_comment_terminator,
+      trailing_dash_closes: html_comment_trailing_dash_closes,
+    },
+    document_grammar: DeclaresDocument { open: html_doctype_open_sequence },
   }
 }
 

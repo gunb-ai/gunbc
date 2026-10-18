@@ -34,8 +34,8 @@ import extdeps.languages.react_jsx {
 import extdeps.languages.html {
   html_comment_open_sequence,
   html_comment_close_sequence,
-  html_doctype_open_sequence,
 }
+import std.markup { CommentGrammar, DeclaresDocument, NoDocumentGrammar }
 import std.languages { html_format, markdown_format }
 import std.optional { Present, Absent }
 import std.markdown {
@@ -72,12 +72,13 @@ fn md_medium_underscore() -> MarkupMedium {
     void_tags: [],
     void_rendering: OmitClose,
     raw_text_tags: [],
-    comment_open: "<!-- ",
-    comment_close: " -->",
-    doctype_open: "<!DOCTYPE ",
-    comment_terminator: "-->",
-    comment_trailing_dash_closes: true,
-    document_declaration_allowed: true,
+    comment_grammar: CommentGrammar {
+      open: "<!-- ",
+      close: " -->",
+      terminator: "-->",
+      trailing_dash_closes: true,
+    },
+    document_grammar: DeclaresDocument { open: "<!DOCTYPE " },
   }
 }
 
@@ -110,12 +111,13 @@ fn single_quote_medium() -> MarkupMedium {
     void_tags: [],
     void_rendering: OmitClose,
     raw_text_tags: [],
-    comment_open: "<!-- ",
-    comment_close: " -->",
-    doctype_open: "<!DOCTYPE ",
-    comment_terminator: "-->",
-    comment_trailing_dash_closes: true,
-    document_declaration_allowed: true,
+    comment_grammar: CommentGrammar {
+      open: "<!-- ",
+      close: " -->",
+      terminator: "-->",
+      trailing_dash_closes: true,
+    },
+    document_grammar: DeclaresDocument { open: "<!DOCTYPE " },
   }
 }
 
@@ -180,20 +182,23 @@ test fn witness_xss_still_rejected_through_fold() -> Bool {
 
 // ── comment and doctype spellings: one home, checked by execution ──────────────────────────────
 //
-// These three claims are the reason a medium may hold a comment spelling at all. The medium is the
-// object a serializer is allowed to consult, so the spelling has to live on it — but three media each
-// typing "<!-- " would be three homes for one fact (§3), which is exactly what happened when this
-// change first landed (review 82174 on #14351: markdown and jsx re-typed the HTML rows). Now they are
-// imports, and these claims are what makes a re-typed copy RED rather than merely disfavoured.
+// These claims are the reason a medium may hold a comment spelling at all. The medium is the object a
+// serializer is allowed to consult, so the spelling has to live on it — but three media each typing
+// "<!-- " would be three homes for one fact (§3), which is exactly what happened when this change first
+// landed (review 82174 on #14351: markdown and jsx re-typed the HTML rows). They are imports now, and
+// these claims are the regression fence: they catch a copy returning, IF the copy diverges.
 
 fn html_medium() -> MarkupMedium { html_markup_medium() }
 fn md_medium_c() -> MarkupMedium { markdown_markup_medium(sp: commonmark_gfm_spellings) }
 
-// HTML's rows and std.languages' html_format/markdown_format CommentSyntax must stay the same
-// characters. They are different KINDS of fact — a generator's comment syntax vs. what a markup
-// serializer may emit — and the read cannot be made literal (CommentSyntax fields are String?, and
-// narrowing one to String needs a fallback for the absent case, §5). So agreement is executed: an
-// absent block delimiter, or a differing one, is red either way.
+// std.languages' html_format/markdown_format now READ html_comment_open_sequence /
+// html_comment_close_sequence, so these two claims are not what holds them equal — the import does.
+// What they are is the fence against the read being replaced by a fresh literal again (measured: C11
+// drifts the row and both go red). Stated precisely, because the distinction matters: a re-typed copy
+// carrying the SAME characters would stay green, so the claims pin AGREEMENT, and the read-relationship
+// itself is the import plus the comment in std/languages.dag. The Absent arms are not decoration either:
+// CommentSyntax fields are String?, so an absent delimiter is a real state of that type, and refusing it
+// is what keeps the claim about "the same characters" rather than "no worse than nothing".
 test fn witness_html_comment_rows_agree_with_std_languages() -> Bool {
   match html_format.comment.block_start {
     Present { value: o } =>
@@ -223,19 +228,25 @@ test fn witness_markdown_comment_rows_agree_with_std_languages() -> Bool {
 // assertion that they are equal to a literal — an assertion that the two media cannot drift.
 test fn witness_markdown_comment_delimiters_are_the_html_ones() -> Bool {
   let md = md_medium_c()
-  md.comment_open == html_medium().comment_open
-    && md.comment_close == html_medium().comment_close
-    && md.doctype_open == html_medium().doctype_open
+  md.comment_grammar.open == html_medium().comment_grammar.open
+    && md.comment_grammar.close == html_medium().comment_grammar.close
+    && md.comment_grammar.terminator == html_medium().comment_grammar.terminator
+    && md.document_grammar == html_medium().document_grammar
 }
 
-// JSX is the case the field exists FOR: a "<!-- -->" comment inside JSX is parsed as text, so JSX
-// must NOT report HTML's delimiters — while still reporting the one doctype keyword, since a doctype
-// is not a JSX construct at all and an invented keyword would be a spelling no parser accepts.
-test fn witness_jsx_comment_delimiters_differ_and_doctype_does_not() -> Bool {
+// JSX is the case the split exists FOR, and it is now assertable in both directions. A "<!-- -->"
+// comment inside JSX is parsed as text, so JSX must NOT report HTML's delimiters. And a JSX file is an
+// ECMAScript module with no document type to declare, so it reports NoDocumentGrammar — which is a
+// POSITIVE assertion about an absence, something the old shape could not express: it had a Bool saying
+// false beside a doctype keyword it had to keep filled in and then call "not applicable" (review 82209
+// on #14351). Equality on a closed sum is the strongest form of that: the medium names its grammar and
+// nothing else.
+test fn witness_jsx_comment_delimiters_differ_and_declares_no_document() -> Bool {
   let jx = jsx_markup_medium()
-  jx.comment_open == jsx_comment_open_sequence
-    && jx.comment_close == jsx_comment_close_sequence
-    && jx.comment_open != html_medium().comment_open
-    && jx.comment_close != html_medium().comment_close
-    && jx.doctype_open == html_doctype_open_sequence
+  jx.comment_grammar.open == jsx_comment_open_sequence
+    && jx.comment_grammar.close == jsx_comment_close_sequence
+    && jx.comment_grammar.open != html_medium().comment_grammar.open
+    && jx.comment_grammar.close != html_medium().comment_grammar.close
+    && jx.document_grammar == NoDocumentGrammar
+    && html_medium().document_grammar != NoDocumentGrammar
 }

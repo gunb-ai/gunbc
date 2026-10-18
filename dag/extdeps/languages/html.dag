@@ -5,9 +5,10 @@ import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
+import std.types { NonEmptyStr }
 import std.markup {
   Fragment, Element, FragmentText, RawNode, Attribute, attr,
-  MarkupBracket, MarkupMedium, EscapeHtml,
+  MarkupBracket, MarkupMedium, CommentGrammar, DocumentGrammar, DeclaresDocument, EscapeHtml,
   VoidTagRendering, OmitClose,
   serialize_fragment_with, tag_in_set,
   unescape_text, unescape_attribute, unescape_url,
@@ -43,8 +44,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // describes a language to a code GENERATOR (what to write when commenting generated output); these
 // rows are what a MARKUP SERIALIZER is permitted to consult, and the guard checks against the
 // tokenizer's terminator, which CommentSyntax does not carry.
-data html_comment_open_sequence: String = "<!-- "
-data html_comment_close_sequence: String = " -->"
+data html_comment_open_sequence: NonEmptyStr = "<!-- " as NonEmptyStr
+data html_comment_close_sequence: NonEmptyStr = " -->" as NonEmptyStr
 // The sequence the TOKENIZER ends a comment at has no leading space. The delimiter we EMIT does, for
 // readability. They are deliberately two rows: a body must not contain the former, and what we write
 // is the latter. Collapsing them would let a body ending in "--" close the comment while a guard
@@ -52,20 +53,20 @@ data html_comment_close_sequence: String = " -->"
 // The tokenizer's "comment end state" is reached from "--" and requires no space (HTML §13.1.1),
 // so this is NOT html_comment_close_sequence with the space dropped: a body of "a-->b" contains the
 // terminator but not the close delimiter, and closing on one while checking for the other is how a
-// comment escapes into the document. Feeds BOTH the guard and MarkupMedium.comment_terminator, so the
+// comment escapes into the document. Feeds BOTH the guard and CommentGrammar.terminator, so the
 // emitter and the checker read the same grammar and cannot disagree about what ends a comment.
-data html_comment_terminator: String = "-->"
+data html_comment_terminator: NonEmptyStr = "-->" as NonEmptyStr
 
 // Whether a body ENDING in "-" closes this medium's comment. True here: the emitter's own close
 // delimiter contributes a "-", so "--" + that "-" reaches the comment end state.
 data html_comment_trailing_dash_closes: Bool = true
 // "<!DOCTYPE " with the trailing space the tokenizer requires between keyword and name.
-data html_doctype_open_sequence: String = "<!DOCTYPE "
+data html_doctype_open_sequence: NonEmptyStr = "<!DOCTYPE " as NonEmptyStr
 // The document type every HTML page in this repo declares. "html" is the only name a conforming
 // parser understands; anything else puts the document in quirks mode. std.markup's
 // doctype_name_hazard is what refuses a name that is not one bare token, and the Document arm of
 // fragment_hazard runs it on the way down, so a page cannot be serialized with a malformed declaration.
-data html_doctype_name: String = "html"
+data html_doctype_name: NonEmptyStr = "html" as NonEmptyStr
 
 data canonical_html_spellings: MarkupBracket = MarkupBracket {
   tag_open: "<",
@@ -321,17 +322,16 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
     void_tags: html5_void_tags,
     void_rendering: OmitClose,
     raw_text_tags: html5_raw_text_tags,
-    comment_open: html_comment_open_sequence,
-    comment_close: html_comment_close_sequence,
-    doctype_open: html_doctype_open_sequence,
-    // The checker and the emitter read ONE grammar. The serializer writes comment_close; the guard
-    // looks for comment_terminator; both come from this medium's rows, so a language that spells its
-    // terminator differently is a different medium rather than a different pair of constants.
-    comment_terminator: html_comment_terminator,
-    comment_trailing_dash_closes: html_comment_trailing_dash_closes,
-    // HTML IS a document language: the serializer emits the doctype keyword and the
-    // walk checks the name is one bare token. The pair is what makes a Document node meaningful.
-    document_declaration_allowed: true,
+    // ONE value carries the whole comment grammar, and the serializer's delimiters and the checker's
+    // terminator come from the same rows in this module -- so a language that spells its terminator
+    // differently is a different medium, never a medium with two constants that disagree.
+    comment_grammar: CommentGrammar {
+      open: html_comment_open_sequence,
+      close: html_comment_close_sequence,
+      terminator: html_comment_terminator,
+      trailing_dash_closes: html_comment_trailing_dash_closes,
+    },
+    document_grammar: DeclaresDocument { open: html_doctype_open_sequence },
   }
 }
 

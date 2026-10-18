@@ -1,6 +1,8 @@
 module std.markup
 
 import std.layout { DocLine, LayoutProtocol, render }
+import std.types { NonEmptyStr }
+import std.error_primitives { pure_dag_seam_unreachable_string }
 
 
 type EscapeContext = TextContext | AttributeContext | UrlContext
@@ -34,7 +36,11 @@ type Fragment
   // they no longer do.
   // The keyword is the NAME after <!DOCTYPE ("html" selects standards mode); the "<!DOCTYPE " prefix
   // is the medium's doctype_open spelling, so a document cannot carry its own punctuation.
-  | Document { doctype: String, root: Fragment }
+  // The name is NonEmptyStr, not String: the declaration's name is what selects the parsing mode,
+  // so an empty one is not a document type at all. A refinement type makes that a COMPILE refusal
+  // (measured: `Document { doctype: "", ... }` is rejected with "expected 'Product(NonEmptyStr)',
+  // got 'Primitive(String)'"), which is why no hazard check anywhere asks whether the name is empty.
+  | Document { doctype: NonEmptyStr, root: Fragment }
 
 fn escape_text(s: String) -> String {
   replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
@@ -95,6 +101,33 @@ type TagDelimiter {
 
 type VoidTagRendering = OmitClose | SelfClose
 
+// A language's comment grammar, held as ONE value: the two delimiters the emitter writes, the sequence
+// the tokenizer actually stops on, and whether a body ending in "-" reaches that stop state. They are
+// carried together because they only make sense together -- HTML writes " -->" but stops on "-->", and
+// the gap between those two is exactly where "a-->b" escapes (measured as control C5), so a medium that
+// could carry one without the other was a medium that could be wrong by construction.
+//
+// WHY NO "NO COMMENTS" ARM. A NoCommentGrammar variant was considered and rejected: no medium in this
+// repo lacks comments (HTML, XML, Markdown and JSX all have one), so the arm would be a declaration whose
+// only consumer is a hypothetical (§3c), and its serializer arm would have to invent behaviour for a
+// state nothing reaches. When a comment-less medium is actually written, the arm and its behaviour arrive
+// together, from a real need.
+type CommentGrammar {
+  open: NonEmptyStr
+  close: NonEmptyStr
+  terminator: NonEmptyStr
+  // True for HTML and XML, whose tokenizer reaches the comment end state from "--" and takes the third
+  // "-" from the emitter's own close delimiter; false for JSX, where "- */}" is an ordinary comment. A
+  // genuine per-language Bool -- it hides no sum, which is why it survives where
+  // document_declaration_allowed did not: there is no third state to express, and no field is left over
+  // when it is false.
+  trailing_dash_closes: Bool
+}
+
+type DocumentGrammar
+  = DeclaresDocument { open: NonEmptyStr }
+  | NoDocumentGrammar
+
 type MarkupMedium {
   tag_overrides: List<TagDelimiter>
   bracket: MarkupBracket
@@ -102,48 +135,32 @@ type MarkupMedium {
   void_tags: List<String>
   void_rendering: VoidTagRendering
   raw_text_tags: List<String>
-  // Comment delimiters, required on every medium. They are spellings OF the language, so they live
-  // with its other spellings (bracket) rather than in whichever module emits a comment: std.languages
-  // already records a language's block comment delimiters for the text-generation path, and a markup
-  // medium is the object a serializer is allowed to consult. Requiring the field (rather than
-  // defaulting to "<!-- ") is deliberate — JSX's comment is {/* … */} and an HTML comment inside JSX
-  // is parsed as text, so a default would be wrong for a real medium in this repo.
-  comment_open: String
-  comment_close: String
-  // The keyword that introduces a document-type declaration, "<!DOCTYPE " with the trailing space
-  // the tokenizer requires between keyword and name. The declaration's terminator is
-  // bracket.tag_close like every other tag's — one spelling for ">" — so it is not repeated here.
-  // Required, not Optional: the keyword is one spelling across the languages that have a doctype at
-  // all (HTML, XML, and CommonMark, which passes "<!DOCTYPE" through as an HTML block), so every
-  // medium here answers correctly; a medium that never builds the fragment still answers the question.
-  doctype_open: String
-  // What ENDS a comment in this language, as the tokenizer sees it: HTML "-->" (HTML §13.1.1 "comment
-  // end state"), JSX "*/" (the terminator of a JSX expression-container comment). Distinct from
-  // comment_close, which is what WE WRITE: HTML's emitter puts a space before the terminator for
-  // readability (" -->"), and collapsing the two is what lets "a-->b" through — the collapse is a
-  // measured control (C5), not a hypothetical.
+  // The language's COMMENT GRAMMAR, as one value. Four facts had to be carried together (open, close,
+  // terminator, and whether a trailing dash closes) and each was a separate required field, which let a
+  // medium be built with delimiters and no terminator -- and a medium with no terminator cannot guard a
+  // comment at all, because there is no string to search for and "body contains the terminator" is then
+  // vacuously false for every body. Bundling them makes that state unnameable rather than refused at
+  // runtime (§5: "Stronger than catching a wrong state is making it unwritable").
   //
-  // Required, and a guarded route REFUSES a medium whose terminator is empty rather than treating it
-  // as "no rule". A medium with no terminator cannot guard a comment at all: there is no string to
-  // search for, so "contains the terminator" is vacuously false and every comment passes. A required
-  // String is already the shape that makes the omission a type error; the empty value is the
-  // remaining way to get there, and it is refused where it would matter.
-  comment_terminator: String
-  // Whether THIS medium can carry a document-type declaration at all. True for HTML, XML/SVG and
-  // CommonMark (which passes "<!DOCTYPE" through as an HTML block, §4.2); FALSE for JSX, whose files
-  // are ECMAScript modules — "<!DOCTYPE html>" inside a JSX expression container is not valid TSX, and
-  // before review 82181 the guarded JSX route serialized one anyway and returned JsxOk.
+  // The fields are NonEmptyStr, which retires the empty-string sentinel for good: review 82181 replaced
+  // the ""-means-clean RETURN with a closed sum, and review 82209 (on #14351) correctly pointed out the
+  // sentinel still existed on the INPUT side -- `if medium.comment_terminator == ""` was still a runtime
+  // test standing where a type belonged. Now the empty value is not an inhabitant of the field's type.
+  // Measured, not assumed: a bare "" literal in one of these positions fails to resolve.
+  comment_grammar: CommentGrammar
+  // The language's DOCUMENT-TYPE grammar, as a closed sum with two inhabitants, both of them real.
+  // HTML, XML/SVG and CommonMark DECLARE (CommonMark 0.30 §4.2 passes "<!DOCTYPE" through as an HTML
+  // block); JSX does NOT -- a JSX file is an ECMAScript module, and "<!DOCTYPE html>" inside a JSX
+  // expression container is not valid TSX.
   //
-  // A Bool on the medium rather than a check written in the JSX module, because the walk is shared: a
-  // per-language refusal would be the second copy that got JSX missed in the first place (§6b). A new
-  // medium answers the question when it is written; it cannot forget the rule, only state it wrongly.
-  document_declaration_allowed: Bool
-  // Whether a body ENDING in "-" closes the comment. True for HTML and XML, where the tokenizer's
-  // comment-end state is reached from "--" and the emitter's own "-" supplies the third character;
-  // false for JSX, where "- */" is an ordinary comment. This is a per-language fact, not a policy
-  // knob: it sits beside comment_terminator because the two together are the language's comment
-  // grammar, and a medium must answer it — there is no "unset" inhabitant.
-  comment_trailing_dash_closes: Bool
+  // THE BOOL IT REPLACES, AND WHY ITS ABSENCE WAS A DEFECT. This field was `doctype_open: String` plus
+  // `document_declaration_allowed: Bool`, and JSX set the Bool false while STILL being forced to supply a
+  // doctype keyword -- which its own comment then called "not applicable". That is a sum expressed as a
+  // flag: the type admits an inhabitant that means "there is no such thing, here is a spelling for it",
+  // and fragment_hazard had to check the flag at runtime to recover the distinction the type threw away
+  // (review 82209 on #14351). Now a medium that declares no document type has no doctype field to fill,
+  // and the walk matches on the arm.
+  document_grammar: DocumentGrammar
 }
 
 fn tag_in_set(tag: String, tags: List<String>) -> Bool {
@@ -186,12 +203,22 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
   match frag {
     FragmentText { content: c } => escape_text_for(mode: medium.text_escape, s: c)
     RawNode { content: c } => c
-    MarkupComment { body: b } => join([medium.comment_open, b, medium.comment_close], "")
-    Document { doctype: d, root: r } =>
-      join(
-        [medium.doctype_open, d, medium.bracket.tag_close, document_line_ending(), serialize_fragment_with(frag: r, medium: medium)],
-        "",
-      )
+    MarkupComment { body: b } => join([medium.comment_grammar.open as String, b, medium.comment_grammar.close as String], "")
+    Document { doctype: d, root: r } => match medium.document_grammar {
+      DeclaresDocument { open: kw } =>
+        join(
+          [kw as String, d as String, medium.bracket.tag_close, document_line_ending(), serialize_fragment_with(frag: r, medium: medium)],
+          "",
+        )
+      // A document-type declaration has no spelling in a medium that declares no document grammar, so
+      // there is no string to return. Reaching this arm means an UNGUARDED serializer was handed a node
+      // its medium forbids -- the guarded routes refuse it first (fragment_hazard's Document arm, claimed
+      // by witness_jsx_guarded_route_refuses_a_document_declaration), so this is a call-site bug, not a
+      // runtime condition. The repo's convention for one is the divergent seam: it never returns, so it
+      // cannot fabricate the bytes this arm has no authority to write (§5: "no plausible output is
+      // fabricated", and a dropped declaration would silently change how the document parses).
+      NoDocumentGrammar => pure_dag_seam_unreachable_string()
+    }
     Element { tag: t, attributes: attrs, children: kids } => {
       let attrs_str = serialize_attributes_with(attrs: attrs, bracket: medium.bracket)
       if is_void_tag(tag: t, void_tags: medium.void_tags) {
@@ -203,7 +230,7 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
         }
       } else {
         let child_medium = if tag_in_set(tag: t, tags: medium.raw_text_tags) {
-          MarkupMedium { tag_overrides: medium.tag_overrides, bracket: medium.bracket, text_escape: EscapeRaw, void_tags: medium.void_tags, void_rendering: medium.void_rendering, raw_text_tags: medium.raw_text_tags, comment_open: medium.comment_open, comment_close: medium.comment_close, doctype_open: medium.doctype_open, comment_terminator: medium.comment_terminator, comment_trailing_dash_closes: medium.comment_trailing_dash_closes, document_declaration_allowed: medium.document_declaration_allowed }
+          MarkupMedium { tag_overrides: medium.tag_overrides, bracket: medium.bracket, text_escape: EscapeRaw, void_tags: medium.void_tags, void_rendering: medium.void_rendering, raw_text_tags: medium.raw_text_tags, comment_grammar: medium.comment_grammar, document_grammar: medium.document_grammar }
         } else {
           medium
         }
@@ -297,21 +324,24 @@ type MarkupHazard
 // reads ONE token after the keyword, so anything else changes how the document parses. (3) is
 // refused for the same reason <script> content is: the browser would end the element early.
 //
-// A MEDIUM WITH NO COMMENT GRAMMAR IS ITSELF A FINDING, not a pass: string_contains(body, "") is
-// true of every string, so an empty terminator would refuse everything, and a missing terminator
-// treated as "no rule" would pass everything. Neither is acceptable, so an unterminated medium
-// refuses with a diagnostic that says which field is unset (§5: located, never silent).
+// WHAT THIS FUNCTION NO LONGER DOES: it never asks whether the medium's terminator is empty. That
+// question was review 82209's second finding -- the closed sum (HazardFree | HazardFound) had retired
+// "" as a RETURN value while "" remained a legal INPUT, so the walk had to test for it at runtime.
+// CommentGrammar.terminator is NonEmptyStr, so there is no empty inhabitant to test for: the check is
+// gone because the state is gone, and the witness that pinned the refusal
+// (witness_a_medium_without_a_terminator_refuses_rather_than_passes) was deleted with it rather than
+// kept asserting a value the type no longer admits.
 
-fn comment_body_hazard(body: String, medium: MarkupMedium) -> MarkupHazard {
-  if medium.comment_terminator == "" {
-    HazardFound { reason: "medium declares no comment terminator (MarkupMedium.comment_terminator is empty) — a comment in this medium cannot be checked for early termination; fill the field or forbid comments in this medium" }
-  } else if string_contains(s: body, pattern: medium.comment_terminator) {
-    HazardFound { reason: join(["markup comment body contains the comment terminator '", medium.comment_terminator, "' — refusing to serialize (the remainder would be parsed as markup); restructure the comment"], "") }
-  } else if medium.comment_trailing_dash_closes && ends_with(s: body, suffix: "-") {
+fn comment_body_hazard(body: String, grammar: CommentGrammar) -> MarkupHazard {
+  if string_contains(s: body, pattern: grammar.terminator as String) {
+    HazardFound { reason: join(["markup comment body contains the comment terminator '", grammar.terminator as String, "' — refusing to serialize (the remainder would be parsed as markup); restructure the comment"], "") }
+  } else if grammar.trailing_dash_closes && ends_with(s: body, suffix: "-") {
     // "--" before the delimiter's own "-" also reaches the tokenizer's comment end state, so a body
-    // ending in a dash closes early even with no terminator in the middle. The remedy differs from
-    // the case above (shorten the body vs remove a sequence from it), so the reason differs.
-    HazardFound { reason: join(["markup comment body ends in '-' — adjacent to the close delimiter this forms an abrupt '", medium.comment_terminator, "' close; restructure the comment"], "") }
+    // ending in a dash closes early even with no terminator in the middle. The remedy differs from the
+    // case above (shorten the body vs remove a sequence from it), so the reason differs. Read from the
+    // grammar, never hardcoded: witness_medium_grammar_decides_the_dash_rule reds if this line stops
+    // consulting the field (control C7).
+    HazardFound { reason: join(["markup comment body ends in '-' — adjacent to the close delimiter this forms an abrupt '", grammar.terminator as String, "' close; restructure the comment"], "") }
   } else {
     HazardFree
   }
@@ -319,13 +349,14 @@ fn comment_body_hazard(body: String, medium: MarkupMedium) -> MarkupHazard {
 
 // A <!DOCTYPE> name is a production, not free text: the tokenizer reads at most ONE token after the
 // keyword, so a name holding whitespace or angle brackets makes the declaration swallow text and the
-// document parse in the wrong mode (a page can silently land in quirks mode). Refusing anything but a
-// single bare token is construction-side, so a malformed doctype cannot be written.
-fn doctype_name_hazard(keyword: String) -> MarkupHazard {
-  if keyword == "" {
-    HazardFound { reason: "doctype declares no document type — the name after the doctype keyword is what selects the parsing mode" }
-  } else if string_contains(s: keyword, pattern: "<") || string_contains(s: keyword, pattern: ">") || string_contains(s: keyword, pattern: " ") {
-    HazardFound { reason: join(["doctype name '", keyword, "' is not a single bare token — the tokenizer reads one token after the doctype keyword; anything else changes how the document parses"], "") }
+// document parse in the wrong mode (a page can silently land in quirks mode).
+//
+// NO EMPTINESS CHECK, because there is nothing to check: the name is NonEmptyStr and an empty literal
+// does not resolve against it (measured). What remains are the three characters that change how the
+// document parses, which a length bound cannot express and so stays a check rather than a type.
+fn doctype_name_hazard(keyword: NonEmptyStr) -> MarkupHazard {
+  if string_contains(s: keyword as String, pattern: "<") || string_contains(s: keyword as String, pattern: ">") || string_contains(s: keyword as String, pattern: " ") {
+    HazardFound { reason: join(["doctype name '", keyword as String, "' is not a single bare token — the tokenizer reads one token after the doctype keyword; anything else changes how the document parses"], "") }
   } else {
     HazardFree
   }
@@ -360,21 +391,24 @@ fn fragment_hazard(node: Fragment, medium: MarkupMedium) -> MarkupHazard {
   match node {
     FragmentText { content: _ } => HazardFree
     RawNode { content: _ } => HazardFree
-    MarkupComment { body: b } => comment_body_hazard(body: b, medium: medium)
-    Document { doctype: d, root: r } =>
-      if !medium.document_declaration_allowed {
-        // Refused, not stripped. Dropping the declaration would hand back a fragment whose bytes claim
-        // a different document than the caller built, and silently dropping part of a page is the
-        // degradation §5 counts; the caller asked for a document type in a medium that has no such
-        // thing, which is a construction error at the call site.
-        HazardFound { reason: join(["a document-type declaration '", medium.doctype_open, d, "' has no meaning in this medium — it declares ECMAScript/JSX-style modules, not documents; emit the root fragment instead"], "") }
-      } else {
-        let bad_doctype = doctype_name_hazard(keyword: d)
-        match bad_doctype {
+    MarkupComment { body: b } => comment_body_hazard(body: b, grammar: medium.comment_grammar)
+    // THE ARM THAT REPLACES THE BOOL. Before review 82209 this read `if !medium.document_declaration_allowed`
+    // against a medium that also carried a doctype keyword it had called "not applicable" -- the runtime
+    // test recovering a distinction the type had thrown away. Matching on the grammar means the refusal
+    // and the spelling are the same fact: a medium with NoDocumentGrammar has no keyword to name in the
+    // diagnostic, and says so by what it cannot say.
+    Document { doctype: d, root: r } => match medium.document_grammar {
+      NoDocumentGrammar =>
+        // Refused, not stripped. Dropping the declaration would hand back bytes that claim a different
+        // document than the caller built, and silently dropping part of a page is the degradation §5
+        // counts. The caller asked for a document type in a medium that has no such thing.
+        HazardFound { reason: "a document-type declaration has no meaning in this medium — it declares ECMAScript/JSX-style modules, not documents; emit the root fragment instead" }
+      DeclaresDocument { open: _ } =>
+        match doctype_name_hazard(keyword: d) {
           HazardFound { reason: rs } => HazardFound { reason: rs }
           HazardFree => fragment_hazard(node: r, medium: medium)
         }
-      }
+    }
     Element { tag: t, attributes: _, children: kids } =>
       if tag_in_set(tag: t, tags: medium.raw_text_tags) {
         if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {

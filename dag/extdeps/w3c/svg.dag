@@ -1,6 +1,6 @@
 module extdeps.w3c.svg
 
-import std.types { String, List, Int }
+import std.types { String, List, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.markup {
   Fragment,
@@ -9,6 +9,8 @@ import std.markup {
   Attribute,
   attr,
   MarkupMedium,
+  CommentGrammar,
+  DeclaresDocument,
   MarkupBracket,
   EscapeHtml,
   SelfClose,
@@ -76,10 +78,10 @@ data svg_xml_brackets: MarkupBracket = MarkupBracket {
 // 0.30 §6.6/§4.2 pass HTML blocks through). Two languages that happen to spell the same thing are two
 // facts, each with its own home, so XML's can be corrected without touching HTML's.
 // XML 1.0 §2.5 for comments, §2.8 for the document type declaration.
-data xml_comment_open_sequence: String = "<!-- "
-data xml_comment_close_sequence: String = " -->"
-data xml_comment_terminator: String = "-->"
-data xml_doctype_open_sequence: String = "<!DOCTYPE "
+data xml_comment_open_sequence: NonEmptyStr = "<!-- " as NonEmptyStr
+data xml_comment_close_sequence: NonEmptyStr = " -->" as NonEmptyStr
+data xml_comment_terminator: NonEmptyStr = "-->" as NonEmptyStr
+data xml_doctype_open_sequence: NonEmptyStr = "<!DOCTYPE " as NonEmptyStr
 // XML has no abrupt-close state: a body ending in "-" is ordinary content, and the separate XML rule
 // (the string "--" MUST NOT appear inside a comment at all, §2.5) is stricter than the HTML rule and
 // is NOT modelled here, because nothing in this repo emits an XML comment today — modelling the
@@ -98,14 +100,15 @@ fn svg_markup_medium() -> MarkupMedium {
     // left these unset would have its comment's delimiters silently dropped — the body emitted as
     // markup, which is §5's silent degradation, not a refusal. Filling them from XML's own rows is
     // what makes a comment through this medium serialize as a comment.
-    comment_open: xml_comment_open_sequence,
-    comment_close: xml_comment_close_sequence,
-    doctype_open: xml_doctype_open_sequence,
-    comment_terminator: xml_comment_terminator,
-    comment_trailing_dash_closes: xml_comment_trailing_dash_closes,
-    // XML documents carry a document type declaration (XML 1.0 §2.8), so a Document node is
-    // meaningful through this medium even though nothing builds one for SVG today.
-    document_declaration_allowed: true,
+    comment_grammar: CommentGrammar {
+      open: xml_comment_open_sequence,
+      close: xml_comment_close_sequence,
+      terminator: xml_comment_terminator,
+      trailing_dash_closes: xml_comment_trailing_dash_closes,
+    },
+    // XML documents carry a document type declaration (XML 1.0 §2.8), so a Document node is meaningful
+    // through this medium even though nothing builds one for SVG today.
+    document_grammar: DeclaresDocument { open: xml_doctype_open_sequence },
   }
 }
 

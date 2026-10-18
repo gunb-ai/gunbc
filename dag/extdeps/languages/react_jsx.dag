@@ -2,8 +2,9 @@ module extdeps.languages.react_jsx
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.types { NonEmptyStr }
 import std.markup {
-  Fragment, MarkupMedium, EscapeHtml, SelfClose,
+  Fragment, MarkupMedium, CommentGrammar, DocumentGrammar, NoDocumentGrammar, EscapeHtml, SelfClose,
   serialize_fragment_with,
   HazardFree, HazardFound,
   fragment_hazard,
@@ -12,7 +13,6 @@ import extdeps.languages.html {
   html_markup_medium,
   html5_void_tags,
   canonical_html_spellings,
-  html_doctype_open_sequence,
 }
 import extdeps.uri_validation {
   find_first_rejected_url,
@@ -54,14 +54,14 @@ fn jsx_component_prefix(fn_name: String) -> String {
 // JSX's own comment delimiters, in JSX's own module. Deliberately NOT the HTML rows: a comment
 // written "<!-- -->" inside JSX is parsed as text, so the two languages genuinely differ here and
 // each needs a home of its own.
-data jsx_comment_open_sequence: String = "{/* "
-data jsx_comment_close_sequence: String = " */}"
+data jsx_comment_open_sequence: NonEmptyStr = "{/* " as NonEmptyStr
+data jsx_comment_close_sequence: NonEmptyStr = " */}" as NonEmptyStr
 // The sequence that ENDS a JSX comment is "*/" — and it is not " */}" minus the brace. A comment
 // closes at the first "*/", so "*/}" contains the terminator and the trailing brace becomes code.
 // That distinction is why the medium carries the terminator separately from comment_close: the emitter
 // writes " */}", the checker must look for "*/". Both rows sit here, in JSX's own module, because both
 // are facts about JSX.
-data jsx_comment_terminator: String = "*/"
+data jsx_comment_terminator: NonEmptyStr = "*/" as NonEmptyStr
 // A body ending in "-" does NOT close a JSX comment: "- */}" is an ordinary comment in JSX, whose
 // comment grammar has no abrupt-close state. Contrast the HTML medium, where the same shape reaches
 // the tokenizer's comment end state. This is the per-language fact the medium field exists for.
@@ -78,23 +78,21 @@ fn jsx_markup_medium() -> MarkupMedium {
     // Inside JSX the comment form is {/* … */}. An HTML comment there is parsed as TEXT, which is
     // exactly why the medium requires the field instead of defaulting it to the HTML spelling. Rows,
     // not literals: these are JSX's comment syntax, a fact about this language, named once and read.
-    comment_open: jsx_comment_open_sequence,
-    comment_close: jsx_comment_close_sequence,
-    // A JSX module declares no document type, so nothing builds the fragment for this medium. The row
-    // is still correct — and it is READ from HTML rather than copied, because the argument for the
-    // row's existence is exactly that there is one document-type keyword across markup languages.
-    // Inventing a JSX-specific keyword to mark "not applicable" would be a spelling no parser accepts.
-    doctype_open: html_doctype_open_sequence,
-    // The hazard walk reads these two from the medium, which is what makes JSX covered without a
-    // JSX-specific hazard function of its own — the gap review 82181 found (a comment holding "*/"
-    // closed early and the rest was parsed as TSX; a Document emitted "<!DOCTYPE html>" inside a JSX
-    // expression; both came back JsxOk).
-    comment_terminator: jsx_comment_terminator,
-    comment_trailing_dash_closes: jsx_comment_trailing_dash_closes,
-    // FALSE, and this row is the fix for review 82181's second JSX finding: a Document used to be
-    // serialized into a JSX expression container as "<!DOCTYPE html>", which is not valid TSX, and the
-    // route answered JsxOk. A JSX file is an ECMAScript module; it has no document type to declare.
-    document_declaration_allowed: false,
+    comment_grammar: CommentGrammar {
+      open: jsx_comment_open_sequence,
+      close: jsx_comment_close_sequence,
+      terminator: jsx_comment_terminator,
+      trailing_dash_closes: jsx_comment_trailing_dash_closes,
+    },
+    // NO doctype field exists to fill. The previous shape had `doctype_open: html_doctype_open_sequence`
+    // beside `document_declaration_allowed: false`, i.e. the medium was forced to carry a spelling its own
+    // comment called "not applicable" — a sum written as a flag (review 82209 on #14351). A JSX file is
+    // an ECMAScript module and has no document type to declare, so this medium states that once, as the
+    // value of document_grammar, rather than as a Bool beside a spelling it has to deny using.
+    // The single comment_grammar above is what makes JSX covered without a JSX-specific hazard function
+    // of its own — the gap review 82181 found (a comment holding "*/" closed early and the rest was
+    // parsed as TSX; a Document emitted "<!DOCTYPE html>" inside a JSX expression; both came back JsxOk).
+    document_grammar: NoDocumentGrammar,
   }
 }
 
