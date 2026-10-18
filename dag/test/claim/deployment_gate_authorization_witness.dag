@@ -39,12 +39,8 @@ import extdeps.github.deployment_protection_rule {
   PendingDeploymentEnvironment,
   PendingDeploymentReviewer,
   UserReviewer,
-  rule_ownership_from_readback,
   EnabledDeploymentProtectionRule,
   RuleOwningApp,
-  EnvironmentRuleOwnership,
-  NotOwnedByGateApp,
-  NoRuleBelongsToThisApp,
   review_call,
   human_review_call,
   pending_deployments_poll_call,
@@ -97,6 +93,14 @@ import gunbc.auth.deployment_gate_authorization {
   documented_timer_maximum_in_seconds,
   gate_ceilings_agree,
   observed_review_from_readback,
+  ownership_from_readback,
+  EnvironmentRuleOwnership,
+  OwnedByGateApp,
+  NotOwnedByGateApp,
+  OwnershipRefusalReason,
+  ReadbackCarriedNoRules,
+  NoEnabledRule,
+  NoRuleBelongsToThisApp,
   RemovalAdmitted,
   RemovalRefused,
   NoRejectingReview,
@@ -145,7 +149,7 @@ fn gate_capability(decision: ProposedDecision) -> ApprovalCapability {
 
 // What a READBACK minted: an enabled rule on the gated environment, attributed to the gate App.
 fn minted_ownership() -> EnvironmentRuleOwnership {
-  rule_ownership_from_readback(
+  ownership_from_readback(
     rules: [
       EnabledDeploymentProtectionRule {
         id: 900000001,
@@ -387,6 +391,80 @@ fn sanctioned_review() -> DeploymentProtectionRuleReview {
   }
 }
 
+
+// OWNERSHIP IS A gunbc VERDICT, MINTED ONLY FROM A READBACK THAT CAN ESTABLISH IT. It moved here with
+// the verdict: GitHub's readback shape (the rule record, the App row, the endpoint) is witnessed in
+// test.claim.github_deployment_protection_rule_witness; WHAT COUNTS AS OURS is a decision of ours. Three ways this
+// was wrong before, and each is refused by a value rather than by a sentence:
+//   the wrong ENDPOINT — .../deployment_protection_rules/apps is a CATALOGUE of integrations that
+//     could be installed ("AVAILABLE"); its items carry no rule id and no `enabled`, so a guard built
+//     on it passes for a rule that exists and is switched off.
+//   the wrong ATTRIBUTE — that response carries an App id and slug, never an installation id, so a
+//     record claiming to have learned an installation id from it had invented one.
+//   the missing CONDITION — a rule row is ownership only if it is ENABLED and attributed to this App.
+test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -> Bool {
+  let gate_app_id = 1900000001
+  let enabled_rule = EnabledDeploymentProtectionRule {
+    id: 900000001,
+    node_id: "DPPR_1",
+    enabled: true,
+    app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
+  }
+  let disabled_rule = EnabledDeploymentProtectionRule {
+    id: 900000002,
+    node_id: "DPPR_2",
+    enabled: false,
+    app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
+  }
+  let foreign_rule = EnabledDeploymentProtectionRule {
+    id: 900000003,
+    node_id: "DPPR_3",
+    enabled: true,
+    app: RuleOwningApp { id: 2222222222, slug: "some-other-integration" },
+  }
+  // THE SUM IS THE ANSWER. There is no `rule_ownership_is_established` any more: a Bool over this sum
+  // answered "is it the owned arm" while `ownership_by_readback` already returned the arm, so the two
+  // predicates were one fact with two authorities, and the Bool version discarded the typed
+  // OwnershipRefusalReason. Each arm is therefore matched HERE, and the refusal arms assert WHICH
+  // reason they carry -- a fold that refused an enabled foreign rule with ReadbackCarriedNoRules would
+  // now be wrong rather than merely different.
+  match ownership_from_readback(
+    rules: [enabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+  ) {
+    OwnedByGateApp { rule_id: r, app_id: a, app_slug: _, environment_name: e } =>
+      r == 900000001 && a == gate_app_id && e == srv1_env
+    NotOwnedByGateApp { because: _ } => false
+  }
+    && (match ownership_from_readback(
+          rules: [disabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+        ) {
+          NotOwnedByGateApp { because: NoEnabledRule } => true
+          _ => false
+        })
+    && (match ownership_from_readback(
+          rules: [foreign_rule], environment_name: srv1_env, gate_app_id: gate_app_id
+        ) {
+          NotOwnedByGateApp { because: NoRuleBelongsToThisApp } => true
+          _ => false
+        })
+    && (match ownership_from_readback(
+          rules: [] as List<EnabledDeploymentProtectionRule>,
+          environment_name: srv1_env,
+          gate_app_id: gate_app_id,
+        ) {
+          NotOwnedByGateApp { because: ReadbackCarriedNoRules } => true
+          _ => false
+        })
+    // A readback that attributes nothing to this App id is a refusal even when rules came back: the
+    // environment in the ownership can never be one that was not read.
+    && (match ownership_from_readback(
+          rules: [enabled_rule], environment_name: srv1_env, gate_app_id: 7
+        ) {
+          NotOwnedByGateApp { because: NoRuleBelongsToThisApp } => true
+          _ => false
+        })
+}
+
 // OWNERSHIP from a separate read, with its own mutations: an unchecked readback, or one attributing
 // the rule elsewhere, never answers. The review endpoint enforces own-rule-only too, which is a reason
 // to expect a refusal and never a reason to skip the check.
@@ -412,7 +490,7 @@ test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
          run: an_in_flight_run(),
          claim: gate_claim,
          capability: gate_capability(decision: ProposeApprove),
-         ownership: rule_ownership_from_readback(
+         ownership: ownership_from_readback(
            rules: [
              EnabledDeploymentProtectionRule {
                id: 900000001,

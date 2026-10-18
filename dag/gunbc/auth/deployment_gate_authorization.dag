@@ -54,11 +54,7 @@ import extdeps.github.deployment_protection_rule {
   review_documented_example_body,
   PendingDeploymentWait,
   pending_wait_environment_name,
-  EnvironmentRuleOwnership,
-  OwnedByGateApp,
-  NotOwnedByGateApp,
   EnabledDeploymentProtectionRule,
-  rule_ownership_from_readback,
   review_call_succeeded,
   custom_rule_response_timeout,
   custom_rule_timeout_run_conclusion,
@@ -420,19 +416,79 @@ fn answer_refusal_from_settlement(settlement: RunSettlement) -> Optional<AnswerR
   }
 }
 
-// THE OWNERSHIP READBACK, as the consumer calls it. The enabled-rules endpoint is the one that can
-// answer (the integrations endpoint lists what COULD be enabled and carries no rule id or enabled
-// flag), it needs only read access, and it returns an App id and slug — never an installation id. The
-// installation the token is minted for is the configured fact below, matched against the operator's own
-// record of the App.
-fn ownership_by_readback(
+// ---------------------------------------------------------------------------
+// 5b. WHICH RULE IS OURS — A gunbc VERDICT, NOT AN UPSTREAM FACT
+// ---------------------------------------------------------------------------
+//
+// GitHub's readback says which rules are ENABLED on an environment and which App each belongs to; that
+// shape (`EnabledDeploymentProtectionRule`, `RuleOwningApp`, the endpoint path) stays in
+// extdeps.github.deployment_protection_rule, where it was verified against the pin. Everything below is
+// OURS: "the gate App" is a role GitHub has no notion of, "ours" is a decision, and a refusal reason
+// that names an operator action ("press ENABLE") is a receipt from the observing layer, not a fact of
+// the observed dependency (§3b: product policy and observations belong to the consuming layer). Moving
+// it here is what makes a change of policy — two gate Apps, or last-match-wins replaced by
+// any-match-wins — a change to THIS module rather than to a model of GitHub.
+
+// WHY the readback does not attribute an enabled rule to this App, as a closed sum: each arm names the
+// operator action that fixes it — install the App, enable the rule, or point the recorded id at the
+// right App. Prose here would be read only by a test comparing sentences.
+type OwnershipRefusalReason
+  = ReadbackCarriedNoRules
+  | NoEnabledRule
+  | NoRuleBelongsToThisApp
+
+type EnvironmentRuleOwnership
+  = OwnedByGateApp { rule_id: Int, app_id: Int, app_slug: NonEmptyStr, environment_name: NonEmptyStr }
+  | NotOwnedByGateApp { because: OwnershipRefusalReason }
+
+
+// OWNERSHIP IS ESTABLISHED ONLY FROM A RULE THAT IS ENABLED AND ATTRIBUTED TO THE GATE APP. An
+// enabled=false row, or a row whose app id is not the recorded gate App, is a refusal — never an
+// ownership. The fold carries the refusal as its seed, so a readback in which nothing matches is NOT a
+// case the caller has to remember to handle: the answer is already the refusal, and no default rule id
+// of 0 or "unattributed" slug can ever be minted. Every row that is both enabled and attributed
+// replaces the seed; where a readback listed several (upstream returns a list), the last attributed row
+// wins, which is the same ownership either way because all such rows name this App.
+//
+// The enabled-rules endpoint is the readback that can answer at all: the integrations endpoint lists
+// what COULD be enabled and carries no rule id and no enabled flag, so a guard built on it would pass
+// for an integration that exists but is switched off. Read access suffices for the one cited. The
+// installation the token is minted for is NOT returned by either — it is the configured fact below.
+fn ownership_from_readback(
   rules: List<EnabledDeploymentProtectionRule>,
   environment_name: NonEmptyStr,
   gate_app_id: Int
 ) -> EnvironmentRuleOwnership {
-  rule_ownership_from_readback(
-    rules: rules, environment_name: environment_name, gate_app_id: gate_app_id
-  )
+  // THREE REFUSALS THAT CAN ACTUALLY BE TOLD APART. An earlier version seeded the fold with
+  // NoRuleBelongsToThisApp and let every non-match fall through to it, so the closed reason sum was a
+  // decoration: an empty readback, a readback of other vendors' rules, and a readback where our rule
+  // exists but is switched off all reported the same arm, and the operator would have been told to
+  // "point the recorded id at the right App" when the real fix was to press ENABLE. Each reason is now
+  // DERIVED from what the readback contained, and only the last case reaches the fold.
+  if (rules |> count) == 0 {
+    NotOwnedByGateApp { because: ReadbackCarriedNoRules }
+  } else if !(rules |> any(r => r.app.id == gate_app_id)) {
+    NotOwnedByGateApp { because: NoRuleBelongsToThisApp }
+  } else {
+    // Past this point at least one row IS ours, so "no enabled rule" is the only refusal left, and it
+    // is the fold's seed rather than a guess: the fold answers Owned only when it meets a row that is
+    // both ours and enabled.
+    rules |> fold(
+      init: NotOwnedByGateApp { because: NoEnabledRule },
+      f: fn(acc, rule) {
+        if rule.enabled && rule.app.id == gate_app_id {
+          OwnedByGateApp {
+            rule_id: rule.id,
+            app_id: gate_app_id,
+            app_slug: rule.app.slug,
+            environment_name: environment_name,
+          }
+        } else {
+          acc
+        }
+      }
+    )
+  }
 }
 
 // THE TOKEN IDENTITY, AS A CONFIGURED FACT — deliberately not a field of any readback, because no

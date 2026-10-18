@@ -84,12 +84,6 @@ import extdeps.github.deployment_protection_rule {
   extdeps_published_authorities,
   EnabledDeploymentProtectionRule,
   RuleOwningApp,
-  OwnedByGateApp,
-  NotOwnedByGateApp,
-  ReadbackCarriedNoRules,
-  NoEnabledRule,
-  NoRuleBelongsToThisApp,
-  rule_ownership_from_readback,
   enabled_rule_readback_endpoint_path,
   enabled_rule_readback_endpoint_method,
   enabled_rule_readback_items_field,
@@ -387,80 +381,39 @@ test fn the_wait_names_its_environment_through_the_object() -> Bool {
     && !(pending_deployment_wait_field_names() |> any(f => f == "installation_id"))
 }
 
-// OWNERSHIP IS A SEPARATE FACT, MINTED ONLY FROM A READBACK THAT CAN ESTABLISH IT. Three ways this
-// was wrong before, and each is refused by a value rather than by a sentence:
-//   the wrong ENDPOINT — .../deployment_protection_rules/apps is a CATALOGUE of integrations that
-//     could be installed ("AVAILABLE"); its items carry no rule id and no `enabled`, so a guard built
-//     on it passes for a rule that exists and is switched off.
-//   the wrong ATTRIBUTE — that response carries an App id and slug, never an installation id, so a
-//     record claiming to have learned an installation id from it had invented one.
-//   the missing CONDITION — a rule row is ownership only if it is ENABLED and attributed to this App.
-test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -> Bool {
-  let gate_app_id = 1900000001
-  let enabled_rule = EnabledDeploymentProtectionRule {
-    id: 900000001,
-    node_id: "DPPR_1",
-    enabled: true,
-    app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
-  }
-  let disabled_rule = EnabledDeploymentProtectionRule {
-    id: 900000002,
-    node_id: "DPPR_2",
-    enabled: false,
-    app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
-  }
-  let foreign_rule = EnabledDeploymentProtectionRule {
-    id: 900000003,
-    node_id: "DPPR_3",
-    enabled: true,
-    app: RuleOwningApp { id: 2222222222, slug: "some-other-integration" },
-  }
-  // THE SUM IS THE ANSWER. There is no `rule_ownership_is_established` any more: a Bool over this sum
-  // answered "is it the owned arm" while `ownership_by_readback` already returned the arm, so the two
-  // predicates were one fact with two authorities, and the Bool version discarded the typed
-  // OwnershipRefusalReason. Each arm is therefore matched HERE, and the refusal arms assert WHICH
-  // reason they carry -- a fold that refused an enabled foreign rule with ReadbackCarriedNoRules would
-  // now be wrong rather than merely different.
-  match rule_ownership_from_readback(
-    rules: [enabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
-  ) {
-    OwnedByGateApp { rule_id: r, app_id: a, app_slug: _, environment_name: e } =>
-      r == 900000001 && a == gate_app_id && e == srv1_env
-    NotOwnedByGateApp { because: _ } => false
-  }
-    && (match rule_ownership_from_readback(
-          rules: [disabled_rule], environment_name: srv1_env, gate_app_id: gate_app_id
-        ) {
-          NotOwnedByGateApp { because: NoEnabledRule } => true
-          _ => false
-        })
-    && (match rule_ownership_from_readback(
-          rules: [foreign_rule], environment_name: srv1_env, gate_app_id: gate_app_id
-        ) {
-          NotOwnedByGateApp { because: NoRuleBelongsToThisApp } => true
-          _ => false
-        })
-    && (match rule_ownership_from_readback(
-          rules: [] as List<EnabledDeploymentProtectionRule>,
-          environment_name: srv1_env,
-          gate_app_id: gate_app_id,
-        ) {
-          NotOwnedByGateApp { because: ReadbackCarriedNoRules } => true
-          _ => false
-        })
-    // A readback that attributes nothing to this App id is a refusal even when rules came back: the
-    // environment in the ownership can never be one that was not read.
-    && (match rule_ownership_from_readback(
-          rules: [enabled_rule], environment_name: srv1_env, gate_app_id: 7
-        ) {
-          NotOwnedByGateApp { because: NoRuleBelongsToThisApp } => true
-          _ => false
-        })
-}
-
 // THE ENDPOINT CENSUS, as data. Both endpoints exist upstream and do different jobs; the model cites
 // the ENABLED one. The mutation is the plausible mistake: the /apps path reads like the right answer to
 // anyone who has not read either description.
+// WHAT UPSTREAM OWNS ABOUT THE READBACK: the SHAPE of a row. The pin's deployment-protection-rule is
+// four REQUIRED fields (id, node_id, enabled, app), and app is custom-deployment-rule-app with id and
+// slug. So a row can state "enabled: false" and cannot state an installation id -- the two facts the
+// ownership verdict in gunbc.auth.deployment_gate_authorization::ownership_from_readback depends on.
+// WHAT COUNTS AS OURS is not witnessed here, because it is not GitHub's claim: that test moved to
+// test.claim.deployment_gate_authorization_witness with the verdict it checks (§3b).
+test fn the_enabled_rule_row_carries_exactly_the_four_fields_the_pin_requires() -> Bool {
+  let row = EnabledDeploymentProtectionRule {
+    id: 900000001,
+    node_id: "RDP_1",
+    enabled: true,
+    app: RuleOwningApp { id: 1900000001, slug: "gunbc-deployment-gate" },
+  }
+  row.id == 900000001
+    && row.enabled
+    && row.app.id == 1900000001
+    && (row.app.slug as String) == "gunbc-deployment-gate"
+    // `enabled` is a Bool the row must be able to carry as false: a guard that could not represent a
+    // DISABLED rule would be unable to refuse one.
+    && !(EnabledDeploymentProtectionRule {
+           id: 900000002,
+           node_id: "RDP_2",
+           enabled: false,
+           app: RuleOwningApp { id: 1900000001, slug: "gunbc-deployment-gate" },
+         }).enabled
+    // The App row has no installation field to read, which is why the installation the token is minted
+    // for is operator-recorded configuration rather than a readback observation.
+    && !(row.app.slug as String).contains("installation")
+}
+
 test fn the_enabled_rules_endpoint_is_the_one_cited_not_the_catalogue() -> Bool {
   (enabled_rule_readback_endpoint_path as String).contains("deployment_protection_rules")
     && !(enabled_rule_readback_endpoint_path as String).contains("deployment_protection_rules/apps")
