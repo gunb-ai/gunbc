@@ -2839,7 +2839,7 @@ fn pre_intern_tokens(tokens: List<Token>, table: InternTable) -> InternTable {
 fn optional_application_node(occurrence_identity: NodeOccurrenceIdentity, payload: Node, span: SourceSpan) -> Node {
   let generated_name = optional_declaration_ref.decl_name as String
   let generated_span = kernel_span(name: generated_name)
-  Node { occurrence_identity: occurrence_identity, name: generated_name, span: span, ident_span: Present { value: generated_span }, children: [payload], connective: NoConnective, params: [], inferred: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: Present { value: optional_declaration_ref }, expr_data: NoExprData }
+  Node { occurrence_identity: occurrence_identity, name: generated_name, ident: none, span: span, ident_span: Present { value: generated_span }, children: [payload], connective: NoConnective, params: [], inferred: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: Present { value: optional_declaration_ref }, expr_data: NoExprData }
 }
 
 // THE std.optional APPLICATION OF A PAYLOAD TYPE, built where no occurrence is minted (builtin signatures,
