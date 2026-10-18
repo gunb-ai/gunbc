@@ -780,21 +780,36 @@ fn rule_ownership_from_readback(
   environment_name: NonEmptyStr,
   gate_app_id: Int
 ) -> EnvironmentRuleOwnership {
-  rules |> fold(
-    init: NotOwnedByGateApp { because: NoRuleBelongsToThisApp },
-    f: fn(acc, rule) {
-      if rule.enabled && rule.app.id == gate_app_id {
-        OwnedByGateApp {
-          rule_id: rule.id,
-          app_id: gate_app_id,
-          app_slug: rule.app.slug,
-          environment_name: environment_name,
+  // THREE REFUSALS THAT CAN ACTUALLY BE TOLD APART. An earlier version seeded the fold with
+  // NoRuleBelongsToThisApp and let every non-match fall through to it, so the closed reason sum was a
+  // decoration: an empty readback, a readback of other vendors' rules, and a readback where our rule
+  // exists but is switched off all reported the same arm, and the operator would have been told to
+  // "point the recorded id at the right App" when the real fix was to press ENABLE. Each reason is now
+  // DERIVED from what the readback contained, and only the last case reaches the fold.
+  if (rules |> count) == 0 {
+    NotOwnedByGateApp { because: ReadbackCarriedNoRules }
+  } else if !(rules |> any(r => r.app.id == gate_app_id)) {
+    NotOwnedByGateApp { because: NoRuleBelongsToThisApp }
+  } else {
+    // Past this point at least one row IS ours, so "no enabled rule" is the only refusal left, and it
+    // is the fold's seed rather than a guess: the fold answers Owned only when it meets a row that is
+    // both ours and enabled.
+    rules |> fold(
+      init: NotOwnedByGateApp { because: NoEnabledRule },
+      f: fn(acc, rule) {
+        if rule.enabled && rule.app.id == gate_app_id {
+          OwnedByGateApp {
+            rule_id: rule.id,
+            app_id: gate_app_id,
+            app_slug: rule.app.slug,
+            environment_name: environment_name,
+          }
+        } else {
+          acc
         }
-      } else {
-        acc
       }
-    }
-  )
+    )
+  }
 }
 
 fn pending_deployment_wait_field_names() -> List<NonEmptyStr> {

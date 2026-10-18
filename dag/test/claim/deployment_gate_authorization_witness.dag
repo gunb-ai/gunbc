@@ -442,9 +442,9 @@ test fn success_is_one_status_on_the_right_call() -> Bool {
   review_was_accepted(status: review_call.success_status)
     && !review_was_accepted(status: human_review_call.success_status)
     && !review_was_accepted(status: pending_deployments_poll_call.success_status)
-    && !review_was_accepted(status: 200 as HttpStatus)
-    && !review_was_accepted(status: 201 as HttpStatus)
-    && !review_was_accepted(status: 202 as HttpStatus)
+    && !review_was_accepted(status: 200)
+    && !review_was_accepted(status: 201)
+    && !review_was_accepted(status: 202)
 }
 
 // A concluded run is not answered: its deployment has settled, and a review now changes nothing while

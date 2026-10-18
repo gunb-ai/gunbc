@@ -68,6 +68,7 @@ import gunbc.auth.deployment_gate_authorization {
   RemovalAdmitted,
   RemovalRefused,
   NoRejectingReview,
+  RejectingArmWasNotARejection,
   BothArmsOneDispatch,
   EvidenceFromAnotherEnvironment,
   admit_reviewer_removal,
@@ -240,9 +241,18 @@ test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refuse
     none => true
     Present { value: _ } => false
   })
-    // both arms the same observed review => one dispatch, which cannot show a refusal
-    && (match admit_reviewer_removal(approved: approve, rejected: approve) {
+    // ONE DISPATCH DRESSED AS TWO TRIALS. Both arms have to be genuine -- an "approval" for the
+    // rejecting arm is refused earlier, as the arm that it is not (the mint's
+    // RejectingArmWasNotARejection), which is why the rejection here is read off a real failed run:
+    // the same dispatch, one rule release and one rule refusal, is the shortcut this check exists for.
+    && (match admit_reviewer_removal(approved: approve, rejected: rejected_trial(run_id: 35447067113)) {
           RemovalRefused { missing: BothArmsOneDispatch } => true
+          RemovalRefused { missing: _ } => false
+          RemovalAdmitted { evidence: _ } => false
+        })
+    // ...and the arm-mislabelling itself, refused by name rather than as a generic "no".
+    && (match admit_reviewer_removal(approved: approve, rejected: approve) {
+          RemovalRefused { missing: RejectingArmWasNotARejection } => true
           RemovalRefused { missing: _ } => false
           RemovalAdmitted { evidence: _ } => false
         })
