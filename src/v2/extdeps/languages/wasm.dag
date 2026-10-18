@@ -92,6 +92,7 @@ import v2.std.node {
 import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, PointwisePower, empty_map, map_insert }
 import v2.std.algebra_structure_signature { approximate_field_type_node, commutative_semiring_type_node }
 import v2.std.text { String }
+import std.host_text { chars }
 
 type WasmIntWidth
   = WasmIntBits32
@@ -588,7 +589,7 @@ fn wasm_target_model() -> TargetModel {
 fn wasm_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 

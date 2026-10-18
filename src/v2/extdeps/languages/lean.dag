@@ -75,6 +75,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
+import std.host_text { chars }
 
 type LeanDeclarationKind
   = LeanDef
@@ -831,7 +832,7 @@ fn lean_def_dec_parse_expr() -> GrammarExpr {
 fn lean_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 

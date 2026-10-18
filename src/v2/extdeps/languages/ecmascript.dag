@@ -83,6 +83,7 @@ import v2.std.node {
 import v2.std.logic { bool_boolean_algebra }
 import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, ordered_ring_node }
 import v2.std.text { String }
+import std.host_text { chars }
 
 type EcmascriptSingletonKind
   = UndefinedT | NullT
@@ -929,7 +930,7 @@ fn ecmascript_target_model() -> TargetModel {
 }
 
 fn ecmascript_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(text: text) } }
 }
 
 fn ecmascript_ident_lex_pattern() -> LexPattern {
