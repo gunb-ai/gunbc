@@ -2750,6 +2750,30 @@ test fn the_password_gate_admits_the_captured_channel_and_refuses_the_wrong_kind
     })
 }
 
+// THE LEDGER SAYS NO, AND THE REFUSAL IS NOT A SENTENCE ABOUT THE HARDWARE. Every recovery row in the
+// census selects OperatorApprovedCapability, so the arm that refuses a REVOCABLE pattern could only be
+// reached by mutation until now -- which is how a gate that stopped consulting the selection at all kept
+// passing. This calls the reset gate's ledger question on a row the census really files for a different
+// effect: `gunbc.fleet.hetzner_cloud_server_control.read` is a recurring reversible bindable read, so the
+// selection answers FederatedScopedGrant, and an irreversible actuation may not stand behind a grant that
+// can be withdrawn. It must come back LedgerRefusal naming THAT pattern -- never LedgerConforms, and never
+// the CensusRowMissing arm (the row exists; a gate that looked up the wrong site would land there and this
+// claim would go red, which is the point).
+test fn the_reset_ledger_refuses_a_row_whose_selection_is_a_revocable_grant() -> Bool {
+  let non_recovery_site = decl_ref(
+    module_path: "gunbc.fleet.hetzner_cloud_server_control",
+    decl_name: "read",
+  )
+  match recovery_ledger_selects_operator_approval(site_ref: non_recovery_site) {
+    LedgerRefusal { cause: PatternIsNotOperatorApproved { selected: selected } } =>
+      // the refusal names the pattern it refused, and it is not the operator-approved one
+      (pattern_identity_text(p: selected) as String) != "OperatorApprovedCapability"
+        && string_non_empty(value: ledger_refusal_text(site_ref: non_recovery_site, cause: PatternIsNotOperatorApproved { selected: selected }))
+    LedgerRefusal { cause: _ } => false
+    LedgerConforms { verdict: _ } => false
+  }
+}
+
 // THE CAPTURE'S TIME HAS A REFERENT OUTSIDE THIS FILE, AND ASSERTS ONLY ITS OWN PRECISION. Every
 // capture-backed field carries a band minted here, so if a bound were a plausible-looking number for
 // the wrong day every fixture would still be self-consistent and nothing here would notice. The
