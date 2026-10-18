@@ -5711,27 +5711,6 @@ fn carried_structural_type_name(n: Node, source_indices: Map<String, NewlineInde
   }
 }
 
-// A qualified identity may never be reduced to its last segment here: a.Item and b.Item are
-// distinct declarations even though their nicknames coincide. Full carried names are the
-// strongest identity available for this legacy field-initializer seam; if either side cannot
-// retain that identity, decline the alias admission and let the mismatch stay loud.
-fn declared_alias_target_matches_produced(expected: Node, produced: Node, env: TypeEnv) -> Bool {
-  let expected_name = authored_name_at(source_indices: env.source_indices, node: expected)
-  let produced_name = authored_name_at(source_indices: env.source_indices, node: produced)
-  match lookup_type_by_name(env: env, name: expected_name) {
-    Present { value: decl } =>
-      let target_name = if decl.name != "" {
-        decl.name
-      } else {
-        carried_structural_type_name(n: decl, source_indices: env.source_indices, depth: 0)
-      }
-      target_name != ""
-        && target_name != expected_name
-        && target_name == produced_name
-    Absent => false
-  }
-}
-
 fn direct_call_structured_record_literal_resolved_type_mismatch(
   formal: Node,
   substitution_basis: Node,
@@ -5742,8 +5721,7 @@ fn direct_call_structured_record_literal_resolved_type_mismatch(
 ) -> Bool {
   match actual_expr.expr_data {
     ExprRecordLit { parent_enum: _ } =>
-      let formal_peeled = expand_nominal_alias_rhs(n: formal, env: type_env, module_name: module_name)
-      let formal_name = authored_name_at(source_indices: source_indices, node: formal_peeled)
+      let formal_name = authored_name_at(source_indices: source_indices, node: formal)
       match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
         Present { value: lit_name } =>
           if application_type_names_compatible(
@@ -11643,9 +11621,6 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           field_cardinality_diags
         } else if node_type_compatible(
           left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
-          []
-        } else if declared_alias_target_matches_produced(
-          expected: expected_node, produced: got_node, env: scope.type_env) {
           []
         } else if rejects_string_for_optional_coproduct_field(
           expected: expected_node,
