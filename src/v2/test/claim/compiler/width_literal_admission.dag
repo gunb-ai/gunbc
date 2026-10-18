@@ -57,19 +57,26 @@ fn wla_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitne
 }
 
 fn wla_assemble(src: String) -> Outcome<ResolvedTree> {
+  wla_assemble_with(src: src, extra: Empty)
+}
+
+fn wla_assemble_with(src: String, extra: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: wla_source(src: src, artifact: wla_p_artifact, cu: ^width_literal_admission_p_cu),
-      tail: Cons {
-        head: wla_source(src: wla_nat_peer, artifact: wla_nat_artifact, cu: ^width_literal_admission_nat_cu),
-        tail: Cons {
-          head: wla_source(src: wla_mc_peer, artifact: wla_mc_artifact, cu: ^width_literal_admission_mc_cu),
+      tail: list_append(
+        left: extra,
+        right: Cons {
+          head: wla_source(src: wla_nat_peer, artifact: wla_nat_artifact, cu: ^width_literal_admission_nat_cu),
           tail: Cons {
-            head: wla_source(src: wla_algebra_peer, artifact: wla_algebra_artifact, cu: ^width_literal_admission_algebra_cu),
-            tail: Cons { head: wla_source(src: wla_int_peer, artifact: wla_int_artifact, cu: ^width_literal_admission_int_cu), tail: Empty }
+            head: wla_source(src: wla_mc_peer, artifact: wla_mc_artifact, cu: ^width_literal_admission_mc_cu),
+            tail: Cons {
+              head: wla_source(src: wla_algebra_peer, artifact: wla_algebra_artifact, cu: ^width_literal_admission_algebra_cu),
+              tail: Cons { head: wla_source(src: wla_int_peer, artifact: wla_int_artifact, cu: ^width_literal_admission_int_cu), tail: Empty }
+            }
           }
         }
-      }
+      )
     },
     admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
     lm: dag_language_model()
@@ -77,14 +84,22 @@ fn wla_assemble(src: String) -> Outcome<ResolvedTree> {
 }
 
 fn wla_inferred(src: String) -> Outcome<InferredTree> {
-  match wla_assemble(src: src) {
+  wla_inferred_with(src: src, extra: Empty)
+}
+
+fn wla_inferred_with(src: String, extra: List<DagSourceReadWitness>) -> Outcome<InferredTree> {
+  match wla_assemble_with(src: src, extra: extra) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
   }
 }
 
 fn wla_reason(src: String) -> Symbol {
-  match wla_inferred(src: src) {
+  wla_reason_with(src: src, extra: Empty)
+}
+
+fn wla_reason_with(src: String, extra: List<DagSourceReadWitness>) -> Symbol {
+  match wla_inferred_with(src: src, extra: extra) {
     Accepted { value: _, diagnostics: _ } => ^accepted
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
   }
@@ -222,4 +237,60 @@ test fn wla_s_pointer_width_unsigned_refuses() -> Bool { wla_verdict_at(lexeme: 
 test fn wla_s_undeclared_signedness_refuses() -> Bool { wla_verdict(lexeme: "1", carrier: wla_decl(dotted: "std.machine_constraints.PointerWidth"), bits: "8") == ^infer_reason_machine_width_carrier_signedness_undeclared }
 test fn wla_s_malformed_compose_refuses() -> Bool {
   wla_verdict_at(lexeme: "1", expected: wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.Compose"), args: [wla_int_carrier()])) == ^infer_reason_machine_width_compose_malformed
+}
+
+// THE ALIAS RULE IS THE CLASS, NOT ONE NAME (review 81560). infer_alias_body_is_phantom keys on the alias BODY
+// resolving to std.constructors Phantom -- the declared marker: a type that denotes no value, whose arguments are
+// the constraint it carries -- so any alias `type M<A, B> = Phantom` keeps its head and its instantiated arguments
+// (infer_type_alias_unfolded_at). The justification is Phantom's declared marker semantics; it is not an inference
+// from "a bodiless type has no inhabitants". Three specimens, none of them Compose:
+//   (1) a differently named Phantom-bodied declaration (Mark) keeps its arguments: Mark<Nat, W16> does not inhabit
+//       Mark<Nat, W8>, while Mark<Nat, W8> does (the positive control, same fixture);
+//   (2) an ordinary alias to it (Mark8 = Mark<Nat, W8>) still unfolds, onto the marker, so it inhabits Mark<Nat, W8>
+//       and not Mark<Nat, W16>;
+//   (3) an unrelated local type NAMED Phantom is not the marker: `type Loose<A, B> = q.Phantom` unfolds, both
+//       instantiations become the one local Phantom, and the cross-width pass is accepted.
+data wla_constructors_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_constructors_artifact, file_path: "src/v2/pilot/width_literal_admission_constructors.dag" }
+data wla_marker_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_marker_artifact, file_path: "src/v2/pilot/width_literal_admission_marker.dag" }
+data wla_unrelated_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_unrelated_artifact, file_path: "src/v2/pilot/width_literal_admission_unrelated.dag" }
+
+data wla_constructors_peer: String = "module std.constructors\n\ntype Phantom\n"
+data wla_marker_peer: String = "module std.wla_marker\n\nimport std.constructors { Phantom }\nimport std.nat { Nat }\nimport std.machine_constraints { MachineWidth }\n\ntype Mark<A, B> = Phantom\n\ntype Mark8 = Mark<Nat, MachineWidth<8>>\n"
+data wla_unrelated_peer: String = "module std.wla_unrelated\n\ntype Phantom\n\ntype Loose<A, B> = Phantom\n"
+
+fn wla_marker_extra() -> List<DagSourceReadWitness> {
+  Cons {
+    head: wla_source(src: wla_constructors_peer, artifact: wla_constructors_artifact, cu: ^width_literal_admission_constructors_cu),
+    tail: Cons {
+      head: wla_source(src: wla_marker_peer, artifact: wla_marker_artifact, cu: ^width_literal_admission_marker_cu),
+      tail: Cons { head: wla_source(src: wla_unrelated_peer, artifact: wla_unrelated_artifact, cu: ^width_literal_admission_unrelated_cu), tail: Empty }
+    }
+  }
+}
+
+fn wla_marker_reason(body: String) -> Symbol {
+  wla_reason_with(
+    src: concat("module p\n\nimport std.wla_marker { Mark, Mark8 }\nimport std.wla_unrelated { Loose }\nimport std.nat { Nat }\nimport std.machine_constraints { MachineWidth }\n\nfn g8(n: Mark<Nat, MachineWidth<8>>) -> Bool {\n  true\n}\n\nfn l8(n: Loose<Nat, MachineWidth<8>>) -> Bool {\n  true\n}\n\n", body),
+    extra: wla_marker_extra()
+  )
+}
+
+test fn wla_marker_fixture_alone_is_accepted() -> Bool {
+  wla_marker_reason(body: "fn same(n: Mark<Nat, MachineWidth<8>>) -> Bool {\n  g8(n: n)\n}\n") == ^accepted
+}
+
+test fn wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit() -> Bool {
+  wla_marker_reason(body: "fn cross(n: Mark<Nat, MachineWidth<16>>) -> Bool {\n  g8(n: n)\n}\n") == ^application_argument_does_not_inhabit
+}
+
+test fn wla_ordinary_alias_to_the_marker_still_unfolds() -> Bool {
+  wla_marker_reason(body: "fn via(n: Mark8) -> Bool {\n  g8(n: n)\n}\n") == ^accepted
+}
+
+test fn wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments() -> Bool {
+  wla_marker_reason(body: "fn viacross(n: Mark8) -> Bool {\n  g16(n: n)\n}\n\nfn g16(n: Mark<Nat, MachineWidth<16>>) -> Bool {\n  true\n}\n") == ^application_argument_does_not_inhabit
+}
+
+test fn wla_an_unrelated_local_phantom_is_not_the_marker() -> Bool {
+  wla_marker_reason(body: "fn lcross(n: Loose<Nat, MachineWidth<16>>) -> Bool {\n  l8(n: n)\n}\n") == ^accepted
 }
