@@ -196,6 +196,34 @@ echo "CONVERGED at round=$ROUND SEED sha=$(sha256sum src/v1/stage0/src/v1_compil
 # THE ARMS MUST BE IN THE EMITTED SEED, or the census measures the wrong build. Counted as occurrences
 # minus definitions, because the emitter's argument-passing syntax is its own business and guessing it
 # would make a good build look mislabelled.
+# OPTIONAL: SHIP THE REGENERATED SEED. #14152's .dag change regenerates three mirrors, and CI's
+# --required-regen compares the CHECKED-IN seed against the emitted one, so the PR must carry them
+# (stern-bat-401: mirrors by REGENERATION only; review 81022-1 asked for exactly this). The A/B run needs
+# the loop but not the artifacts, so shipping is opt-in -- and it happens AFTER the reset to main's stage0
+# and after convergence, so what ships is the fixed point of THIS tree's .dag, never a hand-merge and never
+# contaminated by the census (tools/rebind_census.sh only parses a log; it injects nothing).
+if [ "${SHIP_MIRRORS:-0}" = "1" ]; then
+  echo "=== SHIPPING REGENERATED SEED (post-convergence) ==="
+  for f in $(ls src/v1/stage0/src); do
+    printf "   %-52s %9s bytes  sha256=%s\n" "$f" "$(wc -c < src/v1/stage0/src/$f)" "$(sha256sum src/v1/stage0/src/$f | cut -c1-16)"
+  done
+  # Ship ONLY THE CHANGED MIRRORS, named by git rather than by me. The guest has a fresh clone whose
+  # stage0 was reset to main's, so `git status` there IS the authoritative changed-file list -- naming them
+  # myself is how a fourth file gets silently committed or a fifth left stale (review 81022-1 asked for the
+  # three regenerated mirrors specifically; the round-1 loop reported exactly infer/infer_types/census plus
+  # cli_run and module_path_index as NOT IN SEED, and those two are the HAND_MAINTAINED pair that must never
+  # be committed). gzip then base64: ~1.8 MB raw becomes ~230 KB.
+  CHANGED=$(git status --porcelain -- src/v1/stage0/src | awk '{print $2}')
+  echo "   git-named changed mirrors: $(echo $CHANGED | tr '\n' ' ')"
+  ( cd src/v1/stage0/src && tar -c $(for f in $CHANGED; do basename $f; done) 2>/dev/null ) | gzip -9 | base64 -w0 > $LOGS/stage0_regen.b64
+  echo "   staged tar: $(wc -c < $LOGS/stage0_regen.b64) base64 bytes"
+  # The HAND_MAINTAINED pair must NOT be in that list. Asserted, not trusted: if the emitter ever produces a
+  # cli_run/module_path_index candidate and the loop installs it, this dispatch stops rather than ship it.
+  if echo "$CHANGED" | grep -qE 'cli_run|module_path_index'; then
+    echo "REFUSING TO SHIP: the changed list contains a HAND_MAINTAINED mirror"; void_out "gate exit 21"
+  fi
+fi
+
 FN=$(grep -ac 'fn binding_is_generic_declaration_own_form' src/v1/stage0/src/v1_compiler_infer.rs)
 ALL=$(grep -ac 'binding_is_generic_declaration_own_form' src/v1/stage0/src/v1_compiler_infer.rs)
 CALLS=$((ALL - FN))
