@@ -42,11 +42,12 @@
 # nothing", and DESIGN section 5 prefers construction over validation -- the emitted bytes should be
 # REQUIRED to agree with the model, not checked against it afterwards.
 #
-# What remains here is the one capability the substrate does not have: SPAWNING a process and reading
-# its exit status and stdout. dag/std/process.dag models an exit VALUE, not an exec; there is no
-# Command::new / ProcessBuilder surface anywhere in src/ or dag/, which is why the behavioural half
-# cannot be a claim row. That gap is what the carrier's dissolution trigger names, so the residual is
-# on the record instead of being quietly shell-shaped.
+# What remains here is the ACT OF SPAWNING inside a step that runs before the subject binary exists --
+# stated once, above, rather than twice: review 82188 (claude/opus[1m], REQUEST_CHANGES) filed as
+# blocking that this header contradicted itself, because this paragraph still asserted the retracted
+# "no Command::new / ProcessBuilder surface anywhere" claim below the correction that says otherwise.
+# A scaffold whose stated reason contradicts itself has no honest dissolution condition (§5), so the
+# duplicate is deleted rather than annotated.
 #
 # THREE MODES
 #   (no args)        LOCAL. Extract the generated step's own bytes from the committed witnesses.yml
