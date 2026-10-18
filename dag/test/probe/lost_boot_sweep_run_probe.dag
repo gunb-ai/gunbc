@@ -1,0 +1,16 @@
+module test.probe.lost_boot_sweep_run_probe
+
+// THIS MODULE MUST NOT RESOLVE. The run witness's supplied_population supplies a width to a restricted
+// constructor, so it is a boundary of its own: admit_callers-restricted to run_sweep. A call from here
+// must refuse AT THE HELPER. The witness test.claim.runner.runner_lost_boot_sweep_run_probe_witness
+// requires that refusal by subject name. dag/test/probe/ sits under the strict-resolve exclusion.
+
+import std.types { String }
+import gunbc.host.host_control_route { HostControlStanding }
+import gunbc.host.managed_host { ManagedHost }
+import gunbc.runner.runner_host_unit_slot { CurrentServicePopulationStanding }
+import test.claim.runner.runner_lost_boot_sweep_run_witness { supplied_population, run_sweep }
+
+fn outside_supplied_population(host: HostControlStanding, m: ManagedHost, id: String) -> CurrentServicePopulationStanding {
+  supplied_population(host: host, m: m, id: id)
+}

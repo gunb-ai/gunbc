@@ -5,6 +5,10 @@ import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestResult, RestAnswered }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
+import extdeps.uuid { uuid_of }
+import std.decl_ref { decl_ref }
+import gunbc.host.host_control_route { HostControlStanding, NoOutOfBandRoute }
+import gunbc.runner.runner_host_unit_slot { CurrentPopulationHostNotControlled }
 import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.effect { GitHubOrganizationRef }
 import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installation_id }
@@ -13,8 +17,7 @@ import gunbc.host.managed_host { ManagedHost, managed_hosts }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId }
 import gunbc.runner.runner_slot_allocation { RunnerWidthDerived, RunnerWidthUnresolved, gunbc_runner_committed_width }
-import test.claim.runner.runner_jit_listed_registration_witness { population_over_host }
-import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_unit, current_service_population, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentPopulationWidthUnresolved }
+import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_unit, current_service_population, current_service_population_over, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentPopulationWidthUnresolved }
 import gunbc.runner.runner_jit_deregistration {
   LostBootSweep, SweepRegistrationRefused, ListedNameOutsideServiceGrammar, LostBootSweepSelected, LostBootSweepRefused, lost_boot_sweep, deregistration_name, deregistration_app, deregistration_installation,
   JitDeregistration, JitDeregistrationRefused, DeregistrationAuthorityForAnotherInstallation, SlotLostBoot,
@@ -34,7 +37,15 @@ fn the_host() -> ManagedHost? { first(managed_hosts()) }
 
 // A boot identity exists only through service_boot_id_of over a KernelBootId, so every fixture takes
 // the real route; an unconstructible id reads as the empty name, which no assertion below accepts.
-fn kernel_boot(id: String) -> HostCaptureRunIdentity { KernelBootId { boot_id: id as NonEmptyStr } }
+fn kernel_boot(id: String) -> HostCaptureRunIdentity {
+  match uuid_of(text: id) {
+    Present { value: u } => KernelBootId { boot_id: u }
+    Absent => HistoricalAttemptOrdinal { ordinal: id as NonEmptyStr }
+  }
+}
+
+data old_boot_id: String = "11111111-1111-4111-8111-111111111111"
+data new_boot_id: String = "22222222-2222-4222-8222-222222222222"
 
 fn unit(m: ManagedHost, id: String, index: Int) -> String {
   match service_boot_id_of(run: kernel_boot(id: id)) {
@@ -50,14 +61,29 @@ fn listing(names: List<String>) -> RestResult<OrganizationRunnerListWire> {
   } }
 }
 
+// THE SUPPLIED SEALED POPULATION: a width of 2 and the supplied labels, because the host's offer is not
+// yet in the fleet catalog. It supplies a width to a restricted constructor, so it is itself a boundary:
+// admit_callers-restricted to run_sweep, which is restricted to the terminal claims that sweep over it.
+fn supplied_population(host: HostControlStanding, m: ManagedHost, id: String) -> CurrentServicePopulationStanding admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "run_sweep"),
+] {
+  match service_boot_id_of(run: kernel_boot(id: id)) {
+    Present { value: b } => current_service_population_over(host: host, width: RunnerWidthDerived { slots: 2 }, registration_labels: supplied_labels, boot: b)
+    Absent => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: NoOutOfBandRoute { host: m.host } } }
+  }
+}
+
 // THE SWEEP UNDER THE RUN'S OWN AUTHORITY, over a SUPPLIED listing (a witness discriminates at one
 // interface): sweep_host_standing is the run's own host derivation, the labels are supplied because the
 // host has no fleet offer today.
-fn run_sweep(m: ManagedHost, authority: GitHubCredentialAuthority, current: String, names: List<String>) -> LostBootSweep {
+fn run_sweep(m: ManagedHost, authority: GitHubCredentialAuthority, current: String, names: List<String>) -> LostBootSweep admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "the_run_sweeps_stale_registrations_under_the_declared_installation"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "one_receipt_line_per_runner_and_any_refusal_fails_the_run"),
+] {
   match sweep_host_standing(host: m.host as String as NonEmptyStr) {
     SweepHostNotManaged { host: _ } => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: "", refusal: ListedNameOutsideServiceGrammar { listed: "" } } }
     SweepHostBound { host: _, standing: s } =>
-      match population_over_host(host: s, m: m, width: RunnerWidthDerived { slots: 2 }, labels: supplied_labels, id: current) {
+      match supplied_population(host: s, m: m, id: current) {
         CurrentServicePopulationDerived { population: p } =>
           lost_boot_sweep(organization: org, population: p, authority: authority, listing: listing(names: names))
         CurrentServicePopulationRefused { refusal: _ } => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: "", refusal: ListedNameOutsideServiceGrammar { listed: "" } } }
@@ -71,8 +97,8 @@ test fn an_absent_current_boot_id_refuses_and_a_present_one_is_carried() -> Bool
   (match lost_boot_current_input(raw: "") {
     LostBootCurrentRefused { cause: _ } => true
     LostBootCurrentPresent { boot: _ } => false
-  }) && (match lost_boot_current_input(raw: "9f1c-boot") {
-    LostBootCurrentPresent { boot: b } => (b.boot_id as String) == "9f1c-boot"
+  }) && (match lost_boot_current_input(raw: new_boot_id) {
+    LostBootCurrentPresent { boot: b } => (b.boot_id as String) == new_boot_id
     LostBootCurrentRefused { cause: _ } => false
   })
 }
@@ -100,18 +126,18 @@ test fn the_run_sweeps_stale_registrations_under_the_declared_installation() -> 
   match the_host() {
     Absent => false
     Present { value: m } => {
-      let names = [unit(m: m, id: "old", index: 0), unit(m: m, id: "new", index: 0), "actions-runner@srv1-3.service"]
-      (match run_sweep(m: m, authority: sweep_authority(), current: "new", names: names) {
+      let names = [unit(m: m, id: old_boot_id, index: 0), unit(m: m, id: new_boot_id, index: 0), "actions-runner@srv1-3.service"]
+      (match run_sweep(m: m, authority: sweep_authority(), current: new_boot_id, names: names) {
         LostBootSweepSelected { subjects: rs, untouched: u } =>
           count(rs) == 1 && count(u) == 2
             && (match first(rs) {
-              Present { value: s } => (deregistration_name(subject: s).value as String) == unit(m: m, id: "old", index: 0)
+              Present { value: s } => (deregistration_name(subject: s).value as String) == unit(m: m, id: old_boot_id, index: 0)
                 && deregistration_installation(subject: s) == gunbai_ci_declared_installation_id
                 && deregistration_app(subject: s) == gunbai_ci_declared
               Absent => false
             })
         LostBootSweepRefused { refusal: _ } => false
-      }) && (match run_sweep(m: m, authority: other_installation_authority(), current: "new", names: names) {
+      }) && (match run_sweep(m: m, authority: other_installation_authority(), current: new_boot_id, names: names) {
         LostBootSweepSelected { subjects: rs, untouched: _ } =>
           (match first(rs) {
             Present { value: s } => deregistration_installation(subject: s) != gunbai_ci_declared_installation_id
@@ -138,11 +164,11 @@ test fn one_receipt_line_per_runner_and_any_refusal_fails_the_run() -> Bool {
   match the_host() {
     Absent => false
     Present { value: m } => {
-      let names = [unit(m: m, id: "old", index: 0), unit(m: m, id: "old", index: 1), unit(m: m, id: "new", index: 0)]
-      match service_boot_id_of(run: kernel_boot(id: "new")) {
+      let names = [unit(m: m, id: old_boot_id, index: 0), unit(m: m, id: old_boot_id, index: 1), unit(m: m, id: new_boot_id, index: 0)]
+      match service_boot_id_of(run: kernel_boot(id: new_boot_id)) {
         Absent => false
         Present { value: current_boot } =>
-      match run_sweep(m: m, authority: sweep_authority(), current: "new", names: names) {
+      match run_sweep(m: m, authority: sweep_authority(), current: new_boot_id, names: names) {
         LostBootSweepRefused { refusal: _ } => false
         LostBootSweepSelected { subjects: rs, untouched: u } => {
           let refused = rs |> map(s => JitDeregistrationRefused {
@@ -156,7 +182,7 @@ test fn one_receipt_line_per_runner_and_any_refusal_fails_the_run() -> Bool {
             && sweep_all_deregistered(outcomes: [])
             && count(sweep_report_lines(outcomes: [], untouched: u)) == 1
             && (match first(refused) {
-              Present { value: o } => deregistration_line(outcome: o) == concat("lost-boot-sweep runner=", concat(unit(m: m, id: "old", index: 0), " refused=authority-for-another-installation"))
+              Present { value: o } => deregistration_line(outcome: o) == concat("lost-boot-sweep runner=", concat(unit(m: m, id: old_boot_id, index: 0), " refused=authority-for-another-installation"))
               Absent => false
             })
         }
@@ -179,7 +205,7 @@ test fn the_real_route_population_follows_the_committed_width() -> Bool {
       match sweep_host_standing(host: m.host as String as NonEmptyStr) {
         SweepHostNotManaged { host: _ } => false
         SweepHostBound { host: _, standing: st } =>
-          match service_boot_id_of(run: kernel_boot(id: "new")) {
+          match service_boot_id_of(run: kernel_boot(id: new_boot_id)) {
             Absent => false
             Present { value: b } =>
               match gunbc_runner_committed_width(host: m.host) {
