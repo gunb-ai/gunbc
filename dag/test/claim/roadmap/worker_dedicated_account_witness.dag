@@ -12,6 +12,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_git_worker_unwritable_children, dashboard_git_worker_local_config_keys,
   dashboard_git_worker_directory_children, dashboard_git_worktrees_child,
   dashboard_instance_worker_git_subtree_migration,
+  dashboard_git_worker_subtree_path, dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_directory_mode_is_granted, dashboard_git_worker_file_mode_is_granted,
   dashboard_git_worker_directory_mode_is_unmigrated,
   dashboard_git_maintenance_unit_stem, dashboard_git_maintenance_principal,
@@ -335,10 +336,33 @@ fn occurrences(words: List<String>, wanted: String) -> Int {
 // apply. A migration runs once, its readback is the receipt, and it can name what it must never touch.
 // The claim reads the migration's OWN argv, so a step that quietly dropped the group, the setgid, the
 // prune or the depth bound fails here rather than on srv1.
+// THE TWO PATHS THE PRUNE LEG NEEDS, both read FROM THE MODEL rather than authored here: the target of
+// one granted subtree, and the confined children that subtree declares. The claim then asserts the argv
+// carries the CONCATENATION -- `<target>/<name>`. That is the whole difference between a path and a
+// pattern: a name alone (or `*/name`) is matched by find at any depth, so at 2dc2b8de the bare prunes cut
+// refs/heads/pack out of the walk and the worker could never update that branch. Authoring the expected
+// strings here instead would let the claim and the model agree on a wrong shape.
+fn lab_subtree_target(instance: HostDashboardInstance, child: NonEmptyStr) -> String {
+  dashboard_git_worker_subtree_path(instance: instance, child: child)
+}
+
+fn anchored_pruned_paths(instance: HostDashboardInstance, child: NonEmptyStr) -> List<String> {
+  let target = lab_subtree_target(instance: instance, child: child)
+  map(xs: dashboard_git_worker_subtree_confined_children(child: child), f: name => concat(target, concat("/", name)))
+}
+
 test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let steps = dashboard_instance_worker_git_subtree_migration(instance: lab)
   let all_args = fold(steps, init: [] as List<String>, f: (acc, c) => concat(acc, c.arguments))
+  // The two arms of each child's pair: the re-group step (chgrp) and the mode step (chmod g+w + g+s on
+  // directories). Named so a leg can say which arm carries which bit instead of quantifying wrongly
+  // over both and failing on the arm that legitimately lacks the flag.
+  let regroup_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == "chgrp"))
+  let chmod_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == "g+s"))
+  let objects_child: NonEmptyStr = ".git/objects"
+  let objects_paths = anchored_pruned_paths(instance: lab, child: objects_child)
+  let refs_and_logs_steps = filter(xs: steps, predicate: c => !any(c.arguments, a => a == lab_subtree_target(instance: lab, child: objects_child)))
   // (a) the measured pre-migration state is refused by the model and the post-migration state accepted:
   //     0775-without-setgid is not a grant, 02775 is, a 0664 file is and a 0666 file is not.
   dashboard_git_worker_directory_mode_is_unmigrated(mode: measured_srv1_unmigrated_mode)
@@ -364,20 +388,32 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     && all(steps, c => any(c.arguments, a => a == (fleet_posix_worker_shared_group_name as String)))
     && all(steps, c => any(c.arguments, a => a == "--no-dereference"))
     && !any(all_args, a => a == "chown")
-    // (d) it asserts BOTH bits the commit needs: g+w on everything, and g+s on DIRECTORIES ONLY -- the
-    //     -type d guard is what keeps a setgid off a file, where RestrictSUIDSGID would otherwise have
-    //     to catch it. Nothing is ever opened to the world.
+    // (d) it asserts BOTH bits the commit needs, on the RIGHT steps: g+w on everything the walk reaches,
+    //     and g+s on DIRECTORIES ONLY, guarded by -type d on the mode step -- the guard is what keeps a
+    //     setgid off a file, where RestrictSUIDSGID would otherwise have to catch it (and a setgid on a
+    //     loose object would be a privilege shape, not a grant). The re-group step carries no -type d
+    //     because chgrp --no-dereference needs no such guard. Nothing is ever opened to the world. THE
+    //     PARENTHESES BALANCE: at 2dc2b8de the mode step opened `(` before -type d and never closed it,
+    //     and find refused the whole expression ("Expected a )"), so the chmod never ran while every
+    //     word-list claim stayed green. A word list that cannot be executed is not a grant.
     && all(steps, c => any(c.arguments, a => a == "g+w"))
     && any(steps, c => any(c.arguments, a => a == "g+s"))
-    && all(steps, c => any(c.arguments, a => a == "-type") && any(c.arguments, a => a == "d"))
+    && all(chmod_steps, c => any(c.arguments, a => a == "-type") && any(c.arguments, a => a == "d"))
+    && all(steps, c => occurrences(words: c.arguments, wanted: "(") == occurrences(words: c.arguments, wanted: ")"))
     && !any(all_args, a => a == "a+w" || a == "o+w")
-    // (e) THE CONFINED SUBTREES ARE PRUNED BY NAME, before the walk, so the migration cannot reach them
-    //     even if the grant list grows: hooks, info, branches and pack, each with its contents.
-    && all(steps, c => all(
-      ["*/hooks", "*/hooks/*", "*/info", "*/info/*", "*/branches", "*/branches/*", "*/pack", "*/pack/*"],
-      name => any(c.arguments, a => a == name),
-    ))
-    && all(steps, c => any(c.arguments, a => a == "-prune"))
+    // (e) THE CONFINED SUBTREES ARE PRUNED BY NAME, ANCHORED TO THE TARGET, before the walk -- so the
+    //     migration cannot reach them even if the grant list grows, AND so a legal ref is never cut out
+    //     of the walk. Only .git/objects is pruned, and only of pack and info (#13942's confined
+    //     children of the object store); refs and logs declare NOTHING, because refs/heads/branches and
+    //     refs/heads/pack are legitimate refs. THE BARE PATTERNS ARE GONE: `*/pack` and friends matched
+    //     at ANY depth, so at 2dc2b8de the walk pruned a branch named pack, info, hooks or branches and
+    //     its owner could never update it. The prune is `<target>/pack`, a path, not a pattern.
+    && all(steps, c => occurrences(words: c.arguments, wanted: "-path") == occurrences(words: c.arguments, wanted: "-prune"))
+    && all(chmod_steps, c => all(objects_paths, p => any(c.arguments, a => a == p)))
+    && all(regroup_steps, c => all(objects_paths, p => any(c.arguments, a => a == p)))
+    && all(refs_and_logs_steps, c => !any(c.arguments, a => a == "-path" || a == "-prune"))
+    && !any(all_args, a => a == "*/hooks" || a == "*/info" || a == "*/branches" || a == "*/pack"
+      || a == "*/hooks/*" || a == "*/info/*" || a == "*/branches/*" || a == "*/pack/*")
     // (f) the walk is BOUNDED and never follows a link: a depth cap, and symlinks excluded. (chgrp
     //     --no-dereference alone is not enough: chmod -R follows, so a link under objects/ could
     //     otherwise carry a mode change to a file outside the repository.)
