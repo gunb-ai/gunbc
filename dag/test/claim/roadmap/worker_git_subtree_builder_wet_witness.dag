@@ -163,7 +163,7 @@ fn wet_self_uid() -> Int {
 // predicates demand -- never by a substring, which could match a different entry (or match "277" inside
 // "2775"). THE TYPE LETTER IS PART OF THE LINE HERE FOR THE SAME REASON THE MODEL DECIDES ON IT: the
 // claim says which KIND of entry it expects, so a walk that granted a setgid FILE where a directory
-// should be cannot satisfy a directory line and pass (review 82165 on this PR).
+// should be cannot satisfy a directory line and pass.
 //
 // ONE DIRECTORY LINE, as find prints it: `d`, the octal mode, a single space, then the path relative to
 // the target. Spelled here once so no claim can compare against a mode-and-path glued by the wrong
@@ -256,7 +256,7 @@ test fn the_shared_repository_posture_writers_reach_the_repository_when_run() ->
     let gc_auto = wet_out(command: git_local_config_get_command(repo: root as FilePath, key: git_gc_auto_config_key))
     let maintenance = wet_out(command: git_local_config_get_command(repo: root as FilePath, key: git_maintenance_auto_config_key))
     // THE THREE KEY NAMES, HELD TO WHAT GIT CALLS THEM. The reads above go through the MODEL's rows, so
-    // this witness cannot drift away from the writers (review 81980, item 1: the key names used to be
+    // this witness cannot drift away from the writers (the key names used to be
     // restated here as literals, so a rename in the model left the readback checking a stale key). But a
     // read that follows the model everywhere would pass while git ignores the repository -- write
     // core.sharedRepositoryX, read core.sharedRepositoryX, and the claim is green over a posture that is
@@ -417,7 +417,7 @@ test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is
   }
 }
 
-// SIX, THE STICKY BIT LANDS AND STILL LETS THE WORKER WORK. bright-moth-475's 2026-10-18 finding is
+// SIX, THE STICKY BIT LANDS AND STILL LETS THE WORKER WORK. The finding that forced it is
 // that rename(2) checks the PARENT for write and not the entry, so a group-writable objects/ let a
 // confined attempt move root's objects/pack aside (its 0555 is no bar to being RENAMED) and plant a
 // symlink there -- after which the named ROOT maintenance job writes new packs into, and `repack -d`

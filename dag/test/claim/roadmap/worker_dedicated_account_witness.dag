@@ -476,7 +476,7 @@ fn readback_refuses_the_ungranted_states(
 // "<repo>/.git/objects" but is a SIBLING of the granted subtree, not inside it -- a claim that called
 // that "inside the grant" would pass while a path the worker has no business touching sat outside every
 // grant it was checked against. So: equal, or the parent with a trailing "/" as the prefix. The denial
-// side of claim (1) had the "/" and the containment side did not (review 82058); both now read this, and
+// side of claim (1) had the "/" and the containment side did not; both now read this, and
 // the two directions of the same question cannot disagree about what a path segment is.
 fn path_is_within(child: String, parent: String) -> Bool {
   child == parent || starts_with(s: child, prefix: concat(parent, "/"))
@@ -603,7 +603,7 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     && !dashboard_git_worker_directory_mode_is_granted(mode: measured_srv1_unmigrated_mode)
     && dashboard_git_worker_directory_mode_is_granted(mode: granted_directory_mode_expected)
     && dashboard_git_worker_file_mode_is_granted(mode: granted_file_mode_expected)
-    //     AND THE STICKY-BIT SHAPE, which is what closes bright-moth-475's 2026-10-18 finding: under a
+    //     AND THE STICKY-BIT SHAPE, which is what the host reading forced: under a
     //     plain 02775 objects/, rename(2) checks the PARENT, so a confined worker can `mv objects/pack
     //     objects/pack.x` (the 0555 on pack/ is no bar) and plant a symlink there -- after which the
     //     ROOT maintenance job writes new packs into, and `repack -d` deletes packs from, a directory the
@@ -628,7 +628,7 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     && !dashboard_git_worker_subtree_needs_sticky(child: logs_child)
     //     AND THE FOLD ITSELF, over receipts this claim writes: the granted shape is accepted for the
     //     sticky subtree and the plain one alike, and each ungranted shape above REFUSES -- including
-    //     review 82165's setgid regular file, which the execute-bit classifier let through.
+    //     a setgid regular file, which an execute-bit classifier would let through.
     && readback_grants_the_declared_state(child: objects_child, top: "3775")
     && readback_grants_the_declared_state(child: refs_child, top: "2775")
     && readback_refuses_the_ungranted_states(
@@ -692,9 +692,9 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     // remove. The migration sets g+s only on `-type d` lines, and the modes git creates inside a granted
     // subtree (0664 refs/reflogs/worktree files, 0444-then-0664 loose objects) carry no special bit, so
     // accepting a setgid file would make the readback green over a tree the model says is not granted.
-    // (An earlier round of this file asserted the opposite, reading "the bit is inert" as "the bit is
-    // harmless"; inert is not the same as correct, and the leg probe -- not a claim -- caught the
-    // weakness, which is why the probe was written.)
+    // (It is tempting to read "the bit is inert on a file" as "the bit is harmless on a file" and accept
+    // it. Inert for access control is not the same as correct: the readback would then be green over a
+    // tree whose entries are not the entries the migration produces.)
     && !dashboard_git_worker_file_mode_is_granted(mode: setgid_file_mode)
     // AND AN UNPARSEABLE OBSERVATION IS REFUSED, not treated as absent permission: `find` can print a
     // mode we cannot read (a weird locale, a truncated line), and a readback that silently accepted
