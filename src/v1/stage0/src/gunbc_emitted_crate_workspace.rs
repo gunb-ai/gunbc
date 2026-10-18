@@ -6,9 +6,8 @@ use self::EmittedWorkspaceBuildOutcome::*;
 use self::EmittedWorkspaceOutcome::*;
 use self::EmittedWorkspaceRedOutcome::*;
 use self::EmittedWorkspaceRefusal::*;
-pub use crate::extdeps_rust_cargo::cargo_target_source_path;
-pub use crate::extdeps_rust_cargo::CargoTarget;
 use crate::extdeps_rust_cargo::CargoTarget::Bin;
+pub use crate::extdeps_rust_cargo::{cargo_target_source_path, CargoTarget};
 use crate::gunbc_crate_partition::DerivedDepPackages::{
     DerivedDepPackagesOk, DerivedDepPackagesUnitHasNoRow,
 };
@@ -30,11 +29,8 @@ use crate::gunbc_crate_partition::Stage0PartitionCrateKind::{
 pub use crate::gunbc_crate_partition::{
     assignment_unit_dep_edges_over, crate_partition_declared_core_target, derived_dep_packages,
     list_unique_sorted_ids, merge_emitted_edges, resolve_partition_over, unit_dep_closure,
-    unit_direct_deps,
-};
-pub use crate::gunbc_crate_partition::{
-    CompilationUnitId, DerivedDepPackages, EmittedEdgeRefusal, EmittedEdgesMerge, ModuleDagEdge,
-    ModuleId, PartitionParameter, PartitionPolicy, ResolvePartitionOutcome,
+    unit_direct_deps, CompilationUnitId, DerivedDepPackages, EmittedEdgeRefusal, EmittedEdgesMerge,
+    ModuleDagEdge, ModuleId, PartitionParameter, PartitionPolicy, ResolvePartitionOutcome,
     ResolvePartitionRefusalCause, Stage0PartitionCrateKind, Stage0PartitionCrateRow, UnitDepEdge,
 };
 use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{
@@ -44,16 +40,17 @@ use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{
 use crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::{
     EmittedCrateRootTarget, EmittedModuleTarget,
 };
-pub use crate::gunbc_rust_emitted_edge::{rust_module_emit_filename, rust_runtime_prelude_module};
-pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance, EmittedEdgeTarget};
+pub use crate::gunbc_rust_emitted_edge::{
+    rust_module_emit_filename, rust_runtime_prelude_module, EmittedEdge, EmittedEdgeProvenance,
+    EmittedEdgeTarget,
+};
 use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
     GeneratedFacadeCrate, GeneratedFoundationCrate, GeneratedLayeredCoreCrate,
 };
 pub use crate::gunbc_stage0_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
-pub use crate::std_optional::optional_present;
-pub use crate::std_optional::Optional;
+pub use crate::std_optional::{optional_present, Optional};
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

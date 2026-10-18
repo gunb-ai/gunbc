@@ -5,14 +5,13 @@ pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceIndexEntry};
 pub use crate::std_types::{Bool, List, SourceSpan};
-pub use crate::v1_compiler_parse::parse_with_table;
 use crate::v1_compiler_parse::ErasedScopeRelation::{ErasedScopeEncloses, ErasedScopeInside};
 use crate::v1_compiler_parse::ErasedSourceScopeKind::{
     ErasedParenScope, ErasedSingletonBlockScope,
 };
 pub use crate::v1_compiler_parse::{
-    ErasedScopeRelation, ErasedSourceScope, ErasedSourceScopeKind, ParseWithTableResult,
-    ParsedSourceExtent,
+    parse_with_table, ErasedScopeRelation, ErasedSourceScope, ErasedSourceScopeKind,
+    ParseWithTableResult, ParsedSourceExtent,
 };
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;

@@ -61,7 +61,8 @@ module gunbc.witness.compiler_gate_workflow
 // (witness_floor_concurrency_group), so a later push never cancels them.
 
 import std.types { Bool, Int, List, String }
-import std.algebra { list_append, list_map }
+import std.algebra { fold_list, list_append, list_map }
+import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
 import std.optional { Present }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
@@ -136,6 +137,26 @@ import gunbc.host.memory_envelope {
   EnvelopeNotRequested,
   EnvelopeRequirementUnreadable,
   memory_envelope_required_ci_contract,
+}
+import gunbc.parse_verdict_restore {
+  parse_verdict_identity_restore_step,
+  parse_verdict_identity_restore_step_name,
+  parse_verdict_locate_step,
+  parse_verdict_locate_step_name,
+  parse_verdict_receipts_restore_step,
+  parse_verdict_receipts_restore_step_name,
+  parse_verdict_record_step,
+  parse_verdict_record_step_name,
+  parse_verdict_reuse_walk_step,
+  parse_verdict_reuse_walk_step_name,
+}
+import gunbc.parse_verdict_publish {
+  parse_verdict_identity_blob_save_step,
+  parse_verdict_identity_blob_save_step_name,
+  parse_verdict_publish_walk_step,
+  parse_verdict_publish_save_step,
+  parse_verdict_publish_step_name,
+  parse_verdict_save_step_name,
 }
 
 // THE HOSTED BUILD PRELUDE. No job of this workflow uses it: gunbc.instruments.instrument_dispatch_workflow builds
@@ -398,7 +419,9 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // default, and the `gunbc` binary the instruments are invoked through. NO NATIVE PRODUCT STORE STEP:
 // the job-private store root, the read and write federations and the save left with the 2026-10-09
 // ruling (header), because a job that may serve a restored final product cannot claim to have
-// emitted and built it.
+// emitted and built it. The parse-verdict publisher after the subject steps is a different store
+// (extdeps.cache.github_actions): it saves ParseVerdictRequest receipts after a passing live
+// parse-population on main only, via actions/cache/save, and never restores a compiler product.
 //
 // THE CARGO CACHE IS ORDINARY CARGO REUSE, which the same ruling leaves in place: the isolation step
 // wipes the job's CARGO_HOME on every run, so without it the seed build downloads the registry and
@@ -437,11 +460,81 @@ fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep>
 fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
     concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
-    [CompilerGateBoundStep {
-      step: compiler_gate_emit_build_notice_step(),
-      role: capability_neutral,
-      step_name: "Why this lane is red, and what would be a real finding",
-    }]
+    concat(
+      [
+        CompilerGateBoundStep {
+          step: parse_verdict_locate_step(),
+          role: capability_neutral,
+          step_name: parse_verdict_locate_step_name,
+        },
+      ],
+      compiler_gate_emit_build_tail_bound_steps(),
+    ),
+  )
+}
+
+// Every declared ordinal carries a gated identity and receipts restore pair: the first ordinal whose
+// identity hit disables the later ones, and its receipts restore alone runs. The record step then
+// leaves the winning sha for the verb.
+fn compiler_gate_parse_verdict_restore_bound_steps() -> List<CompilerGateBoundStep> {
+  fold_list(
+    xs: parse_verdict_restore_ancestor_ordinals,
+    empty: [],
+    cons: fn(acc, ordinal) {
+      concat(
+        acc,
+        [
+          CompilerGateBoundStep {
+            step: parse_verdict_identity_restore_step(ordinal: ordinal),
+            role: capability_neutral,
+            step_name: parse_verdict_identity_restore_step_name(ordinal: ordinal),
+          },
+          CompilerGateBoundStep {
+            step: parse_verdict_receipts_restore_step(ordinal: ordinal),
+            role: capability_neutral,
+            step_name: parse_verdict_receipts_restore_step_name(ordinal: ordinal),
+          },
+        ],
+      )
+    },
+  )
+}
+
+fn compiler_gate_emit_build_tail_bound_steps() -> List<CompilerGateBoundStep> {
+  concat(
+    compiler_gate_parse_verdict_restore_bound_steps(),
+    [
+      CompilerGateBoundStep {
+        step: parse_verdict_record_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_record_step_name,
+      },
+      CompilerGateBoundStep {
+        step: parse_verdict_reuse_walk_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_reuse_walk_step_name,
+      },
+      CompilerGateBoundStep {
+        step: parse_verdict_publish_walk_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_publish_step_name,
+      },
+      CompilerGateBoundStep {
+        step: parse_verdict_publish_save_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_save_step_name(),
+      },
+      CompilerGateBoundStep {
+        step: parse_verdict_identity_blob_save_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_identity_blob_save_step_name(),
+      },
+      CompilerGateBoundStep {
+        step: compiler_gate_emit_build_notice_step(),
+        role: capability_neutral,
+        step_name: "Why this lane is red, and what would be a real finding",
+      }
+    ]
   )
 }
 

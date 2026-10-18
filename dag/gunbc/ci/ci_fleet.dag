@@ -131,7 +131,7 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 // numa_nodes 1, and the witness checks this offer's thread count against those readings.
 //
 // THE PART IDENTITY IS READ, NOT DEDUCED: mtcollins1_socket0_cpu_part_standing is observed by the census
-// capture's lscpu BIOS model line (dmidecode, run 38979496315) and falls back to a typed bet (DESIGN §4d)
+// capture's lscpu BIOS model line (dmidecode, run 39010930690) and falls back to a typed bet (DESIGN §4d)
 // if that line stops naming the row. The operator reports an Ampere Altra engineering sample in socket 0
 // (mtcollins1_socket_cpus). Q80-30 is the corpus's only
 // 80-core Altra row, chosen because its thread count equals the measured 80. Width reads that
