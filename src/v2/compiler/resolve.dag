@@ -4552,32 +4552,15 @@ fn resolve_forwarded_parameter_kind_matches(ctx: ResolveContext, required_from: 
 // would make the judgment answer differently depending on which kind of declaration forwarded the
 // parameter, which is the same defect in a new costume.
 //
-// The frame says a name IS a bound type parameter; ctx.declaring says which declaration is being
-// resolved around it, which is the address its binder conj is indexed at. A frame hit with no
-// declaring position answers Absent -- without a declaring path there is no binder to look up and
-// therefore no kind to judge, and refusing is the honest answer (DESIGN section 2: an unproven
-// claim refuses rather than admits).
+// The path comes from the FRAME, not from the context: resolve_scope_type_parameter_owner reads the
+// owner that resolve_type_param_frame recorded when it opened the frame, which is the one place the
+// owning path is known from the walk itself rather than re-derived afterwards. A name no frame binds
+// answers Absent, and the judgment turns that into a refusal -- a parameter with no established binder
+// has no established kind, and an unproven claim refuses rather than admits (DESIGN section 2).
 fn resolve_type_parameter_owning_declaration(ctx: ResolveContext, name: Symbol) -> Optional<QualifiedName> {
   match resolve_scope_type_parameter_owner(s: ctx.type_scope, name: name) {
     Present { value: owner } => optional_present(value: owner)
     Absent => resolve_scope_type_parameter_owner(s: ctx.scope, name: name)
-  }
-}
-
-fn resolve_scope_type_parameter_frame(s: Scope, name: Symbol) -> Bool {
-  match lookup_chain(s: s, name: name) {
-    Accepted { value: found, diagnostics: _ } =>
-      match found {
-        BoundInFrame { canonical: _, kind: k } =>
-          match k {
-            TypeParameterFrame { binders: _, owner: _ } => true
-            ParameterFrame { arrow_path: _ } => false
-            LexicalFrame { binders: _ } => false
-          }
-        BoundAtRoot { canonical: _ } => false
-        ScopeUnbound => false
-      }
-    Rejected { diagnostics: _ } => false
   }
 }
 
