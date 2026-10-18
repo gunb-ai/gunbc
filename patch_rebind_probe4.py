@@ -195,6 +195,18 @@ fn rebind_probe_bool(b: bool) -> String {
     if b { "1".to_string() } else { "0".to_string() }
 }
 
+/// The connective as a word, for the PR-body classification. Matched with a `_` arm on purpose: naming
+/// every Connective variant would make this helper fail to COMPILE if the enum grows, and a helper that
+/// does not compile costs a whole dispatch, while `_ => other` only loses a label. Never {:?} here --
+/// an earlier probe lost a dispatch to a Debug impl that recursed through parents.
+fn rebind_probe_conn(n: &Rc<Node>) -> String {
+    match n.connective.clone() {
+        Connective::Disj => "Disj".to_string(),
+        Connective::NoConnective => "None".to_string(),
+        _ => "other".to_string(),
+    }
+}
+
 fn rebind_probe_print4(
     bind_name: String,
     formal: Rc<Node>,
@@ -272,6 +284,14 @@ fn rebind_probe_print4(
     s.push_str(&crate::v1_compiler_infer_types::node_type_shape(
         actual.clone(), Rc::new(HashMap::new()),
     ));
+    s.push_str("|lconn=");
+    s.push_str(&rebind_probe_conn(&bound));
+    s.push_str("|rconn=");
+    s.push_str(&rebind_probe_conn(&actual));
+    s.push_str("|lname=");
+    s.push_str(&bound.name.clone());
+    s.push_str("|rname=");
+    s.push_str(&actual.name.clone());
     s.push_str("|ownBound=");
     s.push_str(&rebind_probe_bool(own_bound));
     s.push_str("|ownActual=");
@@ -338,7 +358,8 @@ def selftest():
         return 1
     out = open("/tmp/p4_selftest_out.rs").read()
     for need in ("rebind_probe_print4(", "fn rebind_probe_pred_own", "fn rebind_probe_tree",
-                 "fn rebind_probe_join4", "s1b_mint_snapshot", "node_type_equals_core"):
+                 "fn rebind_probe_join4", "rebind_probe_conn", "|lconn=", "|lname=",
+                 "s1b_mint_snapshot", "node_type_equals_core"):
         if need not in out:
             print("SELFTEST FAIL: injected output lacks", need)
             return 1
