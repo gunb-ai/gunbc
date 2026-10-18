@@ -23,7 +23,7 @@ import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePendi
 import std.types { List, Bool, GitRef }
 import extdeps.git
 import extdeps.git.inspect
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.grammar { parse_production_emitted_identity_optional }
@@ -64,10 +64,9 @@ type RosterHeadRow {
 }
 
 // THE CLOSED SET OF REFUSAL REASONS of this module; every REFUSE row is rendered from one by roster_refusal_text,
-// the sole place a reason becomes protocol text. RefusalNone is the admitted answer of roster_target_refusal only.
+// the sole place a reason becomes protocol text. Admission is Optional (Absent = admitted), never a member of this set.
 type RosterRefusalReason
-  = RefusalNone
-  | RefusalTokenizeRefused
+  = RefusalTokenizeRefused
   | RefusalParseRefused
   | RefusalNormalizeRefused
   | RefusalShapeNameBoundElsewhere
@@ -95,7 +94,6 @@ type RosterRefusalReason
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
-    RefusalNone => ""
     RefusalTokenizeRefused => "tokenize-refused"
     RefusalParseRefused => "parse-refused"
     RefusalNormalizeRefused => "normalize-refused"
@@ -252,26 +250,26 @@ fn roster_root_is_toplevel(root_dir: String) -> Bool {
 // A TARGET IS WRITTEN ONLY IF GIT TRACKS IT AS A REGULAR UNMODIFIED FILE. `git ls-tree HEAD -- <path>` names the entry's mode
 // (100644 regular; 120000 a symlink; nothing for an untracked path or one behind a symlinked directory, which git does not
 // track through), and `git status --porcelain` must not name the path (unmodified, so the sweep never lands on someone's
-// uncommitted work). Both are git's own observation; nothing here resolves a path itself. Returns RefusalNone when admitted, else the reason.
-fn roster_target_refusal(root: String, path: String) -> RosterRefusalReason {
+// uncommitted work). Both are git's own observation; nothing here resolves a path itself. Returns Absent when admitted, else the reason.
+fn roster_target_refusal(root: String, path: String) -> Optional<RosterRefusalReason> {
   if !roster_root_is_toplevel(root_dir: root) {
-    RefusalRootNotGitToplevel
+    Present { value: RefusalRootNotGitToplevel }
   } else {
     let tree = git.Inspect.ListTreeEntryAtPath(ref: "HEAD" as GitRef, path: path)
     let status = git.Inspect.WorkingTreeStatus(repository_path: root)
     let flags = git.Inspect.IndexFlagsIn(repository_path: root, path: path)
     if !tree.success || !status.success || !flags.success {
-      RefusalGitUnobservable
+      Present { value: RefusalGitUnobservable }
     } else if string_length(s: tree.entries_nul) < 12 || substring(s: tree.entries_nul, start: 0, end: 12) != "100644 blob " {
-      RefusalTargetNotTrackedRegular
+      Present { value: RefusalTargetNotTrackedRegular }
     } else if flags.entries_nul != "H " + path + "\u{0}" {
-      RefusalTargetIndexFlagged
+      Present { value: RefusalTargetIndexFlagged }
     } else if roster_status_names_path(entries_nul: status.entries_nul, path: path) {
-      RefusalTargetModified
+      Present { value: RefusalTargetModified }
     } else if roster_status_names_ancestor(entries_nul: status.entries_nul, path: path) {
-      RefusalTargetAncestorChanged
+      Present { value: RefusalTargetAncestorChanged }
     } else {
-      RefusalNone
+      Absent
     }
   }
 }
@@ -410,8 +408,8 @@ fn roster_apply_edit(held: RosterHeldLock, path: String, before: String, outcome
     roster_refuse_row(path: path, reason: RefusalLockNotHeld)
   } else {
     match roster_target_refusal(root: held.root, path: path) {
-      RefusalNone => roster_apply_admitted_edit(held: held, path: path, before: before, outcome: outcome)
-      refusal => roster_refuse_row(path: path, reason: refusal)
+      Absent => roster_apply_admitted_edit(held: held, path: path, before: before, outcome: outcome)
+      Present { value: refusal } => roster_refuse_row(path: path, reason: refusal)
     }
   }
 }
