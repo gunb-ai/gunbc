@@ -52,7 +52,25 @@ import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIng
 // is handed, or a field a step reads MUST move it, because the stale-subject case is exactly the case
 // where those moved.
 
-// THE NAME, one place, so the emitter, the refusal, the admission consumer and the witness cannot drift
+// THE CONSUMER OF THIS VALUE, named rather than implied (DESIGN §3c: a value with no consumer is a
+// value that will be deleted, or worse, kept and disagreed with). It is read in exactly three places,
+// and each is a DIFFERENT reading, which is the whole point:
+//   1. THE EMITTED WORKFLOW, .github/workflows/witnesses.yml, carries the value as the workflow-level
+//      `env: GUNBC_COMPILER_GATE_CONTRACT_STAMP:` LITERAL, written by
+//      gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp_env_entry. That is the RUNNING
+//      side -- what the instruction in force promised.
+//   2. THE SAME FILE AT THE CHECKED-OUT REVISION, read by the guard step this module emits
+//      (compiler_gate_contract_stamp_guard_script -> compiler_gate_contract_stamp_read_from), one parse
+//      of .github/workflows/witnesses.yml out of the tree the lane actually built. That is the TREE side
+//      -- what the subject's own revision declared. The comparison IS the guard; nothing else consumes
+//      the pair, so the value cannot become a decoration someone disagrees with.
+//   3. THE WITNESS test.claim.compiler_gate_contract_stamp_witness, which binds both sides: the emitted
+//      literal against this derivation, the refusal text against these strings, and the step's POSITION
+//      against the emitted job.
+// There is deliberately NO fourth reader: not the epoch, not the heal gate, not any admission walk. A
+// second authority reading the same name would be the drift this value exists to prevent.
+
+// THE NAME, one place, so the emitter, the refusal, the consumer above and the witness cannot drift
 // apart. Deliberately a sibling of, and not equal to, required_ci_contract_epoch_env_key: the two hash
 // different preimages and answer different questions, and a shared key would let one silently stand in
 // for the other.
