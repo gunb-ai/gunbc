@@ -454,6 +454,16 @@ fn native_emission_controls_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-emission-controls" } }
 }
 
+// The allocation reading of the state-threading specimen: a NativeClaimDriver program that `uses`
+// AllocationCounter, so its emitted binary alone carries the counting allocator.
+fn native_allocation_observation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-allocation-observation" } }
+}
+
+fn native_allocation_observation_entry() -> String {
+  "dag/gunbc/instruments/native_allocation_observation.dag"
+}
+
 fn native_emission_controls_entry() -> String {
   "dag/gunbc/instruments/native_emission_controls.dag"
 }
@@ -703,6 +713,22 @@ fn regen_round_cost_binding() -> TargetBinding {
   TargetBinding { target: regen_round_cost_label() producer: RegenRoundCostProducer {} }
 }
 
+fn roster_import_sweep_controls_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "roster-import-sweep-controls" } }
+}
+
+fn roster_import_sweep_controls_entry() -> String {
+  "src/v2/workflow/roster_import_sweep.dag"
+}
+
+fn roster_import_sweep_controls_function() -> String {
+  "roster_import_sweep_controls_wire"
+}
+
+fn roster_import_sweep_controls_binding() -> TargetBinding {
+  TargetBinding { target: roster_import_sweep_controls_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: roster_import_sweep_controls_function() } }
+}
+
 fn compute_run_unit_cold_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold" } }
 }
@@ -813,6 +839,10 @@ fn v2_native_cli_binding() -> TargetBinding {
 
 fn native_app_attest_binding() -> TargetBinding {
   TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn native_allocation_observation_binding() -> TargetBinding {
+  TargetBinding { target: native_allocation_observation_label() producer: NativeClaimProgramProducer { entry: native_allocation_observation_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn native_xl2_rehearsal_binding() -> TargetBinding {
@@ -1026,12 +1056,12 @@ fn instrument_targets() -> List<Label> {
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), brand_mark_assets_label()
+    native_emission_controls_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), brand_mark_assets_label()
   ]
 }
 
@@ -1048,12 +1078,12 @@ fn instrument_bindings() -> List<TargetBinding> {
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), brand_mark_assets_binding()
+    native_emission_controls_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), brand_mark_assets_binding()
   ]
 }
 

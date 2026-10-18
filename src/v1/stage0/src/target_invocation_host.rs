@@ -488,6 +488,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-allocation-observation"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_allocation_observation.dag",
+            },
+        ),
+        (
             instrument_label("native-xl2-rehearsal"),
             TargetProducer::NativeClaimProgram {
                 entry: "src/v2/workflow/namespace_xl2_rehearsal_native.dag",
@@ -574,6 +580,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("regen-round-cost"),
             TargetProducer::RegenRoundCost,
+        ),
+        (
+            instrument_label("roster-import-sweep-controls"),
+            TargetProducer::CliWireProgram {
+                entry: "src/v2/workflow/roster_import_sweep.dag",
+                function: "roster_import_sweep_controls_wire",
+            },
         ),
         (
             instrument_label("compute-run-unit-cold"),

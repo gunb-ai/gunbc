@@ -1,0 +1,202 @@
+module gunbc.fleet.fleet_converge_plan_revision
+
+import std.types { String, Bool, NonEmptyStr, FilePath, GitRef, CommitSha }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git
+import extdeps.github.actions_environment { github_output_variable_name }
+import extdeps.github.workflow_runs
+import extdeps.transports.rest { RestAnswered, RestRefused }
+import gunbc.repository { gunbc_repository }
+import gunbc.actions_run_binding {
+  actions_variable_trimmed,
+  observe_actions_run_binding,
+  ActionsRunBinding,
+  ActionsRunBindingObservation,
+  ActionsRunBound,
+  ActionsRunUnbound,
+}
+import gunbc.running_release_identity { release_revision_text_valid }
+import gunbc.auth.heal_publisher_provision { rest_refusal_text }
+import gunbc.fleet.fleet_converge_receipt {
+  FleetConvergePlanReceipt,
+  FleetConvergePlanReceiptDecoded,
+  FleetConvergePlanReceiptUnreadable,
+  read_fleet_converge_plan_receipt_at,
+  fleet_converge_plan_receipt_path,
+  fleet_converge_plan_run_id_env_name,
+}
+
+// THE REVISION AN APPLY OR DASHBOARD DEPLOY EXECUTES AT IS THE REVISION THE PLAN RAN AT. Plan and
+// apply are separate dispatches that main may outlive, so apply is dispatched from main (sign-in
+// passes) but checks out and builds at R, the plan run's revision. R is established by GitHub, not
+// by the artifact: the plan receipt's run.run_revision is a file a swapped artifact could rewrite,
+// so it is admitted only where it equals the head_sha GitHub reports for the plan run the dispatch
+// input names, that run is on the default branch, and it is this repository. The checkout ref is
+// the API's head_sha; the receipt is the cross-check, never the source.
+type PlanRevisionAdmission
+  = PlanRevisionAdmitted { revision: String }
+  | PlanRevisionMalformed { source: String, value: String }
+  | PlanRevisionReceiptDisagrees { receipt: String, github: String }
+  | PlanRunNotOnDefaultBranch { observed: String, expected: String }
+  | PlanRunRepositoryMismatch { receipt: String, expected: String }
+  | PlanRunUnreadable { cause: String }
+
+fn admit_plan_revision(
+  receipt_repository: String,
+  receipt_revision: String,
+  github_head_sha: String,
+  github_head_branch: String?,
+  repository: String,
+  default_branch: String,
+) -> PlanRevisionAdmission {
+  if !release_revision_text_valid(text: receipt_revision) {
+    PlanRevisionMalformed { source: "plan receipt run.run_revision", value: receipt_revision }
+  } else if !release_revision_text_valid(text: github_head_sha) {
+    PlanRevisionMalformed { source: "GitHub plan run head_sha", value: github_head_sha }
+  } else if receipt_repository != repository {
+    PlanRunRepositoryMismatch { receipt: receipt_repository, expected: repository }
+  } else if receipt_revision != github_head_sha {
+    PlanRevisionReceiptDisagrees { receipt: receipt_revision, github: github_head_sha }
+  } else {
+    match github_head_branch {
+      Absent => PlanRunNotOnDefaultBranch { observed: "(none)", expected: default_branch }
+      Present { value: branch } =>
+        if branch == default_branch {
+          PlanRevisionAdmitted { revision: github_head_sha }
+        } else {
+          PlanRunNotOnDefaultBranch { observed: branch, expected: default_branch }
+        }
+    }
+  }
+}
+
+fn plan_revision_admission_text(a: PlanRevisionAdmission) -> String {
+  match a {
+    PlanRevisionAdmitted { revision: r } => join(["plan revision admitted: ", r], "")
+    PlanRevisionMalformed { source: s, value: v } => join(["PlanRevisionMalformed — ", s, " is not a 40-digit lower-hex revision: ", v], "")
+    PlanRevisionReceiptDisagrees { receipt: r, github: g } => join(["PlanRevisionReceiptDisagrees — the plan receipt names ", r, " but GitHub reports the plan run at ", g], "")
+    PlanRunNotOnDefaultBranch { observed: o, expected: e } => join(["PlanRunNotOnDefaultBranch — the plan run is on ", o, ", not ", e], "")
+    PlanRunRepositoryMismatch { receipt: r, expected: e } => join(["PlanRunRepositoryMismatch — the plan receipt is for ", r, ", not ", e], "")
+    PlanRunUnreadable { cause: c } => join(["PlanRunUnreadable — ", c], "")
+  }
+}
+
+// THE CHECKOUT MUST BE WHAT WAS ADMITTED. HEAD is read from git, an origin independent of the
+// resolver, so a checkout that landed elsewhere (a moved ref, a wrong fetch) refuses rather than
+// building a revision nobody admitted.
+type CheckoutHeadAdmission
+  = CheckoutHeadAdmitted { revision: String }
+  | CheckoutHeadMismatch { expected: String, observed: String }
+  | CheckoutHeadUnreadable { cause: String }
+
+fn admit_checkout_head(expected: String, observed: String) -> CheckoutHeadAdmission {
+  if observed == expected {
+    CheckoutHeadAdmitted { revision: expected }
+  } else {
+    CheckoutHeadMismatch { expected: expected, observed: observed }
+  }
+}
+
+fn checkout_head_admission_text(a: CheckoutHeadAdmission) -> String {
+  match a {
+    CheckoutHeadAdmitted { revision: r } => join(["checkout at ", r], "")
+    CheckoutHeadMismatch { expected: e, observed: o } => join(["CheckoutHeadMismatch — the plan ran at ", e, " but the checkout is at ", o], "")
+    CheckoutHeadUnreadable { cause: c } => join(["CheckoutHeadUnreadable — ", c], "")
+  }
+}
+
+fn observe_checkout_head() -> CheckoutHeadAdmission {
+  let head = git.Core.RevParseInRepo(repo: "." as FilePath, target: "HEAD" as GitRef)
+  if head.exit_code != 0 {
+    CheckoutHeadUnreadable { cause: head.stderr }
+  } else {
+    CheckoutHeadAdmitted { revision: trim(s: head.revision) }
+  }
+}
+
+fn admit_checkout_at(expected: String) -> CheckoutHeadAdmission {
+  match observe_checkout_head() {
+    CheckoutHeadAdmitted { revision: observed } => admit_checkout_head(expected: expected, observed: observed)
+    CheckoutHeadMismatch { expected: e, observed: o } => CheckoutHeadMismatch { expected: e, observed: o }
+    CheckoutHeadUnreadable { cause: c } => CheckoutHeadUnreadable { cause: c }
+  }
+}
+
+fn resolve_plan_revision_admission() -> PlanRevisionAdmission {
+  match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+    FleetConvergePlanReceiptUnreadable { reason: r } => PlanRunUnreadable { cause: r }
+    FleetConvergePlanReceiptDecoded { receipt: receipt } => {
+      let run_id = actions_variable_trimmed(name: fleet_converge_plan_run_id_env_name as NonEmptyStr)
+      match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: run_id) {
+        RestRefused { refusal } => PlanRunUnreadable { cause: join(["plan run ", run_id, " could not be read: ", rest_refusal_text(o: refusal)], "") }
+        RestAnswered { answer: got } => admit_plan_revision(
+          receipt_repository: receipt.run.repository,
+          receipt_revision: receipt.run.run_revision,
+          github_head_sha: got.run.head_sha,
+          github_head_branch: got.run.head_branch,
+          repository: gunbc_repository.full_name,
+          default_branch: gunbc_repository.default_branch,
+        )
+      }
+    }
+  }
+}
+
+// THE CONSUMER: the `plan-revision` job of fleet-converge, in apply and dashboard_deploy modes. It
+// writes `revision=<sha>` to GITHUB_OUTPUT, which the build, apply and dashboard jobs pass to
+// actions/checkout as `ref`. Run as
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function resolve_plan_revision`
+fn resolve_plan_revision() -> ProcessExit {
+  match resolve_plan_revision_admission() {
+    PlanRevisionAdmitted { revision: r } => {
+      let path = actions_variable_trimmed(name: github_output_variable_name as NonEmptyStr)
+      if path == "" {
+        exit_failure(reason: "fleet_converge_plan_revision: GITHUB_OUTPUT is unset; this entry runs only in a fleet-converge job")
+      } else {
+        let w = Filesystem.Write(path: path, content: join(["revision=", r, "\n"], ""))
+        if w.success { ExitSuccess } else { exit_failure(reason: join(["fleet_converge_plan_revision: could not write the output: ", w.error], "")) }
+      }
+    }
+    refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", plan_revision_admission_text(a: refused)], ""))
+  }
+}
+
+// THE RUN BINDING OF A JOB THAT EXECUTES AT THE PLAN'S REVISION. GITHUB_SHA is the dispatched
+// commit, which is main's head and not the tree these jobs check out, so a binding that carried it
+// would record a revision nobody built. The binding carries the checked-out HEAD instead, read from
+// git; every downstream comparison (admit_apply_plan_binding against the plan receipt, the typed
+// expected_revision cross-check) is then a check of the plan's revision against the tree that runs.
+// Consumers: fleet_converge_plan_cli fleet_converge_apply_wet and live_deploy.apply's dashboard
+// transaction.
+fn observe_actions_run_binding_at_checkout() -> ActionsRunBindingObservation {
+  match observe_actions_run_binding() {
+    ActionsRunUnbound { variable: v, detail: d } => ActionsRunUnbound { variable: v, detail: d }
+    ActionsRunBound { binding: b } => match observe_checkout_head() {
+      CheckoutHeadAdmitted { revision: head } =>
+        if release_revision_text_valid(text: head) {
+          ActionsRunBound {
+            binding: ActionsRunBinding { repository: b.repository, workflow_ref: b.workflow_ref, run_id: b.run_id, run_revision: b.run_revision, execution_revision: head },
+          }
+        } else {
+          ActionsRunUnbound { variable: "HEAD", detail: join(["not a 40-digit lower-hex revision: ", head], "") }
+        }
+      refused => ActionsRunUnbound { variable: "HEAD", detail: checkout_head_admission_text(a: refused) }
+    }
+  }
+}
+
+// THE SECOND CONSUMER: apply and dashboard_deploy run this before executing, so the tree they run
+// is the tree the plan receipt names. The receipt was tied to GitHub by the plan-revision job that
+// chose this checkout; this step is the independent readback of what the checkout actually is.
+fn verify_checkout_at_plan_revision() -> ProcessExit {
+  match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+    FleetConvergePlanReceiptUnreadable { reason: r } => exit_failure(reason: join(["fleet_converge_plan_revision: ", plan_revision_admission_text(a: PlanRunUnreadable { cause: r })], ""))
+    FleetConvergePlanReceiptDecoded { receipt: receipt } => match admit_checkout_at(expected: receipt.run.run_revision) {
+      CheckoutHeadAdmitted { revision: _ } => ExitSuccess
+      refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", checkout_head_admission_text(a: refused)], ""))
+    }
+  }
+}

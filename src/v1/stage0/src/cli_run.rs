@@ -61,6 +61,7 @@ use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGrap
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
+use crate::v1_compiler_infer_types::node_declaration_identity;
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
 use crate::v1_compiler_resolve;
@@ -16878,8 +16879,7 @@ fn refers_to_std_types_nonempty_str(
     if type_nodes_name_the_same_declaration(&resolved, decl) {
         return true;
     }
-    let decl_id =
-        v1_compiler_infer::node_declaration_identity(decl.clone(), ctx.source_indices.clone());
+    let decl_id = node_declaration_identity(decl.clone(), ctx.source_indices.clone());
     let ref_id = v1_compiler_infer::type_reference_identity(type_expr, ctx.source_indices.clone());
     !decl_id.is_empty() && ref_id == decl_id
 }

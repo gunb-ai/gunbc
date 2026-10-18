@@ -1,17 +1,22 @@
 module gunbc.site.gunb_ai_layout
 
 import std.types { Bool, Int, List, String }
+import std.integer { PositiveInt }
 import std.algebra { string_contains }
 import std.markup { Fragment, Element, Attribute, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import extdeps.languages.css.values { CssLength, Px, css_length_wire }
+import extdeps.languages.css.values { CssLength, Px, css_length_wire, CssVarRef }
+import extdeps.languages.css.grid_values {
+  CssTrackList, TrackList, RepeatCount, RepeatAutoFill,
+  TrackBreadth, TrackMinMax, FlexTracks, InflexLength, InflexVar, one_track, css_track_list_wire,
+}
 import extdeps.languages.css.properties {
   Background, Border, BorderBottom, Color, Display, FontFamily, FontSize, Gap,
   GridTemplateColumns, LineHeight, MarginBottom, MarginLeft, MarginRight, MarginTop,
-  MaxWidth, Padding, RawProperty, CustomProperty,
+  MaxWidth, Padding, CustomProperty,
 }
-import extdeps.languages.css.selectors { SelectorSubject, ElementSelector, ClassSelector, PseudoSuffix }
-import extdeps.languages.css.media_queries { MediaCondition, MediaMaxWidth }
+import extdeps.languages.css.selectors { SelectorSubject, ElementSelector, ClassSelector, root_selector }
+import extdeps.languages.css.media_queries { MediaCondition, MediaMaxWidth, prefers_light }
 import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, decl, serialize_rules }
 import gunbc.design.scale {
   ScaleToken, scale_var, scale_border, scale_decl, border_1, named_length_token,
@@ -49,13 +54,26 @@ import gunbc.design.gunb_ai_hues {
 
 // ------------------------------------------------------------------ axis 1: the grid
 
+// FixedColumns carries std.integer.PositiveInt, not Int: §7.1 of CSS Grid L2 types repeat()'s
+// count as <integer [1,∞]>, and this axis is where that number enters the system — typing it
+// Int here and PositiveInt only at the grammar would leave the axis able to carry a zero the
+// grammar cannot render. The upper bound stays a policy check in grid_choice_admissible,
+// because "at most column_count_max columns" is a design decision of this site, not a spec
+// rule; the spec bound is the type's job, the policy bound is the admissibility check's.
 type GridChoice
   = FlowStack
-  | FixedColumns { count: Int }
+  | FixedColumns { count: PositiveInt }
   | AutoFillTracks { min: ScaleToken }
 
 data grid_flow: GridChoice = FlowStack
 data grid_fixed_3: GridChoice = FixedColumns { count: 3 }
+
+// Policy-inadmissible on purpose: 5 columns exceeds column_count_max. Named as a row rather
+// than computed (column_count_max + 1 at each call site) so the witness and the refusal path
+// share one source for the number, and so the value stays a literal — the point of PositiveInt
+// at the axis is that a literal is checked (std/page_fold.dag measures this), an arithmetic
+// expression routed through a variable is not.
+data grid_over_policy_columns: GridChoice = FixedColumns { count: 5 }
 data grid_autofill: GridChoice = AutoFillTracks { min: card_min }
 
 // The floor an auto-filled card track may not fall below. named_length_token: the
@@ -63,22 +81,37 @@ data grid_autofill: GridChoice = AutoFillTracks { min: card_min }
 data card_min: ScaleToken = named_length_token(name: "card-min", px: 200)
 data column_count_max: Int = 4
 
-// Track lists are CssDecl VALUES, the same shape gunbc.roadmap writes
-// ("var(--space-16) minmax(0, 1fr)"): material's contract is a typed property beside a
-// string value, and extdeps.languages.css.values models no minmax()/repeat()
-// production. SCAFFOLD with a dissolution trigger — each list is written ONCE here and
-// read by every rule; when values.dag grows the <track-list> grammar these become
-// typed and these functions delete.
-fn tracks_fixed(count: Int) -> String {
-  join(["repeat(", to_string(count), ", minmax(0, 1fr))"], "")
+// The card grid's track list, as TYPED values from extdeps.languages.css.grid_values.
+// These were hand-joined strings until the grammar existed; the grammar's arrival is the
+// dissolution trigger this comment named, so the strings are gone rather than kept beside
+// the typed route (§6: no second path beside a modelled route). One fact, one home: the
+// shape of minmax()/repeat() now lives only in the extdeps wire, and this layer states
+// which tracks it wants.
+// The zero in minmax(0, 1fr) is a CssLength, not a literal "0": the wire renders a zero
+// length unitless per §6.2 css-values-4, which is what the pages already carried.
+fn tracks_fixed(count: PositiveInt) -> String {
+  css_track_list_wire(l: RepeatCount {
+    count: count,
+    tracks: one_track(t: TrackMinMax {
+      min: InflexLength { length: CssLength { n: 0, unit: Px } },
+      max: FlexTracks { factor: 1 },
+    }),
+  })
 }
 
 fn tracks_autofill(min: ScaleToken) -> String {
-  join(["repeat(auto-fill, minmax(var(--", min.name, "), 1fr))"], "")
+  css_track_list_wire(l: RepeatAutoFill {
+    tracks: one_track(t: TrackMinMax {
+      min: InflexVar { reference: CssVarRef { name: min.name } },
+      max: FlexTracks { factor: 1 },
+    }),
+  })
 }
 
 fn tracks_single() -> String {
-  "1fr"
+  css_track_list_wire(l: TrackList {
+    tracks: one_track(t: TrackBreadth { breadth: FlexTracks { factor: 1 } })
+  })
 }
 
 fn grid_tracks(choice: GridChoice) -> String {
@@ -94,6 +127,11 @@ fn grid_tracks(choice: GridChoice) -> String {
 fn grid_choice_admissible(choice: GridChoice) -> Bool {
   match choice {
     FlowStack => true
+    // The upper bound is site policy. The lower bound is belt-and-braces for the ONE gap the
+    // type leaves: std/page_fold.dag measures that PositiveInt refuses a bad LITERAL but admits
+    // an Int-typed reference, so a caller routing a computed Int in is not stopped by the type.
+    // It is not the primary wall — the axis type is — and it is kept precisely because the
+    // measurement says the wall is partial.
     FixedColumns { count: c } => c >= 1 && c <= column_count_max
     AutoFillTracks { min: m } => token_name_is_wellformed(name: m.name)
   }
@@ -225,23 +263,24 @@ fn day_row_matches_night(role: String) -> Bool {
   fold(token_swatches, init: false, f: (acc, t) => acc || t.role == role)
 }
 
-// The scope class for the light variant. THE SCHEME GAP, stated not hidden:
-// extdeps.languages.css.media_queries' MediaCondition has NO prefers-color-scheme arm
-// (its bounded grain is pointer / max-width / prefers-reduced-motion, each cited to its
-// spec anchor), so this layer cannot emit an OS-following light block. The only code
-// that emits prefers-color-scheme today is gunbc.design.theme.theme_scoped_blocks, as
-// raw joined text beside the bounded grammar. The light option is therefore scoped to
-// a typed CLASS selector (modelled, checkable), and the OS-following wiring is a named
-// gap with a dissolution trigger: when MediaCondition grows a prefers-color-scheme arm
-// (Media Queries Level 5 already defines it), the class scope is replaced by MediaRule
-// and this comment, the ballot wording, and the witness's scope clause change together.
-data day_scope_class: String = "gunb-day"
-
-// Custom properties REBIND BY NAME inside a scope: the day block must define the SAME
-// names the rules read (role_var(t: …) emits var(--gunb-text) etc.), so descendants of
-// body.gunb-day inherit the light values. An earlier draft defined --gunb-text-DAY
-// names here — nothing read them, so the page stayed dark: a silent no-op the witness
-// below now refuses.
+// THE SCHEME GAP IS CLOSED. This scope used to be a class (data day_scope_class = "gunb-day")
+// because extdeps.languages.css.media_queries had no prefers-color-scheme arm; the arm is
+// modelled now (MediaPrefersColorScheme, MQ5 §12.5, in the upstream module), so the light
+// variant is an OS-following @media block over the SAME :root selector the tokens layer
+// declares, and there is no class to add to any element. That dissolves three things at once
+// and all three changed together, as the scaffold comment required: this comment, the ballot
+// wording in gunbc.site.gunb_ai_layout_review, and the witness's scope clause.
+//
+// CASCADE POSITION IS LOAD-BEARING AND IS THEREFORE TESTED, NOT ASSUMED: :root inside the
+// media block has the same specificity as the unconditional :root (0,1,0), so the light block
+// wins only because it comes LATER in the sheet. scheme_rules returns these last and
+// ballot_css puts the unconditional :root first; the witness asserts that order, so moving the
+// block above the unconditional :root — which would silently render dark forever — goes red.
+//
+// Custom properties REBIND BY NAME inside a scope: the day block must define the SAME names
+// the rules read (role_var(t: …) emits var(--gunb-text) etc.). An earlier draft defined
+// --gunb-text-DAY names here — nothing read them, so the page stayed dark: a silent no-op the
+// witness below now refuses.
 fn day_bindings() -> List<CssDecl> {
   map(day_bindings_rows, b =>
     decl(prop: CustomProperty { name: b.night.role }, value: swatch_paint(sw: b.day)))
@@ -283,11 +322,7 @@ fn shell_rules(grid: GridChoice) -> List<BuildRule> {
     StaticRule { selector: ElementSelector { tag: "footer" }, decls: concat(concat(concat([
       decl(prop: Color, value: role_var(t: token_text_faint)),
       decl(prop: Padding, value: scale_var(t: gap_lg)),
-      // border-top is not in extdeps.languages.css.properties' enum (it carries
-      // Border/BorderBottom/BorderLeft only). RawProperty is the repo's own escape
-      // hatch (roadmap_surface_style writes overflow-x the same way), so the property
-      // NAME stays a value-shaped string here rather than the rule becoming a string.
-      decl(prop: RawProperty { name: "border-top" }, value: scale_border(w: border_1, color_var: role_var(t: token_border))),
+      decl(prop: BorderTop, value: scale_border(w: border_1, color_var: role_var(t: token_border))),
     ], center_margin()), margin_top_bottom(top: scale_var(t: gap_xl), bottom: zero_wire()))) },
     StaticRule { selector: ElementSelector { tag: "a" }, decls: [
       decl(prop: Color, value: role_var(t: token_accent)),
@@ -337,9 +372,21 @@ fn response_rule(point: ResponsePoint) -> BuildRule {
 
 fn scheme_rules(scheme: SchemeChoice) -> List<BuildRule> {
   match scheme {
+    // Dark is the UNCONDITIONAL state: the tokens layer's :root already carries the night
+    // values, so "dark only" is the absence of an override, not an extra block. Nothing is
+    // emitted, and nothing is invented to look like work here (§2).
     DarkOnly => []
-    LightAlternative => [StaticRule {
-      selector: ClassSelector { name: day_scope_class },
+    // The override is emitted on extdeps.languages.css.selectors.root_selector — literally
+    // the SAME row gunbc.site.gunb_ai_tokens emits its unconditional custom properties on,
+    // not a second hand-typed PseudoSuffix that happens to match. Same selector means the
+    // same specificity, so this block wins by ORDER and nothing else; if the two ever name
+    // different subjects, the override silently becomes unwinnable, so the identity lives in
+    // the type rather than in a comment. The condition is the upstream modelled row
+    // prefers_light (MQ5 §12.5), not a string. The decls are the SAME day_bindings() rows the
+    // class-scoped draft used, so closing the scope gap changed no colour.
+    LightAlternative => [MediaRule {
+      condition: prefers_light,
+      selector: root_selector,
       decls: day_bindings(),
     }]
   }
@@ -430,7 +477,7 @@ fn layout_owned_tokens() -> List<ScaleToken> {
 fn ballot_css(req: BallotRequest) -> String {
   serialize_rules(rules: concat(
     [StaticRule {
-      selector: PseudoSuffix { base: "", pseudo: "root" },
+      selector: root_selector,
       decls: concat(token_root_decls(), layout_owned_decls())
     }],
     layout_rules(grid: req.grid, breakpoints: req.breakpoints, scheme: req.scheme)
@@ -465,7 +512,10 @@ fn ballot_page(req: BallotRequest) -> Fragment {
       el("title", [ txt(join(["gunb.ai layout — ", req.label], "")) ]),
       el("style", [ txt(ballot_css(req: req)) ]),
     ]),
-    Element { tag: "body", attributes: ballot_body_attrs(scheme: req.scheme), children: [
+    // No scheme attribute on either choice: the light variant is an @media block, so there is
+    // no class to attach. A leftover body class would be a second, dead scope — the layout
+    // witness asserts no class="gunb-day" survives anywhere in a rendered ballot page.
+    Element { tag: "body", attributes: [], children: [
       el("header", [
         el_class("div", "tag", [ txt(join(["axis: ", req.axis], "")) ]),
         el_class("div", "h1", [ txt(req.label) ]),
@@ -490,13 +540,6 @@ fn ballot_page(req: BallotRequest) -> Fragment {
       el("footer", [ txt("gunbc · gunbc.site.gunb_ai_layout · generated, not hand-maintained") ]),
     ] },
   ] }
-}
-
-fn ballot_body_attrs(scheme: SchemeChoice) -> List<Attribute> {
-  match scheme {
-    DarkOnly => []
-    LightAlternative => [ attr(name: "class", value: day_scope_class) ]
-  }
 }
 
 fn ballot_card(title: String, body: String) -> Fragment {
