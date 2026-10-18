@@ -3,7 +3,7 @@ module v1.tests.claim.item_kind_dissolves_shape_predicates_control_test
 import std.types { Bool }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v1.std.core { Unmarked,
-  Node, NoExprData, NoConnective, Conj, Required, no_span,
+  Node, NoExprData, NoConnective, Conj, no_span,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemResource, NotAModuleItem,
 }
 import v1.compiler.emit_core_support { is_leaf_type_item, is_type_def_item }
@@ -36,7 +36,7 @@ fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Node {
   Node {
     occurrence_identity: OccurrenceSynthetic, name: "ZqxLeafShaped", ident: none,
     span: no_span(), ident_span: none, children: [], connective: NoConnective,
-    params: [], inferred: none, return_cardinality: Required, uses: [],
+    params: [], inferred: none, uses: [],
     body: none, transport: none, properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none,
     module_item_kind: kind, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
@@ -47,7 +47,7 @@ fn structured_item(kind: ParsedModuleItemKind) -> Node {
   Node {
     occurrence_identity: OccurrenceSynthetic, name: "ZqxStructured", ident: none,
     span: no_span(), ident_span: none, children: [], connective: Conj,
-    params: [], inferred: none, return_cardinality: Required, uses: [],
+    params: [], inferred: none, uses: [],
     body: none, transport: none, properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none,
     module_item_kind: kind, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
