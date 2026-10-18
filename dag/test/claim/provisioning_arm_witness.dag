@@ -84,12 +84,12 @@ fn fixture_seed() -> AltraAutoinstallSeedBinding? {
   }
 }
 
-// Routes are REAL catalog rows (authority and obligation are S0's, not mine); a missing row is an
+// Routes are REAL catalog rows (authority is S0's, not mine); a missing row is an
 // Unobserved standing, never an improvised route.
 fn catalog_ipmi_route() -> FirmwareNetworkBootPreparationRoute? {
   firmware_network_boot_preparation_routes
     |> filter(r => match r {
-      IpmiOneShotOverride { channel: _, authority: _, obligation: _ } => true
+      IpmiOneShotOverride { channel: _, authority: _ } => true
       _ => false
     })
     |> first
@@ -98,7 +98,7 @@ fn catalog_ipmi_route() -> FirmwareNetworkBootPreparationRoute? {
 fn catalog_redfish_route() -> FirmwareNetworkBootPreparationRoute? {
   firmware_network_boot_preparation_routes
     |> filter(r => match r {
-      RedfishOneShotOverride { service_root: _, authority: _, obligation: _ } => true
+      RedfishOneShotOverride { service_root: _, authority: _ } => true
       _ => false
     })
     |> first
