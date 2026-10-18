@@ -1,0 +1,58 @@
+module test.probe.lost_boot_population_probe
+
+// THIS MODULE MUST NOT RESOLVE. Each function below is a route by which a caller outside the
+// lost-boot sweep modules would otherwise (a) call the sweep's internals directly, (b) fabricate
+// the sealed current population -- a derived-EMPTY one in particular, which would read every
+// current-boot runner as a stranger -- (c) point one host's population at another host's listing,
+// or (d) promote a name read off a listing into a launch- or mint-capable slot. The witness
+// test.claim.runner.lost_boot_population_probe_witness hands this source to the compiler and
+// requires each refusal at its subject by name. dag/test/probe/ sits under the whole-tree
+// strict-resolve exclusion, so this source reaches the compiler only through that witness.
+
+import std.types { List, NonEmptyStr }
+import extdeps.transports.rest { RestResult }
+import extdeps.github.effect { GitHubOrganizationRef }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
+import gunbc.auth.github_credential { GitHubCredentialAuthority }
+import gunbc.host.host_control_route { ControlledHost, HostControlStanding }
+import gunbc.runner.runner_slot_allocation { RunnerWidthResolution }
+import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution }
+import gunbc.runner.runner_host_unit_slot {
+  CurrentServicePopulation, CurrentServicePopulationStanding, ServiceBootId, HostUnitSlotStanding, RecoveredServiceSlot, ServiceSlotName,
+  current_service_population_over, host_unit_slot_over,
+}
+import gunbc.runner.runner_jit_deregistration {
+  LostBootSweep, SweepClass, lost_boot_sweep, sweep_over, sweep_class,
+}
+
+// (a) THE SWEEP'S INTERNALS, CALLED FROM OUTSIDE. Each refuses at its callee.
+fn outside_sweep_class(organization: GitHubOrganizationRef, population: CurrentServicePopulation, authority: GitHubCredentialAuthority) -> SweepClass {
+  sweep_class(organization: organization, population: population, authority: authority, listed: "victim-runner")
+}
+
+fn outside_sweep_over(organization: GitHubOrganizationRef, population: CurrentServicePopulation, authority: GitHubCredentialAuthority, runners: List<OrganizationRunnerWire>) -> LostBootSweep {
+  sweep_over(organization: organization, population: population, authority: authority, runners: runners)
+}
+
+// (a2) THE SUPPLIED-WIDTH-AND-LABELS CONSTRUCTOR, CALLED FROM OUTSIDE: the only route to a population
+// over a width the offer did not derive.
+fn outside_supplied_population(host: HostControlStanding, width: RunnerWidthResolution, labels: RunnerRegistrationLabelsResolution, boot: ServiceBootId) -> CurrentServicePopulationStanding {
+  current_service_population_over(host: host, width: width, registration_labels: labels, boot: boot)
+}
+
+// (b) A FABRICATED DERIVED-EMPTY POPULATION. Refuses at CurrentServicePopulation.
+fn fabricated_empty_population(host: ControlledHost, boot: ServiceBootId) -> CurrentServicePopulation {
+  CurrentServicePopulation { host: host, boot: boot, units: [] }
+}
+
+// (c) A HOST-A POPULATION USED FOR HOST B: the sweep reads its host from the population and takes no
+// host argument, so there is nothing to disagree. Refuses at lost_boot_sweep.
+fn host_b_over_host_a_population(organization: GitHubOrganizationRef, host_b: HostControlStanding, population: CurrentServicePopulation, authority: GitHubCredentialAuthority, listing: RestResult<OrganizationRunnerListWire>) -> LostBootSweep {
+  lost_boot_sweep(organization: organization, host: host_b, population: population, authority: authority, listing: listing)
+}
+
+// (d) PROMOTING A RECOVERED NAME TO A SLOT. The slot purpose has no recovered arm, so a name read off a
+// listing cannot be handed to the slot fold that the mint and the launch read. Refuses at the arm.
+fn promote_recovered_to_slot(host: HostControlStanding, parsed: ServiceSlotName, labels: RunnerRegistrationLabelsResolution, workflow: NonEmptyStr) -> HostUnitSlotStanding {
+  host_unit_slot_over(host: host, purpose: RecoveredServiceSlot { name: parsed }, workflow: workflow, registration_labels: labels)
+}
