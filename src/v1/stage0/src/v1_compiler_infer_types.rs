@@ -2512,7 +2512,6 @@ pub enum TextJudgment {
 pub enum TextNotAskedReason {
     TextNotAskedInVariantFieldSummary,
     TextNotAskedForSyntheticWitnessNodes,
-    TextNotAskedForCallableComponentResidue,
 }
 
 pub fn peel_alias_rhs_once(n: Rc<Node>, text: Rc<TextJudgment>) -> Rc<Node> {
@@ -4110,5 +4109,3 @@ pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
 pub struct TextNotAskedInVariantFieldSummary;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TextNotAskedForSyntheticWitnessNodes;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct TextNotAskedForCallableComponentResidue;

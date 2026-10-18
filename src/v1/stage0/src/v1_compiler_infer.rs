@@ -252,9 +252,7 @@ pub use crate::v1_compiler_infer_sigs::{
     ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig,
 };
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
-use crate::v1_compiler_infer_types::TextNotAskedReason::{
-    TextNotAskedForCallableComponentResidue, TextNotAskedInVariantFieldSummary,
-};
+use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedInVariantFieldSummary;
 pub use crate::v1_compiler_infer_types::{
     alias_identity_in_judgment, bare_map_node, bare_set_node, callable_inferred,
     callable_return_type, child_type_node, collection_carrier_node, emit_map_has,
@@ -8790,6 +8788,7 @@ pub fn callable_signature_substitution(
     generic_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     acc: Rc<HashMap<String, Rc<Node>>>,
+    env: Rc<TypeEnv>,
 ) -> Rc<UnifyGenericsAcc> {
     {
         let f_params = callable_value_params(formal.clone(), source_indices.clone());
@@ -8822,6 +8821,7 @@ pub fn callable_signature_substitution(
                         generic_names.clone(),
                         source_indices.clone(),
                         st.subst.clone(),
+                        env.clone(),
                     );
                     Rc::new(UnifyGenericsAcc {
                         subst: step.subst.clone(),
@@ -8840,6 +8840,7 @@ pub fn callable_signature_substitution(
             generic_names.clone(),
             source_indices.clone(),
             after_params.subst.clone(),
+            env.clone(),
         );
         Rc::new(UnifyGenericsAcc {
             subst: ret.subst.clone(),
@@ -8854,6 +8855,7 @@ pub fn callable_leaf_substitution(
     generic_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     acc: Rc<HashMap<String, Rc<Node>>>,
+    env: Rc<TypeEnv>,
 ) -> Rc<UnifyGenericsAcc> {
     if ((formal_part.connective.clone() == Connective::Arrow)
         && (actual_part.connective.clone() == Connective::Arrow))
@@ -8864,6 +8866,7 @@ pub fn callable_leaf_substitution(
             generic_names.clone(),
             source_indices.clone(),
             acc.clone(),
+            env.clone(),
         )
     } else {
         unify_generics(
@@ -8872,9 +8875,7 @@ pub fn callable_leaf_substitution(
             generic_names.clone(),
             source_indices.clone(),
             acc.clone(),
-            Rc::new(TextJudgment::TextNotAsked {
-                reason: TextNotAskedReason::TextNotAskedForCallableComponentResidue,
-            }),
+            Rc::new(TextJudgment::TextJudgedIn { env: env.clone() }),
             "".to_string(),
         )
     }
@@ -9003,6 +9004,7 @@ pub fn callable_signature_mismatch(
                     generic_names.clone(),
                     source_indices.clone(),
                     v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                    env.clone(),
                 );
                 (((step.diagnostics.clone().len() as i64) > 0)
                     || callable_arrow_mismatch(
