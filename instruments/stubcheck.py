@@ -192,11 +192,30 @@ def main(patcher_path):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    # A seed that carries the ANCHOR verbatim, so the patcher runs exactly as it will on the real seed.
-    # The anchor must sit inside `loop { if .. {} else {` because it OPENS with `} else {` and its `break`
-    # needs an enclosing loop -- outside them rustc reports a syntax error that has nothing to do with the
-    # helper, and a red gate that fails for the wrong reason is worse than no gate.
-    anchor = mod.ANCHOR
+    # A seed that carries the patcher's own anchor verbatim, so the patcher runs exactly as it will on the
+    # real seed. The anchor must sit inside `loop { if .. {} else {` because its `break` needs an enclosing
+    # loop -- outside them rustc reports a syntax error unrelated to the helper, and a red gate that fails
+    # for the wrong reason is worse than no gate.
+    #
+    # Two anchor styles are supported because patchers differ in how they locate the arm:
+    #   mod.ANCHOR  -- a verbatim multi-line slice, indentation and all (patch_rebind_probe4/8). These are
+    #                  the patchers that DIED on the head with anchor:0 once the emitter re-flowed the arm,
+    #                  which is why the alternative exists.
+    #   mod.MARKER  -- a unique semantic marker (the one line that builds a diagnostic), with the insertion
+    #                  point found by walking back to the enclosing break. Indentation-independent.
+    # The old ANCHOR ends exactly at `diagnostics: Rc::new(vec![type_mismatch_error(` and the template below
+    # supplies the rest, so a MARKER patcher can be served by the same template: build the anchor from the
+    # marker. A MARKER patcher never reads ANCHOR, so nothing about the old path changes.
+    if hasattr(mod, "ANCHOR"):
+        anchor = mod.ANCHOR
+    elif hasattr(mod, "MARKER"):
+        anchor = ('} else {\n'
+                  '        break Rc::new(UnifyGenericsAcc {\n'
+                  '            subst: acc.clone(),\n'
+                  '            ' + mod.MARKER)
+    else:
+        print("STUBCHECK FAIL: patcher exposes neither ANCHOR nor MARKER")
+        return 1
     seed = PREAMBLE + """
 pub fn something_else() {}
 
@@ -208,9 +227,14 @@ fn _r(
     acc: Rc<HashMap<String, Rc<Node>>>,
     text: Rc<TextJudgment>,
     module_name: String,
+    generic_names: Rc<Vec<String>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
     let bind_name = type_node_label(formal.clone(), source_indices.clone());
-    let _ = &bound; let _ = &actual;
+    let _ = &bound; let _ = &actual; let _ = &text; let _ = &module_name;
+    // generic_names must be a REAL binding, not a discard: the widened predicate reads it, and a helper
+    // that silently ignored it would pass a gate it should fail.
+    let _gn: Vec<String> = (*generic_names.clone()).clone();
+    let _ = &_gn;
     let _verdict = loop {
         if false {
             eprintln!("x");
