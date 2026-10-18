@@ -679,7 +679,7 @@ test fn unobserved_bmc_family_cannot_reach_a_target_standing() -> Bool {
 
 // CATCHES: a seed being rendered for a role whose disks are not its own to erase.
 test fn a_runner_role_is_refused_a_seed() -> Bool {
-  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: RunnerBacked { host: "some-runner" as NonEmptyStr }, kernel_flavour: Noble2404GaLinux68, ) {
+  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: RunnerBacked, kernel_flavour: Noble2404GaLinux68, ) {
     TargetRefused { reason: _ } => true
     TargetAdmitted { standing: _ } => false
   }
@@ -847,7 +847,7 @@ test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
 }
 
 // CATCHES: the projection accepting an absent receipt, which would put a fabricated string into the
-// upstream record. The hostname is supplied by the caller's binding layer, never read from the seed.
+// upstream record.
 test fn the_projection_needs_a_receipt() -> Bool {
   match built_seed_and_binding() {
     Present { value: pair } =>
@@ -860,6 +860,56 @@ test fn the_projection_needs_a_receipt() -> Bool {
         Present { value: _ } => false
       }
     Absent => false
+  }
+}
+
+// THE HEADER'S CLAIM ABOUT THE CALLER-SUPPLIED LABEL, CHECKED. The hostname reaches the upstream identity
+// VERBATIM — not dropped, not defaulted to a constant — and two different labels produce two different
+// identities. Why this is the right test rather than a digest comparison: the label cannot move the seed
+// digest because `altra_autoinstall_seed_digest` takes ONLY a seed, so there is no signature in which to
+// write "mix the hostname into the digest" — the guarantee is the parameter list, and the digest's actual
+// content is pinned axis-by-axis by the digest witnesses below. What IS falsifiable here, and what this
+// catches, is the projection substituting a baked hostname (a per-unit special case wearing a config
+// field, which is precisely what the module forbids) or dropping the label.
+test fn the_projection_carries_the_supplied_label_verbatim_and_never_invents_one() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match
+        admin_password_hash_receipt(
+          crypt_digest: "$6$salt$0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F"
+            as NonEmptyStr,
+        )
+      {
+        Absent => false
+        Present { value: receipt } =>
+          match
+            project_autoinstall_identity(
+              seed: pair.seed,
+              binding_hostname: "unit-a-altra" as NonEmptyStr,
+              receipt: Present { value: receipt },
+            )
+          {
+            Absent => false
+            Present { value: first } =>
+              match
+                project_autoinstall_identity(
+                  seed: pair.seed,
+                  binding_hostname: "an-entirely-different-label" as NonEmptyStr,
+                  receipt: Present { value: receipt },
+                )
+              {
+                Absent => false
+                Present { value: second } =>
+                  eq_string(actual: first.hostname, expected: "unit-a-altra" as NonEmptyStr)
+                    && eq_string(
+                      actual: second.hostname,
+                      expected: "an-entirely-different-label" as NonEmptyStr,
+                    )
+                    && !eq_string(actual: first.hostname, expected: second.hostname),
+              }
+          }
+      }
+    Absent => false,
   }
 }
 
@@ -941,20 +991,27 @@ test fn two_units_sharing_a_seed_do_not_share_a_binding_identity() -> Bool {
 // target that blamed the disk would send the operator to the storage shelf for a firmware
 // standing that was never observed.
 test fn a_refused_target_binds_with_a_target_blocker_not_a_disk_blocker() -> Bool {
-  let unobserved_firmware = Refused {
-    reason: BmcFirmwareFamilyNotObserved,
-  } as BmcFirmwareFamilyStanding;
-  match bind_altra_autoinstall_seed(
-    seed: seeded_valid_seed(),
-    unit_key: witness_unit_key(),
-    attempt: 1,
-    standing: witness_unit_standing(),
-    firmware_standing: unobserved_firmware,
-  ) {
-    BindRefused { blocker: TargetNotAdmitted { cause: cause } } =>
-      eq_string(actual: diagnostic_for_target_refusal_cause(cause: cause), expected: "unit-key-absent"),
-    _ => false,
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed( seed: seed, target: target_refused_by_unbound_key(), unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+        ) {
+        BindRefused { blocker: TargetNotAdmitted { cause: UnitKeyUnbound { cause: BoardSerialAbsent } } } => true
+        _ => false
+      }
+    Absent => false
   }
+}
+
+// A target turned away for the same reason the witness above pins, built once so the refusal under test is
+// the door's own output rather than a hand-written record that could drift from it.
+fn target_refused_by_unbound_key() -> AltraAutoinstallTarget {
+  admit_altra_autoinstall_target(
+    unit_key: unit_key_unbound,
+    architecture: Aarch64,
+    bmc_firmware: bmc_family_observed,
+    role: AltraProvisioningTarget,
+    kernel_flavour: Noble2404GaLinux68,
+  )
 }
 
 test fn a_binding_cannot_exist_over_a_refused_disk_selection() -> Bool {

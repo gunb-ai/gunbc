@@ -33,12 +33,17 @@ module gunbc.provisioning.altra_autoinstall_seed
 // crossed, and the fix is an import, not a copy.
 //
 // NO MACHINE IS NAMED AND NO DELIVERY IS CHOSEN HERE, and both refusals are structural rather than
-// stylistic, each witnessed. There is no field anywhere in this module that can carry a host name: a
-// hostname in a seed is a per-unit special case wearing a config field, which is the class of
-// undeclared rule this whole program exists to retire. Delivery arrives as DATA (the S0 seam's decision,
-// or a caller's strategy record) and its only consequence here is the console stanza, which is DERIVED
-// from the strategy rather than stored beside it — so a strategy name cannot quietly change what the
-// seed promises.
+// stylistic, each witnessed. What is absent, precisely: NO FIELD CARRIES THE TARGET UNIT'S OWN LABEL, and
+// no decision in this module reads a string. A hostname in a seed is a per-unit special case wearing a
+// config field, which is the class of undeclared rule this whole program exists to retire; two units of
+// the same model must reach the same digest. Two host-bearing fields exist and are NOT that thing:
+// `ArchiveMirror::NamedMirror { host }` names the ARCHIVE we fetch from (shared by every unit, and its
+// absence is a refusal, not a default), and `project_autoinstall_identity`'s `binding_hostname` is a
+// PARAMETER the binding layer supplies into a field upstream's payload demands — this module never
+// invents it, never branches on it, and does not store it in the seed, so it cannot reach the digest.
+// Delivery arrives as DATA (the S0 seam's decision, or a caller's strategy record) and its only
+// consequence here is the console stanza, which is DERIVED from the strategy rather than stored beside it
+// — so a strategy name cannot quietly change what the seed promises.
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.measure { ByteSize, byte_size_count, measure_le }
@@ -88,6 +93,7 @@ import gunbc.machine_intake.subject {
   UnitKey,
   UnitKeyBound,
   UnitKeyRefusalCause,
+  UnitKeyRefused,
   UnitKeyStanding,
 }
 
@@ -142,8 +148,11 @@ type AltraAutoinstallTargetStanding sole_constructor {
 // transport, role, and hardware — never the label"). Only the Altra provisioning target may be rendered
 // a seed for. The other roles are named so a caller holding a runner or a serving host is refused rather
 // than quietly formatted: the failure this axis prevents is a seed aimed at a board that is holding
-// somebody else's data.
-type AltraAutoinstallTargetRole = AltraProvisioningTarget | RunnerBacked { host: NonEmptyStr }
+// somebody else's data. The refused role carries NO payload — the refusal reads participation alone, and
+// a host string here would be a field with no consumer whose only effect would be to make two refusals of
+// the same kind digest differently. A future requirement (serving hosts allowed to seed themselves) adds a
+// constructor here and a row in the door below; it does not add a host payload to a refusal.
+type AltraAutoinstallTargetRole = AltraProvisioningTarget | RunnerBacked
 
 // RENDERED OR REFUSED, WITH REFUSAL AS A VALUE. Refusal is an arm, not an error, because the program's
 // rule is "no route from absent evidence to a green claim": a seed that was never admitted is not an
@@ -193,7 +202,7 @@ fn admit_altra_autoinstall_target(
                       kernel_flavour: kernel_flavour,
                     },
                   }
-                RunnerBacked { host: _ } => TargetRefused {
+                RunnerBacked => TargetRefused {
                   reason: NotAnAltraProvisioningTarget { role: role },
                 }
               }
