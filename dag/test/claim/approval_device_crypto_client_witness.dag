@@ -91,6 +91,21 @@ test fn witness_every_verified_payload_round_trips_the_wire() -> Bool {
     })
 }
 
+// THE ORDER ANSWERS DECODE AS NoPayload: the carrier is matched, not its JSON, so RefusedPayload{NoFields} cannot pass for NoPayload.
+fn decodes_as_no_payload(v: DeviceCryptoVerdict, arm: String) -> Bool {
+  match decode_device_crypto_answer(text: device_crypto_answer_json(a: order_answer(v: v, arm: arm))) {
+    WireDecoded { value: DeviceCryptoAnswer { verdict: dv, arm: da, payload: NoPayload } } => dv == v && da == arm
+    WireDecoded { value: _ } => false
+    WireRefused { at: _, cause: _ } => false
+  }
+}
+
+test fn witness_the_order_answers_decode_to_the_no_payload_carrier() -> Bool {
+  decodes_as_no_payload(v: CryptoInfinity, arm: device_crypto_arm_infinity)
+    && decodes_as_no_payload(v: CryptoFinite, arm: device_crypto_arm_finite)
+    && decodes_as_no_payload(v: CryptoRefused, arm: device_crypto_arm_scalar_unrepresentable)
+}
+
 // A verified verdict whose arm names another outcome, or whose payload is missing, is refused at decode.
 test fn witness_a_verified_verdict_without_its_payload_is_refused() -> Bool {
   let no_payload = DeviceCryptoAnswer { verdict: CryptoVerified, arm: device_crypto_arm_signature_verified, payload: NoPayload }

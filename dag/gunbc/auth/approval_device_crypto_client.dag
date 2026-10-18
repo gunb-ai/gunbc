@@ -39,8 +39,8 @@ import gunbc.auth.approval_device_crypto_wire {
 // the std NativeRealizationProof for its own fold, which device_crypto_proof_of derives only from DeviceCryptoAdmitted,
 // so no decode without an admitted realization yields a verified value, and each names the helper here as its one
 // admitted caller. The redemption joins therefore read the same types and fields
-// they read from the in-process folds, and a payload that disagrees with the request is refused by the join's own
-// comparison, not by a second one here.
+// they read from the in-process folds. The in-process folds guaranteed the request-to-answer fields; over the wire
+// the client joins them itself before any mint, and a payload that disagrees with the request is SidecarFailed.
 //
 // THE SIDECAR FAILING IS NOT THE VERIFIER REFUSING. A refused or invalid answer is the fold's own negative and is
 // returned as the fold's own refusal arm; an unreachable sidecar, a timeout, a non-200 status or an undecodable
