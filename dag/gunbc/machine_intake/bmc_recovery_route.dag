@@ -23,8 +23,11 @@ import extdeps.bmc.ipmi {
   IpmiDeviceIdentity, IpmiDeviceNode, IpmiDevIpmiNode, IpmiImbDeviceNode,
   ipmi_device_nodes_are_same_device, ipmi_device_node_canonical_text,
 }
-import extdeps.boards.asrock_rack {
-  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogIndexesDisagree, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
+// THE RECEIPT SHELF, NOT THE VENDOR MODULE (section 3). What the firmware DID when asked to write the
+// published password is a measurement this repository took, so it is read from the observing layer's own
+// shelf; extdeps.boards.asrock_rack keeps only what ASRock Rack publishes about the board.
+import gunbc.machine_intake.bmc_inband_recovery_receipts {
+  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogAmbiguousForController, CatalogIndexesDisagree, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_published_factory_password_write_policy_for, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy, asrock_altrad8ud_1l2t_inband_device_identity,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
 // THE PRIVILEGE FACT IS NOT RE-MINTED HERE. §2: "Decomposing a leaf by minting a fresh authority for a
@@ -1039,6 +1042,11 @@ fn reset_write_admitted_after_ledger(
         // not a string this gate invents about a state it did not inspect.
         WarrantedOnMeasuredRefusal { refusal: _, observed: _ } => false
         NeverMeasuredOnThisController { observed: _ } => true
+        CatalogAmbiguousForThisController { observed: _, matched: _ } => true
+    CatalogAmbiguousForThisController { observed: _, matched: matched } =>
+      "the catalog holds "
+        + to_string(value: list_length(items: matched))
+        + " refusal rows for one Get Device ID reading, so no single refusal can warrant wiping this controller: de-duplicate the catalog"
         ReleaseKeyUnresolvableInCatalog { firmware: _, observed: _ } => true
       } {
         ResetWriteRefused {
@@ -1104,6 +1112,15 @@ type RecoveryResetWarrant
       observed: IpmiDeviceIdentity
     }
   | NeverMeasuredOnThisController { observed: IpmiDeviceIdentity }
+  // The reading WAS measured and the catalog holds TWO refusal rows for it. Nobody needs to go measure
+  // anything; the catalog has to be de-duplicated, and the rows that disagreed travel with the refusal so
+  // the duplicate is findable without grepping the receipt shelf. Distinct from
+  // ReleaseKeyUnresolvableInCatalog (one row found, naming a release the catalog does not index) because
+  // the two defects are not the same edit and must not be refused in the same words.
+  | CatalogAmbiguousForThisController {
+      observed: IpmiDeviceIdentity
+      matched: List<PublishedFactoryPasswordWritePolicy>
+    }
   | ReleaseKeyUnresolvableInCatalog { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
 
 // WHY THE TWO REFUSALS ARE DIFFERENT ARMS AND NOT ONE STRING: they send different people to different
@@ -1117,6 +1134,8 @@ fn recovery_reset_warrant(sighting: PublishedPasswordWritePolicySighting) -> Rec
     RefusalMeasuredOnThisController { refusal: refusal, observed: observed } =>
       WarrantedOnMeasuredRefusal { refusal: refusal, observed: observed }
     ControllerNeverMeasured { observed: observed } => NeverMeasuredOnThisController { observed: observed }
+    CatalogAmbiguousForController { observed: observed, matched: matched } =>
+      CatalogAmbiguousForThisController { observed: observed, matched: matched }
     CatalogIndexesDisagree { firmware: firmware, observed: observed } =>
       ReleaseKeyUnresolvableInCatalog { firmware: firmware, observed: observed }
   }
@@ -1494,6 +1513,7 @@ fn converge_in_band_recovery(
       } else if match recovery_policy_sighted_on_controller(route: route) {
         RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
         ControllerNeverMeasured { observed: _ } => true
+        CatalogAmbiguousForController { observed: _, matched: _ } => true
         CatalogIndexesDisagree { firmware: _, observed: _ } => true
       } {
         // The reset's warrant has to be a measurement OF THIS CONTROLLER, so the outcome carries which
@@ -1679,6 +1699,14 @@ type RecoveryRouteUnavailable
   // be checked against the capture. This is what replaced a caller-supplied policy -- the route cannot be
   // told which firmware it is talking to, only shown what it observed.
   | RecoveryControllerNeverMeasured { observed: IpmiDeviceIdentity }
+  // Two refusal rows answer one Get Device ID reading: the measurement exists, and the catalog
+  // contradicts itself about it. The reading AND the disagreeing rows travel with the refusal, so the
+  // repair (de-duplicate the catalog) is locatable from the refusal alone -- and this is NOT the
+  // never-measured arm, which would send someone to measure a board that was measured twice.
+  | RecoveryCatalogAmbiguousForController {
+      observed: IpmiDeviceIdentity
+      matched: List<PublishedFactoryPasswordWritePolicy>
+    }
   // A row was found by reading and then failed the release-keyed lookup: the catalog disagrees with
   // itself, so no release can be named for the measurement the reset would rest on.
   | RecoveryCatalogIndexesDisagree { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
@@ -1718,6 +1746,13 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
       }
     RecoveryControllerNeverMeasured { observed: _ } =>
       "the published-password refusal was never measured on THIS controller: read its Get Device ID answer against the board catalog, or measure it, before spending a destructive reset" as NonEmptyStr
+    // the repair NAMES the defect and its size, so nobody goes and re-measures a board that was
+    // measured twice -- which is exactly what the never-measured sentence above would have sent them to do
+    RecoveryCatalogAmbiguousForController { observed: _, matched: matched } =>
+      join(["de-duplicate this board's password-write catalog: ",
+            to_string(value: list_length(items: matched)),
+            " refusal rows answer one Get Device ID reading, so no single refusal can warrant a reset",
+            " -- the refusal carries the rows; reconcile them against the capture"], "") as NonEmptyStr
     RecoveryCatalogIndexesDisagree { firmware: _, observed: _ } =>
       "this board's catalog files a refusal whose release key does not resolve in its own capability catalog: fix the filing before any reset is admitted" as NonEmptyStr
     RecoveryReadbackInconclusive { detail: _ } =>
@@ -1740,6 +1775,8 @@ fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRo
       match sighting {
         RefusalMeasuredOnThisController { refusal: _, observed: _ } => none
         ControllerNeverMeasured { observed: observed } => Present { value: RecoveryControllerNeverMeasured { observed: observed } }
+        CatalogAmbiguousForController { observed: observed, matched: matched } =>
+          Present { value: RecoveryCatalogAmbiguousForController { observed: observed, matched: matched } }
         CatalogIndexesDisagree { firmware: f, observed: observed } =>
           Present { value: RecoveryCatalogIndexesDisagree { firmware: f, observed: observed } }
       }
@@ -2141,16 +2178,19 @@ test fn the_write_policy_is_a_function_of_the_controller_and_refuses_every_unmea
     RefusalMeasuredOnThisController { refusal: _, observed: _ } => true
     ControllerNeverMeasured { observed: _ } => false
     CatalogIndexesDisagree { firmware: _, observed: _ } => false
+    CatalogAmbiguousForController { observed: _, matched: _ } => false
   })
     && (match unmeasured_release {
       ControllerNeverMeasured { observed: o } => o.firmware_revision_major == 3 && o.firmware_revision_minor == 6
       RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
       CatalogIndexesDisagree { firmware: _, observed: _ } => false
+      CatalogAmbiguousForController { observed: _, matched: _ } => false
     })
     && (match other_vendor {
       ControllerNeverMeasured { observed: o } => o.manufacturer_id == 41832 && o.product_id == 8245
       RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
       CatalogIndexesDisagree { firmware: _, observed: _ } => false
+      CatalogAmbiguousForController { observed: _, matched: _ } => false
     })
 }
 

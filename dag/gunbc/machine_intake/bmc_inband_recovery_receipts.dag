@@ -1,0 +1,279 @@
+module gunbc.machine_intake.bmc_inband_recovery_receipts
+
+// THE OBSERVING LAYER'S OWN SHELF. Everything below is a RECEIPT THIS REPOSITORY TOOK, not a fact about
+// the board it was taken from: the sha256 of a file under artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-
+// 2026-10-16/, the Get Device ID answer one controller gave in that session, and what that controller's
+// firmware did when asked to write the published factory password. DESIGN section 3 puts observations
+// here: "Observations this repository makes are receipts in the observing layer, not facts of the observed
+// upstream; a missing observation is a downstream coverage obligation, never an `Unobserved` property
+// inside the upstream module." That is why none of this lives in extdeps.boards.asrock_rack: that module
+// answers what ASRock Rack PUBLISHES, and it answers it the same whether or not anyone here ever held one
+// of these boards -- a `NotMeasured` arm there would be an upstream module reporting on our lab notebook.
+// A consumer that wants a MEASUREMENT comes here. A coverage obligation this file has not discharged is a
+// missing row, and a missing row is a refusal with a name, never a silently-defaulted answer.
+//
+// ONE-WAY, AS EVERYWHERE ELSE: this module may speak of the vendor's published facts, and may NEVER speak
+// of a machine, a phase, or a step (section 3). It names a specimen, because a receipt without a specimen
+// is not a receipt; it does not name a host, a hostname, or an operator.
+
+import extdeps.bmc.capability { BmcFirmwareVersion }
+import extdeps.bmc.ipmi {
+  IpmiCompletionCode,
+  IpmiDeviceIdentity,
+  ipmi_completion_code_invalid_data_field,
+  ipmi_completion_code_invalid_data_field_text,
+  ipmi_device_identity_runs_same_firmware,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_openbmc_3_22_00_capabilities }
+import std.content_hash { Sha256Digest }
+import std.types { Bool, List }
+
+// ── CAN THE PUBLISHED FACTORY PASSWORD BE WRITTEN BACK IN? A PER-RELEASE FACT ─────────────────
+//
+// THE FACT THAT DECIDES WHETHER A LOCKED UNIT NEEDS A RESET AT ALL. On the one release we have
+// captured, writing the PUBLISHED factory password to the Administrator account over the in-band
+// channel is refused by the firmware:
+//
+//   $ sudo ipmitool user set password 1 '0penBmc'
+//   IPMI command failed: Invalid data field in request
+//   Set User Password command failed (user 1)
+//   exit=1
+//
+// and the 20-byte form fails identically -- which is the observation that rules password LENGTH out
+// as the explanation. A refused Set User Password changes nothing, so the unit stays locked and a
+// recovery route cannot be "write the factory password, then log in". It has to actuate a reset.
+//
+// WHY THIS SITS ON A RELEASE ROW AND NOT IN extdeps.bmc.openbmc. The refusal is a property of one
+// vendor build, not of OpenBMC in general: another build, or another vendor's firmware, may accept
+// the published password (and a unit that does is carrying a different, worse fact -- a factory
+// password that is writable). Stating it as an OpenBMC-wide rule would license a reset on firmware
+// that never refused anything. So the policy is keyed by the catalog's own typed BmcFirmwareVersion,
+// beside the release's other capability rows: there is no free-string version field here, and no
+// second version authority beside the catalog.
+//
+// A RELEASE THE CATALOG DOES NOT CARRY IS NotMeasured, and NotMeasured means "refuse", not "assume
+// the same as the release we did read" (DESIGN §4d). The row's own version is checked into the
+// judgement: a policy for 2.07.00 never answers a question about 3.22.00.
+//
+// Cited bytes (SHA256SUMS committed with them):
+//   artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt
+//     -- the two refused `ipmitool user set password 1 ...` invocations and their completion code,
+//        re-run after the reset and reproducing identically; the `mc info` line in the same file is
+//        where the Firmware Revision 3.22 reading comes from.
+//
+// WHY THIS ROW IS KEYED TO THIS BOARD AND NOT ANOTHER. The refusal below was observed on a board
+// whose `mc info` reports Product ID 8245 (0x2035) and whose capture names itself
+// bmc-altrad8ud-1l2t-6 -- an ASRock Rack ALTRAD8UD-1L2T, the machine this module catalogs. It is
+// filed against this module's own release row for exactly that reason: a refusal measured on one
+// board is a fact about that board's firmware, and keying it to a different board's catalog entry
+// would let a destructive ResetAll be justified by an observation made on hardware nobody read.
+// THE READING A MEASUREMENT WAS TAKEN UNDER, AND WHY IT IS CARRIED AT ALL. The refusal this module
+// files is a fact about one controller on one release. A route may only use it for a controller it has
+// IDENTIFIED, and the only identification a locked BMC gives up is its answer to Get Device ID. So the
+// measurement carries the reading it was measured under, and the route compares that reading with the
+// one it observed itself (the route record's in_band_device_identity field). A policy is therefore
+// never a value a caller picks: it is the row whose reading matches the controller under foot, or there
+// is no policy and the route refuses. Names are not in the comparison (see ipmi_device_identity_runs_same_firmware)
+// because this same capture proves a controller reports `Product Name : Unknown (0x2035)`.
+type PublishedFactoryPasswordWritePolicy
+  = FirmwareRefusesPublishedPassword {
+      firmware: BmcFirmwareVersion
+      completion_code: IpmiCompletionCode
+      capture: Sha256Digest
+      measured_under: IpmiDeviceIdentity
+    }
+  | NotMeasured { firmware: BmcFirmwareVersion }
+
+data asrock_altrad8ud_inband_recovery_capture: Sha256Digest = Sha256Digest {
+  hex: "8c1750d13a6c9832b459a61b8aadab246f4e74f138d85861e2758200c07202a4",
+}
+
+// THE Get Device ID ANSWER OFF THE BOARD THIS MODULE CATALOGS, byte-for-byte from the committed capture
+// (02_inband_channel.txt, sha256 above): Device ID 32, Device Revision 1, Firmware Revision 3.22,
+// Manufacturer ID 49622 / "ASRock Rack Incorporation", Product ID 8245 (0x2035), Product Name
+// "Unknown (0x2035)". A READING, NOT A CATALOG ENTRY, and not a fact of the upstream module either: the
+// board's catalogued identity lives in extdeps.boards.asrock_rack, and what one specimen ANSWERED lives
+// here. Nobody may edit it to make a policy apply: the policy below names it as the reading the refusal
+// was observed under, so changing the reading and keeping the policy would be caught by every comparison
+// against the next real observation.
+data asrock_altrad8ud_1l2t_inband_device_identity: IpmiDeviceIdentity = IpmiDeviceIdentity {
+  device_id: 32,
+  device_revision: 1,
+  firmware_revision_major: 3,
+  firmware_revision_minor: 22,
+  manufacturer_id: 49622,
+  manufacturer_name: "ASRock Rack Incorporation",
+  product_id: 8245,
+  product_name: "Unknown (0x2035)",
+}
+
+// THE ONE MEASURED ROW. An ALTRAD8UD-1L2T (mc info Product ID 0x2035), OpenBMC Firmware Revision
+// 3.22, both password forms, reproduced after the reset. The completion code is the typed constant
+// and the English is NOT carried here: it is the IPMI spec's description of that code and lives in
+// extdeps.bmc.ipmi with it, so there is one representation of the fact and the code cannot be
+// changed while its label stays behind to vouch for it.
+data asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy: PublishedFactoryPasswordWritePolicy = FirmwareRefusesPublishedPassword {
+  firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+  completion_code: ipmi_completion_code_invalid_data_field,
+  capture: asrock_altrad8ud_inband_recovery_capture,
+  measured_under: asrock_altrad8ud_1l2t_inband_device_identity,
+}
+
+data asrock_altrad8ud_published_factory_password_write_policy_catalog: List<PublishedFactoryPasswordWritePolicy> = [
+  asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
+]
+
+// The policy for a release, read off the catalog. A lookup and never a default: an unmeasured
+// release answers NotMeasured with ITS OWN version attached, so the refusal can be reported against
+// the firmware that was actually observed.
+fn asrock_altrad8ud_published_factory_password_write_policy_for(
+  firmware: BmcFirmwareVersion,
+) -> PublishedFactoryPasswordWritePolicy {
+  match filter(asrock_altrad8ud_published_factory_password_write_policy_catalog, p =>
+    policy_names_firmware(policy: p, firmware: firmware)) |> first() {
+    Present { value: p } => p
+    Absent => NotMeasured { firmware: firmware }
+  }
+}
+
+// WHICH RELEASE A ROW IS ABOUT, BY THE STRUCTURAL EQUALITY OF THE TYPED VERSION. The row's `firmware` is
+// the same BmcFirmwareVersion the catalog keys on, so this compares the values instead of walking
+// family/major/minor/patch field by field: a fourth field added to FirmwareSemanticVersion would have been
+// silently ignored by the field-by-field version, and the version it ignored would still have matched.
+fn policy_names_firmware(policy: PublishedFactoryPasswordWritePolicy, firmware: BmcFirmwareVersion) -> Bool {
+  match policy {
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: _, capture: _, measured_under: _ } => f == firmware
+    NotMeasured { firmware: f } => f == firmware
+  }
+}
+
+// THE MEASUREMENT'S OWN TWO READINGS HAVE TO AGREE, INSIDE THE ROW. A row claims a refusal for a
+// catalogued release AND names the Get Device ID answer it was measured under; IPMI reports Firmware
+// Revision as major.minor only (no patch level exists in that response), so those two numbers are
+// checked against the catalogued release's major and minor. A row relabelled to a release it was not
+// measured on -- e.g. firmware bumped to 3.23.00 while the reading stays 3.22 -- is refused rather than
+// believed. Checked here, at the row, because the row is where both readings live.
+fn published_password_refusal_row_agrees_with_its_reading(
+  firmware: BmcFirmwareVersion,
+  measured_under: IpmiDeviceIdentity,
+) -> Bool {
+  measured_under.firmware_revision_major == firmware.version.major
+    && measured_under.firmware_revision_minor == firmware.version.minor
+}
+
+// WHAT THE CATALOG CAN SAY ABOUT THE CONTROLLER STANDING IN FRONT OF YOU, given the Get Device ID
+// answer you read yourself. This is the join a recovery route needs, and it is here rather than in the
+// route because this module owns both indexes -- the release a row is keyed by, and the reading a row was
+// measured under -- and only here can they be checked against EACH OTHER. Three answers, and exactly one
+// of them licenses anything:
+//
+//   CONTROLLER NEVER MEASURED. The reading matches no row: Manufacturer ID, Product ID and both Firmware
+//   Revision fields have to equal the reading the refusal was observed under (see
+//   ipmi_device_identity_runs_same_firmware for why names never enter that comparison). This is the
+//   refusal that keeps ASRock's 3.22.00 measurement -- the only thing that licenses a destructive
+//   ResetAll -- unreachable for another vendor's controller, or for this model on a release nobody read.
+//   It is NOT the same as "the release has no row" below, and the two must not be collapsed: one says
+//   this machine has never been looked at, the other says our own catalog is inconsistent.
+//
+//   CATALOG INDEXES DISAGREE. A row was found by reading, and then the SAME row is looked up by the
+//   release it claims, through the release-keyed index; if that lookup does not answer with a refusal for
+//   that release, the two indexes do not agree about the row. A row filed against a release that is not
+//   in the capability catalog is the case: the destructive step would be justified by a measurement whose
+//   release key nobody can resolve. Refuse, and name the release that could not be resolved.
+//
+//   REFUSAL MEASURED ON THIS CONTROLLER, carrying the row AND the reading it was checked against, so the
+//   consumer can show both. Nothing here takes a default: no argument for the caller to pass a policy in,
+//   no fallback arm, no "assume as measured".
+//
+// WHY EXACTLY ONE MATCH, AND WHY AMBIGUITY REFUSES. The reading cannot express a patch level, so a catalog
+// holding two rows for the same controller at the same major.minor with different patches would be
+// genuinely ambiguous -- and picking the first would be a coin flip standing behind a factory reset. An
+// ambiguous catalog therefore answers "never measured", which is the honest reading: we do not know which
+// release this is.
+type PublishedPasswordWritePolicySighting
+  = RefusalMeasuredOnThisController {
+      refusal: PublishedFactoryPasswordWritePolicy
+      observed: IpmiDeviceIdentity
+    }
+  | ControllerNeverMeasured { observed: IpmiDeviceIdentity }
+  // the catalog holds two refusal rows for one reading: the measurement exists, the catalog does not
+  // resolve it, and the rows that disagreed travel with the refusal so the duplicate is findable
+  | CatalogAmbiguousForController {
+      observed: IpmiDeviceIdentity
+      matched: List<PublishedFactoryPasswordWritePolicy>
+    }
+  | CatalogIndexesDisagree { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
+
+// THE FOLD, AT ITS OWN INTERFACE. The catalog is a parameter so a claim can hand it zero rows and two
+// rows without inventing a second measurement in the FILED catalog: the fold is what is being tested, and
+// the filed rows stay the single measurement of record. Production reads through
+// ..._sighted_on below, which applies the filed catalog and nothing else.
+fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
+  catalog: List<PublishedFactoryPasswordWritePolicy>,
+  observed: IpmiDeviceIdentity,
+) -> PublishedPasswordWritePolicySighting {
+  let matches = filter(catalog, p =>
+    match p {
+      FirmwareRefusesPublishedPassword {
+        firmware: f,
+        completion_code: _,
+        capture: _,
+        measured_under: measured_under,
+      } =>
+        ipmi_device_identity_runs_same_firmware(a: measured_under, b: observed)
+          && published_password_refusal_row_agrees_with_its_reading(firmware: f, measured_under: measured_under)
+      NotMeasured { firmware: _ } => false
+    })
+  // THREE outcomes, not two. They are three different failures and the operator has to be told which one
+  // to go fix (section 5: "every degradation is typed, located and countable"; section 3b: a failure cause
+  // keeps its own meaning and may not be absorbed by its neighbour):
+  //   ZERO -- nobody has measured this controller. A coverage obligation: go run the measurement.
+  //   ONE -- the measurement applies here, subject to the catalog still saying the same thing about the
+  //     release it names; if it does not, our own rows disagree and that is a different repair.
+  //   MORE THAN ONE -- the catalog carries two rows for one reading. The measurement EXISTS; the CATALOG is
+  //     wrong, and the refusal carries the rows that disagreed so the duplicate is findable. Folding this
+  //     into "never measured" -- which is what the previous version did, through a `!= 1` test -- would
+  //     send someone to re-measure a board that had been measured twice, and would erase the one cause the
+  //     type already had an arm for.
+  // No arm defaults and no arm picks a row: choosing the first would put a coin flip behind wiping a chassis.
+  match list_length(items: matches) {
+    0 => ControllerNeverMeasured { observed: observed }
+    1 =>
+      match matches |> first() {
+        Present { value: row } =>
+          match row {
+            FirmwareRefusesPublishedPassword {
+              firmware: f,
+              completion_code: _,
+              capture: _,
+              measured_under: _,
+            } =>
+              if match asrock_altrad8ud_published_factory_password_write_policy_for(firmware: f) {
+                FirmwareRefusesPublishedPassword { firmware: g, completion_code: _, capture: _, measured_under: _ } =>
+                  policy_names_firmware(policy: g, firmware: f)
+                NotMeasured { firmware: _ } => false
+              } {
+                RefusalMeasuredOnThisController { refusal: row, observed: observed }
+              } else {
+                CatalogIndexesDisagree { firmware: f, observed: observed }
+              }
+            NotMeasured { firmware: nf } => CatalogIndexesDisagree { firmware: nf, observed: observed }
+          }
+        // unreachable while the length is one; stated rather than defaulted so no arm is missing
+        Absent => ControllerNeverMeasured { observed: observed }
+      }
+    _ => CatalogAmbiguousForController { observed: observed, matched: matches }
+  }
+}
+
+// THE PRODUCTION ENTRY: one catalog, the filed one. There is no variant that takes a caller's policy and
+// no way to pass a measurement in from outside, which is the whole point -- the destructive reset is
+// warranted only by what THIS repository measured, read from the one shelf that holds it.
+fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on(
+  observed: IpmiDeviceIdentity,
+) -> PublishedPasswordWritePolicySighting {
+  asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
+    catalog: asrock_altrad8ud_published_factory_password_write_policy_catalog,
+    observed: observed,
+  )
+}
