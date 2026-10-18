@@ -105,18 +105,17 @@ fn category_token(t: String) -> Int? {
   parse_int(s: trim(s: t))
 }
 
-fn category_token_present(t: String) -> Bool {
-  match category_token(t: t) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn category_token_value(t: String) -> Int {
-  match category_token(t: t) {
-    Present { value: n } => n
-    Absent => 0
-  }
+// Every token parsed or none: one fold, so a list is never shortened and no default value exists to write.
+fn category_tokens_parsed(tokens: List<String>) -> List<Int>? {
+  fold(tokens, init: Present { value: [] }, f: (acc, t) =>
+    match acc {
+      Absent => none
+      Present { value: so_far } =>
+        match category_token(t: t) {
+          Present { value: n } => Present { value: so_far |> list_push(n) }
+          Absent => none
+        }
+    })
 }
 
 // The admitted validation categories ride as one comma-separated string of integers ("2,3,4"): a
@@ -126,9 +125,10 @@ fn wire_categories(o: JsonValue, key: String) -> WireDecode<List<Int>> {
   match wire_string(obj: o, key: key) {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
     WireDecoded { value: csv } =>
-      let tokens = split(s: csv as String, delimiter: ",")
-      if all(tokens, t => category_token_present(t: t)) { WireDecoded { value: map(tokens, t => category_token_value(t: t)) } }
-      else { WireRefused { at: key as NonEmptyStr, cause: "not a comma-separated list of integers" } }
+      match category_tokens_parsed(tokens: split(s: csv as String, delimiter: ",")) {
+        Present { value: values } => WireDecoded { value: values }
+        Absent => WireRefused { at: key as NonEmptyStr, cause: "not a comma-separated list of integers" }
+      }
   }
 }
 

@@ -2,7 +2,7 @@ module gunbc.auth.approval_device_crypto_serve
 
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha }
 import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
-import std.bignat { bignat_zero_limbs, bignat_one, bignat_sub }
+import std.bignat { BigNat, bignat_zero_limbs, bignat_one, bignat_sub }
 import extdeps.http.server { ServeWireResponse }
 import gunbc.native_serve { native_serve_application_json }
 import extdeps.crypto.nist_p256 { p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine }
@@ -129,23 +129,24 @@ fn assertion_answer(v: AssertionVerification) -> ServeWireResponse {
 }
 
 // n times the base point is infinity; (n - 1) times it is not. The scalar is the curve's own order
-// (p256_n), named by the request and never carried by it.
-fn p256_multiple_is_infinity(m: P256Multiple) -> Bool {
-  let g = p256_affine(x: p256_gx, y: p256_gy)
-  let zero = bignat_zero_limbs()
+// (p256_n), named by the request and never carried by it. A scalar that cannot be formed has no
+// point to judge: it is a typed refusal, never an answer.
+fn p256_multiple_scalar(m: P256Multiple) -> BigNat? {
   match m {
-    OrderItself => jacobian_is_infinity(p: p256_double_scalar(u1: p256_n, g: g, u2: zero, q: g))
-    OrderMinusOne =>
-      match bignat_sub(a: p256_n, b: bignat_one()) {
-        Present { value: nm1 } => jacobian_is_infinity(p: p256_double_scalar(u1: nm1, g: g, u2: zero, q: g))
-        Absent => false
-      }
+    OrderItself => Present { value: p256_n }
+    OrderMinusOne => bignat_sub(a: p256_n, b: bignat_one())
   }
 }
 
 fn order_answer(m: P256Multiple) -> ServeWireResponse {
-  if p256_multiple_is_infinity(m: m) { crypto_answered(verdict: CryptoInfinity, arm: "Infinity") }
-  else { crypto_answered(verdict: CryptoFinite, arm: "Finite") }
+  match p256_multiple_scalar(m: m) {
+    Absent => crypto_answered(verdict: CryptoRefused, arm: "ScalarUnrepresentable")
+    Present { value: scalar } => {
+      let g = p256_affine(x: p256_gx, y: p256_gy)
+      if jacobian_is_infinity(p: p256_double_scalar(u1: scalar, g: g, u2: bignat_zero_limbs(), q: g)) { crypto_answered(verdict: CryptoInfinity, arm: "Infinity") }
+      else { crypto_answered(verdict: CryptoFinite, arm: "Finite") }
+    }
+  }
 }
 
 // ── Routing ──────────────────────────────────────────────────────────────────────────────────
