@@ -40,7 +40,7 @@ import product.fabric.flex_vast_loop {
   flex_plan_pass, flex_created_outcome, flex_reconcile_ours, flex_reconciled_allocation,
   flex_acquired_allocation, flex_release_card, flex_ours_roster, flex_provider_declaration, flex_vast_disk_gigabytes,
   flex_wet_gate_wall, flex_create_walls, flex_create_request,
-  FlexPassStep, FlexPassDone, FlexPassDestroyDue, flex_pass_step,
+  FlexPassStep, FlexPassDone, FlexPassDestroyDue, flex_pass_step, FlexReleaseInputs, FlexPassReleaseReadingsUnread, flex_key_from_custody, FlexPassStopped,
 }
 import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation {
@@ -58,7 +58,7 @@ import test.claim.fabric.flex_bid_admission_witness {
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import extdeps.cloud.vast_ai { VastAiCharges }
 import test.claim.serving.rented_release_witness { w_acquired, w_readings, w_roots, w_protected, w_instance }
-import gunbc.serving.rented_release { RentedInstanceObserved }
+import gunbc.serving.rented_release { RentedInstanceObserved, rented_bound_instance_id }
 import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation { rented_allocation_wire }
 
@@ -147,8 +147,8 @@ fn w_input(mode: ApplyMode, gates: FlexWetGates, roster: FlexInstancesStanding, 
   }
 }
 
-data w_open: FlexWetGates = FlexWetGates { custody: CustodyHeld }
-data w_closed: FlexWetGates = FlexWetGates { custody: CustodyNotHeld { causes: ["file ABSENT"] } }
+data w_open: FlexWetGates = FlexWetGates { key: flex_key_from_custody(custody: CustodyHeld) }
+data w_closed: FlexWetGates = FlexWetGates { key: flex_key_from_custody(custody: CustodyNotHeld { causes: ["file ABSENT"] }) }
 
 fn w_under_roster() -> FlexInstancesStanding { exhausted(rows: [w_ours(id: 1001, dollars: 1)]) }
 
@@ -562,7 +562,17 @@ fn w_listed(id: Int) -> RentedInstanceReading {
 }
 
 fn w_step(readings: RentedReleaseReadings) -> FlexPassStep {
-  flex_pass_step(input: w_destroy_due_input(), roots: w_roots, protected: w_protected, readings: readings)
+  flex_pass_step(input: w_destroy_due_input(), releasing: Present { value: FlexReleaseInputs { roots: w_roots, protected: w_protected, readings: readings } })
+}
+
+// A wet release planned with no readings supplied stops typed and names the allocation; it never reaches
+// S5's receipt (which would judge readings the pass does not have) and plans no destroy.
+test fn a_release_without_readings_stops_typed_and_destroys_nothing() -> Bool {
+  match flex_pass_step(input: w_destroy_due_input(), releasing: none) {
+    FlexPassDone { outcome: FlexPassStopped { refusal: FlexPassReleaseReadingsUnread { allocation: a } } } =>
+      (rented_bound_instance_id(allocation: a) as String) == "1001"
+    _ => false
+  }
 }
 
 // A never-started card (host silent, control reached): the on-card legs are NotPerformed, the id-guarded

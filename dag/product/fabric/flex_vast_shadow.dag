@@ -11,6 +11,7 @@ import std.measure {
   money_amount_micro, money_per_hour_micros, measure_le,
   second, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
   byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
+  money_amount_micro_count, exact_decimal_to_money_amount_micro_ceil, DecimalMoneyConverted,
 }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.currency.currency { CurrencyCode, Usd }
@@ -34,6 +35,9 @@ import product.fabric.flex_market {
 }
 import product.fabric.serving_recipe {
   ServingRecipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+  ServingCardSupply, RentedCardSupply, ServingDiskRate, PerGibibyteHour, ServingSelectionQuote,
+  SelectionQuoteEstablished, SelectionQuoteRefusedEstimated, SelectionQuoteRefusedUnavailable,
+  serving_card_hourly, serving_cost_per_million_tokens, serving_unit_cost_for_selection,
   ServingCardFacts, serving_recipe_accepts_card, CardAccepted,
   CardRefusedWrongCard, CardRefusedDriverBelowFloor, CardRefusedDriverUnread, CardScreenedOnUncitedFloor,
 }
@@ -41,7 +45,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand { debt_payoff_objective, DemandObjective }
 import product.fabric.budget { MoneyAccount }
 import extdeps.cloud.vast_ai {
-  VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
+  VastAiOffer, VastAiOfferQuery, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
   vast_ai_search_type_bid, vast_ai_search_limit_default, vast_ai_keyset_page_limit,
   vast_ai_min_bid_money_per_hour, vast_ai_quote_currency,
   vast_ai_instance_dph_total_money_per_hour,
@@ -387,6 +391,11 @@ data flex_trial_fleet_rate_cap_authority: DeclarationRef = decl_ref(module_path:
 
 data flex_trial_total: MoneyAmountMicro = money_amount_micro(count: 50000000)
 
+// The first day the trial's charges are read from, unix seconds UTC (2026-10-16T00:00Z, the day the operator
+// set the trial's cap and total). Only rows under our label count (flex_vast_loop flex_spent), so an earlier
+// start could only add rows that are not ours; a later one could hide ours, so it is never moved later.
+data flex_trial_charges_from: Int = 1792108800
+
 data flex_trial_policy: FlexPolicy = FlexPolicy {
   fleet_rate_cap: flex_trial_fleet_rate_cap,
   on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
@@ -639,7 +648,67 @@ fn flex_offer_in_shadow_field(offer: VastAiOffer, search_type: String) -> FlexSh
   }
 }
 
+// ---- THE QUOTE OF ONE SHADOW-FIELD OFFER, as select_supply and the create walls take it: the recipe's cost
+// per accepted unit on this card, at the offer's bid floor (min_bid, the least an interruptible rental can
+// cost an hour) plus the recipe's disk at the host's storage rate.
+// Vast prices storage in dollars per GB-month (extdeps.cloud.vast_ai: storage_cost $/GB-month); the hourly
+// rate divides by the hours in a billing month, which no cited Vast page states. That figure is
+// TranscribedUncited, so a quote resting on it is Estimated (refused as an established price, DESIGN 4d)
+// and names what would ground it. GB to GiB is exact (2^30 / 10^9).
+type FlexHoursPerMonth {
+  hours: Int
+  standing: CitedFigureStanding
+}
+
+data flex_vast_storage_hours_per_month: FlexHoursPerMonth = FlexHoursPerMonth {
+  hours: 730,
+  standing: TranscribedUncited {
+    read_obligation: "the hours Vast divides storage_cost ($/GB-month) by to bill storage per hour; read it from Vast's billing documentation or derive it from a storage charge row (amount over GB-hours)" as NonEmptyStr,
+  },
+}
+
+fn flex_offer_disk_rate(offer: VastAiOffer, month: FlexHoursPerMonth) -> ServingDiskRate? {
+  match exact_decimal_to_money_amount_micro_ceil(d: offer.storage_cost) {
+    DecimalMoneyConverted { amount: per_gb_month } =>
+      if month.hours <= 0 {
+        none
+      } else {
+        Present {
+          value: ServingDiskRate {
+            rate: MoneyRate {
+              amount: money_amount_micro(count: (money_amount_micro_count(m: per_gb_month) * 1073741824 + (1000000000 * month.hours - 1)) / (1000000000 * month.hours)),
+              currency: vast_ai_quote_currency,
+            },
+          },
+        }
+      }
+    _ => none
+  }
+}
+
+fn flex_offer_quote(offer: VastAiOffer, recipe: ServingRecipe) -> ServingSelectionQuote {
+  match vast_ai_min_bid_money_per_hour(offer: offer) {
+    DecimalMoneyPerHourRefused { conversion: _ } => SelectionQuoteRefusedUnavailable
+    DecimalMoneyPerHourConverted { rate: floor } =>
+      match flex_offer_disk_rate(offer: offer, month: flex_vast_storage_hours_per_month) {
+        Absent => SelectionQuoteRefusedUnavailable
+        Present { value: disk } =>
+          let quote = serving_unit_cost_for_selection(cost: serving_cost_per_million_tokens(recipe: recipe, hourly: serving_card_hourly(recipe: recipe, supply: RentedCardSupply { dph: floor, disk_rate: disk })))
+          match flex_vast_storage_hours_per_month.standing {
+            TranscribedUncited { read_obligation: _ } =>
+              match quote {
+                SelectionQuoteRefusedEstimated { standings: ss } => SelectionQuoteRefusedEstimated { standings: concat(ss, [flex_vast_storage_hours_per_month.standing]) }
+                SelectionQuoteEstablished { amount: _, currency: _ } => SelectionQuoteRefusedEstimated { standings: [flex_vast_storage_hours_per_month.standing] }
+                other => other
+              }
+            _ => quote
+          }
+      }
+  }
+}
+
 data flex_search_type: String = vast_ai_search_type_bid
+
 data flex_search_limit: Int = vast_ai_search_limit_default
 data flex_keyset_page_limit: Int = vast_ai_keyset_page_limit
 
@@ -703,6 +772,23 @@ fn flex_candidates_from_vast_offer(
       "cited region unobserved on search-offers" as NonEmptyStr,
       "use permit unobserved on search-offers" as NonEmptyStr,
     ],
+  }
+}
+
+// THE ACCOUNT the flex tier rents under: the operator's Vast account, the one the custody key
+// (gunbc.flex_vast_credential) authenticates as. Read 2026-10-18 from srv1 as the creator_id of the
+// operator's private template under that key; ctrl shares this account, isolated by label.
+data flex_vast_account: ProviderAccountObservationIdentity = "739031" as ProviderAccountObservationIdentity
+
+// THE ADMISSION AN OFFER CAN HAVE BEFORE ANY BID ATTEMPT IS BUILT. search-offers carries none of the
+// consequences a bid attempt needs (flex_candidates_from_vast_offer), so an offer whose candidates are
+// unestablished is refused with the missing facts named, exactly as flex_shadow_bid refuses it; an offer
+// whose candidates are derived has no admission until an attempt is built (none, never a guess).
+fn flex_offer_admission_unattempted(offer: VastAiOffer, account: ProviderAccountObservationIdentity) -> FlexBidAdmission? {
+  match flex_candidates_from_vast_offer(offer: offer, machine: flex_machine_key_for_offer(account: account, offer: offer)) {
+    VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
+      Present { value: FlexBidRefused { cause: FlexCandidateConsequencesUnestablished { offer_key: k, missing: ms } } }
+    VastCandidateDerived { candidates: _ } => none
   }
 }
 
