@@ -1,4 +1,4 @@
-module v2.test.claim.forwarded_type_parameter_kind_witness
+module test.claim.forwarded_type_parameter_kind_witness
 
 import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Lossless, Medium }
