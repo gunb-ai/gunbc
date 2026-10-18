@@ -302,6 +302,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceRootUnknown,
   dashboard_instance_for_repo_root,
   dispatch_base_branch,
+  dashboard_git_subtree_readback_is_granted_under, dashboard_git_worker_granted_directory_mode,
 }
 import gunbc.roadmap.roadmap_dispatch_environment {
   EnvironmentAdmitted,
@@ -3353,6 +3354,44 @@ fn belt_actuate_spawn_with_origin(
   }
 }
 
+// THE PER-ATTEMPT PROOF, run by the SPAWN and nothing else. The grant argv come in the spawn bundle
+// beside worktree_add, so the sequence is one attempt's by construction: `git worktree add` creates
+// .git/worktrees/<key> under the principal that runs the actuator (on the lab, the account the serve
+// runs as -- the entry's owner and a member of the attempt group), the two grant commands then put that
+// entry and everything under it in the attempt group at 02775/0664, and the walk proves it. THE UNIT IS
+// NOT STARTED IF THE PROOF FAILS: a worker whose entry is not granted cannot commit, and starting it
+// anyway turns a named refusal into a permission error inside someone else's attempt. The decision is
+// the model's own dashboard_git_subtree_readback_is_granted_under over
+// dashboard_git_worker_granted_directory_mode -- the same figure the apply and the claims use -- so
+// there is no second definition of "granted" to drift, and an EMPTY receipt fails it rather than
+// passing it (recurring failure mode directory_ownership_assertion_stops_at_the_top_level).
+fn belt_worker_git_entry_grant_readback(
+  cmds: DispatchSpawnCommands,
+  workdir: String,
+) -> BeltExecStepsOutcome {
+  match belt_exec(cmd: cmds.worker_git_entry_readback, workdir: workdir) {
+    ExecOk { stdout: receipt } =>
+      if dashboard_git_subtree_readback_is_granted_under(
+        top: dashboard_git_worker_granted_directory_mode,
+        receipt: receipt,
+      ) {
+        ExecStepsOk
+      } else {
+        ExecStepFailed {
+          step: "worker-git-entry-readback",
+          detail: "the attempt's private git entry did not read back granted (expected 02775 on the entry, group-writable entries beneath it; an empty or unreadable walk counts as not granted), so the worker unit is not started",
+        }
+      }
+    ExecFailed { program: _, exit_code, stderr } =>
+      ExecStepFailed {
+        step: "worker-git-entry-readback",
+        detail: join(["the grant walk could not run: exit ", to_string(exit_code), ": ", stderr], ""),
+      }
+    ExecRefused { program: _, reason } =>
+      ExecStepFailed { step: "worker-git-entry-readback", detail: reason }
+  }
+}
+
 // THE ADMITTED SPAWN'S HOST STEPS, carrying the session's placement grant when its container holds
 // one. Extracted from belt_actuate_spawn_with_origin so the grant's release-unless-spawned rule
 // wraps ONE outcome rather than every SpawnFailed arm separately. It addresses the prepared launch's
@@ -3392,13 +3431,19 @@ fn belt_spawn_admitted(
       }
     WorktreeClaimRecorded =>
   match belt_exec_steps(
-    steps: [
-      BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
-      BeltExecStep {
-        step: "attempt-state-prepare",
-        command: cmds.attempt_state_prepare,
-      },
-    ],
+    steps: concat(
+      [BeltExecStep { step: "worktree-add", command: cmds.worktree_add }],
+      concat(
+        map(
+          cmds.worker_git_entry_grant,
+          command => BeltExecStep { step: "worker-git-entry-grant", command: command },
+        ),
+        [BeltExecStep {
+          step: "attempt-state-prepare",
+          command: cmds.attempt_state_prepare,
+        }],
+      ),
+    ),
     workdir: workdir,
   ) {
     ExecStepFailed { step, detail } =>
@@ -3410,6 +3455,16 @@ fn belt_spawn_admitted(
         launch: launch,
       }
     ExecStepsOk =>
+      match belt_worker_git_entry_grant_readback(cmds: cmds, workdir: workdir) {
+        ExecStepFailed { step, detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: step,
+            detail: detail,
+            provider: provider_wire_label,
+            launch: launch,
+          }
+        ExecStepsOk =>
       match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
         AttemptWorktreeAbsent { path } =>
           SpawnFailed {
@@ -3541,6 +3596,7 @@ fn belt_spawn_admitted(
       }
   }
   }
+      }
 }
 
 // ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider

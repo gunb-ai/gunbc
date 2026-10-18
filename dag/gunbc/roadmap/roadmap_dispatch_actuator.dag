@@ -3158,6 +3158,37 @@ fn dispatch_attempt_worker_git_entry_directories(instance: HostDashboardInstance
 // THE ROOT-OWNED MIGRATION OF THAT ENTRY, beside the spawn that creates it: same bounded walk, same
 // group, run as the step right after `git worktree add` and before the unit starts. Without it the
 // entry is root:root 0700 and the confined unit cannot write a single file inside it.
+// THE PROJECTION THE SPAWN RUNS UNDER. The actuator's host steps are (program, args) pairs executed by
+// the belt under the principal that runs the actuator itself -- on the lab, the account the serve runs
+// as, which is the account `git worktree add` runs as and the owner of the entry just created. That
+// identity is why this needs no privilege the deploy does not already have; an earlier cut of this
+// comment called it root, read off a BuildBuddy runner whose uid is 0 rather than off the lab (DESIGN
+// 4d). argv_words, not this module, decides that argv[0] is the program.
+fn dispatch_git_owned_host_step_argv(command: ArgvCommand) -> HostExecArgv {
+  let words = argv_words(command: command)
+  match words.first() {
+    Absent => HostExecArgv { program: "", args: [] }
+    Present { value: program } => HostExecArgv { program: program, args: words.skip(n: 1) }
+  }
+}
+
+// THE PROOF THE ENTRY WAS GRANTED: the same bounded walk the apply runs over the repository's subtrees,
+// over this attempt's private git entry. The spawn decides on it with
+// gunbc.roadmap.roadmap_dashboard_instance dashboard_git_subtree_readback_is_granted_under -- one
+// figure, so the actuator, the apply and the claims cannot disagree -- and REFUSES to start the unit on
+// an empty, unreadable, or wrong-moded receipt rather than starting a worker that would fail its first
+// commit with a permission error nobody named.
+fn dispatch_attempt_worker_git_entry_readback_command(
+  instance: HostDashboardInstance,
+  attempt_worktree: String,
+) -> ArgvCommand {
+  find_subtree_mode_readback_command(
+    target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
+    pruned: [],
+    depth: dashboard_git_worker_subtree_walk_depth,
+  )
+}
+
 fn dispatch_attempt_worker_git_entry_migration(instance: HostDashboardInstance, attempt_worktree: String) -> List<ArgvCommand> {
   match instance.worker {
     WorkerIsServiceUser => []
@@ -3202,14 +3233,7 @@ fn dispatch_attempt_worker_git_entry_migration(instance: HostDashboardInstance, 
 //                                (exit 0, stderr noise) and that noise is what these two keys buy
 //                                out, not a grant to the confined path.
 fn dispatch_repository_shared_posture_commands(instance: HostDashboardInstance) -> List<ArgvCommand> {
-  match instance.worker {
-    WorkerIsServiceUser => []
-    WorkerDedicatedAccount => [
-      git_shared_repository_group_config_command(repo: instance.repo_root),
-      git_gc_auto_disabled_config_command(repo: instance.repo_root),
-      git_maintenance_auto_disabled_config_command(repo: instance.repo_root),
-    ]
-  }
+  dashboard_ensure_git_shared_repository_posture(instance: instance)
 }
 
 // THE ONE MIGRATION THAT IS NOT IDEMPOTENT-AS-USUAL, and why that is fine: the walk re-groups and
@@ -3778,6 +3802,13 @@ type DispatchSessionContainer
 
 type DispatchSpawnCommands {
   worktree_add: HostExecArgv
+  // THE PER-ATTEMPT GRANT OF THE WORKTREE'S PRIVATE GIT ENTRY, and the walk that proves it. They ride
+  // in the same bundle as worktree_add so the spawn that creates the entry is the only spawn that can
+  // grant it, and the actuator sequences them: add, grant, read back, and only then the unit start.
+  // See dispatch_attempt_worker_git_entry_migration for what each command does and why the sticky bit
+  // is deliberately absent here.
+  worker_git_entry_grant: List<HostExecArgv>
+  worker_git_entry_readback: HostExecArgv
   attempt_state_prepare: HostExecArgv
   attempt_current_pointer: HostExecArgv
   session_container: DispatchSessionContainer
@@ -3916,6 +3947,19 @@ fn dispatch_spawn_commands_for_launch(
       DispatchSpawnReady {
         commands: DispatchSpawnCommands {
           worktree_add: worktree,
+          worker_git_entry_grant: map(
+            dispatch_attempt_worker_git_entry_migration(
+              instance: instance,
+              attempt_worktree: worktree_path,
+            ),
+            command => dispatch_git_owned_host_step_argv(command: command),
+          ),
+          worker_git_entry_readback: dispatch_git_owned_host_step_argv(
+            command: dispatch_attempt_worker_git_entry_readback_command(
+              instance: instance,
+              attempt_worktree: worktree_path,
+            ),
+          ),
           attempt_state_prepare: state_prepare,
           attempt_current_pointer: attempt_current_pointer_argv_for_instance(
             instance: instance,
