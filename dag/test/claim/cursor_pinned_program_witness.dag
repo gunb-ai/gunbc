@@ -3,13 +3,38 @@ module test.claim.cursor_pinned_program_witness
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import std.optional { Present, Absent }
 import extdeps.exec.command { argv_words }
-import extdeps.llm.cursor_cli { cursor_status_command, cursor_sandbox_preflight_command, cursor_disable_auto_update_flag }
+import extdeps.llm.cursor_cli { cursor_disable_auto_update_flag }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program, cursor_agent_executable_path, cursor_agent_pinned_version }
-import gunbc.cursor_harness_credential { cursor_worker_turn_inner_argv, cursor_sandbox_discriminating_preflight_command }
-import gunbc.worker_turn_standing { cursor_pinned_executable_absent, cursor_pinned_realization_absent_reason }
+import gunbc.dispatch_credential_acquisition { CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config }
+import gunbc.cursor_harness_credential {
+  cursor_worker_turn_inner_argv,
+  cursor_sandbox_discriminating_preflight_command,
+  cursor_bound_key_probe_command,
+}
+import gunbc.worker_turn_standing { cursor_pinned_realization_absent_reason }
 
 fn pinned_path() -> String {
   cursor_agent_executable_path(version: cursor_agent_pinned_version)
+}
+
+fn attempt_root() -> CursorAttemptRuntimeRoot {
+  cursor_attempt_runtime_root(instance_root: "/srv/instance", reference: "attempt-a-cursor")
+}
+
+fn preflight_words() -> List<String> {
+  argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program(), root: attempt_root()))
+}
+
+fn probe_words() -> List<String> {
+  argv_words(command: cursor_bound_key_probe_command(program: cursor_agent_pinned_program(), root: attempt_root()))
+}
+
+fn turn_words() -> List<String> {
+  cursor_worker_turn_inner_argv(program: cursor_agent_pinned_program(), root: attempt_root(), worktree_path: "/srv/attempt", prompt: "go" as NonEmptyStr)
+}
+
+fn names_word(words: List<String>, word: String) -> Bool {
+  any(words, w => w == word)
 }
 
 fn word_at(words: List<String>, index: Int) -> String {
@@ -19,41 +44,54 @@ fn word_at(words: List<String>, index: Int) -> String {
   }
 }
 
-// THE THREE OPERATIONS SHARE ONE PROGRAM: each argv starts with the same pinned absolute path, supplied
-// as the one identity (gunbc.host.cursor_agent_realization cursor_agent_pinned_program).
-test fn status_preflight_and_turn_start_with_the_one_pinned_path() -> Bool {
-  let program = cursor_agent_pinned_program()
-  let status = word_at(index: 0, words: argv_words(command: cursor_status_command(program: program)))
-  let preflight = word_at(index: 0, words: argv_words(command: cursor_sandbox_preflight_command(program: program)))
-  let turn = word_at(index: 0, words: cursor_worker_turn_inner_argv(program: program, worktree_path: "/srv/attempt", prompt: "go" as NonEmptyStr))
+fn follows(words: List<String>, first: String, second: String) -> Bool {
+  any([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], i => word_at(words: words, index: i) == first && word_at(words: words, index: i + 1) == second)
+}
+
+// THE THREE INVOCATIONS SHARE ONE PROGRAM, and none is named by PATH: each argv carries the pinned absolute
+// path (gunbc.host.cursor_agent_realization cursor_agent_pinned_program) and no bare cursor-agent word.
+test fn preflight_probe_and_turn_name_the_one_pinned_path() -> Bool {
   starts_with(s: pinned_path(), prefix: "/opt/gunbc/cursor-agent/")
-    && status == pinned_path() && preflight == pinned_path() && turn == pinned_path()
+    && names_word(words: preflight_words(), word: pinned_path())
+    && names_word(words: probe_words(), word: pinned_path())
+    && names_word(words: turn_words(), word: pinned_path())
+    && !names_word(words: preflight_words(), word: "cursor-agent")
+    && !names_word(words: probe_words(), word: "cursor-agent")
+    && !names_word(words: turn_words(), word: "cursor-agent")
 }
 
-// The discriminating preflight the draw runs keeps the program after its env prefix.
-test fn the_discriminating_preflight_names_the_pinned_path_and_no_path_name() -> Bool {
-  let line = join(argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program())), " ")
-  string_contains(s: line, pattern: pinned_path()) && !string_contains(s: line, pattern: " cursor-agent ")
-}
-
-// THE FLAG IS PRESENT ON EVERY PINNED INVOCATION, directly after the program.
+// THE FLAG FOLLOWS THE PROGRAM ON EVERY INVOCATION.
 test fn every_pinned_invocation_passes_disable_auto_update() -> Bool {
-  let program = cursor_agent_pinned_program()
   let flag = cursor_disable_auto_update_flag
   flag == "--disable-auto-update"
-    && word_at(index: 1, words: argv_words(command: cursor_status_command(program: program))) == flag
-    && word_at(index: 1, words: argv_words(command: cursor_sandbox_preflight_command(program: program))) == flag
-    && word_at(index: 1, words: cursor_worker_turn_inner_argv(program: program, worktree_path: "/srv/attempt", prompt: "go" as NonEmptyStr)) == flag
+    && follows(words: preflight_words(), first: pinned_path(), second: flag)
+    && follows(words: probe_words(), first: pinned_path(), second: flag)
+    && follows(words: turn_words(), first: pinned_path(), second: flag)
 }
 
-// AN ABSENT PINNED EXECUTABLE REFUSES TYPED: sh's not-found status reads as absence and the reason names
-// the pinned realization; any other status does not.
-test fn an_unrunnable_pinned_path_reads_as_the_missing_realization() -> Bool {
-  let reason = cursor_pinned_realization_absent_reason() as String
-  cursor_pinned_executable_absent(exit_code: 127)
-    && !cursor_pinned_executable_absent(exit_code: 0)
-    && !cursor_pinned_executable_absent(exit_code: 1)
-    && string_contains(s: reason, pattern: "pinned cursor-agent realization is not installed")
+// EVERY INVOCATION BINDS THE ATTEMPT'S HOME AND CONFIG ROOT, derived from the one root, and nothing else
+// supplies them: the operator's real HOME and XDG_CONFIG_HOME cannot reach a production Cursor command.
+test fn preflight_probe_and_turn_bind_the_attempt_home_and_config() -> Bool {
+  let home = join(["HOME=", cursor_attempt_runtime_home(root: attempt_root())], "")
+  let config = join(["XDG_CONFIG_HOME=", cursor_attempt_runtime_config(root: attempt_root())], "")
+  names_word(words: preflight_words(), word: home) && names_word(words: preflight_words(), word: config)
+    && names_word(words: probe_words(), word: home) && names_word(words: probe_words(), word: config)
+    && names_word(words: turn_words(), word: home) && names_word(words: turn_words(), word: config)
+    && string_contains(s: home, pattern: "/srv/instance/")
+}
+
+// ANOTHER ATTEMPT'S ROOT SHARES NOTHING WITH THIS ONE'S BINDINGS.
+test fn another_attempts_bindings_name_a_different_root() -> Bool {
+  let other = cursor_attempt_runtime_root(instance_root: "/srv/instance", reference: "attempt-b-cursor")
+  let other_home = join(["HOME=", cursor_attempt_runtime_home(root: other)], "")
+  !names_word(words: probe_words(), word: other_home) && !names_word(words: turn_words(), word: other_home)
+}
+
+// THE ABSENT-REALIZATION REASON names the pinned path, the observed cause and the refusal of a PATH fallback.
+test fn an_absent_pinned_path_reads_as_the_missing_realization() -> Bool {
+  let reason = cursor_pinned_realization_absent_reason(detail: "no cursor-agent is listed in /opt/gunbc/cursor-agent/2026.09.15-d2fe57e") as String
+  string_contains(s: reason, pattern: "pinned cursor-agent realization is not installed")
     && string_contains(s: reason, pattern: pinned_path())
+    && string_contains(s: reason, pattern: "no cursor-agent is listed")
     && string_contains(s: reason, pattern: "never falls back to a PATH")
 }
