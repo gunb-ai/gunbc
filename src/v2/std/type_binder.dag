@@ -470,12 +470,17 @@ fn type_param_bound(binder: Node) -> BinderBound {
 // judgment needs the declarations the kind and argument resolve to, which only resolve holds, so it
 // is supplied; the PAIRING it is applied over is decided here and nowhere else. ArgumentLiteralUnjudged
 // is the language-level Nat literal rule: a literal is admitted in any kinded position and is NOT
-// judged against the kind's roster. ArgumentTypeParameterUnjudged is an argument that is itself a type
-// parameter of an enclosing declaration (`MachineWidth<bits>` inside a generic over bits): its
-// instances are judged where that declaration is applied, not here. Both ADMIT without crediting
-// inhabitance, and this module records no count of them: nothing would consume one. The honest
-// record of what stays unjudged is the declared frontier std.machine_constraints
-// machine_width_literal_roster_frontier, which states the rung this position sits at.
+// judged against the kind's roster. ArgumentTypeParameterUnjudged is RETAINED AND UNPRODUCED: a
+// forwarding argument used to answer it -- "its instances are judged where that declaration is
+// applied" -- and nothing ever performed that deferred judgment, so the arm was an admit with a
+// story attached (gunbc.recurring_failure_mode type_parameter_kind_deferral_never_collected). A
+// parameter of an enclosing declaration is now JUDGED, by the kind its binder declares resolved to
+// the same declaration the position's kind resolves to (v2.compiler.resolve
+// resolve_forwarded_parameter_kind_matches). The arm is not deleted here because removing a variant
+// from this coproduct reaches the emitter's generated enum mirror and the declared frontier
+// std.machine_constraints machine_width_literal_roster_frontier, which is a decision of its own;
+// what is NOT kept is the claim that anything is deferred. ArgumentLiteralUnjudged is still live and
+// still admits: the Nat literal rule is a language-level admission, not a per-kind judgment.
 type KindInhabitance
   = ArgumentInhabitsKind
   | ArgumentLiteralUnjudged

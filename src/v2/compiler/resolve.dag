@@ -4421,7 +4421,29 @@ fn resolve_kind_inhabitance(ctx: ResolveContext, declaration: QualifiedName, arg
   if dag_node_is_int_literal_atom(node: argument) {
     ArgumentLiteralUnjudged
   } else if resolve_argument_is_type_parameter(ctx: ctx, argument: argument) {
-    ArgumentTypeParameterUnjudged
+    // A TYPE PARAMETER OF AN ENCLOSING DECLARATION IS JUDGED BY THE KIND ITS BINDER DECLARES, by
+    // declaration identity, on both sides. THE HOLE THIS CLOSES: this arm answered
+    // ArgumentTypeParameterUnjudged for ANY argument that was a bound type parameter, whatever it
+    // declared -- `type Wrapper<S> = Measure<Currency, S, Nat>` was admitted with an unkinded `S`,
+    // and with an `S: Parity` in a position that asks for `Scale`. Its stated rationale ("its
+    // instances are judged where that declaration is applied, not here") does not hold: nothing
+    // performs that deferred judgment, so the deferral was a silent admit. See
+    // gunbc.recurring_failure_mode type_parameter_kind_deferral_never_collected.
+    //
+    // THE TEST IS THE ONE THE NAMED-INHABITANT PATH ALREADY USES, applied symmetrically: the
+    // parameter's declared kind and the required kind are each resolved lexically FROM THE POSITION
+    // THAT DECLARES THEM -- the required kind from the applied declaration, the parameter's kind
+    // from the declaration whose header binds that parameter -- and the two are admitted when they
+    // name ONE declaring path. So a kind name that means something else where the parameter was
+    // declared resolves elsewhere and refuses; an UNKINDED binder has no annotation to resolve and
+    // refuses; a binder of a DIFFERENT kind resolves to another path and refuses. Nothing is
+    // admitted by spelling alone, and "is a type parameter" is no longer sufficient by itself, which
+    // is the widen DESIGN section 5 forbids.
+    if resolve_forwarded_parameter_kind_matches(ctx: ctx, required_from: declaration, argument: argument, kind: kind) {
+      ArgumentInhabitsKind
+    } else {
+      ArgumentOutsideKind
+    }
   } else {
     match resolve_kind_variant_paths_optional(ctx: ctx, declaration: declaration, kind: kind) {
       Absent => KindUnresolved
@@ -4436,6 +4458,108 @@ fn resolve_kind_inhabitance(ctx: ResolveContext, declaration: QualifiedName, arg
             }
         }
     }
+  }
+}
+
+// THE DECLARING PATH OF A KIND ANNOTATION, resolved lexically from the position that WRITES it. One
+// helper serves both sides of the forwarding test, which is what makes the test symmetric: the same
+// lookup, the same disambiguation, the same refusal when the name cannot be resolved or is contested.
+fn resolve_kind_declaring_path_optional(ctx: ResolveContext, from: QualifiedName, kind: Node) -> Optional<QualifiedName> {
+  match type_binder_atom_identity_optional(n: kind) {
+    Absent => optional_absent()
+    Present { value: kind_name } =>
+      match symbol_index_lexical_lookup_for(
+        index: ctx.namespace.symbol_index,
+        position: from,
+        name: kind_name,
+        required: TypeOccurrence
+      ) {
+        LexicalHit { node: _, path: kind_binding } =>
+          match symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding) {
+            MentionDeclaringUnavailable => optional_absent()
+            MentionDeclaringContested { claimants: _ } => optional_absent()
+            MentionDeclaringUnique { declaring: kind_path } => optional_present(value: kind_path)
+          }
+        LexicalAmbiguous { candidates: _ } => optional_absent()
+        LexicalUnbound => optional_absent()
+      }
+  }
+}
+
+// WHETHER A FORWARDED PARAMETER'S OWN DECLARED KIND IS THE KIND THE POSITION ASKS FOR.
+//
+// WHERE THE PARAMETER'S KIND COMES FROM, and why no reading of the scope alone could give it: the
+// type-parameter frame records a kinded binder as <declaring path>.<name> and nothing else
+// (type_param_value_binders folds kinded_type_param_names), and v2.compiler.symbol_index_fill
+// symbol_index_fill_kinded_type_params indexes THAT SAME PATH with the binder's annotation node. So
+// the frame's own entry is the address of the parameter's declared kind, and the lookup below reads
+// it through the index every other resolve judgment uses -- no new fact, no second registry, no span
+// computed from source text. A binder missing from the map is an UNKINDED one (an unkinded binder is
+// never inserted), and the answer is a refusal: the parameter was declared without a kind, so it
+// establishes nothing about the inhabitants it may stand for.
+// THE REQUIRED KIND IS RESOLVED FROM THE APPLIED DECLARATION'S POSITION (required_from), not
+// from the module being resolved: the kind a declaration asks for is authored where THAT declaration
+// is, so re-looking it up by spelling here could fail or bind a different same-named coproduct -- the
+// identity-by-spelling hazard DESIGN section 3 keeps out. The parameter's own kind is resolved from
+// where IT was declared, which is the symmetric reading, not a second opinion on the first.
+fn resolve_forwarded_parameter_kind_matches(ctx: ResolveContext, required_from: QualifiedName, argument: Node, kind: Node) -> Bool {
+  match type_binder_atom_identity_optional(n: argument) {
+    Absent => false
+    Present { value: id } =>
+      match resolve_type_parameter_binder_path(ctx: ctx, identity: id) {
+        Absent => false
+        Present { value: binder_path } =>
+          // The parameter's kind annotation, read where it is indexed: fill stores the binder's
+          // annotation node under exactly this path. An UNKINDED binder is never inserted there, so
+          // Absent is the honest "declared with no kind" and the answer is a refusal -- there is no
+          // node to resolve and nothing to admit on.
+          match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: binder_path) {
+            Absent => false
+            Present { value: supplied_annotation } =>
+              // <declaring path>.<name>: strip the name to get back to where the parameter was
+              // declared, which is the position its kind annotation must be read from.
+              match resolve_kind_declaring_path_optional(ctx: ctx, from: qualified_name_init(qn: binder_path), kind: supplied_annotation) {
+                Absent => false
+                Present { value: supplied_kind_path } =>
+                  match resolve_kind_declaring_path_optional(ctx: ctx, from: required_from, kind: kind) {
+                    Absent => false
+                    Present { value: required_kind_path } => supplied_kind_path == required_kind_path
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The frame entry for a type parameter, by its binder path -- the address its declared kind is
+// indexed at. BOTH scopes are consulted, because that is where the binders actually live: a
+// declaration's header pushes its frame onto ctx.scope (resolve_type_param_frame at the module-item
+// and arrow-admitted sites) while an Arrow's own header pushes onto ctx.type_scope, and
+// resolve_argument_is_type_parameter already reads both for exactly this reason. Reading only one
+// would make the judgment answer differently depending on which kind of declaration forwarded the
+// parameter, which is the same defect in a new costume. Absent when no type-parameter frame binds
+// the name in either.
+fn resolve_type_parameter_binder_path(ctx: ResolveContext, identity: Symbol) -> Optional<QualifiedName> {
+  match resolve_scope_type_parameter_binder_path(s: ctx.type_scope, name: identity) {
+    Present { value: found_path } => optional_present(value: found_path)
+    Absent => resolve_scope_type_parameter_binder_path(s: ctx.scope, name: identity)
+  }
+}
+
+fn resolve_scope_type_parameter_binder_path(s: Scope, name: Symbol) -> Optional<QualifiedName> {
+  match lookup_chain(s: s, name: name) {
+    Accepted { value: found, diagnostics: _ } =>
+      match found {
+        BoundInFrame { canonical: canonical, kind: k } =>
+          match k {
+            TypeParameterFrame { binders: binders } => map_lookup(m: binders, key: canonical)
+            ParameterFrame { arrow_path: _ } => optional_absent()
+            LexicalFrame { binders: _ } => optional_absent()
+          }
+        BoundAtRoot { canonical: _ } => optional_absent()
+        ScopeUnbound => optional_absent()
+      }
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
