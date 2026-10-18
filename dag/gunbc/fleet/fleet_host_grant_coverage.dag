@@ -9,7 +9,7 @@ import gunbc.executor_privileged_operation {
   executor_privileged_operation_sudoers_command,
   executor_privileged_operation_sudoers_line,
 }
-import gunbc.runner.runner_host_grants { runner_host_wide_refused_operations }
+import gunbc.runner.runner_host_grants { runner_host_wide_refused_operations, runner_host_sudoers_install_path }
 import gunbc.runner.runner_host_deploy { RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for }
 import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
 import extdeps.sudo.nopasswd_execute_probe_check_op { sudo_nopasswd_grant_list_admits_probe }
@@ -62,8 +62,6 @@ type HostGrantRow {
   rule: NonEmptyStr
   standing: HostGrantStanding
 }
-
-data host_grant_installed_sudoers_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner"
 
 data host_grant_observation_unobserved_no_transaction: HostGrantObservation = HostGrantObservation {
   listing: GrantListingUnread { cause: "no sudo grant listing was taken for this host, so no host-wide grant is known to be installed" as NonEmptyStr },

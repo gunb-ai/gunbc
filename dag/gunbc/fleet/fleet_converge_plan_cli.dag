@@ -24,8 +24,8 @@ import gunbc.fleet.fleet_host_grant_coverage {
   GrantListingUnread,
   InstalledSudoersText,
   InstalledSudoersUnreadable,
-  host_grant_installed_sudoers_path,
 }
+import gunbc.runner.runner_host_grants { runner_host_sudoers_install_path }
 import std.types { CommitSha }
 
 
@@ -573,7 +573,7 @@ fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
 fn observe_host_grants_wet() -> HostGrantObservation
 {
   let listing = sudo.NopasswdGrantList.Read()
-  let installed = Filesystem.Read(path: host_grant_installed_sudoers_path)
+  let installed = Filesystem.Read(path: runner_host_sudoers_install_path)
   HostGrantObservation {
     listing: if listing.success {
       GrantListingRead { text: listing.stdout }
@@ -583,7 +583,7 @@ fn observe_host_grants_wet() -> HostGrantObservation
     installed: if installed.success {
       InstalledSudoersText { text: installed.content }
     } else {
-      InstalledSudoersUnreadable { cause: join(["read of ", host_grant_installed_sudoers_path as String, " failed"], "") as NonEmptyStr }
+      InstalledSudoersUnreadable { cause: join(["read of ", runner_host_sudoers_install_path as String, " failed"], "") as NonEmptyStr }
     },
   }
 }
