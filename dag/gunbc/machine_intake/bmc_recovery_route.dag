@@ -45,9 +45,11 @@ import extdeps.bmc.redfish {
   RedfishResetToDefaultsType, ResetAll, ResetNetwork, ResetRestore, redfish_message_id_is_password_change_required,
 }
 import extdeps.linux.kernel { LinuxKernelModuleName }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute }
 import extdeps.units.iso8601_calendar {
-  iso8601_days_from_civil, iso8601_seconds_per_day, iso8601_utc_text,
+  iso8601_days_from_civil, iso8601_seconds_per_day, iso8601_seconds_per_hour, iso8601_utc_text,
 }
+import std.measure { milliseconds_per_second }
 import extdeps.network.ipv4 {
   Ipv4Address,
 }
@@ -2360,9 +2362,17 @@ fn captured_instant_le(earlier: EpochMs, later: EpochMs) -> Bool {
   epoch_milliseconds_count(e: earlier) <= epoch_milliseconds_count(e: later)
 }
 
-// one UTC instant on the captured day, from the hour/minute/second a capture line shows
+// one UTC instant on the captured day, from the hour/minute/second a capture line shows. Every scale
+// factor is asked of the module that owns it -- extdeps.units.iso8601_calendar for the hour and the day,
+// extdeps.units.iso8601 for the minute, std.measure for the millisecond scale -- so the mint and the
+// bounds above it rest on one authority, and no round number sits here that could disagree with it.
 fn captured_epoch_millisecond(hour: Int, minute: Int, second: Int) -> EpochMs {
-  (iso8601_days_from_civil(y: 2026, m: 10, d: 16) * iso8601_seconds_per_day() + hour * 3600 + minute * 60 + second) * 1000
+  (
+    iso8601_days_from_civil(y: 2026, m: 10, d: 16) * iso8601_seconds_per_day()
+      + hour * iso8601_seconds_per_hour()
+      + minute * (iso8601_seconds_per_minute() as Int)
+      + second
+  ) * (milliseconds_per_second() as Int)
 }
 
 // THE ONE MINT EVERY BAND GOES THROUGH, including what a claim asks when it wants to know what an
@@ -2383,8 +2393,15 @@ fn captured_band(low: EpochMs, high: EpochMs) -> CapturedInstant {
 fn captured_minute_band(hour: Int, minute: Int) -> CapturedInstant {
   captured_band(
     low: captured_epoch_millisecond(hour: hour, minute: minute, second: 0),
-    high: captured_epoch_millisecond(hour: hour, minute: minute, second: 59),
+    high: captured_epoch_millisecond(hour: hour, minute: minute, second: (iso8601_seconds_per_minute() as Int) - 1),
   )
+}
+
+// milliseconds back to seconds, for a reader that hands an instant to a function expecting a second
+// (iso8601_utc_text). The scale is the same authority the mint multiplies by, so no caller restates it:
+// a claim that wrote its own division could be checked against a scale the mint had already changed.
+fn captured_epoch_seconds(instant: EpochMs) -> Int {
+  epoch_milliseconds_count(e: instant) / (milliseconds_per_second() as Int)
 }
 
 // the band, read out of the carrier rather than out of a chosen point: a reader gets the ordered pair
@@ -2832,15 +2849,15 @@ test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool 
   match channel {
     Present { value: b } =>
       // 02's own `06:27`, to the minute it shows -- and neither bound claims a second it has
-      iso8601_utc_text(unix: b.low as Int / 1000) == "2026-10-16T06:27:00Z"
-        && iso8601_utc_text(unix: b.high as Int / 1000) == "2026-10-16T06:27:59Z"
+      iso8601_utc_text(unix: captured_epoch_seconds(instant: b.low)) == "2026-10-16T06:27:00Z"
+        && iso8601_utc_text(unix: captured_epoch_seconds(instant: b.high)) == "2026-10-16T06:27:59Z"
     Absent => false
   }
     && (match post_reset {
       Present { value: b } =>
         // the README's ~06:5x band, whole: 06:50:00Z through 06:59:59Z
-        iso8601_utc_text(unix: b.low as Int / 1000) == "2026-10-16T06:50:00Z"
-          && iso8601_utc_text(unix: b.high as Int / 1000) == "2026-10-16T06:59:59Z"
+        iso8601_utc_text(unix: captured_epoch_seconds(instant: b.low)) == "2026-10-16T06:50:00Z"
+          && iso8601_utc_text(unix: captured_epoch_seconds(instant: b.high)) == "2026-10-16T06:59:59Z"
       Absent => false
     })
     // A REVERSED PAIR REFUSES, IT IS NOT SWAPPED. The fold is the only route to a band, so this is
