@@ -7,10 +7,18 @@ import std.decl_ref { decl_ref }
 import extdeps.crypto.hash { Digest }
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_installed_binary_path }
 import gunbc.host.verified_binary_install {
-  // VerifiedBinaryInstallPlan is the return type of `verified_binary_install_digest_mismatch_refusal`
-  // below. It was used un-imported until review 81885 (3): my strict closure compile of THIS module
-  // reported blocking=0 / unresolved=0 with the import absent, so this is a compiler gap and not a
-  // missed gate — the type is named here so the module is honestly self-describing.
+  // VerifiedBinaryInstallPlan is the return type of `sccache_verified_install_admitted_plan`
+  // below. It was used UN-IMPORTED until review 81885 (3), and the strict per-entry closure compile of
+  // THIS module reported blocking=0 / unresolved=0 with the name absent — so the gate did run and did not
+  // fire. WHY it cannot fire here is measured, not assumed (see the receipt on
+  // gunbc.recurring_failure_mode.bare_name_resolved_only_by_the_flat_namespace, which owns this class):
+  // renaming the annotation to a type that exists NOWHERE in the tree makes the same compile refuse
+  // (exit=1, `unresolved type 'VerifiedBinaryInstallPlanZzzNoSuchType'`), so annotations ARE resolved; the
+  // bare name simply binds through the loader's bare-reference channel because the declaring module is
+  // already in the closure, pulled by the sibling names in this very import block. The import is therefore
+  // not decoration: without it, nothing anywhere — not a per-entry compile, not a whole-tree compile —
+  // can see that this module depends on gunbc.host.verified_binary_install. The type is named here so the
+  // module is honestly self-describing and its dependency edge is legible.
   VerifiedBinaryInstallParams,
   VerifiedBinaryInstallPlan,
   verified_binary_install_shell,
