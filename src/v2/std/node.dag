@@ -766,6 +766,15 @@ fn positional_edges(children: List<Edge>) -> List<Edge> {
   filter(children, fn(e) { is_positional(e: e) })
 }
 
+// THE SLOTS OF A NODE, as targets rather than edges: the positional edges' targets in the order the
+// producer wrote them. Readers that index a node by position (an application's head and arguments, an
+// occupancy's payload) take them from here, so what counts as a slot is decided in one place.
+fn positional_child_target_nodes(node: Node) -> List<Node> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    if is_positional(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
+}
+
 fn named_edges(children: List<Edge>) -> List<Edge> {
   filter(children, fn(e) { !is_positional(e: e) })
 }

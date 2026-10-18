@@ -1,0 +1,80 @@
+module test.claim.runner.lost_boot_population_probe_witness
+
+import std.types { String, Bool, Int, List }
+import extdeps.filesystem.filesystem_io
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE LOST-BOOT SWEEP'S UNWRITABLE ROUTES, ENROLLED AS EXECUTED REDS (DESIGN §4b). The probe source
+// test.probe.lost_boot_population_probe calls the sweep internals from outside, fabricates a
+// derived-empty population, and reaches the supplied-width constructors through each witness helper;
+// each must refuse at its subject. The control names the same modules and calls only the
+// public derivation (current_service_population) and the sweep entry, and must refuse at none of
+// them, so a refusal is attributable to the forgery and not to importing the modules.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn probe() -> CompileDiagnosticCensus {
+  census_of(source: filesystem_read(path: "dag/test/probe/lost_boot_population_probe.dag").content)
+}
+
+fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_any(c: CompileDiagnosticCensus, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+data control_source: String = "module lost_boot_population_harness_control\nimport extdeps.transports.rest { RestResult }\nimport extdeps.github.effect { GitHubOrganizationRef }\nimport extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }\nimport gunbc.auth.github_credential { GitHubCredentialAuthority }\nimport gunbc.host.host_control_route { HostControlStanding }\nimport gunbc.runner.runner_host_unit_slot { CurrentServicePopulation, CurrentServicePopulationStanding, ServiceBootId, current_service_population }\nimport gunbc.runner.runner_jit_deregistration { LostBootSweep, lost_boot_sweep }\nfn population(host: HostControlStanding, boot: ServiceBootId) -> CurrentServicePopulationStanding { current_service_population(host: host, boot: boot) }\nfn sweep_it(organization: GitHubOrganizationRef, population: CurrentServicePopulation, authority: GitHubCredentialAuthority, listing: RestResult<OrganizationRunnerListWire>) -> LostBootSweep { lost_boot_sweep(organization: organization, population: population, authority: authority, listing: listing) }\n"
+
+test fn the_control_that_uses_the_public_routes_refuses_nothing() -> Bool {
+  let c = census_of(source: control_source)
+  blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "sweep_class") == 0
+    && blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "sweep_over") == 0
+    && blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "current_service_population_over") == 0
+    && blocking(c: c, wanted: "SoleConstructorViolation", subject: "CurrentServicePopulation") == 0
+    && blocking_any(c: c, subject: "lost_boot_sweep") == 0
+    && blocking_any(c: c, subject: "current_service_population") == 0
+}
+
+test fn the_sweep_internals_refuse_an_outside_caller() -> Bool {
+  let c = probe()
+  blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "sweep_class") >= 1
+    && blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "sweep_over") >= 1
+}
+
+test fn the_supplied_width_constructor_refuses_an_outside_caller() -> Bool {
+  blocking(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "current_service_population_over") >= 1
+}
+
+test fn a_fabricated_derived_empty_population_refuses() -> Bool {
+  blocking(c: probe(), wanted: "SoleConstructorViolation", subject: "CurrentServicePopulation") >= 1
+}
+
+// THE INDIRECT ROUTES. A helper that supplies a width or a listed name to a restricted constructor is a
+// boundary of its own; each is admit_callers-restricted to its terminal claims, so a call from the probe
+// refuses AT THAT HELPER (class and subject, not a global count).
+test fn every_witness_helper_that_supplies_a_width_refuses_an_outside_caller() -> Bool {
+  let c = probe()
+  all(["population_over_host", "population_over", "derived", "reg", "reg5", "sweep"],
+      h => blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: h) >= 1)
+}

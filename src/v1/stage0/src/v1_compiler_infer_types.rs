@@ -41,7 +41,8 @@ pub use crate::std_types::{
     container_template_alias_algebra, container_template_alias_rows, is_container_type, SourceSpan,
 };
 pub use crate::v1_compiler_infer_env::{
-    text_crossing_by_identity, type_reference_declaration_ref, TypeBinding, TypeEnv,
+    alias_settled_agree, settled_type, text_crossing_by_identity, type_reference_declaration_ref,
+    TypeBinding, TypeEnv,
 };
 pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_rt;
@@ -2424,7 +2425,6 @@ pub enum TextJudgment {
 #[serde(tag = "_variant")]
 pub enum TextNotAskedReason {
     TextNotAskedInVariantFieldSummary,
-    TextNotAskedForCallableComponentResidue,
     TextNotAskedForSyntheticWitnessNodes,
 }
 
@@ -2888,7 +2888,7 @@ pub fn node_type_compatible(
                                                     if (left_opt.clone() || right_opt.clone()) {
                                                         false
                                                     } else {
-                                                        crate::v1_std_core::type_name_compatible(
+                                                        (crate::v1_std_core::type_name_compatible(
                                                             crate::v1_std_core::authored_name_at(
                                                                 source_indices.clone(),
                                                                 left.clone(),
@@ -2897,7 +2897,12 @@ pub fn node_type_compatible(
                                                                 source_indices.clone(),
                                                                 right.clone(),
                                                             ),
-                                                        )
+                                                        ) || alias_identity_in_judgment(
+                                                            left.clone(),
+                                                            right.clone(),
+                                                            source_indices.clone(),
+                                                            text.clone(),
+                                                        ))
                                                     }
                                                 }
                                             }
@@ -2911,6 +2916,146 @@ pub fn node_type_compatible(
             }
         }
     })
+}
+
+pub fn alias_identity_in_judgment(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    match (*text.clone()).clone() {
+        TextJudgment::TextJudgedIn { env: e, .. } => {
+            crate::v1_compiler_infer_env::alias_settled_agree(
+                left.clone(),
+                right.clone(),
+                source_indices.clone(),
+                e.clone(),
+                |a, b| {
+                    applied_argument_agrees(
+                        child_type_node(a.clone()),
+                        child_type_node(b.clone()),
+                        source_indices.clone(),
+                        text.clone(),
+                    )
+                },
+            )
+        }
+        TextJudgment::TextNotAsked { reason: _, .. } => false,
+    }
+}
+
+pub fn applied_argument_opaque_identity(left: Rc<Node>, right: Rc<Node>) -> Option<bool> {
+    {
+        if (left.return_cardinality.clone() != right.return_cardinality.clone()) {
+            return Some(false);
+        }
+        match left.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::CompilerError { .. }) => Some(false),
+            Some(InferredNode::TypeVariable { id: left_id, .. }) => {
+                match right.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::TypeVariable { id: right_id, .. }) => {
+                        match left.declaration.clone() {
+                            Some(l) => match right.declaration.clone() {
+                                Some(r) => Some(crate::std_decl_ref::declaration_ref_eq(
+                                    l.clone(),
+                                    r.clone(),
+                                )),
+                                std::option::Option::None => Some(false),
+                            },
+                            std::option::Option::None => match right.declaration.clone() {
+                                Some(_) => Some(false),
+                                std::option::Option::None => {
+                                    Some((left_id.clone() == right_id.clone()))
+                                }
+                            },
+                        }
+                    }
+                    _ => Some(false),
+                }
+            }
+            _ => match right.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::CompilerError { .. }) => Some(false),
+                Some(InferredNode::TypeVariable { id: _, .. }) => Some(false),
+                _ => std::option::Option::None,
+            },
+        }
+    }
+}
+
+pub fn applied_argument_agrees(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    match applied_argument_opaque_identity(left.clone(), right.clone()) {
+        Some(verdict) => verdict.clone(),
+        std::option::Option::None => applied_argument_declared_agrees(
+            left.clone(),
+            right.clone(),
+            source_indices.clone(),
+            text.clone(),
+        ),
+    }
+}
+
+pub fn applied_argument_declared_agrees(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    match (*text.clone()).clone() {
+        TextJudgment::TextJudgedIn { env: e, .. } => {
+            match crate::v1_compiler_infer_env::settled_type(
+                left.clone(),
+                source_indices.clone(),
+                e.clone(),
+                16,
+            ) {
+                std::option::Option::None => node_type_compatible(
+                    left.clone(),
+                    right.clone(),
+                    source_indices.clone(),
+                    text.clone(),
+                ),
+                Some(_) => match crate::v1_compiler_infer_env::settled_type(
+                    right.clone(),
+                    source_indices.clone(),
+                    e.clone(),
+                    16,
+                ) {
+                    std::option::Option::None => node_type_compatible(
+                        left.clone(),
+                        right.clone(),
+                        source_indices.clone(),
+                        text.clone(),
+                    ),
+                    Some(_) => crate::v1_compiler_infer_env::alias_settled_agree(
+                        left.clone(),
+                        right.clone(),
+                        source_indices.clone(),
+                        e.clone(),
+                        |a, b| {
+                            applied_argument_agrees(
+                                child_type_node(a.clone()),
+                                child_type_node(b.clone()),
+                                source_indices.clone(),
+                                text.clone(),
+                            )
+                        },
+                    ),
+                },
+            }
+        }
+        TextJudgment::TextNotAsked { reason: _, .. } => node_type_compatible(
+            left.clone(),
+            right.clone(),
+            source_indices.clone(),
+            text.clone(),
+        ),
+    }
 }
 
 pub fn prefer_specific_type(
@@ -3780,7 +3925,5 @@ pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TextNotAskedInVariantFieldSummary;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct TextNotAskedForCallableComponentResidue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TextNotAskedForSyntheticWitnessNodes;
