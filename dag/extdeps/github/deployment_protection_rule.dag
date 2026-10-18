@@ -60,7 +60,10 @@ import extdeps.external_authority {
 import extdeps.uri { Uri, Https }
 // The run's own conclusion vocabulary comes from the sibling Actions model rather than being
 // re-minted here (§2): the broker verifies a waiting run THROUGH that record.
-import extdeps.github.actions_runs { RunConclusion, success }
+import extdeps.github.actions_runs {
+  RunConclusion,
+  RunFailure,
+}
 // The permission vocabulary is extdeps.github.app's, not re-minted here (§2).
 import extdeps.github.app {
   GitHubPermissionAxis,
@@ -613,8 +616,7 @@ fn rule_ownership_is_established(ownership: EnvironmentRuleOwnership) -> Bool {
 
 // The readback that establishes it, upstream's own path and method. GET .../apps returns the
 // environment's available custom protection rules, each carrying an `id` and the `app` that owns it.
-data available_rule_readback_endpoint_path: NonEmptyStr =
-  "/repos/\{owner\}/\{repo\}/environments/\{environment_name\}/deployment_protection_rules/apps"
+data available_rule_readback_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/environments/\{environment_name\}/deployment_protection_rules/apps"
 data available_rule_readback_endpoint_method: HttpMethod = GET
 
 
@@ -941,12 +943,10 @@ fn gate_ref(decl_name: NonEmptyStr) -> DeclarationRef {
 
 data review_endpoint_ref: DeclarationRef = gate_ref(decl_name: "review_endpoint_path")
 data review_state_enum_ref: DeclarationRef = gate_ref(decl_name: "review_state_wire")
-data pending_deployments_endpoint_ref: DeclarationRef =
-  gate_ref(decl_name: "pending_deployments_endpoint_path")
+data pending_deployments_endpoint_ref: DeclarationRef  gate_ref(decl_name: "pending_deployments_endpoint_path")
 data human_review_endpoint_ref: DeclarationRef = gate_ref(decl_name: "human_review_endpoint_path")
 data rule_webhook_fields_ref: DeclarationRef = gate_ref(decl_name: "rule_webhook_field_environment")
-data environment_protection_types_ref: DeclarationRef =
-  gate_ref(decl_name: "environment_protection_rule_type_values")
+data environment_protection_types_ref: DeclarationRef  gate_ref(decl_name: "environment_protection_rule_type_values")
 data custom_rule_timeout_ref: DeclarationRef = gate_ref(decl_name: "custom_rule_response_timeout")
 data gate_ceiling_ref: DeclarationRef = gate_ref(decl_name: "rule_gate_approval_ceiling")
 data wait_timer_field_ref: DeclarationRef = gate_ref(decl_name: "wait_timer_maximum_minutes")

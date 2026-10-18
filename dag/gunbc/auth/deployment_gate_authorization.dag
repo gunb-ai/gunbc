@@ -18,7 +18,6 @@ module gunbc.auth.deployment_gate_authorization
 
 import std.types { String, Int, List, Bool, NonEmptyStr, HttpStatus }
 import std.measure { Second, second_count, minute, Minute }
-import std.optional { Option, Present, none }
 import std.human_intervention { FleetOnce }
 import extdeps.crypto.mac { MacKeyId }
 import extdeps.github.deployment_protection_rule {
@@ -293,16 +292,23 @@ fn broker_may_answer(
 ) -> Bool {
   verified_run_id == claim.run_id
     && pending_wait_environment_name(wait: wait) == claim.environment
-    && pending_wait_environment_name(wait: wait) == gate_environment_of(ownership: ownership)
-    && rule_ownership_is_established(ownership: ownership)
+    && ownership_names_environment(
+         ownership: ownership, environment: pending_wait_environment_name(wait: wait)
+       )
     && !pending_wait_carries_a_human_reviewer(wait: wait)
     && capability_binds_request(capability: capability, claim: claim)
 }
 
-fn gate_environment_of(ownership: EnvironmentRuleOwnership) -> NonEmptyStr {
+// The third of the three names. A refusal that names no environment CANNOT name this one, so the
+// unchecked-readback arm falls out of the same match — there is no "unknown environment" value to
+// paper over a missing read, and no empty string pretending to be a name.
+fn ownership_names_environment(
+  ownership: EnvironmentRuleOwnership,
+  environment: NonEmptyStr
+) -> Bool {
   match ownership {
-    OwnedByGateApp { rule_id: _, installation_id: _, environment_name: e } => e
-    NotOwnedByGateApp { because: _ } => "" as NonEmptyStr
+    OwnedByGateApp { rule_id: _, installation_id: _, environment_name: e } => e == environment
+    NotOwnedByGateApp { because: _ } => false
   }
 }
 
@@ -560,12 +566,12 @@ test fn a_review_that_flips_the_tapped_decision_is_not_posted() -> Bool {
   let approve = DeploymentProtectionRuleReview {
     environment_name: srv1_production_environment_name,
     state: Approved,
-    comment: none,
+    comment: Absent,
   }
   let reject = DeploymentProtectionRuleReview {
     environment_name: srv1_production_environment_name,
     state: Rejected,
-    comment: none,
+    comment: Absent,
   }
   review_matches_decision(review: approve, decision: ProposeApprove)
     && !review_matches_decision(review: approve, decision: ProposeDeny)

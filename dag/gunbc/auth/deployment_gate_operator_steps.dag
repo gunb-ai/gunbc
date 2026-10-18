@@ -37,7 +37,7 @@ import extdeps.github.deployment_protection_rule {
   Rejected,
   review_state_wire,
   rule_app_permissions,
-  rule_app_permission_set_is_admissible,
+  rule_app_permission_set_is_complete,
   rule_app_permission_set_is_complete,
   environment_protection_rule_type_values,
   RequiredReviewersKind,
@@ -115,7 +115,7 @@ data webhook_configuration_step: HumanIntervention = HumanIntervention {
   identity: "github.deployment-rule.webhook.configure" as HumanInterventionIdentity,
   frequency: FleetOnce,
   subject: "App webhook configuration",
-  instruction: "Set the App's webhook URL and secret. Do NOT open any inbound path to the tailnet-only approval broker for this purpose: the broker learns a run is waiting from the run's own submitted approval request and answers GitHub outbound with an installation token. A public exposure of the broker to receive GitHub deliveries is a rejected alternative and must not be built to satisfy this row.",
+  instruction: "Set the App's webhook URL to a DISABLED endpoint (no receiver) and leave the signing secret recorded but unused. The selected route reads NOTHING from a delivery: discovery is an earlier ungated job in the run filing the approval request, and the broker answers GitHub outbound with an installation token. WHAT THAT IMPLIES is stated in the model as an open standing rather than assumed — gunbc.extdeps.github.deployment_protection_rule.rule_delivery_independence carries the inference that GitHub accepts the App's review without having delivered the webhook, with the read obligation that settles it. If that trial comes back refused, THIS ROW CHANGES: it becomes a real (tailnet-relayed) receiver and the fallback route is selected. Do NOT open any inbound path to the tailnet-only approval broker to satisfy this row; a public GitHub exposure of the broker is a rejected alternative.",
   completion_evidence: NoDischargeSiteModeled
 }
 
@@ -136,8 +136,33 @@ data reviewer_removal_step: HumanIntervention = HumanIntervention {
   identity: "github.deployment-rule.reviewer-removal.srv1-production" as HumanInterventionIdentity,
   frequency: FleetOnce,
   subject: "required reviewer removed from srv1-production",
-  instruction: "Only after the rule has been witnessed APPROVING a real dispatch after an ntfy tap and REJECTING a real dispatch after a refusal — both states, on real run ids, read back from GitHub — remove the operator from srv1-production's required reviewers. Then re-read the environment and its deployment-branch-policies and confirm the main-only branch rule is the protection that remains. If either witness is missing, this row is not performable; do not perform it to close a ticket.",
+  instruction: "Perform this ONLY with an admitted gunbc.auth.deployment_gate_authorization.ReviewerRemovalAdmission — RemovalAdmitted carrying DeploymentGateTrialEvidence whose approved_run and rejected_run are two DIFFERENT real fleet-converge dispatches, both on deployment_gate_environment, read back from GitHub. RemovalRefused means the act is not performable; do not perform it to close a ticket, and do not treat this instruction's wording as the check. Then re-read the environment and its deployment-branch-policies and confirm the main-only branch rule is the protection that remains.",
   completion_evidence: NoDischargeSiteModeled
+}
+
+// THE ACT CONSUMES THE ADMISSION. Not a grep of the instruction for the words APPROVING or
+// REJECTING — those words were in the row from the start and proved nothing about whether anyone had
+// seen either outcome. The performable set is now the admitted set: with the frontier row a
+// RemovalRefused, there is no value this act can be performed with, which is what "not yet" has to
+// mean in a model that is used to decide anything.
+fn reviewer_removal_is_performable() -> Bool {
+  reviewer_removal_is_admitted(admission: reviewer_removal_admission)
+}
+
+// THE DISCRIMINATING RED for the whole ordering control: the same act, performed with an admitted
+// pair of trials, IS performable; performed with the frontier's refusal, it is not. If the typed
+// prerequisite were replaced by prose again, the second clause would stop being a fact anyone could
+// break.
+test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
+  !reviewer_removal_is_performable()
+    && reviewer_removal_is_admitted(
+         admission: RemovalAdmitted {
+           evidence: DeploymentGateTrialEvidence {
+             approved_run: witnessed_approval,
+             rejected_run: witnessed_rejection,
+           }
+         }
+       )
 }
 
 data deployment_gate_operator_steps: List<HumanIntervention> = [
