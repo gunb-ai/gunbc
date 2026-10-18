@@ -33,14 +33,9 @@ import importlib.util
 REAL_NODE = '''
 #[derive(Debug, Clone, PartialEq)] pub struct SourceSpan { pub file: String, pub start: i64, pub end: i64 }
 #[derive(Debug, Clone, PartialEq)] pub struct NodeOccurrenceIdentity;
-#[derive(Debug, Clone, PartialEq)] pub enum Connective { NoConnective, Disj, Conj, Arrow, Lam, Neg, Box, Card, Pred, Ex, All, Refine, Coproduct }
+#[derive(Debug, Clone, PartialEq)] pub enum Connective { __CONNECTIVE__ }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)] pub enum Cardinality { One, ZeroOrOne, Many, CardOptional }
-#[derive(Debug, Clone, PartialEq)] pub enum InferredNode {
-    Resolved { node: Rc<Node> },
-    CompilerError { message: String, span: Rc<SourceSpan> },
-    TypeVariable { id: String },
-    Divergent,
-}
+#[derive(Debug, Clone, PartialEq)] pub enum InferredNode { __INFERRED__ }
 #[derive(Debug, Clone, PartialEq)] pub struct DeclarationRef { pub module_path: String, pub decl_name: String }
 #[derive(Debug, Clone, PartialEq)] pub struct NewlineIndex { pub lines: Rc<Vec<i64>> }
 #[derive(Debug, Clone, PartialEq)] pub struct Node {
@@ -160,7 +155,7 @@ impl<A: std::hash::Hash> std::hash::Hash for Vector<A> {
 }
 impl<A> Default for Vector<A> { fn default() -> Vector<A> { Vector { items: std::vec::Vec::default() } } }
 '''
-PREAMBLE = '''#![allow(dead_code, unused_variables, unused_imports)]
+PREAMBLE_TMPL = '''#![allow(dead_code, unused_variables, unused_imports)]
 use std::collections::HashMap;
 use std::rc::Rc;
 ''' + IM_VECTOR + '''
@@ -187,7 +182,53 @@ fn break_guard_placeholder() {}
 '''
 
 
+
+MIRROR_DEFAULT = "src/v1/stage0/src/v1_std_core.rs"
+
+
+def derive_enums(mirror_path):
+    """Take Connective and InferredNode VERBATIM from the real emitted mirror.
+
+    These used to be hand-written here, and that is exactly how probe v11's injected code passed
+    STUBCHECK and then died 20 minutes later with
+
+      error[E0599]: no variant or associated item named `Neg` found for enum `Connective`
+
+    -- because this file's stub listed a `Neg` variant that the real enum does not have
+    (src/v1/stage0/src/v1_std_core.rs:148 lists exactly Conj, Disj, NoConnective, Arrow). A gate whose
+    stubs are invented cannot catch an invented name: it just agrees with the mistake. So the stubs are
+    now PARSED from the artifact the probe will actually run against, and a failure to parse is an error,
+    never a fallback -- silently reverting to a guess is the failure mode that made this bug invisible.
+    """
+    import os
+    path = os.environ.get("GUNBC_STUB_MIRROR", mirror_path)
+    if not os.path.exists(path):
+        raise SystemExit("STUBCHECK FAIL: mirror %s not found -- refusing to fall back to hand-written "
+                         "enum stubs (that fallback is what hid the Neg bug)" % path)
+    text = open(path, encoding="utf-8").read()
+    out = {}
+    for name in ("Connective", "InferredNode"):
+        m = re.search(r"pub enum %s \{(.+?)\n\}" % name, text, re.S)
+        if not m:
+            raise SystemExit("STUBCHECK FAIL: 'pub enum %s' not found in %s -- cannot derive its variants"
+                             % (name, path))
+        body = m.group(1)
+        # Keep the body VERBATIM. Re-joining line by line looks tidier and is wrong: struct-style variants
+        # (`CompilerError { message: String, span: Rc<SourceSpan> },`) span several lines and a naive split
+        # emits `pub enum InferredNode { Resolved {, node: Rc<Node>,, }, ... }` -- "expected identifier,
+        # found `,`". The compiler already knows how to read the text; the only job here is to not corrupt it.
+        if not body.strip():
+            raise SystemExit("STUBCHECK FAIL: enum %s parsed empty" % name)
+        out[name] = body
+    return out
+
+
 def main(patcher_path):
+    enums = derive_enums(MIRROR_DEFAULT)
+    print("stub enums DERIVED from the mirror: Connective = {%s} ; InferredNode = {%s}"
+          % (enums["Connective"], enums["InferredNode"]))
+    preamble = PREAMBLE_TMPL.replace("__CONNECTIVE__", enums["Connective"]) \
+                            .replace("__INFERRED__", enums["InferredNode"])
     spec = importlib.util.spec_from_file_location("patcher", patcher_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -216,7 +257,7 @@ def main(patcher_path):
     else:
         print("STUBCHECK FAIL: patcher exposes neither ANCHOR nor MARKER")
         return 1
-    seed = PREAMBLE + """
+    seed = preamble + """
 pub fn something_else() {}
 
 fn _r(

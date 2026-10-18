@@ -108,7 +108,6 @@ fn rebind9_conn(n: &Rc<Node>) -> String {
         Connective::NoConnective => "N".to_string(),
         Connective::Disj => "D".to_string(),
         Connective::Conj => "C".to_string(),
-        Connective::Neg => "L".to_string(),
         _ => "O".to_string(),
     }
 }
