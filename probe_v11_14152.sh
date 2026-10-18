@@ -129,6 +129,12 @@ echo "SEED PROOF (before instrumentation): fold=$(grep -ac UnifyGenericsAcc src/
 [ "$(grep -ac 'pub fn resolved_type(' src/v1/stage0/src/v1_compiler_infer_types.rs)" -gt 0 ] || { echo "resolved_type NOT FOUND in the emitted types mirror -- the S1B anchor would fail. Dumping its shape:"; grep -an 'fn resolved_type' src/v1/stage0/src/v1_compiler_infer_types.rs | head -5; exit 9; }
 
 echo "########## INJECT INSTRUMENTATION (throwaway; never committed) ##########"
+# PRE-FLIGHT the marker before calling the patcher, so a missing marker is a named failure rather than a
+# Python traceback two lines from a "PROBE9 PATCH REFUSED" (v11 lost 20 minutes to an IndexError that read
+# like a probe-design problem but was a CLI bug in my own patcher).
+mkn=$(grep -ac "diagnostics: Rc::new(vec!\[type_mismatch_error(" src/v1/stage0/src/v1_compiler_infer.rs)
+echo "pre-flight: diagnostic marker count in the regenerated seed = $mkn (want 1)"
+[ "$mkn" = "1" ] || { echo "VOID: marker count $mkn -- the refusal arm is not uniquely locatable, refusing to guess"; exit 12; }
 python3 $LOGS/patch_rebind_probe9.py src/v1/stage0/src/v1_compiler_infer.rs     || { echo "PROBE9 PATCH REFUSED"; exit 11; }
 # The helper is typechecked against the REAL emitted field sets before the 20-minute build, because probe v1
 # lost 21 minutes to an E0308 that a 30-second local rustc pass shows. It is fetched by ref, not by a

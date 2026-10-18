@@ -234,8 +234,15 @@ if __name__ == "__main__":
         assert k < d, "injection landed after the diagnostic"
         print("selftest OK")
         sys.exit(0)
-    out, rep = _patch_text(open(sys.argv[1], encoding="utf-8").read())
+    # 1-arg form patches IN PLACE (that is how the dispatch scripts call it); 2-arg form writes elsewhere.
+    # v11 died with IndexError: list index out of range because main assumed two args while the dispatch
+    # scripts pass one -- the same class of bug the probe exists to catch in the compiler, committed by me.
+    if len(sys.argv) not in (2, 3):
+        print("usage: patch_rebind_probe9.py FILE [OUT]  (no OUT patches in place)"); sys.exit(2)
+    inp = sys.argv[1]
+    outp = sys.argv[2] if len(sys.argv) == 3 else sys.argv[1]
+    out, rep = _patch_text(open(inp, encoding="utf-8").read())
     print("patch report:", rep)
     if not rep["ok"]:
         sys.exit(43)
-    open(sys.argv[2], "w", encoding="utf-8").write(out)
+    open(outp, "w", encoding="utf-8").write(out)
