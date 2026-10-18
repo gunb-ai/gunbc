@@ -8,7 +8,7 @@ use self::OccurrenceCategoryModuleScopeExposureVerdict::*;
 use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
-pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_algebra::{collection_concat_shape, FreeMonoid};
 pub use crate::std_content_hash::Fnv1a64Structural;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};

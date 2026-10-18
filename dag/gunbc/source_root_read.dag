@@ -10,7 +10,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused
 }
 import std.optional { Absent, Present }
-import std.algebra { Cons }
+import std.algebra { Cons, collection_concat_shape, collection_map_shape }
 
 // Compiler policy over the existing file transport. A failed listing is never an empty
 // directory. Only the host's NotADirectory observation admits a candidate as a file; every

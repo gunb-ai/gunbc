@@ -2,7 +2,7 @@ module v2.std.decl_index
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import v2.std.arrow_signature { declared_signature_arrow }
-import std.algebra { Empty, list_snoc_item, list_at_optional }
+import std.algebra { Empty, list_snoc_item, list_at_optional, collection_concat_shape, collection_count_shape }
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
 import v2.std.node { Arrow, Conj, Node, TypeNode, all_edges_named, all_edges_positional }
 import v2.std.node_query { node_positional_child_targets }
