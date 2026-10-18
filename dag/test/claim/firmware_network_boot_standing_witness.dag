@@ -629,11 +629,6 @@ fn fixture_redirect(join: HeadJoinStanding, available: AvailableNetworkStanding)
   redirect_target(join: join, available: available)
 }
 
-// THE FIXTURE'S OBSERVED BIOS VERSION, in the form the binder wants. Named once so the stale-version
-// witnesses differ from the current-version ones by exactly one token.
-fn bios_version_observed_as_input(version: NonEmptyStr) -> Optional<NonEmptyStr> {
-  Present { value: version }
-}
 
 // COMPARES WHAT THE EXECUTOR READS, NEVER THE CITATION. The fold is handed the catalog row's
 // authority and has no business rewriting it, so comparing citations would test the copy rather than
