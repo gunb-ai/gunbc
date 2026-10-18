@@ -1,6 +1,9 @@
 module gunbc.runner.runner_revision_job_unit
 
 import std.types { String, NonEmptyStr, List }
+import std.nat { nat_to_decimal_string }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import gunbc.workspace_allocation { workspace_profile_vcpus, LargeWorkspace }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Description, ServiceType, ExecMode, ServiceUser, ServiceSlice, WorkingDirectory,
   Environment, ExecStart, Restart, TimeoutStopSec, NotInstallable, systemd_instance_name_specifier,
@@ -67,12 +70,14 @@ fn revision_job_runner_unit_instance_name(slot_instance: String) -> NonEmptyStr 
 data revision_job_entry_file: String = "dag/gunbc/runner/runner_revision_job_main.dag"
 data revision_job_entry_function: String = "revision_job_main"
 
-// THE GUEST'S vCPU COUNT IS A DECLARED POLICY BUDGET, said plainly (DESIGN 4d): nothing measured yet
-// says what the claim sets need, and Firecracker's admission (firecracker_vcpu_count_admission)
-// refuses an out-of-range value at launch. 4 is the large workspace profile's count
-// (gunbc.workspace_allocation workspace_profile_vcpus), the one guest size this host already runs.
+// THE GUEST'S vCPU COUNT IS THE LARGE WORKSPACE PROFILE'S, read from its owner rather than copied
+// (gunbc.workspace_allocation workspace_profile_vcpus), typed as the hardware thread count it is, and
+// rendered to text only where the unit's Environment line needs it. Firecracker's admission
+// (firecracker_vcpu_count_admission) still refuses an out-of-range value at launch.
 // TRIGGER: the first measured claim-set run's receipt; the row changes to what that run supports.
-data revision_job_vcpus: String = "4"
+fn revision_job_vcpus() -> HardwareThreadCount {
+  hardware_thread_count(count: workspace_profile_vcpus(profile: LargeWorkspace))
+}
 
 // THE UNIT RUNS AS root FROM THE ROOT-OWNED LOCUS for the reasons the slot controller's does
 // (gunbc.runner.runner_microvm_slot_unit): systemd-run into the cell's slice, jailer, cgroup writes.
@@ -96,7 +101,7 @@ fn revision_job_runner_unit_file(release_dir: String) -> SystemdUnitFile {
       Environment { assignment: concat("GUNBC_REVISION_JOB_CACHE_DIR=", revision_job_cache_dir(instance: instance)) as NonEmptyStr },
       Environment { assignment: concat("GUNBC_REVISION_JOB_WORK_DIR=", revision_job_work_dir(instance: instance)) as NonEmptyStr },
       Environment { assignment: join(["GUNBC_REVISION_JOB_STORE_ROOT=", revision_job_receipt_store], "") as NonEmptyStr },
-      Environment { assignment: join(["GUNBC_REVISION_JOB_VCPUS=", revision_job_vcpus], "") as NonEmptyStr },
+      Environment { assignment: join(["GUNBC_REVISION_JOB_VCPUS=", nat_to_decimal_string(value: hardware_thread_count_value(t: revision_job_vcpus()))], "") as NonEmptyStr },
       ExecStart { command: microvm_locus_execstart(release_dir: release_dir, entry: revision_job_entry_file, function: revision_job_entry_function) },
       Restart { policy: "no" as NonEmptyStr },
     ], concat(
