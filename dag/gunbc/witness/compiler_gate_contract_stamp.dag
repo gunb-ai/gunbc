@@ -3,8 +3,7 @@ module gunbc.witness.compiler_gate_contract_stamp
 import std.types { Bool, FilePath, List, String }
 import std.optional { Absent, Optional, Present }
 import std.algebra { length, list_append, list_map, string_contains, trim }
-import std.contract_identity { ContractEpoch }
-import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
 import gunbc.parse_verdict_schema {
   parse_verdict_reuse_counts_field_labels,
@@ -16,6 +15,7 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_label_text
 }
 import v2.cli.population_verb_names { cli_verb_parse_population }
+import extdeps.github.actions { Step, RunStep }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlMapping, YamlString }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 
@@ -74,12 +74,12 @@ data compiler_gate_contract_stamp_provenance: String = "gunbc.witness.compiler_g
 // above: a head predating it still accepted the command.
 fn compiler_gate_invocation_argv_rows() -> List<String> {
   list_append(
-    xs: [
+    left: [
       join(["argv:", cli_verb_parse_population, " --compiler ", " --reuse-from "], ""),
       join(["argv:", cli_verb_parse_population, " --compiler ", " --write-identity ", " --receipts "], ""),
       join(["argv:", cli_verb_parse_population, " --compiler "], "")
     ],
-    x: list_map(
+    right: list_map(
       xs: emitted_subject_build_rows(),
       f: fn(row) { join(["argv:test ", emitted_subject_build_label_text(row: row)], "") }
     )
@@ -90,7 +90,7 @@ fn compiler_gate_invocation_argv_rows() -> List<String> {
 // 0, so the field set IS the contract -- and it is the field set the four silent runs proved unenforced.
 // The labels are the rows the verb prints and its claim asserts, so there is no second spelling that
 // could drift and quietly un-stamp a real contract change.
-data compiler_gate_invocation_output_rows: List<String> = list_append( xs: list_map( xs: parse_verdict_reuse_counts_field_labels, f: fn(label) { concat("stdout:", parse_verdict_reuse_counts_prefix, " ", label) } ), x: "stdout:ancestor-attribution-required" )
+data compiler_gate_invocation_output_rows: List<String> = list_append( left: list_map( xs: parse_verdict_reuse_counts_field_labels, f: fn(label) { concat("stdout:", parse_verdict_reuse_counts_prefix, " ", label) } ), right: ["stdout:ancestor-attribution-required"] )
 
 // THE LOCATOR'S BOUND. The restore chain walks a declared first-parent window and records the ancestor
 // it restored from; the counts line then names it. The window's width is contract, because a head that
@@ -106,8 +106,8 @@ fn compiler_gate_invocation_locator_rows() -> List<String> {
 
 fn compiler_gate_invocation_contract_rows() -> List<String> {
   list_append(
-    xs: list_append(xs: compiler_gate_invocation_argv_rows(), x: compiler_gate_invocation_output_rows),
-    x: compiler_gate_invocation_locator_rows()
+    left: list_append(left: compiler_gate_invocation_argv_rows(), right: compiler_gate_invocation_output_rows),
+    right: compiler_gate_invocation_locator_rows()
   )
 }
 
@@ -129,7 +129,7 @@ fn compiler_gate_invocation_contract_material() -> String {
 // required_ci_contract_epoch_is_derived: a module that cannot state its own stamp must REFUSE to emit
 // one, not emit a placeholder that would compare equal to itself forever.
 type CompilerGateContractStampDerivation
-  = CompilerGateContractStampDerived { stamp: ContractEpoch }
+  = CompilerGateContractStampDerived { stamp: ContentHash }
   | CompilerGateContractStampNotDerived { reason: String }
 
 fn compiler_gate_contract_stamp_derivation() -> CompilerGateContractStampDerivation {
@@ -308,6 +308,7 @@ fn compiler_gate_contract_stamp_compare(
       }
     StampAbsent => StampAbsent
     StampUnreadable { detail: d } => StampUnreadable { detail: d }
+    StampMismatch { running: r, tree: t } => StampMismatch { running: r, tree: t }
   }
 }
 
