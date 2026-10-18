@@ -34,6 +34,7 @@ import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directiv
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, srv1_microvm_shakedown_slot }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_reserve_unit_name }
+import gunbc.runner.runner_revision_job_unit { revision_job_host_instances, revision_job_runner_unit_instance_name }
 import gunbc.fabric.fabric_cell_converge {
   fabric_cell_base_dir,
   fabric_cell_root_path,
@@ -379,6 +380,16 @@ fn microvm_slot_reserve_start_operations(deploy: RunnerHostDeploy) -> List<Execu
   }
 }
 
+// THE REVISION JOB'S ONE GRANT PER JOB UNIT: START IT, ON THE HOST THAT CARRIES ITS SLOT. Same shape
+// and the same reasoning as the shakedown broker's: the unit is root-owned, installed from the
+// root-owned locus, and re-derives and verifies everything it runs (the spec's commit tree, the pinned
+// image, the cell grant), so the line authorizes a request and carries no payload. One exact argv per
+// declared revision-job slot (gunbc.runner.runner_slot_allocation revision_job_slots), never a pattern.
+fn revision_job_start_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  map(revision_job_host_instances(host: deploy.host_label as String), instance =>
+    SystemdStartUnit { unit: revision_job_runner_unit_instance_name(slot_instance: instance) })
+}
+
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   let job = deploy.job_user
   let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
@@ -389,6 +400,7 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     + fabric_allocation_store_privileged_operations(deploy: deploy)
     + workspace_host_launch_operations(deploy: deploy)
     + microvm_slot_reserve_start_operations(deploy: deploy)
+    + revision_job_start_operations(deploy: deploy)
     + runner_host_wide_privileged_operations(deploy: deploy)
     + microvm_network_granted_operations()
     + dashboard_directory_observation_operations(deploy: deploy)

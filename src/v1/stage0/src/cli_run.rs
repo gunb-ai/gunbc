@@ -112,7 +112,7 @@ pub use native_lane_runner::{
     run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
     NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
     NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
-    NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
     TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
     MEASURED_SPAWN_RECEIPT_ENV,
 };
