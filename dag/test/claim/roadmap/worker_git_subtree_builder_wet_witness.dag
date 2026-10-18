@@ -24,7 +24,7 @@ module test.claim.roadmap.worker_git_subtree_builder_wet_witness
 // else: no srv1, no GPU card, no network, no systemd unit, no sudo -- and every directory it touches is
 // one it created under a mktemp root.
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
 import std.optional { Optional, Present, Absent }
 import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
@@ -51,7 +51,7 @@ import extdeps.tools.gnu_coreutils {
   mv_exact_destination_command,
 }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
-import extdeps.tools.id { id_gid_command }
+import extdeps.tools.id { id_gid_command, id_uid_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 
 // RUNNING ONE BUILDER, exactly as the shipper would. This is gunbc.command_runner's production spawn --
@@ -146,10 +146,14 @@ fn wet_self_gid() -> Int {
 
 // install(1) takes a NUMERIC uid; `id -u` is the only honest answer for "the account running this
 // witness", and it is asked of the host through the same production route as everything else.
+// -1 WHEN THE USER CANNOT BE READ, for the same reason as wet_self_gid: 0 is a REAL uid -- the
+// superuser's -- so a guard written as `uid <= 0` would refuse to run on a root runner while the
+// genuine read failure was indistinguishable from it. A sentinel must sit OUTSIDE the domain it
+// stands for; 0 sits inside both domains.
 fn wet_self_uid() -> Int {
   match parse_int(s: wet_out(command: id_uid_command())) {
     Present { value: n } => n
-    Absent => 0
+    Absent => -1
   }
 }
 
