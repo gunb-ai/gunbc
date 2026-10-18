@@ -213,6 +213,42 @@ extract_block "$committed" "$evidence_step_name" > "$tmpdir/evidence_step.sh" \
   || bail "the committed witnesses.yml does not contain the modelled evidence step -- the evidence is NOT ENROLLED"
 extract_block "$committed" "$guard_step_name" > "$guard_template" \
   || bail "could not extract the guard from the committed workflow"
+
+# DERIVE THE STEP'S OWN PATHS, then demand they agree with this harness's defaults. The step gets its
+# transcript and marker paths from model rows (compiler_gate_contract_stamp_evidence_transcript_path /
+# _fail_marker_path); this file has its own hardcoded defaults. If those two spellings ever disagree --
+# a model row edited, an env override left set -- the step writes to one file while this count reads
+# another, and local mode reports "nothing ran" for a run that ran perfectly. One fact, two spellings
+# (§3): counted, not assumed. Bail names the override rather than leaving a mystery.
+# Both quoting shapes, because the serializer quotes a literal word but NOT a var word: the same flag
+# appears as '--transcript /path' and as "--transcript "$VAR"". Matching only the quoted shape would
+# report "declares no --transcript path" for a perfectly good step -- a false refusal, which is the
+# worse direction for a check that is supposed to be honest rather than strict-by-accident.
+step_arg() {
+  awk -v flag="$1" -v q="'" '
+  {
+    n = 0
+    for (i = 1; i <= NF; i++) {
+      f = $i; gsub(q, "", f); gsub(/"/, "", f); v[++n] = f
+    }
+    for (i = 1; i < n; i++) if (v[i] == "--" flag) { print v[i + 1]; exit }
+  }' "$tmpdir/evidence_step.sh"
+}
+step_transcript="$(step_arg transcript)"
+step_marker="$(step_arg fail-marker)"
+[ -n "$step_transcript" ] || bail "the modelled evidence step declares no --transcript path; nothing can be counted"
+[ -n "$step_marker" ]     || bail "the modelled evidence step declares no --fail-marker path; the verdict channel is missing"
+if [ "$step_transcript" != "$transcript" ]; then
+  echo "FAIL: the step writes its transcript to '$step_transcript' but this harness counts '$transcript'." >&2
+  echo "      Two spellings of one fact; run with GUNBC_CONTRACT_STAMP_EVIDENCE_TRANSCRIPT='$step_transcript'" >&2
+  exit 1
+fi
+if [ "$step_marker" != "$fail_marker" ]; then
+  echo "FAIL: the step sets its fail marker at '$step_marker' but this harness inspects '$fail_marker'." >&2
+  echo "      Two spellings of one fact; run with GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER='$step_marker'" >&2
+  exit 1
+fi
+echo "== step paths agreed: transcript=$step_transcript marker=$step_marker"
 [ -s "$guard_template" ] || bail "extracted guard is empty"
 
 RUNNING="$(grep -o 'GUNBC_COMPILER_GATE_CONTRACT_STAMP: [0-9a-f]\{16\}' "$committed" | head -1 | awk '{print $2}')"
@@ -372,6 +408,18 @@ cp "$tmpdir/evidence_step.sh" "$stepdir/evidence_step.sh"
 # The generated step clears the marker itself as its first modelled statement; clearing here too keeps
 # LOCAL MODE honest when the step is run twice in one shell, and is harmless when it is not.
 rm -f "$fail_marker"
+# THE HARNESS SUPPLIES THE RUN IDENTITY HERE, because outside Actions GITHUB_RUN_ID and
+# GITHUB_RUN_ATTEMPT are unset and the step's own refusal would fire before any case ran -- a correct
+# refusal, but one that makes local mode permanently red and so trains everyone to ignore it. The step
+# stays strict; THIS side is the one that has to look like a run. Unique per invocation so a transcript
+# left by an earlier invocation cannot satisfy the count either, which is the whole reason the token
+# exists. Both are digits, matching the shape the --case mode admits.
+: "${GITHUB_RUN_ID:=$(date +%s)$$}"
+: "${GITHUB_RUN_ATTEMPT:=1}"
+case "$GITHUB_RUN_ID" in ""|*[!0-9]*) echo "FAIL: synthesized GITHUB_RUN_ID is not digits: '$GITHUB_RUN_ID'" >&2; exit 1 ;; esac
+export GITHUB_RUN_ID GITHUB_RUN_ATTEMPT
+run_token="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+echo "== run token: $run_token"
 out="$(cd "$repo" && bash "$stepdir/evidence_step.sh" 2>&1)"; rc=$?
 printf '%s\n' "$out"
 echo ""
@@ -384,5 +432,11 @@ if [ -f "$fail_marker" ]; then
   echo "== EVIDENCE VERDICT: FAIL MARKER PRESENT despite exit 0 -- refusing"
   exit 1
 fi
-cases_run="$(grep -c 'rc=' < "$transcript" || true)"
+# Counted on the RUN TOKEN, not on "rc=": the same reason the modelled count check exists. Counting a
+# constant is satisfiable by anything that happens to contain it, including a leftover transcript.
+cases_run="$(grep -c "$run_token" < "$transcript" || true)"
+if [ "$cases_run" -eq 0 ]; then
+  echo "== EVIDENCE VERDICT: the transcript holds NO lines for run $run_token -- nothing ran; refusing"
+  exit 1
+fi
 echo "== EVIDENCE VERDICT: ALL MODELLED CASES HELD ($cases_run cases, executed from the generated step)"

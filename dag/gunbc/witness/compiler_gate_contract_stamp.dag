@@ -1163,10 +1163,10 @@ data compiler_gate_contract_stamp_evidence_transcript_path: String = "/tmp/gunbc
 // a MODEL value: the step counts occurrences of it and the harness prints it, so neither side can
 // quietly shrink the table.
 // THE COUNTED TOKEN IS THE MODEL'S, handed to the harness as argv, so the harness prints exactly what
-# the step greps for: one spelling, not two that can drift. It is long and distinctive because
-# `grep -c` counts LINES, and the tail of each line carries the guard's own diagnostic -- counting a
-# weak token like `rc=` would let a guard message containing those two characters inflate the tally and
-# make a partial run look complete.
+// the step greps for: one spelling, not two that can drift. It is long and distinctive because
+// grep -c counts LINES, and the tail of each line carries the guard's own diagnostic -- counting a
+// weak token like rc= would let a guard message containing those two characters inflate the tally and
+// make a partial run look complete.
 data compiler_gate_contract_stamp_evidence_transcript_marker: String = "gunbc-contract-stamp-evidence-case"
 
 data compiler_gate_contract_stamp_evidence_fail_marker_path: String = "/tmp/gunbc-contract-stamp-evidence.fail"
