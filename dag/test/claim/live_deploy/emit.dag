@@ -2318,7 +2318,7 @@ test fn leftover_timer_retire_removes_a_present_unit_and_is_noop_when_absent() -
     && string_contains(s: text, pattern: "not-found")
     && string_contains(s: text, pattern: "systemctl")
     && (match leftover_systemd_timer_retire_dissolution {
-      UnboundDissolution { description } => string_contains(s: description as String, pattern: "LoadState=not-found")
+      UnboundDissolution { description } => string_contains(s: description as String, pattern: "LoadState=not-found") && string_contains(s: description as String, pattern: "retract_leftover_timer_legs")
       BoundDissolution { trigger: _ } => false
     })
 }

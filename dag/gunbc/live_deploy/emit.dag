@@ -4741,7 +4741,7 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
 // Leftover timer retirement (FleetConvergeTimerUnit teardown shape): disable if loaded, remove the
 // unit file, daemon-reload, read back LoadState=not-found. Absence is converged — the disable is
 // gated on not-found, and rm -f is a no-op on a missing file.
-data leftover_systemd_timer_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete leftover_systemd_timer_retire_steps and the retired belt/publication timer name functions once every deployed instance's apply readback has reported LoadState=not-found for both leftover units" as NonEmptyStr)
+data leftover_systemd_timer_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete leftover_systemd_timer_retire_steps, retract_legs retract_leftover_timer_legs and the retired belt/publication timer name functions once every deployed instance's apply readback has reported LoadState=not-found for both leftover units" as NonEmptyStr)
 
 fn systemctl_disable_now_if_present_steps(unit: NonEmptyStr, privileged: Bool) -> List<PipelineStep> {
   [
