@@ -605,7 +605,7 @@ fn delta_refusals(ds: List<PolicyDelta>) -> List<String> {
 // gunbc.auth.gcp_iam_bootstrap_delta bootstrap_delta (SubjectNotBootstrapped, over the whole roster), and
 // the bootstrap delta job ahead of this one files its approval. This plan refuses the target and points
 // there; it neither restates the classification nor names a manual repair.
-data not_bootstrapped_refusal: String = "SubjectNotBootstrapped: the observer is denied or cannot find a declared subject; gunbc.auth.gcp_iam_bootstrap_delta bootstrap_delta classifies it with its missing cells and the gcp_iam_bootstrap job files the approval that binds them"
+data not_bootstrapped_refusal: String = "SubjectNotBootstrapped: the observer is denied or cannot find a declared subject; gunbc.auth.gcp_iam_bootstrap_delta bootstrap_delta classifies it with its missing cells and the gcp-iam-bootstrap job files the approval that binds them"
 
 fn plan_dedicated_federation(
   f: DedicatedFederation,

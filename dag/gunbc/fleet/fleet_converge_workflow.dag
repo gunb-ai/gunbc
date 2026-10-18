@@ -5741,7 +5741,7 @@ fn fleet_converge_revision_job_image_upload_step() -> Step {
 // through that pool, derives the whole roster's delta and files one request when it is nonempty; only
 // the approved output admits the second federation, as iam-bootstrap, and the apply step re-admits
 // the approval before the token is used. The converge job after it is the independent readback.
-data fleet_converge_gcp_iam_bootstrap_job_id: NonEmptyStr = "gcp_iam_bootstrap" as NonEmptyStr
+data fleet_converge_gcp_iam_bootstrap_job_id: NonEmptyStr = "gcp-iam-bootstrap" as NonEmptyStr
 
 data fleet_converge_gcp_iam_bootstrap_step_if: String = fleet_converge_mode_step_if(mode: GcpIamConverge)
 
