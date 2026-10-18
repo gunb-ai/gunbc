@@ -19785,8 +19785,8 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
   } else { "" }
   let startup_run = if startup {
     concat(
-      "    // The startup fold runs before any bind: the host reads the executable's octets and the fold judges them.", "\n",
-      "    match std::env::current_exe().and_then(std::fs::read) \{", "\n",
+      "    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
+      "    match std::fs::read(\"/proc/self/exe\") \{", "\n",
       "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
       "            NativeServeStartup::NativeServeStartupPassed \{ note \} => println!(\"\{\}\", native_serve_startup_passed_line(note.clone())),", "\n",
       "            NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
