@@ -488,55 +488,37 @@ type IpmiCompletionCode {
 // 0xCC -- "Invalid data field in Request": a data field in the request was not valid for this
 // controller's policy or state. Distinct from 0xC7 (length) and 0xCC is not an authentication
 // failure: the command was accepted, understood, and refused on policy.
+//
+// THE SPEC'S SENTENCE LIVES IN THIS COMMENT, NOT IN A DATA ROW. A
+// `ipmi_completion_code_invalid_data_field_text: NonEmptyStr` row used to sit beside this code, with a
+// note naming two consumers and promising a claim that compared the code to its own row. Neither
+// consumer read it and the claim was never written -- this module declares no `test fn` -- so the row
+// was §3c's "a row no fold reads" and the note was §4c's annotation-as-evidence. It is gone; a text row
+// is minted when a caller needs it, naming that caller in the same change.
 data ipmi_completion_code_invalid_data_field: IpmiCompletionCode = IpmiCompletionCode { code: 204 }
-
-// NO `as NonEmptyStr` ON THIS LITERAL, AND THE SIBLING ROW STATES THE SAME FACT WITHOUT ONE.
-//
-// NEITHER SPELLING IS A COMPILE ERROR: both forms sit in the tree today and both compile, so this is not
-// a broken-row fix but a choice between two spellings of the same row. The choice is §4c's -- "an
-// annotation must not restate what the declaration says". The declared type already says NonEmptyStr, and
-// the cast consults the SAME predicate the declared type consults: `NonEmptyStr` in `std.types` is
-// declared as `String where string_non_empty`, and an `as NonEmptyStr` on a literal re-runs that same
-// `string_non_empty` check the declared type already forces. So the cast cannot make a non-empty literal
-// safer and cannot make an empty one fail any earlier -- it is a second statement of a constraint the
-// declaration carries, and §2 says state it once.
-//
-// Deliberately no counts here, and no `file:line`: a transcribed number rots unreachably the moment
-// anyone adds a row anywhere (§6, "Name the instrument, never transcribe its output"), and a positional
-// pointer to a repo-internal symbol is invalidated by any edit above the line (§3, "Cite the symbol, not
-// the position"). The claim below is the check that actually holds: it compares each completion code's
-// text against the ONE row that defines it.
-//
-// WHY THE SIBLING ROW MATTERS MORE THAN THE CAST: the two codes' English lives in exactly one row each,
-// which is what the claim below checks. Whether the literal carries a redundant cast does not affect
-// that; two rows naming the SAME byte different strings would, and that is what is guarded.
-data ipmi_completion_code_invalid_data_field_text: NonEmptyStr = "Invalid data field in request"
 
 // 0xC7 -- "Request data length invalid". Carried here because it is the code a reader confuses with
 // 0xCC when a password-related write is refused: length versus content, which is the difference
 // between "the form was wrong" and "the value is not acceptable to this firmware".
 data ipmi_completion_code_request_data_length_invalid: IpmiCompletionCode = IpmiCompletionCode { code: 199 }
 
-// The description lives beside the byte it describes, as its own row -- see the note below on why there
-// is exactly one home for a code's English.
-data ipmi_completion_code_request_data_length_invalid_text: NonEmptyStr = "Request data length invalid"
-
 fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool {
   a.code == b.code
 }
 
-// ONE HOME FOR A COMPLETION CODE'S ENGLISH. A code's words live in exactly one place -- the
-// `<name>_text` data row beside the code -- and nothing else may restate them. A second home (a lookup
-// with the string inline, say) can be edited while the first keeps vouching for it, which is §2 spent
-// twice. Comparison goes through ipmi_completion_code_eq alone, with the named constant in plain sight; a
-// per-code equality wrapper would say the same thing with the constant hidden behind its name and would
-// exist for no caller but a test.
+// A CODE'S ENGLISH IS A COMMENT HERE, NOT A DATA ROW. This module used to carry a
+// `<name>_text` row beside each code, with a note naming two consumers and a claim that compared each
+// code against its own row. Neither existed: the module declares no `test fn` at all, so the claim was
+// prose about a check that never ran, and the rows had no reader once the receipts moved to the
+// observing layer -- §3c's "a row no fold reads", with §4c's warning that an annotation is never
+// evidence the claim beside it holds. Deleting them is the fix; a row is minted when a caller needs it,
+// naming that caller in the same change, and not before.
 //
-// Each code's description stays next to its byte so they cannot drift apart, and a caller that needs the
-// words for an operator reads the row for the code it has already matched -- not a lookup that quietly
-// answers `none` for a code nobody cataloged. Consumers naming these rows today:
-// extdeps.boards.asrock_rack (the measured refusal records 0xCC's words) and
-// gunbc.machine_intake.bmc_recovery_route (a refusal quotes the code it saw).
+// What is NOT relaxed: the code arrives as a typed `IpmiCompletionCode`, so the BYTE is the fact an
+// operator acts on, and a refusal that quotes English quotes the spec's sentence for the code it already
+// matched. Comparison goes through ipmi_completion_code_eq alone, with the named constant in plain sight;
+// a per-code equality wrapper would say the same thing with the constant hidden behind its name and would
+// exist for no caller but a test.
 
 // THE IPMI COMMAND-LINE INTERFACE, AS A CLOSED PAIR OF SUMS ────────────────────────────────────
 //

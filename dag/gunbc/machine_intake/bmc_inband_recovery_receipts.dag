@@ -21,7 +21,6 @@ import extdeps.bmc.ipmi {
   IpmiCompletionCode,
   IpmiDeviceIdentity,
   ipmi_completion_code_invalid_data_field,
-  ipmi_completion_code_invalid_data_field_text,
   ipmi_device_identity_runs_same_firmware,
 }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_openbmc_3_22_00_capabilities }
@@ -108,10 +107,10 @@ data asrock_altrad8ud_1l2t_inband_device_identity: IpmiDeviceIdentity = IpmiDevi
 }
 
 // THE ONE MEASURED ROW. An ALTRAD8UD-1L2T (mc info Product ID 0x2035), OpenBMC Firmware Revision
-// 3.22, both password forms, reproduced after the reset. The completion code is the typed constant
-// and the English is NOT carried here: it is the IPMI spec's description of that code and lives in
-// extdeps.bmc.ipmi with it, so there is one representation of the fact and the code cannot be
-// changed while its label stays behind to vouch for it.
+// 3.22, both password forms, reproduced after the reset. What is carried is the BYTE, as the typed
+// constant from extdeps.bmc.ipmi: no English label travels with it, so nothing here can be edited into
+// agreeing with a code that changed. The sentence a reader wants is the spec's, and the byte is what an
+// operator acts on.
 data asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy: PublishedFactoryPasswordWritePolicy = FirmwareRefusesPublishedPassword {
   firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
   completion_code: ipmi_completion_code_invalid_data_field,
