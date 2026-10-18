@@ -236,6 +236,12 @@ fn wire_refused_at<T>(prefix: String, at: NonEmptyStr, cause: NonEmptyStr) -> Wi
   WireRefused { at: join([prefix, at as String], "") as NonEmptyStr, cause: cause }
 }
 
+// List membership spelled as a count over equality: the v1 seed's emitted `contains` is the string
+// one, so a list-typed `contains` does not build in a natively emitted closure.
+fn wire_member_allowed(allowed: List<String>, k: String) -> Bool {
+  count(filter(allowed, a => a == k)) > 0
+}
+
 fn json_object_keys(v: JsonValue) -> List<String> {
   match v {
     JsonObject { members: ms } => map(ms, m => m.key)
@@ -251,8 +257,8 @@ fn json_object_keys(v: JsonValue) -> List<String> {
 fn wire_object(v: JsonValue, at: NonEmptyStr, allowed: List<String>) -> WireDecode<JsonValue> {
   match v {
     JsonObject { members: _ } =>
-      if all(json_object_keys(v: v), k => contains(allowed, k)) { WireDecoded { value: v } }
-      else { WireRefused { at: at, cause: join(["unknown member: ", join(filter(json_object_keys(v: v), k => !contains(allowed, k)), ", ")], "") as NonEmptyStr } }
+      if all(json_object_keys(v: v), k => wire_member_allowed(allowed: allowed, k: k)) { WireDecoded { value: v } }
+      else { WireRefused { at: at, cause: join(["unknown member: ", join(filter(json_object_keys(v: v), k => !wire_member_allowed(allowed: allowed, k: k)), ", ")], "") as NonEmptyStr } }
     JsonNull => WireRefused { at: at, cause: "not an object" }
     JsonBool { value: _ } => WireRefused { at: at, cause: "not an object" }
     JsonNumber { lexeme: _ } => WireRefused { at: at, cause: "not an object" }

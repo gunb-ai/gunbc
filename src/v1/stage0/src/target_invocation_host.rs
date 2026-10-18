@@ -518,6 +518,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-serve-device-crypto"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/auth/approval_device_crypto_serve.dag",
+            },
+        ),
+        (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
         ),
@@ -2778,11 +2784,92 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
     }
 }
 
+/// THE NATIVE SERVE PROGRAM BINDING READ: the reader module, the phases the row declares and the
+/// reader's own judgment of them, all `.dag` facts the host only carries. The row is
+/// `gunbc.target_binding` `NativeServeProgramProducer { entry, probe }` read through
+/// `gunbc.instrument_targets` (`native_serve_probe_reader_for_entry` and the per-phase answers); the
+/// join of declared to judged phases is `gunbc.native_serve_probe_plan` `native_serve_phase_refusals`,
+/// exposed by the reader as `native_serve_probe_phases_refused`. A non-empty join refuses before
+/// anything is built or spawned.
+struct NativeServeBindingRead {
+    reader: String,
+    phases: cli_run::NativeServePhases,
+    declared: Vec<String>,
+}
+
+fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, String> {
+    const BINDINGS: &str = "dag/gunbc/instrument_targets.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = cli_run::resolve_entry_graph(&roots, BINDINGS)
+        .map_err(|cause| format!("resolve failed for {BINDINGS}: {cause}"))?;
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let ask = |function: &str| -> Result<crate::v1_interpreter::Value, String> {
+        crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            function,
+            &[(
+                Some("entry".to_string()),
+                crate::v1_interpreter::str_value(entry),
+            )],
+            true,
+        )
+        .map_err(|cause| format!("{BINDINGS} {function} failed: {cause}"))
+    };
+    let flag = |function: &str| -> Result<bool, String> {
+        match ask(function)? {
+            crate::v1_interpreter::Value::Bool(b) => Ok(b),
+            other => Err(format!("{function} is not a Bool: {other:?}")),
+        }
+    };
+    let reader_value = ask("native_serve_probe_reader_for_entry")?;
+    let reader = match &reader_value {
+        crate::v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Present") => match ctx.field(fields, "value") {
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
+            other => return Err(format!("the probe reader is not a String: {other:?}")),
+        },
+        _ => {
+            return Err(format!(
+                "no NativeServeProgramProducer binding names the entry {entry}"
+            ))
+        }
+    };
+    let declared_value = ask("native_serve_probe_declared_names_for_entry")?;
+    let declared = match &declared_value {
+        crate::v1_interpreter::Value::List(items) => items
+            .iter()
+            .map(|item| match item {
+                crate::v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+                other => Err(format!("a declared phase is not a String: {other:?}")),
+            })
+            .collect::<Result<Vec<String>, String>>()?,
+        other => return Err(format!("the declared phases are not a List: {other:?}")),
+    };
+    Ok(NativeServeBindingRead {
+        reader,
+        phases: cli_run::NativeServePhases {
+            peer_instance: flag("native_serve_probe_runs_peer")?,
+            refused_launch: flag("native_serve_probe_runs_refused_launch")?,
+            stuck_ceiling_exit: flag("native_serve_probe_runs_stuck_ceiling_exit")?,
+        },
+        declared,
+    })
+}
+
 /// THE NATIVE SERVE PROGRAM PRODUCER: emit, build and start a `NativeServeDriver` entry, exchange
-/// the requests `gunbc.native_serve_probe` names over real TCP, then let that module decide what the
-/// run established. The host decides nothing about a case: the requests and both launch revisions
-/// are read from the reader module, the bytes go back to `native_serve_probe_standing` unjudged, and
-/// its `ProcessExit` maps through the one classifier exactly as the claim producer's does.
+/// the requests the binding row's probe reader names over real TCP, then let that reader decide what
+/// the run established. The host decides nothing about a case, and branches on no binding: the
+/// reader module and the phases come from the row (`read_native_serve_binding`), the requests and
+/// both launch revisions are read from the reader module, the bytes go back to its
+/// `native_serve_probe_standing` unjudged, and its `ProcessExit` maps through the one classifier
+/// exactly as the claim producer's does.
 fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     let label_name = "native-serve";
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
@@ -2791,7 +2878,17 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
-    const READER: &str = "dag/gunbc/native_serve_probe.dag";
+    let binding = match read_native_serve_binding(entry) {
+        Ok(binding) => binding,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("{label_name}: the binding row is unreadable: {cause}"),
+            }
+        }
+    };
+    #[allow(non_snake_case)]
+    let READER: &str = binding.reader.as_str();
     let roots = cli_run::default_source_roots();
     let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
         Ok(resolved) => resolved,
@@ -2817,8 +2914,54 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             _ => None,
         }
     };
-    // The requests depend on the peer's bound port, which only exists once the peer is up, so they
-    // are read from the reader module with that port as its argument -- still every byte there.
+    // A DECLARED PHASE THE READER CANNOT JUDGE (or a judged phase nobody declared) STOPS THE LINE
+    // before anything is built: the join is the reader's native_serve_probe_phases_refused.
+    let declared_value = crate::v1_interpreter::Value::List(std::rc::Rc::new(
+        binding
+            .declared
+            .iter()
+            .map(|name| crate::v1_interpreter::str_value(name))
+            .collect::<Vec<_>>()
+            .into(),
+    ));
+    let refusals = crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_serve_probe_phases_refused",
+        &[(Some("declared".to_string()), declared_value)],
+        true,
+    );
+    match &refusals {
+        Ok(crate::v1_interpreter::Value::List(items)) if items.is_empty() => {}
+        Ok(crate::v1_interpreter::Value::List(items)) => {
+            let causes: Vec<String> = items.iter().filter_map(|item| text(item)).collect();
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "{label_name}: NATIVE-SERVE REFUSAL cause=PhaseUnsatisfied entry={entry} reader={READER} — {}",
+                    causes.join("; ")
+                ),
+            };
+        }
+        Ok(other) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                "{label_name}: {READER} native_serve_probe_phases_refused is not a List: {other:?}"
+            ),
+            }
+        }
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "{label_name}: {READER} native_serve_probe_phases_refused failed: {cause}"
+                ),
+            }
+        }
+    }
+    // The requests may depend on the peer's bound port, which only exists once the peer is up (and
+    // is -1 for a row declaring no peer), so they are read from the reader module with that port as
+    // its argument -- still every byte there.
     let requests_for_peer_port = |peer_port: i64| -> Result<Vec<String>, String> {
         let value = crate::v1_interpreter::run_in_context_with_args(
             &ctx,
@@ -2843,8 +2986,14 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     let plan = (|| -> Result<(String, String, String), String> {
         let release = text(&read("native_serve_probe_release_revision")?)
             .ok_or("the release revision is not a String")?;
-        let refused = text(&read("native_serve_probe_refused_revision")?)
-            .ok_or("the refused revision is not a String")?;
+        // The refused revision is read only for a row that declares the refused launch; a reader
+        // with no such phase owes no such function.
+        let refused = if binding.phases.refused_launch {
+            text(&read("native_serve_probe_refused_revision")?)
+                .ok_or("the refused revision is not a String")?
+        } else {
+            String::new()
+        };
         let deadline = text(&read("native_serve_probe_request_deadline_ms")?)
             .ok_or("the request deadline is not a String")?;
         Ok((release, refused, deadline))
@@ -2864,6 +3013,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         &release,
         &refused,
         &deadline,
+        binding.phases,
         &requests_for_peer_port,
     ) {
         Ok(run) => run,

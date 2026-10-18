@@ -1,0 +1,343 @@
+module gunbc.auth.approval_device_crypto_wire
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.algebra { trim }
+import std.encoding { base64_decode, Standard }
+import extdeps.crypto.signature { VerifyingKey, SignatureBytes }
+import extdeps.apple.app_attest {
+  AttestKeyId, AppAttestEnvironment, AppAttestDevelopment, AppAttestProduction,
+  AttestationExpectation, AssertionExpectation,
+}
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
+import gunbc.auth.approval_device_wire {
+  WireDecode, WireDecoded, WireRefused, wire_object, wire_string, wire_refused_at,
+  decode_verifying_key_in, decode_signature_bytes_in, verifying_key_json, signature_bytes_json,
+}
+
+// THE BYTE CONTRACT OF THE DEVICE-CRYPTO VERIFIER SERVICE (gunbc.auth.approval_device_crypto_serve),
+// and nothing else. The service is the broker's verifier for the four DeviceCryptoObligation rows
+// (gunbc.auth.approval_device_crypto_realization): a P-256 signature, an App Attest attestation, an
+// App Attest assertion, and the order of the P-256 base point. Each request is the folds' own
+// argument carrier on the wire -- extdeps.crypto.signature VerifyingKey / SignatureBytes through the
+// SAME decoders the device routes use (gunbc.auth.approval_device_wire), extdeps.apple.app_attest
+// AttestationExpectation / AssertionExpectation field for field -- and each answer names the fold's
+// own result arm, so the caller reads exactly what the fold owed and the service adds no verdict of
+// its own. Decoding is strict as approval_device_wire's is: an unknown member, a repeated member and
+// an empty string are refused with the member's path.
+//
+// The same module emits the requests (the *_request_json folds) so the probe and the service read ONE
+// authority for the shape, and a field renamed here reds both rather than one.
+
+data device_crypto_signature_path: String = "/verify/signature"
+data device_crypto_attestation_path: String = "/verify/attestation"
+data device_crypto_assertion_path: String = "/verify/assertion"
+data device_crypto_p256_order_path: String = "/verify/p256-base-point-order"
+
+type SignatureCheck {
+  key: VerifyingKey
+  signature: SignatureBytes
+  message: NonEmptyStr
+}
+
+type AttestationCheck {
+  object: List<Int>
+  expectation: AttestationExpectation
+}
+
+type AssertionCheck {
+  object: List<Int>
+  expectation: AssertionExpectation
+}
+
+// WHICH MULTIPLE OF THE BASE POINT THE CALLER ASKS ABOUT: n itself (the order: the answer owed is
+// infinity) or n - 1 (the control: finite). The scalar is named, never carried, because the order is
+// the curve's fact (extdeps.crypto.nist_p256 p256_n) and a caller-supplied scalar would make the
+// route a general scalar-multiplication service.
+type P256Multiple
+  = OrderItself
+  | OrderMinusOne
+
+fn p256_multiple_wire(m: P256Multiple) -> NonEmptyStr {
+  match m {
+    OrderItself => "n"
+    OrderMinusOne => "n-1"
+  }
+}
+
+fn app_attest_environment_wire(e: AppAttestEnvironment) -> NonEmptyStr {
+  match e {
+    AppAttestDevelopment => "development"
+    AppAttestProduction => "production"
+  }
+}
+
+// ── Reading ──────────────────────────────────────────────────────────────────────────────────
+fn wire_parsed(text: String, allowed: List<String>) -> WireDecode<JsonValue> {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => WireRefused { at: "$", cause: json_document_gap_text(gap: g) as NonEmptyStr }
+    JsonDocumentParsed { value: v } => wire_object(v: v, at: "$", allowed: allowed)
+  }
+}
+
+fn wire_object_octets(o: JsonValue, key: String) -> WireDecode<List<Int>> {
+  match wire_string(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: text } =>
+      match base64_decode(s: text as String, variant: Standard) {
+        Absent => WireRefused { at: key as NonEmptyStr, cause: "not standard base64" }
+        Present { value: octets } => WireDecoded { value: octets }
+      }
+  }
+}
+
+fn wire_environment(o: JsonValue, key: String) -> WireDecode<AppAttestEnvironment> {
+  match wire_string(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: w } =>
+      if w == app_attest_environment_wire(e: AppAttestDevelopment) { WireDecoded { value: AppAttestDevelopment } }
+      else if w == app_attest_environment_wire(e: AppAttestProduction) { WireDecoded { value: AppAttestProduction } }
+      else { WireRefused { at: key as NonEmptyStr, cause: "not an admitted App Attest environment" } }
+  }
+}
+
+fn category_token(t: String) -> Int? {
+  parse_int(s: trim(s: t))
+}
+
+fn category_token_present(t: String) -> Bool {
+  match category_token(t: t) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn category_token_value(t: String) -> Int {
+  match category_token(t: t) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+// The admitted validation categories ride as one comma-separated string of integers ("2,3,4"): a
+// member whose every token must parse, so a malformed list is refused at the member, never
+// shortened.
+fn wire_categories(o: JsonValue, key: String) -> WireDecode<List<Int>> {
+  match wire_string(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: csv } =>
+      let tokens = split(s: csv as String, delimiter: ",")
+      if all(tokens, t => category_token_present(t: t)) { WireDecoded { value: map(tokens, t => category_token_value(t: t)) } }
+      else { WireRefused { at: key as NonEmptyStr, cause: "not a comma-separated list of integers" } }
+  }
+}
+
+fn decode_signature_check(text: String) -> WireDecode<SignatureCheck> {
+  match wire_parsed(text: text, allowed: ["key", "signature", "message"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match decode_verifying_key_in(o: o, key: "key") {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: key } =>
+          match decode_signature_bytes_in(o: o, key: "signature") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: signature } =>
+              match wire_string(obj: o, key: "message") {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: message } => WireDecoded { value: SignatureCheck { key: key, signature: signature, message: message } }
+              }
+          }
+      }
+  }
+}
+
+fn decode_attestation_check(text: String) -> WireDecode<AttestationCheck> {
+  match wire_parsed(text: text, allowed: ["object_b64", "key_id", "client_data", "app_id", "environment", "observed_at", "admitted_validation_categories", "expected_bundle_version"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_object_octets(o: o, key: "object_b64") {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: object } =>
+          match wire_string(obj: o, key: "key_id") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: key_id } =>
+              match wire_string(obj: o, key: "client_data") {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: client_data } =>
+                  match wire_string(obj: o, key: "app_id") {
+                    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                    WireDecoded { value: app_id } =>
+                      match wire_environment(o: o, key: "environment") {
+                        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                        WireDecoded { value: environment } =>
+                          match wire_string(obj: o, key: "observed_at") {
+                            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                            WireDecoded { value: observed_at } =>
+                              match wire_categories(o: o, key: "admitted_validation_categories") {
+                                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                                WireDecoded { value: categories } =>
+                                  match wire_string(obj: o, key: "expected_bundle_version") {
+                                    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                                    WireDecoded { value: bundle_version } =>
+                                      WireDecoded { value: AttestationCheck {
+                                        object: object,
+                                        expectation: AttestationExpectation {
+                                          key_id: key_id as AttestKeyId, client_data: client_data, app_id: app_id, environment: environment,
+                                          observed_at: observed_at as String, admitted_validation_categories: categories, expected_bundle_version: bundle_version,
+                                        },
+                                      } }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn decode_assertion_check(text: String) -> WireDecode<AssertionCheck> {
+  match wire_parsed(text: text, allowed: ["object_b64", "key_id", "public_key_point_b64url", "client_data", "app_id", "admitted_validation_categories", "expected_bundle_version"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_object_octets(o: o, key: "object_b64") {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: object } =>
+          match wire_string(obj: o, key: "key_id") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: key_id } =>
+              match wire_string(obj: o, key: "public_key_point_b64url") {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: point } =>
+                  match wire_string(obj: o, key: "client_data") {
+                    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                    WireDecoded { value: client_data } =>
+                      match wire_string(obj: o, key: "app_id") {
+                        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                        WireDecoded { value: app_id } =>
+                          match wire_categories(o: o, key: "admitted_validation_categories") {
+                            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                            WireDecoded { value: categories } =>
+                              match wire_string(obj: o, key: "expected_bundle_version") {
+                                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                                WireDecoded { value: bundle_version } =>
+                                  WireDecoded { value: AssertionCheck {
+                                    object: object,
+                                    expectation: AssertionExpectation {
+                                      key_id: key_id as AttestKeyId, public_key_point_b64url: point, client_data: client_data, app_id: app_id,
+                                      admitted_validation_categories: categories, expected_bundle_version: bundle_version,
+                                    },
+                                  } }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn decode_p256_multiple(text: String) -> WireDecode<P256Multiple> {
+  match wire_parsed(text: text, allowed: ["multiple"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_string(obj: o, key: "multiple") {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: w } =>
+          if w == p256_multiple_wire(m: OrderItself) { WireDecoded { value: OrderItself } }
+          else if w == p256_multiple_wire(m: OrderMinusOne) { WireDecoded { value: OrderMinusOne } }
+          else { WireRefused { at: "multiple", cause: "not an admitted multiple of the base point order" } }
+      }
+  }
+}
+
+// ── The answer ───────────────────────────────────────────────────────────────────────────────
+// THE VERDICT WORD IS THE CALLER'S BRANCH; THE ARM IS THE FOLD'S OWN NAME FOR WHAT IT ANSWERED.
+// verified: the fold minted its success. invalid: the cryptographic check ran and the answer is no
+// (a signature that does not verify; n-1 times G finite is NOT this -- see the order words below).
+// refused: the fold refused the input before or instead of a verdict (a malformed carrier, a missing
+// validation category, an unmet expectation). A caller treats only `verified` as a verification.
+// The order route answers `infinity` / `finite` because that is the fact asked.
+type DeviceCryptoVerdict
+  = CryptoVerified
+  | CryptoInvalid
+  | CryptoRefused
+  | CryptoInfinity
+  | CryptoFinite
+
+fn device_crypto_verdict_wire(v: DeviceCryptoVerdict) -> String {
+  match v {
+    CryptoVerified => "verified"
+    CryptoInvalid => "invalid"
+    CryptoRefused => "refused"
+    CryptoInfinity => "infinity"
+    CryptoFinite => "finite"
+  }
+}
+
+type DeviceCryptoAnswer {
+  verdict: DeviceCryptoVerdict
+  arm: String
+}
+
+fn device_crypto_answer_json(a: DeviceCryptoAnswer) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "verdict", value: json_string(s: device_crypto_verdict_wire(v: a.verdict))),
+    json_kv(key: "arm", value: json_string(s: a.arm)),
+  ]))
+}
+
+// A REFUSED REQUEST is the wire's own refusal, never a verdict: the caller must tell a request the
+// service could not read from a cryptographic answer.
+fn device_crypto_wire_refusal_body(at: NonEmptyStr, cause: NonEmptyStr) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "refused_at", value: json_string(s: at as String)),
+    json_kv(key: "cause", value: json_string(s: cause as String)),
+  ]))
+}
+
+// ── Writing the requests (the probe's and the broker client's one authority) ──────────────────
+fn signature_check_request_json(c: SignatureCheck) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "key", value: verifying_key_json(k: c.key)),
+    json_kv(key: "signature", value: signature_bytes_json(b: c.signature)),
+    json_kv(key: "message", value: json_string(s: c.message as String)),
+  ]))
+}
+
+fn p256_multiple_request_json(m: P256Multiple) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "multiple", value: json_string(s: p256_multiple_wire(m: m) as String)),
+  ]))
+}
+
+fn categories_text(cs: List<Int>) -> String {
+  join(map(cs, n => to_string(value: n)), ",")
+}
+
+fn attestation_check_request_json(object_b64: NonEmptyStr, e: AttestationExpectation) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "object_b64", value: json_string(s: object_b64 as String)),
+    json_kv(key: "key_id", value: json_string(s: e.key_id as String)),
+    json_kv(key: "client_data", value: json_string(s: e.client_data as String)),
+    json_kv(key: "app_id", value: json_string(s: e.app_id as String)),
+    json_kv(key: "environment", value: json_string(s: app_attest_environment_wire(e: e.environment) as String)),
+    json_kv(key: "observed_at", value: json_string(s: e.observed_at as String)),
+    json_kv(key: "admitted_validation_categories", value: json_string(s: categories_text(cs: e.admitted_validation_categories))),
+    json_kv(key: "expected_bundle_version", value: json_string(s: e.expected_bundle_version as String)),
+  ]))
+}
+
+fn assertion_check_request_json(object_b64: NonEmptyStr, e: AssertionExpectation) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "object_b64", value: json_string(s: object_b64 as String)),
+    json_kv(key: "key_id", value: json_string(s: e.key_id as String)),
+    json_kv(key: "public_key_point_b64url", value: json_string(s: e.public_key_point_b64url as String)),
+    json_kv(key: "client_data", value: json_string(s: e.client_data as String)),
+    json_kv(key: "app_id", value: json_string(s: e.app_id as String)),
+    json_kv(key: "admitted_validation_categories", value: json_string(s: categories_text(cs: e.admitted_validation_categories))),
+    json_kv(key: "expected_bundle_version", value: json_string(s: e.expected_bundle_version as String)),
+  ]))
+}
