@@ -91,7 +91,8 @@ echo "carrier sizes: $(wc -c < $LOGS/my_04_infer.dag) $(wc -c < $LOGS/my_04_type
 echo "probe has the classification fields: unfoldedL=$(grep -acF '|unfoldedL=' $LOGS/patch_rebind_probe2.py) tree=$(grep -ac ';;TREE' $LOGS/patch_rebind_probe2.py) cross=$(grep -acF '|cross=' $LOGS/patch_rebind_probe2.py) (want >=1 each)"
 # -F and >=1 rather than an escaped exact match: the pattern's escaping is itself untested code, and a
 # wrong pattern here would ABORT a good run, which is worse than the mislabel it guards against.
-[ "$(grep -acF '|lconn=' $LOGS/patch_rebind_probe2.py)" -ge 1 ] || { echo "CARRIER Patcher LACKS lconn -- every row would classify as out-of-class AND as a twin. ABORT"; exit 35; }
+# (Removed the inherited lconn gate: lconn/lname belong to the v3/v4 emitters. The v2 emitter is the one
+# the arm parser understands precisely BECAUSE it emits ;;TREE + unfoldedL/R, which the gate above checks.)
 
 # THE CLAIM TEST SOURCES MUST COME FROM MY BRANCH, NOT MAIN. unify_generics grew a 6th argument
 # (`text`) when the fold landed, and the DAG-side census CALLS it; main's copy passes 5 and the regen

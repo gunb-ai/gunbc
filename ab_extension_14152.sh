@@ -359,7 +359,11 @@ print("  02_parse rows=%d (any nonzero is a REGRESSION of this change, report it
       % len([r for r in rows if '02_parse' in (r.get('span', '') or '')]))
 PY
 echo "=== BEGIN-TAR ==="
-( cd $LOGS && tar -c sh_${MODE}.log census_${MODE}.json census_${MODE}.txt suite_${MODE}.txt tb_${MODE}.log rr_${MODE}_1.log rr_${MODE}_2.log src_04_infer.dag my_04_types.dag 2>/dev/null | base64 -w0 )
+# stage0_regen.b64 must be LISTED. This tar names its members explicitly (so an unrelated file dropped into
+# $LOGS cannot ride along), which meant the SHIP_MIRRORS block could stage the regenerated seed and the
+# dispatch could report "staged tar: 301552 base64 bytes" and STILL ship nothing -- the artifact existed in
+# $LOGS and was simply not in the list. A gate that prints a size is not a gate that ships the bytes.
+( cd $LOGS && tar -c sh_${MODE}.log census_${MODE}.json census_${MODE}.txt suite_${MODE}.txt tb_${MODE}.log rr_${MODE}_1.log rr_${MODE}_2.log src_04_infer.dag my_04_types.dag stage0_regen.b64 2>/dev/null | base64 -w0 )
 echo
 echo "=== END-TAR ==="
 echo "AB_${MODE}_DONE"
