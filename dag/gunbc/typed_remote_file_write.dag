@@ -2,7 +2,7 @@ module gunbc.typed_remote_file_write
 
 import extdeps.tools.chmod { chmod_path_resolved_program }
 import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
-import extdeps.sudo.visudo { visudo_binary_path }
+import extdeps.sudo.visudo { visudo_check_arguments }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -309,18 +309,14 @@ fn typed_remote_file_validation_steps(write: TypedRemoteFileWrite, validation: R
       [
         TypedRemoteFileWriteStep {
           step: "validate",
-          argv: [visudo_binary_path as String, "-cf", typed_remote_file_staging_path(write: write)],
+          argv: visudo_check_arguments(file: typed_remote_file_staging_path(write: write)),
           stdin_payload: "",
         },
       ]
   }
 }
 
-fn typed_remote_file_pre_compare_steps(write: TypedRemoteFileWrite, mode: RemoteFileMode) -> List<TypedRemoteFileWriteStep> {
-  typed_remote_file_pre_compare_steps_validated(write: write, mode: mode, validation: NoValidation)
-}
-
-fn typed_remote_file_pre_compare_steps_validated(
+fn typed_remote_file_pre_compare_steps(
   write: TypedRemoteFileWrite,
   mode: RemoteFileMode,
   validation: RemoteFileValidation,
@@ -436,7 +432,7 @@ fn remote_file_converged_from_report(
   report: RemoteFileComparisonReport,
 ) -> TypedRemoteFileConvergence
   admit_callers: [
-    decl_ref(module_path: "gunbc.typed_remote_file_write", decl_name: "converge_typed_remote_file_validated"),
+    decl_ref(module_path: "gunbc.typed_remote_file_write", decl_name: "converge_typed_remote_file"),
   ]
   = match report {
       ComparisonIdentical =>
@@ -664,17 +660,6 @@ fn converge_typed_remote_file(
   admission: TypedRemoteFileWriteAdmission,
   mode: RemoteFileMode,
   privilege: RemoteFilePrivilege,
-) -> TypedRemoteFileConvergence {
-  converge_typed_remote_file_validated(target: target, context: context, admission: admission, mode: mode, privilege: privilege, validation: NoValidation)
-}
-
-// The same route with the staged bytes judged before the rename (RemoteFileValidation).
-fn converge_typed_remote_file_validated(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
-  admission: TypedRemoteFileWriteAdmission,
-  mode: RemoteFileMode,
-  privilege: RemoteFilePrivilege,
   validation: RemoteFileValidation,
 ) -> TypedRemoteFileConvergence {
   match admission {
@@ -685,7 +670,7 @@ fn converge_typed_remote_file_validated(
         target: target,
         context: context,
         privilege: privilege,
-        steps: typed_remote_file_pre_compare_steps_validated(write: write, mode: mode, validation: validation),
+        steps: typed_remote_file_pre_compare_steps(write: write, mode: mode, validation: validation),
       ) {
         Present { value: refusal } => refusal
         Absent =>

@@ -97,7 +97,7 @@ test fn fresh_staging_unlinks_before_dd() -> Bool {
     Absent => false
     Present { value: w } => {
       let steps = typed_remote_file_fresh_staging_steps(write: w)
-      let pre = typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWrite)
+      let pre = typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWrite, validation: NoValidation)
       map(steps, s => s.step) == ["unlink-staging", "stage"]
         && map(steps, s => s.argv) == [
           typed_remote_file_unlink_staging_argv(write: w),
@@ -336,6 +336,7 @@ test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() 
             admission: TypedRemoteFileWriteAdmitted { write: w },
             mode: RemoteFileModeOwnerReadWrite,
             privilege: RemoteFileAsSessionPrincipal,
+            validation: NoValidation,
           ) {
             TypedRemoteFileConverged { converged: c } =>
               ((c.write.path as String) == (subject_path as String))
