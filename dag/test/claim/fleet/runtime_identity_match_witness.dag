@@ -18,7 +18,7 @@ import std.dissolution { DissolutionPending, DissolutionFired, BoundDissolution,
 import v2.std.decl_index { DeclFact, decl_facts }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.network.mac { Eui48Address, mac_address, render_mac_address }
+import extdeps.network.mac { Eui48Address, mac_address, mac_is_permanent_interface_identity, render_mac_address }
 import gunbc.machine_intake.subject { UnitKey }
 import gunbc.fleet.runtime_identity_match {
   BoardSerialAxis,
@@ -501,6 +501,24 @@ fn gap_reported_count(gap: RuntimeIdentityGap) -> Int {
   }
 }
 
+fn gap_is_no_eligible(gap: RuntimeIdentityGap) -> Bool {
+  match gap.absence {
+    NoEligibleEvidence { reported_count: _ } => true
+    _ => false
+  }
+}
+
+// BOTH SIDES ANSWERED AND NEITHER HELD EVIDENCE: two located gaps, one per side, each carrying how much its
+// side reported. Stated once because the null, locally-administered and group fixtures all have to say the
+// same thing, and a per-test copy is where one of them would drift into asserting a single gap -- which is
+// how the first version of this file described a both-sides-empty pair as a firmware-only problem.
+fn both_sides_held_no_evidence(gaps: List<RuntimeIdentityGap>, reported: Int) -> Bool {
+  gaps.length() == 2
+    && gaps.all(g => g.axis == NicSetAxis && gap_is_no_eligible(gap: g) && gap_reported_count(gap: g) == reported)
+    && gaps.filter(g => g.side == PreBootFirmwareSide).length() == 1
+    && gaps.filter(g => g.side == PostBootOsSide).length() == 1
+}
+
 // The text axes render exactly what each side said, on BOTH sides -- the diagnosis this type exists for. A
 // divergence that dropped one side, or rendered both from the same side, would be a Mismatch an operator
 // could not act on.
@@ -534,12 +552,12 @@ test fn test_a_shared_locally_administered_address_is_not_a_binding() -> Bool {
     model: AxisWasRead { value: fixture_model },
     nics: AxisWasRead { value: [fixture_mac_locally_administered()] },
   }
-  // NOT a Mismatch: nothing here diverged. The booted OS reported an address the screen excludes, so that
-  // side produced no evidence, and "no evidence" is a located gap -- not an argument that two units differ.
+  // NOT a Mismatch: nothing here diverged. BOTH sides reported the same software-assigned address, which the
+  // screen excludes, so both sides produced no evidence and the axis cannot answer -- two located gaps, and
+  // each says its own side reported one address. The first version of this witness asserted ONE gap on the
+  // OS side, which was wrong in the direction that matters: it hid that the firmware side was equally mute.
   match runtime_identity_match(pre: pre, post: post) {
-    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
-      gaps.length() == 1
-        && gaps.all(g => g.axis == NicSetAxis && g.side == PostBootOsSide && gap_reported_count(gap: g) == 1)
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } => both_sides_held_no_evidence(gaps: gaps, reported: 1)
     _ => false
   }
 }
@@ -560,12 +578,10 @@ test fn test_a_shared_group_address_is_not_a_binding() -> Bool {
     model: AxisWasRead { value: fixture_model },
     nics: AxisWasRead { value: [fixture_mac_group()] },
   }
-  // As above: a group address names no interface, so the OS side holds no evidence. Located gap, not
-  // divergence.
+  // As above: a group address names no interface, so neither side holds evidence. Located gaps, not
+  // divergence -- one per mute side.
   match runtime_identity_match(pre: pre, post: post) {
-    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
-      gaps.length() == 1
-        && gaps.all(g => g.axis == NicSetAxis && g.side == PostBootOsSide && gap_reported_count(gap: g) == 1)
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } => both_sides_held_no_evidence(gaps: gaps, reported: 1)
     _ => false
   }
 }
@@ -594,20 +610,7 @@ test fn test_shared_null_addresses_bind_nothing() -> Bool {
     nics: AxisWasRead { value: [fixture_mac_null()] },
   }
   match runtime_identity_match(pre: pre, post: post) {
-    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
-      gaps.filter(g => g.axis == NicSetAxis).length() == 2
-        && gaps.filter(g => g.side == PreBootFirmwareSide && gap_reports_none_eligible(gap: g)).length() == 1
-        && gaps.filter(g => g.side == PostBootOsSide && gap_reports_none_eligible(gap: g)).length() == 1
-    _ => false
-  }
-}
-
-// A side that reported ADDRESSES but none of them permanent. Reported count is carried so an operator can
-// tell "the probe read the wrong file" (reported 0) from "the probe read 1 address and it was not a NIC's"
-// (reported 1, as here) -- the difference between a probe bug and a unit problem.
-fn gap_reports_none_eligible(gap: RuntimeIdentityGap) -> Bool {
-  match gap.absence {
-    NoEligibleEvidence { reported_count: r } => r == 1
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } => both_sides_held_no_evidence(gaps: gaps, reported: 1)
     _ => false
   }
 }
@@ -1009,14 +1012,15 @@ test fn test_the_agreement_rule_follows_the_evidence_not_the_table() -> Bool {
     && !axes_agree(pair: TextPair { pre_text: fixture_model, post_text: fixture_other_model })
     && axes_agree(pair: AddressSetPair { pre_addresses: [fixture_mac_b()], post_addresses: [fixture_mac_b()] })
     && !axes_agree(pair: AddressSetPair { pre_addresses: [fixture_mac_b()], post_addresses: [fixture_mac_c()] })
-    && !axes_agree(pair: AddressSetPair {
-      pre_addresses: [fixture_mac_locally_administered()],
-      post_addresses: [fixture_mac_locally_administered()],
-    })
-    && !axes_agree(pair: AddressSetPair {
-      pre_addresses: [fixture_mac_group()],
-      post_addresses: [fixture_mac_group()],
-    })
+    // An address that is not a permanent interface identity can never become evidence, so it can never
+    // reach a comparison at all. Asserted against the screening predicate itself -- `axes_agree` is a PURE
+    // intersection now (its caller screens first), and asking IT to reject these would re-implement the
+    // screen in the witness, which is the second-derivation bug this module has already been caught with
+    // twice. The fold-level version of this claim is the two both-sides-mute witnesses above.
+    && !mac_is_permanent_interface_identity(addr: fixture_mac_locally_administered())
+    && !mac_is_permanent_interface_identity(addr: fixture_mac_group())
+    && !mac_is_permanent_interface_identity(addr: fixture_mac_null())
+    && mac_is_permanent_interface_identity(addr: fixture_mac_b())
 }
 
 // ONE census read for the whole assertion. `decl_facts_at` re-derives the declaration population on every
