@@ -950,6 +950,9 @@ fn first_gap_refusal_kind(gaps: List<RuntimeIdentityGap>) -> NonEmptyStr {
       }
       Unread { reason: _ } => "unread"
       NoEligibleEvidence { reported_count: _ } => "no-eligible-evidence"
+      // named, not defaulted: a fifth absence kind must stop compiling HERE rather than report "none"
+      // and let a refusal-kind assertion pass on a gap that was never a refusal.
+      ProvenanceUnestablished { unestablished_count: _ } => "provenance-unestablished"
     }
     Absent => "none"
   }
@@ -1518,6 +1521,14 @@ test fn test_two_sides_failing_differently_report_their_own_kinds() -> Bool {
       gaps.length() == 2
         && one_no_eligible_gap_on(gaps: gaps.filter(g => g.side == PreBootFirmwareSide), side: PreBootFirmwareSide, count: 1)
         && one_provenance_gap_on(gaps: gaps.filter(g => g.side == PostBootOsSide), side: PostBootOsSide, count: 1)
+        // AND the kinds are NAMED, not merely distinguishable. The helper that renders refusal kinds is the
+        // same helper that must render these two, so an operator gets a different sentence for "the unit
+        // gave us nothing usable" and "the probe never said where it read". Each side is filtered before it
+        // is asked, because a module that named one kind for both sides would satisfy every assertion above
+        // this one. This is also what makes the ProvenanceUnestablished arm of that helper load-bearing
+        // rather than dead code written to satisfy the compiler.
+        && first_gap_refusal_kind(gaps: gaps.filter(g => g.side == PreBootFirmwareSide)) == "no-eligible-evidence"
+        && first_gap_refusal_kind(gaps: gaps.filter(g => g.side == PostBootOsSide)) == "provenance-unestablished"
     _ => false
   }
 }
