@@ -268,8 +268,8 @@ test fn the_generated_step_has_no_warning_arm_and_no_override_input_holds() -> B
     // if and only if it exits 0 -- `print v` and `exit` are one statement, every failure path reaches
     // `exit 3` without printing -- and it is re-executed under `bash -e -o pipefail` against the four
     // measured heads after every regeneration, so the equivalence is run rather than argued.
-    && string_contains(s: script, pattern: "STAMP_TREE=$(awk")
-    && string_contains(s: script, pattern: "|| true")
+    && string_contains(s: script, pattern: "STAMP_TREE=$('awk'")
+    && string_contains(s: script, pattern: "|| 'true'")
     // THE SPELLING IS THE SERIALIZER'S, NOT MINE. bash_build_test_bracket prepends and appends
     // the bracket as its OWN literal words, and the serializer single-quotes every literal, so a
     // bracket test renders as `'[' '-z' "$STAMP_TREE" ']'` -- quoted brackets, `"$VAR"` for a
@@ -279,8 +279,8 @@ test fn the_generated_step_has_no_warning_arm_and_no_override_input_holds() -> B
     // `'[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'`. Asserting the unquoted `[ -z ... ]`
     // form would be asserting bytes the grammar cannot produce -- a claim red for the wrong
     // reason, which is the failure mode this whole module exists to remove.
-    && string_contains(s: script, pattern: "'[' '-z' \"$STAMP_TREE\"]'")
-    && string_contains(s: script, pattern: "'[' \"$STAMP_TREE\"]'")
+    && string_contains(s: script, pattern: "'[' '-z' \"$STAMP_TREE\" ']'")
+    && string_contains(s: script, pattern: "'[' \"$STAMP_TREE\" '!=' \"$STAMP_RUNNING\" ']'")
     && !string_contains(s: script, pattern: "if ! STAMP_TREE=")
     // DISSOLVED, NOT ABANDONED (review 82001): the carrier names the capability whose arrival makes
     // it deletable, in the same "# dissolve-on:" form the fleet's other shell carriers use. A marker
@@ -289,10 +289,18 @@ test fn the_generated_step_has_no_warning_arm_and_no_override_input_holds() -> B
     // A REJECTED NODE TREE IS NEVER SILENT. An empty or poisoned run body is a step that PASSES, so
     // the poison string is asserted absent here and the generator gate refuses outright.
     && !string_contains(s: script, pattern: "__GUNBC_ORCH_EMIT_REFUSED__")
+    // THE `-v` OPTION IS TWO WORDS, NOT ONE FUSED ONE. A single concat word would render as
+    // '-v key=' 'NAME' -- argv[1] with a TRAILING SPACE -- and mawk reads the lvalue as " key"
+    // and dies (`awk: improper assignment: -v  key=...`). The capture is then empty, the -z arm
+    // fires, and the guard refuses a CORRECTLY STAMPED tree with StampAbsent: the gate blaming
+    // the branch for a fault in the gate. Execution of the positive control on the emitted bytes
+    // is the only thing that found this, so the shape is pinned in both directions.
+    && string_contains(s: script, pattern: "'awk' '-v' 'key=GUNBC_COMPILER_GATE_CONTRACT_STAMP'")
+    && !string_contains(s: script, pattern: "'-v key='")
     && !string_contains(s: script, pattern: "STAMP_STATUS")
     // THE REFUSALS ARE PRINTED, not swallowed: each carries its own line terminator and its own quoting,
     // so a refactor that drops one leaves this claim red.
-    && string_contains(s: script, pattern: "printf '%s\\n' ")
+    && string_contains(s: script, pattern: "'printf' '%s\\n' ")
     && string_contains(s: script, pattern: "merge origin/main")
     // NO WARNING ARM, NO OVERRIDE. These substrings are the shapes an author would reach for when
     // softening a gate, so the claim fails on the edit that softens it rather than on a review comment.

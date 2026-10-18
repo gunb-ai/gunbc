@@ -537,11 +537,17 @@ fn compiler_gate_contract_stamp_guard_statements() -> List<Node> {
           left: bash_build_command_with_words(
             words: [
               bash_build_word_lit(text: "awk"),
-              bash_build_word_concat_from_nodes(
-                parts: [
-                  bash_build_word_lit(text: "-v key="),
-                  bash_build_word_lit(text: compiler_gate_contract_stamp_env_key)
-                ]
+              // TWO WORDS, NOT ONE. `awk -v key=NAME` is one option and its argument, and the
+              // serializer quotes each word SEPARATELY, so a single concat word renders as
+              // '-v key=' 'GUNBC_...' -- two argv entries whose first has a TRAILING SPACE. mawk
+              // then reads the lvalue as " key" and dies: `awk: improper assignment: -v  key=...`.
+              // The capture is empty, the -z arm fires, and the guard refuses a CORRECTLY STAMPED
+              // tree with StampAbsent -- a gate blaming the branch for a fault in the gate, which
+              // is the exact wrong-reason failure this module's own comments warn about. It was
+              // caught only by running the positive control on the emitted bytes.
+              bash_build_word_lit(text: "-v"),
+              bash_build_word_lit(
+                text: concat("key=", compiler_gate_contract_stamp_env_key)
               ),
               // The variable word renders as "$AWK_PROG" on its own: the double quotes are SHELL
               // SYNTAX the serializer supplies, not characters of the program text, and quoting the
