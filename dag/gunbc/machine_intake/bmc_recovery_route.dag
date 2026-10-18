@@ -42,7 +42,7 @@ import extdeps.bmc.ipmi_channel {
   IpmiUserChannelAccess, ipmi_user_channel_access,
 }
 import extdeps.bmc.redfish {
-  RedfishResetToDefaultsType, ResetAll, ResetNetwork, ResetRestore, redfish_message_id_is_password_change_required,
+  RedfishResetToDefaultsType, ResetAll, PreserveNetworkAndUsers, PreserveNetwork, redfish_message_id_is_password_change_required,
 }
 import extdeps.linux.kernel { LinuxKernelModuleName }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute }
@@ -503,28 +503,33 @@ fn in_band_channel_admits(
 //     next reset clears it and rotation replaces it. EXECUTED BUT NOT BYTE-CAPTURED -- see
 //     RecoveryWriteRecord, and the capture README's own statement of it.
 //
-//   WRITE 2 -- POST /redfish/v1/Managers/<id>/Actions/Manager.ResetToDefaults with
-//     ResetToDefaultsType=ResetAll. DESTRUCTIVE by construction: ResetAll returns every account,
-//     every password, the network configuration and the user table to factory state, on a board being
-//     brought into the fleet rather than serviced. Operator approval, and it owes a readback.
+//   WRITE 2 -- POST /redfish/v1/Managers/<id>/Actions/Manager.ResetToDefaults with ResetType=ResetAll.
+//     DESTRUCTIVE by construction: ResetAll returns every account, every password, the network
+//     configuration and the user table to factory state, on a board being brought into the fleet rather
+//     than serviced. Operator approval, and it owes a readback.
 //
 // WHY NOT PATCH THE PASSWORD VIA REDFISH INSTEAD: because that is the write the firmware refuses
 // (PublishedFactoryPasswordWritePolicy), and because even where it were allowed it would be a
 // credential write standing in for the reset the unit needs -- the board is arriving from a prior
 // life, and gunbc.machine_intake.prior_life_boundary is the module that prices leaving one.
-// RedfishResetToDefaultsType (ResetAll | ResetNetwork | ResetRestore) and the ResetAll arm are imported
-// from extdeps.bmc.redfish, where the DMTF enum is declared with its citation: this module's judgement is
-// WHICH arm clears the user table, not what the enum contains.
+// RedfishResetToDefaultsType (ResetAll | PreserveNetworkAndUsers | PreserveNetwork) and its arms are
+// imported from extdeps.bmc.redfish, where the DMTF enum is declared with its citation: this module's
+// judgement is WHICH arm clears the user table, not what the enum contains.
 
 // WHAT EACH PUBLISHED ARM DOES TO THE USER TABLE, AS TWO ARMS RATHER THAN A YES/NO.
 //
 // A true/false function over a closed sum puts the decision outside the data, and extdeps/bmc/ipmi.dag
 // records what that costs on the transport side: "a consumer that forgot to ask failed OPEN". §5.
 //
-// The second arm also carries the reason the gentler resets fail, which is the part an operator needs:
-// ResetRestore keeps the user table (the table holding the password we do not know) and ResetNetwork
-// likewise. Told only "not that one", the reader reaches for a milder default; told what survives, they
-// don't. Decided once, here; consumers match the arm.
+// The second arm also carries the reason the gentler resets fail, which is the part an operator needs.
+// Both refusals are the SCHEMA'S published consequences, quoted in extdeps.bmc.redfish, and they are
+// different refusals from each other -- which is the reason this is a fold over the upstream arm and not
+// a table of two strings. Only PreserveNetworkAndUsers excepts the local accounts from the reset, so only
+// it leaves the credential we cannot read standing; PreserveNetwork excepts NETWORK, and its published
+// wording ("reset all settings except network settings") takes the user table with it. A fold that treated
+// both gentler arms alike, or that read the shorter name as the safer one, would send an operator reaching
+// for a milder default straight into the arm that keeps the password we do not know. Decided once, here;
+// consumers match the arm.
 type ResetToDefaultsUserTableDisposition
   = ClearsUserTableIncludingUnknownCredential { kind: RedfishResetToDefaultsType }
   | LeavesUserTableIntact { kind: RedfishResetToDefaultsType, what_survives: NonEmptyStr }
@@ -532,15 +537,19 @@ type ResetToDefaultsUserTableDisposition
 fn reset_to_defaults_user_table_disposition(kind: RedfishResetToDefaultsType) -> ResetToDefaultsUserTableDisposition {
   match kind {
     ResetAll => ClearsUserTableIncludingUnknownCredential { kind: ResetAll }
-    // the words are the DMTF arm's own consequence, not a taste: what survives is the account whose
-    // password is the thing we are trying to change
-    ResetNetwork => LeavesUserTableIntact {
-      kind: ResetNetwork,
-      what_survives: "the user table, including the account whose unknown password motivated the reset",
+    // the words are the DMTF arm's own published consequence, not a taste: this is the one member whose
+    // enumDescription excepts local usernames and passwords from the reset, so the account whose password
+    // is the thing we are trying to change is exactly what it preserves
+    PreserveNetworkAndUsers => LeavesUserTableIntact {
+      kind: PreserveNetworkAndUsers,
+      what_survives: "the local usernames and passwords, per the arm's published description -- including the account whose unknown password motivated the reset",
     }
-    ResetRestore => LeavesUserTableIntact {
-      kind: ResetRestore,
-      what_survives: "the user table, including the account whose unknown password motivated the reset",
+    // NOT a safe arm either, and not for the same reason: its published wording excepts only network
+    // settings, so it is refused for not being the arm the route selected, not for preserving the
+    // credential. The text says which is which rather than letting the shorter name read as the milder one.
+    PreserveNetwork => LeavesUserTableIntact {
+      kind: PreserveNetwork,
+      what_survives: "network settings are excepted from this arm and the user table is not; it is refused because ResetAll is the arm this route is admitted to send, not because it preserves the credential",
     }
   }
 }
@@ -1488,7 +1497,7 @@ fn recovery_handoff_requires() -> List<DeclarationRef> {
 
 // THE ONE CONSTRUCTOR, AND WHAT IT REFUSES. Every step is checked here, so there is no path to
 // RecoveryHandedToOnboarding that skips the readback, ignores a NotMeasured firmware, enters on a
-// declared-but-unexecuted medium, or accepts a ResetNetwork/ResetRestore as a recovery. The writes are
+// declared-but-unexecuted medium, or accepts a PreserveNetworkAndUsers as a recovery. The writes are
 // checked for having been ATTEMPTED against the arm the route names (their own byte capture is not the
 // success condition, per RecoveryWriteRecord); the readback is checked for HAVING PROVEN the factory
 // credential is active.
@@ -2060,19 +2069,42 @@ test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
     ClearsUserTableIncludingUnknownCredential { kind: k } => k == ResetAll
     LeavesUserTableIntact { kind: _, what_survives: _ } => false
   })
-    // AND the two arms that keep the table say WHAT THEY LEAVE BEHIND, which a Bool could not: an
-    // operator offered "the gentler reset" is told the account we cannot log into survives it.
-    && (match reset_to_defaults_user_table_disposition(kind: ResetNetwork) {
-      LeavesUserTableIntact { kind: k, what_survives: w } => k == ResetNetwork && string_length(w) > 0
-      ClearsUserTableIncludingUnknownCredential { kind: _ } => false
-    })
-    && (match reset_to_defaults_user_table_disposition(kind: ResetRestore) {
-      LeavesUserTableIntact { kind: k, what_survives: w } => k == ResetRestore && string_length(w) > 0
-      ClearsUserTableIncludingUnknownCredential { kind: _ } => false
-    })
-    // AND the kind carries the arm rather than answering a question about it: a ResetRestore inside the
-    // Redfish arm is matched as the arm it is, so nothing can read that actuation as one that wipes.
-    && (match RedfishManagerResetToDefaults { reset_type: ResetRestore } {
+    // AND the two arms that are not ResetAll refuse DIFFERENTLY FROM EACH OTHER, which a Bool could not
+    // say and which is the whole reason an operator choosing "the gentler reset" is told anything: exactly
+    // one of them hands back the credential we cannot read, and it is the arm whose published description
+    // excepts local usernames and passwords. Asserted as a difference between the two refusals rather than
+    // as two non-empty strings, because two arms sharing one sentence would still pass "non-empty" while
+    // telling an operator that PreserveNetwork is the dangerous one -- the opposite of the schema's words.
+    && (match reset_to_defaults_user_table_disposition(kind: PreserveNetworkAndUsers) {
+        LeavesUserTableIntact { kind: k, what_survives: w } =>
+          k == PreserveNetworkAndUsers
+            // the surviving thing this arm names is the credential, in the schema's own term
+            && string_contains(s: w, pattern: "passwords")
+        ClearsUserTableIncludingUnknownCredential { kind: _ } => false
+      })
+    && (match reset_to_defaults_user_table_disposition(kind: PreserveNetwork) {
+        LeavesUserTableIntact { kind: k, what_survives: w } =>
+          k == PreserveNetwork
+            // and this one does NOT claim to keep the credential, because its published wording excepts
+            // only network settings
+            && !string_contains(s: w, pattern: "usernames and passwords")
+            && string_contains(s: w, pattern: "network")
+        ClearsUserTableIncludingUnknownCredential { kind: _ } => false
+      })
+    // THE TWO REFUSALS ARE NOT ONE SENTENCE SHARED. Two arms whose text was identical would pass each
+    // check above and still send an operator for a milder default into the arm that keeps the password.
+    && (match reset_to_defaults_user_table_disposition(kind: PreserveNetworkAndUsers) {
+         LeavesUserTableIntact { kind: _, what_survives: wa } =>
+           match reset_to_defaults_user_table_disposition(kind: PreserveNetwork) {
+             LeavesUserTableIntact { kind: _, what_survives: wb } => wa != wb
+             ClearsUserTableIncludingUnknownCredential { kind: _ } => false
+           }
+         ClearsUserTableIncludingUnknownCredential { kind: _ } => false
+       })
+    // AND the kind carries the arm rather than answering a question about it: a PreserveNetworkAndUsers
+    // inside the Redfish arm is matched as the arm it is, so nothing can read that actuation as one that
+    // wipes.
+    && (match RedfishManagerResetToDefaults { reset_type: PreserveNetworkAndUsers } {
          RedfishManagerResetToDefaults { reset_type: rt } =>
            match reset_to_defaults_user_table_disposition(kind: rt) {
              LeavesUserTableIntact { kind: _, what_survives: _ } => true

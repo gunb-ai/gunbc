@@ -206,15 +206,35 @@ fn redfish_password_change_verdict(body: String) -> RedfishPasswordChangeVerdict
 //
 // WHY THIS LIVES HERE AND NOT IN WHICHEVER MODULE HAPPENS TO ACTUATE A RESET. The three arms below are
 // not a workflow's vocabulary: they are the members DMTF publishes for the Manager's ResetToDefaults
-// action (Redfish Task/Message and Base schema, DSP0266 Redfish Specification + Redfish Host Interface /
-// Manager schema `#Manager.ResetToDefaults.ResetToDefaultsType`), and they are versioned by DMTF, not by
-// this repository. DESIGN §3 requires an independently versioned upstream to be declared in its own
-// extdeps module, with its source cited and its real names kept -- which is also what makes it reusable:
-// a second Redfish consumer (a fleet-wide factory-reset job, a network-configuration audit) would
-// otherwise have to import a machine-intake route, or re-mint the enum and drift from it.
+// action, and they are versioned by DMTF, not by this repository. DESIGN §3 requires an independently
+// versioned upstream to be declared in its own extdeps module, with its source cited and its real names
+// kept -- which is also what makes it reusable: a second Redfish consumer (a fleet-wide factory-reset job,
+// a network-configuration audit) would otherwise have to import a machine-intake route, or re-mint the
+// enum and drift from it.
+//
+// SOURCED FROM THE PUBLISHED SCHEMA, not from a transcription. The members, their meanings and the
+// parameter name below were read out of the DMTF-published Manager schema at
+// https://redfish.dmtf.org/schemas/v1/Manager.v1_19_3.json, `#/definitions/ResetToDefaults`:
+//   parameters: { "ResetType": { "$ref": "#/definitions/ResetToDefaultsType", "requiredParameter": true } }
+//   ResetToDefaultsType.enum: ["ResetAll", "PreserveNetworkAndUsers", "PreserveNetwork"]
+// with the enumDescriptions quoted per arm below. Two facts that were NOT carried over, both because the
+// schema says otherwise:
+//   * The action's parameter is spelled `ResetType`, NOT `ResetToDefaultsType` -- the latter is the NAME OF
+//     THE TYPE, not of the field. An implementation that puts the type's name in the body has not read the
+//     action, and a firmware that demands it has not published it; that difference is a reported device
+//     observation and lives in the observing layer, never here (§3: an observation this repository makes
+//     is a receipt downstream, not a property of the upstream).
+//   * `SensorThresholds` appears in some vendor implementations' generated enum (bmcweb's
+//     redfish-core/include/generated/enums/manager.hpp) but is NOT in DMTF's published enum for this
+//     schema version. A vendor extension is a vendor fact, not a DMTF fact; it does not join this sum from
+//     an assumption about what a Redfish implementation ought to accept.
 //
 // THE WIRE NAMES ARE KEPT EXACTLY AS PUBLISHED, in the schema's own PascalCase, because that is the
-// string an implementation puts in ResetToDefaultsType. The recovery route's judgement about which arm
-// clears the user table is NOT here: that is a question about BMC recovery, not about the schema, and it
-// stays in the module that asks it.
-type RedfishResetToDefaultsType = ResetAll | ResetNetwork | ResetRestore
+// string an implementation puts in the parameter. The recovery route's judgement about which arm clears
+// the user table is NOT here: that is a question about BMC recovery, not about the schema, and it stays in
+// the module that asks it. What IS here is what each member PUBLISHES itself to do, in the schema's words,
+// because that is the fact the route's judgement is made from.
+type RedfishResetToDefaultsType
+  = ResetAll
+  | PreserveNetworkAndUsers
+  | PreserveNetwork

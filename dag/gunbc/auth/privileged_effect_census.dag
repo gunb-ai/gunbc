@@ -324,14 +324,15 @@ fn recovery_in_band_set_user_password_effect() -> PrivilegedEffect {
 }
 
 // The reset is the destructive half, and its classification is what decides the authorization pattern.
-// ResetToDefaultsType=ResetAll restores every user account, every password and the network
+// ResetType=ResetAll -- the DMTF-published parameter name for this action, declared in
+// extdeps/bmc/redfish -- restores every user account, every password and the network
 // configuration to factory state on a board being brought into the fleet rather than serviced: nothing
 // re-applies the prior user table, so the loss is not undone by a reapply. Irreversible, therefore
 // OperatorApprovedCapability -- the operator approval on this write is not a courtesy, it is what the
 // characteristics force.
 fn recovery_manager_reset_to_defaults_effect() -> PrivilegedEffect {
   PrivilegedEffect {
-    subject: "against the BMC controller over Redfish, POST Manager.ResetToDefaults with ResetToDefaultsType=ResetAll, returning every account, password and the user table to factory state, on a board being brought into the fleet rather than serviced" as NonEmptyStr,
+    subject: "against the BMC controller over Redfish, POST Manager.ResetToDefaults with ResetType=ResetAll, returning every account, password and the user table to factory state, on a board being brought into the fleet rather than serviced" as NonEmptyStr,
     frequency: DeviceOnce,
     reversibility: IrreversibleEffect {
       what_is_lost: "the prior user table and every password on the controller: a reset to factory state cannot be reapplied to bring them back, which is exactly why this write cannot be used to install a credential of our own" as NonEmptyStr,
@@ -540,7 +541,11 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data recovery_reset_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   // THE CHANNEL EACH WRITE TRAVELS IS STATED, BECAUSE THE TWO WRITES DO NOT TRAVEL THE SAME ONE. The
   // captured bytes are the authority here, not convenience: 01_summary.txt records the reset as
-  // `POST .../Actions/Manager.ResetToDefaults {"ResetToDefaultsType":"ResetAll"}` against the BMC's own
+  // `POST .../Actions/Manager.ResetToDefaults` against the BMC, whose firmware required the body
+  // parameter spelled `ResetToDefaultsType` where DMTF publishes `ResetType` (01_summary.txt records both the
+  // 400 for the published spelling and the 200 for its own). That mismatch is a REPORTED OBSERVATION about
+  // this specimen and is quoted here as one; the spelling the interface publishes is unchanged by it (§3: an
+  // observation this repository makes is a receipt downstream, never a property of the upstream).'s own
   // LAN address (192.168.1.250 per the capture), so the reset went out-of-band over the management
   // interface, and only the temporary password write used the in-band SSIF channel (01_summary.txt's
   // "PRIVILEGED WRITE 1 -- set temp admin password over the in-band SSIF channel"). §4d: "Do not assert as
@@ -548,8 +553,8 @@ data recovery_reset_operator_ruling: StandingDestructiveAuthorization = Standing
   // AGAINST, so scoping the wipe to a channel it never used would have the operator approve a different
   // actuation from the one being admitted. §3: the ruling and the effect row it governs may not name
   // different channels for the same write.
-  ruling_text: "an arrival unit whose BMC ADMINISTRATOR password is unknown and whose rescue host OS is reachable may be returned to factory state by Redfish Manager.ResetToDefaults (ResetToDefaultsType=ResetAll) issued over the BMC's out-of-band management interface, one unit at a time, under a per-effect operator approval filed against this ruling; the in-band system interface is used only to write the temporary Administrator password, never for the reset; the route may not use the reset to install a credential of its own and terminates by handing the factory credential to the existing factory-login-then-rotate path" as NonEmptyStr,
-  effect_subject: "recovery reset: Redfish Manager.ResetToDefaults ResetAll over the BMC's out-of-band management interface, on one arrival unit's BMC controller" as NonEmptyStr,
+  ruling_text: "an arrival unit whose BMC ADMINISTRATOR password is unknown and whose rescue host OS is reachable may be returned to factory state by Redfish Manager.ResetToDefaults (ResetType=ResetAll, the arm DMTF publishes as returning every account and password to factory state) issued over the BMC's out-of-band management interface, one unit at a time, under a per-effect operator approval filed against this ruling; the in-band system interface is used only to write the temporary Administrator password, never for the reset; the route may not use the reset to install a credential of its own and terminates by handing the factory credential to the existing factory-login-then-rotate path" as NonEmptyStr,
+  effect_subject: "recovery reset: Redfish Manager.ResetToDefaults ResetType=ResetAll over the BMC's out-of-band management interface, on one arrival unit's BMC controller" as NonEmptyStr,
   interlock: InterlockedBy { hold: site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire") },
 }
 
