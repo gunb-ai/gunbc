@@ -58,8 +58,7 @@ import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIng
 // for the other.
 data compiler_gate_contract_stamp_env_key: String = "GUNBC_COMPILER_GATE_CONTRACT_STAMP"
 
-data compiler_gate_contract_stamp_provenance: String =
-  "gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp"
+data compiler_gate_contract_stamp_provenance: String = "gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp"
 
 // --------------------------------------------------------------------------------- THE DECLARED CONTRACT
 //
@@ -91,14 +90,7 @@ fn compiler_gate_invocation_argv_rows() -> List<String> {
 // 0, so the field set IS the contract -- and it is the field set the four silent runs proved unenforced.
 // The labels are the rows the verb prints and its claim asserts, so there is no second spelling that
 // could drift and quietly un-stamp a real contract change.
-data compiler_gate_invocation_output_rows: List<String> =
-  list_append(
-    xs: list_map(
-      xs: parse_verdict_reuse_counts_field_labels,
-      f: fn(label) { concat("stdout:", parse_verdict_reuse_counts_prefix, " ", label) }
-    ),
-    x: "stdout:ancestor-attribution-required"
-  )
+data compiler_gate_invocation_output_rows: List<String> = list_append( xs: list_map( xs: parse_verdict_reuse_counts_field_labels, f: fn(label) { concat("stdout:", parse_verdict_reuse_counts_prefix, " ", label) } ), x: "stdout:ancestor-attribution-required" )
 
 // THE LOCATOR'S BOUND. The restore chain walks a declared first-parent window and records the ancestor
 // it restored from; the counts line then names it. The window's width is contract, because a head that
@@ -395,8 +387,7 @@ fn compiler_gate_contract_stamp_is_refusal(verdict: CompilerGateContractStampRea
 // the emitter produces. What that could cost is examined where the arms are consumed -- a false PRESENT
 // still refuses unless the value matches, and the only direction that could spare a stale tree is a false
 // ABSENCE, which this file shape cannot produce for a tree that was generated with a stamp at all.
-data compiler_gate_contract_stamp_step_name: String =
-  "Refuse a subject older than the instruction running it"
+data compiler_gate_contract_stamp_step_name: String = "Refuse a subject older than the instruction running it"
 
 fn compiler_gate_contract_stamp_awk_program() -> String {
   // THE COUNTER IS INITIALISED IN A BEGIN BLOCK, NOT AS A BARE RULE. `in_env = 0` on its own is a
