@@ -24,3 +24,13 @@ test fn supplied_population_refuses_an_outside_caller() -> Bool {
   blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
            wanted: "ConstructorCallAdmissionRefused", subject: "supplied_population") >= 1
 }
+
+test fn sweep_under_staged_key_refuses_an_outside_caller() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "ConstructorCallAdmissionRefused", subject: "sweep_under_staged_key") >= 1
+}
+
+test fn sweep_and_deregister_refuses_an_outside_caller() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "ConstructorCallAdmissionRefused", subject: "sweep_and_deregister") >= 1
+}

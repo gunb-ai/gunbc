@@ -3,6 +3,7 @@ module test.claim.runner.runner_lost_boot_sweep_run_witness
 import std.algebra { string_contains }
 import extdeps.transports.rest { RestResult, RestAnswered }
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
@@ -27,6 +28,7 @@ import gunbc.runner.runner_jit_deregistration {
 }
 import gunbc.runner.runner_lost_boot_sweep_run {
   LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input, lost_boot_current_from_capture,
+  CurrentBootObservation, CurrentBootObserved, CurrentBootUnobserved, lost_boot_observe_current_boot,
   sweep_host_standing, SweepHostBound, SweepHostNotManaged,
   sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, 
 }
@@ -119,46 +121,93 @@ fn run_sweep(m: ManagedHost, authority: GitHubCredentialAuthority, current: Stri
   }
 }
 
-// THE CURRENT BOOT ID COMES FROM THE HOST'S CLOSED CAPTURE ENVELOPE AND NOWHERE ELSE (review 82195): no
-// typed boot id exists, so a well-formed UUID the envelope does not carry has no route to the sweep.
-// Positive control: a closed runner-host-up envelope bound to the swept host yields exactly the id it
-// carries, and not the unrelated id new_boot_id.
-test fn an_admitted_envelope_yields_exactly_the_boot_id_it_carries() -> Bool {
-  match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64")) {
-    LostBootCurrentPresent { boot: b } => (b.boot_id as String) == "aaaaaaaa-0000-4000-8000-000000000001" && (b.boot_id as String) != new_boot_id
+data capture_boot_id: String = "aaaaaaaa-0000-4000-8000-000000000001"
+
+fn observed_on(host: String, id: String) -> CurrentBootObservation {
+  match service_boot_id_of(run: kernel_boot(id: id)) {
+    Present { value: b } => CurrentBootObserved { host: host, boot: b }
+    Absent => CurrentBootUnobserved { cause: "unconstructible boot id" }
+  }
+}
+
+// THE CAPTURE RECORDS A BOOT AND THE HOST'S OWN OBSERVATION ESTABLISHES THE CURRENT ONE (review 82195,
+// then the HOLD at 82eaac6e). Positive control: a closed envelope bound to the swept host, joined to an
+// observation of the same host and boot, yields exactly the boot it carries, and not new_boot_id.
+test fn an_admitted_envelope_on_the_observed_boot_yields_exactly_that_boot() -> Bool {
+  match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
+    LostBootCurrentPresent { host: h, boot: b } => (h as String) == "mtcollins1" && (b.boot_id as String) == capture_boot_id && (b.boot_id as String) != new_boot_id
     LostBootCurrentRefused { cause: _ } => false
   }
 }
 
+// RED: an authentic closed capture of boot A, the host now on boot B. The capture is not the current
+// boot, so the sweep refuses and the live B registrations never become deletion subjects.
+test fn an_authentic_capture_of_an_earlier_boot_refuses() -> Bool {
+  match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtcollins1", id: new_boot_id)) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "now on boot") && string_contains(s: c, pattern: new_boot_id)
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }
+}
+
+// REDS: an observation of another host, an unobserved boot and the production observer (which has no
+// route in a fleet-converge run) each refuse, even over an envelope that is otherwise admitted.
+test fn a_missing_or_foreign_current_boot_observation_refuses() -> Bool {
+  (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtjade1", id: capture_boot_id)) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "not mtcollins1")
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: CurrentBootUnobserved { cause: "x" }) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unobserved")
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: lost_boot_observe_current_boot(host: "mtcollins1")) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unobserved")
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  })
+}
+
 // REDS: an open envelope, a failed install, an envelope bound to another machine and an empty capture
-// each refuse with their own cause before any credential is read.
+// each refuse with their own cause before any credential is read, over an observation that matches.
 test fn an_envelope_that_does_not_establish_runner_host_up_refuses() -> Bool {
-  (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: begin_line) {
+  (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: begin_line, observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
     LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "not a closed envelope")
-    LostBootCurrentPresent { boot: _ } => false
-  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "1", machine: "aarch64")) {
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "1", machine: "aarch64"), observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
     LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "does not establish runner-host-up")
-    LostBootCurrentPresent { boot: _ } => false
-  }) && (match lost_boot_current_from_capture(host: "mtjade1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64")) {
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtjade1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtjade1", id: capture_boot_id)) {
     LostBootCurrentRefused { cause: _ } => true
-    LostBootCurrentPresent { boot: _ } => false
-  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: "") {
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: "", observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
     LostBootCurrentRefused { cause: _ } => true
-    LostBootCurrentPresent { boot: _ } => false
+    LostBootCurrentPresent { host: _, boot: _ } => false
   })
 }
 
 // A missing or unreadable envelope, and a blank host or path, refuse; none is defaulted.
 test fn a_missing_envelope_or_blank_input_refuses() -> Bool {
-  (match lost_boot_current_input(host: "mtcollins1", capture_path: "/tmp/gunbc_no_such_capture_dir/capture.txt") {
+  (match lost_boot_current_input(host: "mtcollins1", capture_path: "/tmp/gunbc_no_such_capture_dir/capture.txt", observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
     LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unreadable")
-    LostBootCurrentPresent { boot: _ } => false
-  }) && (match lost_boot_current_input(host: "mtcollins1", capture_path: "") {
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_input(host: "mtcollins1", capture_path: "", observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
     LostBootCurrentRefused { cause: _ } => true
-    LostBootCurrentPresent { boot: _ } => false
-  }) && (match lost_boot_current_input(host: "", capture_path: "x") {
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_input(host: "", capture_path: "x", observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
     LostBootCurrentRefused { cause: _ } => true
-    LostBootCurrentPresent { boot: _ } => false
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  })
+}
+
+// THE PAIRING CLAIM: a SUCCESSFUL file read reaches the admission consumer. The capture is written to a
+// real file and lost_boot_current_input reads it back, so deleting the read-to-admission route makes
+// this fail where the supplied-text claims above would stay green.
+test fn a_capture_read_from_a_file_reaches_the_admission() -> Bool {
+  let path = "/tmp/gunbc_lbs_capture_pairing.txt"
+  let wrote = Filesystem.Write(path: path, content: closed(install_exit: "0", machine: "aarch64"))
+  wrote.success && (match lost_boot_current_input(host: "mtcollins1", capture_path: path, observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
+    LostBootCurrentPresent { host: _, boot: b } => (b.boot_id as String) == capture_boot_id
+    LostBootCurrentRefused { cause: _ } => false
+  }) && (match lost_boot_current_input(host: "mtcollins1", capture_path: path, observed: observed_on(host: "mtcollins1", id: new_boot_id)) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "now on boot")
+    LostBootCurrentPresent { host: _, boot: _ } => false
   })
 }
 

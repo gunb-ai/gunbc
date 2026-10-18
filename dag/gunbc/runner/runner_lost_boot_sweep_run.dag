@@ -58,12 +58,22 @@ import gunbc.runner.runner_jit_deregistration {
 // with SlotLostBoot, which succeeds only on absence read back. Current, non-grammar and other-host
 // names are never deleted.
 //
-// THE CURRENT BOOT ID IS READ FROM THE HOST'S CAPTURE ENVELOPE, NEVER TYPED: the dispatch input is the
-// path of the sweep host's capture, and the boot id is the kernel boot id that
-// gunbc.runner.runner_host_medium runner_host_up_readback_of establishes from a closed envelope bound to
-// the sweep host and holding every runner-host-up section. A wrong, stale, absent, unreadable, open or
-// refused envelope refuses before any credential is read, so a well-formed UUID that the envelope does
-// not carry has no route to a deletion.
+// THE CAPTURE RECORDS A BOOT; IT DOES NOT ESTABLISH THE CURRENT ONE (review 82195, then the HOLD at
+// 82eaac6e). The dispatch input is the path of the sweep host's capture, and the boot id it carries is
+// the kernel boot id that gunbc.runner.runner_host_medium runner_host_up_readback_of establishes from a
+// closed envelope bound to the sweep host. That is the RECORDED boot. A host that rebooted from A to B
+// still has an authentic closed A capture, and sweeping under A would delete B's live registrations. So
+// the recorded boot is admitted only by a join to a CurrentBootObservation of the same host and the
+// same boot, produced by the host's own observation route; a missing or mismatched observation
+// refuses before any credential is read. No operator-typed id, latest-timestamp rule or age threshold
+// stands in for that observation.
+//
+// NO OBSERVATION ROUTE EXISTS IN A FLEET-CONVERGE RUN TODAY. The host's boot id is readable only through
+// a host transport (gunbc.host.host_effect_realize reads /proc/sys/kernel/random/boot_id over a
+// HostEffectTransport), and this run holds the App installation authority, not a host credential. Until
+// the enrolment supplies that transport, lost_boot_observe_current_boot answers unobserved and the
+// mode refuses every dispatch at the join; the join, its refusals and its admitted arm are exercised
+// over supplied observations in test.claim.runner.runner_lost_boot_sweep_run_witness.
 //
 // THE CREDENTIAL IS THE RUN'S OWN: the gunbai-ci App key is staged from Secret Manager under the
 // run's federated identity, signs the installation-token mint and the control-plane observation, and
@@ -88,10 +98,33 @@ fn lost_boot_sweep_step_timeout_minutes() -> Minute {
 // ── The dispatch input ────────────────────────────────────────────────────────────────────────
 
 type LostBootCurrentInput
-  = LostBootCurrentPresent { boot: ServiceBootId }
+  = LostBootCurrentPresent { host: NonEmptyStr, boot: ServiceBootId }
   | LostBootCurrentRefused { cause: String }
 
-fn lost_boot_current_from_capture(host: NonEmptyStr, capture: String) -> LostBootCurrentInput {
+// WHAT THE HOST'S OWN ROUTE SAYS ITS BOOT IS NOW, of one named host.
+type CurrentBootObservation
+  = CurrentBootObserved { host: String, boot: ServiceBootId }
+  | CurrentBootUnobserved { cause: String }
+
+fn lost_boot_observe_current_boot(host: String) -> CurrentBootObservation {
+  CurrentBootUnobserved { cause: join(["no route observes ", host, "'s current kernel boot id from a fleet-converge run: that read needs a host transport, which arrives with the mtcollins1 enrolment"], "") }
+}
+
+fn lost_boot_current_joined(host: NonEmptyStr, recorded: ServiceBootId, observed: CurrentBootObservation) -> LostBootCurrentInput {
+  match observed {
+    CurrentBootUnobserved { cause: c } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the capture records a boot but the current boot is unobserved: ", c) }
+    CurrentBootObserved { host: h, boot: b } =>
+      if h != (host as String) {
+        LostBootCurrentRefused { cause: join(["lost-boot sweep: the current-boot observation is of host ", h, ", not ", host as String], "") }
+      } else if (b.boot_id as String) != (recorded.boot_id as String) {
+        LostBootCurrentRefused { cause: join(["lost-boot sweep: the capture records boot ", recorded.boot_id as String, " but the host is now on boot ", b.boot_id as String], "") }
+      } else {
+        LostBootCurrentPresent { host: host, boot: recorded }
+      }
+  }
+}
+
+fn lost_boot_current_from_capture(host: NonEmptyStr, capture: String, observed: CurrentBootObservation) -> LostBootCurrentInput {
   match runner_host_up_readback_of(capture: capture, machine: host, label: runner_host_medium_volume_id) {
     RunnerHostUpPending { reason: r } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the host capture is not a closed envelope: ", r) }
     RunnerHostUpRefused { refusals: rs } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the host capture does not establish runner-host-up: ", join(map(rs, x => runner_host_up_refusal_text(refusal: x)), "; ")) }
@@ -100,21 +133,21 @@ fn lost_boot_current_from_capture(host: NonEmptyStr, capture: String) -> LostBoo
         HistoricalAttemptOrdinal { ordinal: _ } => LostBootCurrentRefused { cause: "lost-boot sweep: the host capture names a historical attempt ordinal, not a kernel boot id" }
         KernelBootId { boot_id: u } =>
           match service_boot_id_of(run: KernelBootId { boot_id: u }) {
-            Present { value: b } => LostBootCurrentPresent { boot: b }
+            Present { value: b } => lost_boot_current_joined(host: host, recorded: b, observed: observed)
             Absent => LostBootCurrentRefused { cause: "lost-boot sweep: the current boot id is not a kernel boot identity" }
           }
       }
   }
 }
 
-fn lost_boot_current_input(host: String, capture_path: String) -> LostBootCurrentInput {
+fn lost_boot_current_input(host: String, capture_path: String, observed: CurrentBootObservation) -> LostBootCurrentInput {
   if host == "" || capture_path == "" {
     LostBootCurrentRefused { cause: join(["lost-boot sweep: ", lost_boot_sweep_host_env_name, " and ", lost_boot_sweep_capture_path_env_name, " are required and never defaulted"], "") }
   } else {
     let read = Filesystem.Read(path: capture_path)
     match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
       FilesystemReadRefused { error: e } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the host capture is unreadable: ", e) }
-      FilesystemReadSucceeded { content: text } => lost_boot_current_from_capture(host: host as NonEmptyStr, capture: text)
+      FilesystemReadSucceeded { content: text } => lost_boot_current_from_capture(host: host as NonEmptyStr, capture: text, observed: observed)
     }
   }
 }
@@ -190,16 +223,16 @@ fn write_sweep_receipt(lines: List<String>) -> ProcessExit {
 fn lost_boot_sweep_wet() -> ProcessExit
   uses net: Network
 {
-  match lost_boot_current_input(host: actions_variable_trimmed(name: lost_boot_sweep_host_env_name), capture_path: actions_variable_trimmed(name: lost_boot_sweep_capture_path_env_name)) {
+  let host_name = actions_variable_trimmed(name: lost_boot_sweep_host_env_name)
+  match lost_boot_current_input(host: host_name, capture_path: actions_variable_trimmed(name: lost_boot_sweep_capture_path_env_name), observed: lost_boot_observe_current_boot(host: host_name)) {
     LostBootCurrentRefused { cause } => exit_failure(reason: cause)
-    LostBootCurrentPresent { boot } => {
-      let host_name = actions_variable_trimmed(name: lost_boot_sweep_host_env_name)
+    LostBootCurrentPresent { host: admitted, boot } => {
       let wif = actions_variable_trimmed(name: lost_boot_sweep_wif_access_token_env_name)
       let temp = actions_variable_trimmed(name: lost_boot_sweep_runner_temp_env_name)
-      if host_name == "" || wif == "" || temp == "" {
+      if wif == "" || temp == "" {
         exit_failure(reason: "lost-boot sweep: the sweep host input, the run's federation token or RUNNER_TEMP is unset")
       } else {
-        match sweep_host_standing(host: host_name as NonEmptyStr) {
+        match sweep_host_standing(host: admitted) {
           SweepHostNotManaged { host } => exit_failure(reason: concat("lost-boot sweep: host is not a managed_host row: ", host))
           SweepHostBound { host, standing } => sweep_under_staged_key(
             host: host, standing: standing, current: boot,
@@ -215,6 +248,7 @@ fn lost_boot_sweep_wet() -> ProcessExit
 // answered.
 fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, wif: Secret, key_path: NonEmptyStr) -> ProcessExit
   uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "lost_boot_sweep_wet")]
 {
   match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
     ControllerKeyNotStaged { cause } => exit_failure(reason: cause)
@@ -242,6 +276,7 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
 
 fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
   uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key")]
 {
   let organization = github_organization_ref()
   match current_service_population(host: standing, boot: current) {
