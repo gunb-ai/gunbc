@@ -22,9 +22,10 @@ import gunbc.github_effect_perform {
   JitMintPerformance, JitMintReceived, service_slot_app_key,
 }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlot, HostUnitSlotPurpose, RecoveredServiceSlot, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
+  HostUnitSlot, HostUnitSlotPurpose, ServiceSlot, ServiceBootId, service_boot_id_of, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
   host_unit_slot_for, host_unit_slot_listener_argv, service_slot_name_parse, service_slot_selected_workflow,
 }
+import gunbc.machine_intake.host_capture_envelope { KernelBootId }
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
 import gunbc.runner.runner_jit_deregistration {
   JitSlotExit, SlotJobCompleted, SlotJobFailed, SlotNeverLaunched, JitRegistration, JitDeregistration, JitRunnerDeregistered,
@@ -51,6 +52,10 @@ import gunbc.runner.runner_microvm_slot_unit { microvm_locus_execstart }
 
 data service_slot_unit_env_name: String = "GUNBC_SERVICE_SLOT_UNIT"
 
+// The admitted boot's kernel boot id, set in the unit's environment by the boot leg (frontier (d)) from
+// the runner-host-up capture's KernelBootId; it enters only through service_boot_id_of.
+data service_slot_boot_env_name: String = "GUNBC_SERVICE_BOOT_ID"
+
 // FRONTIER (trigger: the org approves creating this group, restricted to service_slot_selected_workflow,
 // the way gunbc.runner.runner_group_restriction_ensure ensures its roster): until then the mint refuses
 // RunnerGroupAbsent from the observed group, fail-closed, rather than minting into an unrestricted one.
@@ -73,17 +78,16 @@ type ServiceSlotRebuild
   | ServiceSlotNotBound { refusal: HostUnitSlotRefusal }
   | ServiceSlotUnitNotRebuilt { listed: String, rebuilt: String }
 
-// THE UNIT NAME IS A CANDIDATE, NOT AN AUTHORITY: it is parsed through the service-slot grammar, the
-// slot is rebuilt by the same fold that names it, and it is admitted only when the rebuilt name equals
-// the unit this process runs as exactly -- so the boot id and index minted into the registration are
-// the ones the unit was created with. The parsed name is an untrusted candidate, so it enters only as a
-// RecoveredServiceSlot (never as a ServiceBootId, which only service_boot_id_of mints from KernelBootId);
-// that the unit's boot is the admitted one is the boot leg's check (frontier (d)).
-fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, unit: String) -> ServiceSlotRebuild {
+// THE UNIT NAME IS A CANDIDATE, NOT AN AUTHORITY: it is parsed through the service-slot grammar (only
+// its index is taken from the name), the slot is rebuilt by the same fold that names it under the
+// ADMITTED boot -- a typed ServiceBootId, never the parsed boot string -- and it is admitted only when
+// the rebuilt name equals the unit this process runs as exactly, so a unit created for another boot
+// rebuilds as a different name and is refused.
+fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, boot: ServiceBootId, unit: String) -> ServiceSlotRebuild {
   match service_slot_name_parse(host: identity, name: unit) {
     Absent => ServiceSlotUnitUnparsed { unit: unit }
     Present { value: parsed } =>
-      match host_unit_slot_for(host: host, purpose: RecoveredServiceSlot { name: parsed }, workflow: service_slot_selected_workflow()) {
+      match host_unit_slot_for(host: host, purpose: ServiceSlot { boot: boot, index: parsed.index }, workflow: service_slot_selected_workflow()) {
         HostUnitSlotRefused { refusal: r } => ServiceSlotNotBound { refusal: r }
         HostUnitSlotBound { slot: s } =>
           if (s.unit as String) == unit {
@@ -229,11 +233,19 @@ fn service_slot_controller_main() -> ProcessExit
           match service_slot_host_control(identity: identity) {
             Absent => exit_failure(reason: join(["service slot ", unit, ": host ", trim(s: v), " is not a managed host"], ""))
             Present { value: control } =>
-              match service_slot_rebuild(host: control, identity: identity, unit: unit) {
-                ServiceSlotRebuilt { slot: s } => service_slot_pass_exit(pass: service_slot_pass(slot: s))
-                ServiceSlotUnitUnparsed { unit: u } => exit_failure(reason: join(["service slot ", u, ": not a service-slot unit name"], ""))
-                ServiceSlotNotBound { refusal: _ } => exit_failure(reason: join(["service slot ", unit, ": the slot is not bound"], ""))
-                ServiceSlotUnitNotRebuilt { listed: l, rebuilt: r } => exit_failure(reason: join(["service slot ", l, ": rebuilds as ", r], ""))
+              match service_slot_env(name: service_slot_boot_env_name) {
+                Absent => exit_failure(reason: join(["service slot ", unit, ": ", service_slot_boot_env_name, " is not set"], ""))
+                Present { value: kernel_boot_id } =>
+                  match service_boot_id_of(run: KernelBootId { boot_id: kernel_boot_id as NonEmptyStr }) {
+                    Absent => exit_failure(reason: join(["service slot ", unit, ": no service boot id"], ""))
+                    Present { value: boot } =>
+                      match service_slot_rebuild(host: control, identity: identity, boot: boot, unit: unit) {
+                        ServiceSlotRebuilt { slot: s } => service_slot_pass_exit(pass: service_slot_pass(slot: s))
+                        ServiceSlotUnitUnparsed { unit: u } => exit_failure(reason: join(["service slot ", u, ": not a service-slot unit name"], ""))
+                        ServiceSlotNotBound { refusal: _ } => exit_failure(reason: join(["service slot ", unit, ": the slot is not bound"], ""))
+                        ServiceSlotUnitNotRebuilt { listed: l, rebuilt: r } => exit_failure(reason: join(["service slot ", l, ": rebuilds as ", r], ""))
+                      }
+                  }
               }
           }
         }
