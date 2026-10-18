@@ -89,24 +89,26 @@ impl Drop for Scratch {
     }
 }
 
-// Cargo leaves one rlib per build of the crate in deps/ (a `cargo build` of the binary beside this
-// test build leaves two), so the newest is taken as the one this test executable was compiled against. That is a
-// likelihood, not a guarantee (a later build with other features leaves a newer one). A wrong pick is not silent: rustc refuses a mismatched crate hash.
+// Cargo leaves one rlib per build of the crate in deps/, and nothing names which one this test
+// executable was linked against, so more than one is a refusal and not a pick: a guess could link the
+// specimen against a build with other features and still compile. Remedy: remove the stale rlibs
+// (`cargo clean -p v1-compiler`) or run this test without a separate `cargo build` of the crate.
 fn unique_rlib(deps: &Path, name: &str) -> PathBuf {
     let prefix = format!("lib{name}-");
-    std::fs::read_dir(deps)
+    let matches: Vec<_> = std::fs::read_dir(deps)
         .expect("read test dependency directory")
         .map(|entry| entry.expect("read dependency entry").path())
         .filter(|path| {
             let filename = path.file_name().unwrap().to_string_lossy();
             filename.starts_with(&prefix) && filename.ends_with(".rlib")
         })
-        .max_by_key(|path| {
-            std::fs::metadata(path)
-                .and_then(|m| m.modified())
-                .expect("rlib mtime")
-        })
-        .unwrap_or_else(|| panic!("absent {name} artifact in {}", deps.display()))
+        .collect();
+    assert_eq!(
+        matches.len(),
+        1,
+        "ambiguous or absent {name} artifact: {matches:?}; remove the stale rlibs (cargo clean -p {name}) and rerun"
+    );
+    matches[0].clone()
 }
 
 fn module_path(root: &Path, m: &str) -> PathBuf {
