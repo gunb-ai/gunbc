@@ -460,6 +460,39 @@ fn fold_refuses_disj_and_applied_spellings_of_one_name_with_different_arguments(
     );
 }
 
+/// THE INVERSION OF THE ROW REMOVED BELOW, meaningful only on a base that has S0 (#14256, main
+/// cca99de010f). `Box<Int>` (applied spelling) vs a Disj `Box<Int>` used to be ADMITTED by
+/// node_type_equals_core's mixed application-vs-non-application arm; S0 deleted that arm, and on this
+/// base the pair REFUSES. Verified against the authority itself, not against a wish: `awk` over
+/// node_type_equals_core in src/v1/04_types.dag at aed6e729e86 shows no mixed-spelling acceptance arm
+/// left (the surviving arms split leaf / applied / struct and require argument agreement).
+///
+/// WHY THIS IS NOT THE DELETED ROW RE-LABELLED. The row below asserted ACCEPTANCE and would have been a
+/// red asserting obsolete behaviour the moment S0 landed, which is what stern-bat-401 ruled out
+/// (msg_ad1a90c2); the opposite assertion is only sound where the authority actually refuses, so it is
+/// added HERE, on a base that includes S0, and not before. The BEFORE half is measured (at the pre-S0
+/// relation head 835cbd38e1e this pair passed the fold with no diagnostics -- that green row is the one
+/// deleted below). The AFTER half is asserted by this test and MEASURED BY THE RUN AT THIS HEAD, not
+/// claimed here: if the fold still admits it, this test fails and that failure is reported, not deleted.
+///
+/// It is also the refusal twin of the accept control below, at relation grain rather than fold grain:
+/// the accept control drives the same shape through Node.params and MY arm, so the two do not overlap.
+#[test]
+fn fold_refuses_an_applied_spelling_against_a_non_application_spelling_of_one_name() {
+    let bound = fold_app("Box", &[fold_leaf("Int")]);
+    let actual = fold_disj("Box", &[fold_leaf("Int")]);
+    let acc = fold_step(bound, actual);
+    assert!(
+        !acc.diagnostics.is_empty(),
+        "since S0 (#14256) deleted the mixed application-vs-non-application acceptance, Box<Int> vs a Disj \
+         Box<Int> must REFUSE in the fold; if this goes green the relation grew a mixed arm back: {:?}",
+        acc.diagnostics
+            .iter()
+            .map(|d| format!("{:?}", d))
+            .collect::<Vec<String>>()
+    );
+}
+
 // ROW REMOVED, deliberately: it asserted that `Box<Int>` (applied spelling) vs a Disj `Box<Int>` is
 // ADMITTED -- one type in two printings. stern-bat-401 ruled (msg_be91625a, msg_ad1a90c2) that #14256 @
 // 740eac5d64 deletes the last mixed application-vs-non-application acceptance, so an accept row for it

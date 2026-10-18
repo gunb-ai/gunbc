@@ -8111,17 +8111,21 @@ fn binding_has_type_variable_leaf(n: Node) -> Bool {
 // callee's `generic_names` but misses one that mentions ANOTHER declaration's parameters: the bound
 // side here is a stored binding read back from the environment, not the written annotation.
 //
-// THE MEASUREMENT (whole-tree probe v3 at 40 hops, ZERO cap events; fresh clone at 59606870e8ba,
-// status clean, seed = the clone's own main mirrors, instrument from scratch commit 2dbfa1ec866):
-// of the 254 rebind refusals, 142 have a bound side whose own params are non-empty and one of whose
-// leaf names IS one of those params -- 122 in the conn class that produced the hypothesis (a Disj
-// naming the actual's head, `Coproduct(FreeMonoid)` vs `Container(FreeMonoid, X)` at
-// dag/std/algebra.dag:3706-3716) and 20 outside it. The predicate is reported by identity in the PR
-// body, both sides. THE REFUSAL TWINS SURVIVE: 69 same-head, both-applied, different-shape pairs --
+// THE MEASUREMENT (probe v4 at depth 40 with ZERO cap events, on a fresh clone at 59606870e8ba, status
+// clean, seed = the clone's own main mirrors, instrument on the instrumentation branch). It computes
+// BOTH readings of 'its leaves are its own declared parameters' in Rust, per refusal row, because they
+// differ: ROOT-OWN (this code: the compared node's own Node.params) fires on 141 of the 254 rebind
+// refusals, TREE-AGGREGATED (params from any visited node) on 155. The shipped predicate is root-own, so
+// 141 is its coverage; the tree-aggregated figure is the upper bound and is NOT claimed here. An earlier
+// probe reported 142 (122 in the conn class that produced the hypothesis -- a Disj naming the actual's
+// head, e.g. `Coproduct(FreeMonoid)` vs `Container(FreeMonoid, X)` at dag/std/algebra.dag:3706-3716 --
+// plus 20 outside it) under the aggregated reading; the by-identity PR-body tables are rebuilt from the
+// root-own fields.
+// THE REFUSAL TWINS SURVIVE: 69 of the 254 are same-head, both-applied, different-shape pairs --
 // `Map(Primitive(K),Primitive(V))` vs `Map(Primitive(String),Primitive(Symbol))`,
-// `Node(FreeMonoid<Primitive(Symbol)>)` vs `Node(QualifiedName<Primitive(Symbol)>)` -- answer false
-// for the predicate, because a settled instance's leaves are its substituted arguments, and none of
-// its own parameters; ZERO of the 69 fire.
+// `Node(FreeMonoid<Primitive(Symbol)>)` vs `Node(QualifiedName<Primitive(Symbol)>)`. ZERO of them fire
+// under the AGGREGATED reading, which is the superset, so a fortiori none fires under root-own either:
+// a settled instance's leaves are its substituted arguments, never its own parameters.
 //
 // WHY THE WALK LOOKS THE WAY IT DOES. A parameter leaf is printed as `Primitive(T)` with the childless
 // node's NAME being the parameter, so the test is a CHILDLESS node's `name` -- NOT its printed shape,
@@ -8132,8 +8136,8 @@ fn binding_has_type_variable_leaf(n: Node) -> Bool {
 // both mint error_type, which would erase the very leaf this looks for. Node.params is read directly --
 // the field v1 and v2 never printed, and the only mechanical reading of "its leaves are its own declared
 // parameters". The nested level mirrors the measured capture, which read a parameter's own parameters.
-// THE WALK MUST FOLLOW THE `inferred` RESOLVED HOP, NOT JUST RAW CHILDREN. Measured: of the 142 rows
-// this admits, ZERO have a parameter leaf among the raw children -- every witness sits one or two
+// THE WALK MUST FOLLOW THE `inferred` RESOLVED HOP, NOT JUST RAW CHILDREN. Measured: of the rows this
+// admits, ZERO have a parameter leaf among the raw children alone -- every witness sits one or two
 // `Present { Resolved }` hops below the root (witness paths like L010r: three raw children, then the
 // hop). A children-only walk admits nothing and looks like a clean no-op. The hop is BOUNDED at 3
 // because `inferred` can point back up the tree; 3 is headroom over the measured maximum of 2, and the
