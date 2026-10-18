@@ -224,7 +224,7 @@ fn join_control_case(name: String, head: String, want_admitted: Int, want_refuse
   let deltas = occurrence_join_module(rows: join_control_rows(), module: "m", base_stdout: join_control_base(), head_stdout: head)
   let admitted = count(deltas |> filter(d => join_delta_admitted(d: d)))
   let refused = deltas |> filter(d => !join_delta_admitted(d: d)) |> map(d => match d { JoinRefused { cause: k, coordinate: _, detail: _ } => k  JoinAdmitted { coordinate: _, spelling: _, home: _ } => "" })
-  if (admitted == want_admitted) && (sort(refused) == sort(want_refused)) {
+  if (admitted == want_admitted) && (count(refused) == count(want_refused)) && (count(want_refused |> filter(w => count(refused |> filter(r => r == w)) != count(want_refused |> filter(x => x == w)))) == 0) {
     ""
   } else {
     "occurrence-join control " + name + ": admitted " + to_string(admitted) + ", refused [" + join(refused, separator: ",") + "]; want " + to_string(want_admitted) + " and [" + join(want_refused, separator: ",") + "]\n"

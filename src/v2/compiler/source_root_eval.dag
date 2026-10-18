@@ -3405,9 +3405,13 @@ fn native_census_unbound_spelling(at: Locus) -> Optional<String> {
 // line from the END of its file: inserting an import above every body leaves that count unchanged.
 fn native_census_line_count(positions: NativeCensusPositionTable, path: Symbol) -> Int {
   match map_lookup(positions.files, path) {
-    Present { value: file } => file.lines.line_count
+    Present { value: file } => native_census_index_line_count(index: file.lines)
     Absent => 0 - 1
   }
+}
+
+fn native_census_index_line_count(index: SourcePositionIndex) -> Int {
+  index.line_count
 }
 
 fn native_census_file_line(entry: NativeCensusModule, line_count: Int) -> String {
