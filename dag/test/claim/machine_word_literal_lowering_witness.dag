@@ -1,0 +1,40 @@
+module test.claim.machine_word_literal_lowering_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// PERMANENT REGRESSION CONTROL for emit-time lowering of std.machine_word machine_word_apply
+// (v1.compiler.emit_rust emit_machine_word_lowered_call, rows extdeps.languages.rust.emit
+// rust_machine_word_lowering_rows). A call whose operator and width are constructor literals is the
+// host's own operator; every other call keeps the declared call to the runtime seam. THE ROWS ARE
+// DISCRIMINATING IN BOTH DIRECTIONS: the literal row goes red if the lowering stops firing, and the
+// non-literal and unrowed-width rows go red if the lowering widens past a literal with a row.
+// dissolve-on: never -- a literal operator and width are a statically known operation.
+
+test fn w_literal_xor_at_width32_is_the_host_operator() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.mw_literal_xor_probe\nimport std.types { Int }\nimport std.machine_word { machine_word_apply, OperatorXor, Width32 }\nfn probe(a: Int, b: Int) -> Int { machine_word_apply(op: OperatorXor, width: Width32, a: a, b: b) }\n",
+    "src/test_claim_mw_literal_xor_probe.rs",
+    ["u32::try_from(", ") ^ u32::try_from("],
+    ["machine_word_apply(", "machine_word_native_operate"]
+  )
+}
+
+test fn w_non_literal_operator_keeps_the_declared_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.mw_dynamic_op_probe\nimport std.types { Int }\nimport std.machine_word { machine_word_apply, MachineWordOperator, Width32 }\nfn probe(op: MachineWordOperator, a: Int, b: Int) -> Int { machine_word_apply(op: op, width: Width32, a: a, b: b) }\n",
+    "src/test_claim_mw_dynamic_op_probe.rs",
+    ["machine_word_apply("],
+    ["u32::try_from("]
+  )
+}
+
+test fn w_width_without_a_row_keeps_the_declared_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.mw_width8_probe\nimport std.types { Int }\nimport std.machine_word { machine_word_apply, OperatorXor, Width8 }\nfn probe(a: Int, b: Int) -> Int { machine_word_apply(op: OperatorXor, width: Width8, a: a, b: b) }\n",
+    "src/test_claim_mw_width8_probe.rs",
+    ["machine_word_apply("],
+    ["u32::try_from("]
+  )
+}

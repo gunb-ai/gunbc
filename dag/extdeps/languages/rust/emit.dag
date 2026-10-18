@@ -70,6 +70,31 @@ data rust_container_templates: Map<String, String> = {
   "boolean_algebra": "bool"
 }
 
+// A std.machine_word operation at a literal operator and width, expanded at EMIT time to the host's
+// own operator on the unsigned carrier of that width (`v1.compiler.emit_rust` `emit_typed_call`,
+// the `std.machine_word` `machine_word_apply` arm). Keyed by the SOURCE SPELLING of the two
+// constructors the call names, as rust_simple_method_specs keys on a method name. The carrier
+// conversion REFUSES in release: `u32::try_from` rejects a residue outside [0, 2^32) and the amount
+// filter rejects an amount outside [0, 32), the same refusals machine_word_native_operate_checked
+// makes, so no operand is masked, wrapped or truncated. A pair with no row (another width, or an
+// operator not literal at the call site) keeps the runtime seam call.
+type MachineWordLoweringRow {
+  operator_variant: String
+  width_variant: String
+  template: String
+}
+
+data rust_machine_word_lowering_rows: List<MachineWordLoweringRow> = [
+  { operator_variant: "OperatorAnd", width_variant: "Width32", template: "((u32::try_from(\{a\}).expect(\"machine_word: operand outside [0, 2^32)\") & u32::try_from(\{b\}).expect(\"machine_word: operand outside [0, 2^32)\")) as i64)" },
+  { operator_variant: "OperatorOr", width_variant: "Width32", template: "((u32::try_from(\{a\}).expect(\"machine_word: operand outside [0, 2^32)\") | u32::try_from(\{b\}).expect(\"machine_word: operand outside [0, 2^32)\")) as i64)" },
+  { operator_variant: "OperatorXor", width_variant: "Width32", template: "((u32::try_from(\{a\}).expect(\"machine_word: operand outside [0, 2^32)\") ^ u32::try_from(\{b\}).expect(\"machine_word: operand outside [0, 2^32)\")) as i64)" },
+  { operator_variant: "OperatorNot", width_variant: "Width32", template: "((!u32::try_from(\{a\}).expect(\"machine_word: operand outside [0, 2^32)\")) as i64)" },
+  { operator_variant: "OperatorShiftRight", width_variant: "Width32", template: "((u32::try_from(\{a\}).expect(\"machine_word: operand outside [0, 2^32)\") >> u32::try_from(\{b\}).ok().filter(|n| *n < 32).expect(\"machine_word: amount outside [0, 32)\")) as i64)" },
+  { operator_variant: "OperatorShiftLeft", width_variant: "Width32", template: "((u32::try_from(\{a\}).expect(\"machine_word: operand outside [0, 2^32)\") << u32::try_from(\{b\}).ok().filter(|n| *n < 32).expect(\"machine_word: amount outside [0, 32)\")) as i64)" },
+  { operator_variant: "OperatorRotateRight", width_variant: "Width32", template: "(u32::try_from(\{a\}).expect(\"machine_word: operand outside [0, 2^32)\").rotate_right(u32::try_from(\{b\}).ok().filter(|n| *n < 32).expect(\"machine_word: amount outside [0, 32)\")) as i64)" },
+  { operator_variant: "OperatorAddWrapping", width_variant: "Width32", template: "(u32::try_from(\{a\}).expect(\"machine_word: operand outside [0, 2^32)\").wrapping_add(u32::try_from(\{b\}).expect(\"machine_word: operand outside [0, 2^32)\")) as i64)" }
+]
+
 data rust_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "count",     template: "(\{recv\}.len() as i64)",                                                                    wraps_result: false },
   { method_name: "join",      template: "\{recv\}.join(&\{arg\})",                                                                    wraps_result: false },
