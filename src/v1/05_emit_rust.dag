@@ -12374,8 +12374,30 @@ fn item_forbids_deserialize(item: Node, emit_info: EmitGraphInfo, source_indices
 // coproduct already carries an EnumAccessor arm rendering exactly `base.field()`, so the
 // seal does not introduce a second way to render a read -- it selects the existing one
 // for a product base. One producer for one fact.
+// A FIELD READ IS A PLACE WHEN IT IS THE RECEIVER OF ANOTHER FIELD READ. `r.window.w0` selects one
+// field out of `r.window`; cloning `r.window` first copied the whole record to read one field and
+// dropped the copy (`gunbc.recurring_failure_mode`
+// `emitter_clones_a_whole_record_to_read_one_field`). `as_receiver` asks the plain stored-field arm
+// for the place expression, so only the outermost read clones. Every other arm (tuple, optional,
+// enum accessor, sealed accessor, boxed deref, anonymous record) already yields a value and ignores it.
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  emit_typed_field_access_as(base: base, field: field, summary: summary, as_receiver: false, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+}
+
+fn emit_typed_field_access_as(base: Node, field: String, summary: FieldSummary?, as_receiver: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let base_str = match base.expr_data {
+    ExprFieldAccess { summary: inner_summary } =>
+      let inner_is_optional = resolved_type(n: base).return_cardinality == CardOptional || (match inner_summary {
+        Present { value: fs } => match fs.value_shape { OptionalValue => true, _ => false }
+        Absent => true
+      })
+      if inner_is_optional || is_typed_service_call_receiver(receiver: base, source_indices: scope.type_env.source_indices) {
+        emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      } else {
+        emit_typed_field_access_as(base: field_access_base(texpr: base), field: field_access_field_at(texpr: base, source_indices: scope.type_env.source_indices), summary: inner_summary, as_receiver: true, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      }
+    _ => emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  }
   let base_is_anon_record = match base.inferred {
     Present { value: Resolved { node: bt } } =>
       let is_product = is_product_type(n: bt)
@@ -12419,6 +12441,13 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
               emit_rust_compile_error_expr(message: concat("field access '.", field, "': the base expression's type names '", seal_undecided_leaf, "', which more than one module of this closure declares, and carries no declaration identity -- whether the field is read directly or through a sealed accessor is not decided"))
             } else if sealed {
               concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
+<<<<<<< HEAD
+=======
+            } else if field_is_boxed {
+              apply_type_template1(template: sharing.deref_clone, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
+            } else if base_is_owned || as_receiver {
+              concat(base_str, ".", emit_ident(name: field, target: Rust))
+>>>>>>> origin/main
             } else {
               match field_box {
                 NeedsBoxRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
