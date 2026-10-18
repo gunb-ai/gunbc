@@ -206,6 +206,19 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertEqual(try WireDecode.redemptionResponse(Data(try envelope("redemption_response_enrollment_unknown").utf8)).outcome, OutcomeName.enrollmentUnknown)
     }
 
+    /// One envelope per arm of the enrol route's typed refusal (enrolment_refusal_<label>): the arms the
+    /// vectors cover are exactly the arms the app spells, and each decodes to the arm its name carries, so an
+    /// arm added to the wire without a vector (or renamed) reds here.
+    func testEveryEnrolmentRefusalArmDecodes() throws {
+        let prefix = "enrolment_refusal_"
+        let arms = try load().envelope.filter { $0.name.hasPrefix(prefix) }
+        XCTAssertEqual(Set(arms.map { String($0.name.dropFirst(prefix.count)) }), Set(EnrolmentRefusalKind.allCases.map { $0.rawValue }))
+        for a in arms {
+            let kind = try WireDecode.enrolmentRefusal(Data(a.body.utf8))
+            XCTAssertEqual(prefix + kind.rawValue, a.name)
+        }
+    }
+
     /// The detail screen's strict read, joined to the store's own rendering: every stored_request
     /// vector (stored_request_json over the witness's input) decodes to exactly that input. No
     /// rendering is typed here.

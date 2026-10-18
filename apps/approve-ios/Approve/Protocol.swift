@@ -41,7 +41,7 @@ enum ProposedDecision: String {
 }
 
 /// gunbc.auth.approval_device_wire EnrolmentRefusalWire, spelled by enrolment_refusal_wire_label.
-enum EnrolmentRefusalKind: String {
+enum EnrolmentRefusalKind: String, CaseIterable {
     case code_not_issued, code_already_used, code_expired, store_unreadable, attestation_refused, attestation_for_other_bytes, android_unrealized
 }
 
