@@ -965,6 +965,11 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
             missing_realization_fact: s(),
             span: no_span(),
         },
+        TypeNameCarriesNoRecordConstructor {
+            type_name: s(),
+            declared_variants: istrings(),
+            span: no_span(),
+        },
     ]
 }
 
@@ -1439,6 +1444,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { .. } => {
             "PresentArmScrutineeTypeUnresolved"
         }
+        CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => {
+            "TypeNameCarriesNoRecordConstructor"
+        }
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -1566,6 +1574,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         // The subject is the arm's pattern name; the span locates the match.
         CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { pattern, .. } => pattern.clone(),
+        // THE SUBJECT IS THE TYPE NAME WRITTEN AT THE LITERAL, not a field: the repair is one
+        // edit at one name (repoint it at a variant of that union), and keying on a field would
+        // scatter one authoring mistake across a row per field written under it.
+        CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name, .. } => {
+            type_name.clone()
+        }
     };
     (class.to_string(), name)
 }

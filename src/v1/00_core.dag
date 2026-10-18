@@ -458,6 +458,22 @@ type CompilerDiagnostic
       missing_realization_fact: String,
       span: SourceSpan
     }
+  // A RECORD LITERAL NAMING A COPRODUCT TYPE IS NOT A CONSTRUCTION OF ANY OF ITS ARMS. The name
+  // after `Record {` resolved to a declaration whose connective is Disj -- a union, which declares
+  // no record constructor of its own -- so the shape the author wrote inhabits no type the name
+  // can carry. Named at the literal's NAME span, before any field walk, so the refusal does not
+  // depend on whether the supplied fields happen to fit some arm: `U { property: ..., value: ... }`
+  // and `U { not_a_field: 1 }` refuse for the same reason, and the refusal lists the arms the
+  // author could have meant (DESIGN §4b: a value inhabits its declared type; §5: a refusal names
+  // its own reason). The specimen is extdeps.systemd systemd_run SystemdRunProperty, which #13942
+  // changed from a record to NamedUnitSetting | EmptyCapabilityBoundingSet while its call sites
+  // kept constructing the old record shape -- accepted at authoring and refused only at eval
+  // (gunbc.recurring_failure_mode.a_record_literal_naming_a_union_type_is_accepted_at_typecheck).
+  | TypeNameCarriesNoRecordConstructor {
+      type_name: String,
+      declared_variants: List<String>,
+      span: SourceSpan
+    }
 
 
 // SEVERITY AND GATE DISPOSITION ARE TWO FACTS ABOUT A DIAGNOSTIC, NOT ONE.
@@ -678,6 +694,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: s } => s
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: s } => s
+    TypeNameCarriesNoRecordConstructor { type_name: _, declared_variants: _, span: s } => s
   }
 }
 
@@ -794,6 +811,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("service config field '", f, "' carries the reference '", n, "', and the reference judgment does not yet run on this field -- ", t, ". This is a counted deferral, not a pass: nothing has established that '", n, "' names anything")
     TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
       concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
+    TypeNameCarriesNoRecordConstructor { type_name: t, declared_variants: vs, span: _ } =>
+      concat("record literal names '", t, "' which declares no record constructor: '", t, "' is a union with variants [", join(vs, separator: ", "), "]; construct one of its variants instead (DESIGN §4b: a value inhabits its declared type)")
   }
 }
 
@@ -920,6 +939,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeNameCarriesNoRecordConstructor { type_name: _, declared_variants: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
   }
 }
 
