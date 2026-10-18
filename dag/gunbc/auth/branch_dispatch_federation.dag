@@ -142,15 +142,19 @@ data branch_run_key_variable: NonEmptyStr = "BRANCH_RUN_KEY"
 // the main-only route, so coverage can only widen by a row here. main_route says what the same mode
 // does when dispatched at main: MainUsesFleetIdentity signs in through the main-only fleet pool,
 // MainUsesGrantedAccount keeps the grant at every ref, MainUsesSelectedSource leaves the choice to the
-// mode's own job (the boot job's select_boot_credential_source).
+// mode's own job (the boot job's select_boot_credential_source). GrantOnlyNoAccount is a mode whose
+// job holds no cloud credential at all: off main it still waits for an approved grant (the approval is
+// the admission to run the branch's code in that job), it has no account, no federation and no secret
+// grant, and at main it needs no grant.
 type RunScopedMainRoute
   = MainUsesGrantedAccount
   | MainUsesFleetIdentity
   | MainUsesSelectedSource
+  | GrantOnlyNoAccount
 
 type RunScopedMode {
   mode: NonEmptyStr
-  account_id: NonEmptyStr
+  account_id: NonEmptyStr?
   main_route: RunScopedMainRoute
 }
 
@@ -158,11 +162,11 @@ data mtcollins1_boot_mode_name: NonEmptyStr = "mtcollins1_boot"
 
 fn run_scoped_modes() -> List<RunScopedMode> {
   [
-    RunScopedMode { mode: "hetzner_cloud_server_read", account_id: hetzner_cloud_control_service_account_id, main_route: MainUsesGrantedAccount },
-    RunScopedMode { mode: mtcollins1_boot_mode_name, account_id: mtcollins1_boot_run_scoped_service_account_id, main_route: MainUsesSelectedSource },
-    RunScopedMode { mode: "plan", account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
-    RunScopedMode { mode: "apply", account_id: fleet_apply_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
-    RunScopedMode { mode: "dashboard_deploy", account_id: dashboard_deploy_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
+    RunScopedMode { mode: "hetzner_cloud_server_read", account_id: Present { value: hetzner_cloud_control_service_account_id }, main_route: MainUsesGrantedAccount },
+    RunScopedMode { mode: mtcollins1_boot_mode_name, account_id: Present { value: mtcollins1_boot_run_scoped_service_account_id }, main_route: MainUsesSelectedSource },
+    RunScopedMode { mode: "plan", account_id: Present { value: fleet_plan_run_scoped_service_account_id }, main_route: MainUsesFleetIdentity },
+    RunScopedMode { mode: "apply", account_id: Present { value: fleet_apply_run_scoped_service_account_id }, main_route: MainUsesFleetIdentity },
+    RunScopedMode { mode: "dashboard_deploy", account_id: none, main_route: GrantOnlyNoAccount },
   ]
 }
 
@@ -178,7 +182,7 @@ fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
   match run_scoped_mode_named(mode: mode) {
     Absent => none
     Present { value: m } =>
-      if m.main_route == MainUsesFleetIdentity && branch == (gunbc_default_branch_name as String) { none }
+      if (m.main_route == MainUsesFleetIdentity || m.main_route == GrantOnlyNoAccount) && branch == (gunbc_default_branch_name as String) { none }
       else if m.main_route != MainUsesSelectedSource { Present { value: m } } else {
         match select_boot_credential_source(on_reviewed_main: branch == (gunbc_default_branch_name as String)) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
@@ -231,7 +235,7 @@ fn hetzner_cloud_control_federation() -> DedicatedFederation {
     attribute_condition: branch_dispatch_attribute_condition(),
     impersonation: RunScopedImpersonation,
     service_account: hetzner_cloud_control_service_account,
-    service_account_id: hetzner_cloud_control_service_account_id,
+    service_account_id: Present { value: hetzner_cloud_control_service_account_id },
     service_account_display_name: "Hetzner Cloud control (WIF-only, run-scoped, no keys)",
     service_account_member: federated_service_account_member(email: hetzner_cloud_control_service_account),
     secret_grants: hetzner_cloud_api_grants(),
@@ -256,7 +260,7 @@ fn mtcollins1_boot_run_scoped_federation_for(f: ManagedHostBootFederation) -> De
     attribute_condition: branch_dispatch_attribute_condition(),
     impersonation: RunScopedImpersonation,
     service_account: mtcollins1_boot_run_scoped_service_account,
-    service_account_id: mtcollins1_boot_run_scoped_service_account_id,
+    service_account_id: Present { value: mtcollins1_boot_run_scoped_service_account_id },
     service_account_display_name: "Mt. Collins boot (run-scoped, WIF-only, no keys)",
     service_account_member: federated_service_account_member(email: mtcollins1_boot_run_scoped_service_account),
     secret_grants: f.secret_grants,
@@ -284,10 +288,6 @@ data fleet_plan_run_scoped_service_account_id: NonEmptyStr = "fleet-cloud-conver
 data fleet_apply_run_scoped_service_account_id: NonEmptyStr = "fleet-apply-run"
 
 data fleet_apply_run_scoped_service_account: ServiceAccountEmail = "fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com"
-
-data dashboard_deploy_run_scoped_service_account_id: NonEmptyStr = "dashboard-deploy-run"
-
-data dashboard_deploy_run_scoped_service_account: ServiceAccountEmail = "dashboard-deploy-run@gunbai-secrets.iam.gserviceaccount.com"
 
 fn fleet_run_scoped_federation(label: String, account_id: NonEmptyStr, email: ServiceAccountEmail, display: String, grants: List<SecretAccessGrant>) -> DedicatedFederation {
   DedicatedFederation {
@@ -317,13 +317,9 @@ fn fleet_apply_run_scoped_federation() -> DedicatedFederation {
   fleet_run_scoped_federation(label: "fleet apply (approved branch runs)", account_id: fleet_apply_run_scoped_service_account_id, email: fleet_apply_run_scoped_service_account, display: "Fleet apply (run-scoped, WIF-only, no keys)", grants: [secret_accessor_grant(target: fleet_automation_ssh_privkey_secret)])
 }
 
-fn dashboard_deploy_run_scoped_federation() -> DedicatedFederation {
-  fleet_run_scoped_federation(label: "dashboard deploy (approved branch runs)", account_id: dashboard_deploy_run_scoped_service_account_id, email: dashboard_deploy_run_scoped_service_account, display: "Dashboard deploy (run-scoped, WIF-only, no keys)", grants: [secret_accessor_grant(target: fleet_automation_ssh_privkey_secret)])
-}
-
 // The accounts this table's rows need provisioned; the plan row reuses an account that is already a target.
 fn fleet_run_scoped_new_federations() -> List<DedicatedFederation> {
-  [fleet_apply_run_scoped_federation(), dashboard_deploy_run_scoped_federation()]
+  [fleet_apply_run_scoped_federation()]
 }
 
 fn run_scoped_federations() -> List<DedicatedFederation> {
