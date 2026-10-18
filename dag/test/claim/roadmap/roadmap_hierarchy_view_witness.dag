@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_hierarchy_view_witness
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
-import std.markup { Fragment, Element, FragmentText, RawNode }
+import std.markup { Document, Fragment, Element, FragmentText, RawNode }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.harness.harness_throughput { RoundsUnobserved }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapEdge, MemberOf, AdmittedRoot, section_group }
@@ -312,12 +312,24 @@ test fn witness_rendered_issue_page_links_only_canonical_routes() -> Bool {
 // The document shell around this (issue_detail_page_for, which adds the stylesheet and the launch
 // context) is not run here: measured 2026-10-05 it costs over twice a new claim's whole budget and
 // none of it is the chain.
+// A whole page wrapped as a Document must yield the SAME links as the bare root. This is the claim
+// control C6 turns red: if hv_nav_hrefs' Document arm returned [] instead of walking root, every
+// document-wrapped page would report zero links, which is the silent-pass shape a page-level guard
+// can fall into. It is asserted by equality with the unwrapped page, so the claim cannot be satisfied
+// by a fixed expectation that stops matching when the page changes.
+test fn witness_nav_scan_walks_into_a_document_root() -> Bool {
+  let page = issue_detail_page(view: hv_row(id: "hv-mid", title: "Mid title"), hierarchy: hv_view(id: "hv-mid"), observation: ObservationsNominal, attempts: [], events: [], viewer: "", recents: [], expected_revision: "")
+  let wrapped = hv_nav_hrefs(node: Document { doctype: "html", root: page })
+  all(["hv-root", "hv-proj", "hv-leaf", "hv-sib", "hv-ext"], id => string_contains(s: join(wrapped, ","), pattern: issue_page_path(node_id: id)))
+    && list_length(items: wrapped) == list_length(items: hv_nav_hrefs(node: page))
+}
+
 fn hv_nav_hrefs(node: Fragment) -> List<String> {
   match node {
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
     MarkupComment { body: _ } => []
-    Document { doctype: _, root: _ } => []
+    Document { doctype: _, root: r } => hv_nav_hrefs(node: r)
     Element { tag, attributes, children } =>
       concat(
         if tag == "a" { map(filter(attributes, a => a.name == "href"), a => a.value) } else { [] },

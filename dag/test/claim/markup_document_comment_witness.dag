@@ -40,6 +40,9 @@ import extdeps.languages.html {
 }
 import extdeps.uri_validation { find_first_rejected_url }
 import std.optional { Absent, Present }
+import gunbc.auth.approval_broker_marker {
+  approval_broker_marker_comment, BrokerMarkerComment, MarkerCommentRendered, MarkerCommentRefused,
+}
 import std.types { List, Bool, String }
 
 // A medium that spells comments the way JSX does, so the HTML delimiters cannot be hiding in the
@@ -254,7 +257,35 @@ test fn witness_doctype_name_rejects_non_token_names() -> Bool {
     && doctype_hazard(keyword: "<html") != ""
 }
 
-// ── 5. the closed set a consumer depends on ───────────────────────────────────────────────────
+// ── 5. the consumer's refusal is a refusal (review 82142 on #14351) ───────────────────────────
+
+// The broker marker joins a comment into a served HTML body. If a hazard's text were returned as the
+// comment, the page would ship with an error message where the marker belongs and no marker at all —
+// and the READING side reports an unmarked page as "the request never reached the broker", which is the
+// one question this marker exists to settle. So the hazard's outcome must be un-joinable: a closed
+// result, not a String that means either thing.
+//
+// This arm is currently unreachable through approval_broker_marked_body: its token is a join of three
+// CLOSED sets (lowercase, digits, "/", "-"), so no inhabitant can hold a terminator — checked by
+// witness_marker_token_never_closes_its_comment below. It becomes reachable the moment that alphabet
+// widens, which is the trigger named here. Running the refusal directly is what keeps it from being a
+// branch that only LOOKS handled: control C8 (return the diagnostic as MarkerCommentRendered) turns the
+// first claim red.
+test fn witness_marker_refusal_carries_no_joinable_text() -> Bool {
+  match approval_broker_marker_comment(body: "token --> <script>alert(1)</script>") {
+    MarkerCommentRefused { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminator)
+    MarkerCommentRendered { text: _ } => false
+  }
+}
+
+test fn witness_marker_clean_token_renders_as_a_comment() -> Bool {
+  match approval_broker_marker_comment(body: "approval-broker/roadmap/confirm-page") {
+    MarkerCommentRendered { text: t } => t == "<!-- approval-broker/roadmap/confirm-page -->"
+    MarkerCommentRefused { reason: _ } => false
+  }
+}
+
+// ── 6. the closed set a consumer depends on ───────────────────────────────────────────────────
 
 // gunbc.auth.approval_broker_marker routes its HTML marker through MarkupComment and refuses a token
 // that would close its own comment. That refusal only means something if the token alphabet is what

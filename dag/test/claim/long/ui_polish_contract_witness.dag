@@ -17,7 +17,9 @@ fn element_count(f: Fragment, tag_name: String, attribute: String, value: String
     FragmentText { content: _ } => 0
     RawNode { content: _ } => 0
     MarkupComment { body: _ } => 0
-    Document { doctype: _, root: _ } => 0
+    // The Element arm folds over children, so the whole-page shape must reach the root; an arm
+    // returning 0 would count nothing inside a page and the claim would pass on an empty page.
+    Document { doctype: _, root: r } => element_count(f: r, tag_name: tag_name, attribute: attribute, value: value)
     Element { tag, attributes, children } =>
       (if tag == tag_name && (attribute == "" || any(attributes, a => a.name == attribute && a.value == value)) { 1 } else { 0 })
         + fold(children, init: 0, f: (n, c) => n + element_count(f: c, tag_name: tag_name, attribute: attribute, value: value))
