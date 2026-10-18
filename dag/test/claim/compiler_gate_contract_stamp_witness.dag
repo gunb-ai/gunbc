@@ -405,29 +405,49 @@ test fn the_guard_precedes_every_binary_invoking_step_holds() -> Bool {
   // EXACTLY ONE GUARD STEP. A second one would be two verdicts on one checkout, and the later one would
   // be unreachable behind the first -- a step that can never fire is not a check.
   length(filter(names, n => n == compiler_gate_contract_stamp_step_name)) == 1
-    && index_of(names, compiler_gate_contract_stamp_step_name, 0) == 1
-    && first_invoking_index(steps, 0) > 1
+    && guard_index(names) == 1
+    && first_invoking_index(steps) > 1
 }
 
-fn index_of(names: List<String>, want: String, at: Int) -> Int {
-  match names {
-    [] => -1
-    [head, ...rest] =>
-      if head == want { at } else { index_of(rest, want, at + 1) }
+// BOTH SCANS ARE FOLDS, NOT LIST PATTERNS. A `[head, ...rest]` match arm is not admitted by this
+// grammar -- it is refused with `expected FatArrow, found LBracket`, which is what this module used
+// to do (the corpus records the same refusal at src/v2/lens/fn_index_depth_agreement.dag:209). The
+// running index is carried in the accumulator, and a scan that has already matched stops moving:
+// the FIRST match is the one that matters, and a later duplicate must not overwrite it.
+type GuardPosition {
+  index: Int
+  found: Int
+}
+
+data guard_position: GuardPosition = GuardPosition { index: 0, found: -1 }
+
+fn guard_position_step(acc: GuardPosition, name: String) -> GuardPosition {
+  if acc.found >= 0 {
+    GuardPosition { index: acc.index + 1, found: acc.found }
+  } else if name == compiler_gate_contract_stamp_step_name {
+    GuardPosition { index: acc.index + 1, found: acc.index }
+  } else {
+    GuardPosition { index: acc.index + 1, found: -1 }
   }
+}
+
+fn guard_index(names: List<String>) -> Int {
+  fold(names, init: guard_position, f: guard_position_step).found
 }
 
 // THE FIRST STEP THAT WOULD EXECUTE A BINARY BUILT FROM THIS CHECKOUT, recognised by what it RUNS and not
 // by its name: a name is what an author renames, and the property is about execution.
-fn first_invoking_index(steps: List<Step>, at: Int) -> Int {
-  match steps {
-    [] => -1
-    [head, ...rest] =>
-      if step_invokes_built_binary(body: step_run_text(step: head)) {
-        at
-      } else {
-        first_invoking_index(rest, at + 1)
-      }
+fn first_invoking_index(steps: List<Step>) -> Int {
+  fold(steps, init: guard_position, f: invoking_position_step).found
+}
+
+fn invoking_position_step(acc: GuardPosition, step: Step) -> GuardPosition {
+  if acc.found >= 0 {
+    GuardPosition { index: acc.index + 1, found: acc.found }
+  } else if step_invokes_built_binary(body: step_run_text(step: step)) {
+    GuardPosition { index: acc.index + 1, found: acc.index }
+  } else {
+    GuardPosition { index: acc.index + 1, found: -1 }
   }
 }
 
