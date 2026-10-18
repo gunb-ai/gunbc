@@ -1,0 +1,76 @@
+module test.claim.fleet.fleet_host_grant_fixture
+
+import std.types { String, List, NonEmptyStr }
+import product.host_identity { HostIdentity }
+import gunbc.executor_privileged_operation {
+  executor_privileged_operation_sudoers_command,
+  executor_privileged_operation_sudoers_line,
+}
+import gunbc.runner.runner_host_grants { runner_host_wide_refused_operations }
+import gunbc.runner.runner_host_deploy { RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for }
+import gunbc.fleet.fleet_host_grant_coverage {
+  HostGrantObservation,
+  GrantListingRead,
+  GrantListingUnread,
+  InstalledSudoersText,
+  InstalledSudoersUnreadable,
+}
+
+// SUPPLIED OBSERVATIONS (§3): each fixture is the text a host would return for the host's own
+// host-wide operations, so the witnesses decide the classifier over values and never run `sudo`.
+// The rule strings come from the grant renderer, which is the only spelling of them; the
+// inhabitance control in fleet_host_grant_coverage_witness pairs this with the real observer shape.
+fn witness_grant_rules(host: NonEmptyStr) -> List<String> {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: _ } => []
+    RunnerHostSpecFound { spec: spec } =>
+      map(runner_host_wide_refused_operations(spec: spec), op => executor_privileged_operation_sudoers_command(op: op) as String)
+  }
+}
+
+fn witness_grant_rendered_lines(host: NonEmptyStr) -> List<String> {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: _ } => []
+    RunnerHostSpecFound { spec: spec } =>
+      map(runner_host_wide_refused_operations(spec: spec), op => executor_privileged_operation_sudoers_line(grantee: spec.job_user, op: op) as String)
+  }
+}
+
+fn witness_grant_listing(host: NonEmptyStr) -> String {
+  join(map(witness_grant_rules(host: host), r => join(["    (root) NOPASSWD: ", r], "")), "\n")
+}
+
+fn witness_grants_rendered(host: NonEmptyStr) -> HostGrantObservation {
+  HostGrantObservation {
+    listing: GrantListingRead { text: witness_grant_listing(host: host) },
+    installed: InstalledSudoersText { text: join(witness_grant_rendered_lines(host: host), "\n") },
+  }
+}
+
+fn witness_grants_outside_the_model(host: NonEmptyStr) -> HostGrantObservation {
+  HostGrantObservation {
+    listing: GrantListingRead { text: witness_grant_listing(host: host) },
+    installed: InstalledSudoersText { text: "# a drop-in that renders none of this host's rules\n" },
+  }
+}
+
+fn witness_grants_listed_installed_unreadable(host: NonEmptyStr) -> HostGrantObservation {
+  HostGrantObservation {
+    listing: GrantListingRead { text: witness_grant_listing(host: host) },
+    installed: InstalledSudoersUnreadable { cause: "Permission denied (root:root 0440)" as NonEmptyStr },
+  }
+}
+
+fn witness_grants_missing(host: NonEmptyStr) -> HostGrantObservation {
+  HostGrantObservation {
+    listing: GrantListingRead { text: "    (root) PASSWD: /usr/bin/unrelated" },
+    installed: InstalledSudoersText { text: "" },
+  }
+}
+
+fn witness_grants_listing_unread() -> HostGrantObservation {
+  HostGrantObservation {
+    listing: GrantListingUnread { cause: "sudo -n -l failed: a password is required" as NonEmptyStr },
+    installed: InstalledSudoersText { text: "" },
+  }
+}
