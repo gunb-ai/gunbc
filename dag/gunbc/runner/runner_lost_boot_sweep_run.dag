@@ -77,20 +77,16 @@ type LostBootCurrentInput
   | LostBootCurrentRefused { cause: String }
 
 fn lost_boot_current_input(raw: String) -> LostBootCurrentInput {
-  if raw == "" {
-    LostBootCurrentRefused { cause: join([
+  match uuid_of(text: raw) {
+    Absent => LostBootCurrentRefused { cause: join([
       "lost-boot sweep: ", lost_boot_sweep_current_boot_id_env_name,
-      " is absent or blank; the current admitted boot id is a dispatch input and is never defaulted",
+      " is absent, blank or not a UUID; the current admitted boot id is a dispatch input and is never defaulted",
     ], "") }
-  } else {
-    match uuid_of(text: raw) {
-      Absent => LostBootCurrentRefused { cause: "lost-boot sweep: the current boot id is not a UUID kernel boot identity" }
-      Present { value: u } =>
-        match service_boot_id_of(run: KernelBootId { boot_id: u }) {
-          Present { value: b } => LostBootCurrentPresent { boot: b }
-          Absent => LostBootCurrentRefused { cause: "lost-boot sweep: the current boot id is not a kernel boot identity" }
-        }
-    }
+    Present { value: u } =>
+      match service_boot_id_of(run: KernelBootId { boot_id: u }) {
+        Present { value: b } => LostBootCurrentPresent { boot: b }
+        Absent => LostBootCurrentRefused { cause: "lost-boot sweep: the current boot id is not a kernel boot identity" }
+      }
   }
 }
 
