@@ -647,6 +647,43 @@ fn compiler_gate_contract_stamp_refusal_parts_mismatch() -> List<Node> {
   ]
 }
 
+// WHY THE TREE SIDE IS READ BY THE RUNNER AND NOT BY A TYPED READER -- asked directly in review
+// 82001 ("the step scans the YAML with awk, a grep standing in for a parse"), and the answer is
+// STRUCTURAL, not convenience. A typed reader DOES EXIST: compiler_gate_contract_stamp_read_from
+// parses with ingest_yaml_source into YamlValue and refuses with a located CompilerGateContractStampReading,
+// and it is what the witness runs. It cannot be what the guard runs, for two reasons that are the
+// same reason:
+//
+//   1. THE GUARD RUNS BEFORE ANY BINARY EXISTS. It sits at index 1 of the job, immediately after the
+//      fleet checkout and before toolchain_home_isolation_step, which is before the first step that
+//      invokes the subject. Its whole job is to decide whether that binary may be built at all. A
+//      typed reader would have to be built first, which inverts the order the guard exists to enforce.
+//   2. THE ONLY BINARY THAT COULD READ THE TREE IS THE SUSPECT'S OWN. The single gunbc available at
+//      that moment is one built FROM THE CHECKED-OUT TREE -- the very artifact whose provenance the
+//      guard is testing. Asking it to certify its own tree is the circularity the class row records
+//      (gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions): the
+//      instruction and the subject resolved from different revisions is precisely the state in which
+//      you cannot trust a subject-side reader to report the tree honestly.
+//
+// AND THE HEAD UNDER SUSPICION CANNOT EVEN CARRY THE READER. The four measured silent-green heads
+// (39066871919, 39067193189, 39067690307, 39069382384) predate this module; a pre-stamp head has no
+// compiler_gate_contract_stamp.dag to compile, so a guard that depends on a tree-side reader is a
+// guard that is absent exactly when it is needed. That is a fail-open in the shape of a fix.
+//
+// So a pre-build read of a committed workflow member, performed by code that is NOT the tree's, is
+// structurally necessary here. What is NOT necessary is the medium, which is why the scaffold below
+// carries a dissolution obligation and why the awk program is one typed string argument rather than
+// spliced text: it is a value passed to a command node, not shell syntax joined from strings.
+//
+// The scan's edges are stated rather than assumed, and the witness pins them: the awk program is a
+// BEGIN-only program (no implicit per-line rule), it accepts the stamp only from a mapping key at
+// column zero whose name is exactly the env key, directly under a column-zero `env:` -- so a step-level
+// env of the same name cannot satisfy the read -- it strips non-hex characters before length/charset
+// validation, and it prints if and only if it exits 0, with EVERY failure path reaching exit 3 and END
+// exiting 3 unless a stamp was found. Reading it as a grep standing in for a parse would be right if
+// it accepted a match anywhere in the document; it does not, and the controls prove the difference
+// (a step-level env of the right shape reads StampAbsent, not StampPresent).
+//
 // DISSOLUTION: THE TRIGGER IS A CAPABILITY, NOT A FILE OR A DATE. This carrier exists because
 // nothing at run time can read the tree's own workflow stamp without executing tree code, and
 // the thing under suspicion is the tree. It dissolves the day a pre-build reader of that stamp
