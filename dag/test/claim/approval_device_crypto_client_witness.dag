@@ -15,7 +15,7 @@ import gunbc.auth.approval_device_crypto_wire {
 }
 import gunbc.auth.approval_device_crypto_client {
   SidecarResult, SidecarReply, SidecarAnswered, SidecarFailed, SidecarReplied, SidecarReplyFailed,
-  sidecar_reply_from, signature_from_answer, attestation_from_answer, assertion_from_answer,
+  sidecar_reply_from, approval_device_crypto_sidecar_endpoint, signature_from_answer, attestation_from_answer, assertion_from_answer,
 }
 import gunbc.auth.approval_device_routes { DeviceRouteResponse, sidecar_failure_response }
 
@@ -116,6 +116,7 @@ test fn witness_refused_and_invalid_answers_map_to_the_refusal_arms() -> Bool {
     SidecarAnswered { verification: SignatureInvalid { suite: _ } } => true
     _ => false
   }
+  let malformed = signature_failed(r: signature_from_answer(admission: admitted(), answer: DeviceCryptoAnswer { verdict: CryptoRefused, arm: "SignatureMalformed", payload: NoPayload }))
   let attestation = match attestation_from_answer(admission: admitted(), answer: refused_answer()) {
     SidecarAnswered { verification: AttestationRefused { cause: _ } } => true
     _ => false
@@ -124,7 +125,7 @@ test fn witness_refused_and_invalid_answers_map_to_the_refusal_arms() -> Bool {
     SidecarAnswered { verification: AssertionRefused { cause: _ } } => true
     _ => false
   }
-  signature && attestation && assertion
+  signature && malformed && attestation && assertion
 }
 
 // A verdict that is not an answer to this route is a sidecar failure, not a verification result.
@@ -157,4 +158,9 @@ test fn witness_a_timeout_a_bad_status_and_a_bad_body_are_sidecar_failures() -> 
 test fn witness_a_sidecar_failure_answers_503() -> Bool {
   let r = sidecar_failure_response(cause: "timed out")
   (r.status as Int) == 503 && string_contains(s: r.body, pattern: "timed out")
+}
+
+// THE ENDPOINT IS DERIVED FROM THE TYPED PORT.
+test fn witness_the_endpoint_names_the_declared_port() -> Bool {
+  (approval_device_crypto_sidecar_endpoint() as String) == "http://127.0.0.1:8086"
 }
