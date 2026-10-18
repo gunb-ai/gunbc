@@ -147,6 +147,18 @@ import gunbc.provisioning.altra_autoinstall_seed {
   build_altra_autoinstall_seed,
   check_binding_against_seed,
 
+  AdminPasswordRefusalCause,
+  DigestAbsent,
+  DigestNotInCryptAlphabet,
+  DigestWrongLength,
+  NotACryptDigest,
+  RoundsMalformed,
+  SaltAbsent,
+  SaltNotInCryptAlphabet,
+  SaltTooLong,
+  ReceiptAccepted,
+  ReceiptRefused,
+  SchemeUnsupported,
   admin_password_hash_receipt,
   console_stanza_for,
   project_autoinstall_identity,
@@ -901,26 +913,98 @@ test fn the_boot_mode_moves_the_digest_within_one_transport() -> Bool {
 // The projection edge: upstream wants a hashed_password string, and the only door admits a digest.
 // ---------------------------------------------------------------------------
 
-// CATCHES: the receipt's constructor accepting anything — a caller who could put a plaintext password in
-// the field subiquity writes to the image's shadow entry is the incident this shape exists to prevent.
+// THE DOOR IS A PARSE, NOT A PREFIX TEST, AND THESE ARE THE CANDIDATES THAT PROVE IT. Every string below is a
+// REAL sha512-crypt digest or a deliberately malformed one; the accepted fixture is a digest generated locally
+// with `openssl passwd -6 -salt saltsalt hunter2`, quoted verbatim so the acceptance claim is reproducible and
+// not a shape the author drew from memory. The old fixtures were 64 fabricated characters and passed only
+// because the previous door's floor was 20 — which is exactly how a validation pass masquerades as a parse.
+//
+// CATCHES: a caller putting a plaintext password into the field subiquity writes to the image's shadow entry.
+// "$6$hunter2hunter2hunter2" is the case that used to be accepted: it starts with "$6$" and is longer than 20
+// characters, so the old heuristic waved it through. It is refused now because it has three '$'-segments, not
+// the four a digest must have.
 test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
-  let plaintext = admin_password_hash_receipt(crypt_digest: "hunter2" as NonEmptyStr)
-  let too_plain = admin_password_hash_receipt(crypt_digest: "password12345678901234" as NonEmptyStr)
-  let digest = admin_password_hash_receipt(
-    crypt_digest: "$6$salt$0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F" as NonEmptyStr,
-  )
-  match plaintext {
-    Absent =>
-      match too_plain {
-        Absent =>
-          match digest {
-            Present { value: _ } => true
-            Absent => false
-          }
-        Present { value: _ } => false
-      }
-    Present { value: _ } => false
+  match refuses(crypt_digest: "hunter2")
+    && refuses(crypt_digest: "password12345678901234")
+    && refuses(crypt_digest: "$6$hunter2hunter2hunter2")
+    && refuses(crypt_digest: "6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj")
+    && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnjXX")
+    && refuses(crypt_digest: "$5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && accepts(crypt_digest: "$6$saltsaltX$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && accepts(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // '.' and '/' both occur in real digests; an alphabet missing either would refuse these.
+    && accepts(crypt_digest: "$6$sa.lt/sa$d7hkejY7HJ5ZGqHGdfuXgD/tCnk8xlC1ExIqtNkaEkqudX/tH4520c9i883Ib3JvJBsBfcFvy.XSsiW.zAtL01")
+    // The explicit-cost spelling is what some generators emit and shadow accepts.
+    && accepts(crypt_digest: "$6$rounds=5000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+    True => true
+    False => false
   }
+}
+
+fn refuses(crypt_digest: String) -> Bool {
+  match admin_password_hash_receipt(crypt_digest: crypt_digest as NonEmptyStr) {
+    ReceiptRefused { cause: _ } => true
+    ReceiptAccepted { receipt: _ } => false
+  }
+}
+
+fn accepts(crypt_digest: String) -> Bool {
+  match admin_password_hash_receipt(crypt_digest: crypt_digest as NonEmptyStr) {
+    ReceiptRefused { cause: _ } => false
+    ReceiptAccepted { receipt: _ } => true
+  }
+}
+
+// THE REFUSAL IS TYPED, AND EACH ARM IS REACHED BY ITS OWN CANDIDATE. A refusal that names the wrong part is a
+// worse outcome than no refusal at all, because the operator acts on the name: "your digest is 85 characters"
+// says re-copy it, "your salt is not over the crypt alphabet" says the credential store handed out something
+// that was never a digest. These are different shelves, and a door that collapsed them into one cause (or into a
+// bare Absent) would send whoever is holding the secret to the wrong one. Each candidate differs from the
+// accepted digest in exactly ONE part, so a cause can only appear if the check that owns that part produced it.
+test fn each_refusal_arm_names_the_part_that_failed() -> Bool {
+  match cause_of(crypt_digest: "hunter2") {
+    Present { value: NotACryptDigest } =>
+      match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj") {
+        Present { value: DigestWrongLength { length: seen, expected: wanted } } =>
+          seen == 85 && wanted == 86
+          && match cause_of(crypt_digest: "$5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+            Present { value: SchemeUnsupported } =>
+              match cause_of(crypt_digest: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                Present { value: SaltNotInCryptAlphabet } =>
+                  match cause_of(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                    Present { value: RoundsMalformed } =>
+                      match cause_of(crypt_digest: "$6$12345678901234567$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                        Present { value: SaltTooLong { length: seen_salt, ceiling: allowed } } =>
+                          seen_salt == 17 && allowed == 16
+                        _ => false
+                      }
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn cause_of(crypt_digest: String) -> Optional<AdminPasswordRefusalCause> {
+  match admin_password_hash_receipt(crypt_digest: crypt_digest as NonEmptyStr) {
+    ReceiptRefused { cause: cause } => Present { value: cause }
+    ReceiptAccepted { receipt: _ } => Absent
+  }
+}
+
+// THE ONE CASE THAT MUST NOT BE A FALSE REFUSAL. An alphabet missing '.' or '/' refuses a credential that was
+// generated correctly, and on a board with no console that failure mode is discovered only when nobody can log
+// in. This pins both characters as admitted, in a digest produced by a real generator.
+test fn a_digest_containing_dot_and_slash_is_accepted() -> Bool {
+  accepts(crypt_digest: "$6$sa.lt/sa$d7hkejY7HJ5ZGqHGdfuXgD/tCnk8xlC1ExIqtNkaEkqudX/tH4520c9i883Ib3JvJBsBfcFvy.XSsiW.zAtL01")
 }
 
 // CATCHES: the projection accepting an absent receipt, which would put a fabricated string into the
@@ -949,9 +1033,9 @@ test fn the_projection_needs_a_receipt() -> Bool {
 // catches, is the projection substituting a baked hostname (a per-unit special case wearing a config
 // field, which is precisely what the module forbids) or dropping the label.
 test fn the_projection_carries_the_supplied_label_verbatim_and_never_invents_one() -> Bool {
-  match admin_password_hash_receipt( crypt_digest: "$6$salt$0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F" as NonEmptyStr, ) {
-    Absent => false
-    Present { value: receipt } =>
+  match admin_password_hash_receipt( crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr, ) {
+    ReceiptRefused { cause: _ } => false
+    ReceiptAccepted { receipt: receipt } =>
       match built_seed_and_binding() {
         Absent => false
         Present { value: pair } =>

@@ -1183,28 +1183,263 @@ fn build_altra_autoinstall_seed(
   }
 }
 
-// THE RECEIPT IS A HASH, AND THE ONLY CONSTRUCTOR REFUSES ANYTHING THAT IS NOT ONE. Upstream's
-// AutoinstallIdentity carries a hashed_password string and subiquity writes that value into the image's
-// shadow entry. A crypt digest is not the secret — it is what the secret's verifier looks like once
-// published — but a caller who could put any string there could put a plaintext password there, and that is
-// the incident this shape prevents. So the sole door admits a SHA-512 crypt digest ("$6$", salt and digest)
-// and refuses anything unprefixed or too short to be one. The seed never holds this value: it is taken at the
-// projection edge by whoever writes the file and dropped immediately.
+// THE RECEIPT IS A SHA-512 CRYPT DIGEST, AND ITS ONLY CONSTRUCTOR PARSES ONE RATHER THAN CHECKING FOR THE
+// SHAPE OF ONE. Upstream's AutoinstallIdentity carries a hashed_password string and subiquity writes that value
+// into the image's shadow entry. A crypt digest is not the secret — it is what the secret's verifier looks like
+// once published — but a caller who could put any string there could put a plaintext password there, and that is
+// the incident this shape prevents. So the door takes the format apart: the scheme token, an optional cost, a
+// salt over the crypt alphabet within the width the scheme defines, and a digest of exactly the width the scheme
+// emits. A receipt therefore cannot be built from "$6$hunter2hunter2hunter2", nor from anything that merely
+// BEGINS like a digest. The previous door tested a "$6$" prefix plus a length floor of 20, which accepted exactly
+// that string — a sole_constructor guarded by a heuristic is a brand, against DESIGN §5 ("correctness by
+// construction, not validation") and §4b ("a brand is cosmetic until construction enforces it"). The seed never
+// holds this value: it is taken at the projection edge by whoever writes the file and dropped immediately.
 type AdminPasswordHashReceipt sole_constructor { crypt_digest: NonEmptyStr }
 
-fn admin_password_hash_receipt(crypt_digest: NonEmptyStr) -> Optional<AdminPasswordHashReceipt> {
-  match looks_like_sha512_crypt_digest(candidate: crypt_digest) {
-    True => Present { value: AdminPasswordHashReceipt { crypt_digest: crypt_digest } }
-    False => Absent
+// ONE SUM, SO AN ATTEMPT ANSWERS "WHICH PART FAILED" WITHOUT A SECOND FUNCTION RECOMPUTING THE VERDICT (DESIGN
+// §5: every path succeeds fully or fails with a typed, located diagnostic; §2: the same answer computed twice is
+// redundant work, and copies drift). A truncated digest and a non-alphabet salt are different operator problems
+// with different remedies — one is a paste error at the keyboard, the other is a secret store that never held a
+// crypt digest — and collapsing them into a bare `Absent` would send whoever holds the credential to the wrong
+// shelf. NO ARM CARRIES ANY TEXT FROM THE CANDIDATE: a refusal is the one thing this door returns that a caller
+// may log, and the candidate may BE a plaintext password, so the arms name the failed part and nothing else.
+// Admitting another scheme (yescrypt's "$y$", whose digest width differs) adds a row to accepted_crypt_schemes
+// with its own widths; it does not relax a refusal, and the witnesses over this door force that to be deliberate.
+type AdminPasswordReceiptResult = ReceiptAccepted { receipt: AdminPasswordHashReceipt } | ReceiptRefused { cause: AdminPasswordRefusalCause }
+
+type AdminPasswordRefusalCause
+  = NotACryptDigest
+  | SchemeUnsupported
+  | RoundsMalformed
+  | SaltAbsent
+  | SaltTooLong { length: Int, ceiling: Int }
+  | SaltNotInCryptAlphabet
+  | DigestAbsent
+  | DigestWrongLength { length: Int, expected: Int }
+  | DigestNotInCryptAlphabet
+
+// THE SCHEMES ADMITTED, WITH THEIR WIDTHS AS DATA RATHER THAN AS NUMBERS THE AUTHOR REMEMBERED. Both were
+// MEASURED against digests generated locally in this repository (openssl passwd -6): a sha512-crypt digest is
+// "$6$" + salt + "$" + exactly 86 characters, and a salt longer than 16 is silently TRUNCATED by the generator —
+// so the ceiling is enforced here rather than inherited, because the string the caller hands us is the string
+// that lands in the image. Emptying this list would admit nothing, which is a policy change and not a refactor;
+// the acceptance witness goes red.
+type CryptScheme = Sha512Crypt { scheme_token: String, salt_ceiling: Int, digest_width: Int }
+
+fn accepted_crypt_schemes() -> List<CryptScheme> { [
+    Sha512Crypt { scheme_token: "6", salt_ceiling: 16, digest_width: 86 },
+  ]
+}
+
+// THE 64-CHARACTER base64-crypt ALPHABET, as data so membership is a test against an enumeration rather than
+// against a description of one. "./" precede the digits and BOTH '.' and '/' occur in real digests; the
+// acceptance witness pins a digest containing each, because an alphabet missing one refuses valid credentials,
+// and silently refusing a good credential is the worse direction to be wrong in for a headless install.
+fn crypt_alphabet_characters() -> List<NonEmptyStr> { [
+    ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+    "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+    "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+  ]
+}
+
+// THE DIGITS, for the cost field, stated the same way: an enumeration checked, not a range asserted.
+fn crypt_digit_characters() -> List<NonEmptyStr> {
+  ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+}
+
+// STRIP EVERY ALLOWED CHARACTER, THEN DEMAND NOTHING IS LEFT — the corpus's own idiom for "is this text over
+// that alphabet" (std.types' hex check does exactly this, seventeen strips in a row). A replace-chain is only as
+// honest as its list, so the list is declared once above and consumed here by one fold rather than re-typed per
+// call site, where a drift between two hand-written chains would silently widen the accepted set.
+fn text_over_alphabet(text: String, allowed: List<NonEmptyStr>) -> Bool {
+  fold(
+    allowed,
+    init: text,
+    f: (remaining, character) => replace(remaining, character as String, ""),
+  )
+    == ""
+}
+
+// THE DOOR. split(sep: "$") on a sha512-crypt digest yields an EMPTY FIRST SEGMENT (from the leading '$'), the
+// scheme token, the salt, and the digest — or five segments with "rounds=N" between the token and the salt when
+// the cost is spelled out. Both spellings are admitted because real generators emit both and shadow accepts
+// both. Every part is checked and the FIRST failure in grammar order is the one reported: the checks are pure and
+// bounded over fixed-width strings, so evaluating all of them costs nothing that a short-circuit would save, and
+// it keeps this function one flat list instead of a six-deep nest in which an arm can be forgotten.
+fn admin_password_hash_receipt(
+  crypt_digest: NonEmptyStr,
+) -> AdminPasswordReceiptResult {
+  let segments = (crypt_digest as String).split(sep: "$")
+  let count = list_length(items: segments)
+  let verdict = first_refusal(
+    causes: [
+      reject_shape(segments: segments, count: count),
+      reject_scheme(segments: segments, count: count),
+      reject_cost(segments: segments, count: count),
+      reject_salt(segments: segments, count: count),
+      reject_digest(segments: segments, count: count),
+    ],
+  )
+  match verdict {
+    Present { value: cause } => ReceiptRefused { cause: cause }
+    Absent => ReceiptAccepted { receipt: AdminPasswordHashReceipt { crypt_digest: crypt_digest } }
   }
 }
 
-// THE PREFIX AND THE LENGTH FLOOR ARE BOTH CHECKED BECAUSE EITHER ALONE IS SATISFIABLE BY TEXT A CALLER
-// MIGHT PASTE. A future requirement to accept another crypt scheme (yescrypt's "$y$") adds a prefix row here
-// with its own length floor; it does not relax the refusal, and the witness over this function is what forces
-// that decision to be taken deliberately.
-fn looks_like_sha512_crypt_digest(candidate: NonEmptyStr) -> Bool {
-  candidate.starts_with(prefix: "$6$") && candidate.length() >= 20
+// GRAMMAR ORDER IS THE ORDER OF DIAGNOSTIC USEFULNESS: "that is not a digest at all" is worth more than "and its
+// salt is 20 characters", because the second is only reachable once the first has been ruled out.
+fn first_refusal(
+  causes: List<Optional<AdminPasswordRefusalCause>>,
+) -> Optional<AdminPasswordRefusalCause> {
+  match causes {
+    Empty => Absent
+    Cons { head: head, tail: rest } =>
+      match head {
+        Present { value: cause } => Present { value: cause }
+        Absent => first_refusal(causes: rest)
+      }
+  }
+}
+
+// FOUR SEGMENTS WITHOUT A COST, FIVE WITH ONE — and nothing else. The count is asserted rather than assumed, so a
+// candidate with an extra '$' inside the salt region is refused for the shape it actually has instead of being
+// truncated into something that looks well-formed.
+fn reject_shape(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  match count == 4 || count == 5 {
+    False => Present { value: NotACryptDigest }
+    True =>
+      match piece_at(pieces: segments, index: 0) {
+        Present { value: leading } =>
+          match leading == "" {
+            True => Absent
+            False => Present { value: NotACryptDigest }
+          }
+        Absent => Present { value: NotACryptDigest }
+      }
+  }
+}
+
+fn reject_scheme(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  match accepted_crypt_schemes() {
+    Empty => Present { value: SchemeUnsupported }
+    Cons { head: scheme, tail: _ } =>
+      match scheme {
+        Sha512Crypt { scheme_token: token, salt_ceiling: _, digest_width: _ } =>
+          match piece_at(pieces: segments, index: 1) {
+            Present { value: found } =>
+              match found == token {
+                True => Absent
+                False => Present { value: SchemeUnsupported }
+              }
+            Absent => Present { value: SchemeUnsupported }
+          }
+      }
+  }
+}
+
+// THE COST EXISTS ONLY IN THE FIVE-SEGMENT SPELLING, and when it is present it must be "rounds=" followed by
+// DIGITS ONLY — digits rather than "digits or punctuation", because the field is a KDF iteration count and a
+// non-numeric cost is a corrupted credential, not merely a slow one. A salt can never be mistaken for this slot:
+// '=' is not in the crypt alphabet, so no valid salt begins with "rounds=".
+fn reject_cost(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  match count == 5 {
+    False => Absent
+    True =>
+      match piece_at(pieces: segments, index: 2) {
+        Absent => Present { value: RoundsMalformed }
+        Present { value: cost } =>
+          match cost.starts_with(prefix: "rounds=") {
+            False => Present { value: RoundsMalformed }
+            True =>
+              match piece_at(pieces: cost.split(sep: "rounds="), index: 1) {
+                Absent => Present { value: RoundsMalformed }
+                Present { value: digits } =>
+                  match digits.length() > 0 && text_over_alphabet(text: digits, allowed: crypt_digit_characters()) {
+                    True => Absent
+                    False => Present { value: RoundsMalformed }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE SALT SITS ONE FROM THE END IN BOTH SPELLINGS, so the index follows the count instead of being two
+// hard-coded positions that have to agree with each other.
+fn reject_salt(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  match only_accepted_scheme() {
+    Absent => Absent
+    Present { value: scheme } =>
+      match scheme {
+        Sha512Crypt { scheme_token: _, salt_ceiling: ceiling, digest_width: _ } =>
+          match piece_at(pieces: segments, index: count - 2) {
+            Absent => Present { value: SaltAbsent }
+            Present { value: salt } =>
+              match salt.length() == 0 {
+                True => Present { value: SaltAbsent }
+                False =>
+                  match salt.length() > ceiling {
+                    True => Present { value: SaltTooLong { length: salt.length(), ceiling: ceiling } }
+                    False =>
+                      match text_over_alphabet(text: salt, allowed: crypt_alphabet_characters()) {
+                        True => Absent
+                        False => Present { value: SaltNotInCryptAlphabet }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE WIDTH IS EXACT, NOT A FLOOR. Eighty-six is what sha512-crypt emits, and a floor is precisely how a
+// TRUNCATED digest gets in — the likeliest corruption when a hash is copied out of a terminal or a log line — to
+// sit in a shadow entry where it can never authenticate, leaving a board that looks like it has no password set.
+fn reject_digest(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  match only_accepted_scheme() {
+    Absent => Absent
+    Present { value: scheme } =>
+      match scheme {
+        Sha512Crypt { scheme_token: _, salt_ceiling: _, digest_width: width } =>
+          match piece_at(pieces: segments, index: count - 1) {
+            Absent => Present { value: DigestAbsent }
+            Present { value: digest } =>
+              match digest.length() == 0 {
+                True => Present { value: DigestAbsent }
+                False =>
+                  match digest.length() == width {
+                    False => Present { value: DigestWrongLength { length: digest.length(), expected: width } }
+                    True =>
+                      match text_over_alphabet(text: digest, allowed: crypt_alphabet_characters()) {
+                        True => Absent
+                        False => Present { value: DigestNotInCryptAlphabet }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn only_accepted_scheme() -> Optional<CryptScheme> {
+  match accepted_crypt_schemes() {
+    Empty => Absent
+    Cons { head: scheme, tail: _ } => Present { value: scheme }
+  }
+}
+
+// INDEXING THAT SAYS ABSENT. The builtin index/last helpers yield a null value when the list is too short, which
+// is indistinguishable from an empty segment; this walks the structure so a missing piece is REFUSED rather than
+// silently read as the empty string — which, for a digest, would mean a length of zero and a wrong-length
+// refusal that blamed the wrong part.
+fn piece_at(pieces: List<String>, index: Int) -> Optional<String> {
+  match pieces {
+    Empty => Absent
+    Cons { head: first, tail: rest } =>
+      if index == 0 { Present { value: first } } else { piece_at(pieces: rest, index: index - 1) }
+  }
 }
 
 // THE ONLY ROUTE FROM OUR SEED INTO UPSTREAM'S PAYLOAD, AND WHERE IT REFUSES. AutoinstallIdentity demands a
