@@ -3,7 +3,7 @@ module v2.std.compilers.body_lowering
 import std.types { List }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import v2.std.type_binder { edge_is_cast_target, type_annotation_edge }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, contains, fold_list, list_at_optional }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, contains, fold_list, list_at_optional, collection_count_shape }
 
 import v2.std.diagnostic {
   Accepted,

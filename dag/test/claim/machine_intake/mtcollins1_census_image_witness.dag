@@ -461,3 +461,19 @@ test fn the_pinned_and_current_derivations_differ_only_by_the_instrument() -> Bo
   }
 }
 
+
+// A MALFORMED BEGIN IS NOT TEXT. A begin marker whose boot id is no Uuid is recognized by its tag, machine and
+// word, so it opens a second envelope and the binding refuses; read as ordinary text it would join the open
+// capture and a later END of the first run would bind the sections that follow it.
+test fn a_malformed_second_begin_does_not_bind_the_first_run() -> Bool {
+  let first_begin = census_marker(run: census_run_a, word: "begin")
+  let malformed = census_marker(run: "boot-id=not-a-uuid", word: "begin")
+  let end_a = census_marker(run: census_run_a, word: "end")
+  let one_run = concat(first_begin, "\n", census_sections_body, "\n", end_a, "\n")
+  let two = concat(first_begin, "\n", malformed, "\n", census_sections_body, "\n", end_a, "\n")
+  census_binds(capture: one_run)
+    && (match host_capture_bind(capture: two, machine: mtcollins1_census_machine) {
+      HostCaptureUnbound { reason: _ } => true
+      _ => false
+    })
+}
