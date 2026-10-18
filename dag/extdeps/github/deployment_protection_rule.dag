@@ -22,10 +22,22 @@ module extdeps.github.deployment_protection_rule
 // being asked, which is two authorities for one decision.
 
 import std.types { String, Int, List, NonEmptyStr, HttpStatus }
+import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 // Duration: std.measure is the authority. A "30 days" stored as an Int keeps its unit only in its
 // name, so the unit rule (ctrl's mechanical blocker) is satisfied by the carrier, not by a comment.
-import std.measure { Second, second, second_count, seconds_per_day, seconds_per_minute }
+import std.measure {
+  Second,
+  Minute,
+  minute,
+  minute_count,
+  minute_to_second,
+  second,
+  second_count,
+  seconds_per_day,
+  seconds_per_minute,
+  minutes_per_hour,
+}
 // HttpMethod comes from the RFC authority rather than being re-minted per module (§2).
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 import extdeps.external_authority {
@@ -384,15 +396,58 @@ data pending_deployments_field_reviewers: NonEmptyStr = "reviewers"
 // the broker therefore cannot verify a half-read response.
 type PendingDeploymentWait {
   environment: NonEmptyStr,
-  // A DURATION, not an Int whose unit survives only in a name. Upstream calls the field
-  // `wait_timer` and counts it in seconds; std.measure's Second is the authority for that quantity,
-  // and the precedent for a GitHub-side day-scale duration is extdeps.cache.github_actions'
-  // gha_actions_cache_idle_release() = second(count: 7 * seconds_per_day()).
-  wait_timer: Second,
+  // MINUTES, not seconds. The wait-timer schema in this module's own environment_authority says so
+  // verbatim: "The amount of time to delay a job after the job is initially triggered. The time (in
+  // minutes) must be an integer between 0 and 43,200 (30 days)", and pending-deployment carries the
+  // same field with example 30. Typing it as Second and reading the wire value straight in would
+  // have scaled every wait by 60: the legal maximum, 43,200 minutes, is exactly 30 days, but read as
+  // seconds it is 12 hours. std.measure's Minute is the carrier and minute_to_second is the one
+  // declared conversion, so the unit is stated by the type and cannot drift from the arithmetic.
+  wait_timer: Minute,
+  // When the timer BEGAN, if one is running. A Timestamp string as upstream reports it; the elapsed
+  // time is this against the clock, NEVER this field confused with wait_timer (see the note on the
+  // fold below that replaced the old ceiling check).
   wait_timer_started_at: NonEmptyStr?,
   current_user_can_approve: Bool,
   reviewers: List<NonEmptyStr>,
 }
+
+// THE RANGE UPSTREAM PUBLISHES, as values rather than as prose in a comment: 0 to 43,200 minutes,
+// where the maximum is exactly the 30-day ceiling. Consumed by wait_timer_is_in_documented_range().
+data wait_timer_minimum_minutes: Nat = 0
+data wait_timer_maximum_minutes: Nat = 43200
+
+// Is a read wait_timer a value upstream could actually return? This is the check that catches the
+// mis-scale in the only place it can be caught: 43,200 is legal, and one more is not; and a value
+// read from a seconds-based source would either sit absurdly high or, after a wrong division, look
+// plausible. Asserting the documented bounds is what keeps a unit slip from being silently absorbed.
+fn wait_timer_is_in_documented_range(wait: PendingDeploymentWait) -> Bool {
+  let m = minute_count(m: wait.wait_timer)
+  m >= wait_timer_minimum_minutes && m <= wait_timer_maximum_minutes
+}
+
+// The same quantity in the unit the timeout is counted in, via the one declared conversion. Kept
+// because the 30-day ceiling is expressed in seconds; the point of routing through minute_to_second
+// is that nobody re-derives the factor of 60 by hand.
+fn wait_timer_as_seconds(wait: PendingDeploymentWait) -> Second {
+  minute_to_second(m: wait.wait_timer)
+}
+
+// WHY THE CEILING CHECK THAT LIVED HERE IS GONE. It compared wait_timer against the 30-day rule
+// timeout. That was wrong twice over. (1) UNITS: it compared a minutes-count against a seconds-count.
+// (2) MEANING, which the unit fix alone would have hidden: `wait_timer` is the CONFIGURED delay an
+// environment asks GitHub to hold a job — a setting on the environment — not the time the run has
+// already spent waiting. Elapsed wait is `wait_timer_started_at` measured against the clock. So the
+// old fold asked "is this environment configured to wait longer than GitHub is willing to wait?",
+// which is answerable from the environment alone without polling anything, and whose answer is fixed
+// by upstream: the maximum configurable value, 43,200 minutes, IS the 30-day ceiling, so the
+// predicate could never be true for any value GitHub returns. A guard that cannot fire is not
+// fail-closed; it is decoration. §5: a wrong answer is a loud error, never a plausible output.
+//
+// What the broker actually needs at break-glass time is ELAPSED wait, and it cannot be computed here:
+// the corpus has no timestamp parser (std.types' Timestamp is a String alias), so turning
+// `wait_timer_started_at` into a duration would need a clock seam, not a fold. It is therefore named
+// here as the consumer still owed, and stage 2 must supply it rather than substitute this one.
 
 // THE ONE FIELD AN APP ACTS ON, and the one it must not. `reviewers` is who may answer the wait; if
 // it names a person, the wait is a required-reviewer wait and an App CANNOT answer it ("GitHub Apps
@@ -435,12 +490,7 @@ fn broker_may_answer(
        )
 }
 
-// Whether the wait has already run past the ceiling the gate is allowed. Not a policy decision —
-// the arithmetic the operator's break-glass sits behind, stated so a fold can ask it. Compared as
-// counts on the two Second values, the way every other duration comparison in the corpus does it.
-fn pending_wait_is_over_ceiling(wait: PendingDeploymentWait) -> Bool {
-  second_count(s: wait.wait_timer) > second_count(s: rule_timeout())
-}
+
 
 // The HUMAN/team reviewer endpoint, named so it is never confused with the App's. A GitHub App does
 // not use this to answer its own rule, and its body shape is genuinely different: it names

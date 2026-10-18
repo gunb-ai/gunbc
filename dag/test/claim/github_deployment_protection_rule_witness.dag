@@ -23,7 +23,15 @@ module test.claim.github_deployment_protection_rule_witness
 // nothing — which is why the negatives are written first here, not last.
 
 import std.types { String, List, Bool, NonEmptyStr }
-import std.measure { second, second_count, seconds_per_day, seconds_per_minute, minutes_per_hour }
+import std.nat { Nat }
+import std.measure {
+  minute,
+  second,
+  second_count,
+  seconds_per_day,
+  seconds_per_minute,
+  minutes_per_hour,
+}
 import extdeps.github.deployment_protection_rule {
   ReviewState,
   Approved,
@@ -52,7 +60,8 @@ import extdeps.github.deployment_protection_rule {
   review_credential_is_documented,
   PendingDeploymentWait,
   broker_may_answer,
-  pending_wait_is_over_ceiling,
+  wait_timer_as_seconds,
+  wait_timer_is_in_documented_range,
   pending_deployment_wait_is_answerable_by_app,
   rule_webhook_payload_field_is_published,
   review_call_succeeded,
@@ -375,7 +384,7 @@ data app_installation: NonEmptyStr = "installation-123"
 fn waiting_for_the_app() -> PendingDeploymentWait {
   PendingDeploymentWait {
     environment: srv1_env,
-    wait_timer: second(count: 60),
+    wait_timer: minute(count: 1),
     wait_timer_started_at: Present { value: "2026-10-18T00:00:00Z" },
     current_user_can_approve: true,
     reviewers: [app_installation],
@@ -415,7 +424,7 @@ test fn the_broker_confirms_before_it_answers() -> Bool {
     && !broker_may_answer(
          wait: PendingDeploymentWait {
            environment: srv1_env,
-           wait_timer: second(count: 60),
+           wait_timer: minute(count: 1),
            wait_timer_started_at: none,
            current_user_can_approve: true,
            reviewers: ["mtcollins1"],
@@ -433,7 +442,7 @@ test fn a_human_facing_approval_field_is_not_the_signal() -> Bool {
   !pending_deployment_wait_is_answerable_by_app(
     wait: PendingDeploymentWait {
       environment: srv1_env,
-      wait_timer: second(count: 0),
+      wait_timer: minute(count: 0),
       wait_timer_started_at: none,
       current_user_can_approve: true,
       reviewers: [],
@@ -447,27 +456,53 @@ test fn a_human_facing_approval_field_is_not_the_signal() -> Bool {
 
 // A wait past the ceiling. The timer is a DURATION on both sides, so this compares 30 days against
 // 30 days rather than a bare number against a bare number.
-test fn a_wait_past_the_ceiling_is_visible() -> Bool {
-  !pending_wait_is_over_ceiling(wait: waiting_for_the_app())
-    && pending_wait_is_over_ceiling(
-         wait: PendingDeploymentWait {
-           environment: srv1_env,
-           wait_timer: second(count: 31 * seconds_per_day()),
-           wait_timer_started_at: none,
-           current_user_can_approve: false,
-           reviewers: [app_installation],
-         }
+// THE UNIT RED. `wait_timer` is MINUTES — this module's own environment_authority says "The time (in
+// minutes) must be an integer between 0 and 43,200 (30 days)". The discrimination is the conversion
+// identity, not a threshold: the legal maximum 43,200 MINUTES converts to exactly 30 days of
+// SECONDS. Read the same wire value straight in as seconds and it is 43,200 seconds — 12 hours — and
+// the identity fails, so a mistyped field cannot pass this red by looking plausible.
+fn wait_at_documented_maximum(minutes: Nat) -> PendingDeploymentWait {
+  PendingDeploymentWait {
+    environment: srv1_env,
+    wait_timer: minute(count: minutes),
+    wait_timer_started_at: none,
+    current_user_can_approve: false,
+    reviewers: [app_installation],
+  }
+}
+
+test fn the_wait_timer_is_minutes_and_not_seconds() -> Bool {
+  // 43,200 minutes IS 30 days. This single equation is the two-unit discriminator: it holds only if
+  // the field is read as minutes and converted through the declared minute_to_second.
+  second_count(s: wait_timer_as_seconds(wait: wait_at_documented_maximum(minutes: 43200)))
+    == 30 * seconds_per_day()
+    // The same 43,200 read as SECONDS would be 12 hours, not 30 days. Written out so the factor of
+    // 60 that was silently missing is visible as a value, not implied by a type name.
+    && second_count(s: second(count: 43200)) != 30 * seconds_per_day()
+    && second_count(s: second(count: 43200)) == 43200
+    // Upstream's documented bounds, and the example value from the pending-deployment schema.
+    && wait_timer_is_in_documented_range(wait: wait_at_documented_maximum(minutes: 43200))
+    && wait_timer_is_in_documented_range(wait: wait_at_documented_maximum(minutes: 30))
+    && wait_timer_is_in_documented_range(wait: wait_at_documented_maximum(minutes: 0))
+    && !wait_timer_is_in_documented_range(wait: wait_at_documented_maximum(minutes: 43201))
+    // A seconds-scaled read would blow past the documented maximum by exactly the missing factor.
+    && !wait_timer_is_in_documented_range(
+         wait: wait_at_documented_maximum(minutes: 43200 * seconds_per_minute())
        )
-    // One second under the ceiling is still under it: the comparison is the ceiling, not a rounding.
-    && !pending_wait_is_over_ceiling(
-         wait: PendingDeploymentWait {
-           environment: srv1_env,
-           wait_timer: second(count: 30 * seconds_per_day()),
-           wait_timer_started_at: none,
-           current_user_can_approve: false,
-           reviewers: [app_installation],
-         }
-       )
+}
+
+// WHY THERE IS NO LONGER A "wait past the ceiling" FOLD. The maximum value upstream will return,
+// 43,200 minutes, converts to EXACTLY the 30-day rule timeout — so a `>` comparison between the two
+// is unreachable for every value GitHub can send, and the fold that used to do it was decoration
+// rather than a guard. Asserting the equality is what proves the old predicate vacuous; if upstream
+// ever lets a configured timer exceed the ceiling, this red goes first and the guard can come back
+// with something to detect. The elapsed-time question this fold pretended to answer belongs to
+// `wait_timer_started_at` against a clock, which is a stage-2 seam, not a fold over a config value.
+test fn the_configured_timer_cannot_exceed_the_rule_timeout() -> Bool {
+  second_count(s: wait_timer_as_seconds(wait: wait_at_documented_maximum(minutes: 43200)))
+    == second_count(s: rule_timeout())
+    && !(second_count(s: wait_timer_as_seconds(wait: wait_at_documented_maximum(minutes: 43200)))
+         > second_count(s: rule_timeout()))
 }
 
 // ---------------------------------------------------------------------------
