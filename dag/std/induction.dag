@@ -6,17 +6,7 @@ import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDiv
 import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound, ArithmeticDivideCall, ArithmeticParam, ArithmeticSubtractCall, ChildAccessorCall, CollectionSize, ConstantShrink, Descend, Fold, Forever, ProportionalShrink, Repeat, SameArgumentCall, UnitShrink }
 
 import std.checked_arithmetic { checked_int_add, checked_int_multiply, checked_int_optional }
-import std.algebra {
-  CostShape,
-  ShapeConstant,
-  ShapeIterateBody,
-  ShapeLinearScan,
-  ShapeSortBody,
-  Equal,
-  Greater,
-  Less,
-  Ordering
-}
+import std.algebra { CostShape, ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody, Equal, Greater, Less, Ordering, collection_concat_shape }
 import std.types { List }
 
 

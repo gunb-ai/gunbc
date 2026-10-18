@@ -7,6 +7,7 @@ import v2.extdeps.languages.dag { dag_string_literal_value_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.grammar { node_atom_identity_optional }
+import std.algebra { collection_concat_shape }
 
 // WHERE A KERNEL PRIMITIVE IS DECLARED. A std.primitives PrimitiveContract row carries `name: "<primitive>"`, and THAT
 // field is the primitive's identity. The row is FOUND by the declaration path std.primitives.<name>_contract (the

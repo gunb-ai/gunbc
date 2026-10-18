@@ -103,7 +103,7 @@ fn walk_chain_identity(c: NonEmptyDiagnostics) -> Symbol {
 fn walk_identities(w: ResolveNodeWalk) -> List<Symbol> {
   match w {
     ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => []
-    ResolveWalkRefused { first: f, rest: r, observation: _ } =>
+    ResolveWalkRefused { first: f, rest: r, observation: _, partial: _ } =>
       Cons {
         head: walk_chain_identity(c: f),
         tail: fold_list(xs: r, empty: Empty, cons: fn(acc, c) { Cons { head: walk_chain_identity(c: c), tail: acc } })
@@ -114,14 +114,14 @@ fn walk_identities(w: ResolveNodeWalk) -> List<Symbol> {
 fn walk_chain_count(w: ResolveNodeWalk) -> Int {
   match w {
     ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => 0
-    ResolveWalkRefused { first: _, rest: r, observation: _ } => length(xs: r) + 1
+    ResolveWalkRefused { first: _, rest: r, observation: _, partial: _ } => length(xs: r) + 1
   }
 }
 
 fn walk_complete(w: ResolveNodeWalk) -> Bool {
   match w {
     ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => true
-    ResolveWalkRefused { first: _, rest: _, observation: o } =>
+    ResolveWalkRefused { first: _, rest: _, observation: o, partial: _ } =>
       match o {
         ObservationComplete => true
         ObservationIncomplete { reason: _ } => false
@@ -206,7 +206,7 @@ test fn walk_clean_bind_is_accepted_holds() -> Bool {
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_reference(name: ^x, ordinal: 2))
   ) {
     ResolveWalkAccepted { value: _, diagnostics: _, bindings: l } => length(xs: l) == 1
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => false
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => false
   }
 }
 
@@ -218,6 +218,6 @@ test fn walk_one_refusal_refuses_the_node_holds() -> Bool {
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_atom(name: ^absent_b))
   ) {
     ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => false
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => true
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => true
   }
 }
