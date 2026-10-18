@@ -1516,10 +1516,9 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // artifacts -- so nothing shared needs it serialized. Two kinds inhabit it: a read-only observe (it writes
 // no host state) and a guest-image build (it writes an artifact, but only into its own run). GitHub keeps
 // one pending run per group and a newer pending CANCELS the older, so such a mode that shared the srv1
-// key was cancelled by an unrelated dispatch queueing behind it -- which lost the readback of Group A's
-// release (run 37100651736), and left an image build pending behind a dashboard deploy waiting on
-// environment approval (run 39161055342): the absorbing kind of loss, a result that silently never
-// happens. It takes a group keyed by its own run and is never serialized or superseded. The domain says
+// key was cancelled by an unrelated dispatch queueing behind it: the absorbing kind of loss, a result that
+// silently never happens (the classes pending_run_cancelled_by_a_later_dispatch_with_no_signal and
+// an_own_run_mode_is_serialized_in_a_shared_host_mutation_group hold the runs). It takes a group keyed by its own run and is never serialized or superseded. The domain says
 // "confined", not "read-only": a build writes, so the name must not claim otherwise.
 type FleetMutationDomain
   = SubjectDomain { group: String }
