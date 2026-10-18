@@ -12,7 +12,7 @@ import v2.compiler.parse { PreparedGrammar }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { PreparedLexRules }
 import v2.std.diagnostic { Accepted, Rejected }
-import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, ModuleEvidence, occurrence_join_module, recompute_wave_text, rows_proof_scope, rows_by_module, module_rows, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure }
+import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, ModuleEvidence, occurrence_join_module, recompute_wave_text, rows_proof_scope, rows_by_module, module_rows, rows_multiset_equal, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure }
 
 // THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
 // a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
@@ -630,7 +630,7 @@ fn evidence_modules(base_stdout: String, head_stdout: String) -> List<String> {
   let base_grouped = rows_by_module(stdout: base_stdout)
   let head_grouped = rows_by_module(stdout: head_stdout)
   binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: []).unobserved_both_sides
-    |> filter(m => join(module_rows(grouped: base_grouped, module: m), separator: "\n") != join(module_rows(grouped: head_grouped, module: m), separator: "\n"))
+    |> filter(m => !rows_multiset_equal(base_rows: module_rows(grouped: base_grouped, module: m), head_rows: module_rows(grouped: head_grouped, module: m)))
 }
 
 fn read_proof(base_stdout: String, head_stdout: String, base_root: String, head_root: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> WaveProof {

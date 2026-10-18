@@ -1,7 +1,7 @@
 module gunbc.instruments.namespace_wave_occurrence_join
 
 import std.types { String, Bool, List, Int, Map }
-import std.algebra { empty_map, map_insert, list_at_optional, list_snoc_item, length, fold_list, list_init }
+import std.algebra { empty_map, map_insert, list_at_optional, list_snoc_item, length, fold_list, list_init, list_reverse }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.optional { Optional, Present, Absent }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable }
@@ -298,6 +298,36 @@ fn rows_by_module(stdout: String) -> Map<String, List<String>> {
   })
 }
 
+type RowCounts {
+  counts: Map<String, Int>
+  ok: Bool
+}
+
+fn row_counts(rows: List<String>) -> Map<String, Int> {
+  fold(rows, init: empty_map(), f: fn(m, r) {
+    match map_get(m, r) {
+      Present { value: n } => map_insert(m, r, n + 1)
+      Absent => map_insert(m, r, 1)
+    }
+  })
+}
+
+// THE CENSUS PRINTS A MODULE'S ROWS IN A DIFFERENT ORDER FROM RUN TO RUN (measured: 1070 of 1331 modules differ between
+// two runs of the same tree only by row order), so "the same rows" is multiset equality, never print-order equality.
+// Equal lengths and no head row without a base row left to take it are together equality.
+fn rows_multiset_equal(base_rows: List<String>, head_rows: List<String>) -> Bool {
+  if length(xs: base_rows) != length(xs: head_rows) {
+    false
+  } else {
+    fold(head_rows, init: RowCounts { counts: row_counts(rows: base_rows), ok: true }, f: fn(acc, r) {
+      match map_get(acc.counts, r) {
+        Present { value: n } => RowCounts { counts: map_insert(acc.counts, r, n - 1), ok: acc.ok && (n > 0) }
+        Absent => RowCounts { counts: acc.counts, ok: false }
+      }
+    }).ok
+  }
+}
+
 fn module_rows(grouped: Map<String, List<String>>, module: String) -> List<String> {
   match map_get(grouped, module) {
     Present { value: xs } => xs
@@ -493,7 +523,7 @@ fn occurrence_join_proven(rows: List<AmbientNameHome>, module: String, base: Lis
 // ONE MODULE, BOTH SIDES. Identical rows are no change and need no proof; otherwise the edit proof decides what the
 // positions mean, and nothing is joined without it.
 fn occurrence_join_module(rows: List<AmbientNameHome>, module: String, base_rows: List<String>, head_rows: List<String>, evidence: Optional<ModuleEvidence>, prepared: PreparedGrammar, lex: PreparedLexRules, home: String) -> List<JoinDelta> {
-  if join(base_rows, separator: "\n") == join(head_rows, separator: "\n") {
+  if rows_multiset_equal(base_rows: base_rows, head_rows: head_rows) {
     []
   } else {
     match evidence {
@@ -669,6 +699,7 @@ fn occurrence_join_controls_failure(prepared: PreparedGrammar, lex: PreparedLexR
       + join_control_case(name: "equal-count-wrong-home-same-line-site", base_rows: base_rows, head_rows: join_control_head_rows(head_text: head_text, wrong_index: 2, shifted_index: 0 - 1), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 2, want_refused: ["TargetChanged"])
       + join_control_case(name: "head is not the recomputation", base_rows: base_rows, head_rows: admit_rows, evidence: ModuleEvidence { module: "m", base_text: base_text, head_text: head_text + "\n", readable: true }, prepared: prepared, lex: lex, want_admitted: 0, want_refused: ["EditsNotGenerated"])
       + join_control_case(name: "unreadable text", base_rows: base_rows, head_rows: admit_rows, evidence: ModuleEvidence { module: "m", base_text: "", head_text: "", readable: false }, prepared: prepared, lex: lex, want_admitted: 0, want_refused: ["Unobserved"])
+      + join_control_case(name: "same rows in another print order (no change)", base_rows: base_rows, head_rows: list_reverse(xs: base_rows), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 0, want_refused: [])
       + join_control_case(name: "malformed locus", base_rows: base_rows, head_rows: list_snoc_item(xs: admit_rows, item: "binding_partial\tm\tchars\t9\tdeclared\tstd.host_text.chars\t3:x"), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 3, want_refused: ["MalformedLocus"])
       + generated_controls()
     if report == "" { Absent } else { Present { value: report } }
