@@ -7544,34 +7544,27 @@ fn dag_named_arg_value_optional(arg_capture: Node) -> Optional<Node> {
 // (v2.lens.complexity_accumulator_copy.analyze collect_direct_captures and its sibling in
 // v2.lens.identity_captured_navigation.analyze), stated once here for the keyed lookup.
 fn dag_call_named_arg_value_optional(node: Node, name: Symbol) -> Optional<Node> {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
-      if id == ^dag_surface_arg {
-        match parse_production_captured_child_optional(node: node) {
-          Absent => dag_named_arg_value_absent()
-          Present { value: arg_capture } =>
-            match dag_named_arg_name_optional(arg_capture: arg_capture) {
-              Absent => dag_named_arg_value_absent()
-              Present { value: got } =>
-                if got == name {
-                  dag_named_arg_value_optional(arg_capture: arg_capture)
-                } else {
-                  dag_named_arg_value_absent()
-                }
-            }
-        }
-      } else {
-        dag_call_named_arg_value_under_children(node: node, name: name)
+  fold(dag_call_direct_args(node: node), init: dag_named_arg_value_absent(), f: fn(acc, cap) { dag_call_named_arg_step(acc: acc, cap: cap, name: name) })
+}
+
+fn dag_call_named_arg_step(acc: Optional<Node>, cap: Node, name: Symbol) -> Optional<Node> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      match dag_named_arg_name_optional(arg_capture: cap) {
+        Present { value: got } => if got == name { dag_named_arg_value_optional(arg_capture: cap) } else { dag_named_arg_value_absent() }
+        Absent => dag_named_arg_value_absent()
       }
-    Absent => dag_call_named_arg_value_under_children(node: node, name: name)
   }
 }
 
-// THE DIRECT ARGUMENT CAPTURES OF ONE CALL, in source order, under the same stopping rule as the named lookup above: the walk
-// stops at each ^dag_surface_arg and never descends into one, so a nested call's arguments are not this call's. The shared home
-// of the direct-argument walk (v2.workflow.roster_import_sweep consumes it; the two lens collectors carry an older copy
-// generic over the production, v2.lens.complexity_accumulator_copy.analyze / v2.lens.identity_captured_navigation.analyze
-// collect_direct_captures).
+// THE ONE DIRECT-ARGUMENT PRODUCER: the argument captures of one call, in source order. The walk stops at each
+// ^dag_surface_arg and never descends into one, so an argument of a NESTED call inside an argument value is not this call's.
+// That stopping rule is the correctness property: a whole-subtree first match answers about the wrong call whenever an earlier
+// argument carries a nested call. It is decided HERE ONLY; the named lookup (dag_call_named_arg_value_optional), the positional
+// lookup (dag_call_positional_arg_value_optional) and v2.workflow.roster_import_sweep's label sites are consumers of it. (The two
+// lens collectors, v2.lens.complexity_accumulator_copy.analyze / v2.lens.identity_captured_navigation.analyze
+// collect_direct_captures, carry an older copy generic over the production.)
 fn dag_call_direct_args(node: Node) -> List<Node> {
   list_reverse(xs: dag_call_direct_args_into(node: node, acc: Empty))
 }
@@ -7595,74 +7588,19 @@ fn dag_call_direct_args_edge(acc: List<Node>, e: Edge) -> List<Node> {
   dag_call_direct_args_into(node: e.target, acc: acc)
 }
 
-fn dag_call_named_arg_value_under_children(node: Node, name: Symbol) -> Optional<Node> {
-  fold(node.children, init: dag_named_arg_value_absent(), f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => dag_call_named_arg_value_optional(node: e.target, name: name)
-    }
-  })
-}
-
-// The DIRECT argument at one declared POSITION of one call, under the same stopping rule as the
-// named lookup above: the walk counts each ^dag_surface_arg it reaches, in source order, and never
-// descends into one. A NAMED argument sitting at that position answers Absent -- its slot is
-// decided by its name, never by where it was written -- so a call reaches its step by exactly one
-// of the two readings.
-type DagPositionalArgScan {
-  seen: Int
-  decided: Bool
-  found: Optional<Node>
-}
-
+// The DIRECT argument at one declared POSITION of one call, read off the same producer as the named lookup
+// (dag_call_direct_args): the position indexes the call's direct arguments in source order. A NAMED argument sitting at that
+// position answers Absent -- its slot is decided by its name, never by where it was written -- so a call reaches its step by
+// exactly one of the two readings.
 fn dag_call_positional_arg_value_optional(node: Node, position: Int) -> Optional<Node> {
-  let scan = dag_call_positional_arg_scan(
-    node: node,
-    position: position,
-    acc: DagPositionalArgScan { seen: 0, decided: false, found: dag_named_arg_value_absent() }
-  )
-  scan.found
-}
-
-fn dag_call_positional_arg_scan(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
-  if acc.decided {
-    acc
-  } else {
-    match parse_production_emitted_identity_optional(node: node) {
-      Present { value: id } =>
-        if id == ^dag_surface_arg {
-          dag_call_positional_arg_visit(node: node, position: position, acc: acc)
-        } else {
-          dag_call_positional_arg_scan_children(node: node, position: position, acc: acc)
-        }
-      Absent => dag_call_positional_arg_scan_children(node: node, position: position, acc: acc)
-    }
-  }
-}
-
-fn dag_call_positional_arg_visit(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
-  if acc.seen == position {
-    DagPositionalArgScan { seen: acc.seen + 1, decided: true, found: dag_positional_arg_value(arg: node) }
-  } else {
-    DagPositionalArgScan { seen: acc.seen + 1, decided: false, found: acc.found }
-  }
-}
-
-fn dag_positional_arg_value(arg: Node) -> Optional<Node> {
-  match parse_production_captured_child_optional(node: arg) {
+  match list_at_optional(xs: dag_call_direct_args(node: node), index: position) {
     Absent => dag_named_arg_value_absent()
-    Present { value: arg_capture } =>
-      match dag_named_arg_value_optional(arg_capture: arg_capture) {
+    Present { value: cap } =>
+      match dag_named_arg_value_optional(arg_capture: cap) {
         Present { value: _ } => dag_named_arg_value_absent()
-        Absent => dag_named_arg_value_present(node: arg_capture)
+        Absent => dag_named_arg_value_present(node: cap)
       }
   }
-}
-
-fn dag_call_positional_arg_scan_children(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
-  fold(node.children, init: acc, f: fn(inner, e) {
-    dag_call_positional_arg_scan(node: e.target, position: position, acc: inner)
-  })
 }
 
 fn dag_named_arg_value_absent() -> Optional<Node> {

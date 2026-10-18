@@ -1181,6 +1181,8 @@ fn roster_controls_report() -> String {
         + roster_control_label_bound_occurrence(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_specimen(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_called_parameter(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_nested_call_label(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_label_sites_disagree(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_edit_splices()
         + roster_control_generation()
         + roster_control_status_names()
@@ -1241,6 +1243,27 @@ fn roster_control_specimen(prepared: PreparedGrammar, lex: PreparedLexRules) -> 
 
 fn roster_control_called_parameter(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   roster_control_refuses_locally_bound(name: "called-parameter", text: "module c.called\n\nimport std.algebra { Cons }\n\nfn u(chars: fn(String) -> Int, x: String) -> Int {\n  chars(s: x)\n}\n", prepared: prepared, lex: lex)
+}
+
+// A NESTED CALL'S LABEL IS NOT THE OUTER CALL'S: chars(s: g(s: x)) relabels only chars's own direct argument; the inner g's
+// s: is an argument of g (the stopping rule of v2.extdeps.languages.dag dag_call_direct_args).
+fn roster_control_nested_call_label(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.nested\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: g(s: x)))\n}\n"
+  let after = "module c.nested\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: g(s: x)))\n}\n"
+  match roster_applied(before: before, outcome: roster_sweep_text(path: "control/nested.dag", text: before, prepared: prepared, lex: lex)) {
+    RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL nested-call-label: the inner call's label was renamed, or the outer call's was not\n" }
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL nested-call-label: refused " + roster_refusal_text(reason: r) + "\n"
+  }
+}
+
+// THE COUNT-AGREEMENT DISCRIMINATOR, with NO local binder named chars (so home-name-locally-bound cannot answer first): chars
+// also occurs in a TYPE position, `y: chars`, which the reference-site collector records as a free site but which is not a
+// primary-expression head, so the two counts disagree and the label plan must refuse exactly label-sites-ambiguous.
+fn roster_control_label_sites_disagree(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_sweep_text(path: "control/disagree.dag", text: "module c.disagree\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String, y: chars) -> Int {\n  count(xs: chars(s: x))\n}\n", prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } => if roster_refusal_text(reason: r) == "label-sites-ambiguous" { "" } else { "CONTROL-FAIL label-sites-disagree: refused for " + roster_refusal_text(reason: r) + "\n" }
+    _ => "CONTROL-FAIL label-sites-disagree: a count disagreement between free sites and call heads did not refuse label-sites-ambiguous\n"
+  }
 }
 
 // A MODULE THAT DECLARES ITS OWN chars is not a caller of the home: no import is needed, so no label is renamed.
