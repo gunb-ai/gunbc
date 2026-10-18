@@ -20,7 +20,8 @@ import gunbc.emit_state_threading_specimen { spec_build, spec_walk_tokens }
 // allocation for a wider by-value copy (the clone-allocation-free record fact) lowers both counts here
 // while raising the words moved per clone, and this reading cannot see that cost. The emit+build wall of
 // the label does NOT judge it either: that wall runs the compiler's build, not the changed records. The
-// cost is read only by a runtime comparison of prebuilt base and head binaries on one fixed workload.
+// cost is read by no label today: it is the declared rung drop gunbc.rung_drop flipped_record_copy_width_unread,
+// evidenced by a one-off runtime comparison of prebuilt base and head binaries on one fixed workload.
 //
 // FOUR ANSWERS, NOT ONE VERDICT, because a bound that reds when the repair succeeds punishes the repair:
 //   AVAILABILITY  the selecting main registered the counting allocator before any read
