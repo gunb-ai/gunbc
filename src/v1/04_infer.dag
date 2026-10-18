@@ -99,7 +99,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, declaration_provenance
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
-  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
+  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, collection_carrier_node, is_fully_resolved,
   kernel_profile_lookup,
@@ -107,7 +107,7 @@ import v1.compiler.infer_types {
   bare_map_node, bare_set_node,
   callable_inferred,
   normalize_access_type_node,
-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
+  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, alias_identity_in_judgment,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   is_product_type,
   node_type_deps,
@@ -126,7 +126,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { overlay_skips_kernel_name,
+import v1.compiler.infer_env { transparent_alias_rhs, alias_head_reaches, alias_rhs_head_of_declaration, type_names_settle_to_one_declaration, overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -1615,7 +1615,7 @@ fn declared_type_kernel_inhabitance_mismatch_at_element(
 // arrow kept, neither side is ground and the pair fell to the unjudged arm. The judgment is
 // callable_signature_mismatch, the same relation the top-level arrow arm consults, so a parameter
 // or arity difference now refuses too, where before it was accepted under the erasure.
-fn callable_element_signature_mismatch(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn callable_element_signature_mismatch(declared: Node, produced: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let both_element_collections = node_is_element_collection(n: declared, source_indices: source_indices)
     && node_is_element_collection(n: produced, source_indices: source_indices)
     && node_is_keyed_collection(n: declared, source_indices: source_indices) == false
@@ -1634,7 +1634,7 @@ fn callable_element_signature_mismatch(declared: Node, produced: Node, source_in
             let declared_element = child_type_node(ch: dl)
             let produced_element = child_type_node(ch: pr)
             type_node_is_arrow(n: declared_element) && type_node_is_arrow(n: produced_element)
-              && callable_signature_mismatch(formal: declared_element, actual: produced_element, source_indices: source_indices)
+              && callable_signature_mismatch(formal: declared_element, actual: produced_element, env: env, source_indices: source_indices)
         }
     }
   }
@@ -1740,7 +1740,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
     )]
   }
   else if type_node_is_arrow(n: declared) && type_node_is_arrow(n: produced)
-      && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si) {
+      && callable_signature_mismatch(formal: declared, actual: produced, env: scope.type_env, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -1756,7 +1756,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
-  else if callable_element_signature_mismatch(declared: declared, produced: produced, source_indices: si) {
+  else if callable_element_signature_mismatch(declared: declared, produced: produced, env: scope.type_env, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -2247,7 +2247,7 @@ fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, type_env: TypeEnv
     && !is_declared_container_alias_spelling(name: actual_name)
     && !brand_grounds_transparently_to(name: formal_name, other: actual, type_env: type_env, source_indices: source_indices)
     && !brand_grounds_transparently_to(name: actual_name, other: formal, type_env: type_env, source_indices: source_indices)
-    && !transparent_alias_identity_agrees(index: type_env.symbol_index, left: formal_name, right: actual_name)
+    && !type_names_settle_to_one_declaration(left: formal_name, right: actual_name, env: type_env)
 }
 
 fn is_where_refinement_type(ty: Node) -> Bool {
@@ -3923,22 +3923,9 @@ fn type_name_transparently_aliases_to(
         Present { value: target_ref } =>
           match alias_rhs_head_declaration(decl: alias_decl, type_env: type_env) {
             Absent => false
-            Present { value: head } => alias_head_chase_reaches(head: head, target: target_ref, type_env: type_env, fuel: 16)
+            Present { value: head } => alias_head_reaches(head: head, target: target_ref, type_env: type_env, fuel: 16)
           }
       }
-  }
-}
-
-fn alias_head_chase_reaches(head: DeclarationRef, target: DeclarationRef, type_env: TypeEnv, fuel: Int) -> Bool {
-  if declaration_ref_eq(a: head, b: target) {
-    true
-  } else if fuel <= 0 {
-    false
-  } else {
-    match alias_item_rhs_head(item_ref: head, type_env: type_env) {
-      Present { value: next } => alias_head_chase_reaches(head: next, target: target, type_env: type_env, fuel: fuel - 1)
-      Absent => false
-    }
   }
 }
 
@@ -3946,36 +3933,8 @@ fn alias_head_chase_reaches(head: DeclarationRef, target: DeclarationRef, type_e
 // not by its spelling -- and the identity its right-hand side head was resolved to.
 fn alias_rhs_head_declaration(decl: Node, type_env: TypeEnv) -> DeclarationRef? {
   match declaration_ref_of_declaration_node(decl: decl, source_indices: type_env.source_indices, env: type_env) {
-    Present { value: alias_ref } => alias_item_rhs_head(item_ref: alias_ref, type_env: type_env)
+    Present { value: alias_ref } => alias_rhs_head_of_declaration(item_ref: alias_ref, env: type_env)
     Absent => none
-  }
-}
-
-// THE ALIAS'S RHS HEAD, READ FROM THE REFERENCE THAT NAMES IT (quiet-gull-780 ruling B). The alias's
-// declaring module env is found by EXACT module path (the alias's own DeclarationRef): this module's env
-// when the alias is local, else a direct-import parent env. Its binding retains the RHS reference
-// (TypeBinding.alias_rhs), whose Node.declaration the one writer set in the alias's own scope. Nothing
-// here re-resolves a spelling, consults the census-built symbol index (pre-resolve, and qualified by the
-// non-hermetic global_bare_owner_module), or asks which module happens to declare a leaf name. An alias
-// declared outside the module and its direct imports, or a head with no recorded identity, answers none,
-// and every caller refuses on none.
-fn alias_item_rhs_head(item_ref: DeclarationRef, type_env: TypeEnv) -> DeclarationRef? {
-  let declaring = if type_env.module_path == (item_ref.module_path as String) {
-    Present { value: type_env }
-  } else {
-    type_env.parents |> filter(p => p.module_path == (item_ref.module_path as String)) |> first
-  }
-  match declaring {
-    Absent => none
-    Present { value: env } =>
-      match map_get(env.str_bindings, item_ref.decl_name as String) {
-        Absent => none
-        Present { value: binding } =>
-          match binding.alias_rhs {
-            Present { value: rhs } => rhs.declaration
-            Absent => none
-          }
-      }
   }
 }
 
@@ -4027,7 +3986,7 @@ fn alias_item_rhs_head(item_ref: DeclarationRef, type_env: TypeEnv) -> Declarati
 // which is exactly such an alias of `Fnv1a64Structural`. The fact needed -- what a declaration
 // aliases -- does not survive `resolve_item_types`, so no amount of peeling at this seam can
 // recover it, which is gunbc#8873's finding and the reason its relation is computed ONCE during
-// census construction. This wall therefore consumes `transparent_alias_identity_agrees` over the
+// census construction. This wall therefore consumes `type_names_settle_to_one_declaration` over the
 // `SymbolIndex` the judgment already carries rather than minting a second identity relation, per
 // the coordination ruling recorded on that lane.
 //
@@ -4054,8 +4013,7 @@ fn coproduct_variant_payload_admits_type_name(
         lit_name: actual_name,
         type_env: type_env,
         module_name: module_name,
-        source_indices: source_indices) || transparent_alias_identity_agrees(
-          index: type_env.symbol_index, left: payload_name, right: actual_name)
+        source_indices: source_indices) || type_names_settle_to_one_declaration(left: payload_name, right: actual_name, env: type_env)
       payload_name != "" && names_agree
     )
   )
@@ -4080,7 +4038,7 @@ fn coproduct_variant_payload_admits_type_name(
 // excluded by construction rather than carved out: (1) optionality is excluded on both sides by the
 // caller's cardinality guard and by the `Optional` carrier exclusion; (2) a brand alias does not
 // resolve to a `Disj` declaration, so it never reaches this arm, and a TRANSPARENT alias of the same
-// coproduct is settled by `transparent_alias_identity_agrees` before it; (3) an anonymous record
+// coproduct is settled by `type_names_settle_to_one_declaration` before it; (3) an anonymous record
 // literal has no authored name, and this arm requires both sides to resolve BY NAME to a
 // declaration; (4) cardinality is read from the nodes the seam already holds, not rebuilt.
 //
@@ -4502,8 +4460,10 @@ fn refinement_inhabitance(declared: Node, produced: Node, scope: InferScope) -> 
 
 // THE SINGLE DECISION PROCEDURE. It CONSUMES the established predicates rather than restating
 // them: coproduct_payload_where_parent_required already peels transparent aliases through
-// transparent_alias_identity_agrees, so alias identity is decided in exactly one place in the
-// tree and this relation inherits it instead of re-deriving a second answer.
+// type_names_settle_to_one_declaration, so this relation inherits the NAME-level alias relation instead of
+// re-deriving it. The node-level relation (settled_type / alias_settled_agree) is a second path that
+// stops differently at applied-argument aliases; folding the name seam into settled_type is the
+// follow-up (failure mode type_alias_identity_decided_by_spelling_at_each_check).
 // A KERNEL-GROUNDED CARRIER IS INHABITED BY ITSELF AND BY ITS TRANSPARENT ALIASES. The carrier is
 // declared as a coproduct (std.nat Nat = Zero | Succ) and realized as the kernel integer, so the
 // structural judgments below -- which exist to tell a payload from its parent, a kernel value from a
@@ -4563,6 +4523,10 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if alias_identity_in_judgment(
+      left: declared, right: produced, source_indices: source_indices,
+      text: TextJudgedIn { env: scope.type_env }) {
+    Inhabits
   } else if carrier_verdict == Present { value: true } {
     Inhabits
   } else if produced_is_kernel_grounded_carrier_or_its_alias(declared_name: declared_name, produced_name: produced_name, env: scope.type_env) {
@@ -4738,7 +4702,7 @@ fn optional_at_required_obligation_diags(obligation: DeclaredTypeObligation, sco
 // gap. `type Words = List<String>` is a declared alias whose outer node is not List, and
 // `FreeMonoid<T>` arrives as `List<T>` -- both are collections, and refusing either against the
 // other would be a fabricated refusal. Peeling both sides through the existing nominal-alias
-// authority decides alias identity in exactly one place, so an alias pair answers
+// authority decides NAME-level alias identity (the node-level relation is settled_type), so an alias pair answers
 // collection==collection and is excluded before the established-identity question is reached.
 //
 // WHY "ESTABLISHED" IS THE GUARD AND NOT AN EXTRA. A generic formal, a type variable, a callable,
@@ -4881,8 +4845,7 @@ fn product_versus_coproduct_head_mismatch(declared: Node, produced: Node, scope:
       formal_name: declared_name, lit_name: produced_name,
       type_env: scope.type_env, module_name: scope.module_name,
       source_indices: scope.type_env.source_indices)
-      || transparent_alias_identity_agrees(
-        index: scope.type_env.symbol_index, left: declared_name, right: produced_name) {
+      || type_names_settle_to_one_declaration(left: declared_name, right: produced_name, env: scope.type_env) {
     false
   } else {
     let declared_product = nominal_product_head_name(n: declared, scope: scope)
@@ -5014,8 +4977,8 @@ fn nominal_product_inhabitance_refusal(
   let produced_head = nominal_product_head_name(n: produced, scope: scope)
   if declared_head == "" || produced_head == "" {
     none
-  } else if nominal_product_head_names_agree(
-      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+  } else if nominal_product_heads_agree(
+      declared: declared, produced: produced, declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
     Present { value: RefusedDistinctProductConstructor }
   } else if applied_type_arguments_conflict(
       declared: declared, produced: produced, scope: scope) {
@@ -5147,8 +5110,8 @@ fn nominal_coproduct_applied_argument_conflict(
   let produced_head = nominal_coproduct_application_head_name(n: produced, scope: scope)
   if declared_head == "" || produced_head == "" {
     false
-  } else if nominal_product_head_names_agree(
-      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+  } else if nominal_product_heads_agree(
+      declared: declared, produced: produced, declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
     false
   } else if (declared.children |> count) == 0 || (declared.children |> count) != (produced.children |> count) {
     false
@@ -5224,6 +5187,13 @@ fn nominal_coproduct_application_head_name(n: Node, scope: InferScope) -> String
   }
 }
 
+// HEAD AGREEMENT IS DECIDED BY THE DECLARATION EACH SIDE SETTLES TO FIRST (alias_identity_in_judgment: an alias and its expansion are
+// one head), and only a pair that names no common declaration falls to the spelled-name relation below.
+fn nominal_product_heads_agree(declared: Node, produced: Node, declared_name: String, produced_name: String, scope: InferScope) -> Bool {
+  alias_identity_in_judgment(left: declared, right: produced, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env })
+    || nominal_product_head_names_agree(declared_name: declared_name, produced_name: produced_name, scope: scope)
+}
+
 fn nominal_product_head_names_agree(
   declared_name: String,
   produced_name: String,
@@ -5235,8 +5205,7 @@ fn nominal_product_head_names_agree(
     type_env: scope.type_env,
     module_name: scope.module_name,
     source_indices: scope.type_env.source_indices)
-    || transparent_alias_identity_agrees(
-      index: scope.type_env.symbol_index, left: declared_name, right: produced_name)
+    || type_names_settle_to_one_declaration(left: declared_name, right: produced_name, env: scope.type_env)
 }
 
 // ARITY DIFFERENCE IS NOT THIS CLASS, and neither is an unapplied side. Two applications of one
@@ -5328,8 +5297,8 @@ fn applied_type_argument_conflicts(
       || applied_type_argument_identity_known(name: p_name, scope: scope) == false {
       false
     } else {
-      nominal_product_head_names_agree(
-        declared_name: d_name, produced_name: p_name, scope: scope) == false
+      nominal_product_heads_agree(
+        declared: d, produced: p, declared_name: d_name, produced_name: p_name, scope: scope) == false
     }
   }
 }
@@ -5517,8 +5486,7 @@ fn coproduct_payload_where_parent_required(
         module_name: scope.module_name,
         source_indices: source_indices) {
       false
-    } else if transparent_alias_identity_agrees(
-        index: scope.type_env.symbol_index, left: formal_name, right: actual_name) {
+    } else if type_names_settle_to_one_declaration(left: formal_name, right: actual_name, env: scope.type_env) {
       false
     } else {
       let actual_rep = transparent_alias_representative(index: scope.type_env.symbol_index, name: actual_name)
@@ -6417,10 +6385,11 @@ fn callable_component_ground_mismatch(
   formal_part: Node,
   actual_part: Node,
   subst: Map<String, Node>,
+  env: TypeEnv,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   if (formal_part.connective == Arrow) && (actual_part.connective == Arrow) {
-    callable_arrow_mismatch(formal: formal_part, actual: actual_part, subst: subst, source_indices: source_indices)
+    callable_arrow_mismatch(formal: formal_part, actual: actual_part, subst: subst, env: env, source_indices: source_indices)
   } else {
     let instantiated = substitute_generics(n: actual_part, subst: subst, source_indices: source_indices)
     if (formal_part.connective == Arrow) || (instantiated.connective == Arrow) {
@@ -6428,12 +6397,12 @@ fn callable_component_ground_mismatch(
         || conformance_ground_type(n: instantiated, source_indices: source_indices)
     } else if conformance_ground_type(n: formal_part, source_indices: source_indices)
         && conformance_ground_type(n: instantiated, source_indices: source_indices) {
-      !node_type_compatible(left: formal_part, right: instantiated, source_indices: source_indices, text: TextNotAsked { reason: TextNotAskedForCallableComponentResidue })
+      !node_type_compatible(left: formal_part, right: instantiated, source_indices: source_indices, text: TextJudgedIn { env: env })
     } else { false }
   }
 }
 
-fn callable_arrow_mismatch(formal: Node, actual: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn callable_arrow_mismatch(formal: Node, actual: Node, subst: Map<String, Node>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let f_params = callable_value_params(arrow: formal, source_indices: source_indices)
   let a_params = callable_value_params(arrow: actual, source_indices: source_indices)
   if (f_params |> count) != (a_params |> count) { true }
@@ -6442,16 +6411,16 @@ fn callable_arrow_mismatch(formal: Node, actual: Node, subst: Map<String, Node>,
       match a_params |> skip(pair.first) |> first {
         Present { value: ap } => callable_component_ground_mismatch(
           formal_part: callable_param_type(p: pair.second), actual_part: callable_param_type(p: ap),
-          subst: subst, source_indices: source_indices)
+          subst: subst, env: env, source_indices: source_indices)
         Absent => true
       })
     params_mismatch || callable_component_ground_mismatch(
       formal_part: resolved_type(n: formal), actual_part: resolved_type(n: actual),
-      subst: subst, source_indices: source_indices)
+      subst: subst, env: env, source_indices: source_indices)
   }
 }
 
-fn callable_signature_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn callable_signature_mismatch(formal: Node, actual: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let f = callable_signature_view(n: formal)
   let a = callable_signature_view(n: actual)
   if (f.connective != Arrow) || (a.connective != Arrow) { false }
@@ -6459,7 +6428,7 @@ fn callable_signature_mismatch(formal: Node, actual: Node, source_indices: Map<S
     let generic_names = callable_generic_names(arrow: a, source_indices: source_indices)
     let subst = callable_signature_substitution(formal: f, actual: a, generic_names: generic_names,
       source_indices: source_indices, acc: empty_map())
-    callable_arrow_mismatch(formal: f, actual: a, subst: subst, source_indices: source_indices)
+    callable_arrow_mismatch(formal: f, actual: a, subst: subst, env: env, source_indices: source_indices)
   }
 }
 
@@ -6572,7 +6541,7 @@ fn direct_call_arg_type_mismatch(
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: substitution_basis)) == "Optional"
   if substitution_is_optional { false }
   else if type_node_is_arrow(n: formal) && type_node_is_arrow(n: actual) {
-    callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+    callable_signature_mismatch(formal: formal, actual: actual, env: type_env, source_indices: source_indices)
   }
   else if type_node_is_arrow(n: formal) || type_node_is_arrow(n: actual) {
     !one_sided_non_arrow_side_is_open(
@@ -9974,7 +9943,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             right: else_rt,
             source_indices: scope.type_env.source_indices,
             text: TextJudgedIn { env: scope.type_env }
-          ) || if_branch_types_agree_through_alias_identity(left: then_rt, right: else_rt, scope: scope) {
+          ) {
             []
           } else {
             [inference_error(
@@ -10113,9 +10082,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 if node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
                   match exp.children |> first {
                     Present { value: elem } => child_type_node(ch: elem)
-                    Absent => unit_type
+                    Absent => type_variable_node(id: "empty_list_element")
                   }
-                } else { unit_type }
+                } else { type_variable_node(id: "empty_list_element") }
               Absent => type_variable_node(id: "empty_list_element")
             }
           }
@@ -10203,6 +10172,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               Present { value: cp } =>
                 let cpt = param_node_type_expr(n: cp)
                 if type_node_is_established(n: cpt, source_indices: scope.type_env.source_indices) {
+                  extend_scope(scope: acc, name: pair.second, resolved: cpt, provenance: param_prov)
+                } else if is_unsolved_empty_list_element(n: cpt) {
+                  // The unsolved element of an empty list literal keeps its identity: collapsing it
+                  // to callable_param would defer a field read of it that no argument can establish.
                   extend_scope(scope: acc, name: pair.second, resolved: cpt, provenance: param_prov)
                 } else {
                   extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
@@ -10630,12 +10603,22 @@ fn field_base_is_in_flight_lambda_param(base: Node, scope: InferScope) -> Bool {
   }
 }
 
+fn is_unsolved_empty_list_element(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: id } } => id == "empty_list_element"
+    _ => false
+  }
+}
+
 fn is_never_constrained_enclosing_generic_base(n: Node, base_expr: Node, scope: InferScope) -> Bool {
   match n.inferred {
     Present { value: TypeVariable { id: id } } =>
       let names = enclosing_fn_generic_names(scope: scope)
       let in_enclosing = names |> any(g => g == id)
-      in_enclosing && !field_base_is_in_flight_lambda_param(base: base_expr, scope: scope)
+      // empty_list_element is the unsolved element of an empty list literal; no callee generic
+      // carries that spelling, so no later argument round can bind it. Deferring a read of it
+      // would accept a field of a type nobody established.
+      (id == "empty_list_element") || (in_enclosing && !field_base_is_in_flight_lambda_param(base: base_expr, scope: scope))
     _ => false
   }
 }
@@ -10956,6 +10939,49 @@ fn record_lit_alias_struct_expansion(type_name: String, scope: InferScope) -> No
       Present { value: expand_type_for_field_access(n: to_expand, env: scope.type_env, module_name: scope.module_name) }
     Absent => none
   }
+}
+
+// DOES THIS NAME CARRY A RECORD CONSTRUCTOR? A type name standing in record-literal position is
+// asked this ONE question before any field is read. A name declaring a coproduct does not: its
+// constructors are its arms. The answer is read off the EXPANSION, so `type ZzT = ZzU` is judged by
+// what ZzU is and not by the spelling ZzT: an alias carries no connective of its own (NoConnective),
+// and a name test alone would call every alias of a union a constructor. Only the structural shapes
+// answer: a name that resolves to nothing, to a primitive, or to a conjunction is left to the
+// refusals that already judge it, so this widens on none of them.
+// WHICH DECLARATION the literal's head names is asked of THIS module's binding chain (locals, then
+// the names it imports BY NAME) -- lookup_binding_on_chain, the same route record-literal widening
+// already consumes from infer_record_lit_structural, and the route local_coproduct_owner_from_locals
+// takes for the same question -- never the corpus-wide pool lookup. lookup_type_by_name walks past
+// the chain into the global-bare overlay, so a name that collides with an unrelated pool union
+// refuses a legal construction: test.claim.workspace_commissioning_apply_readback_witness builds the
+// arm UnitPropertyRead of runner_microvm_slot_start's union UnitPropertyReading, imported by name
+// from its owner, and was refused because the pool independently declares a DIFFERENT
+// UnitPropertyRead -- a union of UnitPropertyValue and UnitPropertyUnreadable -- in
+// live_deploy.unit_standing, a module that witness never imports. A name with no binding in this
+// module's chain is not refused here at all: this gate answers "does the declaration the author
+// named carry a record constructor", and with no bound declaration there is no such answer to give.
+fn record_lit_union_name_is_not_an_arm(decl: Node, type_name: String, scope: InferScope) -> Node? {
+  if has_child_named(n: decl, name: type_name, source_indices: scope.type_env.source_indices) { none } else { Present { value: decl } }
+}
+
+fn record_lit_name_declares_union(type_name: String, scope: InferScope) -> Node? {
+  match lookup_binding_on_chain(env: scope.type_env, name: type_name) {
+    Absent => none
+    Present { value: binding } => match binding.resolved.connective {
+      Disj => record_lit_union_name_is_not_an_arm(decl: binding.resolved, type_name: type_name, scope: scope)
+      _ => record_lit_expansion_declares_union(decl: binding.resolved, scope: scope)
+    }
+  }
+}
+
+// The answer for a name that is not spelled as a coproduct: the EXPANSION decides, so an alias of a
+// union is judged by what it expands to. Its own function because the seed grammar admits `let` only
+// in a statement block (a function body), never inside the branches of an if-expression -- the two
+// shapes this file already uses everywhere else.
+fn record_lit_expansion_declares_union(decl: Node, scope: InferScope) -> Node? {
+  let expanded_result = expand_type_for_field_access(n: decl, env: scope.type_env, module_name: scope.module_name)
+  let expanded = expanded_result.resolved
+  if expanded.connective == Disj { Present { value: expanded } } else { none }
 }
 
 fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
@@ -11535,6 +11561,51 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else {
       none
     }
+  // DESIGN §4b (the floor first): a value inhabits its DECLARED type, and the values a type name
+  // admits are fixed by the shape it declares. A name that declares a coproduct carries NO record
+  // constructor at all, so `Union { ... }` -- in any position, with any fields -- builds a value no
+  // type inhabits: unrepresentable downstream, and it reached an EVAL non-exhaustive match instead
+  // of a located refusal at authoring (extdeps.systemd SystemdRunProperty: #13942 turned it from a
+  // record into a union, #14149 wrote the old record shape, and main refused only at run
+  // 38905139153). The defect is the NAME, so it is read off the resolved declaration BEFORE the
+  // field walk and fires whatever the fields happen to be: a union's child variants make
+  // record_lit_expected_fields accept any field set the union of their fields admits, which made
+  // the field walk the wrong place to ask. Located at name_span (the name is the defect), it lists
+  // the variants the author could have meant, and it is PREPENDED into the diagnostic concat
+  // instead of returned early -- an early return absorbed the later TypeMismatch that the
+  // stop-observation witness claims, which is the fail-open this repo refuses.
+  //
+  // It fires only where no other fact has already answered the construction question, so it
+  // widens on nothing: an owned presence variant (presence_variant_owner), an expected-coproduct
+  // arm (expected_variant_node), an instantiated generic (instantiated_struct_fields) or a field
+  // set read from the expected position (expected_struct_fields) each already resolve the
+  // constructor by a route that does not read a union as a record; an ambiguous bare name belongs
+  // to the AmbiguousReference refusal; and a name whose expansion resolves to a conjunction (a
+  // record, or a variant of a union -- the `Present { value: ... }` spelling) is a constructor this
+  // literal is entitled to use.
+  let union_name_decl = if tn_str != "" && presence_variant_owner == none && expected_variant_node == none && instantiated_struct_fields == none && expected_struct_fields == none && presence_name_is_ambiguous == false {
+    match alias_struct_expansion {
+      Present { value: expansion } =>
+        if expansion.resolved.connective == Disj {
+          Present { value: expansion.resolved }
+        } else {
+          record_lit_name_declares_union(type_name: tn_str, scope: scope)
+        }
+      Absent => record_lit_name_declares_union(type_name: tn_str, scope: scope)
+    }
+  } else { none }
+  let union_name_no_record_constructor_diags = match union_name_decl {
+    Present { value: decl } =>
+      [make_error_node(
+        diagnostic: TypeNameCarriesNoRecordConstructor {
+          type_name: tn_str,
+          declared_variants: decl.children |> map(v => authored_name_at(source_indices: si_presence, node: v)),
+          span: name_span
+        },
+        module_name: scope.module_name
+      )]
+    Absent => []
+  }
   let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || presence_name_is_ambiguous {
       []
     } else {
@@ -11933,7 +12004,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else { [] }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags)
+      diagnostics: concat(concat(concat(concat(concat(concat(concat(concat(union_name_no_record_constructor_diags, fi_diags), alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags))
     }
   }
 }
@@ -15498,7 +15569,7 @@ fn transparent_alias_target_name(item: Node, source_indices: Map<String, Newline
 // QUALIFYING THE TARGET AT BUILD TIME, so the representative comparison can be exact.
 // An alias target is the AUTHORED right-hand-side name and may be bare (`type Hash =
 // Fnv1a64Structural`), while the other side of a comparison may be qualified. That mismatch is the
-// only reason transparent_alias_identity_agrees reduces to a last segment at all -- and the
+// only reason the retired name relation reduced to a last segment at all -- and the
 // reduction is a fail-open: `a.Foo = x.Bar` and `b.Baz = y.Bar` are two aliases onto two DIFFERENT
 // types whose names both end in `Bar`, and a last-segment comparison of their representatives
 // equates them, suppressing a genuine brand mismatch (found by review, smart-ram-730).
@@ -15690,75 +15761,6 @@ fn transparent_alias_representative(index: SymbolIndex, name: String) -> String 
         Present { value: rep } => rep
         Absent => name
       }
-  }
-}
-
-// The agreement is licensed by an ALIAS EDGE, never by spelling alone. At least one side must
-// actually chase through `transparent_alias_rep`; when neither does, the reps are the inputs and
-// a last-segment comparison would make any two homonymous nominal types from different modules
-// agree -- a fail-open widening in the exact arm that exists to exculpate, and precisely the
-// distinction whose erasure caused the OccurrenceId/NodeOccurrenceIdentity incident. The caller has
-// already established the names are not equal, so an unchased pair is a refusal, not a question.
-// The last-segment reduction survives only for the chased case, because an alias target is the
-// authored RHS name and may be bare where the other side is qualified. Residual, stated rather
-// than hidden: for a census-AMBIGUOUS bare name that reduction can still equate two distinct
-// declarations -- the same open hole DESIGN 4b names on the source->.dag acceptance path, not one
-// this relation introduces.
-// BOTH sides chased means both representatives are stored targets, and stored targets are
-// qualified at build time wherever the corpus makes qualification exact -- so that comparison is
-// exact string equality and the a.Foo/b.Baz collision has no spelling. Only the ONE-chased case
-// still reduces to a last segment, because there the unchased side is an authored name this
-// relation never rewrote; that residue is narrower than the reduction it replaces and is the
-// remaining known widening, not a closed one.
-fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: String) -> Bool {
-  let left_rep = transparent_alias_representative(index: index, name: left)
-  let right_rep = transparent_alias_representative(index: index, name: right)
-  let left_chased = left_rep != left
-  let right_chased = right_rep != right
-  let both_chased = left_chased && right_chased
-  left != "" && right != "" && (left_chased || right_chased)
-    && if both_chased {
-      left_rep == right_rep
-    } else {
-      qualified_last_segment(name: left_rep) == qualified_last_segment(name: right_rep)
-    }
-}
-
-// AN IF-JOIN DECIDES TYPE IDENTITY BY DECLARATION, NOT BY SPELLING. node_type_compatible compares
-// authored names, so a branch typed by an alias of an applied generic (`IntBox` for `Boxed<Int>`,
-// std.measure MegatransfersPerSecond for Measure<Frequency, Mega, Nat>) and a branch typed by its
-// target refused here although they are one type. Resolution already carries the answer:
-// v1.compiler.infer_resolve with_authored_identity keeps only the alias's ident_span and takes the
-// target's declaration, so both branches name the same DeclarationRef. They agree when both carry a
-// whole-declaration ref (whole_declaration_carried), the refs are equal, the optional layer
-// matches, and every applied argument is identical (applied_argument_types_identical).
-// transparent_alias_identity_agrees cannot answer this: it admits only bare-name aliases and
-// deliberately records no edge for `type A = B<C>`.
-// A side with no declaration declines, so the mismatch stays loud: a branch typed straight from a
-// parameter's declared type reference carries none today, so `if c { a } else { b }` over
-// `a: IntBox, b: Boxed<Int>` still refuses. This is the if-join instance only; node_type_compatible
-// itself still judges by spelling (gunbc.recurring_failure_mode
-// carrier_alias_refuses_its_own_carriers_constructor).
-fn if_branch_types_agree_through_alias_identity(left: Node, right: Node, scope: InferScope) -> Bool {
-  let left_opt = left.return_cardinality == CardOptional
-  let right_opt = right.return_cardinality == CardOptional
-  if left_opt != right_opt { false }
-  else {
-    let left_inner = if left_opt { with_required_cardinality(n: left) } else { left }
-    let right_inner = if right_opt { with_required_cardinality(n: right) } else { right }
-    let left_args = left_inner.children
-    let right_args = right_inner.children
-    let same_declaration = match whole_declaration_carried(n: left_inner) {
-      Present { value: l } =>
-        match whole_declaration_carried(n: right_inner) {
-          Present { value: r } => declaration_ref_eq(a: l, b: r)
-          Absent => false
-        }
-      Absent => false
-    }
-    same_declaration
-      && (left_args |> count) == (right_args |> count)
-      && applied_arguments_identical(left_args: left_args, right_args: right_args, source_indices: scope.type_env.source_indices)
   }
 }
 
@@ -17979,16 +17981,9 @@ fn bindings_accum_insert(acc: BindingsAccum, ident: Int, updated_binding: TypeBi
 // The resolved binding itself is unchanged; this is the reference a reader asks "what does the alias
 // name", so nothing downstream re-resolves the spelling.
 fn alias_rhs_reference(pre: Node, env: TypeEnv) -> Node? {
-  if pre.connective != NoConnective || (pre.params |> count) > 0 || pre.type_annotation != none
-    || (pre.children |> count) > 0 || pre.return_cardinality != Required {
-    none
-  } else {
-    match pre.inferred {
-      Present { value: Resolved { node: rhs } } =>
-        if rhs.connective != NoConnective || rhs.return_cardinality != Required || rhs.type_annotation != none { none }
-        else { Present { value: reference_with_declaration(n: rhs, env: env) } }
-      _ => none
-    }
+  match transparent_alias_rhs(pre: pre) {
+    Present { value: rhs } => Present { value: reference_with_declaration(n: rhs, env: env) }
+    Absent => none
   }
 }
 
