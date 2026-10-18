@@ -218,11 +218,18 @@ for t in fold_replaces_a_binding_that_is_the_generic_declarations_own_form \
       if [ "$MODE" = "B" ]; then WANTP=" ok"; else WANTP="FAILED"; fi ;;
     *) WANTP="" ;;
   esac
+  # A MISMATCH IS REPORTED LOUDLY, NOT FATAL. The hard gates above (zero tests, missing row) are 'no data'
+  # gates and must abort. This one is a 'the data surprised me' gate: if the accept control is already ok
+  # in A, some EARLIER arm in unify_generics admits that pair and my control is VACUOUS -- a finding to
+  # report, not a reason to destroy the self-host census that takes 20+ minutes and is the measurement the
+  # parent is actually waiting on. Killing a 35-minute run over an expectation I might have got wrong
+  # would be the worse error.
   if [ -n "$WANTP" ]; then
     case "$L" in
-      *"$WANTP") ;;
-      *) echo "  CONTROL WRONG OUTCOME: $t expected '${WANTP}' in config $MODE, got '${L}'";
-         echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="; exit 8;;
+      *"$WANTP") echo "    (as expected: '${WANTP}')" ;;
+      *) echo "    *** CONTROL EXPECTATION MISFIRED: expected '${WANTP}' in config $MODE, got '${L}' ***";
+         echo "    (not fatal: an earlier arm in unify_generics may already admit this pair, which would make";
+         echo "     this control vacuous. REPORTED, and reported onward, rather than silently accepted.)";;
     esac
   fi
   # Absent is a FAILURE. A control that never ran cannot support 'the accept control is green only in B',
