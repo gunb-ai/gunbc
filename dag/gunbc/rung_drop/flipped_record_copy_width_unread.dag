@@ -4,9 +4,11 @@ import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// Population entries read "<emitted stage0 module stem> <record>": the records the seed emits
-// by value where the base emitted Rc, from the declaration-identity predicate
-// `is_clone_allocation_free` in v1.compiler.emit_rust.
+// Population entries read "<emitted stage0 module stem> <record>". Producer that re-derives them (this
+// list is its output at declaration, never its authority): `gunbc compile --source-root dag
+// --source-root src/v2 --entry src/v2/compiler/source_root_eval.dag --target rust` at the base commit and
+// at the head, then the set of `Rc<T>` record spellings present in the base emission and absent in the
+// head's. The decision it observes is `is_clone_allocation_free` in v1.compiler.emit_rust.
 data flipped_record_copy_width_unread: RungDrop = RungDrop {
   identity: "flipped_record_copy_width_unread" as NonEmptyStr,
 
@@ -80,7 +82,8 @@ data flipped_record_copy_width_unread: RungDrop = RungDrop {
       "std_source_annotation AnnotationRegion",
       "std_source_annotation AnnotationRegionIndex",
       "std_syntax SyntaxSpec",
-      "std_termination.rs src/v1/stage0/src/v2_std_cardinality",
+      "std_termination TerminationProof",
+      "v2_std_cardinality TerminationProof",
       "v2_compiler_body_lowering_fold BodyLowerDeclaredDomain",
       "v2_compiler_body_lowering_fold BodyLoweredTree",
       "v2_compiler_body_lowering_fold BodyLowerGuard",
