@@ -93,6 +93,23 @@ git show "$S2":src/v1/tests/src/cross_coproduct_generic_locate_test.rs > src/v1/
 git show "$S2":src/v1/tests/src/lib.rs > src/v1/tests/src/lib.rs || { echo "no tests lib.rs"; exit 31; }
 [ "$(grep -ac 'mod cross_coproduct_generic_locate_test' src/v1/tests/src/lib.rs)" = "1" ] \
   || { echo "lib.rs does not declare the fold test module -- the suite would silently run zero tests"; exit 31; }
+# EVERY MODULE lib.rs DECLARES must be installed, not just mine. The first run at the S0 base compiled with
+# two E0583 'file not found for module' errors -- B's lib.rs declares applied_constructor_type_equals_test
+# and cross_coproduct_probe_discharge_test, and installing only my one .rs left the crate uncompilable, so
+# the suite ran zero tests. The list is DERIVED from lib.rs, so it cannot drift when the peer adds a module:
+# a hand-typed roster (cleanab2's TESTS=) silently rots.
+MISSING=""
+for m in $(grep -oE '^mod [a-z0-9_]+' src/v1/tests/src/lib.rs | awk '{print $2}'); do
+  [ -f "src/v1/tests/src/$m.rs" ] && continue
+  git show "$S2":src/v1/tests/src/$m.rs > src/v1/tests/src/$m.rs 2>/dev/null \
+    && [ -s "src/v1/tests/src/$m.rs" ] || MISSING="$MISSING $m"
+done
+if [ -n "$MISSING" ]; then
+  echo "TEST MODULES DECLARED BUT NOT OBTAINABLE:$MISSING"; 
+  echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="
+  exit 8
+fi
+echo "test modules installed: $(grep -cE '^mod [a-z0-9_]+' src/v1/tests/src/lib.rs) declared, all present on disk"
 S3=$(fetch_at "$CARRIER_SHA" $LOGS/fc.log)
 echo "fetched carriers $S3 (want $CARRIER_SHA)"; [ "$S3" = "$CARRIER_SHA" ] || { echo "WRONG CARRIER"; exit 32; }
 git show "$S2":src/v1/04_types.dag > $LOGS/my_04_types.dag || { echo "no 04_types from B"; exit 32; }
