@@ -762,30 +762,6 @@ fn catalog_slot_is_an_honest_absence(blocker: PreparationBlockingOn) -> Bool {
 
 // THE BINDER, CALLED THE WAY THE FOLD CALLS IT. A separate witness fn so that every blocker-3 claim
 // below states the two binding inputs it is relying on -- an unlisted input would otherwise let a
-// test pass because of a default it never declared.
-fn bind_the_preferred_row(
-  blocker: PreparationBlockingOn,
-  redirect_to: RedirectTargetStanding,
-  observed_bios_version: Optional<NonEmptyStr>
-) -> RouteBindingStanding {
-  match preferred_row(blocker: blocker) {
-    Present { value: row } => bind_route_from(
-      route: row,
-      redirect_to: redirect_to,
-      observed_bios_version: observed_bios_version,
-    )
-    // NO ROW: the binder is not the thing under test here, and inventing a standing would be the
-    // witness grading its own homework. A caller that reaches this has asked about a blocker with no
-    // mechanism, which is a different test.
-    Absent => BindingRefused {
-      refusal: RouteBindingUnresolvedRoute {
-        mechanism: "no-row",
-        owed_read: "the catalog has no row for this blocker",
-      },
-    }
-  }
-}
-
 // THE STANDING A BIOS-ATTRIBUTE BLOCKER MUST HAVE, and the distinction it is built to hold. The unit
 // ANSWERED EVERY AXIS, so this is not Unobserved; the fleet OWNS the mechanism, so the cause names it;
 // and the write does not happen, because the name was never read. Three blockers are in this class --
@@ -818,11 +794,6 @@ fn refused_naming_the_authoring_mechanism(
 
 // THE BINDING INPUTS THE FIXTURE UNIT ACTUALLY HAS, derived by the module's own fold from the
 // fixture's own lists. Deliberately not a literal: a test that wanted the redirect to point at
-// "0002" would be asserting the wish, not the join.
-fn fixture_redirect(join: HeadJoinStanding, available: AvailableNetworkStanding) -> RedirectTargetStanding {
-  redirect_target(join: join, available: available)
-}
-
 
 // COMPARES WHAT THE EXECUTOR READS, NEVER THE CITATION. The fold is handed the catalog row's
 // authority and has no business rewriting it, so comparing citations would test the copy rather than
