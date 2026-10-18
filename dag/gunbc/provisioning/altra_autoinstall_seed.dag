@@ -207,17 +207,6 @@ fn admit_altra_autoinstall_target(
   }
 }
 
-fn refused_target(cause: TargetRefusalCause) -> AltraAutoinstallTarget {
-  TargetRefused { reason: cause }
-}
-
-fn target_standing(target: AltraAutoinstallTarget) -> Optional<AltraAutoinstallTargetStanding> {
-  match target {
-    TargetAdmitted { standing: s } => Present { value: s }
-    TargetRefused { reason: _ } => Absent
-  }
-}
-
 // THE CONSOLE FAMILY AND THE TRANSPORT ARE SEPARATE AXES BECAUSE THEY ANSWER DIFFERENT QUESTIONS, AND
 // THE SEED NEEDS BOTH ANSWERS WITHOUT ONE IMPLYING THE OTHER. Whether the BMC serves a serial-over-LAN
 // console is a property of the BMC firmware family (extdeps.bmc.endpoint's closed set — reused, not
@@ -340,8 +329,10 @@ fn altra_loadable_module(driver: AltraLoadableModule) -> NonEmptyStr {
 }
 
 // WHICH KCONFIG SYMBOL DECLARES THE MODULE, AND IN WHICH FILE IT WAS READ. Derived pairs, so a row cannot
-// carry a stem that its own symbol's Makefile line does not produce. The paths are the citation: a reviewer
-// checking one row opens one file.
+// carry a stem that its own symbol's Makefile line does not produce. BOTH are rendered into the seed token: the
+// citation is part of what the seed CLAIMS (this module asserts that this symbol, in this file, was read as
+// `tristate`), so it belongs in the digest — and a provenance the digest cannot see is a provenance that can be
+// changed without any witness noticing.
 fn loadable_module_kconfig_symbol(driver: AltraLoadableModule) -> NonEmptyStr {
   match driver {
     NvmeBlockModule => "BLK_DEV_NVME"
@@ -542,13 +533,6 @@ fn known_prompting_packages() -> List<KnownPromptingPackage> {
 // that could be empty.
 type ArchiveMirror = NamedMirror { host: NonEmptyStr } | MirrorAbsent
 
-fn archive_mirror_host(mirror: ArchiveMirror) -> Optional<NonEmptyStr> {
-  match mirror {
-    NamedMirror { host: h } => Present { value: h }
-    MirrorAbsent => Absent
-  }
-}
-
 // THE LOCALE AXIS IS CLOSED TO THE TWO SPELLINGS THE INSTALLER ACCEPTS WITHOUT A FOLLOW-UP QUESTION. A
 // future requirement (a French-language install, a non-UTF-8 console) adds a constructor HERE, which
 // forces this module's interactive audit to be re-read; it does not let a caller paste a locale string
@@ -602,13 +586,6 @@ fn autoinstall_password_auth(posture: AdminCredentialPosture) -> Bool {
 // projection REFUSES when the posture is PasswordUnset and password authentication is being asked for.
 // The refusal is the honest rendering of "upstream's record cannot express our posture" (reported
 // upstream, not patched around here).
-fn password_handle_digest(handle: AdminPasswordHandle) -> Fnv1a64Structural {
-  content_hash_combine_structural(
-    left: content_hash_atom(value: handle.secret_locator),
-    right: content_hash_atom(value: handle.secret_version),
-  )
-}
-
 // A HEADLESS UNIT THAT IS NETWORK-REACHABLE MUST BE ENTERABLE, AND BOTH-WAYS-MISSING MUST BE
 // UNNAMEABLE. There is no expression that builds an AdminAccessAuthorisation with zero authorized keys
 // AND a locked console: the guard lives in the only constructor, so "the install succeeded and now nobody
@@ -1472,8 +1449,11 @@ fn loadable_module_list_diagnostic(modules: List<AltraLoadableModule>) -> NonEmp
     names: modules
       .map(module =>
         concat(
-          concat("mod:", altra_loadable_module(driver: module)),
-          concat("=", loadable_module_kconfig_symbol(driver: module)),
+          concat(
+            concat("mod:", altra_loadable_module(driver: module)),
+            concat("=", loadable_module_kconfig_symbol(driver: module)),
+          ),
+          concat("@", loadable_module_kconfig_path(driver: module)),
         ) as String),
   )
 }
@@ -1558,9 +1538,18 @@ type AltraAutoinstallSeedBinding sole_constructor {
 // already happened.
 type BoundDiskEvidence = BoundDisk { serial: NonEmptyStr } | BoundDiskUnread { note: NonEmptyStr }
 
+// WHY THE REFUSAL IS A UNION AND NOT A BARE Absent. A caller who is handed nothing cannot tell whether the
+// board was never admissible or whether eight disks matched the rule — and those are different pages of the
+// runbook (go re-admit the unit vs tighten the selector). The refusal that produces no record must still
+// produce the diagnosis, exactly as SeedAudit and TargetDiskSelection do; an unlabelled Absent is the failure
+// mode this module has now removed in three other places.
 type BindingBlocker
-  = TargetNotAdmitted
+  = TargetNotAdmitted { cause: TargetRefusalCause }
   | DiskSelectionRefused { cause: DiskSelectionRefusalCause }
+
+// THE TWO OUTCOMES OF A BINDING ATTEMPT, as arms rather than Optional, for the reason above: the green arm
+// carries the record, the red arm carries why there is no record.
+type BindingResult = Bound { binding: AltraAutoinstallSeedBinding } | BindRefused { blocker: BindingBlocker }
 
 // THE ONLY DOOR INTO A BINDING. It takes the SEED (so the digest is computed now, from this record), the
 // unit key and attempt (so the identity is bound, not assumed), and the live disk SELECTION (so a binding
@@ -1573,15 +1562,16 @@ fn bind_altra_autoinstall_seed(
   unit_key: UnitKey,
   attempt: IntakeAttemptId,
   selection: TargetDiskSelection,
-) -> Optional<AltraAutoinstallSeedBinding> {
+) -> BindingResult {
   match target {
-    TargetRefused { reason: _ } => Absent
+    TargetRefused { reason: cause } => BindRefused { blocker: TargetNotAdmitted { cause: cause } }
     TargetAdmitted { standing: _ } =>
       match selection {
-        SelectionRefused { cause: _ } => Absent
+        SelectionRefused { cause: cause } =>
+          BindRefused { blocker: DiskSelectionRefused { cause: cause } }
         DiskSelected { device: chosen } =>
-          Present {
-            value: AltraAutoinstallSeedBinding {
+          Bound {
+            binding: AltraAutoinstallSeedBinding {
               unit_key: unit_key,
               attempt: attempt,
               seed_digest: altra_autoinstall_seed_digest(seed: seed),

@@ -121,6 +121,12 @@ import gunbc.provisioning.altra_autoinstall_seed {
   late_driver_list_diagnostic,
   ArchiveMirrorAbsent,
   PackagePromptingUnclassified,
+  Bound,
+  BindRefused,
+  BindingBlocker,
+  BindingResult,
+  TargetNotAdmitted,
+  DiskSelectionRefused,
   AltraLoadableModule,
   audit_altra_autoinstall_seed,
   binding_digest,
@@ -936,8 +942,8 @@ test fn a_binding_cannot_exist_over_a_refused_disk_selection() -> Bool {
     Present { value: seed } =>
       match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: twin_selector, observed: bay_population),
         ) {
-        Absent => true
-        Present { value: _ } => false
+        BindRefused { blocker: _ } => true
+        Bound { binding: _ } => false
       }
     Absent => false
   }
@@ -970,8 +976,8 @@ fn built_seed_and_binding() -> Optional<SeedAndBinding> {
     Present { value: seed } =>
       match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
         ) {
-        Present { value: binding } => Present { value: SeedAndBinding { seed: seed, binding: binding } }
-        Absent => Absent
+        Bound { binding: binding } => Present { value: SeedAndBinding { seed: seed, binding: binding } }
+        BindRefused { blocker: _ } => Absent
       }
     Absent => Absent
   }
@@ -984,8 +990,8 @@ fn binding_digest_of(
 ) -> Fnv1a64Structural {
   match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit, attempt: attempt, selection: select_target_disk(selector: serial_selector, observed: bay_population),
     ) {
-    Present { value: binding } => binding_digest(binding: binding)
-    Absent => binding_digest_of_unbound_placeholder()
+    Bound { binding: binding } => binding_digest(binding: binding)
+    BindRefused { blocker: _ } => binding_digest_of_unbound_placeholder()
   }
 }
 
@@ -1233,6 +1239,7 @@ test fn the_seed_names_its_packages_and_modules_by_axis() -> Bool {
         && rendered.contains("mod:ahci_platform")
         && rendered.contains("mod:nvme")
         && rendered.contains("SATA_AHCI_PLATFORM")
+        && rendered.contains("drivers/ata/Kconfig")
     Absent => false
   }
 }
