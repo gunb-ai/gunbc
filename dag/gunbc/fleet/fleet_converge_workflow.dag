@@ -3,7 +3,7 @@ module gunbc.fleet.fleet_converge_workflow
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
-  RunScopedMode, RunScopedRouteKind, GrantedAccountRoute, FleetIdentityRoute, GrantOnlyRoute, run_scoped_account_id, run_scoped_route_kind, run_scoped_modes_with_route, run_scoped_federation_named, run_scoped_modes,
+  RunScopedMode, RunScopedRouteKind, GrantedAccountRoute, FleetIdentityRoute, run_scoped_account_id, run_scoped_route_kind, run_scoped_modes_with_route, run_scoped_federation_named, run_scoped_modes,
   branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
   BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
   RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
@@ -3569,7 +3569,6 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
       [
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
-        fleet_converge_grant_only_await_step(),
         fleet_converge_receipt_download_step(
           id: "dashboard_plan_receipt_download",
           name: "Download the plan artifact (carries the plan receipt) from the plan run",
@@ -4820,15 +4819,6 @@ fn fleet_converge_branch_run_grant_await_step() -> Step {
   fleet_converge_branch_run_grant_await_step_when(if_condition: fleet_converge_run_scoped_step_if)
 }
 
-// THE GRANT-ONLY ROWS' WAIT: a mode whose job holds no cloud credential still waits, off main, for the
-// approved grant before it runs the branch's code. It is placed in the mode's own executing job
-// (fleet_converge_mode_job_id), before that job's mutation.
-data fleet_converge_grant_only_step_if: String = join(["(", fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: run_scoped_modes_with_route(route: GrantOnlyRoute))), ") && ", fleet_converge_on_branch_step_if], "")
-
-fn fleet_converge_grant_only_await_step() -> Step {
-  fleet_converge_branch_run_grant_await_step_when(if_condition: fleet_converge_grant_only_step_if)
-}
-
 fn fleet_converge_branch_run_grant_await_step_when(if_condition: String) -> Step {
   RunStep {
     name: Present { value: "Run-scoped grant: wait for the grant run main's broker dispatched for this run attempt" },
@@ -4866,20 +4856,16 @@ fn fleet_converge_granted_account_auth_steps() -> List<Step> {
 }
 
 fn fleet_converge_row_account_text(row: RunScopedMode) -> String {
-  match run_scoped_account_id(m: row) { Present { value: id } => id as String  Absent => "(no account)" }
+  run_scoped_account_id(m: row) as String
 }
 
 fn fleet_converge_row_service_accounts(row: RunScopedMode) -> List<String> {
-  match run_scoped_account_id(m: row) {
-    Absent => []
-    Present { value: id } => match run_scoped_federation_named(account_id: id as String) { Present { value: f } => [f.service_account as String]  Absent => [] }
-  }
+  match run_scoped_federation_named(account_id: run_scoped_account_id(m: row) as String) { Present { value: f } => [f.service_account as String]  Absent => [] }
 }
 
-// A row owes a service account unless its route is grant-only, where an account would be a second
-// credential path beside the grant.
+// A row's account must name a federation; otherwise its sign-in would carry no service account.
 fn fleet_converge_row_owes_account_without_one(row: RunScopedMode) -> Bool {
-  run_scoped_route_kind(m: row) != GrantOnlyRoute && fleet_converge_row_service_accounts(row: row).length() == 0
+  fleet_converge_row_service_accounts(row: row).length() == 0
 }
 
 fn fleet_converge_unfederated_run_scoped_refusal_of(rows: List<RunScopedMode>) -> String? {

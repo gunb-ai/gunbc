@@ -142,32 +142,32 @@ data branch_run_key_variable: NonEmptyStr = "BRANCH_RUN_KEY"
 // the main-only route, so coverage can only widen by a row here. main_route says what the same mode
 // does when dispatched at main: MainUsesFleetIdentity signs in through the main-only fleet pool,
 // MainUsesGrantedAccount keeps the grant at every ref, MainUsesSelectedSource leaves the choice to the
-// mode's own job (the boot job's select_boot_credential_source). GrantOnlyNoAccount is a mode whose
-// job holds no cloud credential at all: off main it still waits for an approved grant (the approval is
-// the admission to run the branch's code in that job), it has no account, no federation and no secret
-// grant, and at main it needs no grant.
+// mode's own job (the boot job's select_boot_credential_source).
 //
-// THE ACCOUNT LIVES INSIDE THE ROUTE that uses one, so a grant-only row with an account and a credentialed
-// row without one have no constructor.
+// dashboard_deploy IS DELIBERATELY NOT A ROW. Its job holds no cloud credential, so there is nothing for
+// IAM to refuse and an approval would be enforced only by the branch's own workflow text, which the
+// branch can delete. A row is admitted only where the grant gates a credential the branch cannot obtain
+// without it. Trigger to add it: an enforcement point outside the branch's workflow text (a main-side
+// gate, or a verified environment protection on srv1-production).
+//
+// THE ACCOUNT LIVES INSIDE THE ROUTE, so every row carries exactly one account and no row can omit it.
 type RunScopedMainRoute
   = MainUsesGrantedAccount { account_id: NonEmptyStr }
   | MainUsesFleetIdentity { account_id: NonEmptyStr }
   | MainUsesSelectedSource { account_id: NonEmptyStr }
-  | GrantOnlyNoAccount
 
-type RunScopedRouteKind = GrantedAccountRoute | FleetIdentityRoute | SelectedSourceRoute | GrantOnlyRoute
+type RunScopedRouteKind = GrantedAccountRoute | FleetIdentityRoute | SelectedSourceRoute
 
 type RunScopedMode {
   mode: NonEmptyStr
   main_route: RunScopedMainRoute
 }
 
-fn run_scoped_account_id(m: RunScopedMode) -> NonEmptyStr? {
+fn run_scoped_account_id(m: RunScopedMode) -> NonEmptyStr {
   match m.main_route {
-    MainUsesGrantedAccount { account_id: a } => Present { value: a }
-    MainUsesFleetIdentity { account_id: a } => Present { value: a }
-    MainUsesSelectedSource { account_id: a } => Present { value: a }
-    GrantOnlyNoAccount => none
+    MainUsesGrantedAccount { account_id: a } => a
+    MainUsesFleetIdentity { account_id: a } => a
+    MainUsesSelectedSource { account_id: a } => a
   }
 }
 
@@ -176,7 +176,6 @@ fn run_scoped_route_kind(m: RunScopedMode) -> RunScopedRouteKind {
     MainUsesGrantedAccount { account_id: _ } => GrantedAccountRoute
     MainUsesFleetIdentity { account_id: _ } => FleetIdentityRoute
     MainUsesSelectedSource { account_id: _ } => SelectedSourceRoute
-    GrantOnlyNoAccount => GrantOnlyRoute
   }
 }
 
@@ -188,7 +187,6 @@ fn run_scoped_modes() -> List<RunScopedMode> {
     RunScopedMode { mode: mtcollins1_boot_mode_name, main_route: MainUsesSelectedSource { account_id: mtcollins1_boot_run_scoped_service_account_id } },
     RunScopedMode { mode: "plan", main_route: MainUsesFleetIdentity { account_id: fleet_plan_run_scoped_service_account_id } },
     RunScopedMode { mode: "apply", main_route: MainUsesFleetIdentity { account_id: fleet_apply_run_scoped_service_account_id } },
-    RunScopedMode { mode: "dashboard_deploy", main_route: GrantOnlyNoAccount },
   ]
 }
 
@@ -206,7 +204,6 @@ fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
     Present { value: m } => match m.main_route {
       MainUsesGrantedAccount { account_id: _ } => Present { value: m }
       MainUsesFleetIdentity { account_id: _ } => if branch == (gunbc_default_branch_name as String) { none } else { Present { value: m } }
-      GrantOnlyNoAccount => if branch == (gunbc_default_branch_name as String) { none } else { Present { value: m } }
       MainUsesSelectedSource { account_id: _ } =>
         match select_boot_credential_source(on_reviewed_main: branch == (gunbc_default_branch_name as String)) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
@@ -304,7 +301,7 @@ fn mtcollins1_boot_run_scoped_federation() -> DedicatedFederation? {
 
 // THE FLEET-CONVERGE MODES THAT RUN AS THE FLEET'S OWN ACCOUNTS FROM A BRANCH (operator, relayed
 // 2026-10-17): plan reads through the existing fleet-cloud-convergence account, which holds no secret
-// grant of its own here; apply and dashboard_deploy each get a narrow account holding only the fleet
+// grant of its own here; apply gets a narrow account holding only the fleet
 // SSH key version, so a mistaken approval costs that key for one run and nothing else. Every account
 // is reached only through a per-attempt cell, never a standing one.
 data fleet_plan_run_scoped_service_account_id: NonEmptyStr = "fleet-cloud-convergence"

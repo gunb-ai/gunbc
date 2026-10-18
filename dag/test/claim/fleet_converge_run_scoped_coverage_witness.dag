@@ -3,13 +3,13 @@ module test.claim.fleet_converge_run_scoped_coverage_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import std.optional { Present, Absent }
-import gunbc.auth.branch_dispatch_federation { run_scoped_mode_named, run_scoped_modes, RunScopedMode, MainUsesFleetIdentity, GrantOnlyRoute, run_scoped_account_id, run_scoped_route_kind, run_scoped_mode_eligible }
+import gunbc.auth.branch_dispatch_federation { run_scoped_mode_named, run_scoped_modes, RunScopedMode, MainUsesFleetIdentity, run_scoped_mode_eligible }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
   fleet_converge_unfederated_run_scoped_refusal_of, fleet_converge_unfederated_run_scoped_refusal,
   fleet_converge_run_scoped_step_if, fleet_converge_branch_account_expression, fleet_converge_jobs, fleet_converge_job, fleet_converge_mode_job_id,
-  FleetConvergeWorkflowMode, DashboardDeploy,
+  FleetConvergeWorkflowMode, DashboardDeploy, Plan,
 }
 import extdeps.github.actions { Step, RunStep, UsesStep, Job }
 import std.types { Int }
@@ -38,9 +38,11 @@ fn uncovered_wires() -> List<String> {
   filter(map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m)), w => coverage_of(mode: w) == MainOnly)
 }
 
-// POSITIVE: the three requested modes are covered, and the census partitions every mode.
-test fn plan_apply_dashboard_deploy_are_covered_and_the_census_partitions_every_mode() -> Bool {
-  covered_wires().contains("plan") && covered_wires().contains("apply") && covered_wires().contains("dashboard_deploy")
+// POSITIVE: plan and apply are covered, dashboard_deploy is deliberately not (its job holds no credential, so a
+// grant would be enforced only by the branch's own workflow text), and the census partitions every mode.
+test fn plan_and_apply_are_covered_dashboard_deploy_is_not_and_the_census_partitions_every_mode() -> Bool {
+  covered_wires().contains("plan") && covered_wires().contains("apply") && !covered_wires().contains("dashboard_deploy")
+    && uncovered_wires().contains("dashboard_deploy")
     && covered_wires().length() + uncovered_wires().length() == fleet_converge_workflow_modes.length()
 }
 
@@ -94,20 +96,10 @@ fn without_the_grant_wait(j: Job) -> Job {
     env: j.env, outputs: j.outputs, if_condition: j.if_condition, timeout_minutes: j.timeout_minutes, continue_on_error: j.continue_on_error, concurrency: j.concurrency, permissions: j.permissions }
 }
 
-fn dashboard_job() -> Job? { executing_job(mode: DashboardDeploy) }
-
-// POSITIVE, JOB-SCOPED: dashboard_deploy (grant-only) has the wait inside its own job before the deploy step,
-// keeps its environment and concurrency, and holds no sign-in step at all; plan and apply (fleet identity)
-// have the wait before the branch-capable sign-in in their job.
+// POSITIVE, JOB-SCOPED: plan and apply (fleet identity) have the wait in their own executing job before the
+// branch-capable sign-in.
 test fn each_covered_mode_waits_for_the_grant_in_its_own_job_before_its_work() -> Bool {
-  (match dashboard_job() {
-    Absent => false
-    Present { value: j } => job_waits_for_the_grant_before(j: j, mode_wire: "dashboard_deploy", work_step_id: "dashboard_deploy")
-      && (match j.environment { Present { value: _ } => true  Absent => false })
-      && (match j.concurrency { Present { value: _ } => true  Absent => false })
-      && !any(j.steps, s => step_id_of(s: s).starts_with("wif_auth"))
-      && step_if_of_opt(s: j.steps[step_index(steps: j.steps, id: "dashboard_deploy")]) == ""
-  }) && all(["plan", "apply"], w => match mode_of_wire(wire: w) {
+  all(["plan", "apply"], w => match mode_of_wire(wire: w) {
     Absent => false
     Present { value: m } => match executing_job(mode: m) {
       Absent => false
@@ -116,34 +108,24 @@ test fn each_covered_mode_waits_for_the_grant_in_its_own_job_before_its_work() -
   })
 }
 
-// RED, JOB-SCOPED: removing the dashboard job's grant connection while the shared job's prelude is intact
-// (the shared job still has its wait) turns the join RED, and the whole-workflow grep still sees a wait.
-test fn removing_the_dashboard_jobs_grant_wait_leaves_the_shared_prelude_and_goes_red() -> Bool {
-  match dashboard_job() {
+// RED, JOB-SCOPED: removing the executing job's grant wait turns the join RED while the workflow as a whole
+// still renders a wait (another job's), so a whole-file grep would stay green.
+test fn removing_the_executing_jobs_grant_wait_goes_red() -> Bool {
+  match executing_job(mode: Plan) {
     Absent => false
     Present { value: j } =>
-      !job_waits_for_the_grant_before(j: without_the_grant_wait(j: j), mode_wire: "dashboard_deploy", work_step_id: "dashboard_deploy")
-        && any(fleet_converge_job().steps, s => step_id_of(s: s) == "branch_run_grant_await")
-        && rendered().contains("id: branch_run_grant_await")
+      job_waits_for_the_grant_before(j: j, mode_wire: "plan", work_step_id: "wif_auth")
+        && !job_waits_for_the_grant_before(j: without_the_grant_wait(j: j), mode_wire: "plan", work_step_id: "wif_auth")
   }
 }
 
-// POSITIVE/RED OF THE GATE ITSELF, as far as the workflow's structure shows it: the wait's failure
-// withholds the deploy (the deploy step carries no always()/failure() and the wait is not continue-on-error),
-// and the wait's own condition is false at main. The wait's refusal of a missing or denied grant is the
-// await entry's (gunbc.auth.branch_run_grant_await).
-test fn a_failed_wait_withholds_the_deploy_and_main_needs_no_wait() -> Bool {
-  match dashboard_job() {
+// RED: dashboard_deploy is outside the relation, so its job has no grant wait and no branch-pool sign-in, and
+// the eligibility rule gives it no grant off main (it keeps today's main-only route).
+test fn dashboard_deploy_keeps_the_main_only_route() -> Bool {
+  (match executing_job(mode: DashboardDeploy) {
     Absent => false
-    Present { value: j } => {
-      let w = j.steps[step_index(steps: j.steps, id: "branch_run_grant_await")]
-      !step_if_of_opt(s: j.steps[step_index(steps: j.steps, id: "dashboard_deploy")]).contains("always()")
-        && match w { Absent => false  Present { value: ws } => match ws { RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: c, timeout_minutes: _ } => match c { Present { value: v } => !v  Absent => true }
-                     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false } }
-        && (match run_scoped_mode_eligible(mode: "dashboard_deploy", branch: "main") { Present { value: _ } => false  Absent => true })
-        && (match run_scoped_mode_eligible(mode: "dashboard_deploy", branch: "work/x") { Present { value: _ } => true  Absent => false })
-    }
-  }
+    Present { value: j } => !any(j.steps, s => step_id_of(s: s) == "branch_run_grant_await")
+  }) && (match run_scoped_mode_eligible(mode: "dashboard_deploy", branch: "work/x") { Present { value: _ } => false  Absent => true })
 }
 
 // RED: a mode outside the relation is named in neither the generator's grant-wait/branch-pool condition
@@ -164,14 +146,4 @@ test fn a_row_with_an_unknown_account_refuses_generation_naming_mode_and_account
     Present { value: r } => r.contains("mode apply account_id no-such-run-account")
     Absent => false
   }) && (match fleet_converge_unfederated_run_scoped_refusal() { Present { value: _ } => false  Absent => true })
-}
-
-// A grant-only row cannot carry an account and a credentialed row cannot lack one: the account lives
-// inside the route variants, so neither mismatch has a constructor. What remains writable is a credentialed
-// route whose account has no federation, and generation refuses it (test above).
-test fn a_grant_only_row_has_no_account_and_every_other_row_has_one() -> Bool {
-  all(run_scoped_modes(), m => match run_scoped_account_id(m: m) {
-    Absent => run_scoped_route_kind(m: m) == GrantOnlyRoute
-    Present { value: _ } => run_scoped_route_kind(m: m) != GrantOnlyRoute
-  })
 }
