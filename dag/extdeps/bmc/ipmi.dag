@@ -485,16 +485,21 @@ type IpmiCompletionCode {
   code: IpmiCompletionCodeByte
 }
 
+// THE SPEC'S SENTENCE LIVES IN THESE COMMENTS, NOT IN A DATA ROW. Each code used to carry a
+// `<name>_text: NonEmptyStr` row beside it, under a note that named two consumers and promised a claim
+// comparing each code to its own row. Neither existed: the rows had no reader once the receipts moved to
+// the observing layer (an import is not a consumer), and this module declares no `test fn`, so the claim
+// was never written -- §3c's "a row no fold reads", with §4c's warning that an annotation is never
+// evidence the claim beside it holds. Both rows are gone rather than given invented consumers. A text row
+// is minted when a caller needs it, naming that caller in the same change, and not before. What is NOT
+// relaxed: the code arrives as a typed `IpmiCompletionCode`, so the BYTE is the fact an operator acts on.
+// Comparison goes through ipmi_completion_code_eq alone, with the named constant in plain sight; a
+// per-code equality wrapper would say the same thing with the constant hidden behind its name and would
+// exist for no caller but a test.
+//
 // 0xCC -- "Invalid data field in Request": a data field in the request was not valid for this
 // controller's policy or state. Distinct from 0xC7 (length) and 0xCC is not an authentication
 // failure: the command was accepted, understood, and refused on policy.
-//
-// THE SPEC'S SENTENCE LIVES IN THIS COMMENT, NOT IN A DATA ROW. A
-// `ipmi_completion_code_invalid_data_field_text: NonEmptyStr` row used to sit beside this code, with a
-// note naming two consumers and promising a claim that compared the code to its own row. Neither
-// consumer read it and the claim was never written -- this module declares no `test fn` -- so the row
-// was §3c's "a row no fold reads" and the note was §4c's annotation-as-evidence. It is gone; a text row
-// is minted when a caller needs it, naming that caller in the same change.
 data ipmi_completion_code_invalid_data_field: IpmiCompletionCode = IpmiCompletionCode { code: 204 }
 
 // 0xC7 -- "Request data length invalid". Carried here because it is the code a reader confuses with
@@ -505,20 +510,6 @@ data ipmi_completion_code_request_data_length_invalid: IpmiCompletionCode = Ipmi
 fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool {
   a.code == b.code
 }
-
-// A CODE'S ENGLISH IS A COMMENT HERE, NOT A DATA ROW. This module used to carry a
-// `<name>_text` row beside each code, with a note naming two consumers and a claim that compared each
-// code against its own row. Neither existed: the module declares no `test fn` at all, so the claim was
-// prose about a check that never ran, and the rows had no reader once the receipts moved to the
-// observing layer -- §3c's "a row no fold reads", with §4c's warning that an annotation is never
-// evidence the claim beside it holds. Deleting them is the fix; a row is minted when a caller needs it,
-// naming that caller in the same change, and not before.
-//
-// What is NOT relaxed: the code arrives as a typed `IpmiCompletionCode`, so the BYTE is the fact an
-// operator acts on, and a refusal that quotes English quotes the spec's sentence for the code it already
-// matched. Comparison goes through ipmi_completion_code_eq alone, with the named constant in plain sight;
-// a per-code equality wrapper would say the same thing with the constant hidden behind its name and would
-// exist for no caller but a test.
 
 // THE IPMI COMMAND-LINE INTERFACE, AS A CLOSED PAIR OF SUMS ────────────────────────────────────
 //
