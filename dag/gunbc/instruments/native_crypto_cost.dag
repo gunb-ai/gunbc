@@ -10,9 +10,9 @@ import extdeps.crypto.signature {
 }
 import extdeps.crypto.nist_p256 { p256_curve, p256_gx, p256_gy, p256_n, p256_affine, p256_double_scalar }
 import extdeps.crypto.nist_prime_curve { curve_fmul, curve_double, curve_add, JacobianPoint, jacobian_is_infinity }
-import extdeps.apple.app_attest { AttestationVerification, AttestationVerified, AssertionVerification, AssertionAuthentic, verify_attestation, verify_assertion, base64_of, decode_attestation, AttestationDecodeOk, AttestationDecodeRefused }
+import extdeps.apple.app_attest { verify_attestation, verify_assertion, base64_of, decode_attestation, AttestationDecodeOk, AttestationDecodeRefused }
 import extdeps.standards.rfc_6979 { rfc6979_a25_p256_public_key, rfc6979_a25_message_sample, rfc6979_a25_p256_sha256_sample_signature }
-import gunbc.instruments.app_attest_sample_rows { ios_14_4_sample, assertion_expectation, AppAttestSample }
+import gunbc.instruments.app_attest_sample_rows { ios_14_4_sample, assertion_expectation, AppAttestSample, owed_attestation_holds, owed_assertion_holds }
 
 // THE NATIVE CRYPTO COST ROWS: how long, natively, each verifier on the approval broker's per-request
 // path takes, in ONE process, so one remote dispatch itemizes the whole chain. The rows are consumed
@@ -91,10 +91,15 @@ fn scalar_row() -> CostRow {
   match bignat_sub(a: p256_n, b: one) {
     Absent => CostRow { identity: "p256_double_scalar_multiplication", held: false, nanos: nanosecond(count: 0) }
     Present { value: nm1 } => {
-      let t0 = observed_monotonic_nanos("scalar-start")
-      let out = p256_double_scalar(u1: nm1, g: g, u2: nm1, q: g)
-      let t1 = observed_monotonic_nanos("scalar-end")
-      CostRow { identity: "p256_double_scalar_multiplication", held: !jacobian_is_infinity(p: out), nanos: nanosecond(count: t1 - t0) }
+      match bignat_sub(a: nm1, b: one) {
+        Absent => CostRow { identity: "p256_double_scalar_multiplication", held: false, nanos: nanosecond(count: 0) }
+        Present { value: nm2 } => {
+          let t0 = observed_monotonic_nanos("scalar-start")
+          let out = p256_double_scalar(u1: nm1, g: g, u2: nm2, q: g)
+          let t1 = observed_monotonic_nanos("scalar-end")
+          CostRow { identity: "p256_double_scalar_multiplication", held: !jacobian_is_infinity(p: out), nanos: nanosecond(count: t1 - t0) }
+        }
+      }
     }
   }
 }
@@ -127,27 +132,13 @@ fn signature_verified(v: SignatureVerification) -> Bool {
 
 // ── extdeps.apple.app_attest over Apple's iOS 14.4 sample: the whole fold, as the broker runs it.
 // The sample predates the validation-category extensions, so the fold's owed verdict is a refusal
-// (gunbc.instruments.native_app_attest states why). The row times the fold to that refusal; how much
-// of the chain it verified before refusing is read from the row's nanoseconds, not assumed.
-fn attestation_refused(v: AttestationVerification) -> Bool {
-  match v {
-    AttestationVerified { verified: _ } => false
-    _ => true
-  }
-}
-
-fn assertion_refused(v: AssertionVerification) -> Bool {
-  match v {
-    AssertionAuthentic { authentic: _ } => false
-    _ => true
-  }
-}
-
+// WITH A NAMED ARM (AppAttestSample owed_attestation / owed_assertion; gunbc.instruments.native_app_attest
+// states why). `held` is that exact owed verdict, so an early refusal of another arm is not_held.
 fn attestation_rows(s: AppAttestSample) -> List<CostRow> {
   let t0 = observed_monotonic_nanos("verify-attestation-start")
   let whole = verify_attestation(object: s.attestation, e: s.expectation)
   let t1 = observed_monotonic_nanos("verify-attestation-end")
-  let first = CostRow { identity: "app_attest_verify_attestation", held: attestation_refused(v: whole), nanos: nanosecond(count: t1 - t0) }
+  let first = CostRow { identity: "app_attest_verify_attestation", held: owed_attestation_holds(owed: s.owed_attestation, v: whole), nanos: nanosecond(count: t1 - t0) }
   match decode_attestation(object: s.attestation) {
     AttestationDecodeRefused { cause: _ } => [first, CostRow { identity: "app_attest_verify_assertion", held: false, nanos: nanosecond(count: 0) }]
     AttestationDecodeOk { decoded: d } =>
@@ -157,7 +148,7 @@ fn attestation_rows(s: AppAttestSample) -> List<CostRow> {
           let a0 = observed_monotonic_nanos("verify-assertion-start")
           let a = verify_assertion(object: s.assertion, e: e)
           let a1 = observed_monotonic_nanos("verify-assertion-end")
-          [first, CostRow { identity: "app_attest_verify_assertion", held: assertion_refused(v: a), nanos: nanosecond(count: a1 - a0) }]
+          [first, CostRow { identity: "app_attest_verify_assertion", held: owed_assertion_holds(owed: s.owed_assertion, v: a), nanos: nanosecond(count: a1 - a0) }]
         }
       }
   }
