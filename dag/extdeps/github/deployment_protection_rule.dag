@@ -262,12 +262,17 @@ fn rule_webhook_payload_from_wire(wire: RuleWebhookWireFields) -> RuleWebhookPar
             }
         }
         Absent =>
-          RuleWebhookRefused { failure: RuleWebhookParseFailure { missing_field: "event" } }
+          RuleWebhookRefused {
+              failure: RuleWebhookParseFailure { missing_field: rule_webhook_field_event },
+            }
       }
       Absent =>
         RuleWebhookRefused { failure: RuleWebhookParseFailure { missing_field: rule_webhook_field_environment } }
     }
-    Absent => RuleWebhookRefused { failure: RuleWebhookParseFailure { missing_field: "action" } }
+    Absent =>
+        RuleWebhookRefused {
+          failure: RuleWebhookParseFailure { missing_field: rule_webhook_field_action },
+        }
   }
 }
 
@@ -301,10 +306,14 @@ data rule_webhook_consumed_fields: List<NonEmptyStr> = [
   rule_webhook_field_deployment_callback_url,
 ]
 
-// The three consumed names, as rows so a citation can name one field.
+// The consumed names, as rows so a citation can name one field. `action` and `event` are not consumed
+// by a rule, but the parse still REFUSES on them, and a refusal whose field name is an inline literal
+// is a name no citation, log line or witness can point at — so all five refused names come from rows.
 data rule_webhook_field_installation: NonEmptyStr = "installation"
 data rule_webhook_field_environment: NonEmptyStr = "environment"
 data rule_webhook_field_deployment_callback_url: NonEmptyStr = "deployment_callback_url"
+data rule_webhook_field_action: NonEmptyStr = "action"
+data rule_webhook_field_event: NonEmptyStr = "event"
 
 // EVERY top-level field the pinned blob gives this payload, in the upstream's spelling. The record
 // above models only what a rule needs; this row is what stops that record from reading as an
