@@ -15,7 +15,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_worker_git_subtree_migration,
   dashboard_git_worker_subtree_path, dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_directory_mode_is_granted, dashboard_git_worker_file_mode_is_granted,
-  dashboard_git_worker_subtree_directory_mode_is_granted, dashboard_git_worker_subtree_needs_sticky,
+  dashboard_git_worker_subtree_granted_directory_mode, dashboard_git_worker_subtree_needs_sticky,
   dashboard_git_worker_granted_shared_directory_mode, dashboard_git_worker_granted_directory_mode,
   dashboard_git_worker_interior_directory_mode_is_accepted, dashboard_git_worker_file_modes_are_equal,
   dashboard_git_worker_directory_mode_is_unmigrated,
@@ -484,9 +484,9 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     adjust_shared_perm adds only the group triple, so a fan-out directory born under the 03775
     //     objects/ is 02775 -- a readback that demanded 03775 throughout would refuse a correctly
     //     granted repository a day after it passed.
-    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_directory_mode_is_granted(child: objects_child), b: granted_shared_directory_mode_expected)
-    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_directory_mode_is_granted(child: refs_child), b: granted_directory_mode_expected)
-    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_directory_mode_is_granted(child: logs_child), b: granted_directory_mode_expected)
+    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_granted_directory_mode(child: objects_child), b: granted_shared_directory_mode_expected)
+    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_granted_directory_mode(child: refs_child), b: granted_directory_mode_expected)
+    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_granted_directory_mode(child: logs_child), b: granted_directory_mode_expected)
     && !dashboard_git_worker_directory_mode_is_granted(mode: granted_shared_directory_mode_expected)
     && dashboard_git_worker_interior_directory_mode_is_accepted(mode: granted_directory_mode_expected)
     && dashboard_git_worker_interior_directory_mode_is_accepted(mode: granted_shared_directory_mode_expected)

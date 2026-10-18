@@ -2230,7 +2230,7 @@ fn dashboard_git_worker_file_modes_are_equal(a: FileMode, b: FileMode) -> Bool {
 // where none does. PER SUBTREE, not one global answer -- a single "is it 02775" predicate would make
 // the sticky fix invisible to the model, because the readback would refuse the tree that is actually
 // correct.
-fn dashboard_git_worker_subtree_directory_mode_is_granted(child: NonEmptyStr) -> FileMode {
+fn dashboard_git_worker_subtree_granted_directory_mode(child: NonEmptyStr) -> FileMode {
   if dashboard_git_worker_subtree_needs_sticky(child: child) {
     dashboard_git_worker_granted_shared_directory_mode
   } else {
@@ -2351,13 +2351,13 @@ fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadb
 //    which is the class of failure this whole follow-up exists to kill (see the recurring failure mode
 //    directory_ownership_assertion_stops_at_the_top_level).
 // THE SAME DECISION OVER AN ARBITRARY TOP MODE. The repository subtrees take their exact top mode from
-// dashboard_git_worker_subtree_directory_mode_is_granted; the per-attempt worktree entry -- whose
+// dashboard_git_worker_subtree_granted_directory_mode; the per-attempt worktree entry -- whose
 // subtree top is granted 02775 and which carries NO sticky bit anywhere, see
 // dispatch_attempt_worker_git_entry_migration -- is decided under dashboard_git_worker_granted_directory_mode.
 // One fold, both callers, so the apply, the spawn and the claims cannot disagree about "granted".
 fn dashboard_git_subtree_readback_is_granted(child: NonEmptyStr, receipt: String) -> Bool {
   dashboard_git_subtree_readback_is_granted_under(
-    top: dashboard_git_worker_subtree_directory_mode_is_granted(child: child),
+    top: dashboard_git_worker_subtree_granted_directory_mode(child: child),
     receipt: receipt,
   )
 }
@@ -2365,8 +2365,11 @@ fn dashboard_git_subtree_readback_is_granted(child: NonEmptyStr, receipt: String
 fn dashboard_git_subtree_readback_is_granted_under(top: FileMode, receipt: String) -> Bool {
   let lines = filter(split(s: receipt, delimiter: "\n"), l => trim(s: l) != "")
   let parsed = map(lines, l => dashboard_git_subtree_readback_line(line: l))
-  !is_empty(parsed)
-    && all(parsed, entry => entry !is Absent)
+  length(parsed) > 0
+    && all(parsed, entry => match entry {
+      Absent => false
+      Present { value: _ } => true
+    })
     && any(parsed, entry => match entry {
       Absent => false
       Present { value: line } => line.is_top
