@@ -110,6 +110,13 @@ test fn an_unrostered_caller_is_refused_at_the_witness_evidence_helper() -> Bool
   blocking_count_for_class_and_subject(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "witness_evidence_reporting") >= 1
 }
 
-test fn the_forged_probe_emits_no_sole_constructor_violation() -> Bool {
-  blocking_count_for_class(c: probe(), wanted: "SoleConstructorViolation") == 0
+// THE FORGERY GOES THROUGH THE DOOR, NOT A LITERAL. MegaRacOperationEvidence is sole_constructor
+// (gunbc.host.megarac_operation_standing), so a bare cross-module literal would itself be a
+// wall. The forged probe must attempt the SEALED MINTS and be refused at their call admission;
+// if someone "fixes" the reds by writing the evidence as a literal, this claim turns red instead
+// and the seal stays honest. Per-subject, not class-wide: this probe deliberately writes sealed
+// literals of its own kind (BmcControlBinding, the admitted-subject carriers), exactly as the
+// machine_intake forged probe does, so the class has legitimate rows.
+test fn the_evidence_forgery_goes_through_the_door_and_not_a_literal() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(), wanted: "SoleConstructorViolation", subject: "MegaRacOperationEvidence") == 0
 }
