@@ -18132,6 +18132,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
             type_summaries: inner_state.type_summaries,
             type_decl_items: type_decl_index_insert(index: inner_state.type_decl_items, owner_module: module_name, decl_name: carrier_name, item: item),
             fn_decl_items: inner_state.fn_decl_items,
+            fn_decl_identity_items: inner_state.fn_decl_identity_items,
             structural_alias_fn_surface_names: inner_state.structural_alias_fn_surface_names,
             structural_alias_direct_fn_names: inner_state.structural_alias_direct_fn_names
           }

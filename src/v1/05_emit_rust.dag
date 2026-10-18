@@ -1977,7 +1977,7 @@ fn render_rust_declaration_position(n: Node, spelled: String, shared_types: Set<
     _ => false
   }
   let bare_declared_leaf = names_declaration && find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) == none && n.return_cardinality != CardOptional && leaf != "" && !is_container_type(name: leaf) && !(generic_param_names |> any(g => g == leaf))
-  let dbg = if leaf == "TerminationProof" { concat("/*DBG names=", to_string(names_declaration), " bare=", to_string(bare_declared_leaf), " applied=", to_string(find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) == none), " card=", to_string(n.return_cardinality != CardOptional), " spelled=", spelled, "*/") } else { "" }
+  let dbg = if leaf == "TerminationProof" { concat("/*DBG names=", if names_declaration { "T" } else { "F" }, " bare=", if bare_declared_leaf { "T" } else { "F" }, " spelled=", spelled, "*/") } else { "" }
   if bare_declared_leaf {
     concat(rust_field_stored_layer_type(rt_field: n, ty: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names), dbg)
   } else {

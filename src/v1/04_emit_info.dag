@@ -695,6 +695,7 @@ fn emit_info_with_type_decl_items(emit_info: EmitGraphInfo, type_decl_items: Typ
     type_summaries: emit_info.type_summaries,
     type_decl_items: type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_decl_items: emit_info.fn_decl_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
     recursive_type_set: emit_info.recursive_type_set,
