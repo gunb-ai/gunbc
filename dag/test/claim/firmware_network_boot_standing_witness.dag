@@ -1307,9 +1307,24 @@ fn sole_ctor_count(source: String) -> Int {
 // identical forged evidence in a hand-written Ready must add at least one refusal of its own, and the
 // baseline must refuse at least one (proving the source compiled and the harness reports). Delete
 // `sole_constructor` from the verdict union and the second arm goes red.
+// WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused and the lawful pair
+// over the SAME imports must be clean -- without that pair, "the probe refused" is indistinguishable
+// from "the probe never compiled". The mutation that reddens it is deleting `sole_constructor` from the
+// ReadyEvidence RECORD: both forgeries can obtain their evidence only through that type's mint, so
+// custody of a verdict runs through custody of its evidence.
+//
+// What this does NOT prove is that the `sole_constructor` annotation on the FirmwareNetworkBootStanding
+// UNION refuses anything. Measured directly -- wrapping an already-forged evidence in a hand-written
+// `Ready {...}` raised the violation count by ZERO -- so the union-level annotation is not what
+// refuses, and an earlier version of this test asserting that delta was wrong. It is kept at the type as
+// recorded intent (it costs nothing; the corpus's own audit probe frames the coproduct case as the open
+// question), and documented there as intent, not as a wall. Claiming the annotation was the wall would
+// have been rung inflation inside my own evidence -- the exact defect the reviews on this PR caught all
+// day, so the claim here is written to what a probe executed rather than to what the type appears to say.
 test fn no_foreign_module_may_write_a_verdict_by_hand() -> Bool {
-  sole_ctor_count(source: forge_ready_source)
-    >= sole_ctor_count(source: forge_evidence_only_source) + 1
+  sole_ctor_count(source: forge_evidence_only_source) >= 1
+    && sole_ctor_count(source: forge_ready_source) >= 1
+    && sole_ctor_count(source: lawful_verdict_source) == 0
 }
 
 test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
