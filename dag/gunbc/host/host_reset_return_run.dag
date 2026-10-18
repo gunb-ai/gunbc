@@ -534,6 +534,10 @@ fn host_reset_return_issue_and_watch(
         username: account,
         password_file: password_file,
         selection: candidate.boot_selection,
+        // the row the reset selection was admitted on, carried off the candidate. The observation
+        // supplies endpoint/route/receipt-binding only; its probed firmware answers no capability
+        // question here (the side-chat reflash-staleness defect lived exactly in that re-lookup).
+        capability_row: candidate.capability_row,
       )
       let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)
       let observation = observe_reset_return(

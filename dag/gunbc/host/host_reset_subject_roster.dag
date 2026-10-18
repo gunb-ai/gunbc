@@ -1,12 +1,12 @@
 module gunbc.host.host_reset_subject_roster
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.oob_boot_handoff {
   OobBootHandoffAdmission,
-  oob_boot_handoff_admission,
-  oob_handoff_is_admitted,
+  oob_boot_handoff_admission_for_row, oob_handoff_is_admitted,
 }
 import gunbc.host.managed_host {
   ManagedHost,
@@ -58,6 +58,13 @@ type AdmittedResetSubject sole_constructor {
   host: ManagedHost
   route: BmcControlBoundRoute
   boot_selection: IpmiBootSelection
+  // THE CAPABILITY ROW THE RESET SELECTION WAS ADMITTED ON, carried from the one resolution pass
+  // (gunbc.host.virtual_media_boot_selection decide_virtual_media_boot_selection). host_reset_return_run
+  // hands THIS row to the handoff admission; the access observation keeps only its own facts (endpoint,
+  // route, receipt binding). Re-resolving the row from observation.identity.firmware at the handoff is
+  // the reflash-staleness defect (the side-chat finding: boot admitted on 0.45.3, handoff reading the
+  // historical 0.32 row), and it cannot be re-opened from here without deliberately discarding this.
+  capability_row: BmcFirmwareReleaseCapabilityRow
 }
 
 type ResetSubjectAdmission
@@ -71,10 +78,13 @@ fn admit_reset_subject(evidence: MegaRacOperationEvidence, host: ManagedHost) ->
     BmcControlBound { route: route } =>
       match reset_boot_selection(evidence: evidence, host: host) {
         VirtualMediaBootSelectionRefused { cause: c } => ResetSubjectNoSelection { host: host.host, cause: c }
-        VirtualMediaBootSelectionAdmitted { selection: selection } => {
-          let admission = oob_boot_handoff_admission(observation: bmc_control_route_observation(route: route))
+        VirtualMediaBootSelectionAdmitted { selection: selection, capability_row: row } => {
+          // THE SAME ROW THE SELECTION WAS DECIDED FROM answers the handoff's capability questions --
+          // one resolution, carried, not a second lookup the observation's firmware could redirect.
+          let admission = oob_boot_handoff_admission_for_row(
+            observation: bmc_control_route_observation(route: route), capability_row: row)
           if oob_handoff_is_admitted(admission: admission) {
-            ResetSubjectAdmitted { subject: AdmittedResetSubject { host: host, route: route, boot_selection: selection } }
+            ResetSubjectAdmitted { subject: AdmittedResetSubject { host: host, route: route, boot_selection: selection, capability_row: row } }
           } else {
             ResetSubjectControllerNotAdmitted { admission: admission }
           }

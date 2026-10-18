@@ -34,9 +34,14 @@ import gunbc.machine_intake.oob_boot_handoff {
   PowerCommandRefused,
   PowerStateReadFailed,
   oob_boot_handoff,
-  oob_boot_handoff_admission,
   oob_power_action_verb,
   power_transition_progress_text,
+}
+import gunbc.host.bmc_release_capability_catalog {
+  megarac_release_capability_row_for,
+  MegaRacReleaseCapabilityKnown,
+  MegaRacReleaseCapabilityUncatalogued,
+  MegaRacReleaseCapabilityAmbiguous,
 }
 import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 
@@ -165,6 +170,8 @@ fn boot_drive_handoff(
             username: account,
             password_file: pw,
             selection: subject.selection,
+            // the row the boot admission decided on, straight off the subject -- never a re-lookup
+            capability_row: subject.capability_row,
           )
           BootHandoffResult {
             outcome: boot_handoff_render_outcome(label: label, outcome: outcome),
@@ -191,7 +198,19 @@ fn boot_handoff_admission_probe_of(host: ManagedHost) -> String? {
     BmcControlEndpointMismatch { observed: _, secured: _ } => Present { value: concat(host.host as String, ": observed and secured controllers differ, so the row is not bound") }
     BmcControlBound { route: route } => {
       let b = bmc_control_route_observation(route: route)
-      let admitted = match oob_boot_handoff_admission(observation: b) {
+      // THE PROBE ASKS THE CATALOG AS ITSELF. This is a coverage diagnostic -- "is the PROBED
+      // version catalogued, and do its measured rows admit the controller" -- not the live capability
+      // decision, so naming the catalog lookup here is honest. The live path (oob_boot_handoff) never
+      // consults it; it takes the carried row.
+      let probed_row = match megarac_release_capability_row_for(firmware: b.identity.firmware) {
+        MegaRacReleaseCapabilityKnown { row: row } => Present { value: row }
+        MegaRacReleaseCapabilityUncatalogued { firmware: _ } => none
+        MegaRacReleaseCapabilityAmbiguous { firmware: _, count: _ } => none
+      }
+      let admitted = match match probed_row {
+        Absent => OobHandoffRowUncatalogued { firmware: b.identity.firmware }
+        Present { value: row } => oob_boot_handoff_admission_for_row(observation: b, capability_row: row)
+      } {
         OobHandoffAdmitted { route: _ } => true
         OobHandoffRouteUnobserved => false
         OobHandoffBootSourceOverrideUnavailable => false

@@ -1,4 +1,5 @@
 module gunbc.host.managed_host_boot
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 
 import std.types { List, NonEmptyStr, String }
 import std.optional { Present, Absent }
@@ -65,6 +66,14 @@ type AdmittedBootSubject sole_constructor {
   route: BmcControlBoundRoute
   medium: BootMedium
   selection: IpmiBootSelection
+  // THE CAPABILITY ROW THE SELECTION WAS ADMITTED ON, carried from the one resolution pass
+  // (gunbc.host.virtual_media_boot_selection decide_virtual_media_boot_selection). Downstream
+  // consumers -- boot_drive_handoff and the handoff admission it drives -- answer their capability
+  // questions off THIS row, never off the access observation's firmware: the observation records what
+  // was PROBED at intake, and after a reflash that is the wrong release (the side-chat defect: the
+  // live handoff read the historical 0.32 row while the boot was admitted on 0.45.3). An admitted
+  // subject without its row cannot be written -- sole_constructor, and the only mint binds it.
+  capability_row: BmcFirmwareReleaseCapabilityRow
   execution_revision: NonEmptyStr
 }
 
@@ -88,8 +97,8 @@ fn admit_boot_subject(
       match boot_selection(evidence: evidence, host: host) {
         VirtualMediaBootSelectionRefused { cause: c } =>
           BootSubjectRefused { host: host.host, cause: BootSubjectNoSelection { cause: c } }
-        VirtualMediaBootSelectionAdmitted { selection: s } =>
-          BootSubjectAdmitted { subject: AdmittedBootSubject { host: host, route: route, medium: medium, selection: s, execution_revision: execution_revision } }
+        VirtualMediaBootSelectionAdmitted { selection: s, capability_row: row } =>
+          BootSubjectAdmitted { subject: AdmittedBootSubject { host: host, route: route, medium: medium, selection: s, capability_row: row, execution_revision: execution_revision } }
       }
     BmcControlAccessUnobserved { endpoint: e } =>
       BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: BmcControlAccessUnobserved { endpoint: e } } }
