@@ -8,7 +8,7 @@ use crate::v1_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::extdeps_languages_rust_capabilities::{phantom_opaque_carrier_derive_traits};
-pub use crate::extdeps_languages_rust_emit::{rust_trait_derive_attr_from_traits, rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates, rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case, HigherOrderMethodSpec, rust_higher_order_methods, rust_value_binding_candidate, fresh_rust_value_binding_name, rust_refusing_int_target_type, rust_refusing_int_operator_helper, rust_refusing_int_negation_helper};
+pub use crate::extdeps_languages_rust_emit::{rust_trait_derive_attr_from_traits, rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates, rust_machine_word_lowering, rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case, HigherOrderMethodSpec, rust_higher_order_methods, rust_value_binding_candidate, fresh_rust_value_binding_name, rust_refusing_int_target_type, rust_refusing_int_operator_helper, rust_refusing_int_negation_helper};
 pub use crate::extdeps_languages_rust_representation::{rust_exact_type_checkpoint};
 pub use crate::extdeps_rust_cargo::{CargoFeature};
 pub use crate::extdeps_rust_version::{render_cargo_package_header_prefix};
@@ -6741,6 +6741,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 module_index.clone(),
             ),
             fn_decl_items: base_info.fn_decl_items.clone(),
+            fn_decl_identity_items: base_info.fn_decl_identity_items.clone(),
             fn_map_key_bounds: v1_fn_map_key_bound_table(
                 base_info.fn_decl_items.clone(),
                 base_info.type_decl_items.clone(),
@@ -8036,6 +8037,7 @@ pub fn emit_module(
                 module_index.clone(),
             ),
             fn_decl_items: base_info.fn_decl_items.clone(),
+            fn_decl_identity_items: base_info.fn_decl_identity_items.clone(),
             fn_map_key_bounds: v1_fn_map_key_bound_table(
                 base_info.fn_decl_items.clone(),
                 base_info.type_decl_items.clone(),
@@ -11064,6 +11066,7 @@ pub fn emit_module_full(
             type_decl_items: emit_info.type_decl_items.clone(),
             data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
             fn_decl_items: emit_info.fn_decl_items.clone(),
+            fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
             fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
             recursive_type_set: emit_info.recursive_type_set.clone(),
             fielded_variants: emit_info.fielded_variants.clone(),
@@ -16299,6 +16302,7 @@ pub fn emit_typed_item(
                         type_decl_items: emit_info.type_decl_items.clone(),
                         data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
                         fn_decl_items: emit_info.fn_decl_items.clone(),
+                        fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
                         fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
                         recursive_type_set: emit_info.recursive_type_set.clone(),
                         fielded_variants: emit_info.fielded_variants.clone(),
@@ -27744,6 +27748,346 @@ pub fn rust_emit_length_on_host_string(
     }
 }
 
+pub fn declared_param_position(params: Rc<Vec<Rc<Node>>>, name: String) -> i64 {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for pair in Rc::new(
+            params
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            if (pair.1.clone().name.clone() == name.clone()) {
+                __result.push(pair);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(pair) => pair.0.clone(),
+        std::option::Option::None => v1_rt::int_sub(0, 1),
+    }
+}
+
+pub fn constructor_literal_parent(n: Rc<Node>) -> String {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: bk, ..
+        } => match variant_parent_from_binding_kind(bk.clone()) {
+            Some(parent) => parent.clone(),
+            std::option::Option::None => "".to_string(),
+        },
+        _ => "".to_string(),
+    }
+}
+
+pub fn constructor_literal_leaf(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: bk, ..
+        } => {
+            if (variant_parent_from_binding_kind(bk.clone()) != std::option::Option::None) {
+                value_ref_qualified_leaf(crate::v1_std_core::expr_var_name_at(
+                    n.clone(),
+                    source_indices.clone(),
+                ))
+            } else {
+                "".to_string()
+            }
+        }
+        _ => "".to_string(),
+    }
+}
+
+pub fn arm_names_constructor(arm: Rc<Node>, parent: String, constructor: String) -> bool {
+    match (*crate::v1_std_core::arm_pattern(arm.clone())).clone() {
+        MatchPattern::VariantPattern {
+            name: arm_name,
+            parent_enum: arm_parent,
+            ..
+        } => {
+            (match arm_parent.clone() {
+                Some(arm_parent_name) => (arm_parent_name.clone() == parent.clone()),
+                std::option::Option::None => false,
+            } && (value_ref_qualified_leaf(arm_name.clone()) == constructor.clone()))
+        }
+        _ => false,
+    }
+}
+
+pub fn literal_text_of(result: Rc<Node>) -> Option<String> {
+    match crate::v1_std_core::expr_literal_string_optional(result.clone()) {
+        Some(text) => Some(text.clone()),
+        std::option::Option::None => {
+            match crate::v1_std_core::expr_literal_int_optional(result.clone()) {
+                Some(number) => Some(crate::v1_compiler_emit_core_support::to_string(
+                    number.clone(),
+                )),
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+    }
+}
+
+pub fn arm_is_nullary_variant(arm: Rc<Node>) -> bool {
+    match (*crate::v1_std_core::arm_pattern(arm.clone())).clone() {
+        MatchPattern::VariantPattern {
+            field_bindings: bindings,
+            ..
+        } => ((bindings.clone().len() as i64) == 0),
+        _ => false,
+    }
+}
+
+pub fn declared_literal_match_result(
+    owner_module: String,
+    fn_name: String,
+    parent: String,
+    constructor: String,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match v1_rt::map_get(
+        &emit_info.fn_decl_identity_items.clone(),
+        crate::v1_compiler_infer_emit_info::type_decl_identity(
+            owner_module.clone(),
+            fn_name.clone(),
+        ),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(item) => match item.body.clone() {
+            std::option::Option::None => std::option::Option::None,
+            Some(body) => match (*body.expr_data.clone()).clone() {
+                ExprData::ExprMatch => {
+                    let value_params = function_value_params(item.params.clone());
+                    let arms = crate::v1_std_core::match_arm_nodes(body.clone());
+                    let sole_param_scrutinee = (((value_params.clone().len() as i64) == 1)
+                        && match value_params.clone().first().cloned() {
+                            Some(p) => {
+                                (p.name.clone()
+                                    == crate::v1_std_core::expr_var_name_at(
+                                        crate::v1_std_core::match_scrutinee(body.clone()),
+                                        source_indices.clone(),
+                                    ))
+                            }
+                            std::option::Option::None => false,
+                        });
+                    if (sole_param_scrutinee.clone() && {
+                        let mut __all = true;
+                        for arm in arms.iter().cloned() {
+                            if !(arm_is_nullary_variant(arm.clone())) {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    }) {
+                        match Rc::new({
+                            let mut __result = Vec::new();
+                            for arm in arms.iter().cloned() {
+                                if arm_names_constructor(
+                                    arm.clone(),
+                                    parent.clone(),
+                                    constructor.clone(),
+                                ) {
+                                    __result.push(arm);
+                                }
+                            }
+                            __result
+                        })
+                        .first()
+                        .cloned()
+                        {
+                            Some(arm) => literal_text_of(crate::v1_std_core::arm_body(arm.clone())),
+                            std::option::Option::None => std::option::Option::None,
+                        }
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+                _ => std::option::Option::None,
+            },
+        },
+    }
+}
+
+pub fn emit_machine_word_lowered_call(
+    call_target: Rc<CallTargetIdentity>,
+    func: String,
+    args: Rc<Vec<Rc<Node>>>,
+    call_semantics: Option<Rc<CallSemantics>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Option<String> {
+    {
+        let owner = match (*call_target.clone()).clone() {
+            CallTargetIdentity::SourceDeclarationCall {
+                owner_module_path: owner_path,
+                decl_name: decl,
+                ..
+            } => {
+                if (decl.clone() == rust_machine_word_lowering().apply_fn.clone()) {
+                    owner_path.clone()
+                } else {
+                    "".to_string()
+                }
+            }
+            _ => "".to_string(),
+        };
+        if (owner.clone() != rust_machine_word_lowering().owner_module.clone()) {
+            std::option::Option::None
+        } else {
+            {
+                let ordered = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
+                    args.clone(),
+                    func.clone(),
+                    call_semantics.clone(),
+                    scope.clone(),
+                );
+                let apply_params = match v1_rt::map_get(
+                    &emit_info.fn_decl_identity_items.clone(),
+                    crate::v1_compiler_infer_emit_info::type_decl_identity(
+                        owner.clone(),
+                        rust_machine_word_lowering().apply_fn.clone(),
+                    ),
+                ) {
+                    Some(apply_item) => function_value_params(apply_item.params.clone()),
+                    std::option::Option::None => Rc::new(vec![]),
+                };
+                let op_at = declared_param_position(
+                    apply_params.clone(),
+                    rust_machine_word_lowering().operator_param.clone(),
+                );
+                let width_at = declared_param_position(
+                    apply_params.clone(),
+                    rust_machine_word_lowering().width_param.clone(),
+                );
+                let a_at = declared_param_position(
+                    apply_params.clone(),
+                    rust_machine_word_lowering().a_param.clone(),
+                );
+                let b_at = declared_param_position(
+                    apply_params.clone(),
+                    rust_machine_word_lowering().b_param.clone(),
+                );
+                if ((((((ordered.clone().len() as i64) != (apply_params.clone().len() as i64))
+                    || (op_at.clone() < 0))
+                    || (width_at.clone() < 0))
+                    || (a_at.clone() < 0))
+                    || (b_at.clone() < 0))
+                {
+                    std::option::Option::None
+                } else {
+                    {
+                        let si = scope.type_env.clone().source_indices.clone();
+                        let op_arg = crate::v1_std_core::arg_value(
+                            ordered
+                                .clone()
+                                .get((op_at.clone()) as usize)
+                                .cloned()
+                                .clone()
+                                .unwrap(),
+                        );
+                        let width_arg = crate::v1_std_core::arg_value(
+                            ordered
+                                .clone()
+                                .get((width_at.clone()) as usize)
+                                .cloned()
+                                .clone()
+                                .unwrap(),
+                        );
+                        let op_leaf = constructor_literal_leaf(op_arg.clone(), si.clone());
+                        let width_leaf = constructor_literal_leaf(width_arg.clone(), si.clone());
+                        let op_parent = constructor_literal_parent(op_arg.clone());
+                        let width_parent = constructor_literal_parent(width_arg.clone());
+                        let label = if (op_leaf.clone() == "".to_string()) {
+                            std::option::Option::None
+                        } else {
+                            declared_literal_match_result(
+                                owner.clone(),
+                                rust_machine_word_lowering().operator_label_fn.clone(),
+                                op_parent.clone(),
+                                op_leaf.clone(),
+                                emit_info.clone(),
+                                si.clone(),
+                            )
+                        };
+                        let bits = if (width_leaf.clone() == "".to_string()) {
+                            std::option::Option::None
+                        } else {
+                            declared_literal_match_result(
+                                owner.clone(),
+                                rust_machine_word_lowering().width_bits_fn.clone(),
+                                width_parent.clone(),
+                                width_leaf.clone(),
+                                emit_info.clone(),
+                                si.clone(),
+                            )
+                        };
+                        match label.clone() {
+                            Some(label_text) => {
+                                match bits.clone() {
+                                    Some(bits_text) => {
+                                        let a_str = emit_typed_expr(
+                                            crate::v1_std_core::arg_value(
+                                                ordered
+                                                    .clone()
+                                                    .get((a_at.clone()) as usize)
+                                                    .cloned()
+                                                    .clone()
+                                                    .unwrap(),
+                                            ),
+                                            registry.clone(),
+                                            scope.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            emit_info.clone(),
+                                            1024,
+                                        );
+                                        let b_str = emit_typed_expr(
+                                            crate::v1_std_core::arg_value(
+                                                ordered
+                                                    .clone()
+                                                    .get((b_at.clone()) as usize)
+                                                    .cloned()
+                                                    .clone()
+                                                    .unwrap(),
+                                            ),
+                                            registry.clone(),
+                                            scope.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            emit_info.clone(),
+                                            1024,
+                                        );
+                                        Some(crate::v1_compiler_emit_core_support::apply_named_template(rust_machine_word_lowering().template.clone(), v1_rt::rc_map_insert(v1_rt::rc_map_insert(v1_rt::rc_map_insert(crate::v1_compiler_emit::seed_bindings("a".to_string(), a_str.clone()), "b".to_string(), b_str.clone()), "label".to_string(), label_text.clone()), "bits".to_string(), bits_text.clone())))
+                                    }
+                                    std::option::Option::None => std::option::Option::None,
+                                }
+                            }
+                            std::option::Option::None => std::option::Option::None,
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
@@ -27770,6 +28114,20 @@ pub fn emit_typed_call(
             );
         }
         let target_is_runtime = call_target_is_runtime_primitive(call_target.clone());
+        match emit_machine_word_lowered_call(
+            call_target.clone(),
+            func.clone(),
+            args.clone(),
+            call_semantics.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+        ) {
+            Some(word_call) => return word_call.clone(),
+            std::option::Option::None => {}
+        }
         if (target_is_runtime.clone() && (func.clone() == "get".to_string())) {
             {
                 let get_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
@@ -29444,6 +29802,7 @@ pub fn emit_rust_fold_method_call(
                                 .data_variant_wire_spellings
                                 .clone(),
                             fn_decl_items: emit_info.fn_decl_items.clone(),
+                            fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
                             fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
                             recursive_type_set: emit_info.recursive_type_set.clone(),
                             fielded_variants: emit_info.fielded_variants.clone(),
@@ -29499,6 +29858,7 @@ pub fn emit_rust_fold_method_call(
                                     .data_variant_wire_spellings
                                     .clone(),
                                 fn_decl_items: emit_info.fn_decl_items.clone(),
+                                fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
                                 fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
                                 fielded_variants: emit_info.fielded_variants.clone(),
