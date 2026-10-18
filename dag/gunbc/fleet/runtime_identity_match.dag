@@ -425,12 +425,8 @@ type RuntimeIdentityDivergence {
 
 // THE PRE-BOOT STANDING: what the firmware side said before the boot, per axis. Every axis is present as a
 // field, and each field is itself a three-way union, so there is no way to state a pre-boot standing that
-// quietly omits an axis -- and no way to claim a value while admitting nothing was read.
-//
-// The unit is CARRIED here and on the other side, and the match fn never compares the two keys (both keys
-// are handed to the verdict unchanged, so nothing is lost and nothing is inferred about their relation):
-// this is a
-// proof about the machine's own reportings, not a check that two labels were spelled the same.
+// quietly omits an axis -- and no way to claim a value while admitting nothing was read. The unit is carried
+// on both sides and never compared; why is argued once, at RuntimeIdentityVerdict.
 type PreBootIdentityStanding {
   unit: UnitKey
   board_serial: AxisStanding<NonEmptyStr>
