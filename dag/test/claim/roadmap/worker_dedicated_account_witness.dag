@@ -1066,7 +1066,7 @@ fn first_plan_index(
   plan: List<DashboardInstanceProvisionOp>,
   predicate: fn(DashboardInstanceProvisionOp) -> Bool,
 ) -> Int? {
-  fold(plan, init: PlanIndexScan { next: 0, found: none }, f: fn(acc: PlanIndexScan, op: DashboardInstanceProvisionOp) -> PlanIndexScan {
+  fold(plan, init: PlanIndexScan { next: 0, found: none }, f: fn(acc, op) {
     match acc.found {
       Present { value: _ } => acc
       Absent =>
