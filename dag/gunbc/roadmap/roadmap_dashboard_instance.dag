@@ -2262,13 +2262,25 @@ fn dashboard_git_worker_interior_directory_mode_is_accepted(mode: FileMode) -> B
     || dashboard_git_worker_file_modes_are_equal(a: mode, b: dashboard_git_worker_granted_shared_directory_mode)
 }
 
-// A GRANTED FILE is group-writable and NOT world-writable, read as the two fields that say so rather
-// than as a peeled digit: `group.write` is the grant the worker needs and `other.write` is the thing
-// #13942's confinement refuses, so the predicate names the consequences it is actually asserting.
-// (0666 is refused by the second conjunct, 0444 -- a loose object -- by the first, and neither needs
-// to be enumerated.)
+// A GRANTED FILE is group-writable, NOT world-writable, and carries NEITHER special bit -- three
+// fields read as the consequences they state rather than as a peeled digit. `group.write` is the grant
+// the worker needs; `other.write` is the thing #13942's confinement refuses, so 0666 is out and 0444 --
+// a loose object as git first writes it, before the migration's sweep reaches it -- is out through the
+// first conjunct.
+//
+// AND SETGID/STICKY ARE OUT, which is not a leftover from the classifier rewrite but the half of the
+// rule the classifier made visible. The readback's file leg is the ONLY thing standing between a tree
+// and a green receipt for an entry that is not a file at all: a line reading `f 2775 f9/obj` is a
+// regular file wearing the directory grant, and a predicate that read only the rwx fields would report
+// it granted. The modes git itself creates inside a granted subtree are 0664 (refs, reflogs, the
+// worktree entry's files) and 0444-then-0664 (loose objects, after the sweep); none carries a special
+// bit, because chmod only ever sets g+s on `-type d` lines (see find_subtree_group_writable_command --
+// setgid on a file is a privilege shape, S_ISGID on an executable makes it set-group-id-to-the-group-of-
+// its-owner). So a file WITH the bit is not a state the granted tree is ever in: accepting it would make
+// the readback pass over exactly the tree the migration was written to refuse. (A claim leg pins the
+// same refusal at the predicate itself, so it cannot quietly widen again.)
 fn dashboard_git_worker_file_mode_is_granted(mode: FileMode) -> Bool {
-  mode.group.write && !mode.other.write
+  mode.group.write && !mode.other.write && !mode.setgid && !mode.sticky
 }
 
 // THE PRE-MIGRATION STATE, stated as its negation so a claim can point at it directly: what srv1

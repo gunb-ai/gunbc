@@ -685,9 +685,17 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
         && !dashboard_git_worker_directory_mode_is_granted(mode: m)
       Absent => false
     }
-    // 664 with the setgid bit carried on a FILE is still a granted file: the bit is inert there, and a
-    // file predicate that refused it would refuse a mode chmod can produce.
-    && dashboard_git_worker_file_mode_is_granted(mode: setgid_file_mode)
+    // A SETGID FILE IS NOT A GRANTED FILE. The bit is inert on a regular file (the kernel ignores it for
+    // access control) -- which is exactly why it must be refused rather than waved through: the readback's
+    // file leg is the only thing that decides whether a receipt line is a granted ENTRY, and `f 2775`
+    // under objects/ is a regular file wearing the directory grant, the very shape the sweep exists to
+    // remove. The migration sets g+s only on `-type d` lines, and the modes git creates inside a granted
+    // subtree (0664 refs/reflogs/worktree files, 0444-then-0664 loose objects) carry no special bit, so
+    // accepting a setgid file would make the readback green over a tree the model says is not granted.
+    // (An earlier round of this file asserted the opposite, reading "the bit is inert" as "the bit is
+    // harmless"; inert is not the same as correct, and the leg probe -- not a claim -- caught the
+    // weakness, which is why the probe was written.)
+    && !dashboard_git_worker_file_mode_is_granted(mode: setgid_file_mode)
     // AND AN UNPARSEABLE OBSERVATION IS REFUSED, not treated as absent permission: `find` can print a
     // mode we cannot read (a weird locale, a truncated line), and a readback that silently accepted
     // that would report a granted tree.
