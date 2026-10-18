@@ -7,7 +7,7 @@ import extdeps.http.client
 import extdeps.http.client { http_client_max_time_flag }
 import extdeps.tools.curl { CurlTransferCompleted, curl_exit_outcome, curl_exit_outcome_name, classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
 import extdeps.crypto.signature {
-  VerifyingKey, SignatureBytes, SignatureVerification, SignatureVerified, SignatureInvalid, EcdsaP256Sha256, SignedMessage, signed_message_from_native_realization,
+  VerifyingKey, SignatureBytes, SignatureVerification, SignatureVerified, SignatureInvalid, SignatureMalformed, VerifyingKeyMalformed, SignatureSuiteMismatch, VerifyingKeyUndecodable, SignatureUndecodable, EcdsaP256Sha256, SignedMessage, signed_message_from_native_realization,
 }
 import extdeps.apple.app_attest {
   AttestationExpectation, AssertionExpectation, AttestKeyId, AppAttestEnvironment, VerifiedAttestation, AuthenticAssertion,
@@ -22,7 +22,8 @@ import gunbc.auth.approval_device_crypto_wire {
   device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path,
   SignatureCheck, signature_check_request_json, attestation_check_request_json, assertion_check_request_json,
   DeviceCryptoAnswer, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused,
-  DeviceCryptoPayload, NoPayload, SignedPayload, AttestedPayload, AssertedPayload,
+  DeviceCryptoPayload, NoPayload, SignedPayload, AttestedPayload, AssertedPayload, RefusedPayload,
+  signature_negative_of_wire, attestation_refusal_of_wire, assertion_refusal_of_wire, assertion_refusal_verdict,
   decode_device_crypto_answer,
 }
 
@@ -138,6 +139,58 @@ fn asserted_from(admission: DeviceCryptoAdmission, id: AttestKeyId, pk: NonEmpty
   }
 }
 
+// THE FOLD'S OWN NEGATIVE, REBUILT FROM THE WIRE: the arm and its members become the same extdeps value the in-process
+// fold returns. An arm or members the wire does not name, or a verdict that disagrees with its arm, is the sidecar
+// answering outside its contract (SidecarFailed), never a client fault and never a fabricated verdict.
+fn signature_verdict_agrees(v: SignatureVerification, verdict: DeviceCryptoVerdict) -> Bool {
+  match v {
+    SignatureVerified { verified: _ } => false
+    SignatureInvalid { suite: _ } => verdict == CryptoInvalid
+    SignatureMalformed { declared: _, expected: _ } => verdict == CryptoRefused
+    VerifyingKeyMalformed { declared: _, expected: _ } => verdict == CryptoRefused
+    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => verdict == CryptoRefused
+    VerifyingKeyUndecodable { point_b64url: _ } => verdict == CryptoRefused
+    SignatureUndecodable { b64url: _ } => verdict == CryptoRefused
+  }
+}
+
+fn signature_negative_from(answer: DeviceCryptoAnswer) -> SidecarResult<SignatureVerification> {
+  match answer.payload {
+    RefusedPayload { fields: f } =>
+      match signature_negative_of_wire(arm: answer.arm, f: f) {
+        Present { value: v } =>
+          if signature_verdict_agrees(v: v, verdict: answer.verdict) { SidecarAnswered { verification: v } }
+          else { SidecarFailed { cause: sidecar_refusal_cause(what: "signature (the verdict disagrees with its arm)", answer: answer) } }
+        Absent => SidecarFailed { cause: sidecar_refusal_cause(what: "signature (an arm or members the wire does not name)", answer: answer) }
+      }
+    _ => SidecarFailed { cause: sidecar_refusal_cause(what: "signature (a negative answer without its arm's members)", answer: answer) }
+  }
+}
+
+fn attestation_negative_from(answer: DeviceCryptoAnswer) -> SidecarResult<AttestationVerification> {
+  match answer.payload {
+    RefusedPayload { fields: f } =>
+      match attestation_refusal_of_wire(arm: answer.arm, f: f) {
+        Present { value: r } => SidecarAnswered { verification: AttestationRefused { cause: r } }
+        Absent => SidecarFailed { cause: sidecar_refusal_cause(what: "attestation (an arm or members the wire does not name)", answer: answer) }
+      }
+    _ => SidecarFailed { cause: sidecar_refusal_cause(what: "attestation (a refusal without its arm's members)", answer: answer) }
+  }
+}
+
+fn assertion_negative_from(answer: DeviceCryptoAnswer) -> SidecarResult<AssertionVerification> {
+  match answer.payload {
+    RefusedPayload { fields: f } =>
+      match assertion_refusal_of_wire(arm: answer.arm, f: f) {
+        Present { value: r } =>
+          if assertion_refusal_verdict(r: r) == answer.verdict { SidecarAnswered { verification: AssertionRefused { cause: r } } }
+          else { SidecarFailed { cause: sidecar_refusal_cause(what: "assertion (the verdict disagrees with its arm)", answer: answer) } }
+        Absent => SidecarFailed { cause: sidecar_refusal_cause(what: "assertion (an arm or members the wire does not name)", answer: answer) }
+      }
+    _ => SidecarFailed { cause: sidecar_refusal_cause(what: "assertion (a refusal without its arm's members)", answer: answer) }
+  }
+}
+
 fn signature_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCryptoAnswer) -> SidecarResult<SignatureVerification> {
   match answer.verdict {
     CryptoVerified =>
@@ -149,8 +202,8 @@ fn signature_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCryptoA
           }
         _ => SidecarFailed { cause: "the sidecar's verified signature answer carries no signed message" }
       }
-    CryptoInvalid => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
-    CryptoRefused => SidecarFailed { cause: sidecar_refusal_cause(what: "signature (the fold's malformed-size arms carry sizes the wire does not)", answer: answer) }
+    CryptoInvalid => signature_negative_from(answer: answer)
+    CryptoRefused => signature_negative_from(answer: answer)
     _ => SidecarFailed { cause: sidecar_refusal_cause(what: "signature check with an unexpected verdict", answer: answer) }
   }
 }
@@ -166,7 +219,7 @@ fn attestation_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCrypt
           }
         _ => SidecarFailed { cause: "the sidecar's verified attestation answer carries no attestation" }
       }
-    CryptoRefused => SidecarAnswered { verification: AttestationRefused { cause: AttestationUndecodable { cause: sidecar_refusal_cause(what: "attestation", answer: answer) as String } } }
+    CryptoRefused => attestation_negative_from(answer: answer)
     _ => SidecarFailed { cause: sidecar_refusal_cause(what: "attestation check with an unexpected verdict", answer: answer) }
   }
 }
@@ -182,8 +235,8 @@ fn assertion_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCryptoA
           }
         _ => SidecarFailed { cause: "the sidecar's verified assertion answer carries no assertion" }
       }
-    CryptoInvalid => SidecarAnswered { verification: AssertionRefused { cause: AssertionSignatureInvalid } }
-    CryptoRefused => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: sidecar_refusal_cause(what: "assertion", answer: answer) as String } } }
+    CryptoInvalid => assertion_negative_from(answer: answer)
+    CryptoRefused => assertion_negative_from(answer: answer)
     _ => SidecarFailed { cause: sidecar_refusal_cause(what: "assertion check with an unexpected verdict", answer: answer) }
   }
 }

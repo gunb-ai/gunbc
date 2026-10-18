@@ -2,15 +2,26 @@ module test.claim.approval_device_crypto_client_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Int, HttpStatus }
-import extdeps.crypto.signature { SignatureVerification, VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed, SignatureVerified, SignatureInvalid }
-import extdeps.apple.app_attest { AttestationVerification, AssertionVerification, AppAttestProduction, AttestKeyId, AttestationVerified, AttestationRefused, AssertionAuthentic, AssertionRefused }
+import std.measure { byte_size }
+import extdeps.crypto.signature {
+  SignatureVerification, VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed, SignatureVerified, SignatureInvalid, SignatureMalformed,
+  VerifyingKeyMalformed, SignatureSuiteMismatch, VerifyingKeyUndecodable, SignatureUndecodable,
+}
+import gunbc.auth.approval_device_crypto_serve { signature_answer, attestation_answer, assertion_answer }
+import extdeps.apple.app_attest { AttestationVerification, AssertionVerification, AppAttestProduction, AttestKeyId, AttestationVerified, AttestationRefused, AssertionAuthentic, AssertionRefused,
+  AttestationRefusal, AttestationFormatUnexpected, AttestationChainUntrusted, AttestationNonceMismatch, AttestationKeyIdMismatch, AttestationAppIdMismatch,
+  AttestationCounterNonZero, AttestationEnvironmentUnexpected, AttestationCredentialIdMismatch, AttestationValidationCategoryRefused,
+  AttestationValidationCategoryAbsent, AttestationBundleVersionAbsent, AttestationBundleVersionUnexpected, AttestationUndecodable,
+  AssertionRefusal, AssertionSignatureInvalid, AssertionAppIdMismatch, AssertionValidationCategoryRefused, AssertionValidationCategoryAbsent,
+  AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable, AppAttestDevelopment,
+}
 import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
 import gunbc.auth.approval_device_crypto_realization {
   DeviceCryptoAdmission, NativeDeviceCryptoBound, NativeDeviceCryptoUnavailable, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations, device_crypto_proof_of,
 }
 import std.decl_ref { decl_ref }
 import gunbc.auth.approval_device_crypto_wire {
-  DeviceCryptoAnswer, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, NoPayload, SignedPayload, AttestedPayload, AssertedPayload,
+  DeviceCryptoAnswer, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, NoPayload, SignedPayload, AttestedPayload, AssertedPayload, RefusedPayload, NoFields, OneField, TwoFields,
   device_crypto_arm_signature_verified, device_crypto_arm_attestation_verified, device_crypto_arm_assertion_verified,
   device_crypto_answer_json, decode_device_crypto_answer,
 }
@@ -51,7 +62,7 @@ fn asserted_answer() -> DeviceCryptoAnswer {
 }
 
 fn refused_answer() -> DeviceCryptoAnswer {
-  DeviceCryptoAnswer { verdict: CryptoRefused, arm: "AttestationNonceMismatch", payload: NoPayload }
+  DeviceCryptoAnswer { verdict: CryptoRefused, arm: "AttestationNonceMismatch", payload: RefusedPayload { fields: NoFields } }
 }
 
 // THE WIRE ROUND-TRIPS EVERY VERIFIED PAYLOAD: what the service writes is what the broker decodes.
@@ -112,21 +123,20 @@ test fn witness_decoding_under_an_admission_mints_the_verified_arms() -> Bool {
 
 // EVERY REFUSAL ARM maps to the fold's refusal, never to a verified value.
 test fn witness_refused_and_invalid_answers_map_to_the_refusal_arms() -> Bool {
-  let invalid = DeviceCryptoAnswer { verdict: CryptoInvalid, arm: "SignatureInvalid", payload: NoPayload }
+  let invalid = DeviceCryptoAnswer { verdict: CryptoInvalid, arm: "SignatureInvalid", payload: RefusedPayload { fields: NoFields } }
   let signature = match signature_from_answer(admission: admitted(), answer: invalid) {
     SidecarAnswered { verification: SignatureInvalid { suite: _ } } => true
     _ => false
   }
-  let malformed = signature_failed(r: signature_from_answer(admission: admitted(), answer: DeviceCryptoAnswer { verdict: CryptoRefused, arm: "SignatureMalformed", payload: NoPayload }))
   let attestation = match attestation_from_answer(admission: admitted(), answer: refused_answer()) {
     SidecarAnswered { verification: AttestationRefused { cause: _ } } => true
     _ => false
   }
-  let assertion = match assertion_from_answer(admission: admitted(), answer: refused_answer()) {
+  let assertion = match assertion_from_answer(admission: admitted(), answer: DeviceCryptoAnswer { verdict: CryptoRefused, arm: "AssertionAppIdMismatch", payload: RefusedPayload { fields: OneField { a: "TEAM.app" } } }) {
     SidecarAnswered { verification: AssertionRefused { cause: _ } } => true
     _ => false
   }
-  signature && malformed && attestation && assertion
+  signature && attestation && assertion
 }
 
 // A verdict that is not an answer to this route is a sidecar failure, not a verification result.
@@ -178,4 +188,99 @@ test fn witness_the_native_realization_proof_is_derived_only_from_an_admission()
     Absent => false
   }
   refused && granted
+}
+
+// THE EXECUTED JOIN, per refusal arm: the answer the service writes for a fold value decodes in the broker to the SAME
+// value the in-process fold returned (a verdict and arm that disagree, or an arm with the wrong members, is a sidecar failure).
+fn signature_joined(v: SignatureVerification) -> Bool {
+  match decode_device_crypto_answer(text: signature_answer(v: v).body) {
+    WireRefused { at: _, cause: _ } => false
+    WireDecoded { value: a } =>
+      match signature_from_answer(admission: admitted(), answer: a) {
+        SidecarAnswered { verification: back } => back == v
+        SidecarFailed { cause: _ } => false
+      }
+  }
+}
+
+fn attestation_joined(r: AttestationRefusal) -> Bool {
+  match decode_device_crypto_answer(text: attestation_answer(v: AttestationRefused { cause: r }).body) {
+    WireRefused { at: _, cause: _ } => false
+    WireDecoded { value: a } =>
+      match attestation_from_answer(admission: admitted(), answer: a) {
+        SidecarAnswered { verification: back } => back == AttestationRefused { cause: r }
+        SidecarFailed { cause: _ } => false
+      }
+  }
+}
+
+fn assertion_joined(r: AssertionRefusal) -> Bool {
+  match decode_device_crypto_answer(text: assertion_answer(v: AssertionRefused { cause: r }).body) {
+    WireRefused { at: _, cause: _ } => false
+    WireDecoded { value: a } =>
+      match assertion_from_answer(admission: admitted(), answer: a) {
+        SidecarAnswered { verification: back } => back == AssertionRefused { cause: r }
+        SidecarFailed { cause: _ } => false
+      }
+  }
+}
+
+fn id() -> AttestKeyId {
+  "kid" as AttestKeyId
+}
+
+test fn witness_every_signature_negative_arm_decodes_to_the_folds_own_value() -> Bool {
+  [
+    SignatureInvalid { suite: EcdsaP256Sha256 },
+    SignatureMalformed { declared: byte_size(count: 63), expected: byte_size(count: 64) },
+    VerifyingKeyMalformed { declared: byte_size(count: 33), expected: byte_size(count: 65) },
+    SignatureSuiteMismatch { key_suite: EcdsaP256Sha256, signature_suite: EcdsaP256Sha256 },
+    VerifyingKeyUndecodable { point_b64url: "not-a-point" },
+    SignatureUndecodable { b64url: "not-a-signature" },
+  ] |> all(v => signature_joined(v: v))
+}
+
+test fn witness_every_attestation_refusal_arm_decodes_to_the_folds_own_value() -> Bool {
+  [
+    AttestationFormatUnexpected { declared: "" },
+    AttestationFormatUnexpected { declared: "fmt" },
+    AttestationChainUntrusted { detail: "d" },
+    AttestationNonceMismatch,
+    AttestationKeyIdMismatch { declared: id() },
+    AttestationAppIdMismatch { expected_app_id: "TEAM.app" },
+    AttestationCounterNonZero { counter: 7 },
+    AttestationEnvironmentUnexpected { expected: AppAttestProduction },
+    AttestationEnvironmentUnexpected { expected: AppAttestDevelopment },
+    AttestationCredentialIdMismatch { declared: id() },
+    AttestationValidationCategoryRefused { category: 3 },
+    AttestationValidationCategoryAbsent,
+    AttestationBundleVersionAbsent,
+    AttestationBundleVersionUnexpected { declared: "9" },
+    AttestationUndecodable { cause: "bad cbor" },
+  ] |> all(r => attestation_joined(r: r))
+}
+
+test fn witness_every_assertion_refusal_arm_decodes_to_the_folds_own_value() -> Bool {
+  [
+    AssertionSignatureInvalid,
+    AssertionAppIdMismatch { expected_app_id: "TEAM.app" },
+    AssertionValidationCategoryRefused { category: 3 },
+    AssertionValidationCategoryAbsent,
+    AssertionBundleVersionAbsent,
+    AssertionBundleVersionUnexpected { declared: "9" },
+    AssertionUndecodable { cause: "bad cbor" },
+  ] |> all(r => assertion_joined(r: r))
+}
+
+// CONTROLS: a negative whose members do not match its arm, or whose verdict disagrees with its arm, is a sidecar
+// failure, never a guessed refusal.
+test fn witness_a_negative_with_the_wrong_members_or_verdict_is_a_sidecar_failure() -> Bool {
+  let no_members = DeviceCryptoAnswer { verdict: CryptoRefused, arm: "SignatureMalformed", payload: RefusedPayload { fields: NoFields } }
+  let extra = DeviceCryptoAnswer { verdict: CryptoRefused, arm: "AttestationNonceMismatch", payload: RefusedPayload { fields: OneField { a: "x" } } }
+  let disagrees = DeviceCryptoAnswer { verdict: CryptoRefused, arm: "SignatureInvalid", payload: RefusedPayload { fields: NoFields } }
+  let unknown = DeviceCryptoAnswer { verdict: CryptoRefused, arm: "NoSuchArm", payload: RefusedPayload { fields: NoFields } }
+  signature_failed(r: signature_from_answer(admission: admitted(), answer: no_members))
+    && attestation_failed(r: attestation_from_answer(admission: admitted(), answer: extra))
+    && signature_failed(r: signature_from_answer(admission: admitted(), answer: disagrees))
+    && assertion_failed(r: assertion_from_answer(admission: admitted(), answer: unknown))
 }

@@ -26,7 +26,9 @@ import gunbc.auth.approval_device_crypto_wire {
   device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path, device_crypto_p256_order_path,
   SignatureCheck, AttestationCheck, AssertionCheck, P256Multiple, OrderItself, OrderMinusOne,
   decode_signature_check, decode_attestation_check, decode_assertion_check, decode_p256_multiple,
-  DeviceCryptoAnswer, DeviceCryptoPayload, NoPayload, signed_payload_of, attested_payload_of, asserted_payload_of,
+  DeviceCryptoAnswer, DeviceCryptoPayload, NoPayload, RefusedPayload, RefusalFields,
+  signature_negative_wire_arm, signature_negative_wire_fields, attestation_refusal_wire_arm, attestation_refusal_wire_fields,
+  assertion_refusal_wire_arm, assertion_refusal_wire_fields, assertion_refusal_verdict, signed_payload_of, attested_payload_of, asserted_payload_of,
   device_crypto_arm_signature_verified, device_crypto_arm_attestation_verified, device_crypto_arm_assertion_verified, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, CryptoFinite,
   device_crypto_answer_json, device_crypto_wire_refusal_body,
 }
@@ -59,6 +61,11 @@ fn crypto_answered(verdict: DeviceCryptoVerdict, arm: String) -> ServeWireRespon
   crypto_verified_with(verdict: verdict, arm: arm, payload: NoPayload)
 }
 
+// A refusal answers with the fold's own arm and that arm's own members (device_crypto_wire *_wire_arm / *_wire_fields).
+fn crypto_refused_with(verdict: DeviceCryptoVerdict, arm: String, fields: RefusalFields) -> ServeWireResponse {
+  crypto_verified_with(verdict: verdict, arm: arm, payload: RefusedPayload { fields: fields })
+}
+
 fn crypto_verified_with(verdict: DeviceCryptoVerdict, arm: String, payload: DeviceCryptoPayload) -> ServeWireResponse {
   crypto_response(status: 200, body: device_crypto_answer_json(a: DeviceCryptoAnswer { verdict: verdict, arm: arm, payload: payload }))
 }
@@ -67,68 +74,26 @@ fn crypto_verified_with(verdict: DeviceCryptoVerdict, arm: String, payload: Devi
 fn signature_answer(v: SignatureVerification) -> ServeWireResponse {
   match v {
     SignatureVerified { verified: m } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_signature_verified, payload: signed_payload_of(v: m))
-    SignatureInvalid { suite: _ } => crypto_answered(verdict: CryptoInvalid, arm: "SignatureInvalid")
-    SignatureMalformed { declared: _, expected: _ } => crypto_answered(verdict: CryptoRefused, arm: "SignatureMalformed")
-    VerifyingKeyMalformed { declared: _, expected: _ } => crypto_answered(verdict: CryptoRefused, arm: "VerifyingKeyMalformed")
-    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => crypto_answered(verdict: CryptoRefused, arm: "SignatureSuiteMismatch")
-    VerifyingKeyUndecodable { point_b64url: _ } => crypto_answered(verdict: CryptoRefused, arm: "VerifyingKeyUndecodable")
-    SignatureUndecodable { b64url: _ } => crypto_answered(verdict: CryptoRefused, arm: "SignatureUndecodable")
-  }
-}
-
-fn attestation_refusal_arm(r: AttestationRefusal) -> String {
-  match r {
-    AttestationFormatUnexpected { declared: _ } => "AttestationFormatUnexpected"
-    AttestationChainUntrusted { detail: _ } => "AttestationChainUntrusted"
-    AttestationNonceMismatch => "AttestationNonceMismatch"
-    AttestationKeyIdMismatch { declared: _ } => "AttestationKeyIdMismatch"
-    AttestationAppIdMismatch { expected_app_id: _ } => "AttestationAppIdMismatch"
-    AttestationCounterNonZero { counter: _ } => "AttestationCounterNonZero"
-    AttestationEnvironmentUnexpected { expected: _ } => "AttestationEnvironmentUnexpected"
-    AttestationCredentialIdMismatch { declared: _ } => "AttestationCredentialIdMismatch"
-    AttestationValidationCategoryRefused { category: _ } => "AttestationValidationCategoryRefused"
-    AttestationValidationCategoryAbsent => "AttestationValidationCategoryAbsent"
-    AttestationBundleVersionAbsent => "AttestationBundleVersionAbsent"
-    AttestationBundleVersionUnexpected { declared: _ } => "AttestationBundleVersionUnexpected"
-    AttestationUndecodable { cause: _ } => "AttestationUndecodable"
+    SignatureInvalid { suite: _ } => crypto_refused_with(verdict: CryptoInvalid, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
+    SignatureMalformed { declared: _, expected: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
+    VerifyingKeyMalformed { declared: _, expected: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
+    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
+    VerifyingKeyUndecodable { point_b64url: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
+    SignatureUndecodable { b64url: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
   }
 }
 
 fn attestation_answer(v: AttestationVerification) -> ServeWireResponse {
   match v {
     AttestationVerified { verified: a } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_attestation_verified, payload: attested_payload_of(v: a))
-    AttestationRefused { cause: c } => crypto_answered(verdict: CryptoRefused, arm: attestation_refusal_arm(r: c))
-  }
-}
-
-fn assertion_refusal_verdict(r: AssertionRefusal) -> DeviceCryptoVerdict {
-  match r {
-    AssertionSignatureInvalid => CryptoInvalid
-    AssertionAppIdMismatch { expected_app_id: _ } => CryptoRefused
-    AssertionValidationCategoryRefused { category: _ } => CryptoRefused
-    AssertionValidationCategoryAbsent => CryptoRefused
-    AssertionBundleVersionAbsent => CryptoRefused
-    AssertionBundleVersionUnexpected { declared: _ } => CryptoRefused
-    AssertionUndecodable { cause: _ } => CryptoRefused
-  }
-}
-
-fn assertion_refusal_arm(r: AssertionRefusal) -> String {
-  match r {
-    AssertionSignatureInvalid => "AssertionSignatureInvalid"
-    AssertionAppIdMismatch { expected_app_id: _ } => "AssertionAppIdMismatch"
-    AssertionValidationCategoryRefused { category: _ } => "AssertionValidationCategoryRefused"
-    AssertionValidationCategoryAbsent => "AssertionValidationCategoryAbsent"
-    AssertionBundleVersionAbsent => "AssertionBundleVersionAbsent"
-    AssertionBundleVersionUnexpected { declared: _ } => "AssertionBundleVersionUnexpected"
-    AssertionUndecodable { cause: _ } => "AssertionUndecodable"
+    AttestationRefused { cause: c } => crypto_refused_with(verdict: CryptoRefused, arm: attestation_refusal_wire_arm(r: c), fields: attestation_refusal_wire_fields(r: c))
   }
 }
 
 fn assertion_answer(v: AssertionVerification) -> ServeWireResponse {
   match v {
     AssertionAuthentic { authentic: a } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_assertion_verified, payload: asserted_payload_of(v: a))
-    AssertionRefused { cause: c } => crypto_answered(verdict: assertion_refusal_verdict(r: c), arm: assertion_refusal_arm(r: c))
+    AssertionRefused { cause: c } => crypto_refused_with(verdict: assertion_refusal_verdict(r: c), arm: assertion_refusal_wire_arm(r: c), fields: assertion_refusal_wire_fields(r: c))
   }
 }
 
