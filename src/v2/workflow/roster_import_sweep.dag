@@ -569,13 +569,33 @@ fn roster_scalar_boundary(octets: List<Int>, byte: Int) -> Int {
   if byte < 0 || byte > total {
     0 - 1
   } else if byte == total {
-    roster_scalar_count(octets: take_prefix(xs: octets, n: byte))
+    roster_scalar_count_before(octets: octets, byte: byte)
   } else {
     match list_at_optional(xs: octets, index: byte) {
-      Present { value: o } => if roster_is_continuation(octet: o) { 0 - 1 } else { roster_scalar_count(octets: take_prefix(xs: octets, n: byte)) }
+      Present { value: o } => if roster_is_continuation(octet: o) { 0 - 1 } else { roster_scalar_count_before(octets: octets, byte: byte) }
       Absent => -1
     }
   }
+}
+
+// The scalars that start before `byte`, in ONE fold over the octets: a prefix copy (take_prefix) recursed once per byte and
+// exceeded the evaluator's call depth on a 132 KB file (v2.extdeps.languages.rust_fixtures), so the count is accumulated.
+type RosterScalarScan {
+  index: Int
+  scalars: Int
+}
+
+fn roster_scalar_count_before(octets: List<Int>, byte: Int) -> Int {
+  fold_list(
+    xs: octets,
+    empty: RosterScalarScan { index: 0, scalars: 0 },
+    cons: fn(acc, o) {
+      RosterScalarScan {
+        index: acc.index + 1,
+        scalars: if acc.index < byte && !roster_is_continuation(octet: o) { acc.scalars + 1 } else { acc.scalars }
+      }
+    }
+  ).scalars
 }
 
 fn roster_scalar_count(octets: List<Int>) -> Int {
