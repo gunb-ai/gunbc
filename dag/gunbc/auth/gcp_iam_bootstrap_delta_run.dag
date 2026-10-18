@@ -5,7 +5,8 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization { AuthorizationRequest }
 import std.optional { Present, Absent }
 import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
-import gunbc.auth.gcp_iam_converge_run { run_attempt, observe_token, request_and_wait_as }
+import gunbc.auth.gcp_iam_converge_run { observe_token, request_and_wait_as }
+import gunbc.auth.approval_run_identity { run_attempt }
 import gunbc.auth.gcp_iam_bootstrap_delta {
   BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, observe_bootstrap_delta, subject_not_bootstrapped_text,
 }
