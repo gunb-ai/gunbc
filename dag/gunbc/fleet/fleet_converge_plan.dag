@@ -788,8 +788,6 @@ fn fleet_converge_plan_section_end_marker(section: String) -> String {
   concat(section, "_end:")
 }
 
-data fleet_converge_plan_baseline_end_marker: String = "observed_baseline_end:"
-
 type PlannedBaselineRows
   = PlannedBaselineRowsRead { rows: List<String> }
   | PlannedBaselineRowsUnavailable { cause: String }
@@ -2099,16 +2097,30 @@ type BaselineFamily {
   rows: List<String>
 }
 
-fn baseline_standing_eq(a: BaselineStanding, b: BaselineStanding) -> Bool {
-  match a {
-    PremiseOfActuation => match b { PremiseOfActuation => true  _ => false }
-    ObservedOnly => match b { ObservedOnly => true  _ => false }
-    PremiseAdmittingMonotoneDrift => match b { PremiseAdmittingMonotoneDrift => true  _ => false }
+// One selector per standing, each matching every variant, so a fourth BaselineStanding fails to
+// compile here rather than being classed as "not equal" by a wildcard.
+fn premise_family_rows(f: BaselineFamily) -> List<String> {
+  match f.standing {
+    PremiseOfActuation => f.rows
+    ObservedOnly => []
+    PremiseAdmittingMonotoneDrift => []
   }
 }
 
-fn baseline_family_rows_of(families: List<BaselineFamily>, standing: BaselineStanding) -> List<String> {
-  flat_map(filter(families, f => baseline_standing_eq(a: f.standing, b: standing)), f => f.rows)
+fn observed_only_family_rows(f: BaselineFamily) -> List<String> {
+  match f.standing {
+    PremiseOfActuation => []
+    ObservedOnly => f.rows
+    PremiseAdmittingMonotoneDrift => []
+  }
+}
+
+fn monotone_family_rows(f: BaselineFamily) -> List<String> {
+  match f.standing {
+    PremiseOfActuation => []
+    ObservedOnly => []
+    PremiseAdmittingMonotoneDrift => f.rows
+  }
 }
 
 fn observed_baseline_families(request: FleetConvergeRequest) -> List<BaselineFamily> {
@@ -2161,15 +2173,15 @@ fn observed_baseline_families(request: FleetConvergeRequest) -> List<BaselineFam
 }
 
 fn observed_identity_text(request: FleetConvergeRequest) -> String {
-  join(baseline_family_rows_of(families: observed_baseline_families(request: request), standing: PremiseOfActuation), "\n")
+  join(flat_map(observed_baseline_families(request: request), f => premise_family_rows(f: f)), "\n")
 }
 
 fn observed_only_rows(request: FleetConvergeRequest) -> List<String> {
-  baseline_family_rows_of(families: observed_baseline_families(request: request), standing: ObservedOnly)
+  flat_map(observed_baseline_families(request: request), f => observed_only_family_rows(f: f))
 }
 
 fn monotone_premise_rows(request: FleetConvergeRequest) -> List<String> {
-  baseline_family_rows_of(families: observed_baseline_families(request: request), standing: PremiseAdmittingMonotoneDrift)
+  flat_map(observed_baseline_families(request: request), f => monotone_family_rows(f: f))
 }
 
 // THE BASELINE IS DERIVED FROM THE REQUEST, so the rows that exist are exactly the families the
@@ -3041,9 +3053,9 @@ fn fleet_converge_plan_artifact_of_request(
               concat("plan_generation:", to_string(planned_generation)),
               "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
               concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
-              "observed_baseline:",
+              concat(fleet_converge_plan_baseline_section, ":"),
               baseline,
-              fleet_converge_plan_baseline_end_marker,
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_baseline_section),
               concat(fleet_converge_plan_observed_only_section, ":"),
               join(observed_only_rows(request: request), "\n"),
               fleet_converge_plan_section_end_marker(section: fleet_converge_plan_observed_only_section),
