@@ -1,22 +1,38 @@
 #!/usr/bin/env bash
 # Execute the contract-stamp guard against the real bytes, and fail if it does not refuse what it
 # is supposed to refuse.
-# SCAFFOLD - dissolve-on: a .dag capability to EXECUTE a program and observe its exit status and
-# stdout, at which point the modelled rows in gunbc.witness.compiler_gate_contract_stamp
-# (compiler_gate_contract_stamp_evidence_cases) become a `gunbc test` row in gunbc.instrument_targets
-# and this runner dissolves into that row.
-# CLASS (b), a MISSING TARGET-LANGUAGE CAPABILITY, not class (c) "route available, migration
-# unauthored": the substrate has no process-exec surface at all -- src/ and dag/ expose no
-# Command::new / ProcessBuilder, and dag/std/process.dag models an exit VALUE, not an exec -- so no
-# claim row can spawn the guard and read what it prints. The vocabulary and the correction are the
-# fleet's own: tools/fabric_ci_fci1_bounded_execution_controls.sh:5-9 records the same mis-classing
-# of its own runner and fixes it the same way. What IS expressible in .dag has been moved there
-# (which cases exist, which subject each reads, the expected exit code and finding for each, and the
-# step that carries them into the job); what remains here is only the spawn-and-observe residual, so
-# this file holds no table that could drift from the model -- review 82145 filed the earlier shape as
-# blocking, and review 82163 is right that prose about the gap is not a marker, which is what the line
-# above is for.
+# SCAFFOLD - dissolve-on: a pre-build executor for a committed workflow member that is not the
+# tree's own code -- i.e. something that, BEFORE the subject binary exists, can read a committed
+# workflow step out of .github/workflows/witnesses.yml, run it, and report its exit status. Candidates
+# named as capabilities, not files: GitHub's own workflow_sha / a runner-side typed reader of a workflow
+# member, or a claim executed on the REQUIRED path (see the honest note below). When either lands this
+# file dissolves into it.
 #
+# HONEST STATE OF THE RESIDUAL, corrected after review 82166 (claude/opus[1m]) caught me claiming a
+# capability gap that does not exist. I wrote that "the substrate has no process-exec surface at all"
+# and cited Command::new/ProcessBuilder. THAT WAS FALSE: `git grep -l shell.Exec.Run dag src` returns
+# dag/extdeps/shell/exec.dag, which declares shell.Exec.RunArgv / RunArgvOutcome / RunArgvStdin with
+# ProcessObservation {exit_code, stdout, stderr} -- exactly the spawn-and-observe I said was missing --
+# and dag/test/claim/machine_intake/fan_observe_witness.dag:297 CALLS it from a `test fn`. My grep used
+# the wrong names, and the scaffold's dissolution trigger therefore named a capability that has already
+# landed, which is not an honest trigger (§5: "a dissolution condition describes how admitted debt ends;
+# it does not authorize creating it").
+#
+# WHAT I DID ABOUT IT, and why the file is still here. Everything that does NOT need a process has been
+# MOVED into .dag, per §5: which cases exist, which subject each reads, the expected exit code and the
+# expected finding for each are rows (compiler_gate_contract_stamp_evidence_cases in
+# gunbc.witness.compiler_gate_contract_stamp), emitted into the generated step as one command node per
+# row and passed here as argv -- so this file holds NO table that could drift from the model, and no
+# modelling that the .dag route already covers. What remains here is the ACT OF SPAWNING inside a step
+# that runs BEFORE the subject binary is built. The modelled RunArgv route is a claim, and a claim is
+# not executed anywhere on the required pull_request path today: `heal.yml` runs `claim_executor
+# --regen-round-cost` (an instrument, not a gate), and the instrument that executes `gunbc test <label>`
+# rows -- instrument-dispatch.yml:9 -- is `workflow_dispatch`-only. Moving the evidence into claims
+# would therefore move it OFF the required path, which is the exact defect review 82145 filed as
+# blocking ("the RED and its controls were ATTESTED, not enrolled"; §4b(4)). So the residual is
+# retained as an admitted, marked scaffold whose trigger is now an honest capability, and the enrolment
+# stays where it is observable: in the generated witnesses.yml step, on the required path.
+
 # WHO OWNS WHAT. The case TABLE -- which cases exist, which subject each reads, what exit code and
 # which diagnostic each must produce -- is modelled in .dag, at
 # dag/gunbc/witness/compiler_gate_contract_stamp.dag (compiler_gate_contract_stamp_evidence_cases),
