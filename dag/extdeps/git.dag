@@ -244,7 +244,7 @@ fn git_isolated_home_env_bindings(home: FilePath) -> List<EnvBinding> {
 fn git_push_ref_in_repo_argv(repo: FilePath, remote: String, refspec: String, home: FilePath) -> List<String> {
   concat(
     git_isolated_home_env_argv(home: home),
-    ["git", "-C", repo as String, "push", "--quiet", remote, refspec],
+    git_argv_of_args(["-C", repo as String, "push", "--quiet", remote, refspec]),
   )
 }
 
@@ -896,7 +896,7 @@ fn git_shell_join_argv(argv: List<String>) -> String {
 }
 
 fn shape_git_toplevel_argv() -> List<String> {
-  ["git", "rev-parse", "--show-toplevel"]
+  git_argv_of_args(["rev-parse", "--show-toplevel"])
 }
 
 fn git_toplevel_shell_subexpr_with_fallback() -> String {
@@ -910,7 +910,7 @@ fn git_toplevel_shell_subexpr() -> String {
 }
 
 fn shape_git_fetch_no_tags_argv(remote: String, ref_name: String) -> List<String> {
-  ["git", "fetch", "--no-tags", remote, ref_name]
+  git_argv_of_args(["fetch", "--no-tags", remote, ref_name])
 }
 
 fn git_fetch_no_tags_shell(remote: String, ref_name: String, ignore_failure: Bool) -> String {
@@ -923,7 +923,7 @@ fn git_fetch_no_tags_shell(remote: String, ref_name: String, ignore_failure: Boo
 }
 
 fn shape_git_fetch_prune_argv(remote: String) -> List<String> {
-  ["git", "fetch", "--prune", remote]
+  git_argv_of_args(["fetch", "--prune", remote])
 }
 
 fn git_fetch_prune_shell(remote: String) -> String {
@@ -931,19 +931,19 @@ fn git_fetch_prune_shell(remote: String) -> String {
 }
 
 fn shape_git_show_tree_argv(ref: GitRef) -> List<String> {
-  ["git", "show", "-s", "--format=%T", ref as String]
+  git_argv_of_args(["show", "-s", "--format=%T", ref as String])
 }
 
 fn shape_git_head_commit_short_argv() -> List<String> {
-  ["git", "rev-parse", "--short", "HEAD"]
+  git_argv_of_args(["rev-parse", "--short", "HEAD"])
 }
 
 fn shape_git_current_branch_argv() -> List<String> {
-  ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+  git_argv_of_args(["rev-parse", "--abbrev-ref", "HEAD"])
 }
 
 fn shape_git_branch_show_current_argv() -> List<String> {
-  ["git", "branch", "--show-current"]
+  git_argv_of_args(["branch", "--show-current"])
 }
 
 // PATHSPEC MAGIC IS GIT'S INTERFACE; WHICH PATHS TO EXCLUDE IS NOT (DESIGN §3 (a)/(c) split).
@@ -979,7 +979,7 @@ fn git_pathspec_literal(path: String) -> String {
 
 // Each shape below is declared as an ARGS list (the operands after the `git` program) with an `_argv` sibling that prepends the program. Both spellings have live consumers and neither is derived by hand: `_argv` feeds git_shell_join_argv for a whole-command leaf, `_args` feeds a command-substitution carrier that already holds `git` as its callee. One authority, two projections — not two lists to keep in step.
 fn git_argv_of_args(args: List<String>) -> List<String> {
-  concat(["git"], args)
+  concat([git_program_word], args)
 }
 
 fn shape_git_diff_unmerged_args() -> List<String> {
@@ -999,36 +999,47 @@ fn shape_git_rev_list_ahead_path_limited_args(target: String, path: String) -> L
 }
 
 fn shape_git_merge_no_edit_argv(ref: String) -> List<String> {
-  ["git", "merge", "--no-edit", ref]
+  git_argv_of_args(["merge", "--no-edit", ref])
 }
 
 fn shape_git_merge_abort_argv() -> List<String> {
-  ["git", "merge", "--abort"]
+  git_argv_of_args(["merge", "--abort"])
 }
 
 fn shape_git_checkout_ours_argv() -> List<String> {
-  ["git", "checkout", "--ours", "--"]
+  git_argv_of_args(["checkout", "--ours", "--"])
 }
 
 fn shape_git_add_argv() -> List<String> {
-  ["git", "add"]
+  git_argv_of_args(["add"])
 }
 
-// THE PROGRAM WORD, ONCE. The argv shapers in this module prefix a literal "git" because their callers
-// exec a vector with no separate program field; the builders hand the same word to argv_command's
-// program field. Both readings come off this row, so a host that needs /usr/local/bin/git changes one
-// line and every shape moves together -- including the readback below, whose two realizations are the
-// reason a second home for the word was worth minting (one home for the word, so a rename cannot miss a call site).
+// THE PROGRAM WORD, ONCE -- WITH ITS CENSUS STATED. Every shaper in this module that builds a `List<String>`
+// argv takes the word from here, through git_argv_of_args (the `_argv` projection) or directly; a host that
+// needs /usr/local/bin/git changes THIS line and every one of those shapes moves together. That is the whole
+// population of shapers the row can reach, and the rest is named rather than left to be discovered:
+//   - the `transport shell { argv: [...] }` blocks in the `operation` declarations below (and in
+//     extdeps/git/inspect.dag, extdeps/git/plumbing.dag, extdeps/git/publication_transport.dag) hold their
+//     own `"git"` word, because that argv is the transport's declaration -- a template whose `{placeholder}`
+//     strings the transport resolves -- not a list this module assembles. Migrating them means deciding
+//     whether a declared transport may read a data row at all; it is a change to every git operation's
+//     declaration, so it belongs in its own PR with the transport's own witnesses behind it, not folded into
+//     a change about a worktree's file modes.
+//   - the witnesses that spell `["git", ...]` spell the EXPECTATION, which is the other side of the
+//     authority: a claim that re-derived the program from the row could not catch the row moving.
+// If the transport blocks are ever migrated, the trigger is the same as this row's reason for existing: some
+// host needs a git that is not on PATH, and at that point leaving any spelling behind is a bug, not a
+// deferral.
 data git_program_word: String = "git"
 
 fn git_program() -> ProgramIdentity = uncataloged_program(invocation: git_program_word as NonEmptyStr)
 
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
-  ["git", "commit", "--no-verify", "--no-edit"]
+  git_argv_of_args(["commit", "--no-verify", "--no-edit"])
 }
 
 fn shape_git_config_argv(key: String, value: String) -> List<String> {
-  ["git", "config", key, value]
+  git_argv_of_args(["config", key, value])
 }
 
 // THE PROGRAM AND ITS OPERANDS, NAMED SEPARATELY, so the two addressings of one fact derive from
@@ -1238,11 +1249,11 @@ fn git_diff_binary_head_command(repository_dir: String) -> ArgvCommand {
 }
 
 fn shape_git_config_get_argv(key: String) -> List<String> {
-  ["git", "config", "--get", key]
+  git_argv_of_args(["config", "--get", key])
 }
 
 fn shape_git_config_local_get_argv(key: String) -> List<String> {
-  ["git", "config", "--local", "--get", key]
+  git_argv_of_args(["config", "--local", "--get", key])
 }
 
 // git-config(1) safe.directory: the configuration git consults before operating in a repository its
@@ -1365,11 +1376,11 @@ fn git_dir_fetch_source_grant(git_dir: NonEmptyStr) -> SafeDirectoryGrant {
 // spliced -- the whole `safe.directory=<path>` word goes through extdeps.exec.command shell_quote
 // (POSIX single quoting), which is total, so no path is refused and no metacharacter is live.
 fn git_local_fetch_upload_pack_command(grant: SafeDirectoryGrant) -> String {
-  join(["git", "-c", shell_quote(arg: join([git_safe_directory_key, "=", grant.path as String], "")), "upload-pack"], " ")
+  join(git_argv_of_args(args: ["-c", shell_quote(arg: join([git_safe_directory_key, "=", grant.path as String], "")), "upload-pack"]), " ")
 }
 
 fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
-  ["git", "-C", repo as String, "config", "--local", key, value]
+  git_argv_of_args(["-C", repo as String, "config", "--local", key, value])
 }
 
 // THE READBACK OF THE THREE POSTURE KEYS, as a command rather than as a service operation, so a
@@ -1416,7 +1427,7 @@ fn shape_git_config_local_get_in_repo_argv(repo: FilePath, key: String) -> List<
 }
 
 fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
-  ["git", "rev-parse", "--verify", "--quiet", target]
+  git_argv_of_args(["rev-parse", "--verify", "--quiet", target])
 }
 
 fn shape_git_rev_parse_head_args() -> List<String> {
@@ -2253,7 +2264,7 @@ fn shape_git_init_bare_argv(path: FilePath) -> List<String> {
 }
 
 fn shape_git_init_in_repo_argv(repo: FilePath) -> List<String> {
-  ["git", "-C", repo as String, "init", "-q"]
+  git_argv_of_args(["-C", repo as String, "init", "-q"])
 }
 
 fn shape_git_bare_fetch_argv(
