@@ -52,7 +52,7 @@ fn blocking_count_for_class_and_subject(
                && r.subject_name == subject
                && r.blocking
            )
-        |> fold(init: 0, f: (acc: Int, r: CompileDiagnosticCensusRow) -> Int { acc + r.count })
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
   }
 }
 
