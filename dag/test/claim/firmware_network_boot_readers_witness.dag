@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, list_length }
 import std.optional { Present, Absent }
 import std.algebra { list_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, BootTargetHdd, BootTargetUefiHttp, BootTargetNone, redfish_boot_target_wire }
+import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, BootTargetHdd, BootTargetUefiHttp, BootTargetNone, redfish_boot_target_wire, redfish_boot_targets }
 import extdeps.bmc.endpoint { OpenBmc }
 import extdeps.external_authority { TranscribedUncited }
 import gunbc.firmware_network_boot_standing {
@@ -18,7 +18,7 @@ import gunbc.firmware_network_boot_probe {
   FirmwareFamilyStack,
 }
 import gunbc.firmware_network_boot_readers {
-  RedfishGet, RedfishGetBody, RedfishGetStatus, RedfishBootReads, redfish_axis_replies, boot_target_of_wire, all_boot_targets,
+  RedfishGet, RedfishGetBody, RedfishGetStatus, RedfishBootReads, redfish_axis_replies, boot_target_of_wire,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -185,7 +185,7 @@ fn round_trips(t: RedfishBootSourceOverrideTarget) -> Bool {
 }
 
 test fn every_target_round_trips_through_its_wire_value() -> Bool {
-  let all_ok = fold(all_boot_targets(), init: true, f: (ok, t) => ok && round_trips(t: t))
+  let all_ok = fold(redfish_boot_targets(), init: true, f: (ok, t) => ok && round_trips(t: t))
   let lowercase_is_not_a_target = match boot_target_of_wire(s: "pxe") {
     Present { value: _ } => false
     Absent => true

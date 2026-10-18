@@ -4,7 +4,7 @@ import std.types { Bool, HttpStatus, List, list_length, NonEmptyStr, String }
 import std.algebra { list_map, list_flat_map, string_concat_join }
 import std.optional { Present, Absent }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
-import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb, BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp, redfish_boot_target_wire }
+import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb, BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp, redfish_boot_target_wire, redfish_boot_targets }
 import extdeps.bmc.redfish_memory_inventory { redfish_document, redfish_collection_page_of }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse { FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_bool, json_field_string_list }
@@ -87,13 +87,9 @@ fn refused_axis(axis: ObservationAxis, refusal: FirmwareReadRefusal) -> AxisRepl
   ReplyRefusedByBmc { axis: axis, refusal: refusal }
 }
 
-fn all_boot_targets() -> List<RedfishBootSourceOverrideTarget> {
-  [BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb, BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp]
-}
-
 // The inverse of redfish_boot_target_wire, derived from it so there is one wire table.
 fn boot_target_of_wire(s: String) -> RedfishBootSourceOverrideTarget? {
-  fold(all_boot_targets(), init: Absent, f: (acc, t) => match acc {
+  fold(redfish_boot_targets(), init: Absent, f: (acc, t) => match acc {
     Present { value: _ } => acc
     Absent => if redfish_boot_target_wire(t: t) == s { Present { value: t } } else { Absent }
   })
