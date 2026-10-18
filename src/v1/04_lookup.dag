@@ -621,7 +621,7 @@ fn constructor_declaration_for_admission(
   name: String
 ) -> ConstructorDeclarationLookup {
   let decl_name = qualified_last_segment(name: name)
-  let qualified = if contains(name, ".") { name } else { concat(owner_module_path, ".", name) }
+  let qualified = concat(owner_module_path, ".", decl_name)
   let identity = ExactDeclarationIdentity { owner_module_path: owner_module_path, decl_name: decl_name }
   match symbol_index_lookup(index: type_env.symbol_index, qualified_name: qualified) {
     Present { value: node } =>
