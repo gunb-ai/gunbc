@@ -30,7 +30,9 @@ import gunbc.runner.runner_lost_boot_sweep_run {
   sweep_authority, sweep_host_standing, SweepHostBound, SweepHostNotManaged,
   sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, sweep_listing_of_roster, SweepListingObserved, SweepListingNotObserved,
   sweep_exceeds_ceiling, sweep_ceiling_refusal_text, lost_boot_sweep_registration_ceiling,
+  sweep_plan, SweepPlan, SweepPlanRefused, SweepPlanSelected,
 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -70,6 +72,7 @@ fn listing(names: List<String>) -> RestResult<OrganizationRunnerListWire> {
 // admit_callers-restricted to run_sweep, which is restricted to the terminal claims that sweep over it.
 fn supplied_population(host: HostControlStanding, id: String) -> SuppliedPopulation admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "run_sweep"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "plan_over"),
 ] {
   match service_boot_id_of(run: kernel_boot(id: id)) {
     Present { value: b } => SuppliedPopulationBuilt { standing: current_service_population_over(host: host, width: RunnerWidthDerived { slots: 2 }, registration_labels: supplied_labels, boot: b) }
@@ -308,4 +311,77 @@ test fn a_selection_above_the_step_ceiling_refuses_before_any_deletion() -> Bool
     && !sweep_exceeds_ceiling(selected: lost_boot_sweep_registration_ceiling)
     && !sweep_exceeds_ceiling(selected: 0)
     && string_contains(s: sweep_ceiling_refusal_text(selected: 41), pattern: "nothing was deregistered")
+}
+
+// THE PLAN CONTROLS: sweep_plan is the production call (sweep_and_deregister's only route to a
+// SweepSelection), run here over a SUPPLIED roster report for the host named EXPLICITLY as mtcollins1,
+// never first(managed_hosts()). Zero deletion requests on partial coverage, an unavailable roster or an
+// over-ceiling selection is established at this PLAN boundary: the refusal arm carries no selection, and
+// the only deletion entry takes one. It is not observed at the effect (lost_boot_sweep_effect_pairing_frontier).
+fn mtcollins1_host() -> ManagedHost? { first(filter(managed_hosts(), h => (h.host as String) == (operator_host_mtcollins1 as String))) }
+
+type SuppliedPlan
+  = SuppliedPlanMade { plan: SweepPlan }
+  | SuppliedPlanHostNotManaged
+  | SuppliedPlanPopulationNotDerived
+
+fn plan_over(m: ManagedHost, report: OrganizationRunnerRosterReport) -> SuppliedPlan admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_observed_mtcollins1_roster_plans_exactly_its_stale_registrations"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "a_partial_or_unavailable_roster_plans_no_deletion"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_over_ceiling_selection_plans_no_deletion"),
+] {
+  match sweep_host_standing(host: m.host as String as NonEmptyStr) {
+    SweepHostNotManaged { host: _ } => SuppliedPlanHostNotManaged
+    SweepHostBound { host: _, standing: s } =>
+      match supplied_population(host: s, id: new_boot_id) {
+        SuppliedPopulationMalformedBoot => SuppliedPlanPopulationNotDerived
+        SuppliedPopulationBuilt { standing: st } =>
+          match st {
+            CurrentServicePopulationDerived { population: p } => SuppliedPlanMade { plan: sweep_plan(organization: org, population: p, report: report) }
+            CurrentServicePopulationRefused { refusal: _ } => SuppliedPlanPopulationNotDerived
+          }
+      }
+  }
+}
+
+fn reg_named(id: Int, name: String) -> GitHubSelfHostedRunnerRegistration {
+  GitHubSelfHostedRunnerRegistration { id: id, name: name, status: GitHubRunnerOnline {}, busy: false, ephemeral: none, version: none, os: "Linux", labels: [] }
+}
+
+test fn an_observed_mtcollins1_roster_plans_exactly_its_stale_registrations() -> Bool {
+  match mtcollins1_host() {
+    Absent => false
+    Present { value: m } =>
+      match plan_over(m: m, report: roster_report(RosterObserved { observed_on: "d", registrations: [reg_named(id: 1, name: unit(m: m, id: old_boot_id, index: 0)), reg_named(id: 2, name: unit(m: m, id: new_boot_id, index: 0))] })) {
+        SuppliedPlanMade { plan: SweepPlanSelected { selection: sel } } => count(sel.subjects) == 1 && count(sel.untouched) == 1
+        _ => false
+      }
+  }
+}
+
+test fn a_partial_or_unavailable_roster_plans_no_deletion() -> Bool {
+  match mtcollins1_host() {
+    Absent => false
+    Present { value: m } => {
+      let stale = reg_named(id: 1, name: unit(m: m, id: old_boot_id, index: 0))
+      (match plan_over(m: m, report: roster_report(RosterObservedPartial { observed_on: "d", registrations: [stale], observed_count: 1, authority_total: 2 })) {
+        SuppliedPlanMade { plan: SweepPlanRefused { cause: c } } => string_contains(s: c, pattern: "was partial (1 of total_count 2)")
+        _ => false
+      }) && (match plan_over(m: m, report: roster_report(RosterReadUnavailable { reason: "r" })) {
+        SuppliedPlanMade { plan: SweepPlanRefused { cause: c } } => string_contains(s: c, pattern: "was unavailable: r")
+        _ => false
+      })
+    }
+  }
+}
+
+test fn an_over_ceiling_selection_plans_no_deletion() -> Bool {
+  match mtcollins1_host() {
+    Absent => false
+    Present { value: m } =>
+      match plan_over(m: m, report: roster_report(RosterObserved { observed_on: "d", registrations: map([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40], i => reg_named(id: i + 1, name: unit(m: m, id: old_boot_id, index: i))) })) {
+        SuppliedPlanMade { plan: SweepPlanRefused { cause: c } } => string_contains(s: c, pattern: "nothing was deregistered")
+        _ => false
+      }
+  }
 }

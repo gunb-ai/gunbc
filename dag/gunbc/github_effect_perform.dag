@@ -47,7 +47,7 @@ import gunbc.runner.runner_jit_perform {
   JitCredentialDelivery, JitCredentialNotDispatched, receive_jit_mint,
 }
 import std.optional { Absent, Present }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized, filesystem_delete }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.secret_manager { decode_sm_access_version_secret_wire, SmAccessVersionSecretDecoded, SmAccessVersionSecretDecodeRefused }
 import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -534,6 +534,31 @@ type ControllerKeyStaging
   = ControllerKeyStaged { key: JwsSigningKeyRef }
   | ControllerKeyNotStaged { cause: String }
 
+// A FAILED CREATE-NEW WRITE IS NOT NOTHING HAVING BEEN WRITTEN (the place_netrc_binding finding): the
+// O_EXCL create precedes write_all, so an error after the create leaves a 0600 file holding a prefix
+// of the App key. The staging therefore clears the path first (a stale file would also make the
+// create refuse) and removes it again when the write fails. The cause names three states and never
+// the path: partial material removed or never created (no key on disk); material the cleanup could
+// not remove (residue, requires cleanup); and a path that could not be cleared BEFORE the write, so
+// the refusal was the O_EXCL of a file this attempt did not create and whose origin is unknown.
+fn controller_key_write_refusal(write_error: String, before: FilesystemDelete, after: FilesystemDelete) -> String {
+  match after {
+    FilesystemDeleted { path: _ } => concat("ControllerAppKeyUnstaged: the key could not be written and the partial file was removed: ", write_error)
+    FilesystemDeleteTargetAbsent { path: _ } => concat("ControllerAppKeyUnstaged: the key could not be written and no file was created: ", write_error)
+    FilesystemDeleteRefused { path: _, kind: _, error: why } => controller_key_residue_cause(before: before, why: why)
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: why } => controller_key_residue_cause(before: before, why: why)
+  }
+}
+
+fn controller_key_residue_cause(before: FilesystemDelete, why: String) -> String {
+  match before {
+    FilesystemDeleted { path: _ } => concat("ControllerAppKeyResidueRemains: the key could not be written and the partial file could not be removed, so key material may remain and requires cleanup: ", why)
+    FilesystemDeleteTargetAbsent { path: _ } => concat("ControllerAppKeyResidueRemains: the key could not be written and the partial file could not be removed, so key material may remain and requires cleanup: ", why)
+    FilesystemDeleteRefused { path: _, kind: _, error: _ } => concat("ControllerAppKeyPreexistingPathUnremovable: a pre-existing file could not be removed before the write, which is why the O_EXCL create refused, and it could not be removed afterwards either, so material of unknown origin remains and requires cleanup: ", why)
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: _ } => concat("ControllerAppKeyPreexistingPathUnremovable: a pre-existing file could not be removed before the write, which is why the O_EXCL create refused, and it could not be removed afterwards either, so material of unknown origin remains and requires cleanup: ", why)
+  }
+}
+
 fn stage_controller_app_key(wif_access_token: Secret, key_path: NonEmptyStr) -> ControllerKeyStaging uses net: Network admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
 ] {
@@ -549,11 +574,17 @@ fn stage_controller_app_key(wif_access_token: Secret, key_path: NonEmptyStr) -> 
         SmAccessVersionSecretDecodeRefused { cause: _ } =>
           ControllerKeyNotStaged { cause: "ControllerAppKeyUnreadable: the Secret Manager payload did not decode" }
         SmAccessVersionSecretDecoded { credential: key } => {
+          let before = Filesystem.Delete(path: key_path)
           let written = Filesystem.WriteOwnerOnly(path: key_path, content: key as String)
           if written.success {
             ControllerKeyStaged { key: HostKeyFile { path: key_path } }
           } else {
-            ControllerKeyNotStaged { cause: concat("ControllerAppKeyUnstaged: ", written.error) }
+            let after = Filesystem.Delete(path: key_path)
+            ControllerKeyNotStaged { cause: controller_key_write_refusal(
+              write_error: written.error,
+              before: filesystem_delete(path: key_path as String, success: before.success, error: before.error, error_kind: before.error_kind),
+              after: filesystem_delete(path: key_path as String, success: after.success, error: after.error, error_kind: after.error_kind),
+            ) }
           }
         }
       }
