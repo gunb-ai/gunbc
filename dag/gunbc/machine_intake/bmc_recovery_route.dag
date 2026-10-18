@@ -2232,6 +2232,44 @@ test fn a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset() 
   }
 }
 
+// THE WARRANT GATE STANDS ON ITS OWN, NOT BEHIND THE POLICY FOLD. converge_in_band_recovery refuses an
+// unmeasured controller at the policy fold, so the route never reaches the reset gate on that reading --
+// which means a claim about the fold says NOTHING about the gate's warrant arms, and the gate is also
+// callable on its own by anything that admits a write directly. Both are tested here from the same call,
+// differing ONLY in the reading the route observed: the unmeasured one is refused by the WARRANT (its own
+// words), the measured one is refused further down by the HOLD it never took. If the warrant arms stop
+// refusing, the second case's cause does not move while the first's does -- which is what a falsification
+// of those arms has to be caught by.
+test fn the_reset_gate_refuses_an_unmeasured_controller_by_its_warrant_and_not_by_the_hold() -> Bool {
+  (match admit_recovery_manager_reset_to_defaults(
+    route: recovery_test_route(reading: recovery_unmeasured_identity()),
+    under_ruling: recovery_reset_operator_ruling,
+    unit_hold: optional_absent(),
+    reset_write: recovery_reset_write_record(),
+  ) {
+    ResetWriteRefused { cause: cause } =>
+      starts_with(s: cause as String, prefix: "no refusal was ever measured on this controller")
+        // and NOT the hold sentence: the warrant refused before the hold was ever asked
+        && starts_with(s: cause as String, prefix: "the durable unit hold was never acquired") == false
+    ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+    ResetWriteRefusedByLedger { site: _, cause: _ } => false
+  })
+    // THE SAME GATE, THE SAME MISSING HOLD, THE MEASURED READING: the warrant no longer refuses, so the
+    // refusal that comes back is the hold's. Asserting the hold sentence here is what makes the pair a
+    // claim about the warrant rather than about the gate refusing everything.
+    && (match admit_recovery_manager_reset_to_defaults(
+      route: recovery_test_route(reading: recovery_measured_identity()),
+      under_ruling: recovery_reset_operator_ruling,
+      unit_hold: optional_absent(),
+      reset_write: recovery_reset_write_record(),
+    ) {
+      ResetWriteRefused { cause: cause } =>
+        starts_with(s: cause as String, prefix: "the durable unit hold was never acquired")
+      ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+      ResetWriteRefusedByLedger { site: _, cause: _ } => false
+    })
+}
+
 // A CATALOG THAT DISAGREES WITH ITSELF ADMITS NOTHING. The row found by reading is re-checked through
 // the release-keyed index; if its release key does not resolve in the board's capability catalog, the
 // destructive step would rest on a release nobody can name. Exercised by a reading whose row is the one
