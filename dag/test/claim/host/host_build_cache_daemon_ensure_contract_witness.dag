@@ -85,6 +85,9 @@ import gunbc.host.host_effect_realize {
   ShellExecObserved,
   build_cache_fold_ensure_ops_with_outcomes,
   build_cache_run_ensure_ops,
+  // THE PRODUCTION FUNCTION, not a test-local copy of it. A claim about "the route that actuates" that drives
+  // anything other than this name would be a claim about a model of the route.
+  build_cache_ensure_executed,
 }
 import gunbc.host.verified_binary_install {
   AlreadyInstalled,
@@ -1200,5 +1203,53 @@ test fn empty_capture_is_never_a_fragment_hit() -> Bool {
     ObserveUnresponsive { detail: detail } => detail == ""
     ObserveMisconfigured { matched_fragment: _, stats: _ } => false
     anything => false
+  }
+}
+
+// THE EXECUTING ROUTE, DRIVEN AS PRODUCTION CALLS IT (DESIGN 3's inhabitance rule). Every other claim on the
+// digest gate drives the PURE fold or the transport loop directly; nothing until now drove the function the
+// effect actually invokes, `build_cache_ensure_executed`, which is what `host_build_cache_provision` calls. That
+// left a hole exactly the size of the bug being guarded: the loop's call into the shared pure step
+// (`build_cache_fold_op_executed`) could be deleted and step logic reintroduced beside it, and every existing
+// claim would have stayed green, because none of them reaches production. This claim closes it.
+//
+// WHAT IT ASSERTS, AND WHY IT IS THE ASSERTION THAT MATTERS: with the binary absent, the plan is fetch, read,
+// install, unit. Pass one runs the prefix legs through the loop and the loop's per-leg decision comes from the
+// shared pure step; the first leg's transport refuses, so the sequence stops THERE and `EnsureTransportBlocked`
+// names the FETCH leg. The two things worth reading are that the named operation is `FetchArchive` and not
+// `InstallStep`, and that the verdict is not `EnsureCompleted`: an implementation that ran on past a refused leg
+// would report completion, and an implementation that had lost its call into the pure step would run the install
+// legs it was never admitted to run. Both turn this red: mutation D13 disables the transport loop's own stop guard
+// (so the carrier's stop verdict never reaches production), and mutation D14 launders a refused leg into a
+// successful observation before the shared decision step is ever asked.
+//
+// WHAT IT CANNOT COVER, STATED RATHER THAN LEFT UNSAID: the digest-mismatch arm is not reachable on THIS route
+// hermetically. The digest line reaches the decision only from a leg that actually ANSWERED, and the only
+// transport arm that answers is `LocalShell`, which would execute the real `curl` download and the real
+// `sha256sum` -- a network fetch and host reads, i.e. wet, which this lane is not authorised to do (the same
+// reason `real_execution` is UNOBSERVED). So the mismatch verdict on the executing route is carried by three
+// claims together rather than one: production is shown here to reach the shared step; the dry-fold claim feeds
+// that same step a fetch-ok outcome plus a mismatched digest line and shows no install leg is reached; and the
+// pairing claim shows the loop and the fold give identical verdicts on identical answers. Deleting any of the
+// three legs reddens something -- the shared step's digest gate by D9, its stop propagation by D5, the pairing by
+// its own claim, and the integration defended here by D13 or D14.
+test fn the_executing_route_stops_before_any_install_leg() -> Bool {
+  match build_cache_ensure_executed(
+    instance: build_cache_contract_instance(),
+    arch_token: "x86_64" as NonEmptyStr,
+    digest: sccache_release_0_15_0.digest_x86_64,
+    observe: ObserveAbsent,
+    transport: ensure_refusal_transport,
+  ) {
+    EnsureTransportBlocked { op: op, reason: why } =>
+      // THE LEG IS THE FETCH, so no install leg was reached, and the reason is the transport's own text rather
+      // than a string this module invented.
+      op.kind == FetchArchive && string_contains(s: why, pattern: "EmitArtifactThenThinRun")
+    // The executor ran past the refused leg, or never consulted the shared step at all.
+    EnsureCompleted => false
+    EnsureSkipped => false
+    EnsurePlanRefused { reason: _ } => false
+    EnsureFailed { op: _, observed: _ } => false
+    EnsureDigestRefused { op: _, refusal: _ } => false
   }
 }
