@@ -38,6 +38,25 @@ KEYS = ("module", "bind", "formal", "bhead", "bspan", "bident", "bocc", "bdecl",
         "bparams", "bleaves", "aleaves", "gnames", "ghit", "ownBound", "achildren", "aexprs")
 
 
+def top_split(s, sep=","):
+    """Split on `sep` only at paren depth 0. A naive s.split(',') tears a child entry
+    whose name is itself a printed type -- 'name=Map(K,V)' becomes two bogus entries --
+    which under-reports and mislabels the children. This instrument answers 'one
+    producer or several', so the split has to be correct, not approximate."""
+    out, depth, cur = [], 0, ""
+    for ch in s:
+        if ch == "(" :
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == sep and depth == 0:
+            out.append(cur); cur = ""
+        else:
+            cur += ch
+    out.append(cur)
+    return [x for x in out if x != ""]
+
+
 def field(row, key):
     m = re.search(r"\|" + re.escape(key) + r"=([^|]*)", row)
     if m is None:
@@ -73,23 +92,33 @@ def main(path):
     # THE DELIVERABLE: distinct producers, three ways, because 'one producer or several' is the question.
     print("\n== PRODUCER IDENTITY, three independent cuts ==")
     # (a) the bound node's own span file
-    files = Counter((field(r, "bspan") or "").split(":")[0] for r in fam)
+    # strip the trailing :line or :line-line from a span WITHOUT touching the path.
+    # An earlier version used split(":")[0], which collapsed every dag/std/x.dag:s-e span to
+    # "dag" and made the producer look like one directory. Verified against the raw rows.
+    def path_of(span):
+        return re.sub(r":[0-9]+(-[0-9]+)?(:[0-9]+(-[0-9]+)?)?$", "", span or "")
+    files = Counter(path_of(field(r, "bspan")) for r in fam)
     print(f"(a) bound-node span FILE: {len(files)} distinct")
     for f, n in files.most_common(12):
         print(f"    {n:4d}  {f}")
     # (b) child leaves' spans -- where did K and V come from
     child_spans = Counter()
     for r in fam:
-        for entry in (field(r, "achildren") or "").split(","):
+        for entry in top_split(field(r, "achildren") or ""):
             if "@" in entry:
-                child_spans[entry.split("@", 1)[1].split("/")[0]] += 1
+                # entry is `name@SPAN/idspan=IDSPAN/occ=OCC/decl=DECL`. Anchoring on the field
+                # NAME matters: splitting on the next '/' truncated a real path to its first
+                # directory and made 39 std/algebra.dag children read as one file called "dag".
+                seg = entry.split("@", 1)[1]
+                seg = seg.split("/idspan=", 1)[0]
+                child_spans[path_of(seg)] += 1
     print(f"(b) CHILD leaf spans: {len(child_spans)} distinct")
     for f, n in child_spans.most_common(15):
         print(f"    {n:4d}  {f}")
     # (c) occurrence identity of the children, parsed out of the achildren strings
     occ = Counter()
     for r in fam:
-        for entry in (field(r, "achildren") or "").split(","):
+        for entry in top_split(field(r, "achildren") or ""):
             m = re.search(r"/occ=([A-Za-z]+)", entry)
             if m:
                 occ[m.group(1)] += 1
@@ -115,19 +144,30 @@ def main(path):
         print(f"    {n:4d}  {m}")
 
     print("\n== OUTCOME MAPPING (pre-registered; report which one the data selects) ==")
+    # O3 must NOT count OccurrenceMinted: EVERY node carries a minted OccurrenceId, so treating
+    # Minted as 'synthetic' makes O3 fire for the entire corpus and tells you nothing. Only
+    # OccurrenceSynthetic means 'this node has no source position' -- that is the case whose
+    # producer is a minter rather than a piece of source.
+    sel = []
+    minted = sum(n for k, n in occ.items() if "Synthetic" in k)
     kern = sum(n for f, n in files.items() if f.startswith("<kernel"))
     if kern == len(fam) and len(child_spans) and all("kernel" in c for c in child_spans):
-        print("  O1: every leaf points at a kernel location -> builtin-generic substrate fact; std prerequisite.")
+        sel.append("O1: every leaf points at a kernel location -> builtin-generic substrate fact; std prerequisite.")
     elif len(child_spans) <= 10:
-        print(f"  O2: leaves cluster on {len(child_spans)} source positions -> producer is a source construct.")
+        sel.append("O2: leaves cluster on %d source position(s) -> producer is a source construct." % len(child_spans))
     elif len(child_spans) > 10:
-        print(f"  O4: {len(child_spans)} distinct leaf positions -> no single producer; binding-policy question.")
-    minted = sum(n for k, n in occ.items() if "Synthetic" in k or "Minted" in k)
-    if minted and minted >= sum(occ.values()):
-        print("  O3: all children are synthetic/minted -> name the minting routine from decl/expr columns.")
+        sel.append("O4: %d distinct leaf positions -> no single producer; binding-policy question." % len(child_spans))
+    if occ and minted >= sum(occ.values()):
+        sel.append("O3: every child is OccurrenceSynthetic -> name the minting routine from decl/expr columns.")
     emptyish = sum(1 for r in fam if not (field(r, "bdecl") or "").strip("{}\"' "))
     if emptyish == len(fam):
-        print("  O5: declaration column uniformly empty -> probe did not measure; do not conclude.")
+        sel.append("O5: declaration column uniformly empty -> probe did not measure; do not conclude.")
+    for line in sel:
+        print("  " + line)
+    # One deliverable, not a menu. If the data selects none or more than one, the probe failed to
+    # answer the question and must be fixed rather than reported around.
+    assert len(sel) == 1, ("expected exactly one pre-registered outcome, got %d: %s" % (len(sel), sel))
+    print("\nSELECTED OUTCOME: " + sel[0])
     return 0
 
 
