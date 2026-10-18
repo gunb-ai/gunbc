@@ -3,6 +3,8 @@ module test.claim.cursor_pinned_program_witness
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import std.optional { Present, Absent }
 import extdeps.exec.command { argv_words }
+import extdeps.tools.gnu_coreutils { cat_program }
+import extdeps.llm.cursor_cli { cursor_api_key_env_var }
 import extdeps.llm.cursor_cli { cursor_disable_auto_update_flag }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program, cursor_agent_executable_path, cursor_agent_pinned_version }
 import gunbc.dispatch_credential_acquisition { CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config }
@@ -94,4 +96,27 @@ test fn an_absent_pinned_path_reads_as_the_missing_realization() -> Bool {
     && string_contains(s: reason, pattern: pinned_path())
     && string_contains(s: reason, pattern: "no cursor-agent is listed")
     && string_contains(s: reason, pattern: "never falls back to a PATH")
+}
+
+// THE THREE INVOCATIONS USE THE SUPPLIED PROGRAM, not a constant: a different identity is the one named, and the
+// pinned path is then absent from all three (the production call site is what supplies the pinned identity).
+test fn preflight_probe_and_turn_use_the_supplied_program_identity() -> Bool {
+  let supplied = cat_program()
+  let preflight = argv_words(command: cursor_sandbox_discriminating_preflight_command(program: supplied, root: attempt_root()))
+  let probe = argv_words(command: cursor_bound_key_probe_command(program: supplied, root: attempt_root()))
+  let turn = cursor_worker_turn_inner_argv(program: supplied, root: attempt_root(), worktree_path: "/srv/attempt", prompt: "go" as NonEmptyStr)
+  names_word(words: preflight, word: "cat")
+    && names_word(words: probe, word: "cat")
+    && names_word(words: turn, word: "cat")
+    && !names_word(words: preflight, word: pinned_path())
+    && !names_word(words: probe, word: pinned_path())
+    && !names_word(words: turn, word: pinned_path())
+}
+
+// THE WORKER TURN CARRIES NO CREDENTIAL IN ARGV: the key reaches the child through the snapshot wrapper's
+// export-from-file (gunbc.roadmap.roadmap_dispatch_actuator), so no word of the turn is the variable name or an
+// assignment to it.
+test fn the_worker_turn_argv_carries_no_credential() -> Bool {
+  let name = cursor_api_key_env_var as String
+  !any(turn_words(), w => w == name || starts_with(s: w, prefix: join([name, "="], "")))
 }

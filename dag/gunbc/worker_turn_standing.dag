@@ -262,9 +262,15 @@ fn cursor_key_probe_observe(program: ProgramIdentity, root: CursorAttemptRuntime
 // the snapshot first). Evaluation of arguments is eager, so each step sits inside the previous step's
 // match arm and cannot run when an earlier one stopped the line.
 fn cursor_observed_standing_from_snapshot(snapshot: TakenCredentialSnapshot) -> ProviderStanding {
-  let program = cursor_agent_pinned_program()
+  cursor_observed_standing_for_program(program: cursor_agent_pinned_program(), presence: cursor_agent_pinned_executable_presence(), snapshot: snapshot)
+}
+
+// The fold over a SUPPLIED program and its presence observation. The one production call site above supplies
+// the pinned pair; the srv2 stand-in controls (test.claim.cursor_runtime_root_wet_witness) supply a test-only
+// identity, so the real ordering is what they run and no second production identity or fallback exists.
+fn cursor_observed_standing_for_program(program: ProgramIdentity, presence: FilesystemEntryPresence, snapshot: TakenCredentialSnapshot) -> ProviderStanding {
   let root = credential_taken_cursor_runtime_root(snapshot: snapshot)
-  match cursor_agent_pinned_executable_presence() {
+  match presence {
     FilesystemEntryAbsent(absence) =>
       ProviderStandingUnobserved { reason: cursor_pinned_realization_absent_reason(detail: filesystem_established_absence_detail(absence: absence)) }
     FilesystemEntryPresenceIndeterminate { cause } =>
