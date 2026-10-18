@@ -119,6 +119,8 @@ type VastAiOffer {
   inet_down_cost: ExactDecimal
   gpu_ram: Int
   driver_version: String?
+  cuda_max_good: ExactDecimal?
+  inet_down: ExactDecimal?
 }
 
 // THE HOST-RESOURCE FIELDS OF THE SAME search-offers OFFER OBJECT, read 2026-10-17 from
@@ -244,6 +246,7 @@ service vast_ai.SearchOffers {
     }
     output {
       offers: List<VastAiOffer> from "offers"
+      hosts: List<VastAiOfferHostResources> from "offers"
     }
     readonly
     transport rest {

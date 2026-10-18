@@ -2,6 +2,7 @@ module gunbc.fleet.flex_pass_run
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String, EpochMs }
 import std.optional { Present, Absent }
+import std.list { first_where }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.integer { int_to_decimal_string }
@@ -10,7 +11,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.vast_ai
 import extdeps.cloud.vast_ai {
-  VastAiOffer, VastAiOfferQuery, VastAiInstances, VastAiCharges, VastAiChargesDayRange,
+  VastAiOffer, VastAiOfferHostResources, VastAiOfferQuery, VastAiInstances, VastAiCharges, VastAiChargesDayRange,
   vast_ai_keyset_page_limit, vast_ai_charges_day_filter, vast_ai_instances_unfiltered,
 }
 import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
@@ -152,7 +153,7 @@ fn flex_charges_standing(walk: FlexChargeWalk) -> FlexChargesStanding {
 
 // ---- THE OFFERS. One search under the recipe's query; every offer screened and quoted.
 type FlexOfferSearch
-  = FlexOffersAnswered { offers: List<VastAiOffer> }
+  = FlexOffersAnswered { offers: List<VastAiOffer>, hosts: List<VastAiOfferHostResources> }
   | FlexOffersRefused { cause: String }
 
 fn flex_search(key: Secret, q: VastAiOfferQuery) -> FlexOfferSearch uses net: Network {
@@ -161,7 +162,7 @@ fn flex_search(key: Secret, q: VastAiOfferQuery) -> FlexOfferSearch uses net: Ne
     gpu_ram_min_mb: q.gpu_ram_min_mb, cuda_max_good_min: q.cuda_max_good_min, cpu_ram_min_mb: q.cpu_ram_min_mb,
     inet_down_min: q.inet_down_min, verified: q.verified,
   ) {
-    RestAnswered { answer: a } => FlexOffersAnswered { offers: a.offers }
+    RestAnswered { answer: a } => FlexOffersAnswered { offers: a.offers, hosts: a.hosts }
     RestRefused { refusal: r } => FlexOffersRefused { cause: flex_rest_refusal_text(r: r) }
   }
 }
@@ -297,10 +298,13 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
   match flex_search(key: key, q: query) {
     FlexOffersRefused { cause: c } =>
       join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), "\n", flex_charges_wire(s: charges), "\noffers=refused ", c], "")
-    FlexOffersAnswered { offers: offers } =>
+    FlexOffersAnswered { offers: offers, hosts: hosts } =>
       let screened = map(offers, o => FlexScreenedOffer {
         offer: o,
-        entry: flex_offer_in_shadow_field(offer: o, search_type: query.search_type),
+        entry: match first_where(hosts, h => h.id == o.id) {
+          Absent => ShadowEntryExcluded
+          Present { value: h } => flex_offer_in_shadow_field(offer: o, host: h, search_type: query.search_type)
+        },
         quote: flex_offer_quote(offer: o, recipe: flex_serving_recipe),
       })
       let intent = flex_intent(screened: screened)
