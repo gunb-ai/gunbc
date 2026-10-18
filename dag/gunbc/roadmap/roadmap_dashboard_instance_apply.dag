@@ -244,12 +244,19 @@ fn dashboard_run_target_argvs(
 // or migration command cannot arrive here with the program word in the wrong slot. A command with no
 // words projects to NO argv at all, so a step the model has no argv for runs nothing rather than running
 // something plausible.
-fn dashboard_git_owned_step_argv(command: ArgvCommand) -> DashboardArgv {
+// THE PROJECTION IS TOTAL IN THE ONLY HONEST WAY: a built command with no words projects to NO argv --
+// an empty list -- rather than to an argv with an invented program. There is no legitimate empty
+// FilePath to stand for "nothing to run", and a made-up one would be a program name the model never
+// declared: the step would then run SOMETHING and report a result, which is the fabricated output this
+// whole follow-up exists to remove. The caller folds these lists, so a wordless command contributes no
+// step at all, and dashboard_git_owned_steps_are_runnable below refuses the posture and the migration
+// before either runs if a step is missing its argv rather than skipping it silently.
+fn dashboard_git_owned_step_argv(command: ArgvCommand) -> List<DashboardArgv> {
   let words = argv_words(command: command)
   match words.first() {
-    Absent => DashboardArgv { program: "" as FilePath, args: [] }
+    Absent => []
     Present { value: program } =>
-      DashboardArgv { program: program as FilePath, args: words.skip(n: 1) }
+      [DashboardArgv { program: program as FilePath, args: words.skip(n: 1) }]
   }
 }
 
@@ -263,7 +270,7 @@ fn dashboard_run_git_owned_step(
 ) -> DashboardExecResult {
   dashboard_run_target_argvs(
     instance: instance,
-    commands: [dashboard_git_owned_step_argv(command: command)],
+    commands: dashboard_git_owned_step_argv(command: command),
   )
 }
 
@@ -811,10 +818,14 @@ fn dashboard_apply_provision_op(
     // anything else the arm REFUSES with the keys named, and the refusal carries the receipts of the
     // steps that did run, so a half-applied instance is visible rather than inferred.
     DashboardEnsureGitSharedRepositoryPosture { repo } => {
+      let posture_steps = dashboard_ensure_git_shared_repository_posture(instance: instance)
+      if !dashboard_git_owned_steps_are_runnable(commands: posture_steps) {
+        dashboard_exec_refused(detail: "the shared-repository posture has a step with no argv to run")
+      } else {
       let wrote = dashboard_run_target_argvs(
         instance: instance,
-        commands: map(
-          dashboard_ensure_git_shared_repository_posture(instance: instance),
+        commands: flat_map(
+          posture_steps,
           command => dashboard_git_owned_step_argv(command: command),
         ),
       )
@@ -831,6 +842,7 @@ fn dashboard_apply_provision_op(
           dashboard_exec_refused(detail: posture_detail)
         }
       }
+      }
     }
     // THE ONE-TIME RE-GROUP OF THE SUBTREES AN EXISTING REPOSITORY ALREADY HOLDS, executed and read
     // back the same way. IT RUNS UNDER THE APPLY'S PRINCIPAL BECAUSE IT MUST: chgrp to the attempt group
@@ -841,10 +853,14 @@ fn dashboard_apply_provision_op(
     // the model's OWN grantedness figure to what find printed, refusing on an empty or unreadable
     // receipt rather than accepting a grant it did not observe.
     DashboardMigrateGitWorkerSubtree { repo: _ } => {
+      let migration_steps = dashboard_instance_worker_git_subtree_migration(instance: instance)
+      if !dashboard_git_owned_steps_are_runnable(commands: migration_steps) {
+        dashboard_exec_refused(detail: "the git worker subtree migration has a step with no argv to run")
+      } else {
       let migrated = dashboard_run_target_argvs(
         instance: instance,
-        commands: map(
-          dashboard_instance_worker_git_subtree_migration(instance: instance),
+        commands: flat_map(
+          migration_steps,
           command => dashboard_git_owned_step_argv(command: command),
         ),
       )
@@ -857,6 +873,7 @@ fn dashboard_apply_provision_op(
         } else {
           dashboard_exec_refused(detail: subtree_detail)
         }
+      }
       }
     }
   }
