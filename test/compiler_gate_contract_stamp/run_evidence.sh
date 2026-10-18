@@ -56,7 +56,11 @@
 #                    not by grep.
 #   --case ...       SINGLE CASE, invoked by the generated step, argv supplied BY THE MODEL:
 #                    --case <label> <subject> <running> <expected-exit> <finding>
-#                          --transcript <path> --fail-marker <path>
+#                          --transcript <path> --fail-marker <path> --marker <token>
+#                          --run-token <GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
+#                    The step counts lines carrying the RUN TOKEN, so a transcript left by an earlier
+#                    invocation cannot satisfy the tally; the token's shape is checked here because the
+#                    step only checks it is non-empty, and grep for "-" matches almost anything.
 #                    It compares and, on failure, creates the fail marker.
 #   --prepare <path> Clear a stale fail marker left by an earlier run on the same runner.
 #
@@ -220,11 +224,16 @@ if [ "${1:-}" = "--case" ]; then
   label="${1:-}"; subject="${2:-}"; running="${3:-}"; expect_rc="${4:-}"; finding="${5:-}"
   [ "$#" -ge 5 ] || bail "--case needs label, subject, running, expected-exit and finding"
   shift 5
-  case_transcript="$transcript"; marker="$fail_marker"; token="$case_token_default"
+  case_transcript="$transcript"; marker="$fail_marker"; token="$case_token_default"; run_token=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --transcript) case_transcript="$2"; shift 2 ;;
       --fail-marker) marker="$2"; shift 2 ;;
+      # THE PER-RUN TOKEN, handed back from the model's own assignment. The generated step counts lines
+      # carrying THIS value, not the constant marker: a stale transcript from an earlier invocation can
+      # satisfy a count of a constant, and mine did exactly that in simulation (harness deleted, step
+      # green). A value that only exists in this run cannot be stale.
+      --run-token) run_token="$2"; shift 2 ;;
       # THE PRINTED TOKEN IS THE MODEL'S, not this file's. The generated step counts occurrences of
       # this exact string in the transcript and refuses unless the count equals the modelled table, so
       # the string the harness prints and the string the step greps for come from ONE value in
@@ -237,6 +246,28 @@ if [ "${1:-}" = "--case" ]; then
   [ -n "$marker" ] && [ -n "$case_transcript" ] || bail "--case needs --transcript and --fail-marker"
   case "$expect_rc" in
     ""|*[!0-9]*) bail "--case: expected exit is not a number: '$expect_rc'" ;;
+  esac
+  # THE TOKEN MUST BE A RUN IDENTITY, not any string. The step only checks it is non-empty, which is not
+  # enough: an empty pair of Actions vars degenerates it to "-", and grep for "-" matches almost every
+  # line -- a fail-open count again, wearing the shape of a check. <run_id>-<attempt> is what the model
+  # builds, so that is the only shape admitted here. (The table that checks these patterns is executed in
+  # the commit that adds them; the first version of this check accepted 'abc-1', '12--3' and a trailing
+  # dash, because the case globs were written the wrong way round.)
+  case "$run_token" in
+    ""|*[!0-9-]*) bail "--case: --run-token is empty or not digits-and-dashes: '$run_token'" ;;
+  esac
+  case "$run_token" in
+    *-*-*) bail "--case: --run-token is not exactly <digits>-<digits>: '$run_token'" ;;
+  esac
+  case "$run_token" in
+    *-*): ;;
+    *) bail "--case: --run-token is missing its dash separator: '$run_token'" ;;
+  esac
+  case "$run_token" in
+    -*) bail "--case: --run-token has an empty run id (GITHUB_RUN_ID unset?): '$run_token'" ;;
+  esac
+  case "$run_token" in
+    *-) bail "--case: --run-token has an empty attempt (GITHUB_RUN_ATTEMPT unset?): '$run_token'" ;;
   esac
 
   # RESOLVE THE RUNNING SIDE FIRST, THEN BUILD THE SUBJECT. Order matters and it is the whole
@@ -274,9 +305,13 @@ if [ "${1:-}" = "--case" ]; then
   # ONE line per case, beginning with the model's token. `grep -c` counts LINES, so the token appears
   # exactly once here and never inside the diagnostic that follows -- a guard message containing the
   # token could otherwise inflate the tally and make a partial run look complete.
-  printf '%s label=%-40s rc=%s expect=%s\n' "$token" "$label" "$rc" "$expect_rc" \
-    | tee -a "$case_transcript"
-  printf '   | %s\n' "$(printf '%s' "$out" | tr '\n' ' ' | cut -c1-118)" | tee -a "$case_transcript"
+  # EXACTLY ONE LINE PER CASE, guard text folded in. Two lines per case would give the count a second
+  # chance to match: the folded-in text is the guard's own output, and a guard message that happened to
+  # contain the run token would inflate the tally and make a PARTIAL run look complete -- the failure mode
+  # this check exists to close.
+  one_line="$(printf '%s' "$out" | tr '\n' ' ' | cut -c1-118)"
+  printf '%s run=%s label=%-40s rc=%s expect=%s | %s\n' \
+    "$token" "$run_token" "$label" "$rc" "$expect_rc" "$one_line" | tee -a "$case_transcript"
 
   ok=1
   if [ "$rc" != "$expect_rc" ]; then

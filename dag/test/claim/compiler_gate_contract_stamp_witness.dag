@@ -560,6 +560,13 @@ test fn the_evidence_step_carries_the_dissolution_marker_and_refuses_on_the_mark
     && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_transcript_marker)
     && string_contains(s: body, pattern: "'[' \"$GUNBC_CONTRACT_STAMP_CASES_RAN\" '!='")
     && string_contains(s: body, pattern: "'--prepare'")
+    // THE COUNTED VALUE IS A PER-RUN TOKEN, never the constant marker alone. Found in simulation of the
+    // emitted step: with the harness deleted the step went green because the PREVIOUS scenario's
+    // transcript already held the modelled number of marker lines. A stale file satisfies a count of a
+    // constant; it cannot satisfy a count of a value that only exists in this run.
+    && string_contains(s: body, pattern: "GUNBC_CONTRACT_STAMP_RUN_TOKEN=")
+    && string_contains(s: body, pattern: "GITHUB_RUN_ATTEMPT")
+    && string_contains(s: body, pattern: "'--run-token'")
     // the transcript is cleared as well as the marker, or a stale transcript could reach the modelled
     // count on a runner that executed nothing
     && string_contains(s: body, pattern: "--transcript' '/tmp/gunbc-contract-stamp-evidence.log'")
