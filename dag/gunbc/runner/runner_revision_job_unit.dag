@@ -22,15 +22,23 @@ import gunbc.runner.runner_unit_file { runner_unit_teardown_directives }
 // render comes from here, so the pin the unit hands the job and the pin the installer verifies cannot
 // be two facts.
 //
-// THE PIN. This is the SHA-256 of the installed rootfs (revision_job_image_build's digest of
-// revision-job.ext4), the identity verify_revision_job_image compares and the job refuses to run
-// without. Changing the image is changing this row: the installed directory is named by it, so a new
-// image installs beside the old one and the unit points at exactly one.
+// THE PIN. This is the SHA-256 of the installed rootfs (revision-job.ext4), the identity
+// verify_revision_job_image compares and the job refuses to run without. It is an IDENTITY BINDING --
+// the installed bytes are the bytes a CI build produced and a reviewer pinned -- not a correctness
+// oracle and not a reproducibility claim (gunbc.recurring_failure_mode guest_image_digest_is_a_one_build_receipt).
+// Changing the image is changing this row: the installed directory is named by it, so a new image
+// installs beside the old one and the unit points at exactly one.
+//
+// STANDING: the value below is a by-hand srv1 build that NO CI run produced. While it stands,
+// microvm_controller_install refuses at "revision-job rootfs digest" for any downloaded CI image,
+// which is fail-closed and correct. THE SEQUENCE that makes it a CI receipt: dispatch the
+// revision_job_image_build mode on main, re-pin this row to that run's build-receipt.txt in a PR,
+// then dispatch microvm_controller_install with workspace_image_run_id and revision_job_image_run_id.
 data revision_job_image_pinned_sha256: NonEmptyStr = "582c6a6119c6e946cdcefc44dc0bbf01e887f364e5a82b4d44c3d0eb534753db" as NonEmptyStr
 
-// The image is BUILT on the host that owns the pinned artifacts (revision_job_image_main) and STAGED
-// here, relative to the deploying checkout, exactly as the workspace image is: transport is not
-// admission, the installer verifies the installed copies against the pin.
+// The image is BUILT by the revision_job_image_build workflow mode (gunbc.revision_job_image_delivery)
+// and DOWNLOADED here, relative to the deploying checkout, exactly as the workspace image is: transport
+// is not admission, the installer verifies the installed copies against the pin.
 data revision_job_image_staging_root: String = "target/revision-job-image-artifact"
 
 fn revision_job_installed_image_root(release_dir: String) -> String {

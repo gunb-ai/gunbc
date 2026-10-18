@@ -379,32 +379,3 @@ fn toolchain_receipt_lines(closure: RevisionJobToolchainClosure) -> String {
     "glibc ", closure.libc6_version as String, " (libc6, libc-bin, libc-dev-bin, libc6-dev from the closure) replaces the base image's glibc files\n",
   ], "")
 }
-
-// ── the instrument's entry ──────────────────────────────────────────────────────────────────────
-
-// RUN ON THE HOST THAT BUILDS THE IMAGE, like the job entry (gunbc.runner.runner_revision_job_main):
-//   gunbc run --entry dag/gunbc/runner/runner_revision_job_toolchain.dag --function prove_toolchain_closure_main
-// with GUNBC_REVISION_JOB_STORE_ROOT (where the receipt goes; the build reads it there) and
-// GUNBC_TOOLCHAIN_INDEX_DIR (a fresh directory) and GUNBC_TOOLCHAIN_KEYRING (on an Ubuntu host, the
-// ubuntu-keyring package's /usr/share/keyrings/ubuntu-archive-keyring.gpg). Whatever the ring holds,
-// the chain requires the pinned signer among the valid signers, so other keys in it admit nothing.
-// Exit 0 means the receipt exists for the current rows; a refusal exits non-zero with every reason.
-
-fn toolchain_env(name: NonEmptyStr) -> String {
-  match shell.Env.Get(name: name).value {
-    Absent => ""
-    Present { value: v } => trim(s: v)
-  }
-}
-
-fn prove_toolchain_closure_main() -> ProcessExit {
-  let store = toolchain_env(name: "GUNBC_REVISION_JOB_STORE_ROOT")
-  let dir = toolchain_env(name: "GUNBC_TOOLCHAIN_INDEX_DIR")
-  let keyring = toolchain_env(name: "GUNBC_TOOLCHAIN_KEYRING")
-  if store == "" || dir == "" || keyring == "" {
-    exit_failure(reason: "toolchain closure: GUNBC_REVISION_JOB_STORE_ROOT, GUNBC_TOOLCHAIN_INDEX_DIR and GUNBC_TOOLCHAIN_KEYRING must all be set")
-  } else { match prove_toolchain_rows(store: store, dir: dir, keyring: keyring) {
-    ToolchainRowsProven { receipt: _ } => ExitSuccess
-    ToolchainRowsRefused { reasons: rs } => exit_failure(reason: concat("toolchain closure refused:\n", join(rs, "\n")))
-  } }
-}
