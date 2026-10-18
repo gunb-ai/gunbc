@@ -3290,14 +3290,16 @@ type NativeInferCensusOutcome
       partial: List<OccurrenceBindingEntry>
       loci: Map<OccurrenceId, String>
       unbound: List<String>
+      line_count: Int
     }
   | NativeInferCensusInferred {
       resolved: ResolvedTree
       inferred: InferredTree
       frontier: NativeInferAcceptedFrontier
       loci: Map<OccurrenceId, String>
+      line_count: Int
     }
-  | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics, loci: Map<OccurrenceId, String> }
+  | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics, loci: Map<OccurrenceId, String>, line_count: Int }
 
 // `cascade` IS THE RESOLVE VERDICT'S IMPORT ATTRIBUTION, carried exactly as
 // native_census_module_resolution carries it, so a resolve refusal reached through this walk files
@@ -3323,9 +3325,9 @@ fn native_census_module_inference(
     outcome: match step.verdict {
       NativeModuleResolveFileRefused { refusal: _ } => NativeInferCensusFileRefused
       NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
-        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r), line_count: native_census_line_count(positions: context.positions, path: entry.path) }
       NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
-        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r), line_count: native_census_line_count(positions: context.positions, path: entry.path) }
       NativeModuleResolveAccepted { resolved: resolved } =>
         match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
           Accepted { value: prepared, diagnostics: _ } =>
@@ -3333,10 +3335,11 @@ fn native_census_module_inference(
               resolved: resolved,
               inferred: prepared.inferred,
               frontier: prepared.frontier,
-              loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings))
+              loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings)),
+              line_count: native_census_line_count(positions: context.positions, path: entry.path)
             }
           Rejected { diagnostics: d } =>
-            NativeInferCensusInferRefused { resolved: resolved, chain: d, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings)) }
+            NativeInferCensusInferRefused { resolved: resolved, chain: d, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings)), line_count: native_census_line_count(positions: context.positions, path: entry.path) }
         }
     },
     context: step.context,
@@ -3398,6 +3401,19 @@ fn native_census_unbound_spelling(at: Locus) -> Optional<String> {
   }
 }
 
+// THE FILE'S LINE COUNT, printed beside its rows as `binding_file <module> <lines>`, so a reader can count a locus's
+// line from the END of its file: inserting an import above every body leaves that count unchanged.
+fn native_census_line_count(positions: NativeCensusPositionTable, path: Symbol) -> Int {
+  match map_lookup(positions.files, path) {
+    Present { value: file } => file.lines.line_count
+    Absent => 0 - 1
+  }
+}
+
+fn native_census_file_line(entry: NativeCensusModule, line_count: Int) -> String {
+  "binding_file\t" + entry.module + "\t" + int_to_decimal_string(value: line_count)
+}
+
 fn native_census_at_text(at: FileRefusalAt) -> String {
   match at {
     FileRefusalAtLine { line: l, byte_column: c } => int_to_decimal_string(value: l) + ":" + int_to_decimal_string(value: c.value)
@@ -3408,12 +3424,12 @@ fn native_census_at_text(at: FileRefusalAt) -> String {
 fn native_census_infer_binding_lines(entry: NativeCensusModule, outcome: NativeInferCensusOutcome) -> List<String> {
   match outcome {
     NativeInferCensusFileRefused => ["binding_unreached\t" + entry.module + "\tfront_end"]
-    NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: p, loci: l, unbound: u } =>
-      list_snoc_item(xs: list_append(left: occurrence_binding_partial_lines(module: entry.module, entries: p, loci: l), right: u), item: "binding_unreached\t" + entry.module + "\tresolve")
-    NativeInferCensusInferred { resolved: r, inferred: _, frontier: _, loci: l } =>
-      occurrence_binding_contribution_lines(c: occurrence_binding_contribution(module: entry.module, tree: r, loci: l))
-    NativeInferCensusInferRefused { resolved: r, chain: _, loci: l } =>
-      occurrence_binding_contribution_lines(c: occurrence_binding_contribution(module: entry.module, tree: r, loci: l))
+    NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: p, loci: l, unbound: u, line_count: n } =>
+      list_snoc_item(xs: list_append(left: occurrence_binding_partial_lines(module: entry.module, entries: p, loci: l), right: list_snoc_item(xs: u, item: native_census_file_line(entry: entry, line_count: n))), item: "binding_unreached\t" + entry.module + "\tresolve")
+    NativeInferCensusInferred { resolved: r, inferred: _, frontier: _, loci: l, line_count: n } =>
+      list_snoc_item(xs: occurrence_binding_contribution_lines(c: occurrence_binding_contribution(module: entry.module, tree: r, loci: l)), item: native_census_file_line(entry: entry, line_count: n))
+    NativeInferCensusInferRefused { resolved: r, chain: _, loci: l, line_count: n } =>
+      list_snoc_item(xs: occurrence_binding_contribution_lines(c: occurrence_binding_contribution(module: entry.module, tree: r, loci: l)), item: native_census_file_line(entry: entry, line_count: n))
   }
 }
 
