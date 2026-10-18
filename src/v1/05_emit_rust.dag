@@ -3413,7 +3413,11 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Set<String>) -> Bo
 // tuple, a field whose type the map did not resolve -- is an unknown clone behavior and the record
 // stays Rc, the fail-closed arm. Structure still excludes the recursive record (no finite by-value
 // layout), generics (a parameter's clone cost is unknown here), fn fields (Rc<dyn Fn> identity) and
-// the empty record. It is the field-agnostic generalisation of is_type_constant, which is the
+// the empty record. RESIDUE, declared: the field read is leaf-keyed, as field_type_map and the shared
+// set are (gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer);
+// an ambiguous leaf (two declarations) is only shallow when every declarer is a decided summary, and
+// the residue dissolves with field_type_map's own trigger (declaration identities, not spellings).
+// It is the field-agnostic generalisation of is_type_constant, which is the
 // special case whose fields are all Copy. WHAT IT TRADES, stated because DESIGN section 3d forbids
 // hiding a trade: allocation goes down and COPY WIDTH goes up -- a clone now moves every field word
 // instead of one pointer. The label gunbc.instruments.native_allocation_observation does not read
@@ -3423,6 +3427,15 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Set<String>) -> Bo
 // The next rung is S (strict linear unwrap with field-grain last-use of dying owned records), the
 // roadmap node emission-ownership-facts-survive-lowering: it removes the clones instead of
 // narrowing them.
+// THE SHARED COLLECTION CARRIERS, ONE ANSWER for the sharing decision and for F: the leaves
+// build_shared_types inserts for every container template. F reads the same list, so a field is
+// held behind Rc for F exactly when the sharing decision holds it behind Rc.
+fn shared_collection_leaves() -> List<String> {
+  sorted_map_keys(rust_container_templates)
+    |> filter(k => k != "optional" && k != "boolean_algebra")
+    |> map(k => to_pascal(name: k))
+}
+
 fn field_type_head_leaf(type_name: String) -> String {
   match string_index_of(haystack: type_name, needle: "<") {
     Present { value: i } => substring(s: type_name, start: 0, end: i)
@@ -3433,7 +3446,7 @@ fn field_type_head_leaf(type_name: String) -> String {
 fn field_clone_is_shallow(type_summaries: TypeSummaryIndex, type_name: String) -> Bool {
   let leaf = field_type_head_leaf(type_name: type_name)
   if is_dag_value_type_name(name: leaf) { true }
-  else if sorted_map_keys(rust_container_templates) |> filter(k => k != "optional" && k != "boolean_algebra") |> any(k => to_pascal(name: k) == leaf) { true }
+  else if shared_collection_leaves() |> any(c => c == leaf) { true }
   else {
     let keys = type_summary_keys_of_leaf(index: type_summaries, leaf: leaf)
     (keys |> count) > 0 && keys |> all(key =>
@@ -3499,10 +3512,7 @@ fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<
     } else { acc }
   )
 
-  let collection_keys = sorted_map_keys(rust_container_templates)
-    |> filter(k => sharing.needs_sharing && k != "optional" && k != "boolean_algebra")
-  collection_keys |> fold(init: user_shared, f: (acc, key) =>
-    let pascal = to_pascal(name: key)
+  (if sharing.needs_sharing { shared_collection_leaves() } else { [] }) |> fold(init: user_shared, f: (acc, pascal) =>
     set_insert(acc, pascal)
   )
 }
