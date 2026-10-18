@@ -53,8 +53,17 @@ run_side () {
   echo "[$side] build rc=$brc errors=$(grep -acE '^error' $LOGS/build_$side.log) binary=$([ -f $d/target/release/gunbc ] && echo yes || echo NO)"
   { [ $brc -eq 0 ] && [ -f $d/target/release/gunbc ]; } || { echo "VOID: no gunbc for $side -- its counts would be false zeros, not greens"; return 6; }
   for target in $TARGETS; do
-    ( cd $d && timeout 3000 sh -e -c 'target/release/gunbc' 'test' "//gunbc/instruments:$target" ) > $LOGS/${side}_${target}.log 2>&1
+    # THE WHOLE COMMAND IS THE -c STRING. An earlier draft wrote sh -e -c 'target/release/gunbc' 'test'
+    # '<target>' -- copying the workflow's quote-NESTED rendering literally -- which hands gunbc no
+    # subcommand at all: it printed its usage text, exited 2, and reported a spotless zero type
+    # mismatches. A wrong invocation that produces zero diagnostics is the most dangerous kind of wrong.
+    ( cd $d && timeout 3000 sh -e -c "target/release/gunbc test //gunbc/instruments:$target" ) > $LOGS/${side}_${target}.log 2>&1
     rc=$?
+    # A usage page is 18 lines; a real floor run is hundreds. Refuse to call a short log a measurement.
+    n=$($LOGS/wc_l "$LOGS/${side}_${target}.log" 2>/dev/null || wc -l < $LOGS/${side}_${target}.log)
+    if grep -q '^Usage: gunbc' $LOGS/${side}_${target}.log; then
+      echo "[$side] $target VOID: the log is a gunbc USAGE PAGE -- the invocation was wrong, and its zero is meaningless"
+    fi
     echo "[$side] $target rc=$rc lines=$(wc -l < $LOGS/${side}_${target}.log) type-mismatch=$(grep -ac 'type mismatch' $LOGS/${side}_${target}.log) emitted=$(grep -acE 'emit and build completed|closure=' $LOGS/${side}_${target}.log) (emitted=0 means the log never reached an emit -- NOT a green)"
   done
   return 0
