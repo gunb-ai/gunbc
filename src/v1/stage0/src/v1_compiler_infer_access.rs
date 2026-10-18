@@ -3,9 +3,7 @@
 
 pub use crate::std_types::{is_ordered_element_collection, SourceSpan};
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
-use crate::v1_compiler_infer_types::TextNotAskedReason::{
-    TextNotAskedForCallableComponentResidue, TextNotAskedInVariantFieldSummary,
-};
+use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedInVariantFieldSummary;
 pub use crate::v1_compiler_infer_types::{
     for_each_element_type_node, node_is_element_collection, node_is_keyed_collection,
     node_type_equals, normalize_access_type_node, resolved_type, TextJudgment, TextNotAskedReason,

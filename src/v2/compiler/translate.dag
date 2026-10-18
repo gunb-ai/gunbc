@@ -67,7 +67,7 @@ import v2.std.witness {
   Holds,
   Violates
 }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   BinderTypeEdge,
   edge_is_core,
   is_positional,
@@ -97,14 +97,7 @@ import v2.std.node {
 import v2.std.type_binder {
   type_param_names
 }
-import v2.std.node_query {
-  binder_node_parts,
-  find_binder_type,
-  member_edge_type_node,
-  find_arrow_body_child,
-  find_named_child,
-  node_positional_child_targets
-}
+import v2.std.node_query { binder_node_parts, find_binder_type, member_edge_type_node, find_arrow_body_child, find_named_child }
 import v2.std.fold_assembly {
   node_list_from_node
 }
@@ -1209,10 +1202,10 @@ fn translate_arrow_signature_split(arrow: Node) -> Outcome<TypeExprArrowSplit> {
     ArrowParameterOrderAbsent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
     ArrowParameterOrderMalformed => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
     ArrowParameterOrderDeclared { labels: labels } =>
-      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
         Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
         Present { value: domain } =>
-          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+          match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
             Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
             Present { value: codomain } =>
               translate_arrow_signature_split_from(labels: labels, domain: domain, codomain: codomain)

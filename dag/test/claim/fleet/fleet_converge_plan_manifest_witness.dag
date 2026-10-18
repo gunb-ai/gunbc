@@ -97,6 +97,7 @@ fn fixture_run() -> ActionsRunBinding {
     workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
     run_id: "1001",
     run_revision: fixture_r,
+    execution_revision: fixture_r,
   }
 }
 
