@@ -77,7 +77,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileStepLegRefused,
   typed_remote_file_compare_argv,
   classify_typed_remote_file_comparison,
-  converge_typed_remote_file_validated,
+  converge_typed_remote_file,
 }
 import gunbc.runner.runner_unit {
   RunnerUnitLifecycleIntent,
@@ -1683,7 +1683,7 @@ fn apply_runner_host_file(
     HostFileLeaveInPlace => HostFileLeftInPlace
     HostFileActionRefused { reason: r } => HostFileNotAttempted { reason: r }
     HostFileWrite =>
-      match converge_typed_remote_file_validated(
+      match converge_typed_remote_file(
         target: subject.target,
         context: context,
         admission: runner_host_file_write_admission(file: planned.file),
