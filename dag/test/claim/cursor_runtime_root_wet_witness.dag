@@ -23,7 +23,7 @@ import gunbc.cursor_harness_credential {
   cursor_bound_key_probe_command, cursor_key_probe_reading, CursorKeyProbeReading, CursorKeyRejected, CursorKeyAccepted,
   CursorKeyProbeUnreadable, cursor_worker_turn_api_key_host_path,
 }
-import gunbc.worker_turn_standing { cursor_bounded_keyed_probe_command, cursor_observed_standing_for_program, cursor_sandbox_unavailable_reason_prefix }
+import gunbc.worker_turn_standing { cursor_bounded_keyed_probe_command, CursorBoundedProbeReady, CursorBoundedProbeNameRefused, CursorBoundedProbeEmitRefused, cursor_observed_standing_for_program, cursor_sandbox_unavailable_reason_prefix }
 import test.claim.dispatch_credential_acquisition_witness { fx_cursor_taken }
 
 // WET, NON-ROOT, over FRESH attempt roots: every invocation binds HOME and XDG_CONFIG_HOME to a root made
@@ -67,8 +67,9 @@ fn wet_remove_and_observe_absent(scratch: String) -> Bool {
 // production timeout), so (a), (b), (c), (g) exercise the production bound and not a parallel copy.
 fn wet_probe(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, key_file: String) -> CursorKeyProbeReading {
   match cursor_bounded_keyed_probe_command(program: program, root: root, key_path: key_file as NonEmptyStr) {
-    PosixShExportExecEmitRefused { name: _ } => CursorKeyProbeUnreadable { exit_code: 0 - 1, detail: "emitter refused" }
-    PosixShExportExecReady { command } => {
+    CursorBoundedProbeNameRefused { spelling: _ } => CursorKeyProbeUnreadable { exit_code: 0 - 1, detail: "variable name refused" }
+    CursorBoundedProbeEmitRefused { name: _ } => CursorKeyProbeUnreadable { exit_code: 0 - 1, detail: "emitter refused" }
+    CursorBoundedProbeReady { command } => {
       let run = run_shell_command_observe(command: command, transport: LocalExec)
       cursor_key_probe_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
     }

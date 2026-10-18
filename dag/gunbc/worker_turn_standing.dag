@@ -9,7 +9,6 @@ import extdeps.exec.command { LocalExec }
 import extdeps.posix.sh_invocation {
   posix_sh_export_from_file_then_exec_command,
   PosixShExportExecReady,
-  PosixShExportExecCommand,
   PosixShExportExecEmitRefused,
   PosixShKeepFile,
   posix_sh_export_from_file_unreadable_exit,
@@ -21,7 +20,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_established_absence_detail,
 }
 import extdeps.exec.program { ProgramIdentity }
-import extdeps.exec.command { argv_words }
+import extdeps.exec.command { argv_words, ArgvCommand }
 import gunbc.host.cursor_agent_realization {
   cursor_agent_pinned_program,
   cursor_agent_executable_path,
@@ -238,9 +237,14 @@ data cursor_key_probe_kill_grace: Second = second(count: 5)
 
 // THE ONE KEYED, BOUNDED PROBE COMMAND: admit name -> export-from-file -> timeout. cursor_key_probe_observe and the
 // wet witness's probe both build it here, so (a), (b), (c) run the production bound and not a parallel copy.
-fn cursor_bounded_keyed_probe_command(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, key_path: NonEmptyStr) -> PosixShExportExecCommand {
+type CursorBoundedProbeCommand
+  = CursorBoundedProbeReady { command: ArgvCommand }
+  | CursorBoundedProbeNameRefused { spelling: String }
+  | CursorBoundedProbeEmitRefused { name: NonEmptyStr }
+
+fn cursor_bounded_keyed_probe_command(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, key_path: NonEmptyStr) -> CursorBoundedProbeCommand {
   match admit_posix_shell_name(spelling: cursor_api_key_env_var as String) {
-    PosixShellNameRefused { spelling } => PosixShExportExecEmitRefused { name: spelling as NonEmptyStr }
+    PosixShellNameRefused { spelling } => CursorBoundedProbeNameRefused { spelling: spelling }
     PosixShellNameAdmitted { name } =>
       match posix_sh_export_from_file_then_exec_command(
         name: name,
@@ -248,9 +252,9 @@ fn cursor_bounded_keyed_probe_command(program: ProgramIdentity, root: CursorAtte
         command: argv_words(command: cursor_bound_key_probe_command(program: program, root: root)),
         disposition: PosixShKeepFile,
       ) {
-        PosixShExportExecEmitRefused { name: n } => PosixShExportExecEmitRefused { name: n }
+        PosixShExportExecEmitRefused { name: n } => CursorBoundedProbeEmitRefused { name: n }
         PosixShExportExecReady { command } =>
-          PosixShExportExecReady {
+          CursorBoundedProbeReady {
             command: timeout_command(duration: cursor_key_probe_bound, kill_after: cursor_key_probe_kill_grace, command: command),
           }
       }
@@ -262,9 +266,11 @@ fn cursor_bounded_keyed_probe_command(program: ProgramIdentity, root: CursorAtte
 fn cursor_key_probe_observe(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, snapshot: TakenCredentialSnapshot) -> ProviderStanding {
   let path = taken_credential_snapshot_path(snapshot: snapshot)
   match cursor_bounded_keyed_probe_command(program: program, root: root, key_path: path) {
-    PosixShExportExecEmitRefused { name: n } =>
+    CursorBoundedProbeNameRefused { spelling } =>
+      ProviderStandingUnobserved { reason: join(["the cursor credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr }
+    CursorBoundedProbeEmitRefused { name: n } =>
       ProviderStandingUnobserved { reason: join(["the sh emitter refused the export-and-exec program for ", n as String], "") as NonEmptyStr }
-    PosixShExportExecReady { command } => {
+    CursorBoundedProbeReady { command } => {
       let run = run_shell_command_observe(command: command, transport: LocalExec)
       if run.exit_code == posix_sh_export_from_file_unreadable_exit {
         ProviderStandingUnobserved {
