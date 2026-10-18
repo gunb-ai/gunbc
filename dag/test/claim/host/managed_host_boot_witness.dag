@@ -13,6 +13,7 @@ import extdeps.bmc.capability {
   bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq,
   BmcFirmwareReleaseCapabilityRow, BmcFirmwareReleaseIdentity,
   CapabilityBootSourceOverride, CapabilityPowerControl, CapabilityOemRemoteMedia,
+  release_row_has_capability,
 }
 import extdeps.bmc.megarac { megarac_firmware_0_45_3, megarac_firmware_0_32 }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
@@ -50,15 +51,24 @@ import gunbc.host.smpro_platform_capability {
   SmproPlatformCarried, SmproPlatformSiteRefused, SmproPlatformNotCarried,
   SmproPlatformUnestablished,
 }
-import gunbc.host.bmc_control_binding { BmcControlEndpointMismatch }
 import std.measure {
   ObservationInstant, SharedMonotonic, ProcessMonotonic, WallClock, nanosecond,
   nanosecond_count, compare_instants, InstantOrder, InstantBefore, InstantSame,
   InstantAfter, InstantIncomparable, clock_domain_eq, clock_basis_eq,
 }
 import gunbc.machine_intake.oob_boot_handoff {
-  oob_boot_handoff_admission,
+  OobBootHandoffAdmission,
+  OobHandoffAdmitted,
+  OobHandoffPowerControlUnavailable,
+  OobHandoffBootSourceOverrideUnavailable,
+  OobHandoffRouteUnobserved,
+  OobHandoffRowUncatalogued,
+  OobHandoffRowAmbiguous,
+  oob_boot_handoff_admission_for_row,
 }
+import gunbc.host.bmc_control_binding { BmcControlEndpointMismatch, bmc_control_route_observation }
+import gunbc.host.host_reset_subject_roster { admit_reset_subject, ResetSubjectAdmitted }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_observation }
 import gunbc.host.host_reset_boot_selection { reset_boot_selection }
 import gunbc.host.boot_medium {
   BootMedium,
@@ -781,4 +791,129 @@ test fn w_a_build_reading_for_another_controller_grounds_no_capability_row() -> 
     }
     row_refuses && boot_refuses && own_resolves
   }) && count(managed_hosts()) == 1
+}
+
+
+// ─── THE HANDOFF ANSWERS OFF THE ROW THE BOOT WAS ADMITTED ON ──────────────────────────────
+// SIDE-CHAT BLOCKER 1 PAIR. The held defect: the live handoff resolved its capability row from
+// bmc_control_route_observation(route).identity.firmware -- the HISTORICAL probe receipt. After the
+// 0.32 -> 0.45.3 reflash the boot was admitted on 0.45.3 while the handoff still consulted 0.32's
+// row. The repair carries the decided row inside the admitted subjects; these claims pin it.
+//
+// THE PAIRING IS DATA-DEPENDENT, NOT A LUCKY EQUALITY. admit_reset_subject folds the row the reset
+// selection was admitted from through oob_boot_handoff_admission_for_row, and that fold mints
+// OobHandoffAdmitted carrying capability_row -- so the row compared here is the value the admission
+// CONSUMED, reached through the subject the production path produces. The committed fixture's probe
+// receipt carries the 0.32 identity while the operator's evidence reports the current build as
+// 0.45.3, so restoring an observation-firmware lookup at the fold hands the admitted arm the OTHER
+// RELEASE'S ROW: the identity comparison below goes red by release identity, not by coincidence of
+// contents -- which is precisely what a content comparison would have missed.
+test fn w_the_handoff_consumes_the_row_the_boot_was_admitted_on() -> Bool {
+  managed_hosts() |> all(h => {
+    let ev = megarac_operation_evidence()
+    match admit_boot_subject(evidence: ev, host: h, medium: mtcollins1_boot_medium, execution_revision: revision) {
+      BootSubjectRefused { host: _, cause: _ } => false
+      BootSubjectAdmitted { subject: boot } =>
+        match admit_reset_subject(evidence: ev, host: h) {
+          ResetSubjectAdmitted { subject: reset } =>
+            match oob_boot_handoff_admission_for_row(
+              observation: bmc_control_route_observation(route: reset.route),
+              capability_row: reset.capability_row,
+            ) {
+              // IDENTITY, not content: a same-content row sourced from the probed receipt must not
+              // pass -- that accident is exactly where the defect lived.
+              OobHandoffAdmitted { route: _, capability_row: consumed } =>
+                bmc_firmware_release_identity_eq(a: consumed.firmware, b: boot.capability_row.firmware)
+              OobHandoffRouteUnobserved => false
+              OobHandoffBootSourceOverrideUnavailable => false
+              OobHandoffPowerControlUnavailable => false
+              OobHandoffRowUncatalogued { firmware: _ } => false
+              OobHandoffRowAmbiguous { firmware: _, count: _ } => false
+            }
+          _ => false
+        }
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// DISCRIMINATOR, OVERRIDE ARM. Remove exactly the boot-source-override capability from the CURRENT
+// row and the handoff must refuse with THAT cause -- proving the live capability question is answered
+// from the carried current row. The probed receipt's own row still carries the override, so a
+// stale-path handoff would have admitted: this discriminator is what pins the fix rather than the
+// happy path. Beside it, the CONTROL: the same fold with the unaltered row admits, so the refusal is
+// the removed capability and nothing else (endpoint, route, account are untouched).
+test fn w_a_current_row_without_the_override_capability_refuses_the_handoff() -> Bool {
+  match managed_hosts() |> first() {
+    Present { value: h } =>
+      match admit_boot_subject(
+        evidence: megarac_operation_evidence(), host: h, medium: mtcollins1_boot_medium, execution_revision: revision,
+      ) {
+        BootSubjectAdmitted { subject: boot } => {
+          // THE DISCRIMINATOR IS A SET DIFFERENCE ON THE LIVE ROW, not a hand-typed row: hand-typing
+          // the surviving capabilities would let the row silently drift from the release's real row
+          // and turn the discriminator into decoration.
+          let without_override = BmcFirmwareReleaseCapabilityRow {
+            firmware: boot.capability_row.firmware,
+            capabilities: boot.capability_row.capabilities |> filter(c => !(c == CapabilityBootSourceOverride)),
+          }
+          let discriminated = match oob_boot_handoff_admission_for_row(
+            observation: bmc_control_route_observation(route: boot.route),
+            capability_row: without_override,
+          ) {
+            OobHandoffBootSourceOverrideUnavailable => true
+            _ => false
+          }
+          let control = match oob_boot_handoff_admission_for_row(
+            observation: bmc_control_route_observation(route: boot.route),
+            capability_row: boot.capability_row,
+          ) {
+            OobHandoffAdmitted { route: _, capability_row: _ } => true
+            _ => false
+          }
+          // the discriminator only means something if the capability was there to remove
+          release_row_has_capability(row: boot.capability_row, cap: CapabilityBootSourceOverride) &&
+            discriminated && control
+        }
+        BootSubjectRefused { host: _, cause: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// DISCRIMINATOR, POWER ARM. The same fold, the same fold call, with power control removed instead:
+// the handoff refuses with the POWER cause. Both arms are driven because the two live consumers (a
+// boot and a reset return) ask both questions of the same fold, and a single shared catch-all refusal
+// would let a stale or mis-threaded row hide behind whichever cause happened to be printed.
+test fn w_a_current_row_without_the_power_capability_refuses_the_handoff() -> Bool {
+  match managed_hosts() |> first() {
+    Present { value: h } =>
+      match admit_boot_subject(
+        evidence: megarac_operation_evidence(), host: h, medium: mtcollins1_boot_medium, execution_revision: revision,
+      ) {
+        BootSubjectAdmitted { subject: boot } => {
+          let without_power = BmcFirmwareReleaseCapabilityRow {
+            firmware: boot.capability_row.firmware,
+            capabilities: boot.capability_row.capabilities |> filter(c => !(c == CapabilityPowerControl)),
+          }
+          let discriminated = match oob_boot_handoff_admission_for_row(
+            observation: bmc_control_route_observation(route: boot.route),
+            capability_row: without_power,
+          ) {
+            OobHandoffPowerControlUnavailable => true
+            _ => false
+          }
+          let control = match oob_boot_handoff_admission_for_row(
+            observation: bmc_control_route_observation(route: boot.route),
+            capability_row: boot.capability_row,
+          ) {
+            OobHandoffAdmitted { route: _, capability_row: _ } => true
+            _ => false
+          }
+          release_row_has_capability(row: boot.capability_row, cap: CapabilityPowerControl) &&
+            discriminated && control
+        }
+        BootSubjectRefused { host: _, cause: _ } => false
+      }
+    Absent => false
+  }
 }
