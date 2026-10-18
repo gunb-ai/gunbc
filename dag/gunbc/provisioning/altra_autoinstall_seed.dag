@@ -66,6 +66,7 @@ import std.content_hash {
   content_hash_tagged_structural,
 }
 import extdeps.external_authority { ExternalAuthority }
+import std.measure { CharacterCount, character_count, measure_le }
 import extdeps.libxcrypt.crypt_scheme {
   CryptSchemeFormat,
   Sha512CryptFormat,
@@ -1232,10 +1233,10 @@ type AdminPasswordRefusalCause
   | SchemeUnsupported
   | RoundsMalformed
   | SaltAbsent
-  | SaltTooLong { length: Int, ceiling: Int }
+  | SaltTooLong { length: CharacterCount, ceiling: CharacterCount }
   | SaltHoldsForbiddenCharacter
   | DigestAbsent
-  | DigestWrongLength { length: Int, expected: Int }
+  | DigestWrongLength { length: CharacterCount, expected: CharacterCount }
   | DigestNotInCryptAlphabet
 
 // THE FIGURES COME FROM UPSTREAM, NOT FROM THIS FILE (review 81975). Scheme token, salt bounds, digest
@@ -1375,6 +1376,7 @@ fn reject_cost(segments: List<String>, count: Int) -> Optional<AdminPasswordRefu
 // test is the upstream FORBIDDEN-set scan, not an allowed-alphabet strip (see the note above for why the
 // difference is a safety property and not a style choice).
 fn reject_salt(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  let measured_salt = character_count(count: salt_length_of(segments: segments, count: count))
   match sha512_crypt_format {
     Sha512CryptFormat {
       scheme_token: _, cost_marker: _, salt_forbidden_characters: _, salt_least_characters: least,
@@ -1384,12 +1386,15 @@ fn reject_salt(segments: List<String>, count: Int) -> Optional<AdminPasswordRefu
       match piece_at(pieces: segments, index: count - 2) {
         Absent => Present { value: SaltAbsent }
         Present { value: salt } =>
-          match salt.length() < least {
-            True => Present { value: SaltAbsent }
-            False =>
-              match salt.length() > greatest {
-                True => Present { value: SaltTooLong { length: salt.length(), ceiling: greatest } }
-                False =>
+          // Compared ON THE COUNT AXIS rather than against a bare Int. `a < b` is `not (b <= a)` because
+          // std.measure offers the weak order, not the strict one; writing `salt.length() < least` would have
+          // meant comparing a host integer to a measure, which is exactly the mix the carrier exists to stop.
+          match measure_le(a: least, b: measured_salt) {
+            False => Present { value: SaltAbsent }
+            True =>
+              match measure_le(a: measured_salt, b: greatest) {
+                False => Present { value: SaltTooLong { length: measured_salt, ceiling: greatest } }
+                True =>
                   match salt_holds_only_admitted_characters(salt: salt) {
                     True => Absent
                     False => Present { value: SaltHoldsForbiddenCharacter }
@@ -1405,6 +1410,7 @@ fn reject_salt(segments: List<String>, count: Int) -> Optional<AdminPasswordRefu
 // entry where it can never authenticate, leaving a board that looks like it has no password set. The character
 // test is the allowed-alphabet strip, because the digest's class IS an enumeration upstream.
 fn reject_digest(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  let measured_digest = character_count(count: digest_length_of(segments: segments, count: count))
   match sha512_crypt_format {
     Sha512CryptFormat {
       scheme_token: _, cost_marker: _, salt_forbidden_characters: _, salt_least_characters: _,
@@ -1417,8 +1423,8 @@ fn reject_digest(segments: List<String>, count: Int) -> Optional<AdminPasswordRe
           match digest.length() == 0 {
             True => Present { value: DigestAbsent }
             False =>
-              match digest.length() == width {
-                False => Present { value: DigestWrongLength { length: digest.length(), expected: width } }
+              match measured_digest == width {
+                False => Present { value: DigestWrongLength { length: measured_digest, expected: width } }
                 True =>
                   match digest_characters_are_admitted(digest: digest) {
                     True => Absent
@@ -1427,6 +1433,24 @@ fn reject_digest(segments: List<String>, count: Int) -> Optional<AdminPasswordRe
               }
           }
       }
+  }
+}
+
+// THE WIDTHS, READ THE SAME WAY THE CHECKS READ THEM. If the segment is missing the check that refuses for it
+// fires first, so zero is not a lie about a real salt — it is simply never compared. Keeping these beside
+// piece_at rather than calling .length() at two call sites is what stops the measured value and the refused value
+// from ever being read out of different segments.
+fn salt_length_of(segments: List<String>, count: Int) -> Int {
+  match piece_at(pieces: segments, index: count - 2) {
+    Absent => 0
+    Present { value: salt } => salt.length()
+  }
+}
+
+fn digest_length_of(segments: List<String>, count: Int) -> Int {
+  match piece_at(pieces: segments, index: count - 1) {
+    Absent => 0
+    Present { value: digest } => digest.length()
   }
 }
 

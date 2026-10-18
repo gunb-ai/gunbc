@@ -24,7 +24,8 @@ module extdeps.libxcrypt.crypt_scheme
 // final field and scrypt an 11-to-97-character salt, so a width copied from the row below would refuse every valid
 // digest of that scheme. Nothing branches on scheme today, so no consumer can ask for one.
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { CharacterCount, character_count, measure_le }
 import std.optional { Optional, Absent, Present }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ExternalModelScope, ExternalSubjectRef, cited_figure_read_obligation }
@@ -74,18 +75,21 @@ type CryptSchemeFormat = Sha512CryptFormat {
   // Characters the salt may not contain. '$' is unreachable through the consumer's split-on-'$' walk and is
   // carried anyway: it is part of the upstream rule, and a consumer that parses without splitting needs it.
   salt_forbidden_characters: List<NonEmptyStr>,
-  // The salt's width, from {1,16}. The table's "Salt size: 6 to 96" bits is the same rule at 6 bits per character.
-  salt_least_characters: Int,
-  salt_greatest_characters: Int,
+  // The salt's width, from {1,16}. The table's "Salt size: 6 to 96" bits is the same rule at 6 bits per
+  // character. A COUNT, not a bare Int: std.measure already owns the Count axis and CharacterCount is its
+  // character-count sibling, so re-minting an Int here would grow the corpus by re-invention (DESIGN §2) and
+  // would let a bit-width be compared against a character-width without anything noticing.
+  salt_least_characters: CharacterCount,
+  salt_greatest_characters: CharacterCount,
   // The digest's class and its width, from [./0-9A-Za-z]{86}. Exactly 86, not a floor: shorter is a truncated
   // digest and longer is not this format at all.
   digest_alphabet: List<NonEmptyStr>,
-  digest_exact_characters: Int,
+  digest_exact_characters: CharacterCount,
   // THE COST FIELD'S DOCUMENTED RANGE, expressed as DIGIT COUNTS because both bounds are powers of ten: every
   // [1-9][0-9]+ string of 4..9 digits lies inside 1000..999,999,999, and no 2..3-digit or 10+-digit one does. So
   // the range is decidable from the width alone — no arithmetic on the value and no numeral parser to get wrong.
-  cost_least_digits: Int,
-  cost_greatest_digits: Int,
+  cost_least_digits: CharacterCount,
+  cost_greatest_digits: CharacterCount,
   // THE STANDING TRAVELS WITH THE FIGURES. A field and not a comment, so a consumer cannot take the numbers as
   // deduced truth after the citation has rotted: DESIGN §4d separates a cited wall from a typed bet consumed as
   // fact, and that distinction only survives editing if it is in the type.
@@ -96,8 +100,8 @@ data sha512_crypt_format: CryptSchemeFormat = Sha512CryptFormat {
   scheme_token: "6",
   cost_marker: "rounds=",
   salt_forbidden_characters: ["$", ":", "\r", "\n"],
-  salt_least_characters: 1,
-  salt_greatest_characters: 16,
+  salt_least_characters: character_count(count: 1),
+  salt_greatest_characters: character_count(count: 16),
   digest_alphabet: [
     ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
     "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
@@ -105,9 +109,9 @@ data sha512_crypt_format: CryptSchemeFormat = Sha512CryptFormat {
     "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
     "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
   ],
-  digest_exact_characters: 86,
-  cost_least_digits: 4,
-  cost_greatest_digits: 9,
+  digest_exact_characters: character_count(count: 86),
+  cost_least_digits: character_count(count: 4),
+  cost_greatest_digits: character_count(count: 9),
   figure_standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
 }
 
@@ -145,8 +149,9 @@ fn digest_characters_are_admitted(digest: String) -> Bool {
 // Enumerations checked rather than a range asserted: "rounds=5" and "rounds=abc" are malformed rather than
 // silently parsed into a number a range check would then accept.
 fn cost_field_is_well_formed(digits: String) -> Bool {
-  match digits.length() >= sha512_crypt_format.cost_least_digits
-    && digits.length() <= sha512_crypt_format.cost_greatest_digits
+  let digit_width = character_count(count: digits.length())
+  match measure_le(a: sha512_crypt_format.cost_least_digits, b: digit_width)
+    && measure_le(a: digit_width, b: sha512_crypt_format.cost_greatest_digits)
   {
     False => false
     True =>
