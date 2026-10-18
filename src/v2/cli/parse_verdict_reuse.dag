@@ -1,7 +1,7 @@
 module v2.cli.parse_verdict_reuse
 
-import std.types { Bool, Char, Int, Map, String }
-import std.algebra { Empty, FreeSemigroup, empty_map, fold_list, map_insert }
+import std.types { Bool, Char, Int, List, Map, String }
+import std.algebra { FreeMonoid, Empty, FreeSemigroup, empty_map, fold_list, list_head, map_insert }
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
@@ -23,6 +23,7 @@ import gunbc.parse_verdict_schema {
   ParseVerdictStanding,
   parse_verdict_restore_identity_basename,
   parse_verdict_restore_receipts_basename,
+  parse_verdict_restore_ancestors_basename,
 }
 
 // THE PULL-REQUEST SIDE OF THE PARSE-VERDICT CACHE (gunbc.parse_verdict_schema owns the standing;
@@ -36,6 +37,7 @@ import gunbc.parse_verdict_schema {
 // narrows to the walk and cannot mint an Accepted. They are not distinguished here because nothing
 // downstream acts differently on them; the typed standing records which blob was unusable.
 type ParseVerdictBase {
+  ancestor: Optional<String>
   i_base: Optional<String>
   receipt_lines: Optional<Map<String, Bool>>
 }
@@ -44,20 +46,29 @@ data parse_verdict_line_delimiter: Char = 10
 
 // ONE CROSSING: the receipts text unfolds to scalars, splits on the newline scalar, and each line
 // folds back to the kernel text the digests are keyed in. The set is built once per run.
+fn parse_verdict_line_scalars(text: String) -> FreeMonoid<FreeMonoid<Char>> {
+  string_split(
+    source: unicode_scalar_unfold(s: text),
+    delimiter: FreeSemigroup { head: parse_verdict_line_delimiter, tail: Empty }
+  )
+}
+
 fn parse_verdict_receipt_lines(text: String) -> Map<String, Bool> {
   let no_lines: Map<String, Bool> = empty_map()
   fold_list(
-    xs: string_split(
-      source: unicode_scalar_unfold(s: text),
-      delimiter: FreeSemigroup { head: parse_verdict_line_delimiter, tail: Empty }
-    ),
+    xs: parse_verdict_line_scalars(text: text),
     empty: no_lines,
     cons: fn(acc, line) { map_insert(m: acc, key: unicode_scalar_fold(xs: line), value: true) }
   )
 }
 
-fn parse_verdict_base_from(identity: FilesystemReadOutcome, receipts: FilesystemReadOutcome) -> ParseVerdictBase {
+fn parse_verdict_base_from(
+  ancestor: Optional<String>,
+  identity: FilesystemReadOutcome,
+  receipts: FilesystemReadOutcome
+) -> ParseVerdictBase {
   ParseVerdictBase {
+    ancestor: ancestor,
     i_base: match identity {
       FilesystemReadSucceeded { content: c } => Present { value: c }
       FilesystemReadRefused { error: _ } => Absent
@@ -71,17 +82,35 @@ fn parse_verdict_base_from(identity: FilesystemReadOutcome, receipts: Filesystem
 
 fn parse_verdict_restored_path(dir: String, basename: String) -> String { join([dir, "/", basename], "") }
 
+// The sha the restore chain recorded: the first line of the record (a head read, no list built), Absent when the record is missing
+// or empty. An entry restored without a named ancestor is still reused only on exact identity.
+fn parse_verdict_ancestor_from(record: FilesystemReadOutcome) -> Optional<String> {
+  match record {
+    FilesystemReadSucceeded { content: c } =>
+      match list_head(xs: parse_verdict_line_scalars(text: c)) {
+        Present { value: line } => if unicode_scalar_fold(xs: line) == "" { Absent } else { Present { value: unicode_scalar_fold(xs: line) } }
+        Absent => Absent
+      }
+    FilesystemReadRefused { error: _ } => Absent
+  }
+}
+
+// THE RESTORE CHAIN ALREADY CHOSE THE ANCESTOR (first published identity wins, gated in the
+// workflow), so there is exactly one pair of blobs here and nothing to select between: a mismatch
+// refuses reuse in the standing, and no other ancestor is ever consulted.
 fn parse_verdict_base_read(dir: String) -> ParseVerdictBase {
+  let record = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_ancestors_basename))
   let identity = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_identity_basename))
   let receipts = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_receipts_basename))
   parse_verdict_base_from(
+    ancestor: parse_verdict_ancestor_from(record: filesystem_read_outcome(content: record.content, success: record.success, error: record.error)),
     identity: filesystem_read_outcome(content: identity.content, success: identity.success, error: identity.error),
     receipts: filesystem_read_outcome(content: receipts.content, success: receipts.success, error: receipts.error)
   )
 }
 
-// COUNTABLE: one tally per typed standing, printed once at the end of the walk.
 type ParseVerdictReuseCounts {
+  ancestor: String
   reused: Int
   miss_identity_absent: Int
   miss_identity_mismatch: Int
@@ -90,8 +119,14 @@ type ParseVerdictReuseCounts {
   miss_declared_refused: Int
 }
 
-fn parse_verdict_reuse_counts_zero() -> ParseVerdictReuseCounts {
+data parse_verdict_reuse_ancestor_none: String = "none"
+
+fn parse_verdict_reuse_counts_zero(ancestor: Optional<String>) -> ParseVerdictReuseCounts {
   ParseVerdictReuseCounts {
+    ancestor: match ancestor {
+      Present { value: sha } => sha
+      Absent => parse_verdict_reuse_ancestor_none
+    },
     reused: 0,
     miss_identity_absent: 0,
     miss_identity_mismatch: 0,
@@ -104,6 +139,7 @@ fn parse_verdict_reuse_counts_zero() -> ParseVerdictReuseCounts {
 fn parse_verdict_reuse_counts_add(counts: ParseVerdictReuseCounts, standing: ParseVerdictStanding) -> ParseVerdictReuseCounts {
   match standing {
     Reused => ParseVerdictReuseCounts {
+      ancestor: counts.ancestor,
       reused: counts.reused + 1,
       miss_identity_absent: counts.miss_identity_absent,
       miss_identity_mismatch: counts.miss_identity_mismatch,
@@ -112,6 +148,7 @@ fn parse_verdict_reuse_counts_add(counts: ParseVerdictReuseCounts, standing: Par
       miss_declared_refused: counts.miss_declared_refused
     }
     MissIdentityAbsent => ParseVerdictReuseCounts {
+      ancestor: counts.ancestor,
       reused: counts.reused,
       miss_identity_absent: counts.miss_identity_absent + 1,
       miss_identity_mismatch: counts.miss_identity_mismatch,
@@ -120,6 +157,7 @@ fn parse_verdict_reuse_counts_add(counts: ParseVerdictReuseCounts, standing: Par
       miss_declared_refused: counts.miss_declared_refused
     }
     MissIdentityMismatch => ParseVerdictReuseCounts {
+      ancestor: counts.ancestor,
       reused: counts.reused,
       miss_identity_absent: counts.miss_identity_absent,
       miss_identity_mismatch: counts.miss_identity_mismatch + 1,
@@ -128,6 +166,7 @@ fn parse_verdict_reuse_counts_add(counts: ParseVerdictReuseCounts, standing: Par
       miss_declared_refused: counts.miss_declared_refused
     }
     MissEntryAbsent => ParseVerdictReuseCounts {
+      ancestor: counts.ancestor,
       reused: counts.reused,
       miss_identity_absent: counts.miss_identity_absent,
       miss_identity_mismatch: counts.miss_identity_mismatch,
@@ -136,6 +175,7 @@ fn parse_verdict_reuse_counts_add(counts: ParseVerdictReuseCounts, standing: Par
       miss_declared_refused: counts.miss_declared_refused
     }
     MissDigestUnseen => ParseVerdictReuseCounts {
+      ancestor: counts.ancestor,
       reused: counts.reused,
       miss_identity_absent: counts.miss_identity_absent,
       miss_identity_mismatch: counts.miss_identity_mismatch,
@@ -144,6 +184,7 @@ fn parse_verdict_reuse_counts_add(counts: ParseVerdictReuseCounts, standing: Par
       miss_declared_refused: counts.miss_declared_refused
     }
     MissDeclaredRefused => ParseVerdictReuseCounts {
+      ancestor: counts.ancestor,
       reused: counts.reused,
       miss_identity_absent: counts.miss_identity_absent,
       miss_identity_mismatch: counts.miss_identity_mismatch,
@@ -157,7 +198,8 @@ fn parse_verdict_reuse_counts_add(counts: ParseVerdictReuseCounts, standing: Par
 fn parse_verdict_reuse_counts_text(counts: ParseVerdictReuseCounts) -> String {
   join(
     [
-      "parse-verdict reuse: reused=", int_to_decimal_string(value: counts.reused),
+      "parse-verdict reuse: ancestor=", counts.ancestor,
+      " reused=", int_to_decimal_string(value: counts.reused),
       " miss_identity_absent=", int_to_decimal_string(value: counts.miss_identity_absent),
       " miss_identity_mismatch=", int_to_decimal_string(value: counts.miss_identity_mismatch),
       " miss_entry_absent=", int_to_decimal_string(value: counts.miss_entry_absent),

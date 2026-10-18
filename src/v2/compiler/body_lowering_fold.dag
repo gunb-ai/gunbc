@@ -17,7 +17,7 @@ import v2.std.service_realization_labels {
 }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq, empty_map, list_at_optional, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
 import v2.compiler.fold_lowering {
   CallbackAllByAnd,
   CallbackAnyByOr,

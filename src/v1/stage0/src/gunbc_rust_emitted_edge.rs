@@ -3,6 +3,7 @@
 
 use self::EmittedEdgeProvenance::*;
 use self::EmittedEdgeTarget::*;
+pub use crate::std_algebra::collection_join_shape;
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

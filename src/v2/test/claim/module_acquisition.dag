@@ -8,7 +8,7 @@ import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { ModuleFileRef, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, module_file_key, ReferenceCrossTreeDenied, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, reference_next_read, reference_prefixes }
-import std.algebra { length, list_head, list_map, empty_map, map_insert }
+import std.algebra { length, list_head, list_map, empty_map, map_insert, collection_concat_shape, collection_join_shape }
 import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeFundamentalityUnknownFailClosed, CrossTreeToTreeLessFundamental, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }

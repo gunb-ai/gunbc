@@ -8,6 +8,7 @@ import extdeps.systemd.service_exec {
   exec_command_line_with_environment, exec_words_line_with_environment,
 }
 import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.gnu_coreutils { cp_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.git {
   git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command, git_diff_tree_equal_command,
@@ -15,7 +16,8 @@ import extdeps.git {
 import extdeps.rust.cargo_build { cargo_build_release_bin_offline_command }
 import gunbc.repo.repo_self_build { repo_self_build_package }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, Mebibyte, mebibyte, mebibyte_count, mebibyte_ceiling, gibibyte_to_byte_size, mebibyte_to_byte_size }
+import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_allowance }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Description, SuccessAction, FailureAction, ServiceType, ExecMode,
   Restart, WorkingDirectory, Environment, EnvironmentFile, ServiceStandardOutput, ServiceStandardError,
@@ -51,12 +53,29 @@ import gunbc.runner.runner_guest_image {
 //      tree, with the image's /work/.cargo/config.toml pointing crates-io at /work/vendor;
 //   4. ExecStart: the built gunbc runs gunbc.runner.runner_claim_set_guest claim_set_guest_main,
 //      which runs each claim and frames the exits onto /dev/vde.
+// THE GUEST'S RAM AND THE CLAIMS' ENVELOPE ARE ONE DECLARATION, read by the launch plan (the VM's
+// mem_size_mib and the jailer unit) and by the guest unit below (its MemoryMax=), so the two cannot
+// drift. The cell a revision job runs in is bounded by the CI slot's row (gunbc_runner_slot_memory_max):
+// the jailer unit asks for the VM's RAM plus the realization allowance, so the VM's RAM is the row
+// LESS that allowance, and the claims' envelope is the VM's RAM less the guest OS allowance. Sized the
+// other way (the row plus allowances) the VM asked for more than its own cell grants.
+// The row is the FLEET constant, not gunbc_runner_slot_desired_for(slot), because the guest unit's
+// MemoryMax= is baked into the image (runner_revision_job_image) and one image serves every slot. A slot
+// whose row differs from the fleet row needs its own image or a refusal; nothing checks that yet (PR B).
+data revision_job_guest_os_allowance: Mebibyte = mebibyte(count: 1024)
+
+fn revision_job_guest_memory() -> Mebibyte {
+  mebibyte(count: mebibyte_count(m: mebibyte_ceiling(b: gunbc_runner_slot_memory_max)) - mebibyte_count(m: mebibyte_ceiling(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))))
+}
+
+fn revision_job_claim_envelope() -> ByteSize {
+  mebibyte_to_byte_size(m: mebibyte(count: mebibyte_count(m: revision_job_guest_memory()) - mebibyte_count(m: revision_job_guest_os_allowance)))
+}
+
 // THE CLAIMS RUN BOUNDED INSIDE THE GUEST. The unit carries MemoryMax= and MemorySwapMax=0 on its own
 // cgroup, so `gunbc test` inside it reads a finite memory.max with no swap on its cgroup chain
 // (gunbc.compute.unit_bounds BoundedByObservedCgroup) -- bounded by the cgroup, not exempted by name.
-// The bound is the CI slot's declared per-job envelope (gunbc.runner.runner_slot_desired
-// gunbc_runner_slot_memory_max), since the claims are the labels CI runs; the VM's RAM is that bound
-// plus the guest OS allowance, read from this same row by the launch plan.
+// The bound is revision_job_claim_envelope, derived from the CI slot's row above.
 //
 // The job's per-job values (the tree id the diff compares against) reach the argv through systemd's
 // ${NAME} substitution from the spec environment file (systemd.service(5), "Command lines"); every
@@ -97,8 +116,22 @@ fn revision_job_vendor_steps(vendor_archive: String, vendor_dir: String) -> List
   ]
 }
 
+// THE CARGO SOURCE REPLACEMENT, placed on the mounted work disk. The image carries the config at
+// revision_job_image_cargo_config (gunbc.runner.runner_revision_job_image writes it); /work is the
+// job's fresh disk mounted over the image's /work, so the config is copied onto it before anything
+// reads it, and cargo finds it from /work/tree as /work/.cargo/config.toml.
+data revision_job_image_cargo_config: String = "/etc/gunbc-revision-job-cargo-config.toml"
+data revision_job_cargo_config_dir: String = "/work/.cargo"
+
+fn revision_job_cargo_config_steps() -> List<ArgvCommand> {
+  [
+    mkdir_parents_command(path: revision_job_cargo_config_dir),
+    cp_command(source: revision_job_image_cargo_config, destination: concat(revision_job_cargo_config_dir, "/config.toml")),
+  ]
+}
+
 fn revision_job_pre_steps() -> List<ArgvCommand> {
-  revision_job_tree_steps(tree_archive: revision_job_tree_device, work_dir: revision_job_tree_dir, tree: systemd_environment_reference(name: "GUNBC_CLAIM_SET_TREE") as String)
+  revision_job_cargo_config_steps() + revision_job_tree_steps(tree_archive: revision_job_tree_device, work_dir: revision_job_tree_dir, tree: systemd_environment_reference(name: "GUNBC_CLAIM_SET_TREE") as String)
     + revision_job_vendor_steps(vendor_archive: revision_job_vendor_device, vendor_dir: revision_job_vendor_dir)
     + [cargo_build_release_bin_offline_command(package: repo_self_build_package as String, bin: gunbc_bin_name as String)]
 }
@@ -149,7 +182,7 @@ fn revision_job_guest_unit() -> RevisionJobGuestUnit {
         Environment { assignment: runner_guest_job_path },
         Environment { assignment: runner_guest_job_home },
         EnvironmentFile { path: revision_job_spec_device },
-        ServiceResourceControl { directive: service_memory_max(bytes: gunbc_runner_slot_memory_max) },
+        ServiceResourceControl { directive: service_memory_max(bytes: revision_job_claim_envelope()) },
         ServiceResourceControl { directive: service_memory_swap_max(bytes: byte_size(count: 0)) },
         ServiceStandardOutput { stream: OutputJournalAndConsole },
         ServiceStandardError { stream: OutputJournalAndConsole },

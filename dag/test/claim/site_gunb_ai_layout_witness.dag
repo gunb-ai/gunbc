@@ -5,9 +5,9 @@ import std.algebra { string_contains }
 import std.optional { Optional, Absent, Present }
 import extdeps.filesystem.filesystem_io
 import extdeps.shell
-import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, AmbientRule, ResponseRule, decl, serialize_rules }
+import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, AmbientRule, ResponseRule, decl, serialize_rules, css_block }
 import extdeps.languages.css.properties { GridTemplateColumns }
-import extdeps.languages.css.selectors { ClassSelector }
+import extdeps.languages.css.selectors { ClassSelector, selector_subject_wire, root_selector }
 import gunbc.site.gunb_ai_layout {
   BallotRequest, BallotHtml, BallotRefused, tracks_fixed, tracks_single,
   ballot_render, layout_rules, layout_css, ballot_css, layout_scale_tokens,
@@ -15,12 +15,12 @@ import gunbc.site.gunb_ai_layout {
   grid_flow, grid_fixed_3, grid_autofill, grid_over_policy_columns, column_count_max,
   breakpoints_adopt_live, breakpoints_stack_only, ResponsePoint, breakpoint_points,
   response_rule, stack_point, compact_point,
-  scheme_dark_only, scheme_light_alt, day_bindings_complete, day_bindings_rows, day_scope_class,
+  scheme_dark_only, scheme_light_alt, day_bindings_complete, day_bindings_rows, day_bindings,
 }
 import gunbc.site.gunb_ai_layout_review { ballot_entries, ballot_write_entries, BallotRun, BallotWritten, BallotRefusedRun }
 import gunbc.site.gunb_ai_tokens { token_root_decls, token_swatches }
-import std.list { duplicated_by_key }
-import extdeps.languages.css.media_queries { MediaMaxWidth }
+import std.list { duplicated_by_key, first_where }
+import extdeps.languages.css.media_queries { MediaMaxWidth, css_media_rule_wire, prefers_light }
 import extdeps.languages.css.values { CssLength, Px }
 import gunbc.design.palette { swatch_paint, swatches_of }
 import gunbc.design.gunb_ai_hues { gunb_ai_hues }
@@ -399,11 +399,26 @@ fn cards_track(css: String) -> String {
 test fn witness_light_variant_rebinds_and_reuses_hues() -> Bool {
   let light = layout_css(grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_light_alt)
   let dark = layout_css(grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only)
+  // The expected block is BUILT from the upstream wires, never hand-typed here: MQ5
+  // §12.5's condition through css_media_rule_wire, the :root subject through
+  // selector_subject_wire, both over the day declarations. A hand-typed
+  // "@media (prefers-color-scheme: light) { :root { … } }" in this file would pass even
+  // if the model emitted something else, and would be a second source for the very text
+  // the layer is supposed to generate.
+  let media_open = css_media_rule_wire(
+    condition: prefers_light,
+    body: css_block(selector: selector_subject_wire(s: root_selector), decls: day_bindings()))
   day_bindings_complete()
-    // The day block is scoped and present in the light artifact, absent from the dark
-    // one (the axis must not bleed into the other choice).
-    && string_contains(s: light, pattern: join([".", day_scope_class, " { "], ""))
-    && !string_contains(s: dark, pattern: day_scope_class)
+    // The OS-following block is present in the light artifact, and the dark artifact
+    // contains NO prefers-color-scheme text at all: dark is the unconditional :root, so
+    // an emitted dark block would mean the axis bled into the other choice.
+    && string_contains(s: light, pattern: media_open)
+    && !string_contains(s: dark, pattern: "prefers-color-scheme")
+    // The gap stays closed: the class scope that stood in for this is gone, on both
+    // sides. (This is the clause the scaffold comment promised would change with the
+    // arm; the ballot writer's page is checked for the same absence below.)
+    && !string_contains(s: light, pattern: "gunb-day")
+    && !string_contains(s: dark, pattern: "gunb-day")
     // Every night role is rebound BY THE SAME NAME to its day swatch. No "{ " prefix is
     // assumed here: serialize_decls joins with "; ", so only the first declaration
     // follows the selector — an earlier draft of this claim assumed otherwise and was
@@ -454,12 +469,59 @@ test fn witness_ballot_references_resolve() -> Bool {
         // was dropped reads var(--gunb-canvas) with no declaration, and the browser
         // falls back to its own defaults — white canvas, black text.
         && string_contains(s: h, pattern: ":root { ")
+        // The closed scheme gap, checked on the PUBLISHED page and on the stylesheet
+        // separately. No class scope survives anywhere on the page (the captions no
+        // longer mention it either, so this is a clean negative), and the media block
+        // appears in the STYLESHEET of the light page only — asserted on the stylesheet
+        // rather than the page because the dark option's own caption discusses
+        // prefers-color-scheme, and a caption is not a stylesheet.
+        && !string_contains(s: h, pattern: "gunb-day")
+        && (e.scheme == scheme_light_alt)
+          == string_contains(s: rendered_style(req: e), pattern: "prefers-color-scheme")
     BallotRefused { reason: _ } => false
   })
 }
 
-// The names this layer reads, derived from the rows it reads them from — never a copied
-// list (§3: one home; a new role or token is checked automatically).
+// 8c. CASCADE ORDER, which is the only thing that makes the light override win. The
+//     media block and the unconditional :root have the SAME specificity (both :root), so
+//     the override wins solely by coming later in the sheet. Reorder the two in
+//     ballot_css and this goes red — the browser would then keep dark forever and every
+//     presence-only check, including the one above, would stay green.
+//
+//     The comparison is against the FIRST occurrence of the root subject plus " { " in the
+//     sheet, built from selector_subject_wire rather than typed. If the media block were
+//     emitted first, that first occurrence would be the one INSIDE it, its index would be
+//     greater than the media block's own index, and this claim is red — no silent arm. If the
+//     unconditional block were dropped entirely, the same thing happens and the
+//     reference-resolution claim above is red too.
+//
+//     Both needles are complete, real texts (the media block carries its day declarations), so
+//     a needle that merely resembled the output could not match by luck.
+test fn witness_light_override_follows_the_unconditional_root() -> Bool {
+  match first_where(ballot_entries, e => e.scheme == scheme_light_alt) {
+    Absent => false
+    Present { value: e } => match ballot_render(req: e) {
+      BallotHtml { html: _, slug: _ } => {
+        let css = rendered_style(req: e)
+        let media_block = css_media_rule_wire(
+          condition: prefers_light,
+          body: css_block(selector: selector_subject_wire(s: root_selector), decls: day_bindings()))
+        let root_open = join([selector_subject_wire(s: root_selector), " { "], "")
+        let media_at = index_of(haystack: css, needle: media_block, at: 0, limit: string_length(s: css))
+        let root_at = index_of(haystack: css, needle: root_open, at: 0, limit: string_length(s: css))
+        match media_at {
+          Absent => false
+          Present { value: m } => match root_at {
+            Absent => false
+            Present { value: r } => r < m
+          }
+        }
+      }
+      BallotRefused { reason: _ } => false
+    }
+  }
+}
+
 fn role_reference_names() -> List<String> {
   map(token_swatches, t => t.role)
 }
