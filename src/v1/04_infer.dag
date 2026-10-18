@@ -10948,16 +10948,16 @@ fn record_lit_alias_struct_expansion(type_name: String, scope: InferScope) -> No
 // refusals that already judge it, so this widens on none of them.
 // WHICH DECLARATION the literal's head names is asked of THIS module's binding chain (locals, then
 // the names it imports BY NAME) -- lookup_binding_on_chain, the same route record-literal widening
-// already consumes (type_name_declares_own_product below) -- and never of the corpus-wide pool
-// lookup. lookup_type_by_name walks past the chain into the global-bare overlay, so a name that
-// collides with an unrelated pool union refuses a legal construction: the witness
-// dag/test/claim/workspace_commissioning_apply_readback_witness.dag builds the arm
-// UnitPropertyRead { value: ... } of runner_microvm_slot_start's union UnitPropertyReading and was
-// refused because the pool also declares type UnitPropertyRead = UnitPropertyValue |
-// UnitPropertyUnreadable at live_deploy/unit_standing.dag:39, which that file does not import. A
-// name with no binding in this module's chain is not refused here at all: this gate answers "does
-// the declaration the author named carry a record constructor", and with no bound declaration there
-// is no such answer to give.
+// already consumes from infer_record_lit_structural, and the route local_coproduct_owner_from_locals
+// takes for the same question -- never the corpus-wide pool lookup. lookup_type_by_name walks past
+// the chain into the global-bare overlay, so a name that collides with an unrelated pool union
+// refuses a legal construction: test.claim.workspace_commissioning_apply_readback_witness builds the
+// arm UnitPropertyRead of runner_microvm_slot_start's union UnitPropertyReading, imported by name
+// from its owner, and was refused because the pool independently declares a DIFFERENT
+// UnitPropertyRead -- a union of UnitPropertyValue and UnitPropertyUnreadable -- in
+// live_deploy.unit_standing, a module that witness never imports. A name with no binding in this
+// module's chain is not refused here at all: this gate answers "does the declaration the author
+// named carry a record constructor", and with no bound declaration there is no such answer to give.
 fn record_lit_union_name_is_not_an_arm(decl: Node, type_name: String, scope: InferScope) -> Node? {
   if has_child_named(n: decl, name: type_name, source_indices: scope.type_env.source_indices) { none } else { Present { value: decl } }
 }
@@ -10965,7 +10965,10 @@ fn record_lit_union_name_is_not_an_arm(decl: Node, type_name: String, scope: Inf
 fn record_lit_name_declares_union(type_name: String, scope: InferScope) -> Node? {
   match lookup_binding_on_chain(env: scope.type_env, name: type_name) {
     Absent => none
-    Present { value: binding } => if binding.resolved.connective == Disj { record_lit_union_name_is_not_an_arm(decl: binding.resolved, type_name: type_name, scope: scope) } else { record_lit_expansion_declares_union(decl: binding.resolved, scope: scope) }
+    Present { value: binding } => match binding.resolved.connective {
+      Disj => record_lit_union_name_is_not_an_arm(decl: binding.resolved, type_name: type_name, scope: scope)
+      _ => record_lit_expansion_declares_union(decl: binding.resolved, scope: scope)
+    }
   }
 }
 
