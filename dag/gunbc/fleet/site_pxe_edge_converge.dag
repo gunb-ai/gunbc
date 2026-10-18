@@ -176,6 +176,10 @@ type SitePxeEdgeChainloaderPin
 // BUILD PROVENANCE (annotation, not a stored fact: the command is derived from build_target, so a second copy could disagree with it):
 // `make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- bin-arm64-efi/snponly.efi` with aarch64-linux-gnu-gcc 14.2.0 (Debian 14.2.0-19),
 // GNU Make 4.4.1, GNU ld 2.44. A future requirement to gate on toolchain identity adds typed tool entries to the receipt then.
+// NO EXECUTED CLAIM READS THE COMMITTED IMAGE. The digest and embedded_revision below were read by hand from
+// artifacts/ipxe/snponly-arm64.efi (`sha256sum`, and `grep -a -o -E "[(]g[0-9a-f]{5}[)]"`, which prints
+// "(gc51ca)" three times); swapping the blob is caught only by repeating those commands, or by the wet placement
+// step's digest check. A claim that executes them over the file belongs to a real-execution witness enrolment.
 // BUILT, NOT YET PLACED. The committed image's consumer is the wet placement step (the srv4 TFTP write run
 // by swift-wren-451 after operator approval), which must verify its sha256 against this pin before copying;
 // that step is the declared later change, triggered by operator approval of the srv4 write. Until it lands the
@@ -198,29 +202,6 @@ data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChain
     secure_boot: SecureBootUnobserved { why: "self-built iPXE is unsigned and no Altra board's Secure Boot state has been read; an enrolled certificate or an observed boot attempt would settle it" },
   ),
 }
-
-// A LOCAL READ OF THE COMMITTED IMAGE, sealed so its three facts cannot be separated: the path, the digest
-// `sha256sum` printed for it and the raw stdout of the embedded-revision grep. It is the local-build
-// observation only; the srv4 file is read later by observe_site_pxe_edge_embedded_revision, and until that
-// runs the real route reports the revision Unobservable. The witness parses grep_output with the production
-// parser and binds the digest to the pin, so a re-built or swapped image cannot keep this row green.
-type SitePxeEdgeLocalBuildObservation sole_constructor {
-  path: NonEmptyStr
-  digest: ContentHash
-  grep_output: String
-}
-
-fn site_pxe_edge_local_build_observation(path: NonEmptyStr, digest: ContentHash, grep_output: String) -> SitePxeEdgeLocalBuildObservation {
-  SitePxeEdgeLocalBuildObservation { path: path, digest: digest, grep_output: grep_output }
-}
-
-// Evidence: `sha256sum artifacts/ipxe/snponly-arm64.efi` and `grep -a -o -E "[(]g[0-9a-f]{5}[)]" artifacts/ipxe/snponly-arm64.efi`
-// run in the build worktree; the image prints "(gc51ca)" three times, which the parser reads as one revision.
-data site_pxe_edge_local_build_observed: SitePxeEdgeLocalBuildObservation = site_pxe_edge_local_build_observation(
-  path: "artifacts/ipxe/snponly-arm64.efi",
-  digest: Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" }),
-  grep_output: "(gc51ca)\n(gc51ca)\n(gc51ca)\n",
-)
 
 fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderBuildReceipt? {
   match pin {

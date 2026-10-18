@@ -67,7 +67,6 @@ import gunbc.fleet.site_pxe_edge_converge {
   AdministratorPrivilegeRefused,
   site_pxe_edge_digest_observation,
   site_pxe_edge_embedded_revision,
-  site_pxe_edge_local_build_observed,
   SitePxeEdgeEmbeddedRevision,
   EmbeddedRevisionRead,
   EmbeddedRevisionUnobservable,
@@ -87,10 +86,10 @@ data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: hex_a })
 
 data digest_b: ContentHash = Sha256Hash(Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" })
 
-// The sealed local read of the committed image (raw grep output, parsed by the production fn, digest bound to
-// the pin by landed_local_build_is_the_pinned_image): the embedded revision never enters as a ready-made value.
+// SUPPLIED VALUE, not an observation: the raw stdout the grep prints for the pinned image, handed to the production
+// parser. No claim here reads the committed blob; the parser is what these tests discriminate.
 fn landed_embedded() -> SitePxeEdgeEmbeddedRevision {
-  site_pxe_edge_embedded_revision(success: true, output: site_pxe_edge_local_build_observed.grep_output)
+  site_pxe_edge_embedded_revision(success: true, output: "(gc51ca)\n(gc51ca)\n(gc51ca)\n")
 }
 
 fn booted() -> SitePxeEdgeSecureBootStanding {
@@ -209,7 +208,7 @@ fn landed_digest() -> ContentHash {
 }
 
 // WHAT REMAINS CLOSED TODAY, ENUMERATED: with the file not yet on srv4 (digest unobservable), dnsmasq
-// and privilege not yet probed, the landed pin yields exactly the four causes that are still true GIVEN the sealed local read of the image;
+// and privilege not yet probed, the landed pin yields exactly the four causes that are still true GIVEN a supplied revision reading;
 // on the real route the srv4 revision read is also absent, which the next test counts as the fifth.
 test fn the_landed_pin_leaves_exactly_the_four_unanswered_causes() -> Bool {
   let texts = map(site_pxe_edge_gate_causes(
@@ -595,20 +594,6 @@ test fn embedded_revision_is_parsed_from_grep_output_and_unreadable_output_is_un
   }) && (match site_pxe_edge_embedded_revision(success: true, output: "(g)") {
     EmbeddedRevisionRead { abbreviated: _ } => false
     EmbeddedRevisionUnobservable { reason: _ } => true
-  })
-}
-
-// The sealed local read binds one image: its digest is the pin's, and the revision the production parser reads
-// from its grep output is the pin's decision field. Swapping the image or the pin breaks one side.
-test fn landed_local_build_is_the_pinned_image() -> Bool {
-  (match site_pxe_edge_chainloader_target(pin: site_pxe_edge_chainloader_pin) {
-    Absent => false
-    Present { value: b } =>
-      b.digest == site_pxe_edge_local_build_observed.digest
-        && (match landed_embedded() {
-          EmbeddedRevisionRead { abbreviated: a } => (a as String) == (b.embedded_revision as String)
-          EmbeddedRevisionUnobservable { reason: _ } => false
-        })
   })
 }
 
