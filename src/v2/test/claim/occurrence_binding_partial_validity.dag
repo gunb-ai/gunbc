@@ -1,7 +1,7 @@
 module v2.test.claim.occurrence_binding_partial_validity
 
 import std.types { List }
-import std.algebra { length, empty_map }
+import std.algebra { length }
 import std.optional { optional_present, optional_absent }
 import std.occurrence_identity { OccurrenceId }
 import v2.std.integer { Int }
@@ -41,24 +41,24 @@ fn pv_unreadable_entry(id: Int, target: String) -> OccurrenceBindingEntry {
 // IDENTICAL-REPEAT CONTROL: one occurrence recorded twice with the same record is one row, not two,
 // and is not a conflict.
 test fn an_identical_repeat_dedupes_to_one_row_holds() -> Bool {
-  let p = occurrence_binding_partial(module: "m", entries: [pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 2, spelling: "other", target: "a.other")], loci: empty_map())
+  let p = occurrence_binding_partial(module: "m", entries: [pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 2, spelling: "other", target: "a.other")])
   (length(xs: p.rows) == 2) && (p.conflicting == 0) && (p.unreadable == 0)
 }
 
 // CONFLICTING-RECORD DISCRIMINATOR: one occurrence recorded with two different bindings makes the
 // partial observation unusable -- rows withheld, the conflict counted -- never first-record-wins.
 test fn a_conflicting_record_withholds_the_rows_and_is_counted_holds() -> Bool {
-  let p = occurrence_binding_partial(module: "m", entries: [pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 1, spelling: "helper", target: "b.helper"), pv_entry(id: 2, spelling: "other", target: "a.other")], loci: empty_map())
+  let p = occurrence_binding_partial(module: "m", entries: [pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 1, spelling: "helper", target: "b.helper"), pv_entry(id: 2, spelling: "other", target: "a.other")])
   (length(xs: p.rows) == 0) && (p.conflicting == 1)
 }
 
 test fn a_conflicting_record_prints_only_the_validity_line_holds() -> Bool {
-  occurrence_binding_partial_lines(module: "m", entries: [pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 1, spelling: "helper", target: "b.helper")], loci: empty_map())
+  occurrence_binding_partial_lines(module: "m", entries: [pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 1, spelling: "helper", target: "b.helper")])
     == ["binding_partial_module\tm\t0\t1\t0"]
 }
 
 // UNREADABLE SPELLINGS ARE COUNTED, never dropped silently.
 test fn an_unreadable_spelling_is_counted_holds() -> Bool {
-  let p = occurrence_binding_partial(module: "m", entries: [pv_unreadable_entry(id: 1, target: "a.helper"), pv_entry(id: 2, spelling: "other", target: "a.other")], loci: empty_map())
+  let p = occurrence_binding_partial(module: "m", entries: [pv_unreadable_entry(id: 1, target: "a.helper"), pv_entry(id: 2, spelling: "other", target: "a.other")])
   (length(xs: p.rows) == 1) && (p.conflicting == 0) && (p.unreadable == 1)
 }
