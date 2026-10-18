@@ -872,32 +872,16 @@ test fn the_projection_needs_a_receipt() -> Bool {
 // catches, is the projection substituting a baked hostname (a per-unit special case wearing a config
 // field, which is precisely what the module forbids) or dropping the label.
 test fn the_projection_carries_the_supplied_label_verbatim_and_never_invents_one() -> Bool {
-  match built_seed_and_binding() {
-    Present { value: pair } =>
-      match
-        admin_password_hash_receipt(
-          crypt_digest: "$6$salt$0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F"
-            as NonEmptyStr,
-        )
-      {
+  match admin_password_hash_receipt( crypt_digest: "$6$salt$0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F" as NonEmptyStr, ) {
+    Absent => false
+    Present { value: receipt } =>
+      match built_seed_and_binding() {
         Absent => false
-        Present { value: receipt } =>
-          match
-            project_autoinstall_identity(
-              seed: pair.seed,
-              binding_hostname: "unit-a-altra" as NonEmptyStr,
-              receipt: Present { value: receipt },
-            )
-          {
+        Present { value: pair } =>
+          match project_autoinstall_identity( seed: pair.seed, binding_hostname: "unit-a-altra" as NonEmptyStr, receipt: Present { value: receipt }, ) {
             Absent => false
             Present { value: first } =>
-              match
-                project_autoinstall_identity(
-                  seed: pair.seed,
-                  binding_hostname: "an-entirely-different-label" as NonEmptyStr,
-                  receipt: Present { value: receipt },
-                )
-              {
+              match project_autoinstall_identity( seed: pair.seed, binding_hostname: "an-entirely-different-label" as NonEmptyStr, receipt: Present { value: receipt }, ) {
                 Absent => false
                 Present { value: second } =>
                   eq_string(actual: first.hostname, expected: "unit-a-altra" as NonEmptyStr)
@@ -905,11 +889,10 @@ test fn the_projection_carries_the_supplied_label_verbatim_and_never_invents_one
                       actual: second.hostname,
                       expected: "an-entirely-different-label" as NonEmptyStr,
                     )
-                    && !eq_string(actual: first.hostname, expected: second.hostname),
+                    && !eq_string(actual: first.hostname, expected: second.hostname)
               }
           }
       }
-    Absent => false,
   }
 }
 
