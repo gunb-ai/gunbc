@@ -1308,10 +1308,27 @@ fn sole_ctor_count(source: String) -> Int {
 // baseline must refuse at least one (proving the source compiled and the harness reports). Delete
 // `sole_constructor` from the verdict union and the second arm goes red.
 test fn no_foreign_module_may_write_a_verdict_by_hand() -> Bool {
+  sole_ctor_count(source: forge_ready_source)
+    >= sole_ctor_count(source: forge_evidence_only_source) + 1
+}
+
+// TEMPORARY SPLIT OF THE CONJUNCTION ABOVE: three tests, so WHICH arm fails is the measurement
+// (which arm is false) instead of guessing. Delete after reading.
+test fn tmp_a_baseline_evidence_only_refuses() -> Bool {
   sole_ctor_count(source: forge_evidence_only_source) >= 1
-    && sole_ctor_count(source: forge_ready_source)
-      >= sole_ctor_count(source: forge_evidence_only_source) + 1
-    && sole_ctor_count(source: lawful_verdict_source) == 0
+}
+
+test fn tmp_b_ready_adds_a_refusal() -> Bool {
+  sole_ctor_count(source: forge_ready_source)
+    >= sole_ctor_count(source: forge_evidence_only_source) + 1
+}
+
+test fn tmp_c_lawful_is_clean() -> Bool {
+  sole_ctor_count(source: lawful_verdict_source) == 0
+}
+
+test fn tmp_d_total_rows_probe() -> Bool {
+  sole_ctor_count(source: forge_ready_source) != 0 - 1
 }
 
 // (2) CUSTODY OF THE CALL ROUTE, and merry's swapped-conclusion case in one: a caller that RESPECTS
