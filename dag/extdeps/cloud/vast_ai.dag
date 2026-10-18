@@ -202,6 +202,22 @@ fn vast_ai_dph_total_money_per_hour(offer: VastAiOffer) -> DecimalMoneyPerHourCo
   exact_decimal_to_money_per_hour_ceil(d: offer.dph_total, currency: vast_ai_quote_currency)
 }
 
+// THE SEARCH QUERY: search-offers takes each filter as a field-keyed operator object in the POST body
+// ({"gpu_ram": {"gte": N}}, docs.vast.ai search-offers). Observed accepted on 2026-10-18 by a live
+// read-only search from srv1 under the operator's account, which answered 63 offers for these six
+// filters with type bid. gpu_ram and cpu_ram are MB, inet_down is Mb/s, cuda_max_good is the highest CUDA
+// major the host driver supports. rentable is always asked true: a non-rentable offer is never a
+// candidate. Which values to ask is policy, never this module's.
+type VastAiOfferQuery {
+  search_type: String
+  limit: Int
+  gpu_ram_min_mb: Int
+  cuda_max_good_min: Int
+  cpu_ram_min_mb: Int
+  inet_down_min: Int
+  verified: Bool
+}
+
 type VastAiOffers {
   offers: List<VastAiOffer>
 }
@@ -219,6 +235,11 @@ service vast_ai.SearchOffers {
       api_key: Secret
       search_type: String
       limit: Int
+      gpu_ram_min_mb: Int
+      cuda_max_good_min: Int
+      cpu_ram_min_mb: Int
+      inet_down_min: Int
+      verified: Bool
     }
     output {
       offers: List<VastAiOffer> from "offers"
@@ -227,7 +248,16 @@ service vast_ai.SearchOffers {
     transport rest {
       method: POST,
       path: "/bundles/",
-      body: { type: search_type, limit: limit }
+      body: {
+        type: search_type,
+        limit: limit,
+        gpu_ram: { gte: gpu_ram_min_mb },
+        cuda_max_good: { gte: cuda_max_good_min },
+        cpu_ram: { gte: cpu_ram_min_mb },
+        inet_down: { gte: inet_down_min },
+        verified: { eq: verified },
+        rentable: { eq: true }
+      }
     }
     response {
       200 => VastAiOffers
