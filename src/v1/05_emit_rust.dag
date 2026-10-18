@@ -13281,7 +13281,10 @@ fn constructor_literal_leaf(n: Node, source_indices: Map<String, NewlineIndex>) 
 // normal path. Exhaustiveness is the type checker's, so the named arm exists. No partial evaluator.
 fn arm_names_constructor(arm: Node, parent: String, constructor: String) -> Bool {
   match arm_pattern(n: arm) {
-    VariantPattern { name: arm_name, parent_enum: arm_parent, field_bindings: _, parent_identity: _ } => arm_parent == parent && value_ref_qualified_leaf(name: arm_name) == constructor
+    VariantPattern { name: arm_name, parent_enum: arm_parent, field_bindings: _, parent_identity: _ } => (match arm_parent {
+      Present { value: arm_parent_name } => arm_parent_name == parent
+      Absent => false
+    }) && value_ref_qualified_leaf(name: arm_name) == constructor
     _ => false
   }
 }
