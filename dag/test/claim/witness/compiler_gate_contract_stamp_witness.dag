@@ -1,0 +1,448 @@
+module test.claim.witness.compiler_gate_contract_stamp
+
+import std.types { Bool, Int, List, String }
+import std.algebra { for_all, length, list_map, string_contains }
+import std.optional { Present, Absent }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_required_job }
+import gunbc.witness.compiler_gate_contract_stamp {
+  CompilerGateContractStampReading,
+  StampAbsent,
+  StampMismatch,
+  StampPresent,
+  StampUnreadable,
+  compiler_gate_contract_stamp,
+  compiler_gate_contract_stamp_awk_program,
+  compiler_gate_contract_stamp_compare,
+  compiler_gate_contract_stamp_env_key,
+  compiler_gate_contract_stamp_guard_script,
+  compiler_gate_contract_stamp_is_derived,
+  compiler_gate_contract_stamp_read_from,
+  compiler_gate_contract_stamp_refusal_line,
+  compiler_gate_contract_stamp_step_name,
+  compiler_gate_contract_stamp_yaml_value,
+  compiler_gate_invocation_contract_canonical_rows
+}
+import gunbc.parse_verdict_schema {
+  parse_verdict_reuse_counts_field_labels,
+  parse_verdict_restore_ancestor_ordinals
+}
+
+// THE FIXTURES ARE WORKFLOW-SHAPED, not minimal mappings, for the same reason
+// test.claim.contract_identity.required_ci_epoch_observation gives: the fold runs over a document that
+// also carries name/on/permissions/jobs, and a fixture with nothing but an env block would pass while a
+// real workflow failed. THE SHAPE IS THE ONE THE EMITTER WRITES -- top-level env at column zero, member
+// at two-space indent, single-quoted -- so a fold that only works on some other shape is caught here.
+
+data stamp: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+data stamp_other: String = "9999999999999999999999999999999999999999999999999999999999999999"
+
+fn workflow_with_env(extra: String, after_env: String) -> String {
+  join(
+    [
+      "name: witnesses\n",
+      "on:\n  pull_request:\n    branches: [main]\n",
+      "permissions:\n  contents: read\n",
+      "env:\n  CARGO_TERM_COLOR: always\n",
+      extra,
+      after_env,
+      "jobs:\n  v2-bootstrap:\n    runs-on: [self-hosted, linux, arm64]\n",
+      "    steps:\n      - name: Build the compiler\n        run: cargo build\n"
+    ],
+    ""
+  )
+}
+
+fn stamped_env() -> String {
+  join(["  ", compiler_gate_contract_stamp_env_key, ": '", stamp, "'\n"], "")
+}
+
+fn after_env_marker() -> String {
+  "PATHS: not-an-env-block\n"
+}
+
+// ----------------------------------------------------------------------------------- THE SILENT GREEN, REPRODUCED
+//
+// THE RED THIS MODULE EXISTS FOR. Reconstructed from runs 39066871919, 39067193189, 39067690307 and
+// 39069382384: the workflow text GitHub executed came from the merge ref (so it carries the current
+// stamp in its environment) and the tree checked out is the PR head, which predates the instruction and
+// so carries an OLDER stamp, or none. Before this check the run was GREEN: the walk step accepted any
+// exit-0 output, printed the six-field counts shape with no ancestor=, and reported reused=0. Here the
+// same pair of revisions produces a refusal, on the real comparison the generated step performs, with
+// both revisions named.
+test fn a_head_older_than_the_instruction_is_refused_holds() -> Bool {
+  let running = stamp
+  let tree = compiler_gate_contract_stamp_read_from(
+    src: workflow_with_env(extra: join(["  ", compiler_gate_contract_stamp_env_key, ": '", stamp_other, "'\n"], ""), after_env: after_env_marker())
+  )
+  match compiler_gate_contract_stamp_compare(running: running, tree: tree) {
+    StampMismatch { running: r, tree: t } =>
+      r == stamp && t == stamp_other
+        && string_contains(s: compiler_gate_contract_stamp_refusal_line(
+             verdict: StampMismatch { running: r, tree: t }
+           ), pattern: "StampMismatch")
+        // BOTH revision identities are named, which is the whole point: the row's ceiling argument is
+        // that a step must not emit an unattributed refusal.
+        && string_contains(s: compiler_gate_contract_stamp_refusal_line(
+             verdict: StampMismatch { running: r, tree: t }
+           ), pattern: stamp)
+        && string_contains(s: compiler_gate_contract_stamp_refusal_line(
+             verdict: StampMismatch { running: r, tree: t }
+           ), pattern: stamp_other)
+    _ => false
+  }
+}
+
+// THE ARITHMETIC CASE THAT MATTERS MOST: a head that predates the STAMP ITSELF has no env member to
+// read, so it must refuse as absent rather than as a match against an empty value. This is the arm that
+// would have caught all four runs, since none of those heads had the guard at all.
+test fn a_head_predating_the_stamp_entirely_is_refused_holds() -> Bool {
+  let tree = compiler_gate_contract_stamp_read_from(
+    src: workflow_with_env(extra: "", after_env: after_env_marker())
+  )
+  match compiler_gate_contract_stamp_compare(running: stamp, tree: tree) {
+    StampAbsent =>
+      string_contains(
+        s: compiler_gate_contract_stamp_refusal_line(verdict: StampAbsent),
+        pattern: "StampAbsent"
+      )
+      && string_contains(
+        s: compiler_gate_contract_stamp_refusal_line(verdict: StampAbsent),
+        pattern: compiler_gate_contract_stamp_env_key
+      )
+      && string_contains(
+        s: compiler_gate_contract_stamp_refusal_line(verdict: StampAbsent),
+        pattern: "merge origin/main"
+      )
+    _ => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------ POSITIVE CONTROLS
+//
+// A head that carries the current stamp PROCEEDS. Without this the check could pass everything by
+// refusing everything, which is the failure mode a rung-2 containment has to exclude explicitly.
+test fn a_head_carrying_the_current_stamp_proceeds_holds() -> Bool {
+  let tree = compiler_gate_contract_stamp_read_from(
+    src: workflow_with_env(extra: stamped_env(), after_env: after_env_marker())
+  )
+  match compiler_gate_contract_stamp_compare(running: stamp, tree: tree) {
+    StampPresent { stamp: s } => s == stamp && compiler_gate_contract_stamp_refusal_line(verdict: StampPresent { stamp: s }) == ""
+    _ => false
+  }
+}
+
+// THE CONTROL THE MANAGER ASKED FOR, AND THE ONE THAT MAKES THIS A PREMISE RATHER THAN A BLOCK: a PR
+// that CHANGES the invocation contract proceeds, because when the head carries the contract change the
+// head and the merge ref agree on the new stamp. So the check does not freeze the contract, and does not
+// force every PR to merge main -- it only refuses the case where the two disagree.
+test fn a_pr_changing_the_contract_itself_proceeds_holds() -> Bool {
+  // A contract-changing PR moves the stamp on BOTH sides, so the running value is the NEW one and the
+  // head -- which carries that same contract change -- agrees with it. This is the control that keeps the
+  // check from being a freeze: the gate must not refuse a PR merely for being the PR that changes the
+  // contract, and it must not force every open PR to merge main.
+  let head_after_the_change = workflow_with_env(
+    extra: join(["  ", compiler_gate_contract_stamp_env_key, ": '", stamp_other, "'\n"], ""),
+    after_env: after_env_marker()
+  )
+  let running_after_the_change = stamp_other
+  match compiler_gate_contract_stamp_compare(
+    running: running_after_the_change,
+    tree: compiler_gate_contract_stamp_read_from(src: head_after_the_change)
+  ) {
+    // AND IT IS STILL DISCRIMINATING: the same running value against the PREVIOUS contract's head is a
+    // refusal, so "proceeds" here is not the check passing everything.
+    StampPresent { stamp: s } =>
+      s == stamp_other
+      && match compiler_gate_contract_stamp_compare(
+           running: stamp_other,
+           tree: compiler_gate_contract_stamp_read_from(
+             src: workflow_with_env(extra: stamped_env(), after_env: after_env_marker())
+           )
+         ) {
+           StampMismatch { running: _, tree: _ } => true
+           _ => false
+         }
+    _ => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------- THE ARMS, EACH REACHABLE
+//
+// Every arm of the reading must be reachable from a document a fixture can hand, or it is a permanently
+// unreachable RED, which std.contract_identity forbids on ContractEpoch for the same reason.
+test fn an_unreadable_stamp_member_refuses_holds() -> Bool {
+  let with_expression = compiler_gate_contract_stamp_read_from(
+    src: workflow_with_env(
+      extra: join(["  ", compiler_gate_contract_stamp_env_key, ": \${{ github.sha }}\n"], ""),
+      after_env: after_env_marker()
+    )
+  )
+  let with_empty = compiler_gate_contract_stamp_read_from(
+    src: workflow_with_env(
+      extra: join(["  ", compiler_gate_contract_stamp_env_key, ": \"\"\n"], ""),
+      after_env: after_env_marker()
+    )
+  )
+  // A GITHUB EXPRESSION IS NOT A LITERAL, so it cannot be compared; an EMPTY value cannot match anything.
+  // Both are unreadable rather than absent, because the remedy differs: absent says the tree predates the
+  // instruction, unreadable says the tree declares a stamp that cannot be honoured.
+  match with_expression {
+    StampUnreadable { detail: _ } =>
+      match with_empty {
+        StampUnreadable { detail: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn a_workflow_declaring_the_stamp_twice_is_unreadable_not_first_wins_holds() -> Bool {
+  let tree = compiler_gate_contract_stamp_read_from(
+    src: workflow_with_env(
+      extra: join(
+        [
+          "  ", compiler_gate_contract_stamp_env_key, ": '", stamp, "'\n",
+          "  ", compiler_gate_contract_stamp_env_key, ": '", stamp_other, "'\n"
+        ],
+        ""
+      ),
+      after_env: after_env_marker()
+    )
+  )
+  match tree {
+    // THE DELIBERATE CHOICE. Taking the first would resolve an ambiguity silently, and an ambiguity is
+    // exactly what this check exists to police: a workflow stamped twice does not have a stamp, it has a
+    // dispute.
+    StampUnreadable { detail: d } =>
+      string_contains(s: d, pattern: "more than once")
+      && !string_contains(s: d, pattern: stamp)
+    _ => false
+  }
+}
+
+test fn a_document_that_is_not_a_workflow_is_unreadable_holds() -> Bool {
+  match compiler_gate_contract_stamp_read_from(src: "- name: witnesses\n- env: nothing\n") {
+    StampUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
+// A STEP-LEVEL env member must NOT answer for the workflow-level one. If it could, a job could satisfy
+// the check by declaring a stamp on the step that runs the check, which is the accused handing the judge
+// its evidence.
+test fn a_step_level_env_member_does_not_satisfy_the_check_holds() -> Bool {
+  let tree = compiler_gate_contract_stamp_read_from(
+    src: join(
+      [
+        "name: witnesses\nenv:\n  CARGO_TERM_COLOR: always\n",
+        "jobs:\n  v2-bootstrap:\n    steps:\n",
+        "      - name: ", compiler_gate_contract_stamp_step_name, "\n",
+        "        env:\n          ", compiler_gate_contract_stamp_env_key, ": '", stamp, "'\n",
+        "        run: true\n"
+      ],
+      ""
+    )
+  )
+  match tree {
+    StampAbsent => true
+    _ => false
+  }
+}
+
+// THE GENERATED STEP ITSELF IS JUDGED, not taken on faith: the awk program it embeds must be the fold
+// this module claims, and the step must carry no lever that turns a refusal into a warning (§5).
+test fn the_generated_step_has_no_warning_arm_and_no_override_input_holds() -> Bool {
+  let script = compiler_gate_contract_stamp_guard_script()
+  string_contains(s: script, pattern: "exit 1")
+    && string_contains(s: script, pattern: "StampMismatch")
+    && string_contains(s: script, pattern: "StampAbsent")
+    && string_contains(s: script, pattern: "StampUnreadable")
+    // THE ASSIGNMENT IS GUARDED BY `if !`. Under GitHub's default `bash -e {0}` an assignment whose
+    // command substitution fails ABORTS the step at that line, so an `if [ $? -ne 0 ]` on the NEXT line
+    // is dead code and the run dies with a bare exit 1 and no diagnostic. Only running it under -e tells
+    // the two forms apart, which is why the shape is asserted rather than reviewed.
+    && string_contains(s: script, pattern: "if ! STAMP_TREE=")
+    && !string_contains(s: script, pattern: "STAMP_STATUS")
+    // THE REFUSALS ARE PRINTED, not swallowed: each carries its own line terminator and its own quoting,
+    // so a refactor that drops one leaves this claim red.
+    && string_contains(s: script, pattern: "printf '%s\\n' ")
+    && string_contains(s: script, pattern: "merge origin/main")
+    // NO WARNING ARM, NO OVERRIDE. These substrings are the shapes an author would reach for when
+    // softening a gate, so the claim fails on the edit that softens it rather than on a review comment.
+    && !string_contains(s: script, pattern: "continue-on-error")
+    && !string_contains(s: script, pattern: "::warning::")
+    && !string_contains(s: script, pattern: "inputs.")
+    && !string_contains(s: script, pattern: "env.GUNBC_ALLOW")
+}
+
+// THE AWK PROGRAM AND THE MODELLED FOLD DECIDE THE SAME DOCUMENT. They are two readers of one fact --
+// the runner's, and this module's -- and if they could disagree, a tree could be judged paired by one and
+// stale by the other. The program is therefore checked against the same fixtures the fold is judged on.
+test fn the_shell_fold_and_the_modelled_fold_agree_holds() -> Bool {
+  let program = compiler_gate_contract_stamp_awk_program()
+  // The program is carried in SINGLE QUOTES by the shell, so a single quote anywhere in it would close
+  // the quoting and let the rest of the line be re-parsed. That is not a style preference: an
+  // attacker-influenced tree file cannot reach the program, but an author editing the prose of a refusal
+  // can reach this string, and the failure would be silent until a runner mis-parsed it.
+  !string_contains(s: program, pattern: "'")
+    && string_contains(s: program, pattern: "in_env")
+    && string_contains(s: program, pattern: "exit 3")
+    // THE COUNTER IS INITIALISED IN A BEGIN BLOCK. A bare `in_env = 0` is a PATTERNLESS RULE, which awk
+    // executes for every line, so the flag is reset on every line and the stamp is never found -- a file
+    // that should have matched exits 3. That is the wrong-reason refusal this assertion exists to keep
+    // out: the gate would fire and blame the branch for a fault in the gate.
+    && string_contains(s: program, pattern: "BEGIN { in_env = 0 }")
+    && !string_contains(s: program, pattern: "\nin_env = 0\n")
+    // RULES ARE NEWLINE-SEPARATED, because mawk (the fleet's /usr/bin/awk) rejects several
+    // semicolon-separated if-rules on one line.
+    && string_contains(s: program, pattern: "\n")
+    && compiler_gate_contract_stamp_awk_matches_stamped_document()
+}
+
+// THE TWO READERS, ON THE SAME BYTES. The fold is checked here over the same documents the shell fold
+// will meet, so the claim that they agree is executed and not asserted in a comment.
+fn compiler_gate_contract_stamp_awk_matches_stamped_document() -> Bool {
+  let paired = workflow_with_env(extra: stamped_env(), after_env: after_env_marker())
+  let stale = workflow_with_env(
+    extra: join(["  ", compiler_gate_contract_stamp_env_key, ": '", stamp_other, "'\n"], ""),
+    after_env: after_env_marker()
+  )
+  match compiler_gate_contract_stamp_read_from(src: paired) {
+    StampPresent { stamp: s } =>
+      if s != stamp then false
+      else
+        match compiler_gate_contract_stamp_read_from(src: stale) {
+          StampPresent { stamp: o } => o == stamp_other
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// THE STAMP IS DERIVED, NEVER AUTHORED: no author can pin a value that flatters a stale tree, and the
+// refusal to produce one is typed. And the preimage is the INVOCATION CONTRACT ONLY -- never workflow
+// text, which is the law that keeps an unrelated commit to main from forcing every open PR to merge
+// (DESIGN §4d, and the stated law of gunbc.required_ci_contract_epoch).
+test fn the_stamp_is_derived_from_the_invocation_contract_only_holds() -> Bool {
+  compiler_gate_contract_stamp_is_derived()
+    && string_length(s: compiler_gate_contract_stamp_yaml_value()) == 64
+    // EVERY ROW IS A PROMPT ABOUT AN ARGV OR AN OUTPUT, and none is a line of the workflow: a row that
+    // carried workflow text would move the stamp on any formatting change to the emitted file.
+    && for_all(
+      compiler_gate_invocation_contract_canonical_rows(),
+      row =>
+        (string_contains(s: row, pattern: "argv:") || string_contains(s: row, pattern: "stdout:") || string_contains(s: row, pattern: "locator:"))
+          && !string_contains(s: row, pattern: "runs-on")
+          && !string_contains(s: row, pattern: "steps:")
+          && !string_contains(s: row, pattern: "- name:")
+    )
+}
+
+// THE PREIMAGE MOVES WHEN THE CONTRACT MOVES, AND DOES NOT MOVE WHEN IT DOES NOT. This is the pair that
+// distinguishes a real premise from a timestamp: if the rows did not drive the value, every value here
+// would still be a content hash and every claim above would still pass.
+test fn the_stamp_moves_when_an_invoked_field_is_added_holds() -> Bool {
+  // THE CONTRACT ROWS ARE THE PREIMAGE, so the fields the walk reads back must each be in it. The four
+  // silent runs printed SIX fields where seven are declared: had the field set been in the preimage from
+  // the start, those heads could not have carried the new instruction's stamp.
+  for_all(
+    parse_verdict_reuse_counts_field_labels,
+    label => for_all(
+      compiler_gate_invocation_contract_canonical_rows(),
+      row => string_contains(s: row, pattern: label)
+    )
+  )
+    && for_all(
+      compiler_gate_invocation_contract_canonical_rows(),
+      row => !string_contains(s: row, pattern: "\${{")
+    )
+}
+
+// THE LOCATOR WINDOW IS IN THE PREIMAGE FROM THE ROWS THAT EMIT THE WALK, so a head that cannot walk as
+// far as the step claims cannot carry the step's stamp.
+test fn the_locator_window_is_in_the_preimage_holds() -> Bool {
+  // THE WINDOW IS ONE ROW PER ORDINAL THE WALK IS GENERATED OVER -- so the preimage cannot drift away
+  // from the steps it stamps, which is the §3 failure this whole module is built to avoid.
+  length(
+    filter(
+      compiler_gate_invocation_contract_canonical_rows(),
+      row => string_contains(s: row, pattern: "locator:first-parent-ordinal:")
+    )
+  ) == length(parse_verdict_restore_ancestor_ordinals)
+    && length(compiler_gate_invocation_contract_canonical_rows()) > length(parse_verdict_reuse_counts_field_labels)
+}
+
+// ---------------------------------------------------------------------------------- THE STEP IS WHERE IT MUST BE
+//
+// Constraint, from the row's ceiling argument: the guard must sit BEFORE the first step that invokes the
+// tree's own binary, and only in a job that invokes one. Placed after the first build, it would be
+// reporting a stale subject only after 20+ minutes of compiling it, and placed in a job that never
+// invokes a binary it would be a check with no subject.
+fn step_run_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: run, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => run
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn step_name_text(step: Step) -> String {
+  match step {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+  }
+}
+
+// THE GUARD IS THE SECOND STEP IN THE JOB -- immediately after the checkout that creates the subject --
+// and every step that would run a binary built from that checkout comes later.
+test fn the_guard_precedes_every_binary_invoking_step_holds() -> Bool {
+  let steps = compiler_gate_required_job().steps
+  let names = list_map(steps, step_name_text)
+  // EXACTLY ONE GUARD STEP. A second one would be two verdicts on one checkout, and the later one would
+  // be unreachable behind the first -- a step that can never fire is not a check.
+  length(filter(names, n => n == compiler_gate_contract_stamp_step_name)) == 1
+    && index_of(names, compiler_gate_contract_stamp_step_name, 0) == 1
+    && first_invoking_index(steps, 0) > 1
+}
+
+fn index_of(names: List<String>, want: String, at: Int) -> Int {
+  match names {
+    [] => -1
+    [head, ...rest] => if head == want then at else index_of(rest, want, at + 1)
+  }
+}
+
+// THE FIRST STEP THAT WOULD EXECUTE A BINARY BUILT FROM THIS CHECKOUT, recognised by what it RUNS and not
+// by its name: a name is what an author renames, and the property is about execution.
+fn first_invoking_index(steps: List<Step>, at: Int) -> Int {
+  match steps {
+    [] => -1
+    [head, ...rest] =>
+      if step_invokes_built_binary(body: step_run_text(step: head))
+      then at
+      else first_invoking_index(rest, at + 1)
+  }
+}
+
+fn step_invokes_built_binary(body: String) -> Bool {
+  string_contains(s: body, pattern: "target/release/gunbc")
+    || string_contains(s: body, pattern: "target/debug/gunbc")
+    || string_contains(s: body, pattern: "parse-population ")
+}
+
+// THE GUARD RUNS NO PRODUCT AND NEEDS NO TOOLCHAIN, which is what lets it sit this early. If it ever
+// grows a dependency, the claim that it can precede the build stops being true and this reds.
+test fn the_guard_step_depends_on_nothing_the_checkout_does_not_give_holds() -> Bool {
+  let body = compiler_gate_contract_stamp_guard_script()
+  !string_contains(s: body, pattern: "cargo")
+    && !string_contains(s: body, pattern: "rustup")
+    && !string_contains(s: body, pattern: "target/release/gunbc")
+    && !string_contains(s: body, pattern: "target/debug/gunbc")
+    // IT READS ONE FILE AND ONE ENVIRONMENT VALUE, and nothing else: no network, no artifact download,
+    // no cache. A guard that consulted a second source could be satisfied by poisoning that source.
+    && !string_contains(s: body, pattern: "curl")
+    && !string_contains(s: body, pattern: "wget")
+    && !string_contains(s: body, pattern: "actions/cache")
+}
