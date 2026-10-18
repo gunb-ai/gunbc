@@ -99,13 +99,13 @@ fn launch_expecting(
   unit: String, user: String, pass_text: String, credential_text: String, status: Int,
   slot: HostUnitSlot, isolated: ServiceSlotListenerIsolated, pass: ServiceSlotPassId, credential: EncodedJitConfig,
 ) -> ListenerRun {
-  if slot.unit as String != unit {
+  if (slot.unit as String) != unit {
     ListenerExited { exit_code: 91 }
-  } else if isolated.user as String != user {
+  } else if (isolated.user as String) != user {
     ListenerExited { exit_code: 92 }
-  } else if pass.invocation as String != pass_text {
+  } else if (pass.invocation as String) != pass_text {
     ListenerExited { exit_code: 93 }
-  } else if credential.encoded as String != credential_text {
+  } else if (credential.encoded as String) != credential_text {
     ListenerExited { exit_code: 94 }
   } else {
     ListenerExited { exit_code: status }
