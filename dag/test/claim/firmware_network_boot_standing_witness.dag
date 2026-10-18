@@ -2182,10 +2182,10 @@ fn slot_agrees_with_catalog(
         // grounding costume, and states where it came from.
         MechanismNameBound { value: value, grounded_by: grounding } =>
           // NO PROVENANCE-FREE NAME: the value must not be the catalog's own owed-read text wearing a
-          // grounding costume. (Non-emptiness is NOT checked here -- `value` is a NonEmptyStr, whose
+          // grounding costume. (Non-emptiness is not checked -- `value` is a NonEmptyStr, whose
           // refinement already carries it, and re-testing it would be a second representation of a
           // constraint the type holds.)
-          && !string_contains(s: owed, pattern: value)
+          !string_contains(s: owed, pattern: value)
             && grounding_is_named(grounding: grounding)
       }
     // THE CATALOG WAS ALREADY BOUND -- an accepted, cited attribute read. Then the route must carry a
@@ -2194,7 +2194,7 @@ fn slot_agrees_with_catalog(
     MechanismNameBound { value: value, grounded_by: _ } =>
       match emitted_slot {
         MechanismNameBound { value: emitted, grounded_by: grounding } =>
-          emitted == value && length(xs: emitted) > 0 && grounding_is_named(grounding: grounding)
+          emitted == value && grounding_is_named(grounding: grounding)
         MechanismNameUnbound { owed_read: _ } => false
       }
   }
