@@ -297,7 +297,7 @@ test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_o
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 5
+      length(fs) == 6
         && any(fs, f => (f.subject as String) == "runner-host-sudoers")
         && length(w) == 0
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
