@@ -89,6 +89,23 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
     CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MachineWordLowering {
+    pub operator_label_fn: String,
+    pub width_bits_fn: String,
+    pub template: String,
+}
+
+pub fn rust_machine_word_lowering() -> Rc<MachineWordLowering> {
+    thread_local! {
+        static CACHED: Rc<MachineWordLowering> = {
+            serde_json::from_str("{\"operator_label_fn\": \"machine_word_operator_label\", \"width_bits_fn\": \"word_width_bits\", \"template\": \"machine_word_operate_at::<{machine_word_row_index(\\\"{label}\\\")}, {bits}>({a}, {b})\"}")
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<MachineWordLowering>| c.clone())
+}
+
 pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<SimpleMethodSpec>>> = {
