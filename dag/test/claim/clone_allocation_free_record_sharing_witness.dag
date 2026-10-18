@@ -42,6 +42,15 @@ fn w_host_string_record_stays_shared() -> Bool {
   )
 }
 
+fn w_optional_host_string_record_stays_shared() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cfree.os\n\ntype Moded {\n  mode: String?\n  items: List<Int>\n}\n\ntype Holder {\n  p: Moded\n  tag: String\n}\n",
+    "src/cfree_os.rs",
+    ["Rc<Moded>"],
+    []
+  )
+}
+
 fn w_record_holding_a_host_string_record_holds_the_handle() -> Bool {
   compile_dag_rust_emit_check(
     "module cfree.nest\n\ntype Named {\n  name: String\n  items: List<Int>\n}\n\ntype Outer {\n  inner: Named\n  n: Int\n}\n\ntype Holder {\n  o: Outer\n  tag: String\n}\n",
@@ -114,6 +123,10 @@ test fn clone_allocation_free_record_is_held_by_value() -> Bool {
 
 test fn host_string_record_stays_shared() -> Bool {
   w_host_string_record_stays_shared()
+}
+
+test fn optional_host_string_record_stays_shared() -> Bool {
+  w_optional_host_string_record_stays_shared()
 }
 
 test fn record_holding_a_host_string_record_holds_the_handle() -> Bool {

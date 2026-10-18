@@ -30,7 +30,9 @@ import v1.compiler.infer_types {
   child_type_node, emit_map_has, node_type_equals
 }
 import v1.compiler.artifact { Rust }
-import v1.compiler.coercion { realized_checkpoint, declaration_realization }
+import std.unicode.scalar { ascii_lowercase }
+import v1.compiler.coercion { realized_checkpoint, declaration_realization, type_reference_realization, realization_is_host_numeric }
+import extdeps.languages.rust.emit { rust_container_templates }
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
@@ -46,6 +48,7 @@ type TypeSummary {
   repr: TypeRepr
   field_summaries: Map<String, FieldSummary>
   field_type_map: Map<String, String>
+  field_clone_map: Map<String, FieldClone>
   field_import_surface_names: List<String>
   variant_name_set: Map<String, Bool>
   generic_param_names: List<String>
@@ -168,8 +171,56 @@ fn type_summary_values(index: TypeSummaryIndex) -> List<TypeSummary> {
   map_values(index.by_key)
 }
 
+// WHAT CLONING A FIELD COSTS, decided where the field's type node is read and stored on the summary,
+// so the sharing decision (v1.compiler.emit_rust is_clone_allocation_free) reads a stored fact and
+// holds no spelling list of its own. It is the target's realization decision for the field's type
+// reference (type_reference_realization, keyed on the reference's declaration provenance), not a
+// match on the authored name: FieldCloneShallow is a Copy checkpoint, a host numeric alias, or a
+// shared collection carrier; FieldCloneOwned is a realization that owns its payload (the host String)
+// or a refused/unknowable one; FieldCloneDeclared is a structural declaration whose clone is its
+// summary's own answer, which the reader consults. A declared type applied to arguments is Shallow
+// only when every argument is, so Optional<String> is Owned. RESIDUE: the shared-collection test is
+// the container-template roster the sharing decision itself uses (by name), and a Declared field is
+// looked up by leaf in the summary index; both dissolve with field_type_map's own trigger.
+type FieldClone = FieldCloneShallow | FieldCloneOwned | FieldCloneDeclared
+
+// THE SHARED COLLECTION CARRIERS' TEMPLATE KEYS, the one list: build_shared_types (which holds each
+// behind Rc) pascal-cases them, and the field-clone fact below tests a head against them. The two
+// templates excluded render the host Option and bool, which are not held behind Rc.
+fn shared_collection_template_keys() -> List<String> {
+  sorted_map_keys(rust_container_templates) |> filter(k => k != "optional" && k != "boolean_algebra")
+}
+
+fn template_key_names_leaf(key: String, leaf: String) -> Bool {
+  join(split(s: ascii_lowercase(s: key), delimiter: "_"), "") == ascii_lowercase(s: leaf)
+}
+
+fn field_clone_head_leaf(name: String) -> String {
+  match string_index_of(haystack: name, needle: "<") {
+    Present { value: i } => substring(s: name, start: 0, end: i)
+    Absent => name
+  }
+}
+
+fn field_clone_of_type_node(n: Node, source_indices: Map<String, NewlineIndex>) -> FieldClone {
+  let peeled = normalize_access_type_node(n: n)
+  let leaf = field_clone_head_leaf(name: authored_name_at(source_indices: source_indices, node: peeled))
+  let decision = type_reference_realization(n: peeled, dag_name: leaf, target: Rust)
+  match decision {
+    RealizationRefused { cause: _ } => FieldCloneOwned
+    Realized { checkpoint: cp, ground: _ } =>
+      if realization_is_host_numeric(decision: decision) || cp.is_copy == Present { value: true } { FieldCloneShallow } else { FieldCloneOwned }
+    Unrealized =>
+      if shared_collection_template_keys() |> any(k => template_key_names_leaf(key: k, leaf: leaf)) { FieldCloneShallow }
+      else if peeled.connective == NoConnective && (peeled.children |> count) > 0
+        && peeled.children |> any(ch => field_clone_of_type_node(n: ch, source_indices: source_indices) == FieldCloneOwned) { FieldCloneOwned }
+      else { FieldCloneDeclared }
+  }
+}
+
 type FieldTypeMapBuild {
   field_types: Map<String, String>
+  field_clones: Map<String, FieldClone>
   import_surface_names: List<String>
 }
 
@@ -957,7 +1008,7 @@ fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, 
 }
 
 fn build_field_type_map(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> FieldTypeMapBuild {
-  fold(children, init: FieldTypeMapBuild { field_types: empty_map(), import_surface_names: [] }, f: (acc, child) =>
+  fold(children, init: FieldTypeMapBuild { field_types: empty_map(), field_clones: empty_map(), import_surface_names: [] }, f: (acc, child) =>
     match child.inferred {
       Present { value: Resolved { node: ft } } =>
         let resolved_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: ft))
@@ -967,8 +1018,12 @@ fn build_field_type_map(children: List<Node>, source_indices: Map<String, Newlin
         let next_field_types = if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {
           map_insert(acc.field_types, key, resolved_name)
         } else { acc.field_types }
+        let next_field_clones = if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {
+          map_insert(acc.field_clones, key, field_clone_of_type_node(n: ft, source_indices: source_indices))
+        } else { acc.field_clones }
         FieldTypeMapBuild {
           field_types: next_field_types,
+          field_clones: next_field_clones,
           import_surface_names: dedupe_nonempty_strings(items: concat(acc.import_surface_names, surface_names))
         }
       _ => acc
@@ -996,6 +1051,7 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(parent: item, source_indices: source_indices),
       field_type_map: field_types.field_types,
+      field_clone_map: field_types.field_clones,
       field_import_surface_names: field_types.import_surface_names,
       variant_name_set: empty_map(),
       generic_param_names: gpn,
@@ -1009,6 +1065,7 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children, source_indices: source_indices),
       field_type_map: empty_map(),
+      field_clone_map: empty_map(),
       field_import_surface_names: enum_variant_payload_surface_names(variants: item.children, source_indices: source_indices),
       variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, authored_name_at(source_indices: source_indices, node: child), true)),
       generic_param_names: gpn,
@@ -1131,6 +1188,7 @@ fn close_fn_fields(summaries: TypeSummaryIndex, structural_alias_fn_surface_name
               repr: s.repr,
               field_summaries: s.field_summaries,
               field_type_map: s.field_type_map,
+              field_clone_map: s.field_clone_map,
               field_import_surface_names: s.field_import_surface_names,
               variant_name_set: s.variant_name_set,
               generic_param_names: s.generic_param_names,
@@ -1210,6 +1268,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(parent: variant, source_indices: source_indices),
                 field_type_map: variant_field_types.field_types,
+                field_clone_map: variant_field_types.field_clones,
                 field_import_surface_names: variant_field_types.import_surface_names,
                 variant_name_set: empty_map(),
                 generic_param_names: [],
@@ -1238,6 +1297,7 @@ fn type_summary_with_key(summary: TypeSummary, key: String) -> TypeSummary {
     repr: summary.repr,
     field_summaries: summary.field_summaries,
     field_type_map: summary.field_type_map,
+    field_clone_map: summary.field_clone_map,
     field_import_surface_names: summary.field_import_surface_names,
     variant_name_set: summary.variant_name_set,
     generic_param_names: summary.generic_param_names,
