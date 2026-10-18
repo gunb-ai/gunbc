@@ -695,16 +695,15 @@ fn roster_sweep_text_scoped(path: String, text: String, prepared: PreparedGramma
 // reference-site collector's own head classification of that spelling (v2.compiler.reference_site_collector), and the
 // counts must agree. A bound occurrence (a parameter, a local), a method or field spelling, or anything the parse tree
 // shows as a head that the collector does not classify as the free name makes them disagree, and the file REFUSES with
-// label-sites-ambiguous rather than relabelling what it cannot place. Before the import exists the free name is
-// HeadLexicallyUnbound; after it, the occurrence binds the import at root, HeadBoundAtRootValue, and only when the
-// import's target is the row's home (roster_symbol_imported).
+// label-sites-ambiguous rather than relabelling what it cannot place. The free name is any occurrence no lexical frame binds
+// (roster_head_is_free); that it is the row's HOME is decided by roster_symbol_imported, never by the head class.
 type RosterLabelPlan
   = LabelsSelected { edits: List<RosterLabelEdit> }
   | LabelsAmbiguous
 
-fn roster_label_plan(parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, row: RosterLabelRow, free_head: SiteHeadBinding) -> RosterLabelPlan {
+fn roster_label_plan(parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, row: RosterLabelRow) -> RosterLabelPlan {
   let sites = collect_scoped_module_reference_sites(root: normalized_root, imported: list_map(xs: imported, f: fn(b) { b.binding })).sites
-  let free = fold_list(xs: sites, empty: 0, cons: fn(n, st) { if roster_head_is(head: st.head, want: free_head) && roster_spelling_is(qn: st.site.spelling, call: row.call) { n + 1 } else { n } })
+  let free = fold_list(xs: sites, empty: 0, cons: fn(n, st) { if roster_head_is_free(head: st.head) && roster_spelling_is(qn: st.site.spelling, call: row.call) { n + 1 } else { n } })
   let heads = roster_primary_heads(parse_root: parse_root, call: row.call)
   if length(xs: heads) != free {
     LabelsAmbiguous
@@ -765,10 +764,13 @@ fn roster_direct_args_edge(acc: List<Node>, e: Edge) -> List<Node> {
   roster_direct_args(n: e.target, acc: acc)
 }
 
-fn roster_head_is(head: SiteHeadBinding, want: SiteHeadBinding) -> Bool {
+// THE FREE NAME, in either phase: an occurrence no lexical frame binds. Before the import it is unbound; after it, it binds
+// at root -- and the collector does not separate those for an import-bound spelling, so the plan counts both and leaves the
+// home check to roster_symbol_imported. A frame-bound or undecided head is never the free name.
+fn roster_head_is_free(head: SiteHeadBinding) -> Bool {
   match head {
-    HeadLexicallyUnbound => match want { HeadLexicallyUnbound => true  _ => false }
-    HeadBoundAtRootValue => match want { HeadBoundAtRootValue => true  _ => false }
+    HeadLexicallyUnbound => true
+    HeadBoundAtRootValue => true
     HeadBoundInFrame => false
     HeadBindingUndecided => false
   }
@@ -811,7 +813,7 @@ fn roster_label_outcome(parse_root: Node, spans: SpanIndex, normalized_root: Nod
         LabelsAmbiguous => LabelsAmbiguous
         LabelsSelected { edits: es } =>
           if roster_scope_admits(scope: scope, home: row.home) && roster_symbol_imported(imported: imported, row: RosterHeadRow { call: row.call, import_name: row.call, home: row.home }) {
-            match roster_label_plan(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, free_head: HeadBoundAtRootValue) {
+            match roster_label_plan(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row) {
               LabelsAmbiguous => LabelsAmbiguous
               LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es, right: more) }
             }
@@ -839,7 +841,7 @@ fn roster_with_pending_labels(parse_root: Node, spans: SpanIndex, normalized_roo
         LabelsAmbiguous => LabelsAmbiguous
         LabelsSelected { edits: es } =>
           if roster_qn_text(qn: row.home) == roster_qn_text(qn: home) {
-            match roster_label_plan(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, free_head: HeadLexicallyUnbound) {
+            match roster_label_plan(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row) {
               LabelsAmbiguous => LabelsAmbiguous
               LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es, right: more) }
             }
@@ -1198,12 +1200,20 @@ fn roster_control_label_method_spelling(prepared: PreparedGrammar, lex: Prepared
   }
 }
 
-// A BOUND OCCURRENCE OF THE SPELLING MAKES THE SITES AMBIGUOUS: a parameter named chars read in the body is a parse-tree head
-// the collector does not classify as the free name, so the counts disagree and the file refuses rather than relabel.
+// A BOUND OCCURRENCE OF THE SPELLING IS NEVER MIS-EDITED: a parameter named chars read in the body either makes the label
+// sites refuse (label-sites-ambiguous) or is left exactly as authored while only the free call is relabelled. What the label
+// pass must never do is rename a label at the bound occurrence. (Whether the IMPORT row may fire here is the separate,
+// recorded defect gunbc.recurring_failure_mode.a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call.)
 fn roster_control_label_bound_occurrence(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_sweep_text(path: "control/bound.dag", text: "module c.bound\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n\nfn g(chars: Int) -> Int {\n  h(n: chars)\n}\n", prepared: prepared, lex: lex) {
+  let before = "module c.bound\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n"
+  let after = "module c.bound\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: x))\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n"
+  match roster_sweep_text(path: "control/bound.dag", text: before, prepared: prepared, lex: lex) {
     RosterRefused { reason: r } => if roster_refusal_text(reason: r) == "label-sites-ambiguous" { "" } else { "CONTROL-FAIL label-bound-occurrence: refused for " + roster_refusal_text(reason: r) + "\n" }
-    _ => "CONTROL-FAIL label-bound-occurrence: a bound chars occurrence did not make the label sites refuse\n"
+    outcome =>
+      match roster_applied(before: before, outcome: outcome) {
+        RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL label-bound-occurrence: a label at or near the bound occurrence was renamed\n" }
+        RosterApplyRefused { reason: r } => "CONTROL-FAIL label-bound-occurrence: apply refused " + roster_refusal_text(reason: r) + "\n"
+      }
   }
 }
 
