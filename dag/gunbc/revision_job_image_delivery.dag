@@ -1,0 +1,79 @@
+module gunbc.revision_job_image_delivery
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import gunbc.command_runner { run_shell_commands, LocalExec }
+import gunbc.runner.microvm_guest_artifacts {
+  runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact, revision_job_rust_dist_artifact, runner_guest_base_dir,
+  runner_guest_base_artifact_path, guest_artifact_verdict, ArtifactMatchesPin,
+  ArtifactUnpinnedFirstContact, ArtifactBuildReceipt, ArtifactContradictsPin, ArtifactNotMeasured,
+}
+import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
+import gunbc.runner.runner_revision_job_image { revision_job_image_path, revision_job_toolchain_receipt_path, revision_job_image_build_core }
+import gunbc.runner.runner_revision_job_toolchain { prove_toolchain_rows, ToolchainRowsProven, ToolchainRowsRefused }
+
+// THE REVISION-JOB IMAGE'S CI DELIVERY, the workspace image's pattern (gunbc.workspace_image_delivery)
+// applied to its sibling: built inside an existing job from digest-pinned inputs (kernel, base rootfs,
+// Rust dist, and the closure debs the signed-index receipt admits), uploaded with its digest receipt,
+// and downloaded by the controller install, which verifies the installed copies against the reviewed
+// pin (gunbc.runner.runner_revision_job_unit revision_job_image_pinned_sha256).
+data revision_job_image_artifact_name: String = "revision-job-image"
+data revision_job_image_build_receipt: String = "target/revision-job-image-artifact/build-receipt.txt"
+
+// The Ubuntu archive keyring the runner image carries (the ubuntu-keyring package).
+data revision_job_toolchain_keyring: String = "/usr/share/keyrings/ubuntu-archive-keyring.gpg"
+
+fn revision_job_image_artifact_paths() -> String {
+  join([revision_job_image_path(root: revision_job_image_staging_root),
+    runner_guest_base_artifact_path(root: revision_job_image_staging_root, artifact: runner_guest_kernel_artifact),
+    revision_job_toolchain_receipt_path(root: revision_job_image_staging_root),
+    revision_job_image_build_receipt], "\n")
+}
+
+// Run the whole entry under fakeroot, so ownership survives extraction and mke2fs -d.
+// The digest is a receipt of one build, never a promise that mke2fs output is reproducible.
+fn revision_job_image_build_wet() -> ProcessExit {
+  let root = revision_job_image_staging_root
+  let store = concat(root, "/closure-store")
+  let index = concat(root, "/toolchain-index")
+  match run_shell_commands(commands: [
+    mkdir_parents_command(path: runner_guest_base_dir(root: root)),
+    mkdir_parents_command(path: store),
+    mkdir_parents_command(path: index),
+    mkdir_parents_command(path: concat(root, "/rust-dist")),
+    mkdir_parents_command(path: concat(root, "/debs")),
+    curl_download_command(url: runner_guest_kernel_artifact.url as String,
+      destination: runner_guest_base_artifact_path(root: root, artifact: runner_guest_kernel_artifact)),
+    curl_download_command(url: runner_guest_base_rootfs_artifact.url as String,
+      destination: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact)),
+    curl_download_command(url: revision_job_rust_dist_artifact.url as String,
+      destination: runner_guest_base_artifact_path(root: root, artifact: revision_job_rust_dist_artifact)),
+  ], transport: LocalExec) {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess => match guest_artifact_verdict(artifact: runner_guest_kernel_artifact,
+      observed: sha256sum_file_digest_via_shell(path: runner_guest_base_artifact_path(root: root, artifact: runner_guest_kernel_artifact) as NonEmptyStr)) {
+      ArtifactMatchesPin => match prove_toolchain_rows(store: store, dir: index, keyring: revision_job_toolchain_keyring) {
+        ToolchainRowsRefused { reasons } => exit_failure(reason: concat("RevisionJobImageBuildRefused: toolchain rows unproven:\n", join(reasons, "\n")))
+        ToolchainRowsProven { receipt: _ } => match revision_job_image_build_core(root: root, rust_dist_dir: concat(root, "/rust-dist"), store: store, debs: concat(root, "/debs")) {
+          ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+          ExitSuccess => match sha256sum_file_digest_via_shell(path: revision_job_image_path(root: root) as NonEmptyStr) {
+            Sha256FileDigestUnavailable { path: _, reason } => exit_failure(reason: reason)
+            Sha256FileDigest { digest } => {
+              let receipt = Filesystem.Write(path: revision_job_image_build_receipt,
+                content: join(["revision-job-image-sha256=", digest.hex as String, "\n"], ""))
+              if receipt.success { ExitSuccess } else { exit_failure(reason: receipt.error) }
+            }
+          }
+        }
+      }
+      ArtifactUnpinnedFirstContact { digest_hex: _ } => exit_failure(reason: "RevisionJobImageBuildRefused: kernel is unpinned")
+      ArtifactBuildReceipt { digest_hex: _ } => exit_failure(reason: "RevisionJobImageBuildRefused: kernel is not a pinned input")
+      ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => exit_failure(reason: "RevisionJobImageBuildRefused: kernel contradicts pin")
+      ArtifactNotMeasured { reason } => exit_failure(reason: reason)
+    }
+  }
+}

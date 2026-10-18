@@ -206,7 +206,13 @@ fn revision_job_image_main() -> ProcessExit {
   let debs = revision_job_image_env(name: "GUNBC_REVISION_JOB_DEBS_DIR")
   if root == "" || rust_dist_dir == "" || store == "" || debs == "" {
     exit_failure(reason: "revision_job_image: GUNBC_REVISION_JOB_IMAGE_ROOT, _RUST_DIST_DIR, _STORE_ROOT and _DEBS_DIR must all be set")
-  } else { match prepare_toolchain_closure(store: store, debs_dir: debs) {
+  } else { revision_job_image_build_core(root: root, rust_dist_dir: rust_dist_dir, store: store, debs: debs) }
+}
+
+// THE ONE BUILD CORE, shared by the host entry above and the CI delivery
+// (gunbc.revision_job_image_delivery): prepare the closure, then build.
+fn revision_job_image_build_core(root: String, rust_dist_dir: String, store: String, debs: String) -> ProcessExit {
+  match prepare_toolchain_closure(store: store, debs_dir: debs) {
     PinnedRowsUnproven { rows_digest: d, expected_receipt: r } =>
       exit_failure(reason: join(["revision_job_image: the pinned toolchain rows ", d, " are unproven; no receipt at ", r, " (run prove_toolchain_closure_main)"], ""))
     ToolchainClosureRefused { reasons: rs } => exit_failure(reason: concat("revision_job_image: the toolchain closure refused:\n", join(rs, "\n")))
@@ -219,7 +225,7 @@ fn revision_job_image_main() -> ProcessExit {
       RevisionJobImageRefused { reason: r } => exit_failure(reason: concat("revision_job_image: ", r))
       RevisionJobImageToolchainClosureMissing { missing: m } => exit_failure(reason: concat("revision_job_image: closure missing ", join(m, ",")))
     }
-  } }
+  }
 }
 
 // ── installation, verified like the workspace image ────────────────────────────────────────────

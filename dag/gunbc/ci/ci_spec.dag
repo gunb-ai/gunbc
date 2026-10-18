@@ -4094,3 +4094,9 @@ data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = GunbcRunStepTar
 fn gunbc_ci_workspace_image_build_invoke() -> String {
   join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_workspace_image_build_target.entry, function: gunbc_ci_workspace_image_build_target.function, claim_run: false), "\n"], "")
 }
+
+data gunbc_ci_revision_job_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/revision_job_image_delivery.dag", function: "revision_job_image_build_wet" }
+
+fn gunbc_ci_revision_job_image_build_invoke() -> String {
+  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_revision_job_image_build_target.entry, function: gunbc_ci_revision_job_image_build_target.function, claim_run: false), "\n"], "")
+}
