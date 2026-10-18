@@ -22,8 +22,12 @@ import extdeps.git {
   shape_git_fetch_remote_argv,
   shape_git_reset_hard_argv,
   shape_git_rev_parse_argv,
+  git_local_config_get_command, git_shared_repository_posture_readbacks,
 }
 import extdeps.tools.chmod { chmod_binary_path }
+import extdeps.tools.findutils { find_subtree_mode_readback_command }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.access.posix { file_mode_of_octal_text }
 import extdeps.ssh.session { shape_scp_copy_to_argv }
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
@@ -118,6 +122,12 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardActuationPosture,
   DashboardObserveOnly,
   DashboardActuating,
+  DashboardEnsureGitSharedRepositoryPosture,
+  DashboardMigrateGitWorkerSubtree,
+  dashboard_ensure_git_shared_repository_posture, dashboard_instance_worker_git_subtree_migration,
+  dashboard_git_worker_subtree_path, dashboard_git_worker_directory_children,
+  dashboard_git_worker_subtree_confined_children, dashboard_git_subtree_readback_is_granted,
+  dashboard_git_worker_subtree_walk_depth,
 }
 import gunbc.roadmap.dashboard_provider_readiness { dashboard_provider_device_login_command }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
@@ -224,6 +234,121 @@ fn dashboard_run_target_argvs(
         acc
       },
   )
+}
+
+// THE APPLY'S ONE PROJECTION FROM A BUILT COMMAND TO WHAT IT CAN RUN. The apply's only route to the
+// target is dashboard_target_exec -- the enrolled SSH user, which on the lab IS the instance's directory
+// owner and a member of the attempt group, and that is exactly the principal the posture and the
+// migration must run under: the repository belongs to that account, and chgrp needs group membership.
+// extdeps.exec.command's argv_words, not this module, decides that argv[0] is the program, so a posture
+// or migration command cannot arrive here with the program word in the wrong slot. A command with no
+// words projects to NO argv at all, so a step the model has no argv for runs nothing rather than running
+// something plausible.
+fn dashboard_git_owned_step_argv(command: ArgvCommand) -> DashboardArgv {
+  let words = argv_words(command: command)
+  match words.first() {
+    Absent => DashboardArgv { program: "" as FilePath, args: [] }
+    Present { value: program } =>
+      DashboardArgv { program: program as FilePath, args: words.skip(n: 1) }
+  }
+}
+
+fn dashboard_git_owned_steps_are_runnable(commands: List<ArgvCommand>) -> Bool {
+  all(commands, c => any(argv_words(command: c), w => trim(s: w) != ""))
+}
+
+fn dashboard_run_git_owned_step(
+  instance: HostDashboardInstance,
+  command: ArgvCommand,
+) -> DashboardExecResult {
+  dashboard_run_target_argvs(
+    instance: instance,
+    commands: [dashboard_git_owned_step_argv(command: command)],
+  )
+}
+
+// THE POSTURE READBACK, AS GIT ANSWERS IT. `git config --local --get <key>` exits 1 with nothing on
+// stdout when the key is absent, so the decision compares TRIMMED STDOUT against the expected value
+// rather than trusting an exit status; a key git has never been told about therefore refuses, which is
+// the direction that matters. The three (key, expected) pairs come from
+// extdeps.git's git_shared_repository_posture_readbacks, built from the SAME rows the three write
+// commands are built from -- rename a key in the model and the write and its readback move together,
+// where a readback naming its own literals would keep checking the old key and call that green.
+fn dashboard_git_local_config_value_is_postured(
+  instance: HostDashboardInstance,
+  repo: FilePath,
+  key: NonEmptyStr,
+  expected: String,
+) -> Bool {
+  let read = dashboard_run_git_owned_step(
+    instance: instance,
+    command: git_local_config_get_command(repo: repo, key: key),
+  )
+  read.success && trim(s: read.stdout) == expected
+}
+
+fn dashboard_git_shared_repository_posture_readback_refusal(
+  instance: HostDashboardInstance,
+  repo: FilePath,
+) -> String {
+  match filter(
+    git_shared_repository_posture_readbacks,
+    expectation =>
+      !dashboard_git_local_config_value_is_postured(
+        instance: instance,
+        repo: repo,
+        key: expectation.key,
+        expected: expectation.expected,
+      ),
+  ) {
+    [] => ""
+    missing => join([
+      "the posture did not take: ",
+      join(map(missing, e => concat(e.key as String, "=", e.expected)), ", "),
+      " is not what git reports in ",
+      repo as String,
+      " -- the write ran and the readback disagreed, so the receipt refuses",
+    ], ""),
+  }
+}
+
+// THE MIGRATION READBACK, SUBTREE BY SUBTREE. Each subtree gets its own bounded walk and its own
+// decision, so a refusal can name WHICH subtree failed; the decision itself is the model's
+// dashboard_git_subtree_readback_is_granted -- the same figure the claims assert -- so the apply and the
+// claims cannot drift into disagreeing about what "granted" means. An empty receipt refuses: a walk that
+// matched nothing proves nothing about an existing tree, which is precisely the failure mode this
+// follow-up exists to kill (recurring failure mode
+// directory_ownership_assertion_stops_at_the_top_level).
+fn dashboard_git_worker_subtree_is_granted(
+  instance: HostDashboardInstance,
+  child: NonEmptyStr,
+) -> Bool {
+  let read = dashboard_run_git_owned_step(
+    instance: instance,
+    command: find_subtree_mode_readback_command(
+      target: dashboard_git_worker_subtree_path(instance: instance, child: child),
+      pruned: dashboard_git_worker_subtree_confined_children(child: child),
+      depth: dashboard_git_worker_subtree_walk_depth,
+    ),
+  )
+  read.success && dashboard_git_subtree_readback_is_granted(child: child, receipt: read.stdout)
+}
+
+fn dashboard_git_worker_subtree_migration_readback_refusal(
+  instance: HostDashboardInstance,
+) -> String {
+  match filter(
+    dashboard_git_worker_directory_children,
+    child => !dashboard_git_worker_subtree_is_granted(instance: instance, child: child),
+  ) {
+    [] => ""
+    missing => join([
+      "the subtree re-group did not take for ",
+      join(missing, ", "),
+      " -- the readback walk came back empty, unreadable, or holding a mode outside the granted set,",
+      " so the receipt refuses rather than claiming a grant it did not see",
+    ], ""),
+  }
 }
 
 fn dashboard_next_path(path: FilePath) -> FilePath {
@@ -666,6 +791,70 @@ fn dashboard_apply_provision_op(
           codex_home: state_root as String,
         ),
       )
+    // THE SHARED-REPOSITORY POSTURE, EXECUTED BY THE APPLY, RUN TO COMPLETION AND READ BACK. This is
+    // the op's only execution site, and it is the FIRST thing in the plan that can touch the
+    // repository: core.sharedRepository decides the mode git gives every file and directory it creates
+    // from here on, so an attempt worktree added before this arm runs would arrive 0755/0644 and no
+    // later re-group could fix the files git had already opened without the group bit.
+    //
+    // WHY THE APPLY AND NOT A HOST STEP: the enrolled SSH user IS the repository's owner and a member
+    // of the attempt group (measured on srv1, 2026-10-17), so this needs no privilege the deploy does
+    // not already have -- and running it here is what puts its proof in the receipt the fold below
+    // builds from this result.
+    //
+    // WHY READ BACK AT ALL: writing and believing is the failure this follow-up exists to kill. Each of
+    // the three keys is asked of git itself through the model's own readback rows; if git reports
+    // anything else the arm REFUSES with the keys named, and the refusal carries the receipts of the
+    // steps that did run, so a half-applied instance is visible rather than inferred.
+    DashboardEnsureGitSharedRepositoryPosture { repo } => {
+      let wrote = dashboard_run_target_argvs(
+        instance: instance,
+        commands: map(
+          dashboard_ensure_git_shared_repository_posture(instance: instance),
+          command => dashboard_git_owned_step_argv(command: command),
+        ),
+      )
+      if !wrote.success {
+        wrote
+      } else {
+        let posture_detail = dashboard_git_shared_repository_posture_readback_refusal(
+          instance: instance,
+          repo: repo,
+        )
+        if posture_detail == "" {
+          dashboard_exec_ok(stdout: concat("git shared-repository posture read back in ", repo as String))
+        } else {
+          dashboard_exec_refused(detail: posture_detail)
+        }
+      }
+    }
+    // THE ONE-TIME RE-GROUP OF THE SUBTREES AN EXISTING REPOSITORY ALREADY HOLDS, executed and read
+    // back the same way. IT RUNS UNDER THE APPLY'S PRINCIPAL BECAUSE IT MUST: chgrp to the attempt group
+    // requires the caller to be a member of it, and the existing entries belong to the instance's
+    // directory owner -- which is who this transport logs in as. The sweep is bounded and its prune
+    // group is declared (dashboard_instance_worker_git_subtree_migration says what each subtree is given
+    // and why the confined children are excluded); the readback then walks the SAME subtrees and applies
+    // the model's OWN grantedness figure to what find printed, refusing on an empty or unreadable
+    // receipt rather than accepting a grant it did not observe.
+    DashboardMigrateGitWorkerSubtree { repo: _ } => {
+      let migrated = dashboard_run_target_argvs(
+        instance: instance,
+        commands: map(
+          dashboard_instance_worker_git_subtree_migration(instance: instance),
+          command => dashboard_git_owned_step_argv(command: command),
+        ),
+      )
+      if !migrated.success {
+        migrated
+      } else {
+        let subtree_detail = dashboard_git_worker_subtree_migration_readback_refusal(instance: instance)
+        if subtree_detail == "" {
+          dashboard_exec_ok(stdout: "git worker subtree re-group read back for objects/, refs/ and logs/")
+        } else {
+          dashboard_exec_refused(detail: subtree_detail)
+        }
+      }
+    }
   }
 }
 
@@ -1978,13 +2167,12 @@ fn dashboard_bootstrap_only_ops(
       DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => false
       DashboardVerifyProviderRuntime { executable: _, state_root: _ } => false
       DashboardVerifyProviderAuth { executable: _, state_root: _ } => false
-      // The posture op is declared and ordered but not yet executed by this apply; the claim
-      // (test.claim.roadmap.worker_dedicated_account_witness
-      // the_shared_repository_posture_runs_before_the_attempt_worktree_is_added) pins its presence in
-      // the plan and its position, and roadmap_dashboard_instance_apply owns the exec step beside the
-      // migration argv. Executing it here while the plan is dry-run would make the apply run a write
-      // the plan does not know about.
+      // Both git repository steps belong to the ACTUATING plan, not to the credential-free bootstrap:
+      // the bootstrap's job ends at creating the provider state root, and neither the posture nor the
+      // subtree re-group is anything it needs to do that. They are named here explicitly because the
+      // match is exhaustive -- a new op cannot slip into the bootstrap by accident.
       DashboardEnsureGitSharedRepositoryPosture { repo: _ } => false
+      DashboardMigrateGitWorkerSubtree { repo: _ } => false
     })
 }
 

@@ -123,6 +123,30 @@ fn git_gc_auto_disabled_config_command(repo: FilePath) -> ArgvCommand {
   )
 }
 
+// WHAT THE POSTURE MUST READ BACK, as (key, expected) pairs -- built from THE SAME rows the three
+// config tails above are built from, which is the only reason this can be trusted: rename a key in the
+// model and the write and its readback move together. A readback that named its keys as literals would
+// keep checking the old one after such a rename, and a green readback would then mean nothing.
+type GitLocalConfigExpectation {
+  key: NonEmptyStr
+  expected: String
+}
+
+data git_shared_repository_posture_readbacks: List<GitLocalConfigExpectation> = [
+  GitLocalConfigExpectation {
+    key: git_core_shared_repository_config_key,
+    expected: git_core_shared_repository_group_value,
+  },
+  GitLocalConfigExpectation {
+    key: git_gc_auto_config_key,
+    expected: git_disabled_config_value,
+  },
+  GitLocalConfigExpectation {
+    key: git_maintenance_auto_config_key,
+    expected: git_disabled_maintenance_config_value,
+  },
+] as List<GitLocalConfigExpectation>
+
 fn git_maintenance_auto_disabled_config_command(repo: FilePath) -> ArgvCommand {
   env_prefixed_command(
     bindings: git_untrusted_config_env_bindings(),

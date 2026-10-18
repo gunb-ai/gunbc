@@ -9,6 +9,8 @@ import extdeps.tools.findutils {
 import extdeps.git {
   git_repack_quiet_command, git_pack_refs_all_command,
   git_core_shared_repository_config_key, git_gc_auto_config_key, git_maintenance_auto_config_key,
+  git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
+  git_maintenance_auto_disabled_config_command,
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
@@ -2275,6 +2277,117 @@ fn dashboard_git_worker_directory_mode_is_unmigrated(mode: FileMode) -> Bool {
   dashboard_git_worker_file_modes_are_equal(a: mode, b: dashboard_git_worker_unmigrated_directory_mode)
 }
 
+// THE SHARED-REPOSITORY POSTURE, AS ONE ROW OF COMMANDS THE INSTANCE OWNS. It lives HERE, beside the
+// op that carries it and the migration that follows it, because it is a fact about the INSTANCE's
+// repository, not about a dispatch: the apply runs it and the dispatch actuator's spawn-side helper is
+// a call to this. WHAT IT IS: core.sharedRepository=group must be in the config BEFORE any attempt
+// worktree is added -- without it git creates the attempt's private git entry 0755 with 0644 files and
+// no amount of later chgrp helps, because the entry's own files were opened without the group bit --
+// and the two automatic repack triggers are switched off for the repository because the sweep they
+// would start reaches packed-refs.lock in .git itself, which the worker's unit confines (see
+// dashboard_git_maintenance_exec_commands for who does the sweeping instead).
+//
+// NONE OF IT IS A WORKER WRITE. Each command writes the repo's own .git/config, and the worker has no
+// write there (#13942); they run under the instance principal -- the account the apply's enrolled SSH
+// user is on the lab, which is also the repository's owner.
+fn dashboard_ensure_git_shared_repository_posture(instance: HostDashboardInstance) -> List<ArgvCommand> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [
+      git_shared_repository_group_config_command(repo: instance.repo_root),
+      git_gc_auto_disabled_config_command(repo: instance.repo_root),
+      git_maintenance_auto_disabled_config_command(repo: instance.repo_root),
+    ]
+  }
+}
+
+// THE READBACK'S ONE LINE, AS A FIGURE. `find -printf "%m %P\n"` prints the MODE FIRST and the path
+// RELATIVE TO THE WALKED SUBTREE after it, which is why the path can be recovered by taking the head
+// as the mode and the REST AS THE PATH (joined back with spaces): a path containing a space survives,
+// and there is no counting of legs. `%P` of the start point is empty, so the subtree's own directory
+// is the line whose path is empty -- that line is the one whose mode is the exact per-subtree grant,
+// because a subtree top is created by the migration's chmod and never by git.
+type DashboardGitSubtreeReadbackLine {
+  mode_text: String
+  path: String
+  is_top: Bool
+}
+
+fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadbackLine? {
+  match split(s: trim(s: line), delimiter: " ") {
+    Absent => none
+    Present { value: legs } =>
+      match legs.first() {
+        Absent => none
+        Present { value: mode } =>
+          Present {
+            value: DashboardGitSubtreeReadbackLine {
+              mode_text: trim(s: mode),
+              path: join(legs.skip(n: 1), " "),
+              is_top: length(legs) < 2,
+            },
+          }
+      }
+  }
+}
+
+// DID THE READBACK PROVE THE SUBTREE GRANTED? One fold over the walk's receipt, so the apply's refusal
+// and the claims' assertion are the SAME decision over the same figure -- a second copy of this
+// reasoning is exactly the drift the §3 rounds on this PR kept removing.
+//
+// WHAT EACH LINE IS DECIDED UNDER:
+//  - the subtree's own directory (empty path): the EXACT per-subtree grant, 03775 for objects/ and
+//    02775 elsewhere. Nothing lenient here: this is the directory the migration itself sets.
+//  - a line beneath it: a DIRECTORY if its owner leg is executable, a FILE otherwise. That is not a
+//    guess at the file type, it is the shape of the accepted set -- 02775 and 03775 both carry owner x
+//    and 0664 does not -- so the two predicates partition the receipt, and any mode outside it (the
+//    measured 0775, a 0755, a 0666) is refused by whichever predicate it lands on. Interior
+//    directories get the LENIENT window (02775 or 03775) because a fan-out directory git creates
+//    tomorrow inherits setgid but NOT the sticky bit; a file must be group-writable and not
+//    world-writable.
+//  - an UNPARSEABLE mode text refuses the receipt. A walk that printed something the model cannot read
+//    has not proved a grant, and treating it as one is the fabricated output DESIGN 5 forbids.
+//  - an EMPTY receipt refuses. A walk that matched nothing proves nothing about an existing tree --
+//    which is the class of failure this whole follow-up exists to kill (see the recurring failure mode
+//    directory_ownership_assertion_stops_at_the_top_level).
+// THE SAME DECISION OVER AN ARBITRARY TOP MODE. The repository subtrees take their exact top mode from
+// dashboard_git_worker_subtree_directory_mode_is_granted; the per-attempt worktree entry -- whose
+// subtree top is granted 02775 and which carries NO sticky bit anywhere, see
+// dispatch_attempt_worker_git_entry_migration -- is decided under dashboard_git_worker_granted_directory_mode.
+// One fold, both callers, so the apply, the spawn and the claims cannot disagree about "granted".
+fn dashboard_git_subtree_readback_is_granted(child: NonEmptyStr, receipt: String) -> Bool {
+  dashboard_git_subtree_readback_is_granted_under(
+    top: dashboard_git_worker_subtree_directory_mode_is_granted(child: child),
+    receipt: receipt,
+  )
+}
+
+fn dashboard_git_subtree_readback_is_granted_under(top: FileMode, receipt: String) -> Bool {
+  let lines = filter(split(s: receipt, delimiter: "\n"), l => trim(s: l) != "")
+  let parsed = map(lines, l => dashboard_git_subtree_readback_line(line: l))
+  !is_empty(parsed)
+    && all(parsed, entry => entry !is Absent)
+    && any(parsed, entry => match entry {
+      Absent => false
+      Present { value: line } => line.is_top
+    })
+    && all(parsed, entry => match entry {
+      Absent => false
+      Present { value: line } =>
+        match file_mode_of_octal_text(text: line.mode_text) {
+          Absent => false
+          Present { value: mode } =>
+            if line.is_top {
+              dashboard_git_worker_file_modes_are_equal(a: mode, b: top)
+            } else if mode.owner.execute {
+              dashboard_git_worker_interior_directory_mode_is_accepted(mode: mode)
+            } else {
+              dashboard_git_worker_file_mode_is_granted(mode: mode)
+            }
+        }
+    })
+}
+
 // THE BUNDLE INBOX: where a bundle-seeded instance stages its source bundle. Demanded only by an
 // instance whose source seed IS a bundle, and the staged bundle path is built under the same function
 // (isolated_dashboard_instance), so the inbox ensured and the inbox written are one path.
@@ -2476,6 +2589,17 @@ type DashboardInstanceProvisionOp
   | DashboardEnsureGitSharedRepositoryPosture {
       repo: FilePath,
     }
+  // THE ONE-TIME RE-GROUP OF THE SUBTREES AN EXISTING REPOSITORY ALREADY HOLDS, as an op rather than a
+  // hand step on the host. WHY AN OP AND NOT AN ASSERTION IN the owned-directory provider: that provider
+  // is non-recursive on purpose (DESIGN 4b/6b), and making it recursive would put hooks, info,
+  // objects/pack and objects/info -- the children #13942 keeps out of the worker's reach -- inside the
+  // path a deploy writes to, and would re-walk an object store on EVERY apply. A bounded `find` sweep
+  // with a declared prune group, run once and read back, is the same guarantee with neither cost; and
+  // because it is an op, the apply's receipt carries the proof that it happened. Empty on the staged
+  // arm, so prod gets no op.
+  | DashboardMigrateGitWorkerSubtree {
+      repo: FilePath,
+    }
 
 // live_deploy systemd-launches the dashboard process only for deployment_spec_srv1 (srv1_live);
 // deployment_spec_for has no production caller. This plan does not start the process and does not
@@ -2509,6 +2633,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
     WorkerIsServiceUser => []
     WorkerDedicatedAccount => [
       DashboardEnsureGitSharedRepositoryPosture { repo: instance.repo_root },
+      DashboardMigrateGitWorkerSubtree { repo: instance.repo_root },
     ]
   }
   let common = [
@@ -2663,7 +2788,13 @@ fn dashboard_instance_provision_op_row(
       DashboardInstanceProvisionPlanRow {
         kind: "ensure-git-shared-repository-posture" as NonEmptyStr,
         target: repo as String,
-        detail: "core.sharedRepository=group, gc.auto=0, maintenance.auto=false; root-owned, before any attempt worktree is added",
+        detail: "core.sharedRepository=group, gc.auto=0, maintenance.auto=false; run by the instance principal, before any attempt worktree is added",
+      }
+    DashboardMigrateGitWorkerSubtree { repo } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "migrate-git-worker-subtree" as NonEmptyStr,
+        target: repo as String,
+        detail: "bounded re-group of objects/, refs/ and logs/ to the attempt group with g+w and setgid (objects/ also +t); confined children pruned; read back path by path before the receipt",
       }
   }
 }
