@@ -739,15 +739,32 @@ fn ready_evidence(
   }
 }
 
-// THE VERDICT ITSELF IS NOT AUTHORABLE (merry-fox-82, blocker 2). Until now any module could write
-// `Ready { ... }` with a hand-picked interface and a `boot_target` of its own invention, and the
-// sealed `evidence` inside it would simply have been whatever they passed -- sealing the evidence and
-// leaving the verdict open seals the frame and lets the picture be swapped. The same held for
-// `NeedsPreparation { route: ..., blocking: ... }`, which is how the catalog/verdict pairing this
-// module exists to enforce could be bypassed in one line by a caller who skipped the catalog and
-// picked a route that cannot physically move the blocker. Construction is confined to the functions
-// at the bottom of this file, all caller-sealed by name; the union's arms remain public for MATCHING
-// (a match is not a mint), so every consumer can still consume verdicts and none can fabricate one.
+// THE VERDICT IS NOT AUTHORABLE -- AND THE WALL THAT DOES THAT IS MEASURED, NOT ASSUMED
+// (merry-fox-82, blocker 2). Three mechanisms are in play here and they are NOT equally strong, so
+// each is stated at the rung an executed probe established (DESIGN 4b: an inflated rung is worse than
+// sitting low):
+//
+//  (1) ENFORCED -- CALL ADMISSION. Every function that returns a verdict is `admit_callers`-walled to
+//      the folds in this file. A caller that respects the type and simply CALLS `prepare(blocker:)`
+//      -- the bypass that sealing the type alone would leave open -- is refused by the compiler. Proven
+//      by no_foreign_module_may_call_the_verdict_mint_directly, which pairs the hostile source with a
+//      lawful one over identical imports (refusal without a lawful pair proves nothing).
+//  (2) ENFORCED -- THE SEALED RECORD INSIDE THE ARM. `Ready` carries a `ReadyEvidence`, which is a
+//      sole_constructor RECORD, and record seals this compiler does enforce. So a foreign `Ready {...}`
+//      is refused not by the annotation below but because it cannot obtain the evidence field: the only
+//      mint is call-walled to `ready_or_refuse_on_nics`. Custody of the verdict runs through custody of
+//      its evidence -- composition, not decoration. Proven by no_foreign_module_may_write_a_verdict_by_hand.
+//  (3) NOT ENFORCED BY THIS COMPILER -- the `sole_constructor` annotation on THIS UNION. Measured, not
+//      believed: adding a hand-written `Ready {...}` around an already-forged evidence raised the
+//      SoleConstructorViolation count by ZERO, so the union-level annotation is not what refuses. Every
+//      corpus precedent seals a RECORD (test.fixture.sole_constructor_sealed / _variant_probe, whose own
+//      audit probe frames the coproduct case as the open question), and this is consistent with them.
+//      It is kept because it costs nothing and records the intent should the native compiler grow the
+//      check -- but a reader must not take it as the wall. If (1) and (2) are ever weakened, the probes
+//      go red; nothing protects the verdict by reading this annotation.
+//
+// Arms stay public for MATCHING: a match is not a mint, so consumers can consume verdicts freely and
+// none can fabricate one.
 type FirmwareNetworkBootStanding sole_constructor
   = Ready {
       firmware_mode: ClientNetworkBootMode,

@@ -1312,36 +1312,6 @@ test fn no_foreign_module_may_write_a_verdict_by_hand() -> Bool {
     >= sole_ctor_count(source: forge_evidence_only_source) + 1
 }
 
-// TEMPORARY SPLIT OF THE CONJUNCTION ABOVE: three tests, so WHICH arm fails is the measurement
-// (which arm is false) instead of guessing. Delete after reading.
-test fn tmp_a_baseline_evidence_only_refuses() -> Bool {
-  sole_ctor_count(source: forge_evidence_only_source) >= 1
-}
-
-test fn tmp_b_ready_adds_a_refusal() -> Bool {
-  sole_ctor_count(source: forge_ready_source)
-    >= sole_ctor_count(source: forge_evidence_only_source) + 1
-}
-
-test fn tmp_c_lawful_is_clean() -> Bool {
-  sole_ctor_count(source: lawful_verdict_source) == 0
-}
-
-test fn tmp_d_total_rows_probe() -> Bool {
-  sole_ctor_count(source: forge_ready_source) != 0 - 1
-}
-
-// (2) CUSTODY OF THE CALL ROUTE, and merry's swapped-conclusion case in one: a caller that RESPECTS
-// sole_constructor still bypasses the fold by calling the mint directly. prepare(blocker:) returns a
-// well-formed verdict whose route was never derived from the blocker by the catalog, so the rung-2
-// admissibility rule never runs -- the exact shape of 'legitimate evidence carrying a conclusion the
-// evidence does not establish'. Refused at the CALL WALL, not by content.
-data direct_mint_source: String = verdict_probe_hdr + "\nfn bypass_to_a_verdict() -> FirmwareNetworkBootStanding {\n  prepare(blocker: NoInterfaceCarriesPxe)\n}\n"
-
-// THE LAWFUL PAIR FOR (2): the same module, the same import of the mint, and no call. If this source
-// also refused, the wall would be 'you may not import this name' and the claim above would be false.
-data lawful_import_source: String = verdict_probe_hdr + "\nfn names_the_blocker(b: PreparationBlockingOn) -> PreparationBlockingOn {\n  b\n}\n"
-
 test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
   blocking_subject_count_for(
     source: direct_mint_source,
