@@ -12,7 +12,6 @@ import v2.extdeps.languages.dag {
   dag_grammar_choice,
   dag_grammar_nonterminal
 }
-import std.host_text { chars }
 
 // CI2-0 grammar-extension proof obligation (operator repair sequencing msg_7152180b item a; premise
 // corrected by direct probe 2026-08-10): the v2 grammar already admits |> — the measured
@@ -27,7 +26,7 @@ import std.host_text { chars }
 // sum admission.
 
 fn parse_accepts_with(source: String, grammar: ParseGrammar) -> Bool {
-  match lex_walk_artifact(source: chars(text: source), file: ^lambda_probe, rules: dag_lex_rules()) {
+  match lex_walk_artifact(source: source, file: ^lambda_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: grammar) {

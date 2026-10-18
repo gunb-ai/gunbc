@@ -60,7 +60,6 @@ import v2.std.model_core {
 import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import v2.extdeps.cpp_abi { CppTargetProfile }
 import v2.std.text { String }
-import std.host_text { chars }
 
 type CppSignedIntegerSurfaceSpelling
   = SignedChar
@@ -1176,7 +1175,7 @@ fn cpp_target_model_for_profile(target_profile: Node) -> TargetModel {
 }
 
 fn cpp_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(text: text) } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
 fn cpp_lex_rules() -> List<LexRule> {

@@ -102,7 +102,6 @@ import v2.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
 import std.algebra { Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, PointwisePower, empty_map, map_insert }
 import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, commutative_ring_node, free_monoid_node }
 import v2.std.text { String }
-import std.host_text { chars }
 
 type SignedIntWidth
   = SignedBits8
@@ -1919,11 +1918,11 @@ fn go_target_model_int64_selection_policy() -> TargetModel {
 }
 
 fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(text: text) } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
 fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: KeywordPattern { text: chars(text: text) } }
+  TokenRule { token_class: token_class, pattern: KeywordPattern { text: text } }
 }
 
 fn go_whitespace_trivia_rule() -> LexRule {
