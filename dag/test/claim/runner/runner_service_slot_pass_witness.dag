@@ -40,6 +40,9 @@ fn observe_stub(signer: JwsSigningKeyRef, reason: NonEmptyStr) -> GitHubAppContr
 // The delivered mint, as the microVM witness builds one: a dispatch for this binding's own subject, then upstream's 201 fold.
 fn delivering_mint(binding: JitMintBinding, state: GitHubAppControlPlaneState) -> JitBoundMint admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "pass_with"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "clean_exit_deregisters_with_the_clean_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "nonzero_exit_deregisters_with_the_nonzero_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_listener_that_never_launched_still_deregisters"),
 ] {
   match dispatch_jit_mint(
     subject: binding.subject,

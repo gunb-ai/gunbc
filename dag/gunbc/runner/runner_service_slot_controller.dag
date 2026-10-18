@@ -375,7 +375,7 @@ fn service_slot_isolate_listener_as(
 ) -> ServiceSlotIsolation
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_isolate_listener"),
-    decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "isolate_as"),
+    decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "isolate_as_readings"),
     decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
   ]
 {
