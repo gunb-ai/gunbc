@@ -52,7 +52,7 @@ pub use crate::v1_compiler_emit::{BlockEmitState, TcoFrame, TcoReassignInput, In
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection, escape_json_string, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
 pub use crate::v1_compiler_infer::{is_lambda_expr, InferScope, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling};
-pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences, TypeSurfaceOccurrence, TypeRepr, TypeDeclResolution};
+pub use crate::v1_compiler_infer_emit_info::{FieldClone, EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences, TypeSurfaceOccurrence, TypeRepr, TypeDeclResolution};
 pub use crate::v1_compiler_infer_env::{is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup, UnitVariantPhantomLookup};
 pub use crate::v1_compiler_infer_items::{ItemLookup, ResolvedGraph, TypedModule, ItemInfo, item_kind, item_is_effectful_callee, ItemKind};
 pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
@@ -108,6 +108,7 @@ use crate::v1_compiler_emit::NativeEffectRealizationAdmission::{NativeEffectHand
 use crate::v1_compiler_emit::ShellEmissionRefusal::{ShellChannelNotRealizedByTarget, ShellCapturePolicyInputAbsent};
 use crate::v1_compiler_emit::ShellResultChannel::{ShellChanStdout, ShellChanStderr, ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines, ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes};
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
+use crate::v1_compiler_infer_emit_info::FieldClone::{FieldCloneShallow, FieldCloneOwned, FieldCloneDeclared};
 use crate::v1_compiler_infer_emit_info::TypeDeclResolution::{TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared};
@@ -6322,40 +6323,52 @@ pub fn is_type_constant(
     }
 }
 
-pub fn field_type_head_leaf(type_name: String) -> String {
-    match string_index_of(type_name.clone(), "<".to_string()) {
-        Some(i) => v1_rt::substring(&type_name, 0, i.clone()),
-        std::option::Option::None => type_name.clone(),
-    }
-}
-
-pub fn field_clone_is_shallow(type_summaries: Rc<TypeSummaryIndex>, type_name: String) -> bool {
-    {
-        let leaf = field_type_head_leaf(type_name.clone());
-        if is_dag_value_type_name(leaf.clone()) {
-            true
-        } else {
-            if {
-                let mut __found = false;
-                for k in Rc::new({
-                    let mut __result = Vec::new();
-                    for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
-                        .iter()
-                        .cloned()
-                    {
-                        if ((k.clone() != "optional".to_string())
-                            && (k.clone() != "boolean_algebra".to_string()))
-                        {
-                            __result.push(k);
-                        }
-                    }
-                    __result
-                })
+pub fn shared_collection_leaves() -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for k in Rc::new({
+            let mut __result = Vec::new();
+            for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
                 .iter()
                 .cloned()
+            {
+                if ((k.clone() != "optional".to_string())
+                    && (k.clone() != "boolean_algebra".to_string()))
                 {
-                    if (crate::v1_compiler_emit_core_support::to_pascal(k.clone()) == leaf.clone())
-                    {
+                    __result.push(k);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(crate::v1_compiler_emit_core_support::to_pascal(k.clone()));
+        }
+        __result
+    })
+}
+
+pub fn field_clone_is_shallow(
+    type_summaries: Rc<TypeSummaryIndex>,
+    type_name: String,
+    clone: Rc<FieldClone>,
+) -> bool {
+    match (*clone.clone()).clone() {
+        FieldClone::FieldCloneShallow => true,
+        FieldClone::FieldCloneOwned => false,
+        FieldClone::FieldCloneDeclared {
+            applied_to_owned: owned,
+            ..
+        } => {
+            let leaf = match string_index_of(type_name.clone(), "<".to_string()) {
+                Some(i) => v1_rt::substring(&type_name, 0, i.clone()),
+                std::option::Option::None => type_name.clone(),
+            };
+            if {
+                let mut __found = false;
+                for c in shared_collection_leaves().iter().cloned() {
+                    if (c.clone() == leaf.clone()) {
                         __found = true;
                         break;
                     }
@@ -6364,30 +6377,38 @@ pub fn field_clone_is_shallow(type_summaries: Rc<TypeSummaryIndex>, type_name: S
             } {
                 true
             } else {
-                {
-                    let keys = crate::v1_compiler_infer_emit_info::type_summary_keys_of_leaf(
-                        type_summaries.clone(),
-                        leaf.clone(),
-                    );
-                    (((keys.clone().len() as i64) > 0) && {
-                        let mut __all = true;
-                        for key in keys.iter().cloned() {
-                            if !(match crate::v1_compiler_infer_emit_info::type_summary_decided(
-                                type_summaries.clone(),
-                                key.clone(),
-                            ) {
-                                Some(_) => true,
-                                std::option::Option::None => false,
-                            }) {
-                                __all = false;
-                                break;
-                            }
-                        }
-                        __all
-                    })
+                if owned.clone() {
+                    false
+                } else {
+                    nested_record_is_decided(type_summaries.clone(), leaf.clone())
                 }
             }
         }
+    }
+}
+
+pub fn nested_record_is_decided(type_summaries: Rc<TypeSummaryIndex>, leaf: String) -> bool {
+    {
+        let keys = crate::v1_compiler_infer_emit_info::type_summary_keys_of_leaf(
+            type_summaries.clone(),
+            leaf.clone(),
+        );
+        (((keys.clone().len() as i64) > 0) && {
+            let mut __all = true;
+            for key in keys.iter().cloned() {
+                if !(match crate::v1_compiler_infer_emit_info::type_summary_decided(
+                    type_summaries.clone(),
+                    key.clone(),
+                ) {
+                    Some(_) => true,
+                    std::option::Option::None => false,
+                }) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        })
     }
 }
 
@@ -6413,11 +6434,24 @@ pub fn is_clone_allocation_free(
                         .len() as i64);
                     (((field_count.clone() > 0) && (ft_count.clone() >= field_count.clone())) && {
                         let mut __all = true;
-                        for tn in Rc::new(v1_rt::map_values(&summary.field_type_map.clone()))
+                        for f in Rc::new(v1_rt::sorted_map_keys(&summary.field_type_map.clone()))
                             .iter()
                             .cloned()
                         {
-                            if !(field_clone_is_shallow(type_summaries.clone(), tn.clone())) {
+                            if !(match v1_rt::map_get(&summary.field_clone_map.clone(), f.clone()) {
+                                Some(c) => {
+                                    match v1_rt::map_get(&summary.field_type_map.clone(), f.clone())
+                                    {
+                                        Some(tn) => field_clone_is_shallow(
+                                            type_summaries.clone(),
+                                            tn.clone(),
+                                            c.clone(),
+                                        ),
+                                        std::option::Option::None => false,
+                                    }
+                                }
+                                std::option::Option::None => false,
+                            }) {
                                 __all = false;
                                 break;
                             }
@@ -6543,26 +6577,16 @@ pub fn build_shared_types(
                         }
                     },
                 );
-        let collection_keys = Rc::new({
-            let mut __result = Vec::new();
-            for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
-                .iter()
-                .cloned()
-            {
-                if ((sharing.needs_sharing.clone() && (k.clone() != "optional".to_string()))
-                    && (k.clone() != "boolean_algebra".to_string()))
-                {
-                    __result.push(k);
-                }
-            }
-            __result
-        });
-        collection_keys.iter().cloned().fold(
+        if sharing.needs_sharing.clone() {
+            shared_collection_leaves()
+        } else {
+            Rc::new(vec![])
+        }
+        .iter()
+        .cloned()
+        .fold(
             user_shared.clone(),
-            |acc: Rc<BTreeSet<String>>, key: String| {
-                let pascal = crate::v1_compiler_emit_core_support::to_pascal(key.clone());
-                v1_rt::rc_set_insert(acc, pascal.clone())
-            },
+            |acc: Rc<BTreeSet<String>>, pascal: String| v1_rt::rc_set_insert(acc, pascal.clone()),
         )
     }
 }

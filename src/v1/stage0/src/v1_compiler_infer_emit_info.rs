@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_emit_info
 
 use self::DataVariantWireSpelling::*;
+use self::FieldClone::*;
 use self::TypeDeclOccurrenceBinding::*;
 use self::TypeDeclReferenceRoute::*;
 use self::TypeDeclResolution::*;
@@ -9,6 +10,8 @@ use self::TypeRepr::*;
 use self::TypeSummaryLookup::*;
 use self::TypeSummaryQuestion::*;
 pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
+pub use crate::std_coercion::TypeRealizationDecision;
+use crate::std_coercion::TypeRealizationDecision::*;
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_dissolution::DissolutionCondition::*;
@@ -25,7 +28,10 @@ pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
-pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
+pub use crate::v1_compiler_coercion::{
+    declaration_realization, realization_is_host_numeric, realized_checkpoint,
+    type_reference_realization,
+};
 use crate::v1_compiler_infer_env::BareOccurrenceBinding::{
     BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName,
     BareOccurrenceUndecided,
@@ -96,6 +102,7 @@ pub struct TypeSummary {
     pub repr: Rc<TypeRepr>,
     pub field_summaries: Rc<HashMap<String, Rc<FieldSummary>>>,
     pub field_type_map: Rc<HashMap<String, String>>,
+    pub field_clone_map: Rc<HashMap<String, Rc<FieldClone>>>,
     pub field_import_surface_names: Rc<Vec<String>>,
     pub variant_name_set: Rc<HashMap<String, bool>>,
     pub generic_param_names: Rc<Vec<String>>,
@@ -270,8 +277,104 @@ pub fn type_summary_values(index: Rc<TypeSummaryIndex>) -> Rc<Vec<Rc<TypeSummary
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FieldClone {
+    FieldCloneShallow,
+    FieldCloneOwned,
+    FieldCloneDeclared { applied_to_owned: bool },
+}
+impl FieldClone {
+    pub fn applied_to_owned(&self) -> bool {
+        match self {
+            FieldClone::FieldCloneShallow => panic!("no applied_to_owned on unit variant"),
+            FieldClone::FieldCloneOwned => panic!("no applied_to_owned on unit variant"),
+            FieldClone::FieldCloneDeclared {
+                applied_to_owned: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn field_clone_head_leaf(name: String) -> String {
+    match Rc::new(
+        name.clone()
+            .split(&"<".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .first()
+    .cloned()
+    {
+        Some(head) => head.clone(),
+        std::option::Option::None => name.clone(),
+    }
+}
+
+pub fn field_clone_arguments_own(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*field_clone_of_type_node(n.clone(), source_indices.clone())).clone() {
+        FieldClone::FieldCloneOwned => true,
+        FieldClone::FieldCloneDeclared {
+            applied_to_owned: owned,
+            ..
+        } => owned.clone(),
+        FieldClone::FieldCloneShallow => false,
+    }
+}
+
+pub fn field_clone_of_type_node(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<FieldClone> {
+    {
+        let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
+        let leaf = field_clone_head_leaf(crate::v1_std_core::authored_name_at(
+            source_indices.clone(),
+            peeled.clone(),
+        ));
+        let decision = crate::v1_compiler_coercion::type_reference_realization(
+            peeled.clone(),
+            leaf.clone(),
+            RenderTarget::Rust,
+        );
+        match (*decision.clone()).clone() {
+            TypeRealizationDecision::RealizationRefused { cause: _, .. } => {
+                Rc::new(FieldClone::FieldCloneOwned)
+            }
+            TypeRealizationDecision::Realized { checkpoint: cp, .. } => {
+                if (crate::v1_compiler_coercion::realization_is_host_numeric(decision.clone())
+                    || (cp.is_copy.clone() == Some(true)))
+                {
+                    Rc::new(FieldClone::FieldCloneShallow)
+                } else {
+                    Rc::new(FieldClone::FieldCloneOwned)
+                }
+            }
+            TypeRealizationDecision::Unrealized => Rc::new(FieldClone::FieldCloneDeclared {
+                applied_to_owned: (((peeled.connective.clone() == Connective::NoConnective)
+                    && ((peeled.children.clone().len() as i64) > 0))
+                    && {
+                        let mut __found = false;
+                        for ch in peeled.children.clone().iter().cloned() {
+                            if field_clone_arguments_own(ch.clone(), source_indices.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldTypeMapBuild {
     pub field_types: Rc<HashMap<String, String>>,
+    pub field_clones: Rc<HashMap<String, Rc<FieldClone>>>,
     pub import_surface_names: Rc<Vec<String>>,
 }
 
@@ -1581,6 +1684,7 @@ pub fn build_field_type_map(
     children.iter().cloned().fold(
         Rc::new(FieldTypeMapBuild {
             field_types: v1_rt::rc_empty_map::<String, String>(),
+            field_clones: v1_rt::rc_empty_map::<String, Rc<FieldClone>>(),
             import_surface_names: Rc::new(vec![]),
         }),
         |acc: Rc<FieldTypeMapBuild>, child: Rc<Node>| match child
@@ -1615,8 +1719,21 @@ pub fn build_field_type_map(
                 } else {
                     acc.field_types.clone()
                 };
+                let next_field_clones = if (((resolved_name.clone() != "".to_string())
+                    && !ft_is_type_var.clone())
+                    && (resolved_name.clone() != "Dynamic".to_string()))
+                {
+                    v1_rt::rc_map_insert(
+                        acc.field_clones.clone(),
+                        key.clone(),
+                        field_clone_of_type_node(ft.clone(), source_indices.clone()),
+                    )
+                } else {
+                    acc.field_clones.clone()
+                };
                 Rc::new(FieldTypeMapBuild {
                     field_types: next_field_types.clone(),
+                    field_clones: next_field_clones.clone(),
                     import_surface_names: dedupe_nonempty_strings(v1_rt::concat(
                         acc.import_surface_names.clone(),
                         surface_names.clone(),
@@ -1681,6 +1798,7 @@ pub fn build_type_summary(
                         source_indices.clone(),
                     ),
                     field_type_map: field_types.field_types.clone(),
+                    field_clone_map: field_types.field_clones.clone(),
                     field_import_surface_names: field_types.import_surface_names.clone(),
                     variant_name_set: v1_rt::rc_empty_map::<String, bool>(),
                     generic_param_names: gpn.clone(),
@@ -1713,6 +1831,7 @@ pub fn build_type_summary(
                         source_indices.clone(),
                     ),
                     field_type_map: v1_rt::rc_empty_map::<String, String>(),
+                    field_clone_map: v1_rt::rc_empty_map::<String, Rc<FieldClone>>(),
                     field_import_surface_names: enum_variant_payload_surface_names(
                         item.children.clone(),
                         source_indices.clone(),
@@ -1977,6 +2096,7 @@ pub fn close_fn_fields(
                                         repr: s.repr.clone(),
                                         field_summaries: s.field_summaries.clone(),
                                         field_type_map: s.field_type_map.clone(),
+                                        field_clone_map: s.field_clone_map.clone(),
                                         field_import_surface_names: s
                                             .field_import_surface_names
                                             .clone(),
@@ -2152,6 +2272,9 @@ pub fn add_emit_item_summary(
                                                     field_type_map: variant_field_types
                                                         .field_types
                                                         .clone(),
+                                                    field_clone_map: variant_field_types
+                                                        .field_clones
+                                                        .clone(),
                                                     field_import_surface_names: variant_field_types
                                                         .import_surface_names
                                                         .clone(),
@@ -2203,6 +2326,7 @@ pub fn type_summary_with_key(summary: Rc<TypeSummary>, key: String) -> Rc<TypeSu
         repr: summary.repr.clone(),
         field_summaries: summary.field_summaries.clone(),
         field_type_map: summary.field_type_map.clone(),
+        field_clone_map: summary.field_clone_map.clone(),
         field_import_surface_names: summary.field_import_surface_names.clone(),
         variant_name_set: summary.variant_name_set.clone(),
         generic_param_names: summary.generic_param_names.clone(),
