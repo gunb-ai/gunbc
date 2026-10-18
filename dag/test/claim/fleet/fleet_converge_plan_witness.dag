@@ -21,6 +21,8 @@ import gunbc.runner.runner_slot_provision {
   SlotUnregistered,
 }
 import std.content_hash { serialize_content_hash }
+import std.algebra { string_contains }
+import gunbc.fleet.fleet_converge_plan { fleet_converge_member_set_drift_text }
 import gunbc.membership_reconcile { MemberAction, MemberAdded, MemberRemoved }
 import gunbc.host.host_axis_caps { CapMember, desired_cap_member }
 import gunbc.host.host_converge { gunbc_runner_per_slot_dropin_path }
@@ -467,6 +469,54 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
     }
         }
     }}
+}
+
+test fn member_set_drift_refusal_is_located_at_the_row() -> Bool {
+  match fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  ) {
+    Absent => false
+    Present { value: artifact } => {
+      let drifted = fleet_converge_member_set_drift_text(
+        plan_body: artifact.plan_body,
+        observed: FullHostConverge {
+          host: witness_host_srv1,
+          observed_timers: [],
+          observed_caps: [],
+          observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-01")],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+          observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+          observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+          observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+        },
+      )
+      let unchanged = fleet_converge_member_set_drift_text(
+        plan_body: artifact.plan_body,
+        observed: FullHostConverge {
+          host: witness_host_srv1,
+          observed_timers: [],
+          observed_caps: [],
+          observed_slots: [],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+          observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+          observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+          observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+        },
+      )
+      string_contains(s: drifted, pattern: "\n+ slot:srv1-01=")
+        && !string_contains(s: drifted, pattern: "\n- ")
+        && !string_contains(s: unchanged, pattern: "\n+ ")
+        && !string_contains(s: unchanged, pattern: "\n- ")
+    }
+  }
 }
 
 test fn plan_content_hash_path_is_apply_interlock_sidecar() -> Bool {

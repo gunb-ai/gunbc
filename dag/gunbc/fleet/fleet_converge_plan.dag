@@ -30,7 +30,7 @@ import gunbc.workspace_allocation_store { WorkspaceReleased }
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.measure { byte_size_count }
-import std.algebra { trim }
+import std.algebra { trim, contains, skip }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_key }
@@ -769,6 +769,63 @@ fn fleet_converge_apply_generation_stale(planned_generation: Int, store_generati
 // compares two values and says no. Making the crossing genuinely unwritable would mean the plan
 // artifact handing over its scope as a typed field rather than a hex string, which this commit
 // does not do.
+// THE PLAN BODY IS WHERE THE PLANNED ROWS LIVE, AND IT IS ALREADY AUTHENTICATED. The persisted
+// observed_baseline.hex and subject_member_set.txt are digests, so they cannot say WHICH row
+// drifted; plan.txt embeds the baseline text, and plan.txt is recomputed into plan_artifact_hash
+// before apply admits anything (fleet_converge_plan_manifest, DerivedFromBoundAuthority). So the
+// planned rows are read out of bytes apply has already verified, and NO hash is minted from them:
+// the located refusal is a presentation of two row lists, never a second identity.
+data fleet_converge_plan_baseline_end_marker: String = "observed_baseline_end:"
+
+type PlannedBaselineRows
+  = PlannedBaselineRowsRead { rows: List<String> }
+  | PlannedBaselineRowsUnavailable { cause: String }
+
+fn fleet_converge_planned_baseline_rows(plan_body: String) -> PlannedBaselineRows {
+  match skip(xs: split(s: plan_body, delimiter: "\nobserved_baseline:\n"), n: 1).first() {
+    Absent => PlannedBaselineRowsUnavailable { cause: "plan.txt carries no observed_baseline: section" }
+    Present { value: tail } => {
+      let parts = split(s: tail, delimiter: concat("\n", fleet_converge_plan_baseline_end_marker))
+      if list_length(items: parts) < 2 {
+        PlannedBaselineRowsUnavailable {
+          cause: "plan.txt carries no observed_baseline_end: marker (minted before baseline rows were delimited)",
+        }
+      } else {
+        match parts.first() {
+          Absent => PlannedBaselineRowsUnavailable { cause: "plan.txt baseline section is empty" }
+          Present { value: block } => PlannedBaselineRowsRead { rows: split(s: block, delimiter: "\n") }
+        }
+      }
+    }
+  }
+}
+
+fn baseline_row_in(rows: List<String>, row: String) -> Bool {
+  contains(xs: rows, item: row, eq: (a, b) => a == b)
+}
+
+// THE REFUSAL TEXT FOR A MEMBER-SET DRIFT: the row-level symmetric difference, planned side first.
+// "-" rows were in the plan and are gone; "+" rows were not planned and are now observed. Unavailable
+// planned rows degrade to printing the observed rows with the cause, never to a bare "drifted".
+fn fleet_converge_member_set_drift_text(plan_body: String, observed: FleetConvergeRequest) -> String {
+  let observed_rows = split(s: observed_baseline_text(request: observed), delimiter: "\n")
+  match fleet_converge_planned_baseline_rows(plan_body: plan_body) {
+    PlannedBaselineRowsUnavailable { cause: why } =>
+      join(concat(["planned rows unavailable: ", why, "; observed rows:"], observed_rows), "\n")
+    PlannedBaselineRowsRead { rows: planned_rows } =>
+      join(
+        concat(
+          concat(
+            ["row-level difference (- planned only, + observed only):"],
+            map(filter(planned_rows, r => !baseline_row_in(rows: observed_rows, row: r)), r => concat("- ", r)),
+          ),
+          map(filter(observed_rows, r => !baseline_row_in(rows: planned_rows, row: r)), r => concat("+ ", r)),
+        ),
+        "\n",
+      )
+  }
+}
+
 fn fleet_converge_member_set_fingerprint_matches(
   planned_fingerprint_text: String,
   observed: FleetConvergeRequest,
@@ -2813,6 +2870,7 @@ fn fleet_converge_plan_artifact_of_request(
               concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
               "observed_baseline:",
               baseline,
+              fleet_converge_plan_baseline_end_marker,
             ],
             fleet_converge_plan_axis_lines(request: request),
           ),
