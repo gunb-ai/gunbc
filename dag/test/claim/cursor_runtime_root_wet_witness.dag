@@ -143,20 +143,48 @@ fn wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: Fil
   let custody = wet_scratch(label: "dcust")
   let stand_in = wet_logging_stand_in(scratch: scratch)
   let _ = shell.Mkdir.Parents(path: credential_acquisition_slots_root(instance_root: scratch) as FilePath)
-  match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetdsandbox00001", snap: join([scratch, "/P"], "")) {
+  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetdsandbox00001", snap: join([scratch, "/P"], "")) {
     Absent => false
     Present { value: snapshot } => {
       let reason = wet_standing_reason(s: cursor_observed_standing_for_program(program: stand_in, presence: presence, snapshot: snapshot))
       let log = Filesystem.Read(path: join([scratch, "/invocations.log"], "")).content
-      let verdict = string_contains(s: reason, pattern: cursor_sandbox_unavailable_reason_prefix)
+      string_contains(s: reason, pattern: cursor_sandbox_unavailable_reason_prefix)
         && string_contains(s: log, pattern: "sandbox")
         && !string_contains(s: log, pattern: "--list-models")
         && !wet_auth_inside_config(root: credential_taken_cursor_runtime_root(snapshot: snapshot))
-      let removed_s = wet_remove_and_observe_absent(scratch: scratch)
-      let removed_c = wet_remove_and_observe_absent(scratch: custody)
-      verdict && removed_s && removed_c
     }
   }
+  let removed_s = wet_remove_and_observe_absent(scratch: scratch)
+  let removed_c = wet_remove_and_observe_absent(scratch: custody)
+  verdict && removed_s && removed_c
+}
+
+// (e) An ABSENT pinned realization reaches NO invocation. The presence is the REAL producer's reading of an
+// EMPTY directory (a deterministic FilesystemEntryAbsent), the fold runs with the logging stand-in, the reason
+// is the not-installed cause, and invocations.log does not exist because nothing was invoked.
+fn wet_absent_realization_reaches_no_invocation() -> Bool {
+  let scratch = wet_scratch(label: "e")
+  let custody = wet_scratch(label: "ecust")
+  let empty = wet_scratch(label: "eempty")
+  let listed = Filesystem.List(path: empty)
+  let presence = filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: empty, success: listed.success, entries: listed.entries, error: listed.error),
+    name: "cursor-agent",
+  )
+  let stand_in = wet_logging_stand_in(scratch: scratch)
+  let _ = shell.Mkdir.Parents(path: credential_acquisition_slots_root(instance_root: scratch) as FilePath)
+  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetenotinstalled1", snap: join([scratch, "/P"], "")) {
+    Absent => false
+    Present { value: snapshot } => {
+      let reason = wet_standing_reason(s: cursor_observed_standing_for_program(program: stand_in, presence: presence, snapshot: snapshot))
+      string_contains(s: reason, pattern: "pinned cursor-agent realization is not installed")
+        && !Filesystem.Read(path: join([scratch, "/invocations.log"], "")).success
+    }
+  }
+  let removed_s = wet_remove_and_observe_absent(scratch: scratch)
+  let removed_c = wet_remove_and_observe_absent(scratch: custody)
+  let removed_e = wet_remove_and_observe_absent(scratch: empty)
+  verdict && removed_s && removed_c && removed_e
 }
 
 // ACTIVATION (a): the CUSTODY key through the same wrapper, --list-models only, fresh root A: Accepted, and all
@@ -195,6 +223,10 @@ test fn an_invalid_key_under_a_fresh_root_reads_rejected_and_leaves_no_auth_stat
 
 test fn an_unavailable_sandbox_stops_the_ordering_at_the_sandbox_refusal_before_any_list_models() -> Bool {
   wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: wet_stand_in_presence())
+}
+
+test fn an_absent_pinned_realization_reaches_no_invocation() -> Bool {
+  wet_absent_realization_reaches_no_invocation()
 }
 
 // The stand-in's own presence observation (the user copy's directory), so the real fold runs past the
