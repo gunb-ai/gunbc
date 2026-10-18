@@ -84,7 +84,7 @@ import v1.compiler.artifact { RenderTarget, Rust, RustModuleRenderSelection, Ren
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
   rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates,
-  rust_machine_word_lowering_template,
+  rust_machine_word_lowering,
   rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
   HigherOrderMethodSpec, rust_higher_order_methods,
   rust_value_binding_candidate, fresh_rust_value_binding_name,
@@ -13257,12 +13257,68 @@ fn constructor_literal_leaf(n: Node, source_indices: Map<String, NewlineIndex>) 
   }
 }
 
+// THE LITERAL RESULT OF A DECLARED fn AT A CONSTRUCTOR LITERAL, READ FROM ITS DECLARATION. Folds only a fn
+// whose body is ONE match over its sole value parameter with nullary-constructor arms and literal
+// results (machine_word_operator_label, word_width_bits); anything else answers none and takes the
+// normal path. Exhaustiveness is the type checker's, so the named arm exists. No partial evaluator.
+fn arm_names_constructor(arm: Node, constructor: String) -> Bool {
+  match arm_pattern(n: arm) {
+    VariantPattern { name: arm_name, parent_enum: _, field_bindings: _, parent_identity: _ } => value_ref_qualified_leaf(name: arm_name) == constructor
+    _ => false
+  }
+}
+
+fn literal_text_of(result: Node) -> String? {
+  match expr_literal_string_optional(expr: result) {
+    Present { value: text } => Present { value: text }
+    Absent =>
+      match expr_literal_int_optional(expr: result) {
+        Present { value: number } => Present { value: to_string(value: number) }
+        Absent => none
+      }
+  }
+}
+
+fn arm_is_nullary_variant(arm: Node) -> Bool {
+  match arm_pattern(n: arm) {
+    VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } => (bindings |> count) == 0
+    _ => false
+  }
+}
+
+fn declared_literal_match_result(fn_name: String, constructor: String, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  match map_get(emit_info.fn_decl_items, fn_name) {
+    Absent => none
+    Present { value: item } =>
+      match item.body {
+        Absent => none
+        Present { value: body } =>
+          match body.expr_data {
+            ExprMatch =>
+              let value_params = function_value_params(params: item.params)
+              let arms = match_arm_nodes(texpr: body)
+              let sole_param_scrutinee = (value_params |> count) == 1 && match value_params |> first {
+                Present { value: p } => p.name == expr_var_name_at(texpr: match_scrutinee(texpr: body), source_indices: source_indices)
+                Absent => false
+              }
+              if sole_param_scrutinee && (arms |> all(arm => arm_is_nullary_variant(arm: arm))) {
+                match arms |> filter(arm => arm_names_constructor(arm: arm, constructor: constructor)) |> first {
+                  Present { value: arm } => literal_text_of(result: arm_body(n: arm))
+                  Absent => none
+                }
+              } else { none }
+            _ => none
+          }
+      }
+  }
+}
+
 // A CALL TO std.machine_word machine_word_apply WHOSE OPERATOR AND WIDTH ARE CONSTRUCTOR LITERALS IS
 // THE HOST'S OWN OPERATOR, NOT A SEAM CALL. The call's target is the declaration (resolution already
-// decided it; no name lookup), its first two arguments are read as the source spelling of the two
-// constructors, and `rust_machine_word_lowering_template` (the Rust target's row) names the runtime's operator row
-// and width by them, resolved when the emitted program is built. No general inliner: a call with a
-// non-literal operator or width answers none and keeps the declared call to the runtime seam.
+// decided it; no name lookup). The operator's label and the width's bit count are folded out of
+// the declarations that own them (`rust_machine_word_lowering` names which), and the row's template
+// selects the runtime's operator row by that label at build time. No general inliner: a call with a
+// non-literal operator or width, or a declaration that does not fold, keeps the declared call.
 fn emit_machine_word_lowered_call(call_target: CallTargetIdentity, func: String, args: List<Node>, call_semantics: CallSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
   let is_machine_word_apply = match call_target {
     SourceDeclarationCall { owner_module_path: owner, decl_name: decl } => owner == "std.machine_word" && decl == "machine_word_apply"
@@ -13272,14 +13328,20 @@ fn emit_machine_word_lowered_call(call_target: CallTargetIdentity, func: String,
     let ordered = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
     if ordered |> count != 4 { none } else {
       let si = scope.type_env.source_indices
-      let op_arg = arg_value(n: (ordered |> first).value)
-      let width_arg = arg_value(n: (ordered |> skip(1) |> first).value)
-      let op_leaf = constructor_literal_leaf(n: op_arg, source_indices: si)
-      let width_leaf = constructor_literal_leaf(n: width_arg, source_indices: si)
-      if op_leaf == "" || width_leaf == "" { none } else {
-        let a_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(2) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-        let b_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(3) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-        Present { value: apply_named_template(template: rust_machine_word_lowering_template, bindings: seed_bindings(key: "a", value: a_str) |> map_insert("b", b_str) |> map_insert("op", op_leaf) |> map_insert("width", width_leaf)) }
+      let op_leaf = constructor_literal_leaf(n: arg_value(n: (ordered |> first).value), source_indices: si)
+      let width_leaf = constructor_literal_leaf(n: arg_value(n: (ordered |> skip(1) |> first).value), source_indices: si)
+      let label = if op_leaf == "" { none } else { declared_literal_match_result(fn_name: rust_machine_word_lowering.operator_label_fn, constructor: op_leaf, emit_info: emit_info, source_indices: si) }
+      let bits = if width_leaf == "" { none } else { declared_literal_match_result(fn_name: rust_machine_word_lowering.width_bits_fn, constructor: width_leaf, emit_info: emit_info, source_indices: si) }
+      match label {
+        Present { value: label_text } =>
+          match bits {
+            Present { value: bits_text } =>
+              let a_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(2) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+              let b_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(3) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+              Present { value: apply_named_template(template: rust_machine_word_lowering.template, bindings: seed_bindings(key: "a", value: a_str) |> map_insert("b", b_str) |> map_insert("label", label_text) |> map_insert("bits", bits_text)) }
+            Absent => none
+          }
+        Absent => none
       }
     }
   }

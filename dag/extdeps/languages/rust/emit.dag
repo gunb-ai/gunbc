@@ -71,12 +71,21 @@ data rust_container_templates: Map<String, String> = {
 }
 
 // A std.machine_word operation at a literal operator and width, expanded at EMIT time to the runtime's
-// width-generic operator row, selected at compile time of the emitted program (`v1.compiler.emit_rust`
-// `emit_typed_call`, the `std.machine_word` `machine_word_apply` arm). The operator's meaning and its
-// refusals live ONCE, in MACHINE_WORD_OPERATOR_ROWS (src/v1/runtime_rust.dag rt_machine_word_ops), which
-// the label-keyed seam also reads; this template only names which row and which width, by the source
-// spelling of the two constructors, so a new operator or width is a runtime row and no row here.
-data rust_machine_word_lowering_template: String = "machine_word_operate_at::<\{machine_word_row_index(\"\{op\}\")\}, \{machine_word_width_bits(\"\{width\}\")\}>(\{a\}, \{b\})"
+// width-generic operator row (`v1.compiler.emit_rust` `emit_machine_word_lowered_call`). The operator's
+// meaning and refusals live ONCE, in MACHINE_WORD_OPERATOR_ROWS (src/v1/runtime_rust.dag
+// rt_machine_word_ops). The operator's label and the width's bit count are NOT restated here or in the
+// runtime: the emitter folds them out of the two declarations that own them, which this row only NAMES.
+type MachineWordLowering {
+  operator_label_fn: String
+  width_bits_fn: String
+  template: String
+}
+
+data rust_machine_word_lowering: MachineWordLowering = {
+  operator_label_fn: "machine_word_operator_label",
+  width_bits_fn: "word_width_bits",
+  template: "machine_word_operate_at::<\{machine_word_row_index(\"\{label\}\")\}, \{bits\}>(\{a\}, \{b\})"
+}
 
 data rust_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "count",     template: "(\{recv\}.len() as i64)",                                                                    wraps_result: false },
