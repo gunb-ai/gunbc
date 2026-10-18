@@ -408,25 +408,22 @@ fn roster_apply_edit(held: RosterHeldLock, path: String, before: String, outcome
     roster_refuse_row(path: path, reason: RefusalLockNotHeld)
   } else {
     match roster_target_refusal(root: held.root, path: path) {
-      Absent => roster_apply_admitted_edit(held: held, path: path, before: before, outcome: outcome)
       Present { value: refusal } => roster_refuse_row(path: path, reason: refusal)
-    }
-  }
-}
-
-fn roster_apply_admitted_edit(held: RosterHeldLock, path: String, before: String, outcome: RosterOutcome) -> String {
-  if !roster_target_unchanged(root: held.root, path: path, before: before) {
-    roster_refuse_row(path: path, reason: RefusalStaleRead)
-  } else {
-    match roster_applied(before: before, outcome: outcome) {
-      RosterApplyRefused { reason: reason } => roster_refuse_row(path: path, reason: reason)
-      RosterApplyWritten { content: content } =>
-        if content == before {
-          ""
-        } else if Filesystem.Write(path: held.root + "/" + path, content: content).success {
-          ""
+      Absent =>
+        if !roster_target_unchanged(root: held.root, path: path, before: before) {
+          roster_refuse_row(path: path, reason: RefusalStaleRead)
         } else {
-          roster_refuse_row(path: path, reason: RefusalWriteFailed)
+          match roster_applied(before: before, outcome: outcome) {
+            RosterApplyRefused { reason: reason } => roster_refuse_row(path: path, reason: reason)
+            RosterApplyWritten { content: content } =>
+              if content == before {
+                ""
+              } else if Filesystem.Write(path: held.root + "/" + path, content: content).success {
+                ""
+              } else {
+                roster_refuse_row(path: path, reason: RefusalWriteFailed)
+              }
+          }
         }
     }
   }
@@ -789,6 +786,25 @@ fn roster_import_sweep_controls_wire() -> CliWireResponse {
   }
 }
 
+// THE BOUNDARY CONTROLS USE AN OTHERWISE VALID EDIT: an import the splice accepts (roster_control_edit_splices proves
+// it on the text), so a refusal at the write boundary can only be the boundary's own, never an invalid splice's.
+fn roster_control_source(module_name: String) -> String {
+  "module " + module_name + "\n\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
+}
+
+fn roster_control_valid_edit(module_name: String) -> RosterOutcome {
+  let start = string_length(s: "module " + module_name + "\n\n")
+  RosterEdit { start: start, end: start + 27, text: "import std.algebra { Cons, collection_count_shape }", own_line: false }
+}
+
+fn roster_control_edit_splices() -> String {
+  match roster_applied(before: roster_control_source(module_name: "c.unheld"), outcome: roster_control_valid_edit(module_name: "c.unheld")) {
+    RosterApplyWritten { content: content } =>
+      if content == "module c.unheld\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n" { "" } else { "CONTROL-FAIL valid-edit: spliced to unexpected text\n" }
+    RosterApplyRefused { reason: reason } => "CONTROL-FAIL valid-edit: refused " + roster_refusal_text(reason: reason) + "\n"
+  }
+}
+
 fn roster_controls_report() -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
@@ -797,6 +813,7 @@ fn roster_controls_report() -> String {
         + roster_control_present(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_multibyte(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_annotation(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_edit_splices()
         + roster_control_generation()
         + roster_control_status_names()
         + roster_control_ancestor()
@@ -914,7 +931,7 @@ fn roster_lock_controls_report(root_dir: String) -> String {
 }
 
 fn roster_control_unheld(root_dir: String) -> String {
-  let before = "module c.unheld\n\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
+  let before = roster_control_source(module_name: "c.unheld")
   let target = ".roster_control_unheld.dag"
   if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
     "CONTROL-FAIL unheld: scratch target could not be created\n"
@@ -923,7 +940,7 @@ fn roster_control_unheld(root_dir: String) -> String {
       held: RosterHeldLock { root: root_dir, nonce: "forged" },
       path: target,
       before: before,
-      outcome: RosterEdit { start: 0, end: 0, text: "x", own_line: false }
+      outcome: roster_control_valid_edit(module_name: "c.unheld")
     )
     let after = Filesystem.Read(path: root_dir + "/" + target)
     let removed = Filesystem.Delete(path: root_dir + "/" + target)
@@ -938,7 +955,7 @@ fn roster_control_unheld(root_dir: String) -> String {
 }
 
 fn roster_control_stale(root_dir: String) -> String {
-  let before = "module c.stale\n\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
+  let before = roster_control_source(module_name: "c.stale")
   let target = ".roster_control_stale.dag"
   match roster_lock_take(root_dir: root_dir) {
     RosterLockRefused { reason: reason } => "CONTROL-FAIL stale: first acquire refused " + roster_refusal_text(reason: reason) + "\n"
@@ -956,7 +973,7 @@ fn roster_control_stale(root_dir: String) -> String {
                 held: first,
                 path: target,
                 before: before,
-                outcome: RosterEdit { start: 0, end: 0, text: "x", own_line: false }
+                outcome: roster_control_valid_edit(module_name: "c.stale")
               )
               let after = Filesystem.Read(path: root_dir + "/" + target)
               let removed = Filesystem.Delete(path: root_dir + "/" + target)
@@ -997,9 +1014,10 @@ fn roster_control_traversal(root_dir: String) -> String {
   match roster_lock_take(root_dir: root_dir) {
     RosterLockRefused { reason: reason } => "CONTROL-FAIL traversal: acquire refused " + roster_refusal_text(reason: reason) + "\n"
     RosterLockAcquired { held: held } => {
-      let edit = RosterEdit { start: 0, end: 0, text: "x", own_line: false }
-      let up = roster_apply_edit(held: held, path: "../roster_control_outside.dag", before: "", outcome: edit)
-      let abs = roster_apply_edit(held: held, path: "/tmp/roster_control_outside.dag", before: "", outcome: edit)
+      let edit = roster_control_valid_edit(module_name: "c.traversal")
+      let source = roster_control_source(module_name: "c.traversal")
+      let up = roster_apply_edit(held: held, path: "../roster_control_outside.dag", before: source, outcome: edit)
+      let abs = roster_apply_edit(held: held, path: "/tmp/roster_control_outside.dag", before: source, outcome: edit)
       let made = Filesystem.Read(path: root_dir + "/../roster_control_outside.dag")
       let released = roster_lock_release(held: held)
       if up == roster_refuse_row(path: "../roster_control_outside.dag", reason: RefusalPathOutsideRoot) && abs == roster_refuse_row(path: "/tmp/roster_control_outside.dag", reason: RefusalPathOutsideRoot) && !made.success && released {
