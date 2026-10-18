@@ -79,7 +79,10 @@ import gunbc.firmware_network_boot_standing {
   RedfishOneShotOverride,
   BootEntry,
   boot_entry,
-  has_network_entry,
+  network_entries_in,
+  NetworkEntryStanding,
+  NoNetworkEntry,
+  NetworkEntriesPresent,
   firmware_network_boot_probe_frontier,
   firmware_network_boot_standing_consumer_frontier,
   firmware_network_boot_probe_producer_ref,
@@ -93,7 +96,7 @@ import gunbc.firmware_network_boot_standing {
   authority_of,
   route_prose,
   route_is_admissible_for,
-  procedure_requires_existing_option,
+  procedure_demands_existing_option,
   route_requires,
   ProcedureRequires,
   RequiresExistingBootOption,
@@ -205,14 +208,51 @@ fn with_bios(bios_version: BiosVersionObservation) -> FirmwareBootObservation {
 
 test fn the_happy_unit_is_ready_and_carries_every_ready_field() -> Bool {
   match standing_of(observation: good_observation()) {
-    Ready { firmware_mode: mode, network_interface: nic, evidence: ev } =>
-      match mode {
-        UefiPxe { tftp_root: _ } =>
-          nic == "eth0"
-            && match ev.observation.bios_version {
-                 BiosVersionObserved { version: v } => v == "1.08"
-                 _ => false
-               }
+    Ready { firmware_mode: mode, network_interface: nic, boot_target: target, evidence: ev } =>
+      // THE HEAD, NOT JUST 'SOMETHING NETWORK' (review 81853). The fixture's boot order is
+      // [PXE stack, NVMe0], so the target the verdict names must be the PXE entry -- the kind the
+      // classifier produced for the entry the unit will actually boot. A fold that collapsed the
+      // classification to a Bool could not produce this assertion at all.
+      match target {
+        BootTargetPxe =>
+          match mode {
+            UefiPxe { tftp_root: _ } =>
+              nic == "eth0"
+                && match ev.observation.bios_version {
+                     BiosVersionObserved { version: v } => v == "1.08"
+                     _ => false
+                   }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE ORDER IS THE ANSWER. Two units, same two network options, opposite boot order: the verdicts
+// must name DIFFERENT targets. If the classifier returned a set, or the fold picked the option list's
+// first entry rather than the boot order's, both units report the same target and this fails -- and
+// the operator is told the wrong thing will boot.
+test fn the_ready_names_the_boot_order_head_not_the_first_option() -> Bool {
+  let http_first = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [http_option(), pxe_stack()] },
+    boot_options: BootOptionsObserved { options: [pxe_stack(), http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  let pxe_first = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [pxe_stack(), http_option()] },
+    boot_options: BootOptionsObserved { options: [pxe_stack(), http_option()] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  match standing_of(observation: http_first) {
+    Ready { firmware_mode: _, network_interface: _, boot_target: BootTargetUefiHttp, evidence: _ } =>
+      match standing_of(observation: pxe_first) {
+        Ready { firmware_mode: _, network_interface: _, boot_target: BootTargetPxe, evidence: _ } => true
         _ => false
       }
     _ => false
@@ -365,7 +405,7 @@ test fn the_readiness_fn_is_total_over_a_mixed_observation_matrix() -> Bool {
 
 fn is_standing(standing: FirmwareNetworkBootStanding) -> Bool {
   match standing {
-    Ready { firmware_mode: _, network_interface: _, evidence: _ } => true
+    Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => true
     NeedsPreparation { route: _, blocking: _ } => true
     Unobserved { unanswered: _ } => true
     Refused { cause: _, gaps: _ } => true
@@ -581,7 +621,7 @@ test fn ready_evidence_preserves_the_observation_it_was_computed_from() -> Bool 
     observed_at: witness_epoch,
     boot_mode: UefiHttpBoot,
   ) {
-    Ready { firmware_mode: UefiHttpBoot, network_interface: _, evidence: ev } =>
+    Ready { firmware_mode: UefiHttpBoot, network_interface: _, boot_target: _, evidence: ev } =>
       ev.observed_at == witness_epoch
         && match ev.observation.bios_version {
              BiosVersionObserved { version: v } => v == "1.08"
@@ -604,14 +644,14 @@ test fn the_seam_carries_the_edge_mode_it_was_given_and_adds_none_of_its_own() -
     observed_at: witness_epoch,
     boot_mode: UefiHttpBoot,
   ) {
-    Ready { firmware_mode: UefiHttpBoot, network_interface: _, evidence: _ } =>
+    Ready { firmware_mode: UefiHttpBoot, network_interface: _, boot_target: _, evidence: _ } =>
       match firmware_network_boot_standing(
         observation: good_observation(),
         authority: witness_authority,
         observed_at: witness_epoch,
         boot_mode: UefiPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") },
       ) {
-        Ready { firmware_mode: UefiPxe { tftp_root: _ }, network_interface: _, evidence: _ } => true
+        Ready { firmware_mode: UefiPxe { tftp_root: _ }, network_interface: _, boot_target: _, evidence: _ } => true
         _ => false
       }
     _ => false
@@ -638,7 +678,7 @@ test fn a_legacy_bios_unit_is_refused_because_the_edge_cannot_serve_it() -> Bool
 // never said.
 test fn the_ready_names_the_firmware_spelled_interface_verbatim() -> Bool {
   match standing_of(observation: with_nics(nics: NicsObserved { nics: ["NIC-Port-1"] })) {
-    Ready { firmware_mode: _, network_interface: nic, evidence: _ } => nic == "NIC-Port-1"
+    Ready { firmware_mode: _, network_interface: nic, boot_target: _, evidence: _ } => nic == "NIC-Port-1"
     _ => false
   }
 }
@@ -910,7 +950,7 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
   match standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [disk("NVMe0"), disk("NVMe1")] })) {
     Refused { cause: BootOrderNamesUnenumeratedNetworkOption { why: _ }, gaps: _ } => true
     NeedsPreparation { route: _, blocking: _ } => false
-    Ready { firmware_mode: _, network_interface: _, evidence: _ } => false
+    Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
     Unobserved { unanswered: _ } => false
   }
     // ...and the empty-list neighbour must stay a preparation, which is the guard that keeps this
@@ -942,8 +982,21 @@ test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
   ]
   let honestly_network_label: BootEntry = boot_entry(kind: BootTargetPxe, label: "ALTRAD8UD-1L2T")
   length(xs: misleadingly_network_labels) == 6
-    && !has_network_entry(entries: misleadingly_network_labels)
-    && has_network_entry(entries: [honestly_network_label])
+    // THE ARMS, NOT A BOOL (review 81853). The classifier's answer is matched, and the count is
+    // asserted too: a NoNetworkEntry that did not know how many it examined could not tell a
+    // conflict from an unconfigured board, which is the branch `decide` depends on.
+    && match network_entries_in(entries: misleadingly_network_labels) {
+         NoNetworkEntry { examined_count: examined } => examined == 6
+         NetworkEntriesPresent { targets: _ } => false
+       }
+    && match network_entries_in(entries: [honestly_network_label]) {
+         NetworkEntriesPresent { targets: targets } =>
+           match targets |> first {
+             Present { value: BootTargetPxe } => true
+             _ => false
+           }
+         NoNetworkEntry { examined_count: _ } => false
+       }
     && match redfish_boot_target_network_standing(t: BootTargetUefiHttp) {
          NetworkBootTarget { via: _ } => true
          NotNetworkBootTarget { why: _ } => false
@@ -983,7 +1036,7 @@ test fn an_all_disk_boot_order_with_network_shaped_labels_is_not_ready() -> Bool
              NetworkBootOptionAbsent => true
              _ => false
            }
-    Ready { firmware_mode: _, network_interface: _, evidence: _ } => false
+    Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
     _ => false
   }
 }
@@ -1206,15 +1259,15 @@ test fn a_redirect_is_never_admissible_for_the_blocker_that_means_no_option_exis
   // THE CLAUSE ITSELF, PINNED ON ITS OWN INPUTS, so the gate is not being carried by the blocker_of
   // equality alone: a redirect really does declare the precondition and the authoring route really
   // does not. Invert either answer and the fold's own outputs below go red.
-  procedure_requires_existing_option(route: redirect)
-    && !procedure_requires_existing_option(route: authoring)
+  procedure_demands_existing_option(route: redirect)
+    && !procedure_demands_existing_option(route: authoring)
     // Nothing in the catalog may be admissible for the absent blocker while declaring that it needs
     // an option to exist -- the implication a mis-keyed row would violate.
     && for_all(
       xs: firmware_network_boot_preparation_routes,
       predicate: route =>
         !route_is_admissible_for(route: route, blocker: NetworkBootOptionAbsent)
-          || !procedure_requires_existing_option(route: route),
+          || !procedure_demands_existing_option(route: route),
     )
     // The gate agrees with the catalog in both directions, per blocker.
     && !route_is_admissible_for(route: redirect, blocker: NetworkBootOptionAbsent)
