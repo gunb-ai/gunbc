@@ -1,6 +1,7 @@
 module gunbc.auth.approval_device_redemption_fixtures
 
 import std.types { NonEmptyStr, String, Timestamp, List }
+import std.algebra { list_append }
 import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name, signing_field_separator }
@@ -14,6 +15,7 @@ import gunbc.auth.approval_device_wire {
   fetched_request_json, enrolment_readback_json, redemption_response_json, device_push_update_client_data,
   device_request_path, device_enrollment_path, enrollment_id_for_code, path_segment,
   ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json,
+  EnrolmentRefusalWire, enrolment_refusal_kinds, enrolment_refusal_wire_label, enrolment_refusal_json,
   approval_device_enrol_path, approval_device_redeem_path, approval_device_enrollment_path_prefix, approval_device_push_path,
 }
 import extdeps.crypto.signature { SignatureBytes, P1363FixedWidth }
@@ -160,7 +162,16 @@ type EnvelopeVector {
   body: String
 }
 
-data envelope_vectors: List<EnvelopeVector> = [
+// One envelope per ARM of the enrol route's typed refusal, named by the arm's wire label, so the
+// Swift side decodes each and a new arm without a vector reds the arm-coverage check there.
+// The reason is a fixed string: the vector pins the kind's bytes, not the route's prose.
+fn enrolment_refusal_vector(k: EnrolmentRefusalWire) -> EnvelopeVector {
+  EnvelopeVector { name: ("enrolment_refusal_" + (enrolment_refusal_wire_label(k: k) as String)) as NonEmptyStr, body: enrolment_refusal_json(reason: "fixture refusal", kind: k) }
+}
+
+data envelope_vectors: List<EnvelopeVector> = list_append(left: envelope_vectors_fixed, right: map(enrolment_refusal_kinds(), k => enrolment_refusal_vector(k: k)))
+
+data envelope_vectors_fixed: List<EnvelopeVector> = [
   EnvelopeVector { name: "enrolment_request", body: enrolment_request_json(r: EnrolmentRequest {
     code: "482913", platform: MobileIos,
     decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: fx_point },

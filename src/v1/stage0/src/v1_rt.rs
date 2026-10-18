@@ -1289,21 +1289,42 @@ pub const MACHINE_WORD_OPERATOR_ROWS: [MachineWordOperatorRow; 8] = [
     },
 ];
 
-pub fn machine_word_native_operate_checked(
-    op: &str,
+const fn machine_word_same_spelling(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+// Resolved at COMPILE time of the emitted program from the operator LABEL the emitter folded out of
+// std.machine_word machine_word_operator_label at a literal call site, so a label with no row is a
+// build error.
+pub const fn machine_word_row_index(label: &str) -> usize {
+    let mut i = 0;
+    while i < MACHINE_WORD_OPERATOR_ROWS.len() {
+        if machine_word_same_spelling(MACHINE_WORD_OPERATOR_ROWS[i].label, label) {
+            return i;
+        }
+        i += 1;
+    }
+    panic!("std.machine_word: no operator row for this label")
+}
+
+#[inline(always)]
+pub fn machine_word_operate_row(
+    row: &MachineWordOperatorRow,
     bits: i64,
     a: i64,
     b: i64,
 ) -> Result<i64, String> {
-    let row = MACHINE_WORD_OPERATOR_ROWS
-        .iter()
-        .find(|row| row.label == op)
-        .ok_or_else(|| {
-            format!(
-                "std.machine_word machine_word_native_operate: no operator row for label {}",
-                op
-            )
-        })?;
     if !(1..=62).contains(&bits) {
         return Err(format!("std.machine_word machine_word_native_operate: width {} bits is not realizable on an i64 carrier (1..=62)", bits));
     }
@@ -1334,6 +1355,32 @@ pub fn machine_word_native_operate_checked(
         MachineWordSecond::Unused => {}
     }
     Ok((row.apply)(a as u128, b as u128, bits as u32) as i64)
+}
+
+pub fn machine_word_native_operate_checked(
+    op: &str,
+    bits: i64,
+    a: i64,
+    b: i64,
+) -> Result<i64, String> {
+    let row = MACHINE_WORD_OPERATOR_ROWS
+        .iter()
+        .find(|row| row.label == op)
+        .ok_or_else(|| {
+            format!(
+                "std.machine_word machine_word_native_operate: no operator row for label {}",
+                op
+            )
+        })?;
+    machine_word_operate_row(row, bits, a, b)
+}
+
+// The literal-call-site realization: the SAME row and the SAME refusals, with the row and the
+// width fixed at compile time so the host operator is inlined. Refusal panics in release too.
+#[inline(always)]
+pub fn machine_word_operate_at<const ROW: usize, const BITS: i64>(a: i64, b: i64) -> i64 {
+    machine_word_operate_row(&MACHINE_WORD_OPERATOR_ROWS[ROW], BITS, a, b)
+        .unwrap_or_else(|refusal| panic!("{}", refusal))
 }
 
 pub fn machine_word_native_operate(op: &str, bits: i64, a: i64, b: i64) -> i64 {
