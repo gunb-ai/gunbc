@@ -22,6 +22,10 @@ import gunbc.build_cache.build_cache_provision_verdict {
 import gunbc.host.build_cache_daemon_ensure {
   BuildCacheDigestRefusal,
   BuildCacheEnsureFold,
+  // USED BY stdout_for_leg BELOW. Said out loud because two other names in this module were used for weeks
+  // without being imported while the strict compile said `unresolved=0` -- see the note above the import
+  // block. A parameter type is a use.
+  BuildCacheEnsureKind,
   DigestRefused,
   EnsureDigestRefused,
   BuildCacheEnsureExecuted,
@@ -832,6 +836,20 @@ test fn a_digest_that_was_never_read_never_admits_an_install_leg() -> Bool {
 // SUCCESSES. A fold that reached them would report them completed; the only thing that can keep the terminal
 // arm off EnsureCompleted is the gate refusing, which is why these claims are a check on the gate and not on
 // whether the host happened to be reachable.
+// WHAT A LEG ANSWERS, BY ITS KIND. Only the digest read has an answer worth supplying; the others succeed
+// with empty stdout, which is what curl and chmod print anyway. Written as its own fn rather than inline
+// because an inner match nested in a record field is where this grammar's parsing has bitten before.
+fn stdout_for_leg(kind: BuildCacheEnsureKind, line: Optional<String>) -> String {
+  if kind != ReadDigest {
+    ""
+  } else {
+    match line {
+      Present { value: read } => read
+      Absent => ""
+    }
+  }
+}
+
 fn build_cache_contract_outcome(op: BuildCacheEnsureOp, line: Optional<String>) -> BuildCacheEnsureSuppliedOutcome {
   BuildCacheEnsureSuppliedOutcome {
     op: op,
@@ -839,12 +857,10 @@ fn build_cache_contract_outcome(op: BuildCacheEnsureOp, line: Optional<String>) 
       observed: ShellExecObserved {
         exit_code: 0,
         success: true,
-        stdout: match op.kind {
-          // THE ONLY LEG WHOSE ANSWER MATTERS. An empty answer stands for "the read ran and printed nothing",
-          // which is the unread case; a supplied line stands for a host that printed a digest.
-          ReadDigest => match line { Present { value: read } => read  Absent => "" }
-          _ => ""
-        },
+        // THE ONLY LEG WHOSE ANSWER MATTERS. An empty answer stands for "the read ran and printed nothing",
+        // which is the unread case; a supplied line stands for a host that printed a digest. Every other leg
+        // answers with empty stdout, which is what a curl or a chmod prints on success anyway.
+        stdout: stdout_for_leg(kind: op.kind, line: line),
         stderr: "",
       },
     },
