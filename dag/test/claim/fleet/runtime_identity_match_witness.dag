@@ -12,10 +12,10 @@ module test.claim.fleet.runtime_identity_match_witness
 // file, and none appears in the module either; the module ships no identity data at all (the brief's rule:
 // no fabricated identity rows in the model, synthetic fixtures in test fns only).
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionPending, DissolutionFired, BoundDissolution, DeclarationAppears }
-import v2.std.decl_index { decl_facts_at }
+import v2.std.decl_index { DeclFact, decl_facts }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address }
@@ -866,17 +866,28 @@ test fn test_the_agreement_rule_follows_the_evidence_not_the_table() -> Bool {
     })
 }
 
+// ONE census read for the whole assertion. `decl_facts_at` re-derives the declaration population on every
+// call, and seventeen calls over `dag` plus `src/v2` is what took this witness past any bound an operator
+// would wait for -- it looked like a hang, at the same test, twice. The population is therefore read once,
+// bound, and filtered. The assertions are unchanged in strength: the same eight homes, the same derived-from-
+// the-rows check, and the same negative case (below), which is what stops a positive passing on a census that
+// is empty for an unrelated reason.
 test fn test_axis_table_citations_resolve_against_the_declaration_census() -> Bool {
+  let facts = decl_facts(pool_roots: ["dag", "src/v2"])
   every_row_cites_two_homes(rows: runtime_identity_axis_rows)
-    && every_row_citation_resolves(rows: runtime_identity_axis_rows)
-    && cited("gunbc.machine_intake.subject", "BoardSerialObservation")
-    && cited("gunbc.machine_intake.subject", "bind_unit_key")
-    && cited("gunbc.machine_intake.subject", "FirmwareManifest")
-    && cited("gunbc.machine_intake.subject", "firmware_manifest_digest")
-    && cited("gunbc.machine_intake.mtjade1_access_observation", "FruIdentityFields")
-    && cited("gunbc.machine_intake.mtjade1_access_observation", "RecordedFruObservation")
-    && cited("extdeps.network.mac", "Eui48Address")
-    && cited("extdeps.network.mac", "mac_is_permanent_interface_identity")
+    && every_row_citation_resolves(rows: runtime_identity_axis_rows, facts: facts)
+    && cites(facts: facts, qualified: "gunbc.machine_intake.subject.BoardSerialObservation")
+    && cites(facts: facts, qualified: "gunbc.machine_intake.subject.bind_unit_key")
+    && cites(facts: facts, qualified: "gunbc.machine_intake.subject.FirmwareManifest")
+    && cites(facts: facts, qualified: "gunbc.machine_intake.subject.firmware_manifest_digest")
+    && cites(facts: facts, qualified: "gunbc.machine_intake.mtjade1_access_observation.FruIdentityFields")
+    && cites(facts: facts, qualified: "gunbc.machine_intake.mtjade1_access_observation.RecordedFruObservation")
+    && cites(facts: facts, qualified: "extdeps.network.mac.Eui48Address")
+    && cites(facts: facts, qualified: "extdeps.network.mac.mac_is_permanent_interface_identity")
+    // the negative half, kept in this witness for the cost reason above: a citation naming a declaration that
+    // was never written must resolve to NOTHING, or the eight positives above would also pass on an empty or
+    // broken census. This is the exact defect I shipped once -- three invented decl names in the table.
+    && !cites(facts: facts, qualified: "gunbc.plans.physical_machine_boot_program.board_serial_is_the_unit")
     && runtime_identity_axis_rows.length() == 4
 }
 
@@ -897,10 +908,20 @@ fn every_row_cites_two_homes(rows: List<RuntimeIdentityAxisRow>) -> Bool {
 // forgetting a row. It is the mechanical half of DESIGN section 3b: an fn cannot judge whether a home OWNS
 // a claim, but it can refuse a row that cites a spelling the corpus does not declare -- the defect review
 // 38602 round 2 found in three rows, and the same defect my own first replacement citations committed.
-fn every_row_citation_resolves(rows: List<RuntimeIdentityAxisRow>) -> Bool {
+fn every_row_citation_resolves(rows: List<RuntimeIdentityAxisRow>, facts: List<DeclFact>) -> Bool {
   rows.all(row =>
-    cited(module_path: row.reading_authority.module_path, decl_name: row.reading_authority.decl_name)
-      && cited(module_path: row.binding_authority.module_path, decl_name: row.binding_authority.decl_name))
+    cites(facts: facts, qualified: qualified_of(row.reading_authority))
+      && cites(facts: facts, qualified: qualified_of(row.binding_authority)))
+}
+
+fn qualified_of(d_ref: DeclarationRef) -> String {
+  concat(d_ref.module_path, concat(".", d_ref.decl_name))
+}
+
+// A declaration is cited when the population holds EXACTLY ONE fact under that qualified name: zero is the
+// invented-name defect, two is an ambiguous citation that cannot be audited.
+fn cites(facts: List<DeclFact>, qualified: String) -> Bool {
+  facts.filter(f => f.qualified_name == qualified).length() == 1
 }
 
 // The three classifiers ARE the union, matched exhaustively: adding a fourth verdict arm stops this file
@@ -929,16 +950,6 @@ fn classifies_as_unprovable(verdict: RuntimeIdentityVerdict) -> Bool {
     Mismatch { diverged: _, pre_unit: _, post_unit: _ } => false
     Unprovable { why: _, pre_unit: _, post_unit: _ } => true
   }
-}
-
-fn cited(module_path: NonEmptyStr, decl_name: NonEmptyStr) -> Bool {
-  decl_facts_at(pool_roots: ["dag", "src/v2"], qualified_name: concat(module_path, ".", decl_name)).length() == 1
-}
-
-// A citation that resolves to NOTHING is the defect the finding named; asserting the negative keeps the
-// positive witness from passing on a census that is empty for an unrelated reason.
-test fn test_an_uncited_invention_does_not_resolve() -> Bool {
-  decl_facts_at(pool_roots: ["dag", "src/v2"], qualified_name: "gunbc.plans.physical_machine_boot_program.board_serial_is_the_unit").length() == 0
 }
 
 // THE THIRD COMPARISON PATH, exercised on its own. The model string is a corroborating exact-string axis,
