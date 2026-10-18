@@ -22,7 +22,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_in_job_compiler_pair_jobs, fleet_converge_mtcollins1_boot_pair_build_step,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for, ApprovalDeviceEnrolmentCodeIssue,
+  FleetApply, WorkspaceImageBuild, RevisionJobImageBuild, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for, ApprovalDeviceEnrolmentCodeIssue,
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
@@ -840,4 +840,18 @@ test fn workspace_commissioning_plan_is_bound_and_uploaded() -> Bool {
       FleetSshKeyConsumed => true
       FleetSshKeyNotConsumed => false
     }
+}
+
+// A GUEST-IMAGE BUILD WRITES ONLY INTO ITS OWN RUN (runner workspace, own artifact), so it takes a group keyed
+// by its run, never srv1's executor group: queued there it waited ~19 h behind a dashboard deploy held on
+// environment approval and risked cancellation as a superseded pending. Each build's group differs from
+// FleetApply's on the same host, differs from the other build's at another run, and is stable across hosts for one
+// run. Mapping either mode back to the executor domain turns the first conjuncts red.
+test fn a_guest_image_build_is_keyed_to_its_own_run_not_the_executor_host() -> Bool {
+  let apply = fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1", target: "srv1", run_id: "1")
+  all([WorkspaceImageBuild, RevisionJobImageBuild], m =>
+    fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "1") != apply
+      && fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "1") != fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "2")
+      && fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "1") == fleet_converge_mutation_group_for(mode: m, host: "srv2", target: "srv2", run_id: "1"))
+    && fleet_converge_mutation_group_for(mode: WorkspaceImageBuild, host: "srv1", target: "srv1", run_id: "1") != fleet_converge_mutation_group_for(mode: RevisionJobImageBuild, host: "srv1", target: "srv1", run_id: "2")
 }
