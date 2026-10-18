@@ -13,6 +13,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEntryPresence, f
 import gunbc.cursor_harness_credential {
   CursorSandboxPreflightReading,
   CursorSandboxReady,
+  CursorSandboxRefused,
   CursorSandboxUnavailable,
   CursorSandboxNotEntered,
   CursorSandboxPreflightUnreadable,
@@ -359,11 +360,11 @@ fn readback_preflight(observed: PreflightObservation) -> CursorAgentReadback {
   match observed {
     PreflightUnobserved { reason: r } => CursorAgentReadbackUnobserved { reason: r }
     PreflightObserved { reading: CursorSandboxReady } => CursorAgentReadbackHolds
-    PreflightObserved { reading: CursorSandboxUnavailable { detail: _ } } =>
+    PreflightObserved { reading: CursorSandboxRefused { refusal: CursorSandboxUnavailable { detail: _ } } } =>
       CursorAgentReadbackFails { cause: PreflightSandboxUnavailable }
-    PreflightObserved { reading: CursorSandboxNotEntered { detail: _ } } =>
+    PreflightObserved { reading: CursorSandboxRefused { refusal: CursorSandboxNotEntered { detail: _ } } } =>
       CursorAgentReadbackFails { cause: PreflightSandboxNotEntered }
-    PreflightObserved { reading: CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } } =>
+    PreflightObserved { reading: CursorSandboxRefused { refusal: CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } } } =>
       CursorAgentReadbackFails { cause: PreflightUnreadable }
   }
 }

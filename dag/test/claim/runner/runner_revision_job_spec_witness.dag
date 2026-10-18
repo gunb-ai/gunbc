@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult }
 import gunbc.runner.runner_revision_job_spec {
   RevisionJobSpecDecoded, RevisionJobSpecRefused, SpecUnreadable, SpecMemberMissing, SpecMemberMalformed,
-  SpecObjectIdInvalid, SpecClaimsEmpty, SpecClaimNotALabel, SpecClaimDuplicated,
+  SpecObjectIdInvalid, SpecClaimsEmpty, SpecClaimNotALabel, SpecClaimDuplicated, SpecRepositoryNotAdmitted,
   decode_revision_job_spec, RevisionJobStanding, RevisionJobAllHeld, RevisionJobSomeNotHeld, RevisionJobSomeUnobserved,
   revision_job_standing,
 }
@@ -37,6 +37,7 @@ fn label(text: String) -> String {
       SpecClaimsEmpty => "claims-empty"
       SpecClaimNotALabel { index: i, text: _ } => concat("not-a-label:", to_string(i))
       SpecClaimDuplicated { label: _ } => "duplicate"
+      SpecRepositoryNotAdmitted { repository: _ } => "repository-not-admitted"
     }
   }
 }
@@ -52,7 +53,7 @@ test fn every_malformed_spec_refuses_by_name_before_any_vm() -> Bool {
     && label(text: spec(claims: "[]", extra: "")) == "claims-empty"
     && label(text: spec(claims: "[\"self-host\"]", extra: "")) == "not-a-label:0"
     && label(text: spec(claims: "[\"//gunbc/instruments:self-host\", \"//gunbc/instruments:self-host\"]", extra: "")) == "duplicate"
-    && label(text: join([o, "\"repository\": \"r\", \"commit\": \"main\", \"tree\": \"", tree, "\", \"claims\": [\"//a:b\"]", c], "")) == "not-an-oid:commit"
+    && label(text: join([o, "\"repository\": \"https://github.com/gunb-ai/gunbc\", \"commit\": \"main\", \"tree\": \"", tree, "\", \"claims\": [\"//a:b\"]", c], "")) == "not-an-oid:commit"
     && label(text: join([o, "\"commit\": \"", commit, "\", \"tree\": \"", tree, "\", \"claims\": [\"//a:b\"]", c], "")) == "missing:repository"
 }
 
@@ -74,4 +75,10 @@ test fn an_unobserved_claim_never_qualifies_whatever_the_others_did() -> Bool {
     && standing_label(s: revision_job_standing(results: [r(label: "//a:x", verdict: ClaimHeld), r(label: "//a:y", verdict: ClaimDidNotHold)])) == "not-held://a:y"
     && standing_label(s: revision_job_standing(results: [r(label: "//a:x", verdict: ClaimHeld), r(label: "//a:typo", verdict: ClaimUnobserved)])) == "unobserved://a:typo"
     && standing_label(s: revision_job_standing(results: [r(label: "//a:y", verdict: ClaimDidNotHold), r(label: "//a:z", verdict: ClaimUnobserved)])) == "unobserved://a:z"
+}
+
+// A FOREIGN REPOSITORY REFUSES AT DECODE, BEFORE ANY EFFECT: the job fetches and extracts it as root.
+test fn a_repository_outside_the_authored_list_refuses_before_any_effect() -> Bool {
+  label(text: join([o, "\"repository\": \"https://github.com/someone-else/gunbc\", \"commit\": \"", commit, "\", \"tree\": \"", tree, "\", \"claims\": [\"//a:b\"]", c], "")) == "repository-not-admitted"
+    && label(text: join([o, "\"repository\": \"/etc\", \"commit\": \"", commit, "\", \"tree\": \"", tree, "\", \"claims\": [\"//a:b\"]", c], "")) == "repository-not-admitted"
 }
