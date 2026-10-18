@@ -1085,7 +1085,6 @@ fn serialize_field(field: Node, source_indices: Map<String, NewlineIndex>, key_t
   concat(
     "{\"name\": ", json_quote(s: field_node_name_at(n: field, source_indices: source_indices)),
     ", \"type_expr\": ", serialize_node_ref(node: field_node_type_expr(n: field), key_to_id: key_to_id),
-    ", \"cardinality\": ", json_quote(s: cardinality_name(value: field_node_cardinality(n: field))),
     ", \"default_value\": ", json_optional_node_ref(value: field_node_default_value(n: field), key_to_id: key_to_id),
     ", \"from_key\": ", json_optional_string(value: field_node_from_key(n: field, source_indices: source_indices)),
     ", \"span\": ", serialize_span(span: field_node_span(n: field)),
