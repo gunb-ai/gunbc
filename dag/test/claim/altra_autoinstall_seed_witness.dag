@@ -938,6 +938,9 @@ test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
     && refuses(crypt_digest: "x$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$saltsalt$")
+    // A DIGEST LONGER THAN 86, as well as the 85-character truncation above. Refusing "at least 86" instead of
+    // "exactly 86" accepts this one, and both directions have to be on file or the width is a floor in disguise.
+    && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.XX")
     && accepts(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     // '.' and '/' both occur in real digests; an alphabet missing either would refuse these.
     && accepts(crypt_digest: "$6$sa.lt/sa$d7hkejY7HJ5ZGqHGdfuXgD/tCnk8xlC1ExIqtNkaEkqudX/tH4520c9i883Ib3JvJBsBfcFvy.XSsiW.zAtL01")
@@ -983,6 +986,14 @@ test fn each_refusal_arm_names_the_part_that_failed() -> Bool {
                       match cause_of(crypt_digest: "$6$12345678901234567$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
                         Present { value: SaltTooLong { length: seen_salt, ceiling: allowed } } =>
                           seen_salt == 17 && allowed == 16
+                          // AND A SALT LONG ENOUGH TO BE REFUSED OUTRIGHT must be refused, not merely reported:
+                          // a witness that only ever read the payload would stay green with the ceiling raised to
+                          // 64, because 17 > 16 would no longer be true and no check would fire.
+                          && match cause_of(crypt_digest: "$6$123456789012345678$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                            Present { value: SaltTooLong { length: longer, ceiling: same_ceiling } } =>
+                              longer == 18 && same_ceiling == 16
+                            _ => false
+                          }
                         _ => false
                       }
                     _ => false
