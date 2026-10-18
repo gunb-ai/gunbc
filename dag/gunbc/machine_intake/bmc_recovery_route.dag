@@ -2146,7 +2146,19 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
       Absent => true
       Present { value: _ } => false
     })
-    // and neither is a body that was never readable
+    // and neither is a body that was never readable -- INCONCLUSIVE FROM THE BODY, not from an arm someone
+    // preconstructed: the verdict comes out of the fold, so a fold that answered "required" to garbage has
+    // to be caught here. Feeding the carrier directly, as the arm above does, proves only what the hand-off
+    // refuses to accept; it says nothing about what the parse decides.
+    && (match recovery_readback_of(
+      body: "{\"error\":{\"@Message.ExtendedInfo\":[{\"MessageId\":\"Base.1.16.0.Passw",
+      evidence: recovery_post_reset_readback_capture_ref,
+      observed_at: recovery_post_reset_instant(),
+    ) {
+      ReadbackInconclusive { detail: _ } => true
+      FactoryCredentialActiveAwaitingChange { message_id: _, evidence: _, observed_at: _ } => false
+    })
+    // and the hand-off refuses such a carrier too, whether the parse produced it or a caller did
     && (match recovery_readback_proves_reset(
       readback: ReadbackInconclusive { detail: "response body was truncated before the message" },
     ) {
