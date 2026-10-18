@@ -15,7 +15,8 @@ import std.measure {
   mebibyte_count,
   mebibyte_to_byte_size,
 }
-import std.optional { Present }
+import std.optional { Present, Absent }
+import extdeps.uuid { Uuid, uuid_of }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
@@ -303,7 +304,7 @@ fn host_capture_program(
 
 type HostCaptureRunIdentity
   = HistoricalAttemptOrdinal { ordinal: NonEmptyStr }
-  | KernelBootId { boot_id: NonEmptyStr }
+  | KernelBootId { boot_id: Uuid }
 
 fn host_capture_run_identity_value(run: HostCaptureRunIdentity) -> String {
   match run {
@@ -318,7 +319,10 @@ fn host_capture_run_identity_of(field: String) -> HostCaptureRunIdentity? {
     if rest.length() == 0 { none } else { Present { value: HistoricalAttemptOrdinal { ordinal: rest as NonEmptyStr } } }
   } else if starts_with(s: field, prefix: host_capture_run_token) {
     let rest = substring(s: field, start: host_capture_run_token.length(), end: field.length())
-    if rest.length() == 0 { none } else { Present { value: KernelBootId { boot_id: rest as NonEmptyStr } } }
+    match uuid_of(text: rest) {
+      Absent => none
+      Present { value: u } => Present { value: KernelBootId { boot_id: u } }
+    }
   } else {
     none
   }
@@ -427,7 +431,7 @@ type HostCaptureScan {
   closed: Bool
   restarted: Bool
   machine: NonEmptyStr
-  run: HostCaptureRunIdentity
+  run: HostCaptureRunIdentity?
   body: List<String>
 }
 
@@ -451,12 +455,12 @@ fn host_capture_scan_line(acc: HostCaptureScan, line: String, machine: NonEmptyS
             if (m.machine as String) != (machine as String) {
               acc
             } else if acc.begun == false {
-              HostCaptureScan { begun: true, closed: false, restarted: false, machine: m.machine, run: m.run, body: [] }
+              HostCaptureScan { begun: true, closed: false, restarted: false, machine: m.machine, run: Present { value: m.run }, body: [] }
             } else {
               HostCaptureScan { begun: true, closed: false, restarted: true, machine: acc.machine, run: acc.run, body: acc.body }
             }
           HostCaptureEnd =>
-            if acc.begun && host_capture_marker_matches(a: m, machine: acc.machine, run: acc.run) {
+            if acc.begun && (match acc.run { Present { value: r } => host_capture_marker_matches(a: m, machine: acc.machine, run: r), Absent => false }) {
               HostCaptureScan { begun: true, closed: true, restarted: false, machine: acc.machine, run: acc.run, body: acc.body }
             } else {
               acc
@@ -567,16 +571,19 @@ fn host_capture_bind_transcript(capture: String, machine: NonEmptyStr) -> HostCa
 fn host_capture_bind_text(capture: HostCaptureText, machine: NonEmptyStr) -> HostCaptureBinding {
   let scan = fold(
     host_capture_lines(capture: capture),
-    init: HostCaptureScan { begun: false, closed: false, restarted: false, machine: machine, run: KernelBootId { boot_id: "unbound" }, body: [] },
+    init: HostCaptureScan { begun: false, closed: false, restarted: false, machine: machine, run: none, body: [] },
     f: (acc, line) => host_capture_scan_line(acc: acc, line: line, machine: machine),
   )
+  match scan.run {
+    Absent => HostCaptureNotBegun
+    Present { value: scan_run } =>
   if scan.begun == false {
     HostCaptureNotBegun
   } else if scan.restarted {
     HostCaptureUnbound {
       reason: concat(
         "a second begin marker for ", machine as String, " opened while the envelope for run ",
-        host_capture_run_identity_value(run: scan.run), " was still open; which run the sections belong to is not a fact",
+        host_capture_run_identity_value(run: scan_run), " was still open; which run the sections belong to is not a fact",
       )
     }
   } else {
@@ -592,12 +599,13 @@ fn host_capture_bind_text(capture: HostCaptureText, machine: NonEmptyStr) -> Hos
     } else {
       let envelope = BoundHostCaptureEnvelope {
         machine: scan.machine,
-        run: scan.run,
+        run: scan_run,
         sections: host_capture_close_open_section(acc: sections),
       }
       if scan.closed { HostCaptureBound { envelope: envelope } } else { HostCaptureOpen { envelope: envelope } }
     }
   }
+}
 }
 
 // ── typed section readings, for a verdict that must say WHICH observation refused ─────────────
