@@ -78,7 +78,7 @@ import v2.compiler.type_declaration_use_census {
   TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
 }
 import v2.compiler.occurrence_binding_census {
-  occurrence_binding_contribution, occurrence_binding_contribution_lines, occurrence_binding_partial_lines
+  occurrence_binding_contribution, occurrence_binding_contribution_lines, occurrence_binding_partial_lines, occurrence_binding_locus_text
 }
 import v2.compiler.name_resolve {
   resolution_context_namespace,
@@ -147,6 +147,7 @@ import v2.std.provenance {
 }
 import v2.std.sorted_floor { SortedFloorStrides, sorted_floor_position, sorted_floor_strides_empty, sorted_floor_strides_grown }
 import v2.std.source_position {
+  SourceLineCol,
   SourcePositionIndex,
   source_line_col_in,
   source_position_index,
@@ -3288,16 +3289,16 @@ type NativeInferCensusOutcome
       rest: List<NonEmptyDiagnostics>
       observation: ObservationCompleteness
       partial: List<OccurrenceBindingEntry>
-      loci: Map<OccurrenceId, String>
+      loci: Map<OccurrenceId, SourceLineCol>
       unbound: List<String>
     }
   | NativeInferCensusInferred {
       resolved: ResolvedTree
       inferred: InferredTree
       frontier: NativeInferAcceptedFrontier
-      loci: Map<OccurrenceId, String>
+      loci: Map<OccurrenceId, SourceLineCol>
     }
-  | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics, loci: Map<OccurrenceId, String> }
+  | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics, loci: Map<OccurrenceId, SourceLineCol> }
 
 // `cascade` IS THE RESOLVE VERDICT'S IMPORT ATTRIBUTION, carried exactly as
 // native_census_module_resolution carries it, so a resolve refusal reached through this walk files
@@ -3354,15 +3355,14 @@ fn native_census_module_inference(
 // recorded and the file's line index. It is the provenance a binding row needs for a cross-compilation join: an
 // occurrence id is not shared by two compilations, the source position of an untouched occurrence is. An id this file's
 // span index does not record has no entry and prints `-`.
-fn native_census_binding_loci(positions: NativeCensusPositionTable, path: Symbol, ids: List<OccurrenceId>) -> Map<OccurrenceId, String> {
+fn native_census_binding_loci(positions: NativeCensusPositionTable, path: Symbol, ids: List<OccurrenceId>) -> Map<OccurrenceId, SourceLineCol> {
   match map_lookup(positions.files, path) {
     Absent => empty_map()
     Present { value: file } =>
       fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) {
         match span_index_textual_locus_optional(index: file.spans, id: id) {
           Present { value: Textual { file: _, extent: ByteRange { start: st, end: _ } } } =>
-            let lc = source_line_col_in(index: file.lines, offset: st)
-            map_insert(m, id, int_to_decimal_string(value: lc.line) + ":" + int_to_decimal_string(value: lc.byte_column.value))
+            map_insert(m, id, source_line_col_in(index: file.lines, offset: st))
           _ => m
         }
       })
@@ -3374,18 +3374,25 @@ fn native_census_binding_loci(positions: NativeCensusPositionTable, path: Symbol
 // residual rows (native_census_locate_fatal). A name with no binding has no binding row; this is its occurrence-grain
 // record, so a wave that binds it can be joined occurrence by occurrence on the source locus.
 fn native_census_unbound_lines(positions: NativeCensusPositionTable, entry: NativeCensusModule, first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>) -> List<String> {
-  fold_list(xs: Cons { head: first, tail: rest }, empty: [], cons: fn(acc, chain) {
+  let folded = fold_list(xs: Cons { head: first, tail: rest }, empty: NativeCensusUnbound { lines: [], unreadable: 0 }, cons: fn(acc, chain) {
     if diagnostics_fatal(d: chain).reason == ^resolve_reason_unbound_symbol {
       match native_census_unbound_spelling(at: diagnostics_fatal(d: chain).at) {
         Present { value: spelling } =>
-          list_snoc_item(xs: acc, item: "binding_unbound\t" + entry.module + "\t" + spelling + "\t" + native_census_at_text(at: native_census_locate_fatal(chain: chain, path: entry.path, positions: positions)))
-        Absent =>
-          list_snoc_item(xs: acc, item: "binding_unbound\t" + entry.module + "\t<unreadable>\t" + native_census_at_text(at: native_census_locate_fatal(chain: chain, path: entry.path, positions: positions)))
+          NativeCensusUnbound { lines: list_snoc_item(xs: acc.lines, item: "binding_unbound\t" + entry.module + "\t" + spelling + "\t" + occurrence_binding_locus_text(locus: native_census_at_locus(at: native_census_locate_fatal(chain: chain, path: entry.path, positions: positions)))), unreadable: acc.unreadable }
+        Absent => NativeCensusUnbound { lines: acc.lines, unreadable: acc.unreadable + 1 }
       }
     } else {
       acc
     }
   })
+  list_snoc_item(xs: folded.lines, item: "binding_unbound_module\t" + entry.module + "\t" + int_to_decimal_string(value: length(xs: folded.lines)) + "\t" + int_to_decimal_string(value: folded.unreadable))
+}
+
+// The unbound fatals of one refused module: the rows that printed, and the count of those whose name did not read
+// (counted in `binding_unbound_module`, never dropped).
+type NativeCensusUnbound {
+  lines: List<String>
+  unreadable: Int
 }
 
 fn native_census_unbound_spelling(at: Locus) -> Optional<String> {
@@ -3399,10 +3406,10 @@ fn native_census_unbound_spelling(at: Locus) -> Optional<String> {
   }
 }
 
-fn native_census_at_text(at: FileRefusalAt) -> String {
+fn native_census_at_locus(at: FileRefusalAt) -> Optional<SourceLineCol> {
   match at {
-    FileRefusalAtLine { line: l, byte_column: c } => int_to_decimal_string(value: l) + ":" + int_to_decimal_string(value: c.value)
-    _ => "-"
+    FileRefusalAtLine { line: l, byte_column: c } => optional_present(value: SourceLineCol { line: l, byte_column: c })
+    _ => optional_absent()
   }
 }
 
