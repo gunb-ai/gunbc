@@ -25,7 +25,7 @@ import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclarat
 // ADMITTED: an occurrence unbound on base whose spelling a home row names, and which binds exactly that row's home on
 // head (UnboundToDeclaredHome); and an occurrence that is unchanged (same source and target). EVERYTHING ELSE REFUSES:
 // TargetChanged (bound on both sides, differently, or unbound -> anything but the row's home), Appeared, Vanished,
-// Unlocated (a row with no locus, or a module with no line count, cannot be placed and is never guessed).
+// Unlocated (a module with no line count, or locus-less generated rows whose multiset differs; never placed by guess).
 
 type JoinEntry {
   module: String
@@ -130,10 +130,6 @@ fn join_pair(rows: List<AmbientNameHome>, coordinate: String, before: JoinEntry,
   }
 }
 
-fn join_unlocated(side: String, xs: List<JoinEntry>) -> List<JoinDelta> {
-  xs |> map(e => JoinRefused { cause: "Unlocated", coordinate: e.module + " " + e.spelling, detail: side + " line " + to_string(e.line) + " column " + to_string(e.column) })
-}
-
 // ONE MODULE, BOTH SIDES. Every placed coordinate of either side lands in exactly one delta or is unchanged.
 fn occurrence_join_module(rows: List<AmbientNameHome>, module: String, base_stdout: String, head_stdout: String) -> List<JoinDelta> {
   let base_n = join_line_count(stdout: base_stdout, module: module)
@@ -167,7 +163,23 @@ fn occurrence_join_entries(rows: List<AmbientNameHome>, base: JoinSide, head: Jo
       Absent => JoinRefused { cause: "Vanished", coordinate: c, detail: "-" }
     })
   let collided = (base.collided |> map(c => JoinRefused { cause: "Collided", coordinate: c, detail: "base" })) + (head.collided |> map(c => JoinRefused { cause: "Collided", coordinate: c, detail: "head" }))
-  paired + vanished + collided + join_unlocated(side: "base", xs: base.unlocated) + join_unlocated(side: "head", xs: head.unlocated)
+  paired + vanished + collided + join_unlocated_multiset(base: base.unlocated, head: head.unlocated)
+}
+
+// A ROW WITH NO LOCUS is a compiler-generated reference (an elided record head, a list literal's generated head): it has
+// no authored position to place. Such rows are compared as a multiset of (spelling, source, target): equal on both sides
+// is no change; any difference refuses as Unlocated, naming the key and both counts. Never placed by guess.
+fn join_unlocated_key(e: JoinEntry) -> String {
+  e.module + " " + e.spelling + " " + e.source + " " + e.target
+}
+
+fn join_unlocated_multiset(base: List<JoinEntry>, head: List<JoinEntry>) -> List<JoinDelta> {
+  let keys = map_keys(fold(base + head, init: empty_map(), f: fn(m, e) { map_insert(m, join_unlocated_key(e: e), true) }))
+  keys |> fold(init: [], f: fn(acc, k) {
+    let b = count(base |> filter(e => join_unlocated_key(e: e) == k))
+    let h = count(head |> filter(e => join_unlocated_key(e: e) == k))
+    if b == h { acc } else { list_snoc_item(xs: acc, item: JoinRefused { cause: "Unlocated", coordinate: k, detail: "base " + to_string(b) + " head " + to_string(h) }) }
+  })
 }
 
 fn join_delta_line(d: JoinDelta) -> String {
@@ -193,7 +205,8 @@ fn join_delta_admitted(d: JoinDelta) -> Bool {
 //           occurrences on each side, but the coordinates disagree, so the join refuses (Appeared + Vanished), where a
 //           per-spelling count equality would have admitted it.
 //   other home: head binds chars at 11 and 21 but one to another declaration -> TargetChanged.
-//   unlocated: a head row with locus `-` -> Unlocated, never placed by guess.
+//   unlocated: a head row with locus `-` that base does not have -> Unlocated (multiset differs), and base's located
+//              occurrence it replaced -> Vanished.
 
 fn join_control_rows() -> List<AmbientNameHome> {
   [AmbientNameHome { name: "chars", home: "std.host_text.chars", table: PrimitiveAuthorityTable, origin: ExistingDeclaration }]
