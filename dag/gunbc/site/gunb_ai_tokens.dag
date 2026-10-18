@@ -11,7 +11,7 @@ import extdeps.languages.css.properties {
   Color, Display, FontFamily, FontSize, Height, LetterSpacing, MarginBottom, MarginLeft,
   MarginRight, MarginTop, MaxWidth, Padding, VerticalAlign, Width, CustomProperty,
 }
-import extdeps.languages.css.selectors { ElementSelector, ClassSelector, PseudoSuffix }
+import extdeps.languages.css.selectors { ElementSelector, ClassSelector, root_selector }
 import extdeps.accessibility.wcag_contrast {
   srgb8_contrast_ratio_x100, wcag_aa_normal_text_hundredths,
   wcag_aa_large_text_and_graphics_hundredths,
@@ -293,7 +293,7 @@ fn review_rules() -> List<BuildRule> {
     // The token layer itself, as the :root rule material emits it — the bug this
     // rewrite catches: an earlier draft emitted these declarations BARE inside
     // <style>, with no selector, so every browser dropped them.
-    [StaticRule { selector: PseudoSuffix { base: "", pseudo: "root" }, decls: token_root_decls() }],
+    [StaticRule { selector: root_selector, decls: token_root_decls() }],
     concat(
       // Per-swatch chip paints, generated from the hue set (one home: palette).
       map(swatches_of(s: gunb_ai_hues), sw => StaticRule {
