@@ -949,6 +949,14 @@ test fn an_absent_option_gets_the_authoring_route_and_never_a_redirect() -> Bool
 test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guessed() -> Bool {
   match standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [disk("NVMe0"), disk("NVMe1")] })) {
     Refused { cause: BootOrderNamesUnenumeratedNetworkOption { why: _ }, gaps: _ } => true
+    // EVERY OTHER REFUSAL NAMED, so a wrong cause cannot satisfy this test. A `_ => false` here
+    // would pass on Refused { cause: NoSuchUnit } -- which is a refusal, so the test would report
+    // 'the conflict is named' while the seam named something else entirely.
+    Refused { cause: TransportRefusedVendorCommand { refusal: _ }, gaps: _ } => false
+    Refused { cause: FirmwareModeUnsupportedByEdge { why: _ }, gaps: _ } => false
+    Refused { cause: RefusedByOperatorPolicy { policy: _ }, gaps: _ } => false
+    Refused { cause: NoSuchUnit { why: _ }, gaps: _ } => false
+    Refused { cause: NoRouteOwnsThisBlocking { why: _ }, gaps: _ } => false
     NeedsPreparation { route: _, blocking: _ } => false
     Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
     Unobserved { unanswered: _ } => false
@@ -1330,9 +1338,44 @@ test fn a_frontier_fires_only_for_the_declaration_it_names() -> Bool {
     && frontier_status(condition: firmware_network_boot_probe_frontier, present_decls: lookalike_present) == DissolutionPending
     && frontier_status(
          condition: firmware_network_boot_standing_consumer_frontier,
-         present_decls: [ firmware_network_boot_standing_consumer_ref() ],
+         // THE LITERAL AGAIN, NOT THE MODULE FN (review 81884). Handing the frontier its own ref
+         // back would let it be satisfied by ANY name -- including the one this frontier used to
+         // carry, a real declaration in a module that never reads this standing. Pinning the
+         // expected spelling here means a drift to a name no branch owns goes red, and the
+         // lookalike arm below proves a name in the right module is not enough.
+         present_decls: [
+           decl_ref(
+             module_path: "gunbc.provisioning.network_boot_actuation",
+             decl_name: "network_boot_arm_actuator_steps",
+           ),
+         ],
        )
        == DissolutionFired
+    // THE MODULE AND THE EXPECTATION MUST AGREE, AND THE EXPECTATION IS THE AUTHORITY. A module fn
+    // checked only against itself is self-consistent, never correct -- that is how the old
+    // provisioning_arm_derive ref passed every test while naming a non-consumer.
+    declaration_ref_eq(
+      a: firmware_network_boot_standing_consumer_ref(),
+      b: decl_ref(
+        module_path: "gunbc.provisioning.network_boot_actuation",
+        decl_name: "network_boot_arm_actuator_steps",
+      ),
+    )
+    // A REAL DECLARATION THAT DOES NOT CONSUME THIS STANDING MUST NOT DISCHARGE IT. This is the
+    // exact defect review 81884 found: the old ref named provisioning_arm_derive, which exists on
+    // #14284 and takes (strategy, evidence, attempt) -- never a FirmwareNetworkBootStanding. If a
+    // future edit retargets the frontier to it, or to any other real-but-non-consuming name, the
+    // frontier would report Fired and stop anyone asking whether anything executes the seam.
+    && frontier_status(
+         condition: firmware_network_boot_standing_consumer_frontier,
+         present_decls: [
+           decl_ref(
+             module_path: "gunbc.provisioning.provisioning_arm",
+             decl_name: "provisioning_arm_derive",
+           ),
+         ],
+       )
+       == DissolutionPending
 }
 
 // THE INHABITATION CLAIM IS HONEST ABOUT ITS OWN STATUS. Right now no real producer has ever emitted

@@ -22,7 +22,7 @@ module gunbc.firmware_network_boot_standing
 // name what it covers, and no match in this module is ever on it.
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
-import std.algebra { length, fold_list, list_append }
+import std.algebra { length, fold_list, list_append, contains }
 import std.optional { Optional, Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
 import extdeps.uri { uri_https }
@@ -241,10 +241,26 @@ fn firmware_boot_observation(
 // IT IS NOW A UNION AND THE PRECONDITIONS ARE MEMBERS OF IT. `requires` is a LIST because a route
 // genuinely demands more than one thing (enable a stack: persistent, then reset, then re-read
 // BootOrder, and consent only when it removes a security control -- a single arm could not say
-// that). And what the impossible pairing was violating is a typed arm, `RequiresExistingBootOption`,
-// so the fold that violated it no longer type-checks: a route that needs an existing option simply
-// cannot be paired with the blocker that means 'there is none'. DESIGN 4c: an invariant belongs in
-// a carrier, and a String whose only purpose was commentary was misplaced data.
+// that). DESIGN 4c: an invariant belongs in a carrier, and a String whose only purpose was
+// commentary was misplaced data.
+//
+// WHAT THIS ACTUALLY GUARANTEES, STATED AT ITS REAL RUNG (review 81884, DESIGN 4b meta-obligation
+// 1: the reported rung must equal the rung the evidence establishes -- an inflated class never ranks
+// for climbing). This is RUNG 2, mechanically preventable, NOT a type guarantee, and the earlier
+// version of this comment claimed otherwise. Precisely:
+//   * The catalog stores ROUTES ONLY. It has no blocker field, because `blocker_of` derives the
+//     blocker from the arm. So 'pair this redirect with that blocker' is not something an author can
+//     write down as data at all -- there is nowhere to write it.
+//   * What CAN be edited is `blocker_of` itself: re-keying a redirect's arm to
+//     `NetworkBootOptionAbsent`. That is caught at runtime by `route_is_admissible_for`, which drops
+//     the row (the fold then reports the gap by name rather than emitting a plan that cannot run),
+//     and it is caught at test time -- the witness's admissibility test is the mutation guard, and
+//     the mutation is a one-line edit to that one function.
+//   * A true rung 3 would PARTITION the route union so the option-denying blockers could not name a
+//     redirect constructor. Deliberately not done: the release catalog is required to hold ONE
+//     mechanism union (review 81760 deleted a second route vocabulary for exactly that reason), and
+//     partitioning it by capability reintroduces two namespaces over one family of mechanisms. The
+//     precondition lives in the arms; the check lives in one function; the witness ties them.
 type ProcedureRequires
   = RequiresPersistentChange
   | RequiresOneShotOnly
@@ -252,8 +268,9 @@ type ProcedureRequires
   | RequiresReadbackOf { property: NonEmptyStr }
   | RequiresOperatorConsent { reason: NonEmptyStr }
   // THE PRECONDITION THAT WAS ONLY PROSE: this mechanism redirects or references a boot option the
-  // unit ALREADY lists. A fold that pairs such a route with 'the unit lists none' will not
-  // construct.
+  // unit ALREADY lists. Routes carrying it are refused at lookup for any blocker that says there is
+  // none (`route_is_admissible_for`), which is a runtime check over the catalog rather than a
+  // construction the language forbids -- stated at that rung, with its mutation witness, there.
   | RequiresExistingBootOption
 
 // The prose a human reads when they are handed a route, derived from the typed procedure rather
@@ -341,8 +358,10 @@ type FirmwareNetworkBootPreparationRoute
       authority: CitedFigureStanding,
     }
   // 'A stack exists but nothing points at it': point UefiBootNext at an option the unit ALREADY
-  // lists. Cannot author an option -- if the unit lists none, this is not the route, and
-  // RequiresExistingBootOption below is what enforces that in a type rather than in a sentence.
+  // lists. Cannot author an option -- if the unit lists none, this is not the route. The
+  // precondition is written ONCE, as the `RequiresExistingBootOption` arm of this route's procedure,
+  // and consulted at lookup time by `route_is_admissible_for`; see that function for what is and is
+  // not guaranteed, and at which rung.
   | PointUefiBootNext {
       service_root: NonEmptyStr,
       boot_option: NonEmptyStr,
@@ -539,9 +558,14 @@ fn route_for_blocking(blocker: PreparationBlockingOn) -> Optional<FirmwareNetwor
 //     is the whole reason `RequiresExistingBootOption` exists as an arm rather than a sentence: a
 //     redirect credited to `NetworkBootOptionAbsent` is dropped rather than emitted, and the
 //     standing reports the modeling gap by name instead of handing an operator a plan that cannot
-//     succeed. It is unreachable ONLY while the catalog is correct, which is the point -- a correct
-//     table is exactly what makes the check silent, and a mutation that re-keys a redirect to the
-//     absent blocker turns it into a refusal rather than a bogus plan.
+//     succeed. RUNG, STATED HONESTLY (review 81884): this is RUNTIME VALIDATION over the catalog,
+//     not a type guarantee -- a redirect is still a constructible value, and nothing stops someone
+//     writing `blocker_of(PointUefiBootNext{..}) = NetworkBootOptionAbsent`. What makes that safe to
+//     ship is that the edit is (a) one line in one total function, (b) neutralised here, where the
+//     row is dropped and the gap reported by name instead of a bogus plan being emitted, and (c)
+//     caught by the witness's admissibility test, whose mutation is exactly that edit. The catalog
+//     stores routes and NO blocker column, so the pairing cannot be authored as data either: there
+//     is no field to write it into.
 //
 // WHY NOT LET `blocker_of` CARRY IT ALONE: then the precondition would again live in one author's
 // care, and the arm's demand would be unenforced decoration -- the same shape as the prose field
@@ -600,20 +624,19 @@ fn route_is_admissible_for(
 // already returns whether one named requirement is in it. It adds no new vocabulary about routes --
 // the requirement is a member of ProcedureRequires, written by the same match that writes the rest
 // of the procedure.
+// MEMBERSHIP, NOT RE-CLASSIFICATION: std.algebra's canonical `contains` asks whether the named
+// requirement is among the arms `route_requires` already returns. The first version hand-rolled this
+// as filter(match each arm to true/false) |> length > 0, which is a second classification of a
+// coproduct that already exists -- six arms written down again, all but one of them ignored, and a
+// new ProcedureRequires arm would have to be added here to be answered false. Equality comes from
+// `==` on the union, the same structural equality the witness uses elsewhere, so there is no
+// hand-written comparator and nothing to drift.
 fn procedure_demands_existing_option(route: FirmwareNetworkBootPreparationRoute) -> Bool {
-  length(
-    xs: route_requires(route: route)
-      |> filter(requirement =>
-        match requirement {
-          RequiresExistingBootOption => true
-          RequiresPersistentChange => false
-          RequiresOneShotOnly => false
-          RequiresReset => false
-          RequiresReadbackOf { property: _ } => false
-          RequiresOperatorConsent { reason: _ } => false
-        }
-      ),
-  ) > 0
+  contains(
+    xs: route_requires(route: route),
+    item: RequiresExistingBootOption,
+    eq: fn(a, b) { a == b },
+  )
 }
 
 // NO HAND-WRITTEN EQUALITIES HERE. Route and blocker identity are structural `==` (verified
@@ -1376,9 +1399,12 @@ fn edge_serviceable_for_mode(boot_mode: ClientNetworkBootMode) -> EdgeServiceabl
 // WHY THIS IS HERE RATHER THAN IN A COMMENT. This seam is the readiness contract that cut 6 of
 // gunbc.plans.physical_machine_boot_program needs, and the two modules at its boundaries are landing
 // as separate PRs: the probe that EMITS FirmwareBootObservation (gunbc.firmware_network_boot_probe,
-// #14275) and the provisioning arm that READS this standing to derive a delivery strategy
-// (gunbc.provisioning.provisioning_arm, #14284). Neither is on main yet, so a reader -- or a
-// reviewer, as happened -- cannot tell 'frontier' from 'dangling' by looking. The repository already
+// #14275) and the actuation step that READS this standing to decide what to do with a unit
+// (gunbc.provisioning.network_boot_actuation::network_boot_arm_actuator_steps, cut 6/S9). Neither is
+// on main yet, so a reader -- or a reviewer, as happened -- cannot tell 'frontier' from 'dangling' by
+// looking. Note the consumer is the ACTUATOR and not the arm DERIVATION: deriving an arm shape from a
+// strategy does not read this standing, and a frontier discharged by a non-reader is a lie that
+// reports success (review 81884). The repository already
 // has the right carrier for exactly that distinction: a bound dissolution trigger over a
 // DeclarationRef, whose status is COMPUTED from a declaration population rather than asserted.
 //
@@ -1416,8 +1442,28 @@ fn firmware_network_boot_probe_producer_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.firmware_network_boot_probe", decl_name: "probe")
 }
 
+// THE NAME IS LOOKED UP AND CARRIED BY AN OWNED COMMITMENT, NOT INVENTED (review 81884). This ref
+// used to name `gunbc.provisioning.provisioning_arm::provisioning_arm_derive`, and that was wrong in
+// a way the witness could not see: the declaration is real (PR #14284) but it does not READ this
+// standing -- its derivation takes (strategy, evidence, attempt), so the frontier could have been
+// discharged by a module that never consumes the type it is a frontier FOR. A trigger satisfied by a
+// non-consumer is worse than no trigger, because it reports Fired and stops anyone asking.
+//
+// It now names the ACTUATION step, which is the thing that must read Ready/NeedsPreparation/
+// Unobserved/Refused in order to do anything at all -- DESIGN 3c asks for the consumer AND the
+// executing route, and the executing route is this one. The name is carried by an owned work item
+// (node://adhoc-9cc8b205-64b, 'Cut 6/S9 owner: network-boot arm actuation'), so it is a commitment
+// somebody has been assigned rather than a name I made up; and the S5 lane's own frontier names the
+// same declaration, so the two seams agree on the join instead of each inventing one.
+//
+// WHAT PENDING MEANS, READ CORRECTLY: no executing route exists yet, so the plan step this seam
+// serves is NOT done. Pending is not a tracking inconvenience -- it is the honest state, and it is
+// the reason this module does not claim cut 6's 'green by execution'.
 fn firmware_network_boot_standing_consumer_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.provisioning.provisioning_arm", decl_name: "provisioning_arm_derive")
+  decl_ref(
+    module_path: "gunbc.provisioning.network_boot_actuation",
+    decl_name: "network_boot_arm_actuator_steps",
+  )
 }
 
 // THE FRONTIER AS A MACHINE CAN ANSWER IT. The caller supplies the declaration population it
