@@ -1327,6 +1327,17 @@ test fn no_foreign_module_may_write_a_verdict_by_hand() -> Bool {
     && sole_ctor_count(source: lawful_verdict_source) == 0
 }
 
+// (2) CUSTODY OF THE CALL ROUTE, and merry's swapped-conclusion case in one: a caller that RESPECTS
+// the sealed type can still bypass the fold by CALLING the mint. prepare(blocker:) returns a
+// well-formed verdict whose route was never derived from the blocker by the catalog, so the rung-2
+// admissibility rule never runs -- the shape of 'legitimate evidence carrying a conclusion the evidence
+// does not establish'. This one IS enforced: the call is refused at the admission wall.
+data direct_mint_source: String = verdict_probe_hdr + "\nfn bypass_to_a_verdict() -> FirmwareNetworkBootStanding {\n  prepare(blocker: NoInterfaceCarriesPxe)\n}\n"
+
+// THE LAWFUL PAIR: the same module, the same import of the mint, and no call. If this source also
+// refused, the wall would be 'you may not import this name' and the claim above would be false.
+data lawful_import_source: String = verdict_probe_hdr + "\nfn names_the_blocker(b: PreparationBlockingOn) -> PreparationBlockingOn {\n  b\n}\n"
+
 test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
   blocking_subject_count_for(
     source: direct_mint_source,
