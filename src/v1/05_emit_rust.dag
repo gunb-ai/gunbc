@@ -1937,6 +1937,21 @@ fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
 }
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
+  let spelled = render_rust_fn_sig_type_spelled(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
+  let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+  let bare_declared_leaf = n.connective == NoConnective && n.children |> count == 0 && n.return_cardinality != CardOptional && leaf != "" && !is_container_type(name: leaf) && !(generic_param_names |> any(g => g == leaf))
+  if bare_declared_leaf {
+    rust_field_stored_layer_type(rt_field: n, ty: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+  } else {
+    spelled
+  }
+}
+
+// A bare declared leaf's layer is the declaration's, asked once through rust_field_stored_layer_type
+// (the same reader the field, the accessor and the constructor use), not whichever spelling branch
+// below happened to run (run 62: structural_node_size_termination_proof returned plain TerminationProof
+// from an Rc::new body).
+fn render_rust_fn_sig_type_spelled(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices, env: env) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
