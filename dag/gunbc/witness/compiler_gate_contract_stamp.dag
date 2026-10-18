@@ -18,6 +18,29 @@ import v2.cli.population_verb_names { cli_verb_parse_population }
 import extdeps.github.actions { Step, RunStep }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlMapping, YamlString }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
+// THE GUARD IS BUILT AS NODES AND RENDERED, never joined from strings (review 82001, manager
+// ruling). These are the same three modules the memory guard and the toolchain isolation carrier
+// import: a builder for the tree, the emitter that renders it, and the dissolution vocabulary for
+// the marker that names when this carrier can be deleted.
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.node { Node }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign,
+  bash_build_command_from_lits,
+  bash_build_command_with_words,
+  bash_build_exit,
+  bash_build_if_from_stmts,
+  bash_build_or_else,
+  bash_build_test_bracket,
+  bash_build_word_cmdsubst,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var
+}
 
 // THE INVOCATION-CONTRACT STAMP: what the generated steps of gunbc.witness.compiler_gate_workflow
 // promise about the SUBJECT'S OWN BINARY -- which verbs it is asked to run, with which flags, and what
@@ -450,97 +473,246 @@ fn compiler_gate_contract_stamp_awk_program() -> String {
   )
 }
 
-fn compiler_gate_contract_stamp_guard_script() -> String {
-  // THE ASSIGNMENT IS GUARDED BY `if !`, NOT FOLLOWED BY `if [ $? -ne 0 ]`. Steps here run under GitHub's
-  // default shell, `bash -e {0}`, and an assignment whose command substitution fails ABORTS THE STEP at
-  // that line -- the $? test on the next line is never reached, so the carefully worded StampAbsent
-  // diagnostic would never print and the run would die with a bare exit 1. Both forms look right in
-  // review; only running it under -e distinguishes them, so the generated text is executed in the
-  // witness and the shape asserted here.
-  join(
-    [
-      "STAMP_RUNNING=\"${{ env.",
-      compiler_gate_contract_stamp_env_key,
-      " }}\"\n",
-      "if [ -z \"$STAMP_RUNNING\" ]; then\n",
-      "  printf '%s\\n' ",
-      compiler_gate_contract_stamp_literal_no_env(),
-      "\n  exit 1\n",
-      "fi\n",
-      "AWK_PROG='",
-      compiler_gate_contract_stamp_awk_program(),
-      "'\n",
-      "if ! STAMP_TREE=$(awk -v key=\"",
-      compiler_gate_contract_stamp_env_key,
-      "\" \"$AWK_PROG\" \"",
-      compiler_gate_contract_stamp_tree_file(),
-      "\"); then\n",
-      "  printf '%s\\n' ",
-      compiler_gate_contract_stamp_literal_absent(),
-      "\n  exit 1\n",
-      "fi\n",
-      "if [ \"$STAMP_TREE\" != \"$STAMP_RUNNING\" ]; then\n",
-      "  printf '%s\\n' ",
-      compiler_gate_contract_stamp_literal_mismatch(),
-      "\n  exit 1\n",
-      "fi\n",
-      "printf \"gunbc contract stamp: paired running=%s tree=%s\\n\" \"$STAMP_RUNNING\" \"$STAMP_TREE\""
-    ],
-    ""
-  )
+// THE GUARD IS A NODE TREE, NOT A STRING. Manager ruling on review 82001: "build the step as
+// nodes, not strings ... use that same route for the guard so no shell syntax is hand-joined.
+// Inside the awk program, it is acceptable if it is a single typed argument rather than spliced
+// text." So every STATEMENT here -- both tests, every printf, every exit, the two assignments --
+// is built through v2.extdeps.languages.bash_build and rendered by v2.workflow.bash_emit, which
+// is the route the memory guard at gunbc.instruments.instrument_dispatch_workflow and the
+// toolchain isolation carrier at v2.workflow.ci_workflow_run_emit already take. No line of shell
+// in this file is concatenated from string literals any more.
+//
+// THE ONE STRING THAT REMAINS IS THE AWK PROGRAM, and it is a single typed argument to one
+// command word, exactly as the ruling permits. It stays a string on purpose: it is a program in
+// ANOTHER LANGUAGE, and bash_build has no node kind for an awk rule. Modelling it as bash nodes
+// would be the worse lie -- a bash tree cannot express `$0 ~ /^env:/`, so the attempt would
+// produce a node that claims to mean something it does not. Its correctness is instead pinned
+// two ways: the witness runs it against the real interpreter, and the fold in
+// compiler_gate_stamp_from_entry is checked to agree with it on the same fixtures.
+//
+// WHY THE CAPTURE CHANGED SHAPE, which is the one place the conversion is not a re-spelling.
+// It used to read `if ! STAMP_TREE=$(awk ...)`, and the serializer cannot build that:
+// bash_fold_serialize_negation_inner admits or_else, and_then, pipe and a nested negation, and an
+// ASSIGNMENT IS NOT AMONG THEM -- so the `!` form has no node representation at all. It is
+// replaced by capture-with-`|| true` (an or_else node, which IS admitted, inside a cmdsubst
+// word) followed by `[ -z "$STAMP_TREE" ]`. Those are the same test, and not by approximation:
+// the program prints the stamp if and only if it exits 0 (the `print v` and the `exit` are the
+// same statement, and every failure path reaches `exit 3` without printing), so "the capture
+// failed" and "the capture printed nothing" pick out exactly the same runs. That equivalence is
+// what makes the swap a refactoring rather than a behaviour change, and it is the property the
+// executed RED re-checks after regeneration, not a claim made here.
+//
+// THE `-e` CONSTRAINT SURVIVES THE SWAP. GitHub's default run shell is `bash -e {0}`, under
+// which a bare `VAR=$(failing cmd)` aborts the STEP at that line -- so the old form's `if !`
+// existed to stop the run dying with a bare exit 1 and no diagnostic. `|| true` inside the
+// command substitution discharges the same obligation: the assignment's status is true, so the
+// step continues and the `[ -z ]` arm prints the typed refusal. Both forms were verified by
+// running them under `bash -e -o pipefail`, which is the only way to tell them apart.
+fn compiler_gate_contract_stamp_guard_statements() -> List<Node> {
+  [
+    bash_build_assign(
+      name: "STAMP_RUNNING",
+      // The GitHub expression is ONE literal word. The serializer leaves a literal alone inside
+      // its single quotes, so Actions still expands it at run time -- the same route the fleet's
+      // other node-built carriers take for expressions.
+      value: bash_build_word_lit(text: concat(concat("${{ env.", compiler_gate_contract_stamp_env_key), " }}"))
+    ),
+    // NO LEVER TO SOFTEN THIS. continue-on-error, ::warning:: and any inputs./env.GUNBC_ALLOW
+    // read are refused by the witness below; the node grammar has no warning arm to reach for.
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: "STAMP_RUNNING")]),
+      then_stmts: [
+        compiler_gate_contract_stamp_print_line(compiler_gate_contract_stamp_refusal_parts_no_env()),
+        bash_build_exit(code: "1")
+      ]
+    ),
+    bash_build_assign(
+      name: "AWK_PROG",
+      value: bash_build_word_lit(text: compiler_gate_contract_stamp_awk_program())
+    ),
+    bash_build_assign(
+      name: "STAMP_TREE",
+      value: bash_build_word_cmdsubst(
+        body: bash_build_or_else(
+          left: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "awk"),
+              bash_build_word_concat_from_nodes(
+                parts: [
+                  bash_build_word_lit(text: "-v key="),
+                  bash_build_word_lit(text: compiler_gate_contract_stamp_env_key)
+                ]
+              ),
+              // The variable word renders as "$AWK_PROG" on its own: the double quotes are SHELL
+              // SYNTAX the serializer supplies, not characters of the program text, and quoting the
+              // substitution is what keeps the multi-line program ONE argument.
+              bash_build_word_var(name: "AWK_PROG"),
+              bash_build_word_lit(text: compiler_gate_contract_stamp_tree_file())
+            ]
+          ),
+          right: bash_build_command_from_lits(lits: ["true"])
+        )
+      )
+    ),
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: "STAMP_TREE")]),
+      then_stmts: [
+        compiler_gate_contract_stamp_print_line(compiler_gate_contract_stamp_refusal_parts_absent()),
+        bash_build_exit(code: "1")
+      ]
+    ),
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(
+        words: [
+          bash_build_word_var(name: "STAMP_TREE"),
+          bash_build_word_lit(text: "!="),
+          bash_build_word_var(name: "STAMP_RUNNING")
+        ]
+      ),
+      then_stmts: [
+        compiler_gate_contract_stamp_print_line(compiler_gate_contract_stamp_refusal_parts_mismatch()),
+        bash_build_exit(code: "1")
+      ]
+    ),
+    // THE PROCEEDING PATH SAYS SO. Silence and agreement used to be indistinguishable in the log,
+    // which is how the silent arm got green four times; the positive control's own line is the
+    // difference between "the guard ran and agreed" and "the guard did not run".
+    bash_build_command_with_words(
+      words: [
+        bash_build_word_lit(text: "printf"),
+        bash_build_word_lit(text: "gunbc contract stamp: paired running=%s tree=%s\\n"),
+        bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "STAMP_RUNNING")]),
+        bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "STAMP_TREE")])
+      ]
+    )
+  ]
 }
 
+// THE PATH, as a node literal word -- one value used by BOTH the awk argument and the
+// StampAbsent message, so the file the guard reads and the file it names cannot drift apart.
 fn compiler_gate_contract_stamp_tree_file() -> String {
   compiler_gate_contract_stamp_workflow_path() as String
 }
 
-// THE THREE REFUSALS. Each is carried in double quotes, which is safe only because the prose carries no
-// shell metacharacter -- and that is not assumed, it is asserted by the witness, so editing the wording
-// cannot silently introduce an expansion.
-fn compiler_gate_contract_stamp_literal_no_env() -> String {
-  join(
-    [
-      "\"REFUSED gunbc contract stamp: StampUnreadable \{the executing workflow carries no ",
-      compiler_gate_contract_stamp_env_key,
-      " in its environment, so it was not generated with an invocation contract. ",
-      compiler_gate_contract_stamp_provenance,
-      ". Remedy: merge origin/main into this branch.\""
-    ],
-    ""
+// ONE printf PER REFUSAL, as a node: `printf '%s\n' <one word>`. The format and the message are
+// separate WORDS, so the message cannot be re-parsed as a format; each refusal is its own word
+// built from literal and variable PARTS, which is how a stamp value reaches the message without
+// any unquoted expansion of a tree-influenced value anywhere in the step.
+fn compiler_gate_contract_stamp_print_line(parts: List<Node>) -> Node {
+  bash_build_command_with_words(
+    words: [
+      bash_build_word_lit(text: "printf"),
+      bash_build_word_lit(text: "%s\\n"),
+      bash_build_word_concat_from_nodes(parts: parts)
+    ]
   )
 }
 
-fn compiler_gate_contract_stamp_literal_absent() -> String {
-  join(
-    [
-      "\"REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable ",
-      compiler_gate_contract_stamp_env_key,
-      " at ",
-      compiler_gate_contract_stamp_tree_file(),
-      ", so its workflow predates the instruction this job is executing. ",
-      compiler_gate_contract_stamp_provenance,
-      ". Remedy: merge origin/main into this branch.\""
-    ],
-    ""
-  )
+// THE REFUSAL MESSAGES AS NODE PARTS, not as quoted strings. A literal part is emitted
+// single-quoted by the serializer and a variable part as "$NAME", and the parts concatenate into
+// ONE word -- so the shell interpolates the two stamps and nothing else, and no message can gain
+// an unquoted expansion by accident. These are the strings the witness pins, so a rewording that
+// drops a stamp, the remedy, or the verdict name leaves it red.
+fn compiler_gate_contract_stamp_refusal_parts_no_env() -> List<Node> {
+  [
+    bash_build_word_lit(text: "REFUSED gunbc contract stamp: StampUnreadable \{the executing workflow carries no "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_env_key),
+    bash_build_word_lit(text: " in its environment, so it was not generated with an invocation contract. "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_provenance),
+    bash_build_word_lit(text: ". Remedy: merge origin/main into this branch.")
+  ]
 }
 
-fn compiler_gate_contract_stamp_literal_mismatch() -> String {
-  // THE TWO STAMPS ARE INTERPOLATED BY THE SHELL, so the message is assembled outside the quotes: the
-  // literal halves carry the prose and the variables carry the values, and no unquoted expansion of a
-  // tree-influenced file appears anywhere in the step.
-  join(
-    [
-      "\"REFUSED gunbc contract stamp: StampMismatch \{running=$STAMP_RUNNING, tree=$STAMP_TREE}. ",
-      "The workflow executing was generated from a DIFFERENT revision than the tree it is judging: the ",
-      "instruction came from the merge ref, and the ",
-      compiler_gate_contract_stamp_provenance,
-      "-stamped workflow committed in the checked-out tree says otherwise. ",
-      "Remedy: merge origin/main into this branch so the tree carries the instruction being run.\""
-    ],
-    ""
-  )
+fn compiler_gate_contract_stamp_refusal_parts_absent() -> List<Node> {
+  [
+    bash_build_word_lit(text: "REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_env_key),
+    bash_build_word_lit(text: " at "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_tree_file()),
+    bash_build_word_lit(text: ", so its workflow predates the instruction this job is executing. "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_provenance),
+    bash_build_word_lit(text: ". Remedy: merge origin/main into this branch.")
+  ]
 }
+
+fn compiler_gate_contract_stamp_refusal_parts_mismatch() -> List<Node> {
+  [
+    bash_build_word_lit(text: "REFUSED gunbc contract stamp: StampMismatch \{running="),
+    bash_build_word_var(name: "STAMP_RUNNING"),
+    bash_build_word_lit(text: ", tree="),
+    bash_build_word_var(name: "STAMP_TREE"),
+    bash_build_word_lit(text: "}. The workflow executing was generated from a DIFFERENT revision than the tree it is judging: the instruction came from the merge ref, and the "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_provenance),
+    bash_build_word_lit(text: "-stamped workflow committed in the checked-out tree says otherwise. Remedy: merge origin/main into this branch so the tree carries the instruction being run.")
+  ]
+}
+
+// DISSOLUTION: THE TRIGGER IS A CAPABILITY, NOT A FILE OR A DATE. This carrier exists because
+// nothing at run time can read the tree's own workflow stamp without executing tree code, and
+// the thing under suspicion is the tree. It dissolves the day a pre-build reader of that stamp
+// exists that does NOT run tree code -- GitHub's own `workflow_sha` on the check run, or a
+// runner-side typed reader for a committed workflow member. Naming a capability is what makes
+// the obligation closable; naming a date or a path would let it sit marked forever.
+data compiler_gate_contract_stamp_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.witness.compiler_gate_contract_stamp",
+    decl_name: "compiler_gate_contract_stamp_guard_statements",
+    field: WholeDeclaration
+  }
+}
+
+data compiler_gate_contract_stamp_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compiler_gate_contract_stamp_guard_statements -- bash-node carrier that reads the tree's own committed workflow stamp BEFORE any binary is built and refuses a subject older than the instruction running it; dissolves when a pre-build reader of a committed workflow member exists that does not run tree code (GitHub's own workflow_sha on the check run, or a runner-side typed reader). The awk program remains a single typed string argument until an awk-rule node grammar lands.")
+
+// THE SCRIPT, rendered from the tree. Poison on rejection rather than a silent empty run: an
+// empty run body is a step that passes, and a passing step that checks nothing is precisely the
+// silent green this module was written to end. The gate predicate below is what keeps poison out
+// of a committed artifact; the poison string is what makes a rejection LOUD if the gate is ever
+// bypassed by a caller that forgets it.
+data compiler_gate_contract_stamp_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ gunbc contract stamp guard emission was rejected by v2.workflow.bash_emit"
+
+fn compiler_gate_contract_stamp_guard_script_outcome() -> Outcome<String> {
+  match bash_emit_stmts(statements: compiler_gate_contract_stamp_guard_statements(), set_e: false) {
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Accepted { value: body, diagnostics: ds } =>
+      Accepted {
+        value: concat(compiler_gate_contract_stamp_marker_line(), body),
+        diagnostics: ds
+      }
+  }
+}
+
+// THE MARKER, on the first line of the emitted script, in the same form the fleet's other
+// shell carriers use: "# " followed by the dissolution description, which already begins
+// "dissolve-on:". It is a COMMENT so it costs the runner nothing and cannot change behaviour.
+fn compiler_gate_contract_stamp_marker_line() -> String {
+  concat("# ", concat(dissolution_description(condition: compiler_gate_contract_stamp_shell_emit_dissolution_trigger), "\n"))
+}
+
+// THE GATE PREDICATE the workflow generator consults before it will emit the step. It is a
+// sibling of compiler_gate_contract_stamp_is_derived() and it fails closed: a node tree the
+// serializer refuses stops the whole workflow from generating, rather than emitting a step that
+// would silently check nothing.
+fn compiler_gate_contract_stamp_guard_script_is_renderable() -> Bool {
+  match compiler_gate_contract_stamp_guard_script_outcome() {
+    Accepted { value: script, diagnostics: _ } =>
+      // THE MARKER AND THE REFUSALS SURVIVE RENDERING. Checked here, in the path that produces
+      // the committed artifact, and not only in the witness: a marker that a later refactor
+      // drops would otherwise reopen exactly the unmarked-runner defect review 82001 named.
+      !string_contains(s: script, pattern: compiler_gate_contract_stamp_emit_refused_poison)
+        && string_contains(s: script, pattern: "dissolve-on: ")
+        && string_contains(s: script, pattern: "exit 1")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn compiler_gate_contract_stamp_guard_script() -> String {
+  match compiler_gate_contract_stamp_guard_script_outcome() {
+    Accepted { value: script, diagnostics: _ } => script
+    Rejected { diagnostics: _ } => compiler_gate_contract_stamp_emit_refused_poison
+  }
+}
+
 
 fn compiler_gate_contract_stamp_guard_step() -> Step {
   RunStep {
