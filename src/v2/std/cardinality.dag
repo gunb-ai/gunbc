@@ -1,7 +1,7 @@
 module v2.std.cardinality
 
 import std.types { List }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, collection_count_shape }
 import std.termination {
   DescentEvidence,
   Strict,

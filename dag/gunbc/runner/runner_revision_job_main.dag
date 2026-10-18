@@ -26,7 +26,7 @@ import gunbc.fabric.fabric_cell_grant {
   CellGrantSettlementLost, CellGrantSettlementStoreUnavailable,
 }
 import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellObservation, RequiredBuildCellObserved, observe_granted_cell_wet }
-import gunbc.runner.runner_slot_allocation { revision_job_slots }
+import gunbc.runner.runner_slot_allocation { revision_job_slots, revision_job_slots_match_the_fleet_row }
 import gunbc.runner.runner_microvm_shakedown { MicroVmCellJob, microvm_job_demand, microvm_job_offer, microvm_job_attempt }
 import gunbc.runner.runner_microvm_slot_reserve {
   ShakedownBrokerOutcome, ShakedownBrokerDecided, ShakedownBrokerRosterRefused, microvm_job_candidate_field, microvm_job_broker_decide,
@@ -52,6 +52,7 @@ import gunbc.runner.runner_revision_job_spec {
   decode_revision_job_spec,
 }
 import gunbc.runner.runner_revision_job_stage { RevisionJobStage, RevisionJobStageReady, RevisionJobStageRefused, RevisionJobStageRefusal, RevisionJobStaged, stage_revision_job }
+import gunbc.runner.runner_revision_job_image { RevisionJobImageAdmission, RevisionJobImageVerified, RevisionJobImageNotAdmitted, verify_revision_job_image }
 import gunbc.runner.runner_revision_job_launch { RevisionJobGuestImage, revision_job_launch_plan, revision_job_results_jail_path, revision_job_spec_jail_path }
 import gunbc.runner.runner_revision_job_receipt {
   RevisionJobReceiptDocument, RevisionJobPublication, RevisionJobPublished, RevisionJobAlreadyPublished, RevisionJobPublicationRefused,
@@ -74,12 +75,11 @@ import gunbc.runner.runner_revision_job_receipt {
 //      released only after sanitation), and publish it content-addressed with its commit index.
 
 data revision_job_results_bytes: ByteSize = mebibyte_to_byte_size(m: mebibyte(count: 1))
-data revision_job_toolchain_receipt_name: String = "toolchain"
 
 type RevisionJobOutcome
   = RevisionJobSpecNotAdmitted { refusal: RevisionJobSpecRefusal }
   | RevisionJobSlotNotDeclared { instance: String }
-  | RevisionJobImageToolchainUnread { path: String }
+  | RevisionJobImageRefused { reason: String }
   | RevisionJobStagingRefused { refusal: RevisionJobStageRefusal }
   | RevisionJobWorkRefused
   | RevisionJobNotGranted { detail: String }
@@ -90,19 +90,28 @@ type RevisionJobOutcome
   | RevisionJobUnreceipted { cause: ClaimSetNotReceipted }
   | RevisionJobPublishedOutcome { publication: RevisionJobPublication, settlement: CellGrantSettlement }
 
+// THE IMAGE IS ADMITTED BEFORE ANYTHING READS IT. The kernel, rootfs and toolchain receipt must be the
+// installed, root-owned files and the rootfs must hash to the identity the unit pins
+// (GUNBC_REVISION_JOB_IMAGE_SHA256); a job with no pinned identity runs nothing.
+fn revision_job_admit_image(image_dir: String, image_sha256: String) -> RevisionJobImageAdmission {
+  if image_sha256 == "" { RevisionJobImageNotAdmitted { reason: "no image identity is pinned for this job" } }
+  else { verify_revision_job_image(image_dir: image_dir, expected_sha256: image_sha256 as NonEmptyStr) }
+}
+
 // The image's toolchain is the channel its recipe installed, recorded beside the rootfs when the
 // image was built -- not a literal here, because rust-toolchain.toml is the repository's one channel
-// authority and the image is built from it.
-fn revision_job_image_toolchain(image_dir: String) -> NonEmptyStr? {
-  let read = Filesystem.Read(path: join([image_dir, "/", revision_job_toolchain_receipt_name], ""))
-  // The first line is the version; the closure lines after it (gunbc.runner.runner_revision_job_toolchain
-  // toolchain_receipt_lines) are the image's record, not part of the channel.
-  let first = trim(s: match read.content.split(delimiter: "\n").first() { Present { value: l } => l  Absent => "" })
-  if !read.success || first == "" { none } else { Present { value: first as NonEmptyStr } }
+// authority and the image is built from it. The first line is the version; the closure lines after it
+// (gunbc.runner.runner_revision_job_toolchain toolchain_receipt_lines) are the image's record, not part
+// of the channel.
+fn revision_job_image_channel(receipt: NonEmptyStr) -> NonEmptyStr? {
+  let first = trim(s: match (receipt as String).split(delimiter: "\n").first() { Present { value: l } => l  Absent => "" })
+  if first == "" { none } else { Present { value: first as NonEmptyStr } }
 }
 
 fn revision_job_slot(instance: String) -> RunnerSlotIdentity? {
-  filter(revision_job_slots, s => (runner_slot_instance_name(slot: s) as String) == instance).first()
+  if revision_job_slots_match_the_fleet_row() {
+    filter(revision_job_slots, s => (runner_slot_instance_name(slot: s) as String) == instance).first()
+  } else { none }
 }
 
 fn revision_job_cell_job(spec: RevisionJobSpec, work: product.fabric.work.Work<NonEmptyStr>, at: Timestamp) -> MicroVmCellJob {
@@ -167,6 +176,7 @@ fn revision_job_run(
   slot_instance: String,
   release_dir: String,
   image_dir: String,
+  image_sha256: String,
   cache_dir: String,
   work_dir: String,
   store_root: String,
@@ -178,8 +188,10 @@ fn revision_job_run(
   RevisionJobSpecRefused { refusal: r } => RevisionJobSpecNotAdmitted { refusal: r }
   RevisionJobSpecDecoded { spec: spec } => match revision_job_slot(instance: slot_instance) {
   Absent => RevisionJobSlotNotDeclared { instance: slot_instance }
-  Present { value: slot } => match revision_job_image_toolchain(image_dir: image_dir) {
-  Absent => RevisionJobImageToolchainUnread { path: join([image_dir, "/", revision_job_toolchain_receipt_name], "") }
+  Present { value: slot } => match revision_job_admit_image(image_dir: image_dir, image_sha256: image_sha256) {
+  RevisionJobImageNotAdmitted { reason: r } => RevisionJobImageRefused { reason: r }
+  RevisionJobImageVerified { image: image } => match revision_job_image_channel(receipt: image.toolchain) {
+  Absent => RevisionJobImageRefused { reason: "the image's toolchain receipt names no channel" }
   Present { value: toolchain } => match stage_revision_job(
     cache_repo: concat(cache_dir, "/repo"), vendor_cache: concat(cache_dir, "/vendor"), staging_dir: concat(work_dir, "/staging"),
     repository_url: spec.repository as String, commit: spec.commit, admitted_tree: spec.tree, image_toolchain: toolchain,
@@ -201,9 +213,9 @@ fn revision_job_run(
     CellGrantDecided { outcome: g } => match g {
     CellGranted { grant: grant, account: _, ledger: _ } =>
       revision_job_launch_and_settle(spec: spec, revision: revision, work: work, job: job, slot: slot, grant: grant, staged: staged,
-        release_dir: release_dir, image_dir: image_dir, work_dir: work_dir, store_root: store_root, invocation_id: invocation_id, vcpus: vcpus, now: now)
+        release_dir: release_dir, image: RevisionJobGuestImage { kernel: image.kernel, rootfs: image.rootfs }, work_dir: work_dir, store_root: store_root, invocation_id: invocation_id, vcpus: vcpus, now: now)
     _ => RevisionJobNotGranted { detail: "the cell grant was not committed" }
-    } } } } } } } } } }
+    } } } } } } } } } } }
 }
 
 fn revision_job_launch_and_settle(
@@ -215,7 +227,7 @@ fn revision_job_launch_and_settle(
   grant: product.fabric.execution.ExecutionGrant<NonEmptyStr>,
   staged: RevisionJobStaged,
   release_dir: String,
-  image_dir: String,
+  image: RevisionJobGuestImage,
   work_dir: String,
   store_root: String,
   invocation_id: NonEmptyStr,
@@ -235,7 +247,7 @@ fn revision_job_launch_and_settle(
         let bins = locus_binaries(release_dir: release_dir)
         let plan = revision_job_launch_plan(
           snapshot: snapshot, work: work, attempt: attempt, allocation_generation: snapshot.generation, staged: staged,
-          image: RevisionJobGuestImage { kernel: concat(image_dir, "/vmlinux"), rootfs: concat(image_dir, "/rootfs.ext4") },
+          image: image,
           vcpus: vcpus, ground: observe_attempt_ground(attempt: attempt),
           jailer_binary: bins.jailer, firecracker_binary: bins.firecracker,
         )
@@ -297,7 +309,7 @@ fn revision_job_outcome_text(o: RevisionJobOutcome) -> String {
   match o {
     RevisionJobSpecNotAdmitted { refusal: _ } => "spec not admitted"
     RevisionJobSlotNotDeclared { instance: i } => concat("slot not declared for revision jobs: ", i)
-    RevisionJobImageToolchainUnread { path: p } => concat("image toolchain receipt unread: ", p)
+    RevisionJobImageRefused { reason: r } => concat("image not admitted: ", r)
     RevisionJobStagingRefused { refusal: _ } => "staging refused"
     RevisionJobWorkRefused => "the claim-set Work did not bind"
     RevisionJobNotGranted { detail: d } => concat("not granted: ", d)
@@ -354,6 +366,7 @@ fn revision_job_main() -> ProcessExit {
   let slot = revision_job_env(name: "GUNBC_REVISION_JOB_SLOT")
   let release_dir = revision_job_env(name: "GUNBC_REVISION_JOB_RELEASE_DIR")
   let image_dir = revision_job_env(name: "GUNBC_REVISION_JOB_IMAGE_DIR")
+  let image_sha256 = revision_job_env(name: "GUNBC_REVISION_JOB_IMAGE_SHA256")
   let cache_dir = revision_job_env(name: "GUNBC_REVISION_JOB_CACHE_DIR")
   let work_dir = revision_job_env(name: "GUNBC_REVISION_JOB_WORK_DIR")
   let store_root = revision_job_env(name: "GUNBC_REVISION_JOB_STORE_ROOT")
@@ -361,7 +374,7 @@ fn revision_job_main() -> ProcessExit {
   let vcpus_text = revision_job_env(name: "GUNBC_REVISION_JOB_VCPUS")
   if spec_path == "" || slot == "" || release_dir == "" || image_dir == "" || cache_dir == "" || work_dir == "" || store_root == "" || invocation == ""
     || vcpus_text == "" || !decimal_digits_only(s: vcpus_text) {
-    exit_failure(reason: "revision_job: GUNBC_REVISION_JOB_SPEC, _SLOT, _RELEASE_DIR, _IMAGE_DIR, _CACHE_DIR, _WORK_DIR, _STORE_ROOT, _VCPUS (decimal) and INVOCATION_ID must all be set")
+    exit_failure(reason: "revision_job: GUNBC_REVISION_JOB_SPEC, _SLOT, _RELEASE_DIR, _IMAGE_DIR, _IMAGE_SHA256 (optional here, refused downstream when empty), _CACHE_DIR, _WORK_DIR, _STORE_ROOT, _VCPUS (decimal) and INVOCATION_ID must all be set")
   } else {
     let spec = Filesystem.Read(path: spec_path)
     if !spec.success { exit_failure(reason: join(["revision_job: spec unreadable at ", spec_path, ": ", spec.error], "")) }
@@ -372,7 +385,7 @@ fn revision_job_main() -> ProcessExit {
         Present { value: vcpus_int } => match checked_int_to_nat(n: vcpus_int) {
         Absent => exit_failure(reason: "revision_job: VCPUS is negative")
         Present { value: vcpus } => {
-          let outcome = revision_job_run(spec_text: spec.content, slot_instance: slot, release_dir: release_dir, image_dir: image_dir,
+          let outcome = revision_job_run(spec_text: spec.content, slot_instance: slot, release_dir: release_dir, image_dir: image_dir, image_sha256: image_sha256,
             cache_dir: cache_dir, work_dir: work_dir, store_root: store_root, invocation_id: invocation as NonEmptyStr, vcpus: hardware_thread_count(count: vcpus), now: now)
           match outcome {
             RevisionJobPublishedOutcome { publication: p, settlement: st } =>
