@@ -3,7 +3,8 @@ module test.claim.runner.runner_lost_boot_sweep_run_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.transports.rest { RestResult, RestAnswered }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
+import gunbc.github_effect_perform { organization_runner_listing_page_merged }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
 import extdeps.uuid { uuid_of }
 import std.decl_ref { decl_ref }
@@ -275,4 +276,17 @@ test fn each_non_sweep_outcome_names_its_own_cause() -> Bool {
         SuppliedPopulationNotDerived { refusal: _ } => false
       })
   }
+}
+
+// PAGES THAT DISAGREE ON total_count DID NOT OBSERVE ONE POPULATION. RED: overwriting total_count with the
+// latest page merges two populations and reads as complete. Positive control: agreeing pages merge in order.
+test fn pages_disagreeing_on_total_count_refuse_and_agreeing_pages_merge() -> Bool {
+  let first = OrganizationRunnerListWire { total_count: 2, runners: [OrganizationRunnerWire { id: 1, name: "a" }] }
+  (match organization_runner_listing_page_merged(so_far: first, page: 2, read: OrganizationRunnerListWire { total_count: 3, runners: [OrganizationRunnerWire { id: 2, name: "b" }] }) {
+    RestRefused { refusal: _ } => true
+    RestAnswered { answer: _ } => false
+  }) && (match organization_runner_listing_page_merged(so_far: first, page: 2, read: OrganizationRunnerListWire { total_count: 2, runners: [OrganizationRunnerWire { id: 2, name: "b" }] }) {
+    RestAnswered { answer: w } => w.total_count == 2 && count(w.runners) == 2
+    RestRefused { refusal: _ } => false
+  })
 }
