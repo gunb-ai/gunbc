@@ -30,7 +30,7 @@ import gunbc.workspace_allocation_store { WorkspaceReleased }
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.measure { byte_size_count }
-import std.algebra { trim, contains, skip, list_head }
+import std.algebra { trim, contains, skip, list_head, string_contains }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_key }
@@ -790,21 +790,35 @@ type PlannedBaselineRows
   = PlannedBaselineRowsRead { rows: List<String> }
   | PlannedBaselineRowsUnavailable { cause: String }
 
+fn plan_text_before(text: String, marker: String) -> String? {
+  list_head(xs: split(s: text, delimiter: marker))
+}
+
+fn plan_text_after_last(text: String, marker: String) -> String? {
+  list_head(xs: reverse(split(s: text, delimiter: marker)))
+}
+
+fn plan_text_lines(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+}
+
 fn fleet_converge_planned_section_rows(plan_body: String, section: String) -> PlannedBaselineRows {
-  match list_head(xs: skip(xs: split(s: plan_body, delimiter: concat("\n", section, ":\n")), n: 1)) {
-    Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt carries no ", section, ": section") }
-    Present { value: tail } => {
-      let parts = split(s: tail, delimiter: concat("\n", fleet_converge_plan_section_end_marker(section: section)))
-      if list_length(items: parts) < 2 {
-        PlannedBaselineRowsUnavailable {
-          cause: concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)"),
-        }
-      } else {
-        match list_head(xs: parts) {
+  let start = concat("\n", section, ":\n")
+  let end = concat("\n", fleet_converge_plan_section_end_marker(section: section))
+  if !string_contains(s: plan_body, pattern: start) {
+    PlannedBaselineRowsUnavailable { cause: concat("plan.txt carries no ", section, ": section") }
+  } else if !string_contains(s: plan_body, pattern: end) {
+    PlannedBaselineRowsUnavailable {
+      cause: concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)"),
+    }
+  } else {
+    match plan_text_before(text: plan_body, marker: end) {
+      Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
+      Present { value: through_rows } =>
+        match plan_text_after_last(text: through_rows, marker: start) {
           Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
-          Present { value: block } => PlannedBaselineRowsRead { rows: split(s: block, delimiter: "\n") }
+          Present { value: block } => PlannedBaselineRowsRead { rows: plan_text_lines(text: block) }
         }
-      }
     }
   }
 }
