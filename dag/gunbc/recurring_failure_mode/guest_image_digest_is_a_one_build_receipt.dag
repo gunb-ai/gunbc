@@ -14,16 +14,10 @@ data guest_image_digest_is_a_one_build_receipt: RecurringFailureMode = Recurring
     "RUNG FOUND AT: mitigatable. The build refuses unless every input matches its pin and the installer refuses typed on a digest mismatch or absent artifact, but the image bytes themselves are one build's.",
     "CEILING: mechanically preventable by a deterministic image build (fixed UUID, hash seed and timestamps) checked by building twice and comparing digests. NEXT-RUNG TRIGGER (can climb now, unbuilt, and not yet owed): when a second, independent producer must agree with the first -- third-party verification, or a rebuild that must match a running image.",
     "SUBJECTS: gunbc.guest_image_delivery guest_image_write_digest_receipt (the one receipt writer both images use).",
+    "INSTANCE (2026-10-18): the revision-job pin was first read as owing a reproducible build; the rebuild work stopped on it until the pin was restated as an identity binding.",
+    "RECEIPT (2026-10-18, srv1): three runs of revision_job_image_build_wet at e44e8469 with identical pinned inputs (kernel sha256 cb1291c6..., toolchain receipt sha256 ac114574...) gave three different digests: f475b1987d60fd72e963ba7a7d916d7035fffbd0658b0a160cdd54cde64dbd85, 62c2c5c972c34f2152339cf758152e94be0046ce410c839d94cf6dc2eb52f9de, 94a1fc3f7d6f963c7c08e11684bf96ba9075587444797865168fe12c41eb5624. The instrument is running the entry twice and comparing.",
   ],
 
-  // INSTANCE (2026-10-18): the revision-job pin was first read as owing a reproducible build; the rebuild
-  // work stopped on it until the pin was restated as an identity binding. 
-  // RECEIPT (measured on srv1, 2026-10-18): three runs of revision_job_image_build_wet at one commit
-  // (e44e8469) with identical pinned inputs (kernel sha256 cb1291c6..., toolchain receipt sha256 ac114574...)
-  // gave three different digests: f475b1987d60fd72e963ba7a7d916d7035fffbd0658b0a160cdd54cde64dbd85,
-  // 62c2c5c972c34f2152339cf758152e94be0046ce410c839d94cf6dc2eb52f9de,
-  // 94a1fc3f7d6f963c7c08e11684bf96ba9075587444797865168fe12c41eb5624. The instrument is running the entry twice
-  // and comparing.
   evidence: [
     DeclarationRef { module_path: "extdeps.tools.e2fsprogs", decl_name: "mke2fs_populate_command", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.guest_image_delivery", decl_name: "guest_image_write_digest_receipt", field: WholeDeclaration },
