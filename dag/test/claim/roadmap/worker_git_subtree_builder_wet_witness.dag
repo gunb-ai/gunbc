@@ -1,20 +1,8 @@
-module test.claim.roadmap.worker_git_subtree_builder_wet_witness @edge {
-  description = "WORKER-ROOT-EQUIVALENT-3 wet witnesses for the argv builders the lab worker's commit grant is made of: the root-owned shared-repository posture (extdeps/git) and the bounded subtree re-group (extdeps/tools/findutils). DESIGN 5 -- done means EXECUTED: an argv-shape claim stays green over a command that cannot run. At 2dc2b8de3f98 all five git builders rendered `git env GIT_CONFIG_GLOBAL=... git config ...` (argv_words is [program] ++ arguments, and their arguments began with the word env), every one exited 1 with \"git: 'env' is not a git command\", and the migration's chmod carried an unclosed `(` so find refused the expression and the grant never landed. Not one of those was visible to any shape claim. These witnesses RUN each builder against a throwaway tree and read back the EFFECT on the filesystem -- the config key git reports, the mode find reports."
+module test.claim.roadmap.worker_git_subtree_builder_wet_witness
 
-  imports {
-    extdeps.git {
-      git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
-      git_maintenance_auto_disabled_config_command, git_repack_quiet_command, git_pack_refs_all_command,
-    }
-    extdeps.tools.findutils {
-      find_subtree_regroup_command, find_subtree_group_writable_command, find_subtree_mode_readback_command,
-    }
-    extdeps.exec.command { ArgvCommand, argv_words }
-  }
-}
-
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
+import extdeps.shell
 import extdeps.git {
   git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
   git_maintenance_auto_disabled_config_command, git_repack_quiet_command, git_pack_refs_all_command,
@@ -37,14 +25,22 @@ import extdeps.exec.command { ArgvCommand, argv_words }
 // RunArgv takes the program apart from its arguments exactly as execve does. NOTHING IS RE-SHELLED: an
 // argv assembled by a shell would let a word-splitting defect in the builder hide behind the shell's own
 // splitting, which is precisely the class this file exists to catch.
+// THE SPLIT INTO PROGRAM AND ARGUMENTS, in the shape RunArgv wants: word zero is the program, the rest
+// are its arguments, and nothing between them is interpreted. The head is read through the Option the
+// list already gives (extdeps/procps/ps, extdeps/container/oci/digest), never by an index.
+fn wet_run_argv(program: NonEmptyStr, arguments: List<String>) -> Int {
+  shell.Exec.RunArgv(program: program, arguments: arguments).exit_code
+}
+
+fn wet_run_argv_out(program: NonEmptyStr, arguments: List<String>) -> String {
+  trim(s: shell.Exec.RunArgv(program: program, arguments: arguments).stdout)
+}
+
 fn wet_run(command: ArgvCommand) -> Int {
   let words = argv_words(command: command)
   match first(words) {
     Absent => 1
-    Present { value: program } => shell.Exec.RunArgv(
-      program: program as NonEmptyStr,
-      arguments: words |> skip(n: 1),
-    ).exit_code
+    Present { value: head } => wet_run_argv(program: head as NonEmptyStr, arguments: words |> skip(n: 1))
   }
 }
 
@@ -52,22 +48,19 @@ fn wet_run_capturing(command: ArgvCommand) -> String {
   let words = argv_words(command: command)
   match first(words) {
     Absent => ""
-    Present { value: program } => shell.Exec.RunArgv(
-      program: program as NonEmptyStr,
-      arguments: words |> skip(n: 1),
-    ).stdout
+    Present { value: head } => wet_run_argv_out(program: head as NonEmptyStr, arguments: words |> skip(n: 1))
   }
 }
 
 // A RAW WORD LIST, for the claim's OWN instruments only -- creating the tree, seeding a commit, and
 // reading a mode WITHOUT the prunes so the claim can see a path the builders refuse to walk. Never for
 // the builders under test, which are run only through wet_run above.
-fn wet_raw(program: String, arguments: List<String>) -> Int {
-  shell.Exec.RunArgv(program: program as NonEmptyStr, arguments: arguments).exit_code
+fn wet_raw(program: NonEmptyStr, arguments: List<String>) -> Int {
+  wet_run_argv(program: program, arguments: arguments)
 }
 
-fn wet_raw_out(program: String, arguments: List<String>) -> String {
-  trim(s: shell.Exec.RunArgv(program: program as NonEmptyStr, arguments: arguments).stdout)
+fn wet_raw_out(program: NonEmptyStr, arguments: List<String>) -> String {
+  wet_run_argv_out(program: program, arguments: arguments)
 }
 
 // THE TREE THE MIGRATION IS APPLIED TO, in the state bright-moth-475 read on srv1 on 2026-10-17: the lab
@@ -322,11 +315,16 @@ test fn the_posture_argv_words_are_executable_shapes() -> Bool {
   }
 }
 
+// THE HEAD, then the shape. Read through the Option the list already gives -- an index would panic on
+// an empty word list, and an empty word list is exactly what a builder that minted nothing would produce.
 fn wet_argv_is_executable_shape(words: List<String>) -> Bool {
-  let head = match first(words) {
-    Absent => ""
-    Present { value: w } => w as String
+  match first(words) {
+    Absent => false
+    Present { value: head } => wet_argv_leads_with_env(words: words, head: head as String)
   }
+}
+
+fn wet_argv_leads_with_env(words: List<String>, head: String) -> Bool {
   head == "env"
     && wet_count_of(words: words, wanted: "env") == 1
     && wet_count_of(words: words, wanted: "git") == 1
@@ -336,6 +334,7 @@ fn wet_argv_is_executable_shape(words: List<String>) -> Bool {
     && any(xs: words, predicate: w => w == "GIT_CONFIG_GLOBAL=/dev/null")
     && any(xs: words, predicate: w => w == "GIT_CONFIG_NOSYSTEM=1")
 }
+
 
 fn wet_count_of(words: List<String>, wanted: String) -> Int {
   count(filter(xs: words, predicate: w => w == wanted))

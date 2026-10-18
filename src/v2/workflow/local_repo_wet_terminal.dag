@@ -709,6 +709,36 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_shared_repository_posture_writers_reach_the_repository_when_run" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_shared_repository_posture_writers_reach_the_repository_when_run",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_maintenance_pair_repacks_and_leaves_a_packed_refs_file" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_maintenance_pair_repacks_and_leaves_a_packed_refs_file",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_posture_argv_words_are_executable_shapes" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_posture_argv_words_are_executable_shapes",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_placement_wet_witness", function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after" },
       entry: "dag/test/claim/roadmap/session_placement_wet_witness.dag",
       function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after",
