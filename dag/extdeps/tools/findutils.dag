@@ -383,15 +383,51 @@ fn find_subtree_group_writable_command(target: String, pruned: List<String>, sti
   )
 }
 
-// THE RECEIPT for one subtree: one line per entry, `<mode-in-octal> <path>`, with nothing read but
-// metadata (%m is the octal mode of the inode find already stat'd, %P the path relative to the target).
-// The migration's readback is this command's OUTPUT, and the model's predicates
-// (dashboard_git_worker_directory_mode_is_granted / _file_mode_is_granted) decide whether it is a
+// FIND'S -printf VOCABULARY, AS ROWS. These five rows are the readback's line format and the two
+// letters its reader accepts, so the code that DECIDES on a line imports THESE rather than re-typing the
+// letters beside each other. find(1) defines `%y` as the entry's type letter (`d` directory, `f` regular
+// file, `l` symbolic link, and others for sockets, FIFOs and devices), `%m` as the permission bits in the
+// special-digit-omitted octal form, and `%P` as the path with the starting point stripped. A letter
+// outside the two the model names is NOT quietly read as a third thing: the reader refuses it, because a
+// symlink, a socket or a device inside a git object store is not a granted entry, and counting it as one
+// would be a verdict over a tree the walk never classified.
+data find_printf_type_field: NonEmptyStr = "%y"
+data find_printf_mode_field: NonEmptyStr = "%m"
+data find_printf_relative_path_field: NonEmptyStr = "%P"
+data find_printf_type_directory_letter: NonEmptyStr = "d"
+data find_printf_type_regular_file_letter: NonEmptyStr = "f"
+
+// THE RECEIPT for one subtree: one line per entry, `<type-letter> <mode-in-octal> <path>`, with nothing
+// read but metadata -- find stat's every entry anyway, so both facts come from the inode it already has.
+// THE TYPE IS PRINTED BECAUSE THE MODE CANNOT BE ASKED TO CARRY IT: a regular file may be setgid, and
+// setgid sets the owner-execute leg of the special digit, so a decision that infers "directory" from an
+// executable owner bit waves a setgid FILE through as a directory -- while this PR's own migration
+// comment says setgid belongs on directories alone, because setgid on a file is a privilege shape
+// (review 82165 caught the readback doing exactly that). find prints the type as its own fact, so the
+// decision reads the fact instead of guessing at it: DESIGN 4's "the richer source always exists". The
+// path stays LAST, so a path holding a space survives, and the mode is a whole field rather than a head.
+// The migration's readback is this command's OUTPUT, and the model's predicates decide whether it is a
 // grant -- so a hand step on srv1 is a declared, bounded step whose readback the model checks rather
 // than a thing a person asserts.
 fn find_subtree_mode_readback_command(target: String, pruned: List<String>, depth: Nat) -> ArgvCommand {
   argv_command(
     program: find_program(),
-    arguments: concat(find_subtree_walk_words(target: target, pruned: pruned, depth: depth), ["-printf", "%m %P\\n"]),
+    arguments: concat(
+      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+      [
+        "-printf",
+        join(
+          [
+            find_printf_type_field as String,
+            " ",
+            find_printf_mode_field as String,
+            " ",
+            find_printf_relative_path_field as String,
+            "\\n",
+          ],
+          "",
+        ),
+      ],
+    ),
   )
 }

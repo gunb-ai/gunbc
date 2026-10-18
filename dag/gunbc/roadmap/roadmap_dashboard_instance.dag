@@ -5,6 +5,7 @@ import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.findutils {
   find_subtree_regroup_command, find_subtree_group_writable_command,
   find_subtree_mode_readback_command,
+  find_printf_type_directory_letter, find_printf_type_regular_file_letter,
 }
 import extdeps.git {
   git_repack_quiet_command, git_pack_refs_all_command,
@@ -2307,8 +2308,15 @@ fn dashboard_ensure_git_shared_repository_posture(instance: HostDashboardInstanc
 // and there is no counting of legs. `%P` of the start point is empty, so the subtree's own directory
 // is the line whose path is empty -- that line is the one whose mode is the exact per-subtree grant,
 // because a subtree top is created by the migration's chmod and never by git.
+// THE THREE FACTS find printed, in the order it prints them: the TYPE LETTER from `%y`, the mode from
+// `%m`, and the path from `%P`. `is_directory` is decided by the LETTER, never by the mode -- see
+// find_subtree_mode_readback_command for why the execute bit cannot carry it. A line whose letter is
+// neither of the two the model names is read as NOTHING (`none`), and the fold below treats an
+// unreadable line as a refusal: a symlink, socket or device in a git object store is not a granted entry,
+// and guessing which of the two it is would be the fabricated output DESIGN 5 forbids.
 type DashboardGitSubtreeReadbackLine {
   mode_text: String
+  is_directory: Bool
   path: String
   is_top: Bool
 }
@@ -2319,32 +2327,59 @@ fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadb
     Present { value: legs } =>
       match legs.first() {
         Absent => none
-        Present { value: mode } =>
-          Present {
-            value: DashboardGitSubtreeReadbackLine {
-              mode_text: trim(s: mode),
-              path: join(legs.skip(n: 1), " "),
-              is_top: length(legs) < 2,
-            },
+        Present { value: entry } =>
+          match legs.skip(n: 1).first() {
+            Absent => none
+            Present { value: mode } =>
+              // The path is EVERYTHING AFTER the two printed fields, rejoined with the separator, so a
+              // path holding a space comes back intact rather than truncated at it -- and the start point
+              // of the walk is recognised by that path being EMPTY (`%P` strips the starting point to
+              // nothing), which is decided from the recovered path rather than from a leg count, since
+              // the trailing separator may or may not print as an empty leg.
+              {
+                let path = join(legs.skip(n: 2), " ")
+                if entry == (find_printf_type_directory_letter as String) {
+                  Present {
+                    value: DashboardGitSubtreeReadbackLine {
+                      mode_text: trim(s: mode),
+                      is_directory: true,
+                      path: path,
+                      is_top: path == "",
+                    },
+                  }
+                } else if entry == (find_printf_type_regular_file_letter as String) {
+                  Present {
+                    value: DashboardGitSubtreeReadbackLine {
+                      mode_text: trim(s: mode),
+                      is_directory: false,
+                      path: path,
+                      is_top: false,
+                    },
+                  }
+                } else {
+                  none
+                }
+              }
           }
       }
   }
-}
-
-// DID THE READBACK PROVE THE SUBTREE GRANTED? One fold over the walk's receipt, so the apply's refusal
+}// DID THE READBACK PROVE THE SUBTREE GRANTED? One fold over the walk's receipt, so the apply's refusal
 // and the claims' assertion are the SAME decision over the same figure -- a second copy of this
 // reasoning is exactly the drift the §3 rounds on this PR kept removing.
 //
 // WHAT EACH LINE IS DECIDED UNDER:
 //  - the subtree's own directory (empty path): the EXACT per-subtree grant, 03775 for objects/ and
 //    02775 elsewhere. Nothing lenient here: this is the directory the migration itself sets.
-//  - a line beneath it: a DIRECTORY if its owner leg is executable, a FILE otherwise. That is not a
-//    guess at the file type, it is the shape of the accepted set -- 02775 and 03775 both carry owner x
-//    and 0664 does not -- so the two predicates partition the receipt, and any mode outside it (the
-//    measured 0775, a 0755, a 0666) is refused by whichever predicate it lands on. Interior
-//    directories get the LENIENT window (02775 or 03775) because a fan-out directory git creates
-//    tomorrow inherits setgid but NOT the sticky bit; a file must be group-writable and not
-//    world-writable.
+//  - a line beneath it: a DIRECTORY or a FILE AS find PRINTED IT, from the `%y` letter -- not from the
+//    mode. Deciding on the execute bit was review 82165's finding on this PR: a regular file can be
+//    setgid, setgid sets the owner-execute leg, and the fold waved such a file through as an interior
+//    directory, i.e. it could report a repository carrying a setgid FILE as granted while this PR's own
+//    migration comment says setgid on a file is a privilege shape that belongs on directories alone.
+//    With the letter in hand the two predicates genuinely partition the receipt, and any mode outside the
+//    accepted set (the measured 0775, a 0755, a 0666, or a file at 02775) is refused by whichever
+//    predicate it lands on. Interior directories get the LENIENT window (02775 or 03775) because a
+//    fan-out directory git creates tomorrow inherits setgid but NOT the sticky bit; a file must be
+//    group-writable and not world-writable.
 //  - an UNPARSEABLE mode text refuses the receipt. A walk that printed something the model cannot read
 //    has not proved a grant, and treating it as one is the fabricated output DESIGN 5 forbids.
 //  - an EMPTY receipt refuses. A walk that matched nothing proves nothing about an existing tree --
@@ -2382,7 +2417,7 @@ fn dashboard_git_subtree_readback_is_granted_under(top: FileMode, receipt: Strin
           Present { value: mode } =>
             if line.is_top {
               dashboard_git_worker_file_modes_are_equal(a: mode, b: top)
-            } else if mode.owner.execute {
+            } else if line.is_directory {
               dashboard_git_worker_interior_directory_mode_is_accepted(mode: mode)
             } else {
               dashboard_git_worker_file_mode_is_granted(mode: mode)

@@ -19,6 +19,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_git_worker_granted_shared_directory_mode, dashboard_git_worker_granted_directory_mode,
   dashboard_git_worker_interior_directory_mode_is_accepted, dashboard_git_worker_file_modes_are_equal,
   dashboard_git_worker_directory_mode_is_unmigrated,
+  dashboard_git_subtree_readback_is_granted,
   dashboard_git_maintenance_unit_stem, dashboard_git_maintenance_principal,
   dashboard_git_maintenance_timer_on_calendar, dashboard_git_maintenance_owned_config_keys,
   dashboard_git_maintenance_service_unit_name, dashboard_git_maintenance_timer_unit_name,
@@ -340,6 +341,65 @@ test fn the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_
     ))
 }
 
+// THE READBACK FOLD, OVER A RECEIPT THE CLAIM WRITES. THE WITNESS RUNS THE WALK ON A REAL TREE; this is
+// where the DECISION is tested, against receipts the claim composes, because this fold is what the apply
+// and the spawn refuse on -- and a fold tested only by execution is tested by whatever the host happened
+// to contain. Each receipt is one line per entry in the shape find_subtree_mode_readback_command prints,
+// `<type-letter> <mode> <path>`, and the set is chosen so the fold is shown to REFUSE the states that are
+// not a grant rather than merely to accept the one that is (DESIGN 5: a discriminating input). THE FIRST
+// REFUSAL IS REVIEW 82165'S FINDING ON THIS PR: a regular file at 02775. A setgid FILE sets the
+// owner-execute leg, so a fold that classified entries by that bit -- as an earlier cut of this PR did --
+// reported a repository holding a setgid file as granted, while the migration's own comment says setgid
+// on a file is a privilege shape that belongs on directories alone.
+//
+// `top` / `foreign_top` are the subtree's own required top mode and the OTHER subtree's, so the same set
+// of refusals is run for the sticky subtree (objects/, top 3775) and the plain one (refs/, logs/, top
+// 2775) and neither can be satisfied by the other's shape.
+fn readback_grants_the_declared_state(child: NonEmptyStr, top: String) -> Bool {
+  dashboard_git_subtree_readback_is_granted(
+    child: child,
+    receipt: join([join(["d ", top], ""), "d 2775 f9", "f 664 f9/obj"], "\n"),
+  )
+}
+
+fn readback_refuses_the_ungranted_states(
+  child: NonEmptyStr,
+  top: String,
+  foreign_top: String,
+) -> Bool {
+  // (i) a SETGID REGULAR FILE where a directory belongs -- the review's case;
+  // (ii) the state srv1 measured on 2026-10-17: the subtree top still 0775, every leg right and no setgid;
+  // (iii) a world-writable file, which #13942 confines;
+  // (iv) an EMPTY receipt, which proves nothing about an existing tree;
+  // (v) a line whose type letter is neither of the two the model names -- a symlink planted in the object
+  //     store is not a granted entry, and guessing would be a verdict over an entry the walk never
+  //     classified;
+  // (vi) the top at the OTHER subtree's shape, so refs/ cannot quietly drift to the sticky shape (where
+  //     +t would EPERM the worker's own first `git add`) nor objects/ to the plain one (where the worker
+  //     could rename the maintenance job's pack directory out of the way).
+  !dashboard_git_subtree_readback_is_granted(
+    child: child,
+    receipt: join([join(["d ", top], ""), "d 2775 f9", "f 2775 f9/obj"], "\n"),
+  )
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      receipt: join(["d 775 ", "d 2775 f9", "f 664 f9/obj"], "\n"),
+    )
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      receipt: join([join(["d ", top], ""), "f 666 f9/obj"], "\n"),
+    )
+    && !dashboard_git_subtree_readback_is_granted(child: child, receipt: "")
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      receipt: join([join(["d ", top], ""), "l 777 f9"], "\n"),
+    )
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      receipt: join([join(["d ", foreign_top], ""), "d 2775 f9", "f 664 f9/obj"], "\n"),
+    )
+}
+
 // IS `child` THE SAME PATH AS, OR UNDER, `parent`? One helper, because the boundary is the whole
 // content of the question. A bare string prefix is NOT containment: "<repo>/.git/objects-x" starts with
 // "<repo>/.git/objects" but is a SIBLING of the granted subtree, not inside it -- a claim that called
@@ -495,6 +555,17 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     && dashboard_git_worker_subtree_needs_sticky(child: objects_child)
     && !dashboard_git_worker_subtree_needs_sticky(child: refs_child)
     && !dashboard_git_worker_subtree_needs_sticky(child: logs_child)
+    //     AND THE FOLD ITSELF, over receipts this claim writes: the granted shape is accepted for the
+    //     sticky subtree and the plain one alike, and each ungranted shape above REFUSES -- including
+    //     review 82165's setgid regular file, which the execute-bit classifier let through.
+    && readback_grants_the_declared_state(child: objects_child, top: "3775")
+    && readback_grants_the_declared_state(child: refs_child, top: "2775")
+    && readback_refuses_the_ungranted_states(
+      child: objects_child, top: "3775", foreign_top: "2775",
+    )
+    && readback_refuses_the_ungranted_states(
+      child: refs_child, top: "2775", foreign_top: "3775",
+    )
     && !dashboard_git_worker_file_mode_is_granted(mode: world_writable_file_mode)
     // a loose object is 0444 (292 = 256+32+4), read-only to everyone including its owner: git does
     // that on purpose, so it is NOT a "granted file" and does not need to be -- nobody writes an
