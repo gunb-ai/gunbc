@@ -4460,8 +4460,10 @@ fn refinement_inhabitance(declared: Node, produced: Node, scope: InferScope) -> 
 
 // THE SINGLE DECISION PROCEDURE. It CONSUMES the established predicates rather than restating
 // them: coproduct_payload_where_parent_required already peels transparent aliases through
-// type_names_settle_to_one_declaration, so alias identity is decided in exactly one place in the
-// tree and this relation inherits it instead of re-deriving a second answer.
+// type_names_settle_to_one_declaration, so this relation inherits the NAME-level alias relation instead of
+// re-deriving it. The node-level relation (settled_type / alias_settled_agree) is a second path that
+// stops differently at applied-argument aliases; folding the name seam into settled_type is the
+// follow-up (failure mode type_alias_identity_decided_by_spelling_at_each_check).
 // A KERNEL-GROUNDED CARRIER IS INHABITED BY ITSELF AND BY ITS TRANSPARENT ALIASES. The carrier is
 // declared as a coproduct (std.nat Nat = Zero | Succ) and realized as the kernel integer, so the
 // structural judgments below -- which exist to tell a payload from its parent, a kernel value from a
@@ -4700,7 +4702,7 @@ fn optional_at_required_obligation_diags(obligation: DeclaredTypeObligation, sco
 // gap. `type Words = List<String>` is a declared alias whose outer node is not List, and
 // `FreeMonoid<T>` arrives as `List<T>` -- both are collections, and refusing either against the
 // other would be a fabricated refusal. Peeling both sides through the existing nominal-alias
-// authority decides alias identity in exactly one place, so an alias pair answers
+// authority decides NAME-level alias identity (the node-level relation is settled_type), so an alias pair answers
 // collection==collection and is excluded before the established-identity question is reached.
 //
 // WHY "ESTABLISHED" IS THE GUARD AND NOT AN EXTRA. A generic formal, a type variable, a callable,
