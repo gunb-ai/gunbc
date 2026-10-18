@@ -90,8 +90,8 @@ impl Drop for Scratch {
 }
 
 // Cargo leaves one rlib per build of the crate in deps/ (a `cargo build` of the binary beside this
-// test build leaves two), so "the" artifact is the one built last, which is the one this test
-// executable was compiled against. A wrong pick is not silent: rustc refuses a mismatched crate hash.
+// test build leaves two), so the newest is taken as the one this test executable was compiled against. That is a
+// likelihood, not a guarantee (a later build with other features leaves a newer one). A wrong pick is not silent: rustc refuses a mismatched crate hash.
 fn unique_rlib(deps: &Path, name: &str) -> PathBuf {
     let prefix = format!("lib{name}-");
     std::fs::read_dir(deps)
