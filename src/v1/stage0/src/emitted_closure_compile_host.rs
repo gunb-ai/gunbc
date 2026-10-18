@@ -2567,6 +2567,35 @@ pub(crate) fn run_shell_projection_arity_discrimination(
     }
 }
 
+/// A record field typed by its declaring type's parameter (`record_field_declaring_param_probe`),
+/// against the route's own adjudicated red.
+#[cfg(test)]
+pub(crate) fn run_record_declaring_param_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(
+            "fixtures/fixture_closure_rustc/record_field_declaring_param_probe.dag",
+            probe_root,
+        ),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
+/// A record field typed `Nat`, realized by an opaque kernel alias row, against the route's red.
+#[cfg(test)]
+pub(crate) fn run_nat_kernel_alias_field_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(
+            "fixtures/fixture_closure_rustc/nat_kernel_alias_field_probe.dag",
+            probe_root,
+        ),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
 /// The pair passes only when BOTH directions hold: the control compiled, and the meaning-level
 /// fixture was refused BY RUSTC, in its own emitted module, WITH THE ERROR CLASS THE ARM CLAIMS.
 ///

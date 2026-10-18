@@ -34592,8 +34592,9 @@ pub(crate) use emitted_closure_compile_host::{
     run_append_concat_form_discrimination, run_argv_word_list_splice_discrimination,
     run_empty_map_turbofish_discrimination, run_fixture_closure_discrimination,
     run_function_value_adapter_discrimination, run_local_true_false_coproduct_discrimination,
-    run_native_bool_variant_discrimination, run_nested_refinement_cast_discrimination,
-    run_phantom_marker_identity_discrimination, run_shell_projection_arity_discrimination,
+    run_nat_kernel_alias_field_discrimination, run_native_bool_variant_discrimination,
+    run_nested_refinement_cast_discrimination, run_phantom_marker_identity_discrimination,
+    run_record_declaring_param_discrimination, run_shell_projection_arity_discrimination,
     FixtureClosureOutcome,
 };
 
