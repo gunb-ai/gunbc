@@ -969,8 +969,6 @@ fn word32_rotr(a: Int, n: Int) -> Int {
   machine_word_apply(op: OperatorRotateRight, width: Width32, a: a, b: n)
 }
 
-data word32_modulus: Int = 4294967296
-
 // ── 64-bit words: two 32-bit halves, because 2^64 - 1 exceeds the signed 64-bit Int ────────────
 // This is the carrier word_realizable_width names for Width64 until a multi-limb magnitude exists;
 // every operation is the 32-bit operation on each half, except where bits cross the boundary
@@ -996,13 +994,14 @@ fn word64_not(a: Word64) -> Word64 {
   Word64 { hi: word32_not(a: a.hi), lo: word32_not(a: a.lo) }
 }
 
-// The carry is decided BEFORE either sum is formed, by the same comparison the 32-bit add makes, so
-// no intermediate leaves [0, 2^32).
+// The carry is derived from the wrapped low sum: it wrapped exactly when it is below an addend, so
+// the modulus is never restated here (word_modulus(Width32) stays its one authority).
 fn word64_add(a: Word64, b: Word64) -> Word64 {
-  let carry = if a.lo >= word32_modulus - b.lo { 1 } else { 0 }
+  let lo = word32_add(a: a.lo, b: b.lo)
+  let carry = if lo < a.lo { 1 } else { 0 }
   Word64 {
     hi: word32_add(a: word32_add(a: a.hi, b: b.hi), b: carry),
-    lo: word32_add(a: a.lo, b: b.lo),
+    lo: lo,
   }
 }
 
