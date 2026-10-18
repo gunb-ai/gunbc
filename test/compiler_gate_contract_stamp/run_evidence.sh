@@ -237,6 +237,14 @@ step_arg() {
 step_transcript="$(step_arg transcript)"
 step_marker="$(step_arg fail-marker)"
 [ -n "$step_transcript" ] || bail "the modelled evidence step declares no --transcript path; nothing can be counted"
+# THE STEP MUST ASSIGN WHAT IT COUNTS. Found by execution, not by the claim that should have caught it:
+# the model once built the token assignment and never appended it to the statement list, so the step
+# grepped for a variable nothing had set and its own fail-closed -z arm refused every run. A claim would
+# have caught it too -- but no claim is evaluated on the required path, so the check lives HERE, in the
+# thing that actually runs.
+if ! grep -q 'GUNBC_CONTRACT_STAMP_RUN_TOKEN=' "$tmpdir/evidence_step.sh"; then
+  bail "the modelled evidence step counts GUNBC_CONTRACT_STAMP_RUN_TOKEN but never assigns it -- the step cannot tell one run from a stale transcript"
+fi
 [ -n "$step_marker" ]     || bail "the modelled evidence step declares no --fail-marker path; the verdict channel is missing"
 if [ "$step_transcript" != "$transcript" ]; then
   echo "FAIL: the step writes its transcript to '$step_transcript' but this harness counts '$transcript'." >&2

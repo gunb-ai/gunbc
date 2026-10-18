@@ -1108,9 +1108,16 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
       ]
     )
   ]
+  // THE TOKEN ASSIGNMENT IS FIRST, before any case can be handed it and before the count can read it.
+  // It was once defined and never appended -- see the commit: the step then referenced a variable no
+  // statement had set, and its own -z refusal fired. That refusal is what caught the omission, because
+  // the claim that should have caught it never runs on the required path.
   list_append(
-    left: prepare,
-    right: list_append(left: case_nodes, right: list_append(left: count_check, right: summary))
+    left: run_token,
+    right: list_append(
+      left: prepare,
+      right: list_append(left: case_nodes, right: list_append(left: count_check, right: summary))
+    )
   )
 }
 
