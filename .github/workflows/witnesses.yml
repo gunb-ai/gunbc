@@ -22,6 +22,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 6eef1638a85753a8
+  GUNBC_COMPILER_GATE_CONTRACT_STAMP: 0acdbc124e13bfec
 jobs:
   v2-bootstrap:
     runs-on: [self-hosted, linux, arm64]
@@ -36,6 +37,34 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
+      - name: Refuse a subject older than the instruction running it
+        run: |-
+          STAMP_RUNNING="${{ env.GUNBC_COMPILER_GATE_CONTRACT_STAMP }}"
+          if [ -z "$STAMP_RUNNING" ]; then
+            printf '%s\n' "REFUSED gunbc contract stamp: StampUnreadable {the executing workflow carries no GUNBC_COMPILER_GATE_CONTRACT_STAMP in its environment, so it was not generated with an invocation contract. gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp. Remedy: merge origin/main into this branch."
+            exit 1
+          fi
+          AWK_PROG='
+          BEGIN { in_env = 0 }
+          $0 ~ /^env:[[:space:]]*$/ { in_env = 1; next }
+          in_env && $0 ~ /^[^[:space:]]/ { in_env = 0 }
+          in_env && index($0, "  " key ": ") == 1 {
+            v = substr($0, index($0, ": ") + 2)
+            gsub(/[^0-9a-f]/, "", v)
+            if (length(v) > 0) { print v; found = 1; exit }
+            exit 3
+          }
+          END { if (!found) exit 3 }
+          '
+          if ! STAMP_TREE=$(awk -v key="GUNBC_COMPILER_GATE_CONTRACT_STAMP" "$AWK_PROG" ".github/workflows/witnesses.yml"); then
+            printf '%s\n' "REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable GUNBC_COMPILER_GATE_CONTRACT_STAMP at .github/workflows/witnesses.yml, so its workflow predates the instruction this job is executing. gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp. Remedy: merge origin/main into this branch."
+            exit 1
+          fi
+          if [ "$STAMP_TREE" != "$STAMP_RUNNING" ]; then
+            printf '%s\n' "REFUSED gunbc contract stamp: StampMismatch {running=$STAMP_RUNNING, tree=$STAMP_TREE}. The workflow executing was generated from a DIFFERENT revision than the tree it is judging: the instruction came from the merge ref, and the gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp-stamped workflow committed in the checked-out tree says otherwise. Remedy: merge origin/main into this branch so the tree carries the instruction being run."
+            exit 1
+          fi
+          printf "gunbc contract stamp: paired running=%s tree=%s\n" "$STAMP_RUNNING" "$STAMP_TREE"
       - name: Isolate toolchain homes
         run: |-
           # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
