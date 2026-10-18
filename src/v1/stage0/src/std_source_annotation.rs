@@ -206,7 +206,7 @@ pub struct AnnotationRegionIndex {
 }
 
 pub fn region_extent_start(r: Rc<AnnotationRegion>) -> i64 {
-    r.extent.clone().start.clone()
+    r.extent.start.clone()
 }
 
 pub fn annotation_region_index(
@@ -290,7 +290,7 @@ pub fn siblings_starting_at_or_before(
             let item = v1_rt::list_get_optional(&siblings, mid.clone());
             match item.clone() {
                 Some(r) => {
-                    if (r.extent.clone().start.clone() <= at.clone()) {
+                    if (r.extent.start.clone() <= at.clone()) {
                         {
                             let __tco_0 = siblings;
                             let __tco_1 = at;
@@ -446,9 +446,9 @@ pub fn annotation_attach_step(
                                 v1_rt::concat("\n".to_string(), capture.text.clone()),
                             ),
                             origin: Rc::new(SourceSpan {
-                                file: open.origin.clone().file.clone(),
-                                start: open.origin.clone().start.clone(),
-                                end: capture.origin.clone().end.clone(),
+                                file: open.origin.file.clone(),
+                                start: open.origin.start.clone(),
+                                end: capture.origin.end.clone(),
                             }),
                             placement: open.placement.clone(),
                         })),

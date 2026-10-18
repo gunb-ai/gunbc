@@ -17,8 +17,8 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Transform, fold_node }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Transform, fold_node }
+import v2.std.node_query { find_named_child }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node }
@@ -505,7 +505,7 @@ fn dre_return_atom_of(o: Outcome<ResolvedTree>, wanted: Symbol) -> Optional<Symb
                   match facts.grounding {
                     GroundingNotDerived { node: _ } => optional_absent()
                     DerivedGrounding { grounding: g } =>
-                      match list_at_optional(xs: node_positional_child_targets(node: g.witness.structural.evidence), index: 1) {
+                      match list_at_optional(xs: positional_child_target_nodes(node: g.witness.structural.evidence), index: 1) {
                         Absent => optional_absent()
                         Present { value: ret } =>
                           match ret.kind {
@@ -737,7 +737,7 @@ fn dre_arrow_of(o: Outcome<ResolvedTree>) -> Optional<Node> {
 fn dre_declared_return_of(o: Outcome<ResolvedTree>) -> Optional<Node> {
   match dre_arrow_of(o: o) {
     Absent => optional_absent()
-    Present { value: a } => list_at_optional(xs: node_positional_child_targets(node: a), index: 1)
+    Present { value: a } => list_at_optional(xs: positional_child_target_nodes(node: a), index: 1)
   }
 }
 
