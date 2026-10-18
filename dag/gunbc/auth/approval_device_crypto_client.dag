@@ -268,6 +268,7 @@ fn attestation_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCrypt
     decl_ref(module_path: "test.claim.approval_device_crypto_client_witness", decl_name: "attestation_joined"),
     decl_ref(module_path: "test.claim.approval_device_crypto_client_witness", decl_name: "witness_a_negative_with_the_wrong_members_or_verdict_is_a_sidecar_failure"),
     decl_ref(module_path: "test.claim.approval_device_crypto_client_witness", decl_name: "witness_a_verified_attestation_for_another_request_is_a_sidecar_failure"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "witness_an_enrolment_attestation_for_another_key_id_environment_or_client_data_is_a_sidecar_failure"),
   ]
 {
   match answer.verdict {
@@ -298,6 +299,7 @@ fn assertion_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCryptoA
     decl_ref(module_path: "test.claim.approval_device_crypto_client_witness", decl_name: "witness_a_verified_assertion_for_another_request_is_a_sidecar_failure"),
     decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "fx_sidecar_assertion"),
     decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "witness_the_client_refuses_a_sidecar_assertion_for_another_key_id"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "witness_a_read_assertion_under_another_public_key_or_client_data_is_a_sidecar_failure"),
   ]
 {
   match answer.verdict {
