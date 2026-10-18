@@ -30,7 +30,7 @@ import gunbc.workspace_allocation_store { WorkspaceReleased }
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.measure { byte_size_count }
-import std.algebra { trim, contains, skip, list_head, string_contains }
+import std.algebra { trim, contains, skip, list_head, string_contains, length }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_key }
