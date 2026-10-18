@@ -9,10 +9,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // that excludes the retained-host std.compiler_entry CompilerEntryDriver (by_value_records).
 //
 // THE DISCRIMINATOR is how a record is spelled where another record holds it: `p: Pair` (by
-// value) against `p: Rc<Pair>` (shared). Pair holds a non-Copy field, so is_type_constant does
+// value) against `p: Rc<Pair>` (shared). Pair holds a shared-collection field, so is_type_constant does
 // not already make it by-value: only the clone-allocation-free fact can.
 //
-//   flips          non-recursive, non-generic, no fn field, every field type decided
+//   flips          non-recursive, non-generic, no fn field, every field clone-shallow (scalar, shared collection)
+//   stays Rc       a host String field (owning, allocating clone); a record holding THAT record holds the Rc handle and flips itself
 //   stays Rc       recursive / generic / fn-typed field, one fixture each
 //   stays Rc       the SAME flipping record under the retained-host driver: its hand-authored Rust pins the Rc
 //                  representation. The exclusion dissolves as that Rust migrates; it is a row on the
@@ -25,10 +26,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_clone_free_record_is_by_value() -> Bool {
   compile_dag_rust_emit_check(
-    "module cfree.flip\n\ntype Pair {\n  name: String\n  items: List<Int>\n}\n\ntype Holder {\n  p: Pair\n  tag: String\n}\n",
+    "module cfree.flip\n\ntype Pair {\n  n: Int\n  items: List<Int>\n}\n\ntype Holder {\n  p: Pair\n  tag: String\n}\n",
     "src/cfree_flip.rs",
     ["pub p: Pair"],
     ["Rc<Pair>"]
+  )
+}
+
+fn w_host_string_record_stays_shared() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cfree.hs\n\ntype Named {\n  name: String\n  items: List<Int>\n}\n\ntype Holder {\n  p: Named\n  tag: String\n}\n",
+    "src/cfree_hs.rs",
+    ["Rc<Named>"],
+    []
+  )
+}
+
+fn w_record_holding_a_host_string_record_holds_the_handle() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cfree.nest\n\ntype Named {\n  name: String\n  items: List<Int>\n}\n\ntype Outer {\n  inner: Named\n  n: Int\n}\n\ntype Holder {\n  o: Outer\n  tag: String\n}\n",
+    "src/cfree_nest.rs",
+    ["Rc<Named>", "pub o: Outer"],
+    ["Rc<Outer>"]
   )
 }
 
@@ -61,7 +80,7 @@ fn w_fn_field_record_stays_shared() -> Bool {
 
 fn w_retained_host_entry_keeps_the_rc() -> Bool {
   compile_dag_rust_emit_check(
-    "module cfree.host\n\ntype CompilerEntryDriver = RetainedHostCliKernel | NativeCliDriver\n\ndata entry: CompilerEntryDriver = RetainedHostCliKernel\n\ntype Pair {\n  name: String\n  items: List<Int>\n}\n\ntype Holder {\n  p: Pair\n  tag: String\n}\n",
+    "module cfree.host\n\ntype CompilerEntryDriver = RetainedHostCliKernel | NativeCliDriver\n\ndata entry: CompilerEntryDriver = RetainedHostCliKernel\n\ntype Pair {\n  n: Int\n  items: List<Int>\n}\n\ntype Holder {\n  p: Pair\n  tag: String\n}\n",
     "src/cfree_host.rs",
     ["Rc<Pair>"],
     []
@@ -73,7 +92,7 @@ fn w_driver_main_follows_the_decision(recursive: Bool) -> Bool {
   compile_dag_rust_emit_check(
     concat(
       "module cfree.native\n\ntype CompilerEntryDriver = RetainedHostCliKernel | SourceRootEvalDriver\n\ndata entry: CompilerEntryDriver = SourceRootEvalDriver\n\n",
-      "type DagSourceReadWitness {\n  name: String\n  ", field, "\n}\n"
+      "type DagSourceReadWitness {\n  n: Int\n  ", field, "\n}\n"
     ),
     "src/main.rs",
     if recursive { ["Vec<Rc<DagSourceReadWitness>>"] } else { ["Vec<DagSourceReadWitness>"] },
@@ -91,6 +110,14 @@ test fn source_root_eval_main_spells_a_shared_record_through_rc() -> Bool {
 
 test fn clone_allocation_free_record_is_held_by_value() -> Bool {
   w_clone_free_record_is_by_value()
+}
+
+test fn host_string_record_stays_shared() -> Bool {
+  w_host_string_record_stays_shared()
+}
+
+test fn record_holding_a_host_string_record_holds_the_handle() -> Bool {
+  w_record_holding_a_host_string_record_holds_the_handle()
 }
 
 test fn recursive_record_stays_shared() -> Bool {

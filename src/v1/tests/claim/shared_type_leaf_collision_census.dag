@@ -6,7 +6,7 @@ import v1.compiler.infer_items { ResolvedGraph }
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary,
   TypeSummaryFound, TypeSummaryNotDeclared, TypeSummaryLeafAmbiguous,
-  type_decl_identities_of_leaf, type_summary_at_key
+  type_decl_identities_of_leaf, type_summary_at_key, empty_type_summary_index
 }
 import v1.compiler.emit_rust { maybe_mark_shared_type }
 import v1.compiler.languages { sharing_for_target }
@@ -75,7 +75,7 @@ fn leaf_collision_row(leaf: String, declarers: List<String>, would_share: List<B
 }
 
 fn declaration_would_share(summary: TypeSummary, recursive_type_set: Set<String>, needs_sharing: Bool) -> Bool {
-  set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: needs_sharing, by_value_records: false), summary.name)
+  set_contains(maybe_mark_shared_type(type_summaries: empty_type_summary_index(), acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: needs_sharing, by_value_records: false), summary.name)
 }
 
 fn would_share_of_identity(info: EmitGraphInfo, identity: String, needs_sharing: Bool) -> Bool {
