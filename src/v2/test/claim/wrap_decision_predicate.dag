@@ -34,9 +34,8 @@ import v2.std.compilers.target_model {
   target_type_expr_emitted_wire_decode
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Node }
+import v2.std.node { positional_child_target_nodes, Node }
 import std.algebra { list_at_optional }
-import v2.std.node_query { node_positional_child_targets }
 import std.optional { Absent, Present }
 
 // Derisk witnesses: wrap_decision_gate is the single
@@ -394,7 +393,7 @@ fn wrap_decision_composite_boundary_result() -> Node {
 
 fn wrap_decision_composite_result_arg() -> Node {
   match list_at_optional(
-    xs: node_positional_child_targets(node: wrap_decision_composite_boundary_result()),
+    xs: positional_child_target_nodes(node: wrap_decision_composite_boundary_result()),
     index: 1
   ) {
     Present { value: arg } => arg
