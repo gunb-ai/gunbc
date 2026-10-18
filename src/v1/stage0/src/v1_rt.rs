@@ -380,6 +380,57 @@ pub fn chars(text: &str) -> Rc<Vec<i64>> {
     Rc::new(text.chars().map(|c| c as i64).collect())
 }
 
+// std.machine_word machine_word_native_operate: bitwise arithmetic on a fixed-width word at the host's
+// own operators. ONE ROW PER OPERATOR LABEL (std.machine_word machine_word_operator_label): a new
+// operation is a new row here and a variant there, never a branch in the lowering. Operands are
+// residues in [0, 2^bits); the second operand of a shift or rotation is an amount in [0, bits); and
+// bits is in 1..=62 because the carrier is an i64 (std.machine_word word_realizable_width). Anything
+// else REFUSES -- no wrapping, masking or clamping substitutes for the operand the caller meant.
+pub enum MachineWordSecond { Operand, Amount, Unused }
+
+pub struct MachineWordOperatorRow {
+    pub label: &'static str,
+    pub second: MachineWordSecond,
+    pub apply: fn(u128, u128, u32) -> u128,
+}
+
+pub const MACHINE_WORD_OPERATOR_ROWS: [MachineWordOperatorRow; 8] = [
+    MachineWordOperatorRow { label: "and", second: MachineWordSecond::Operand, apply: |a, b, _| a & b },
+    MachineWordOperatorRow { label: "or", second: MachineWordSecond::Operand, apply: |a, b, _| a | b },
+    MachineWordOperatorRow { label: "xor", second: MachineWordSecond::Operand, apply: |a, b, _| a ^ b },
+    MachineWordOperatorRow { label: "not", second: MachineWordSecond::Unused, apply: |a, _, bits| ((1u128 << bits) - 1) ^ a },
+    MachineWordOperatorRow { label: "shift_right", second: MachineWordSecond::Amount, apply: |a, n, _| a >> n },
+    MachineWordOperatorRow { label: "shift_left", second: MachineWordSecond::Amount, apply: |a, n, bits| (a << n) & ((1u128 << bits) - 1) },
+    MachineWordOperatorRow { label: "rotate_right", second: MachineWordSecond::Amount, apply: |a, n, bits| ((a >> n) | (a << (bits - n as u32))) & ((1u128 << bits) - 1) },
+    MachineWordOperatorRow { label: "add_wrapping", second: MachineWordSecond::Operand, apply: |a, b, bits| (a + b) & ((1u128 << bits) - 1) },
+];
+
+pub fn machine_word_native_operate_checked(op: &str, bits: i64, a: i64, b: i64) -> Result<i64, String> {
+    let row = MACHINE_WORD_OPERATOR_ROWS.iter().find(|row| row.label == op)
+        .ok_or_else(|| format!("std.machine_word machine_word_native_operate: no operator row for label {}", op))?;
+    if !(1..=62).contains(&bits) {
+        return Err(format!("std.machine_word machine_word_native_operate: width {} bits is not realizable on an i64 carrier (1..=62)", bits));
+    }
+    let modulus = 1i64 << bits;
+    if a < 0 || a >= modulus {
+        return Err(format!("std.machine_word machine_word_native_operate: operand {} is outside [0, 2^{})", a, bits));
+    }
+    match row.second {
+        MachineWordSecond::Operand => if b < 0 || b >= modulus {
+            return Err(format!("std.machine_word machine_word_native_operate: operand {} is outside [0, 2^{})", b, bits));
+        },
+        MachineWordSecond::Amount => if b < 0 || b >= bits {
+            return Err(format!("std.machine_word machine_word_native_operate: amount {} is outside [0, {})", b, bits));
+        },
+        MachineWordSecond::Unused => {}
+    }
+    Ok((row.apply)(a as u128, b as u128, bits as u32) as i64)
+}
+
+pub fn machine_word_native_operate(op: &str, bits: i64, a: i64, b: i64) -> i64 {
+    machine_word_native_operate_checked(op, bits, a, b).unwrap_or_else(|refusal| panic!("{}", refusal))
+}
+
 pub fn string_contains(s: &str, sub: String) -> bool {
     s.contains(&*sub)
 }
