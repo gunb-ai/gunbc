@@ -791,6 +791,24 @@ fn first_gap_refusal_kind(gaps: List<RuntimeIdentityGap>) -> NonEmptyStr {
   }
 }
 
+// WHY a gap stayed quiet must ARRIVE VERBATIM, not just be classified. A controller that reported
+// "the BMC dropped the session mid-query" and one that reported "this firmware exposes no such command"
+// send an operator to different people; if the fold kept only the KIND, every silence would render the
+// same sentence and the specific cause would be lost while the record still looked complete. The refusal
+// branch has had a verbatim assertion (`test_refusal_is_unprovable_and_preserves_its_detail`) all along;
+// the silence branch is asserted here so neither of the two strings this verdict carries can be replaced
+// by a fabricated one without a witness going red.
+test fn test_silence_reports_its_own_words_not_a_substitute() -> Bool {
+  match runtime_identity_match(pre: pre_all_read(), post: post_with_serial_unobserved()) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.length() == 1
+        && first_gap_axis(gaps: gaps) == BoardSerialAxis
+        && first_gap_detail(gaps: gaps) == "the OS image reports no board serial"
+        && !first_gap_is_refusal(gaps: gaps)
+    _ => false
+  }
+}
+
 // A complete, agreeing side under an EXPLICIT key. The other fixtures all carry `fixture_unit`, so a
 // mis-paired input can only be expressed by naming the key.
 fn pre_with_unit(key: UnitKey) -> PreBootIdentityStanding {
