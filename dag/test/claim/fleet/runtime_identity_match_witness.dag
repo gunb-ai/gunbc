@@ -395,6 +395,69 @@ test fn test_pre_boot_gap_is_located_on_the_firmware_side() -> Bool {
   }
 }
 
+// A REFUSAL IS LOCATED WHERE IT HAPPENED. The refused-side arms are named separately from the silent-side
+// arms because the operator's next action differs by side AND by kind: a firmware side the controller
+// refused is a controller-configuration problem, an OS side that stayed quiet is an image problem. A fold
+// that mapped a refused pre side through the silent arm would keep the right side and lose the kind, which
+// no other test here would notice -- this is the one that would.
+test fn test_a_refused_firmware_side_is_located_and_keeps_its_kind() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisWasRefused { refusal: AuthenticationFailed { detail: "the BMC rejected the credentials" } },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
+  }
+  match runtime_identity_match(pre: pre, post: post_agreeing()) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.length() == 1
+        && first_gap_axis(gaps: gaps) == BoardSerialAxis
+        && first_gap_side(gaps: gaps) == PreBootFirmwareSide
+        && first_gap_is_refusal(gaps: gaps)
+        && first_gap_refusal_kind(gaps: gaps) == "authentication-failed"
+        && first_gap_detail(gaps: gaps) == "the BMC rejected the credentials"
+    _ => false
+  }
+}
+
+// BOTH SIDES REFUSING IS NOT ONE REFUSAL AND IT IS NOT SILENCE. Two independent "no"s, with different
+// reasons, from two different places. Collapsing them -- into one gap, into a shared reason, or into the
+// silence arm -- all look plausible and all send the operator to one place when the fix is in two. Every
+// field here is asserted per side so no arm can substitute words for the refusal the controller actually
+// gave, and no side can inherit the other's detail.
+test fn test_two_refusals_stay_two_refusals() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisWasRefused { refusal: QueryUnsupported { detail: "the firmware has no such query" } },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
+  }
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: AxisWasRefused { refusal: ReplyUnreadable { detail: "the agent garbled the reply" } },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
+  }
+  match runtime_identity_match(pre: pre, post: post) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.length() == 2
+        && gaps.all(g => g.axis == BoardSerialAxis)
+        && gaps.all(g => gap_is_refusal(gap: g))
+        && gaps.filter(g => g.side == PreBootFirmwareSide).length() == 1
+        && gaps.filter(g => g.side == PostBootOsSide).length() == 1
+        && gaps.filter(g => g.side == PreBootFirmwareSide
+             && gap_refusal_kind(gap: g) == "query-unsupported"
+             && gap_detail(gap: g) == "the firmware has no such query").length() == 1
+        && gaps.filter(g => g.side == PostBootOsSide
+             && gap_refusal_kind(gap: g) == "reply-unreadable"
+             && gap_detail(gap: g) == "the agent garbled the reply").length() == 1
+    _ => false
+  }
+}
+
 // NO AXIS MAY VANISH QUIETLY. With the third, "unreachable" examination arm deleted, the only thing keeping
 // an axis from silently contributing nothing is this count: every row must answer with EXACTLY ONE
 // examination, whatever its standings are. The mixture below puts a silent side and a refused side in the
