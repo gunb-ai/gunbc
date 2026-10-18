@@ -57,17 +57,24 @@ echo "SEED sha=$(sha256sum src/v1/stage0/src/v1_compiler_infer.rs | cut -c1-16) 
 timeout 900 git fetch --depth 1 origin $CARRIER_SHA > $LOGS/fc.log 2>&1 || { echo "CARRIER FETCH FAILED"; exit 28; }
 CAR=$(git rev-parse FETCH_HEAD); echo "carriers=$CAR (want $CARRIER_SHA)"
 [ "$CAR" = "$CARRIER_SHA" ] || { echo "WRONG CARRIER"; exit 28; }
-# THE TREE UNDER TEST IS THE HEAD, EVERY FILE IT CHANGED -- not two hand-picked files.
-# Probe v9 installed only head's 04_infer.dag and 04_types.dag into a MAIN clone, and regen refused with
-#   call shape mismatch calling 'unify_generics': missing required argument 'text'
-#   (5 of 6 required argument(s) supplied) (src/v1/tests/claim/generic_identity_census.dag:26378-26392)
-# because the CALLER -- src/v1/tests/claim/generic_identity_census.dag -- is also a file the head changed, and
-# it stayed at main's version. Cherry-picking files reproduces nothing: it builds a tree that exists nowhere,
-# and the compiler is right to refuse it. So: diff the base against the head by NAME and install every changed
-# file except the emitted mirrors, which this run regenerates itself.
+# THE TREE UNDER TEST IS THE HEAD, CHECKED OUT WHOLE -- then the arms are cut from one file.
+#
+# Three wrong constructions died here, all the same class:
+#   v8  installed a COMMITTED carrier snapshot, which predated the variant revert and refused to compile.
+#   v9  installed head's 04_infer.dag + 04_types.dag into a MAIN clone -> the census CALLER stayed at main's
+#       5-argument call and regen refused: "missing required argument 'text' (5 of 6 supplied)".
+#   v10 installed `git diff --name-only BASE..HEAD` and copied those files, BASE being main's TIP -- which had
+#       MOVED to aa761c29cfe. Files main changed after my branch point were therefore "restored" to my
+#       branch's OLDER copies, silently reverting four upstream commits (#14330 alias-identity consolidation,
+#       #14340, #14344, #14346) inside the tree under test. It printed "INSTALLED 49 head files", a number
+#       that looks like diligence and is the defect. I killed that run rather than read a refusal count out
+#       of a tree that exists nowhere.
+# The invariant all three violated: the tree you measure must be a tree that EXISTS. So check the head out
+# whole and change exactly ONE thing -- the arms -- through strip_arms.py, which asserts every edit.
 git fetch --depth 1 origin $B_SHA > $LOGS/fb2.log 2>&1 || { echo "WIP FETCH FAILED"; exit 29; }
-HEADT=$D/headtree; rm -rf $HEADT; mkdir -p $HEADT
-( cd $HEADT && git init -q . && git remote add origin $URL && git fetch -q --depth 1 origin $B_SHA && git checkout -q FETCH_HEAD ) || { echo "HEAD TREE FETCH FAILED"; exit 29; }
+( cd $D/repo && git checkout -q FETCH_HEAD ) || { echo "HEAD CHECKOUT FAILED"; exit 29; }
+[ "$(git -C $D/repo rev-parse HEAD)" = "$B_SHA" ] || { echo "VOID: tree is $(git -C $D/repo rev-parse HEAD), wanted $B_SHA"; exit 29; }
+echo "CHECKED OUT the head whole: $B_SHA (tracked-dirty=$(git -C $D/repo status --porcelain | wc -l), want 0)"
 git show $CAR:strip_arms.py           > $LOGS/strip_arms.py           || { echo "no strip_arms"; exit 29; }
 git show $CAR:tools/rebind_census.sh  > $LOGS/rebind_census.sh        || { echo "no census"; exit 29; }
 git show $CAR:patch_rebind_probe9.py  > $LOGS/patch_rebind_probe9.py  || { echo "no probe9 patcher"; exit 29; }
@@ -75,27 +82,17 @@ for f in $LOGS/strip_arms.py $LOGS/rebind_census.sh $LOGS/patch_rebind_probe9.py
   [ -s "$f" ] || { echo "CARRIER FILE EMPTY: $f -- abort (an empty file here is the silent-wrong-answer trap)"; exit 29; }
 done
 cd $D/repo
-# the diff runs in $D/repo, NOT in the shallow head tree: a depth-1 fetch gives a complete tree for each
-# commit fetched, and repo has fetched BOTH the base and the head, so both objects are present there.
-# Asking the shallow head clone to name the base would silently yield an empty list, and an empty list here
-# means "install nothing" -- which is how a probe measures main and believes it measured the head.
-changed=$(git diff --name-only $SHA $B_SHA -- . ':(exclude)src/v1/stage0' 2>/dev/null)
-[ -n "$changed" ] || { echo "VOID: the head differs from the base in NO file outside the mirrors -- configs A and B would be identical"; exit 29; }
-n=0; for f in $changed; do
-  [ -f "$HEADT/$f" ] || { echo "head deleted $f -- skipping (noted, not silently dropped)"; continue; }
-  cp "$HEADT/$f" "$f"; n=$((n+1))
-done
-echo "INSTALLED $n head files:"; echo "$changed" | sed 's/^/     /' | head -25
-for f in src/v1/04_infer.dag src/v1/04_types.dag src/v1/tests/claim/generic_identity_census.dag src/v1/tests/src/lib.rs; do
-  [ -f "$f" ] && echo "   present: $f ($(wc -c < $f) bytes)"
+# PROVENANCE printed, not assumed: markers naming recent main commits. If one is missing, the checkout is not
+# the tree I think it is, and every number below belongs to a fiction.
+for probe_str in "aggregate products declare seed membership" "a_shared_cargo_target"; do
+  echo "fingerprint '$probe_str': $(grep -ra "$probe_str" src/v1 dag/gunbc --include=*.dag --include=*.rs 2>/dev/null | wc -l) hit(s)"
 done
 [ "$(grep -ac 'binding_is_generic_declaration_own_form(n: bound)' src/v1/04_infer.dag)" = "1" ] || { echo "HEAD DOES NOT CARRY THE ARMS -- nothing to strip; abort rather than measure the same tree twice"; exit 29; }
 grep -q 'text: TextJudgment' src/v1/04_infer.dag || { echo "the head's unify_generics has no text param -- the tree is not what this probe expects"; exit 29; }
-grep -c 'unify_generics(' src/v1/tests/claim/generic_identity_census.dag >/dev/null || { echo "no census caller -- the probe would measure nothing"; exit 29; }
-# the census CALLER must supply every parameter the callee requires; that mismatch is exactly what killed v9.
 cal_args=$(grep -o 'unify_generics([^)]*' src/v1/tests/claim/generic_identity_census.dag | head -1 | tr ',' '\n' | grep -ac ':')
 fn_args=$(grep -m1 'fn unify_generics(' src/v1/04_infer.dag | tr ',' '\n' | grep -ac ':')
-echo "CALLER AGREEMENT: census supplies ~$cal_args args, callee declares ~$fn_args params (compare by eye; a mismatch is a mixed tree)"
+echo "CALLER AGREEMENT (one tree, so these must agree): census supplies ~$cal_args args, callee declares ~$fn_args params"
+[ "$cal_args" = "$fn_args" ] || echo "WARNING: caller/callee counts differ -- the census would refuse to compile (this mismatch killed v9)"
 cp src/v1/04_infer.dag $LOGS/head_04_infer.dag
 python3 $LOGS/strip_arms.py $LOGS/head_04_infer.dag $LOGS/my_04_infer.dag || { echo "STRIP REFUSED -- abort"; exit 29; }
 cp $LOGS/my_04_infer.dag src/v1/04_infer.dag
