@@ -2057,7 +2057,13 @@ fn run_base_ambient_name_census(
         }
     };
     // `gunbc test` writes its reading to STDERR (the verdict message), so that is what is read.
-    let reading = String::from_utf8(output.stderr).map_err(|e| e.to_string())?;
+    let reading = match String::from_utf8(output.stderr) {
+        Ok(reading) => reading,
+        Err(e) => {
+            let _ = git_text(&["worktree", "remove", "--force", &tree_text]);
+            return Err(e.to_string());
+        }
+    };
     Ok(((reading, output.status.code()), tree_text))
 }
 
