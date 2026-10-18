@@ -814,16 +814,6 @@ jobs:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
           FLEET_CONVERGE_MODE: ${{ github.event.inputs.mode }}
         timeout-minutes: 5
-      - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
-        id: wif_auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
-        with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc
-          service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
-          token_format: access_token
-          create_credentials_file: false
-        if: "!(github.event.inputs.mode == 'hetzner_cloud_server_read') && !(github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'workspace_allocation_plan')"
-        timeout-minutes: 5
       - name: "Run-scoped grant: wait for the grant run main's broker dispatched for this run attempt"
         id: branch_run_grant_await
         run: |-
@@ -831,8 +821,18 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/branch_run_grant_await.dag --function await_grant
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        if: github.event.inputs.mode == 'hetzner_cloud_server_read'
+        if: (github.event.inputs.mode == 'hetzner_cloud_server_read') || ((github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main')
         timeout-minutes: 50
+      - name: WIF auth (OIDC -> fleet-cloud-convergence SA at main; run-scoped account after this run's grant on a branch)
+        id: wif_auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main' && 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/gh-fleet-converge-dispatch-oidc' || 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc' }}
+          service_account: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main' && (github.event.inputs.mode == 'plan' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'apply' && 'fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com' || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com') || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' }}
+          token_format: access_token
+          create_credentials_file: false
+        if: "!(github.event.inputs.mode == 'hetzner_cloud_server_read') && !(github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'workspace_allocation_plan')"
+        timeout-minutes: 5
       - name: WIF auth (OIDC -> branch-dispatch pool -> hetzner-cloud-control SA; only after this run's grant)
         id: wif_auth_hetzner_cloud_control
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
