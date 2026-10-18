@@ -6,7 +6,7 @@ import std.types { Bool }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Permanent controls for v1.compiler.emit_rust is_clone_allocation_free and the target gate
-// that reads whether the corpus declares any std.compiler_entry CompilerEntryDriver (by_value_records).
+// that excludes the retained-host std.compiler_entry CompilerEntryDriver (by_value_records).
 //
 // THE DISCRIMINATOR is how a record is spelled where another record holds it: `p: Pair` (by
 // value) against `p: Rc<Pair>` (shared). Pair holds a non-Copy field, so is_type_constant does
@@ -14,9 +14,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 //   flips          non-recursive, non-generic, no fn field, every field type decided
 //   stays Rc       recursive / generic / fn-typed field, one fixture each
-//   stays Rc       the SAME flipping record under ANY driver entry (one control per arm family): hand-authored
-//                  Rust pins its Rc representation. The exclusion dissolves as that Rust
-//                  migrates; it is a row on the driver fact, never a type-name list.
+//   stays Rc       the SAME flipping record under the retained-host driver: its hand-authored Rust pins the Rc
+//                  representation. The exclusion dissolves as that Rust migrates; it is a row on the
+//                  driver fact, never a type-name list.
+//   follows        a SourceRootEvalDriver main.rs spells a record type through driver_record_type: bare when
+//                  the record flips, `Rc<..>` when it stays shared (a recursive twin of the same name).
 //
 // Not authored here: the fourth F condition (an undecided field type) has no source spelling
 // that survives resolution, so it rests on the fail-closed arm of the field_type_map count.
@@ -66,17 +68,25 @@ fn w_retained_host_entry_keeps_the_rc() -> Bool {
   )
 }
 
-fn w_native_driver_entry_keeps_the_rc() -> Bool {
+fn w_driver_main_follows_the_decision(recursive: Bool) -> Bool {
+  let field = if recursive { "next: List<DagSourceReadWitness>" } else { "items: List<Int>" }
   compile_dag_rust_emit_check(
-    "module cfree.native\n\ntype CompilerEntryDriver = RetainedHostCliKernel | SourceRootEvalDriver\n\ndata entry: CompilerEntryDriver = SourceRootEvalDriver\n\ntype Pair {\n  name: String\n  items: List<Int>\n}\n\ntype Holder {\n  p: Pair\n  tag: String\n}\n",
-    "src/cfree_native.rs",
-    ["Rc<Pair>"],
-    []
+    concat(
+      "module cfree.native\n\ntype CompilerEntryDriver = RetainedHostCliKernel | SourceRootEvalDriver\n\ndata entry: CompilerEntryDriver = SourceRootEvalDriver\n\n",
+      "type DagSourceReadWitness {\n  name: String\n  ", field, "\n}\n"
+    ),
+    "src/main.rs",
+    if recursive { ["Vec<Rc<DagSourceReadWitness>>"] } else { ["Vec<DagSourceReadWitness>"] },
+    if recursive { [] } else { ["Rc<DagSourceReadWitness>"] }
   )
 }
 
-test fn source_root_eval_entry_keeps_the_rc_on_a_flipping_record() -> Bool {
-  w_native_driver_entry_keeps_the_rc()
+test fn source_root_eval_main_spells_a_flipping_record_by_value() -> Bool {
+  w_driver_main_follows_the_decision(recursive: false)
+}
+
+test fn source_root_eval_main_spells_a_shared_record_through_rc() -> Bool {
+  w_driver_main_follows_the_decision(recursive: true)
 }
 
 test fn clone_allocation_free_record_is_held_by_value() -> Bool {

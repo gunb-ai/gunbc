@@ -1658,6 +1658,18 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
   }
 }
 
+// THE DRIVER-MAIN TEMPLATES READ THE SHARING DECISION, they do not restate it. A template names a record
+// type in two forms and each is one function over shared_types, the set build_shared_types decided: the
+// type spelling and the construction. Neither branches on the decision in the template. No template
+// derefs a record (`&*x`): every deref site holds a non-unit enum, which is shared by construction.
+fn driver_record_type(type_name: String, shared_types: Set<String>) -> String {
+  render_rust_shared_type_if_needed(type_name: type_name, rendered: type_name, shared_types: shared_types)
+}
+
+fn driver_record_new(type_name: String, expr: String, shared_types: Set<String>) -> String {
+  if set_contains(shared_types, type_name) { rust_shared_wrap_ctor(inner_expr: expr) } else { expr }
+}
+
 fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared_types: Set<String>) -> String {
   if set_contains(shared_types, type_name) && !rust_type_is_rc_wrapped(type_name: rendered) {
     wrap_shared_type(target: Rust, inner: rendered)
@@ -3643,7 +3655,7 @@ type EmitRustContext {
 fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let base_info = build_emit_graph_info(modules: typed.modules, registry: typed.item_registry)
   let ownership = build_ownership_results(modules: typed.modules)
-  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust, by_value_records: !compiler_pipeline_entry_has_hand_authored_main(modules: typed.modules))
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust, by_value_records: !compiler_pipeline_entry_is_retained_host(modules: typed.modules))
   let closure_source_indices = merged_module_source_indices(modules: typed.modules)
   let clone_bounded = v1_clone_bounded_type_params(
     type_decl_items: base_info.type_decl_items,
@@ -3847,7 +3859,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   if native_effect_refusals |> count > 0 {
     return EmitResult { files: [], diagnostics: native_effect_refusals, emitted_edges: [], rust_crates: [] }
   }
-  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name, effects: native_effects)
+  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name, effects: native_effects, shared_types: shared_types)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
@@ -8379,10 +8391,9 @@ fn emit_sealed_struct_accessors(name: String, type_params: String, generic_param
   concat("\nimpl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
-// By-value clone-free records (is_clone_allocation_free) are for corpora with NO CompilerEntryDriver: every
-// driver arm is peered by hand-authored Rust (the stage0 seed's host Rust, the emitter's main templates)
-// that pins the Rc representation, so those corpora keep today's sharing. The exclusion dissolves as that
-// hand Rust migrates.
+// By-value clone-free records (is_clone_allocation_free) are decided for every corpus except the
+// retained-host driver's, whose hand-authored host Rust pins the Rc representation (see
+// compiler_pipeline_entry_is_retained_host). The exclusion dissolves as that hand Rust migrates.
 // A record that is not Rc-shared derives Copy only when it is a Copy constant; the clone-allocation-free
 // records of is_clone_allocation_free are by-value but hold Rc fields, so they take the heap roster
 // (Clone, no Copy). Asked of the same summary the sharing decision read, never re-derived from fields.
@@ -19166,15 +19177,11 @@ fn compiler_pipeline_entry_module_name(modules: List<TypedModule>) -> String {
   }
 }
 
-// A corpus that declares ANY CompilerEntryDriver gets a main whose Rust is authored in this emitter's
-// templates, and those templates spell the Rc representation of the record types they name (the
-// retained-host CLI, and every native arm: read_census_ingest, census_infer_walk, exchange ...). That
-// is the hand-authored boundary by_value_records must respect; a corpus with no driver has none.
-// The exclusion dissolves as those templates are emitted from the model instead of authored.
-fn compiler_pipeline_entry_has_hand_authored_main(modules: List<TypedModule>) -> Bool {
-  (compiler_pipeline_entry_decls(modules: modules) |> count) > 0
-}
-
+// The retained-host driver is the seed's own realization: its main and the stage0 host Rust beside it
+// are hand-authored and pin the Rc representation of the record types they name, which is the boundary
+// by_value_records stops at. The exclusion dissolves as that hand Rust migrates. Every other driver arm
+// renders its main from this emitter's templates, which spell record types through driver_record_type
+// and driver_record_new and so follow the sharing decision.
 fn compiler_pipeline_entry_is_retained_host(modules: List<TypedModule>) -> Bool {
   match compiler_pipeline_entry_decl(modules: modules) {
     Present { value: d } => d.driver == compiler_entry_retained_host_driver
@@ -19468,7 +19475,7 @@ fn native_effect_bindings(effects: NativeEntryEffects?, crate_name: String) -> L
   }
 }
 
-fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String, effects: NativeEntryEffects?) -> TextFile {
+fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String, effects: NativeEntryEffects?, shared_types: Set<String>) -> TextFile {
   let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules: modules)
   let pipeline_module = compiler_pipeline_entry_module_name(modules: modules)
   if compiler_pipeline_entry_is_ambiguous(modules: modules) {
@@ -19484,7 +19491,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
   }
   if corpus_has_compiler_pipeline(modules: modules) && (retained_host_pipeline == false) {
     if compiler_pipeline_entry_is_source_root_eval(modules: modules) {
-      return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+      return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, shared_types: shared_types)
     }
     if compiler_pipeline_entry_is_native_cli(modules: modules) {
       return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
@@ -19493,7 +19500,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), shared_types: shared_types)
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -19615,7 +19622,7 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 // this shim. The adjudicating run asks for a CLOSURE (native_lane_acquire); the census verbs ask for
 // the POPULATION their roots hold (native_lane_census_ingest). The native CLI invokes its entire entry
 // fold instead.
-fn emit_host_acquisition_rs(crate_name: String) -> String {
+fn emit_host_acquisition_rs(crate_name: String, shared_types: Set<String>) -> String {
   concat(
     "fn host_filesystem() -> ", crate_name, "::extdeps_filesystem_filesystem_io::Filesystem {\n",
     "    ", crate_name, "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default())\n",
@@ -19625,7 +19632,7 @@ fn emit_host_acquisition_rs(crate_name: String) -> String {
     "    match tokio::runtime::Builder::new_current_thread().build() { Ok(runtime) => runtime, Err(cause) => { eprintln!(\"REFUSED: native filesystem executor: {}\", cause); std::process::exit(2); } }\n",
     "}\n",
     "\n",
-    "fn read_census_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> {\n",
+    "fn read_census_ingest(source_roots: &[String]) -> Vec<", driver_record_type(type_name: "DagSourceReadWitness", shared_types: shared_types), "> {\n",
     "    let filesystem = host_filesystem();\n",
     "    let observed = host_executor().block_on(native_lane_census_ingest(Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n",
     "    match observed {\n",
@@ -19640,7 +19647,7 @@ fn emit_host_acquisition_rs(crate_name: String) -> String {
     "}\n",
     "\n",
     "// THE SCOPED CENSUS ASKS FOR THE UNION OF ITS SUBJECTS' CLOSURES, acquired once around its blocks (native_lane_census_scoped_ingest).\n",
-    "fn read_census_scoped_ingest(subject: &str, subjects_rest: &[String], source_roots: &[String]) -> Rc<NativeCensusScoped> {\n",
+    "fn read_census_scoped_ingest(subject: &str, subjects_rest: &[String], source_roots: &[String]) -> ", driver_record_type(type_name: "NativeCensusScoped", shared_types: shared_types), " {\n",
     "    let filesystem = host_filesystem();\n",
     "    let observed = host_executor().block_on(native_lane_census_scoped_ingest(subject.to_string(), Rc::new(subjects_rest.iter().cloned().collect()), Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n",
     "    match observed {\n",
@@ -19654,7 +19661,7 @@ fn emit_host_acquisition_rs(crate_name: String) -> String {
     "    }\n",
     "}\n",
     "\n",
-    "fn acquire_native_lane(source_roots: &[String], pattern: Rc<TargetPattern>) -> Rc<NativeLaneAcquisition> {\n",
+    "fn acquire_native_lane(source_roots: &[String], pattern: ", driver_record_type(type_name: "TargetPattern", shared_types: shared_types), ") -> ", driver_record_type(type_name: "NativeLaneAcquisition", shared_types: shared_types), " {\n",
     "    let filesystem = host_filesystem();\n",
     "    let observed = host_executor().block_on(native_lane_acquire(Rc::new(source_roots.iter().cloned().collect()), pattern, &filesystem));\n",
     "    match observed {\n",
@@ -19818,7 +19825,7 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // transport error): at startup the main refuses before announcing, so /livez is never answered by a
 // process that cannot serve; a failed replacement ends the process with
 // native_serve_worker_replacement_exit_code once the request in hand is answered.
-fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>) -> TextFile {
+fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, shared_types: Set<String>) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let effectful = (bindings |> count) > 0
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
@@ -19982,11 +19989,11 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "\n",
       "enum Exchange \{", "\n",
       "    Idle,", "\n",
-      "    Answer(Rc<ServeWireResponse>),", "\n",
+      "    Answer(", driver_record_type(type_name: "ServeWireResponse", shared_types: shared_types), "),", "\n",
       "    Handle(HandlerCall),", "\n",
       "\}", "\n",
       "\n",
-      "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64) -> Exchange \{", "\n",
+      "fn exchange(stream: &std::net::TcpStream, contract: &", driver_record_type(type_name: "NativeServeContract", shared_types: shared_types), ", bound_host: &str, bound_port: i64) -> Exchange \{", "\n",
       "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;", "\n",
       "    let mut reader = std::io::BufReader::new(stream.take(limit));", "\n",
       "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;", "\n",
@@ -20272,7 +20279,7 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, b
 //   operations above, which needs a `.dag` driver to receive host effects as values.
 // Until then the growth is bounded to this function; a new mode or phase is a new clause here, not
 // a new driver.
-fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: String, shared_types: Set<String>) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let native_route_mod = module_to_filename(name: "v2.workflow.v2_native_route")
   let frontier_mod = module_to_filename(name: "v2.workflow.native_frontier_ratchet")
@@ -20353,7 +20360,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::", type_census_mod, "::\{type_census_receipt, type_census_run_add, type_census_run_empty\};", "\n",
       "use ", crate_name, "::std_compiler_entry::NativeClaimTerminal;", "\n",
       "\n",
-      emit_host_acquisition_rs(crate_name: crate_name),
+      emit_host_acquisition_rs(crate_name: crate_name, shared_types: shared_types),
       "fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String \{", "\n",
       "    match facts.get(key) \{", "\n",
       "        Some(value) => value.clone(),", "\n",
@@ -20448,9 +20455,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        emitted_closure_identity: host_fact(&facts, \"emitted_closure_identity\"),", "\n",
       "        executable_path: host_fact(&facts, \"executable_path\"),", "\n",
       "        executable_identity: host_fact(&facts, \"executable_identity\"),", "\n",
-      "        old_route_control: Rc::new(old_route_control),", "\n",
-      "        malformed_control: Rc::new(malformed_control),", "\n",
-      "        emitted_build: Rc::new(emitted_build),", "\n",
+      "        old_route_control: ", driver_record_new(type_name: "NativeRouteOldRouteControl", expr: "old_route_control", shared_types: shared_types), ",", "\n",
+      "        malformed_control: ", driver_record_new(type_name: "NativeRouteMalformedControl", expr: "malformed_control", shared_types: shared_types), ",", "\n",
+      "        emitted_build: ", driver_record_new(type_name: "NativeRouteEmittedBuild", expr: "emitted_build", shared_types: shared_types), ",", "\n",
       "    \}", "\n",
       "\}", "\n",
       "\n",
@@ -20704,17 +20711,17 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "// A BASELINE IS A PUBLISHED RUN RECORD (the host's CensusRunRecordFile), and the host alone decides", "\n",
       "// which one -- by the status field it wrote (latest_complete_census_record). This only reads the", "\n",
       "// census_run_comparable row back as the same type; a file without one is a stated cause, never an empty diff.", "\n",
-      "fn census_baseline_record(path: &str) -> Result<Rc<CensusComparableRecord>, String> \{", "\n",
+      "fn census_baseline_record(path: &str) -> Result<", driver_record_type(type_name: "CensusComparableRecord", shared_types: shared_types), ", String> \{", "\n",
       "    let text = std::fs::read_to_string(path).map_err(|cause| format!(\"reading \{path\}: \{cause\}\"))?;", "\n",
       "    let file: serde_json::Value = serde_json::from_str(&text).map_err(|cause| format!(\"\{path\} is not one JSON value: \{cause\}\"))?;", "\n",
       "    let row = file.get(\"rows\").and_then(|r| r.as_array()).and_then(|rows| rows.iter().find_map(|row| row.get(\"census_run_comparable\").cloned()))", "\n",
       "        .ok_or_else(|| format!(\"\{path\} carries no census_run_comparable row\"))?;", "\n",
-      "    serde_json::from_value::<CensusComparableRecord>(row).map(Rc::new).map_err(|cause| format!(\"\{path\} census_run_comparable does not read back: \{cause\}\"))", "\n",
+      "    serde_json::from_value::<CensusComparableRecord>(row).map(|record| ", driver_record_new(type_name: "CensusComparableRecord", expr: "record", shared_types: shared_types), ").map_err(|cause| format!(\"\{path\} census_run_comparable does not read back: \{cause\}\"))", "\n",
       "\}", "\n",
       "", "\n",
       "struct CensusScopedWalk \{", "\n",
       "    label: String,", "\n",
-      "    scope: Rc<NativeCensusScope>,", "\n",
+      "    scope: ", driver_record_type(type_name: "NativeCensusScope", shared_types: shared_types), ",", "\n",
       "    digests: Vec<String>,", "\n",
       "    against: Option<String>,", "\n",
       "    subjects_rest: Vec<String>,", "\n",
@@ -20753,7 +20760,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "// the whole-corpus run, which also feeds the type census and marks each root against the subject", "\n",
       "// closure; a scoped run does neither, and its terminal names its scope instead, with the label it was", "\n",
       "// given so the instrument can check the subject it observed against the one it bound.", "\n",
-      "fn census_infer_walk(reads: Vec<Rc<DagSourceReadWitness>>, scope: Option<CensusScopedWalk>) \{", "\n",
+      "fn census_infer_walk(reads: Vec<", driver_record_type(type_name: "DagSourceReadWitness", shared_types: shared_types), ">, scope: Option<CensusScopedWalk>) \{", "\n",
       "    let corpus_reads = reads.len();", "\n",
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
       "    let mut context = match &*native_test_context_from_ingest(ingest.clone()) \{", "\n",
@@ -20786,7 +20793,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let mut residual_rows: u64 = 0;", "\n",
       "    let mut inferred: u64 = 0;", "\n",
       "    let mut infer_refused: u64 = 0;", "\n",
-      "    let mut obligation_rows: Vec<Rc<CensusObligationRow>> = Vec::new();", "\n",
+      "    let mut obligation_rows: Vec<", driver_record_type(type_name: "CensusObligationRow", shared_types: shared_types), "> = Vec::new();", "\n",
       "    for entry in modules.iter() \{", "\n",
       "        let started = Instant::now();", "\n",
       "        let step = native_census_module_inference(context.clone(), refusal_index.clone(), entry.clone());", "\n",
@@ -21068,7 +21075,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "// impossible. The pre-epoch refusal that guarded the old wall-clock read is DELETED with it,", "\n",
       "// because the hazard it named cannot arise on this clock -- production handling dissolves on", "\n",
       "// the climb (DESIGN section 4b(4)); no evidence is retired here, since that arm had none.", "\n",
-      "fn run_adjudication(facts_path: &str, pattern: Rc<TargetPattern>, source_roots: &[String]) \{", "\n",
+      "fn run_adjudication(facts_path: &str, pattern: ", driver_record_type(type_name: "TargetPattern", shared_types: shared_types), ", source_roots: &[String]) \{", "\n",
       "    let driver_start = cpu_mark();", "\n",
       "    let driver_wall_start = Instant::now();", "\n",
       "    // A MISSING GITHUB_SHA IS ABSENT, NOT \"local\" (review 64181). The receipt line carries this", "\n",
@@ -21275,7 +21282,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // the prepare and eval rows, entered separately per module so the number the profile", "\n",
       "    // lane prices -- the eval row -- is the sum of native_lane_identity_row", "\n",
       "    // and nothing else: not ingest, not resolve, not infer.", "\n",
-      "    let mut population: Vec<Rc<NativeRouteMemberRow>> = Vec::new();", "\n",
+      "    let mut population: Vec<", driver_record_type(type_name: "NativeRouteMemberRow", shared_types: shared_types), "> = Vec::new();", "\n",
       "    let mut prepare_total_nanos: u128 = 0;", "\n",
       "    let mut evaluate_total_nanos: u128 = 0;", "\n",
       "    let mut prepare_samples: Vec<u128> = Vec::new();", "\n",
@@ -21420,7 +21427,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        universe.clone(),", "\n",
       "        Rc::new(population.clone().into()),", "\n",
       "        native_lane_controls(context.clone()),", "\n",
-      "        Rc::new(facts),", "\n",
+      "        ", driver_record_new(type_name: "NativeLaneHostFacts", expr: "facts", shared_types: shared_types), ",", "\n",
       "    );", "\n",
       "    let admission = native_route_admission(receipt.clone());", "\n",
       "    let summary = native_route_admission_summary(admission.clone());", "\n",
@@ -21633,7 +21640,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                NativeDriverVerb::NativeDriverCensusInfer \{ .. \} => run_census_infer(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverDemandCensus \{ .. \} => run_demand_census(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, subjects_rest, against, .. \} => run_census_scoped(subject, &subjects_rest.iter().cloned().collect::<Vec<String>>(), against.clone(), &source_roots),", "\n",
-      "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),", "\n",
+      "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, ", driver_record_new(type_name: "TargetPattern", expr: "TargetPattern::clone(pattern)", shared_types: shared_types), ", &source_roots),", "\n",
       "            \}", "\n",
       "        \}", "\n",
       "    \}", "\n",
