@@ -227,7 +227,7 @@ pub fn collisions_of_graph(graph: Rc<ResolvedGraph>) -> Rc<Vec<Rc<LeafCollisionR
             .clone();
         Rc::new({
             let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(
-                &info.type_decl_items.clone().identities_by_leaf.clone(),
+                &info.type_decl_items.identities_by_leaf.clone(),
             ))
             .iter()
             .cloned()

@@ -184,31 +184,13 @@ fn revision_job_image_build(root: String, rust_dist_dir: String, closure: Revisi
   }
 }
 
-// THE IMAGE BUILD'S ENTRY, run on the host that owns the pinned artifacts:
-//   gunbc run --entry dag/gunbc/runner/runner_revision_job_image.dag --function revision_job_image_main
-// GUNBC_REVISION_JOB_IMAGE_ROOT holds the pinned base and Rust dist and receives the tree and image;
-// GUNBC_REVISION_JOB_RUST_DIST_DIR is where the dist unpacks; GUNBC_REVISION_JOB_STORE_ROOT holds the
-// closure receipt prove_toolchain_closure_main wrote; GUNBC_REVISION_JOB_DEBS_DIR receives the
-// closure's debs. The closure is prepared (receipt gate, per-deb digest and control fields) before the
-// build touches the tree; exit 0 only when the image was built and its SHA-256 written to
-// <image>.sha256.
-fn revision_job_image_env(name: NonEmptyStr) -> String {
-  match shell.Env.Get(name: name).value {
-    Absent => ""
-    Present { value: v } => trim(s: v)
-  }
-}
-
-fn revision_job_image_main() -> ProcessExit {
-  let root = revision_job_image_env(name: "GUNBC_REVISION_JOB_IMAGE_ROOT")
-  let rust_dist_dir = revision_job_image_env(name: "GUNBC_REVISION_JOB_RUST_DIST_DIR")
-  let store = revision_job_image_env(name: "GUNBC_REVISION_JOB_STORE_ROOT")
-  let debs = revision_job_image_env(name: "GUNBC_REVISION_JOB_DEBS_DIR")
-  if root == "" || rust_dist_dir == "" || store == "" || debs == "" {
-    exit_failure(reason: "revision_job_image: GUNBC_REVISION_JOB_IMAGE_ROOT, _RUST_DIST_DIR, _STORE_ROOT and _DEBS_DIR must all be set")
-  } else { match prepare_toolchain_closure(store: store, debs_dir: debs) {
+// THE BUILD CORE, run by the CI delivery (gunbc.revision_job_image_delivery revision_job_image_build_wet):
+// prepare the closure (receipt gate, per-deb digest and control fields) before the build touches the
+// tree, then build. Exit 0 only when the image was built and its SHA-256 written to <image>.sha256.
+fn revision_job_image_build_core(root: String, rust_dist_dir: String, store: String, debs: String) -> ProcessExit {
+  match prepare_toolchain_closure(store: store, debs_dir: debs) {
     PinnedRowsUnproven { rows_digest: d, expected_receipt: r } =>
-      exit_failure(reason: join(["revision_job_image: the pinned toolchain rows ", d, " are unproven; no receipt at ", r, " (run prove_toolchain_closure_main)"], ""))
+      exit_failure(reason: join(["revision_job_image: the pinned toolchain rows ", d, " are unproven; no receipt at ", r, " (prove_toolchain_rows writes it; revision_job_image_build_wet runs it first)"], ""))
     ToolchainClosureRefused { reasons: rs } => exit_failure(reason: concat("revision_job_image: the toolchain closure refused:\n", join(rs, "\n")))
     ToolchainClosurePrepared { closure: c } => match revision_job_image_build(root: root, rust_dist_dir: rust_dist_dir, closure: Present { value: c }) {
       // The digest install verification is handed (verify_revision_job_image expected_sha256), beside
@@ -219,7 +201,7 @@ fn revision_job_image_main() -> ProcessExit {
       RevisionJobImageRefused { reason: r } => exit_failure(reason: concat("revision_job_image: ", r))
       RevisionJobImageToolchainClosureMissing { missing: m } => exit_failure(reason: concat("revision_job_image: closure missing ", join(m, ",")))
     }
-  } }
+  }
 }
 
 // ── installation, verified like the workspace image ────────────────────────────────────────────

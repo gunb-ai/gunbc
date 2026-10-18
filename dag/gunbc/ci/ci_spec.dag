@@ -1346,6 +1346,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_workspace_commissioning_plan_target,
     gunbc_ci_workspace_image_build_target,
+    gunbc_ci_revision_job_image_build_target,
     gunbc_ci_workspace_allocation_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_fleet_converge_plan_revision_target,
@@ -4108,8 +4109,12 @@ fn gunbc_ci_workspace_allocation_plan_invoke() -> String {
   gunbc_run_step_script(source_roots: witness_layer_roots, entry: gunbc_ci_workspace_allocation_plan_target.entry, function: gunbc_ci_workspace_allocation_plan_target.function, claim_run: false, receipt_rel: none)
 }
 
-data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/workspace_image_delivery.dag", function: "workspace_image_build_wet" }
-
-fn gunbc_ci_workspace_image_build_invoke() -> String {
-  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_workspace_image_build_target.entry, function: gunbc_ci_workspace_image_build_target.function, claim_run: false), "\n"], "")
+fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> String {
+  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n"], "")
 }
+
+data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/workspace_image_delivery.dag", function: "workspace_image_build_wet" }
+data gunbc_ci_revision_job_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/revision_job_image_delivery.dag", function: "revision_job_image_build_wet" }
+
+fn gunbc_ci_workspace_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_workspace_image_build_target) }
+fn gunbc_ci_revision_job_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_revision_job_image_build_target) }
