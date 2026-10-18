@@ -7,6 +7,7 @@ import gunbc.guest_image_delivery { guest_image_stage_inputs, guest_image_write_
 import gunbc.runner.microvm_guest_artifacts {
   runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact, revision_job_rust_dist_artifact, runner_guest_base_artifact_path,
 }
+import extdeps.os.ubuntu_ports_archive { ubuntu_archive_keyring_path }
 import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
 import gunbc.runner.runner_revision_job_image { revision_job_image_path, revision_job_toolchain_receipt_path, revision_job_image_build_core }
 import gunbc.runner.runner_revision_job_toolchain { prove_toolchain_rows, ToolchainRowsProven, ToolchainRowsRefused }
@@ -18,9 +19,6 @@ import gunbc.runner.runner_revision_job_toolchain { prove_toolchain_rows, Toolch
 // pin (gunbc.runner.runner_revision_job_unit revision_job_image_pinned_sha256).
 data revision_job_image_artifact_name: String = "revision-job-image"
 data revision_job_image_build_receipt: String = "target/revision-job-image-artifact/build-receipt.txt"
-
-// The Ubuntu archive keyring the runner image carries (the ubuntu-keyring package).
-data revision_job_toolchain_keyring: String = "/usr/share/keyrings/ubuntu-archive-keyring.gpg"
 
 fn revision_job_image_artifact_paths() -> String {
   join([revision_job_image_path(root: revision_job_image_staging_root),
@@ -39,7 +37,7 @@ fn revision_job_image_build_wet() -> ProcessExit {
       mkdir_parents_command(path: concat(root, "/rust-dist")), mkdir_parents_command(path: concat(root, "/debs"))],
     downloads: [runner_guest_base_rootfs_artifact, revision_job_rust_dist_artifact]) {
     ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
-    ExitSuccess => match prove_toolchain_rows(store: store, dir: index, keyring: revision_job_toolchain_keyring) {
+    ExitSuccess => match prove_toolchain_rows(store: store, dir: index, keyring: ubuntu_archive_keyring_path) {
       ToolchainRowsRefused { reasons } => exit_failure(reason: concat("RevisionJobImageBuildRefused: toolchain rows unproven:\n", join(reasons, "\n")))
       ToolchainRowsProven { receipt: _ } => match revision_job_image_build_core(root: root, rust_dist_dir: concat(root, "/rust-dist"), store: store, debs: concat(root, "/debs")) {
         ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }

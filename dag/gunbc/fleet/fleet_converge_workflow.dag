@@ -210,7 +210,7 @@ import gunbc.auth.github_deployment_environment { srv1_production_environment_na
 import gunbc.fleet.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
-import gunbc.runner.runner_slot_allocation { runner_host_label }
+import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
 import gunbc.host.host_reset_return {
   DispatchAssignment,
   DispatchAssignmentRefused,
@@ -3683,6 +3683,16 @@ fn fleet_converge_microvm_controller_install_step() -> Step {
   }
 }
 
+// The revision-job image is downloaded exactly when the controller install installs it: the same
+// authority, revision_job_slots, gates both (gunbc.host.host_effect_realize microvm_controller_revision_job_steps).
+fn fleet_converge_revision_job_image_download_steps() -> List<Step> {
+  if count(revision_job_slots) == 0 { [] } else {
+    [fleet_converge_receipt_download_step(id: "revision_job_image_download", name: "Download the revision-job image selected for installation",
+      artifact: revision_job_image_artifact_name, path: revision_job_image_staging_root,
+      run_id_expression: "${{ inputs.revision_job_image_run_id }}")]
+  }
+}
+
 fn fleet_converge_microvm_controller_install_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall) as String,
@@ -3697,9 +3707,9 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
         fleet_converge_receipt_download_step(id: "workspace_image_download", name: "Download the workspace image selected for installation",
           artifact: workspace_image_artifact_name, path: workspace_image_staging_root,
           run_id_expression: "${{ inputs.workspace_image_run_id }}"),
-        fleet_converge_receipt_download_step(id: "revision_job_image_download", name: "Download the revision-job image selected for installation",
-          artifact: revision_job_image_artifact_name, path: revision_job_image_staging_root,
-          run_id_expression: "${{ inputs.revision_job_image_run_id }}"),
+      ],
+      fleet_converge_revision_job_image_download_steps(),
+      [
         fleet_converge_microvm_controller_install_step(),
       ]
     ),
