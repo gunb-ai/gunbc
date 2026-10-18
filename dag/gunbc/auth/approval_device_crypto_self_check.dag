@@ -2,7 +2,7 @@ module gunbc.auth.approval_device_crypto_self_check
 
 import std.types { Int, List, String, Bool, NonEmptyStr }
 import std.algebra { Cons, Empty }
-import std.bignat { bignat_zero_limbs, bignat_one, bignat_sub }
+import std.bignat { BigNat, bignat_zero_limbs, bignat_one, bignat_sub }
 import extdeps.crypto.nist_p256 { p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine }
 import extdeps.crypto.nist_prime_curve { jacobian_is_infinity }
 import extdeps.crypto.sha2 { sha256_hex }
@@ -112,16 +112,23 @@ fn sample_credential_point() -> NonEmptyStr {
 
 // ── The obligations ──────────────────────────────────────────────────────────────────────────
 // n times the base point is infinity; (n - 1) times it is not. The scalar is the curve's own order (p256_n).
-fn p256_multiple_is_infinity(m: P256Multiple) -> Bool {
-  let g = p256_affine(x: p256_gx, y: p256_gy)
-  let zero = bignat_zero_limbs()
+fn p256_multiple_scalar(m: P256Multiple) -> BigNat? {
   match m {
-    OrderItself => jacobian_is_infinity(p: p256_double_scalar(u1: p256_n, g: g, u2: zero, q: g))
-    OrderMinusOne =>
-      match bignat_sub(a: p256_n, b: bignat_one()) {
-        Present { value: nm1 } => jacobian_is_infinity(p: p256_double_scalar(u1: nm1, g: g, u2: zero, q: g))
-        Absent => false
-      }
+    OrderItself => Present { value: p256_n }
+    OrderMinusOne => bignat_sub(a: p256_n, b: bignat_one())
+  }
+}
+
+fn p256_scalar_is_infinity(scalar: BigNat) -> Bool {
+  let g = p256_affine(x: p256_gx, y: p256_gy)
+  jacobian_is_infinity(p: p256_double_scalar(u1: scalar, g: g, u2: bignat_zero_limbs(), q: g))
+}
+
+// An unformable scalar proves nothing: the obligation does not hold.
+fn p256_multiple_holds(m: P256Multiple, infinity: Bool) -> Bool {
+  match p256_multiple_scalar(m: m) {
+    Absent => false
+    Present { value: scalar } => p256_scalar_is_infinity(scalar: scalar) == infinity
   }
 }
 
@@ -203,7 +210,7 @@ fn assertion_obligation_holds() -> Bool {
 }
 
 fn order_obligation_holds() -> Bool {
-  p256_multiple_is_infinity(m: OrderItself) && !p256_multiple_is_infinity(m: OrderMinusOne)
+  p256_multiple_holds(m: OrderItself, infinity: true) && p256_multiple_holds(m: OrderMinusOne, infinity: false)
 }
 
 fn device_crypto_obligation_holds(o: DeviceCryptoObligation) -> Bool {

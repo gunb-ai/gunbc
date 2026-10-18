@@ -19,7 +19,7 @@ import extdeps.apple.app_attest {
   AssertionRefusal, AssertionSignatureInvalid, AssertionAppIdMismatch, AssertionValidationCategoryRefused,
   AssertionValidationCategoryAbsent, AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable,
 }
-import gunbc.auth.approval_device_crypto_self_check { p256_multiple_is_infinity, device_crypto_startup }
+import gunbc.auth.approval_device_crypto_self_check { device_crypto_startup, p256_multiple_scalar, p256_scalar_is_infinity }
 import gunbc.auth.approval_device_crypto_realization { device_crypto_obligations }
 import gunbc.auth.approval_device_wire { WireDecode, WireDecoded, WireRefused }
 import gunbc.auth.approval_device_crypto_wire {
@@ -128,8 +128,12 @@ fn assertion_answer(v: AssertionVerification) -> ServeWireResponse {
 }
 
 fn order_answer(m: P256Multiple) -> ServeWireResponse {
-  if p256_multiple_is_infinity(m: m) { crypto_answered(verdict: CryptoInfinity, arm: "Infinity") }
-  else { crypto_answered(verdict: CryptoFinite, arm: "Finite") }
+  match p256_multiple_scalar(m: m) {
+    Absent => crypto_answered(verdict: CryptoRefused, arm: "ScalarUnrepresentable")
+    Present { value: scalar } =>
+      if p256_scalar_is_infinity(scalar: scalar) { crypto_answered(verdict: CryptoInfinity, arm: "Infinity") }
+      else { crypto_answered(verdict: CryptoFinite, arm: "Finite") }
+  }
 }
 
 // ── Routing ──────────────────────────────────────────────────────────────────────────────────
