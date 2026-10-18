@@ -1513,6 +1513,101 @@ fn gap_was_refused(gap: UnansweredAxis) -> Bool {
 // board that needed nothing of the kind: same-looking plan, opposite blast radius, chosen by which
 // list happened to be tested first. So this test asserts both halves: the redirect is chosen, AND the
 // persistent authoring route is not.
+// A REDIRECT WITH NOTHING TO POINT AT MUST REFUSE, AND MUST NEVER BORROW THE CATALOG'S OWN TEXT.
+// Two mutations die here and nowhere else: (a) letting the absent-target arm bind anyway, and (b)
+// forwarding the catalog row's `boot_option` slot instead of the unit's reference -- which is the
+// original defect, since the only legal content of that slot used to be the literal "uefi-boot-next"
+// that every unit in the fleet was pointed at. Asserting a non-empty value is not enough: a fallback
+// that carried some plausible-looking reference would satisfy it. So this asserts the refusal itself,
+// and separately that a bound redirect's name is grounded BY THE ENUMERATION -- the provenance, not
+// just the string, because provenance is the whole question blocker 3 asks.
+test fn a_redirect_with_nothing_to_point_at_refuses_and_never_borrows_the_catalogs_text() -> Bool {
+  match bind_route_from(
+    // THE CATALOG'S OWN ROW SHAPE, slot unbound exactly as the fleet writes it.
+    route: PointUefiBootNext {
+      service_root: "redfish:Systems/Self",
+      boot_option: MechanismNameUnbound { owed_read: "the BootOptionReference of the enabled network option" },
+      authority: witness_authority,
+    },
+    redirect_to: RedirectTargetAbsent { why: "no enumerated and enabled network boot option exists" },
+    observed_bios_version: present(version: "1.08"),
+  ) {
+    BindingRefused { refusal: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
+      mechanism == "redfish-uefi-boot-next" && string_contains(s: owed, pattern: "enumerat")
+    // A BOUND REDIRECT HERE IS THE DEFECT: a name with no unit evidence behind it.
+    RouteBound { route: _ } => false
+    BindingRefused {
+      refusal: RouteBindingStaleGrounding {
+        mechanism: _,
+        grounded_for_bios_version: _,
+        observed_bios_version: _,
+      },
+    } => false
+  }
+    // ...AND WHEN THERE IS SOMETHING TO POINT AT, THE NAME'S PROVENANCE MUST BE THE ENUMERATION. A
+    // binder that forwarded the catalog slot would either leave the slot unbound (caught above) or
+    // fill it with a BIOS-attribute grounding, which a redirect can never legitimately carry.
+    && match bind_route_from(
+         route: PointUefiBootNext {
+           service_root: "redfish:Systems/Self",
+           boot_option: MechanismNameUnbound { owed_read: "the BootOptionReference of the enabled network option" },
+           authority: witness_authority,
+         },
+         redirect_to: RedirectTargetFromAvailable { option_reference: ref_http(), additional_count: 0 },
+         observed_bios_version: present(version: "1.08"),
+       ) {
+         RouteBound {
+           route: PointUefiBootNext {
+             service_root: s,
+             boot_option: MechanismNameBound { value: v, grounded_by: GroundedByBootOptionEnumeration },
+             authority: _,
+           },
+         } => s == "redfish:Systems/Self" && v == ref_http()
+         RouteBound { route: _ } => false
+         BindingRefused { refusal: _ } => false
+       }
+}
+
+// HEAD-FIRST IS A CLAIM, NOT A DEFAULT, and it needs a unit where head-first and
+// first-enabled-network-in-the-enumeration are DIFFERENT options. Every other fixture has the head as
+// the first enabled network option in the list, so the two paths agree there and a fold that ignored
+// the head entirely would pass them all. Here the order's head is HTTP (0001) while the enumeration
+// lists PXE (0002) first: pointing at 0002 would boot a different device than the one whose boot entry
+// the operator is repairing, which is the whole reason the head is preferred.
+test fn a_redirect_names_the_head_option_not_the_first_enabled_network_in_the_list() -> Bool {
+  let head_is_http = [http_entry(), disk_entry()]
+  let enumeration_lists_pxe_first = [opt_pxe(ref_pxe()), opt_http(ref_http())]
+  match redirect_target(
+    join: join_head_to_options(devices: head_is_http, options: enumeration_lists_pxe_first),
+    available: available_network_options(options: enumeration_lists_pxe_first),
+  ) {
+    RedirectTargetFromHead { option_reference: reference, label: _ } => reference == ref_http()
+    // THE AVAILABLE FALLBACK IS THE MUTATION: same unit, same evidence, and it names 0002 because
+    // that is what the enumeration happens to list first.
+    RedirectTargetFromAvailable { option_reference: reference, additional_count: _ } =>
+      reference == ref_http()
+    RedirectTargetAbsent { why: _ } => false
+  }
+    // AND THE FALLBACK STILL HAPPENS WHEN IT IS THE ONLY ANSWER: the head is an enumerated, ENABLED
+    // DISK, so the join succeeds and the classifier -- not a gap in the enumeration -- is what rules it
+    // out as a target. That is what keeps this test from being satisfiable by always taking the head,
+    // the other direction the preference could be implemented wrongly.
+    && match redirect_target(
+         join: join_head_to_options(
+           devices: disk_then_network(),
+           options: [opt_disk(ref_disk()), opt_pxe(ref_pxe()), opt_http(ref_http())],
+         ),
+         available: available_network_options(
+           options: [opt_disk(ref_disk()), opt_pxe(ref_pxe()), opt_http(ref_http())],
+         ),
+       ) {
+         RedirectTargetFromAvailable { option_reference: reference, additional_count: _ } =>
+           reference == ref_pxe()
+         RedirectTargetFromHead { option_reference: _, label: _ } => false
+         RedirectTargetAbsent { why: _ } => false
+       }
+}
+
 test fn an_option_that_exists_but_is_not_selected_gets_a_redirect_not_a_persistent_write() -> Bool {
   let observation = firmware_boot_observation(
     boot_order: BootOrderObserved {
