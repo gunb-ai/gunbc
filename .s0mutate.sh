@@ -24,7 +24,8 @@ echo "TESTFN=$(grep -c '^test fn ' $ENTRY)"
 
 mutate () {
   local name="$1" file="$2" from="$3" to="$4"
-  cp /tmp/S0.orig "$BASE"
+  cp "$BASE" /tmp/S0.orig
+  cp "$file" /tmp/TARGET.orig
   python3 - "$file" "$from" "$to" <<'PY'
 import sys
 p, a, b = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -34,8 +35,9 @@ if n != 1:
     print("NEEDLE_COUNT=%d" % n); sys.exit(3)
 open(p, "w").write(s.replace(a, b))
 PY
-  if [ $? -ne 0 ]; then echo "$name: NEEDLE NOT UNIQUE -- SKIPPED"; cp /tmp/S0.orig "$BASE"; return; fi
+  if [ $? -ne 0 ]; then echo "$name: NEEDLE NOT UNIQUE -- SKIPPED"; cp /tmp/TARGET.orig "$file"; cp /tmp/S0.orig "$BASE"; return; fi
   echo "=== $name ==="; run
+  cp /tmp/TARGET.orig "$file"
   cp /tmp/S0.orig "$BASE"
 }
 
