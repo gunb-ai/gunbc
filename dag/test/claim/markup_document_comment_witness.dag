@@ -361,7 +361,7 @@ test fn witness_marker_clean_token_renders_as_a_comment() -> Bool {
 // gunbc.auth.approval_broker_marker and not here, witness_marker_corpus_matches_the_module's refusal
 // on an unknown-shaped name is the tripwire.
 test fn witness_marker_token_never_closes_its_comment() -> Bool {
-  all(marker_token_corpus(), s => match comment_body_hazard(body: s, medium: html_markup_medium()) {
+  all(marker_token_corpus(), s => match comment_body_hazard(body: s, grammar: html_markup_medium().comment_grammar) {
     HazardFree => true
     HazardFound { reason: _ } => false
   })
