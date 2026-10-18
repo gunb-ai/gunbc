@@ -22,6 +22,12 @@ import gunbc.host.host_effect_realize {
   HostRemoveEvidence,
   host_remove_target_argv,
   host_remove_verdict,
+  HostRemovePathState,
+  HostRemovePathPresent,
+  HostRemovePathAbsent,
+  HostRemovePathUnreadable,
+  host_remove_reading,
+  host_remove_state_of,
   host_remove_arm_name,
   host_remove_step_name,
   RunArgvTransportOutcome,
@@ -38,13 +44,13 @@ import gunbc.host.host_effect_realize {
 // path) must still compile. Together they pin that the nonemptiness is carried by the type rather
 // than by a guard someone could delete (DESIGN §5, ruling nonemptiness_is_constructed_or_proved).
 fn host_remove_empty_roster_fixture_source() -> String {
-  "module host_remove_empty_probe\n\nimport std.types { String, NonEmptyStr }\nimport std.algebra { FreeSemigroup }\n\ntype HostRemoveProbeTarget\n  = RemoveForce { paths: FreeSemigroup<NonEmptyStr> }\n\nfn host_remove_probe_empty_target() -> HostRemoveProbeTarget {\n  RemoveForce { paths: [] }\n}\n"
+  "module host_remove_empty_probe\n\nimport gunbc.host.host_effect_realize { HostRemoveTarget, RemoveForce }\n\nfn host_remove_probe_empty_target() -> HostRemoveTarget {\n  RemoveForce { paths: [] }\n}\n"
 }
 
 // THE POSITIVE CONTROL. The correct spelling must still compile, or the refusal above would be
 // satisfied by a checker that refuses everything and measures nothing.
 fn host_remove_one_roster_fixture_source() -> String {
-  "module host_remove_one_probe\n\nimport std.types { String, NonEmptyStr }\nimport std.algebra { FreeSemigroup, non_empty_singleton }\n\ntype HostRemoveProbeTarget\n  = RemoveForce { paths: FreeSemigroup<NonEmptyStr> }\n\nfn host_remove_probe_one_target() -> HostRemoveProbeTarget {\n  RemoveForce { paths: non_empty_singleton(item: \"/etc/systemd/system/gunbc-oomd-sessions.slice.service\") }\n}\n"
+  "module host_remove_one_probe\n\nimport std.algebra { non_empty_singleton }\nimport gunbc.host.host_effect_realize { HostRemoveTarget, RemoveForce }\n\nfn host_remove_probe_one_target() -> HostRemoveTarget {\n  RemoveForce { paths: non_empty_singleton(item: \"/etc/systemd/system/gunbc-oomd-sessions.slice.service\") }\n}\n"
 }
 
 // The fixture's `module` name IS its emitted read path (module foo_bar -> src/foo_bar.rs), so both
@@ -84,7 +90,7 @@ test fn witness_retract_attempt_state_root_refuses_when_nonempty() -> Bool {
   }
   match host_remove_verdict(
     target: target,
-    pre_present: [true],
+    pre_state: [HostRemovePathPresent],
     outcome: RunArgvTransportObserved {
       observed: ShellExecObserved {
         exit_code: 1,
@@ -93,12 +99,13 @@ test fn witness_retract_attempt_state_root_refuses_when_nonempty() -> Bool {
         stderr: "rm: cannot remove '/var/lib/gunbc/deploy-stages/dispatch-root-a': Directory not empty",
       },
     },
-    post_present: [true],
+    post_state: [HostRemovePathPresent],
   ) {
     NotConverged { reason: r, applied: _ } =>
       string_contains(s: r, pattern: "RemoveEmptyDirectory refused")
-        && string_contains(s: r, pattern: "is not empty; rm -d failed")
-        && string_contains(s: r, pattern: "loud refusal, never widened to -rf")
+        && string_contains(s: r, pattern: "rm -d failed (exit 1)")
+        && string_contains(s: r, pattern: "Directory not empty")
+        && string_contains(s: r, pattern: "never widened to -rf")
         && string_contains(s: r, pattern: "arm=RemoveEmptyDirectory")
         && string_contains(s: r, pattern: "step=remove-empty-dir")
         && string_contains(s: r, pattern: "/var/lib/gunbc/deploy-stages/dispatch-root-a")
@@ -114,7 +121,7 @@ test fn witness_remove_empty_directory_absent_is_a_refusal_not_a_noop() -> Bool 
   }
   match host_remove_verdict(
     target: target,
-    pre_present: [false],
+    pre_state: [HostRemovePathAbsent],
     outcome: RunArgvTransportObserved {
       observed: ShellExecObserved {
         exit_code: 1,
@@ -123,11 +130,12 @@ test fn witness_remove_empty_directory_absent_is_a_refusal_not_a_noop() -> Bool 
         stderr: "rm: cannot remove '/var/lib/gunbc/deploy-stages/dispatch-root-b': No such file or directory",
       },
     },
-    post_present: [false],
+    post_state: [HostRemovePathAbsent],
   ) {
     NotConverged { reason: r, applied: _ } =>
       string_contains(s: r, pattern: "RemoveEmptyDirectory refused")
-        && string_contains(s: r, pattern: "no such path")
+        && string_contains(s: r, pattern: "rm -d failed (exit 1)")
+        && string_contains(s: r, pattern: "No such file or directory")
         && string_contains(s: r, pattern: "arm=RemoveEmptyDirectory")
         && string_contains(s: r, pattern: "step=remove-empty-dir")
     Converged { evidence: _, applied: _ } => false
@@ -142,7 +150,7 @@ test fn witness_remove_force_recursive_absent_is_a_noop() -> Bool {
   }
   match host_remove_verdict(
     target: target,
-    pre_present: [false],
+    pre_state: [HostRemovePathAbsent],
     outcome: RunArgvTransportObserved {
       observed: ShellExecObserved {
         exit_code: 0,
@@ -151,7 +159,7 @@ test fn witness_remove_force_recursive_absent_is_a_noop() -> Bool {
         stderr: "",
       },
     },
-    post_present: [false],
+    post_state: [HostRemovePathAbsent],
   ) {
     Converged { evidence: e, applied: _ } =>
       match e {
@@ -172,7 +180,7 @@ test fn witness_remove_force_readback_still_present_is_not_converged() -> Bool {
   }
   match host_remove_verdict(
     target: target,
-    pre_present: [true],
+    pre_state: [HostRemovePathPresent],
     outcome: RunArgvTransportObserved {
       observed: ShellExecObserved {
         exit_code: 0,
@@ -181,7 +189,7 @@ test fn witness_remove_force_readback_still_present_is_not_converged() -> Bool {
         stderr: "",
       },
     },
-    post_present: [true],
+    post_state: [HostRemovePathPresent],
   ) {
     NotConverged { reason: r, applied: _ } =>
       string_contains(s: r, pattern: "RemoveForce did not converge")
@@ -202,7 +210,7 @@ test fn witness_remove_empty_directory_sudo_denial_names_elevation_unavailable()
   }
   match host_remove_verdict(
     target: target,
-    pre_present: [true],
+    pre_state: [HostRemovePathPresent],
     outcome: RunArgvTransportObserved {
       observed: ShellExecObserved {
         exit_code: 1,
@@ -211,7 +219,7 @@ test fn witness_remove_empty_directory_sudo_denial_names_elevation_unavailable()
         stderr: "sudo: a password is required",
       },
     },
-    post_present: [true],
+    post_state: [HostRemovePathPresent],
   ) {
     NotConverged { reason: r, applied: _ } =>
       string_contains(s: r, pattern: "sudo -n elevation unavailable")
@@ -261,4 +269,76 @@ test fn witness_gunbc_source_tree_teardown_argv_shapes_are_inhabited() -> Bool {
       && string_contains(s: join(unit_argv, " "), pattern: "sudo -n")
       && string_contains(s: join(tree_argv, " "), pattern: "sudo -n")
   root_shape && unit_shape && tree_shape && all_elevated
+}
+
+// -- THE FAIL-OPEN, CLOSED. `test -e` exits 1 for an absent path AND for a path it cannot stat, and
+// above 1 on an error, so a false is not absence. These controls supply the probe states the pure
+// verdict folds: an unreadable pre-state refuses before any removal verdict, an unreadable post-state
+// never converges, and the genuinely-absent and removed positives still converge.
+fn remove_ok() -> RunArgvTransportOutcome {
+  RunArgvTransportObserved { observed: ShellExecObserved { exit_code: 0, success: true, stdout: "", stderr: "" } }
+}
+
+fn force_target() -> HostRemoveTarget {
+  RemoveForce { paths: non_empty_singleton(item: "/etc/systemd/system/gunbc-a.service" as NonEmptyStr) }
+}
+
+fn is_not_converged_with(v: Reconciliation<HostRemoveTarget, HostRemoveEvidence>, pattern: String) -> Bool {
+  match v {
+    NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: pattern)
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+test fn an_unreadable_pre_state_refuses_even_when_the_rm_succeeded() -> Bool {
+  is_not_converged_with(
+    v: host_remove_verdict(target: force_target(), pre_state: [HostRemovePathUnreadable { reason: "test exited 2" }], outcome: remove_ok(), post_state: [HostRemovePathAbsent]),
+    pattern: "pre-removal state of a path could not be read",
+  )
+}
+
+test fn an_unreadable_post_state_never_converges() -> Bool {
+  is_not_converged_with(
+    v: host_remove_verdict(target: force_target(), pre_state: [HostRemovePathPresent], outcome: remove_ok(), post_state: [HostRemovePathUnreadable { reason: "test exited 2" }]),
+    pattern: "post-removal state of a path could not be read",
+  )
+}
+
+test fn a_genuinely_absent_path_is_a_noop_and_a_removed_path_is_confirmed() -> Bool {
+  match host_remove_verdict(target: force_target(), pre_state: [HostRemovePathAbsent], outcome: remove_ok(), post_state: [HostRemovePathAbsent]) {
+    Converged { evidence: _, applied: _ } =>
+      match host_remove_verdict(target: force_target(), pre_state: [HostRemovePathPresent], outcome: remove_ok(), post_state: [HostRemovePathAbsent]) {
+        Converged { evidence: _, applied: _ } => true
+        NotConverged { reason: _, applied: _ } => false
+      }
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+fn probe_observed(code: Int) -> RunArgvTransportOutcome {
+  RunArgvTransportObserved { observed: ShellExecObserved { exit_code: code, success: code == 0, stdout: "", stderr: "e" } }
+}
+
+fn state_is_unreadable(st: HostRemovePathState) -> Bool {
+  match st {
+    HostRemovePathUnreadable { reason: _ } => true
+    HostRemovePathPresent => false
+    HostRemovePathAbsent => false
+  }
+}
+
+fn state_is_absent(st: HostRemovePathState) -> Bool {
+  match st {
+    HostRemovePathAbsent => true
+    HostRemovePathPresent => false
+    HostRemovePathUnreadable { reason: _ } => false
+  }
+}
+
+// `test` exit 1 is absence ONLY under a searchable parent; exit 1 under an unsearchable parent (the
+// existing-path-behind-0000-dir case) and any exit above 1 are unreadable.
+test fn test_status_is_absent_only_under_a_searchable_parent() -> Bool {
+  state_is_absent(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0))))
+    && state_is_unreadable(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 1))))
+    && state_is_unreadable(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 2)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0))))
 }
