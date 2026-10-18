@@ -159,18 +159,39 @@ fn mac_address_transmission(addr: Eui48Address) -> MacAddressTransmission {
   }
 }
 
-// A PERMANENT INTERFACE IDENTITY IS UNICAST AND UNIVERSALLY ADMINISTERED. This is the predicate a
-// consumer keying an interface actually wants, stated once here rather than re-derived from the two
-// flags at every call site -- a locally administered address was chosen by software and can be
-// changed by software, and a group address names no single interface at all.
+// THE NULL ADDRESS IS SIX ZERO OCTETS, and it is not an interface's address at any level of the flags.
+// The cited IEEE EUI tutorial reserves an all-zero EUI-48 as the null address -- it is what a stack
+// reports when it has no address, not what it reports when it has one -- and the two flag bits say
+// nothing about it: octet 1 of zero is 0b00000000, which is universally administered AND individual,
+// so a consumer that filtered on the flags alone would accept the absence of an address as the
+// strongest kind of identity. That is not a hypothetical: a BMC and a booted OS that both failed to
+// read a NIC hand each other 00:00:00:00:00:00, and a rule keyed on the flags binds the two sightings
+// as the same machine. Stated as its own fn because the fact is one the flag bits cannot express.
+fn mac_address_is_null(addr: Eui48Address) -> Bool {
+  addr.octet1 == 0 && addr.octet2 == 0 && addr.octet3 == 0
+    && addr.octet4 == 0 && addr.octet5 == 0 && addr.octet6 == 0
+}
+
+// A PERMANENT INTERFACE IDENTITY IS NOT NULL, UNICAST AND UNIVERSALLY ADMINISTERED. This is the
+// predicate a consumer keying an interface actually wants, stated once here rather than re-derived
+// from the flags at every call site -- a locally administered address was chosen by software and can be
+// changed by software, a group address names no single interface at all, and the null address is the
+// REPORTED ABSENCE of one (see `mac_address_is_null`, whose null case is precisely the both-sides-quiet
+// pair a naive flag filter binds into a false agreement). A consumer that wants only the flag axes
+// reads `mac_address_scope` and `mac_address_transmission` directly; this is the conjunction that is
+// safe to key identity on, so all three exclusions travel together and cannot be split by a caller.
 fn mac_is_permanent_interface_identity(addr: Eui48Address) -> Bool {
-  match mac_address_scope(addr: addr) {
-    UniversallyAdministered =>
-      match mac_address_transmission(addr: addr) {
-        IndividualAddress => true
-        GroupAddress => false
-      }
-    LocallyAdministered => false
+  if mac_address_is_null(addr: addr) {
+    false
+  } else {
+    match mac_address_scope(addr: addr) {
+      UniversallyAdministered =>
+        match mac_address_transmission(addr: addr) {
+          IndividualAddress => true
+          GroupAddress => false
+        }
+      LocallyAdministered => false
+    }
   }
 }
 

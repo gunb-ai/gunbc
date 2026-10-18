@@ -32,7 +32,8 @@ module gunbc.fleet.runtime_identity_match
 //   answerable at all, and an axis is the only shape where a report and its channel cannot contradict each
 //   other. Deciding is done on the readings; the channel is context that is stated, never inferred.
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
 import gunbc.machine_intake.subject { UnitKey }
@@ -78,7 +79,18 @@ type RuntimeIdentityAxisRow {
   // it. A future requirement to cite a third kind of authority adds a field here and a value per row; the
   // rows are data, so no fn changes.
   reading_authority: DeclarationRef
-  binding_authority: DeclarationRef
+  // OPTIONAL, AND ONLY BECAUSE TWO OF THE FOUR AXES GENUINELY HAVE NO BINDING HOME. A binding authority
+  // is the home that grants the claim "two sightings of this field are sightings of ONE unit". Only the
+  // decisive axes make that claim, and only the decisive axes may bind alone; a corroborating axis can
+  // report that two readings agree without any home having granted it the power to conclude they are the
+  // same machine. Before this was optional, the corroborating rows each carried a second citation for a
+  // power they do not exercise -- a digest over manifest ENTRIES cited as licensing the comparison of a
+  // VERSION STRING, which is the scope mismatch DESIGN section 3b names, and it was made necessary by the
+  // shape rather than by the facts. `Absent` now states the true position: this axis binds nothing, and a
+  // Match that rests on it rests on the decisive axes. Adding a fifth axis that CAN bind means naming a
+  // second home that actually grants it -- and if no such home exists, the honest answer is `Absent`, and
+  // the axis is corroborating.
+  binding_authority: DeclarationRef?
 }
 
 // THE AXIS TABLE, as authored evidence. Every row cites TWO declarations, each of which must (a) exist,
@@ -91,25 +103,39 @@ type RuntimeIdentityAxisRow {
 // audited.
 //
 // What each home is asked to own, and why that one:
-// - BoardSerial reads BoardSerialObservation (the field, its source, and that it may be absent) and binds
-//   through bind_unit_key -- the fn that actually mints a UnitKey from a serial and REFUSES when a serial is
-//   absent, duplicated across units, or contradictory. That refusal set is the strongest claim available
-//   here: a serial identifies a unit exactly when the fleet's ledger can hold it, which is what makes the
-//   row Decisive without pretending the field is self-authenticating.
-// - BiosVersion reads FirmwareManifest (the {component, version} entries a unit's firmware side reports,
-//   BIOS/UEFI among them) and binds through firmware_manifest_digest, which is the home's own equality
-//   relation over those entries -- the only spelling of "the same firmware content on both sides" that the
-//   owner of the data has published. The axis stays Corroborating because a version string can be shared by
-//   two units; only the decisive axes can bind alone.
+// - BoardSerial reads BoardSerialObservation (the field, its source, and that it may be absent) and names
+//   bind_unit_key as its binding home -- WITH ITS SCOPE STATED, because the citation is easy to over-read
+//   (merry-fox-82's side-chat verdict on head d5a72591). `bind_unit_key` is the fn that mints a UnitKey from a serial and refuses when
+//   a serial is absent, duplicated across units, or contradictory; THIS MODULE DOES NOT RUN THOSE CHECKS and
+//   cannot, because it sees two readings and no ledger of other units. What it borrows is the home's
+//   *concept* -- a serial is a unit identifier only under that home's authority -- not the home's whole
+//   decision procedure. The fold's serial comparison is therefore a text agreement under a named home, and
+//   an operator still needs the ledger to learn the serial is not duplicated: this verdict is one input to
+//   a binding, never the binding itself. A future requirement to rule out a duplicated serial here adds a
+//   row-level obligation to pass `other_units` in, not a quieter comment about the citation.
+// - BiosVersion reads H11sslBmcReportedIdentity, the fleet's own carrier of a BIOS version a unit reports.
+//   It carries no binding home at all: it cites no digest, because a digest over firmware manifest ENTRIES
+//   does not license comparing a VERSION STRING, and an honest `Absent` beats a citation that makes the row
+//   look audited against a home owning a different fact. The axis stays Corroborating because a version
+//   string can be shared by every unit on a batch; only the decisive axes can bind alone.
 // - Model reads FruIdentityFields (board_product, board_part_number, board_serial as a controller decodes
-//   them) and binds through RecordedFruObservation, the sealed carrier that ties those fields to a named
-//   subject AND to the exact capture they were read from. It is the binding that makes a decoded string
-//   belong to a unit rather than to a parse, and it is a weaker claim than the serial's key, which is why
-//   this row is Corroborating and what it can ever claim is that two strings agree.
-// - NicSet reads Eui48Address (the address itself, and what its scope/transmission bits mean) and binds
-//   through mac_is_permanent_interface_identity, the predicate that owns when an address is a permanent
-//   interface identity at all. A shared address can only bind two sightings if an address can name an
-//   interface, so the row's Decisive weight is borrowed from that predicate and nothing else.
+//   them) and carries NO binding home: a model string names a PRODUCT, not a machine, and every unit of a
+//   batch reports the same one. RecordedFruObservation was cited here as a second home, which is a real
+//   authority over a claim this axis never made -- that is the shape DESIGN section 2 calls re-invention
+//   and section 3b calls unauditable. `Absent` is the row saying so. It is a weaker claim than the
+//   serial's key, which is why this row is Corroborating and what it can ever claim is that two strings
+//   agree.
+// - NicSet reads Eui48Address and binds through mac_is_permanent_interface_identity, the predicate that
+//   owns when an address is a permanent interface identity at all -- which now includes excluding the
+//   all-zero NULL address, which the flags alone accept (merry-fox-82's side-chat verdict on d5a72591). A shared address can only bind two
+//   sightings if an address can name an interface, so the row's Decisive weight is borrowed from that
+//   predicate and nothing else. WHAT THE ROW DOES NOT CLAIM: both sides are read from a *current* address
+//   source, not from a permanent-address source (a Linux `addr_assign_type`/`perm_addr` reading, which has
+//   no home in this corpus today). So the decisive claim is exactly "the addresses each side currently
+//   reports as permanent agree on at least one entry", and the fold SCREENS rather than trusts: an address
+//   that a caller cannot show is permanent never reaches the comparison. A future requirement to key on a
+//   true permanent-address reading adds a row whose reading_authority names the home that publishes
+//   addr_assign_type, and until such a home exists it must name `Absent` rather than borrow a neighbour's.
 //
 // A future requirement to make a fourth axis decisive adds a row with a different weight and TWO homes that
 // own those two claims; no fn here changes, which is what makes the policy reviewable without reading the
@@ -126,17 +152,29 @@ data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
   RuntimeIdentityAxisRow {
     axis: BiosVersionAxis,
     weight: CorroboratingAxis,
-    reading_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "FirmwareManifest"),
-    binding_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "firmware_manifest_digest"),
+    // The reading home is the fleet's own carrier of a BIOS version a unit REPORTS: the record literally
+    // has a `bios_version` field, and that is the whole of what this axis reads. It used to cite
+    // subject.FirmwareManifest, which is a set of firmware ENTRIES plus content DIGESTS -- a digest over
+    // manifest entries does not license comparing a version string, and the citation made the axis look
+    // audited against a home that owns a different fact (merry-fox-82's side-chat verdict on d5a72591).
+    reading_authority: decl_ref(
+      module_path: "gunbc.machine_intake.supermicro_h11ssl_first_contact",
+      decl_name: "H11sslBmcReportedIdentity",
+    ),
+    // No binding home, because none is needed and none exists: two units can ship the same BIOS version,
+    // which is exactly why this axis is Corroborating. A digest over firmware entries is not a licence to
+    // conclude that two reported version strings mean one machine.
+    binding_authority: Absent,
   },
   RuntimeIdentityAxisRow {
     axis: ModelAxis,
     weight: CorroboratingAxis,
     reading_authority: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "FruIdentityFields"),
-    binding_authority: decl_ref(
-      module_path: "gunbc.machine_intake.mtjade1_access_observation",
-      decl_name: "RecordedFruObservation",
-    ),
+    // No binding home. A model string identifies a PRODUCT, not a machine: every unit of a batch reports
+    // the same one, so the strongest honest claim this axis makes is that two reported strings agree.
+    // RecordedFruObservation (the sealed capture carrier) was cited here as the binding home, which is a
+    // real authority over a claim this axis does not make.
+    binding_authority: Absent,
   },
   RuntimeIdentityAxisRow {
     axis: NicSetAxis,
@@ -197,15 +235,20 @@ type AxisStanding<T>
 // construction, not validation).
 type AxisExamination
   = AxisCompared { axis: RuntimeIdentityAxis, pair: AxisReadingPair, weight: AxisWeight }
-  | AxisUnanswered { gap: RuntimeIdentityGap, weight: AxisWeight }
+  | AxisUnanswered { axis: RuntimeIdentityAxis, gaps: List<RuntimeIdentityGap>, weight: AxisWeight }
 
 // WHICH SIDE FAILED TO ANSWER, decided by the same single match that decides whether a pair exists. The two
 // questions -- "is there a pair to compare?" and "if not, who stayed quiet and why?" -- are ONE fact about
 // the same two standings, and deriving them twice is what produced the arm with no honest meaning above.
 //
-// `PreQuiet` wins when both sides are silent, because the firmware side is the one a controller was asked to
-// read: that is where an operator would go first, and an operator reading "the booted OS never reported a
-// serial" while the BMC also never answered is sent to the wrong row.
+// FOUR ARMS, AND THE FOURTH EXISTS BECAUSE THREE WERE NOT ENOUGH. The first version of this sum had
+// `PreQuiet`/`PostQuiet` only, and claimed the firmware side "wins" when both were quiet. That was an
+// argument about the ORDER in which two absences should be REPORTED, used as an argument for DELETING one:
+// with a silent BMC and a booted OS that refused the read, the verdict came out `Unprovable` for one
+// firmware `Unread` and the refusal vanished -- while a refusal names a different next human than a silence
+// does, and the fleet's own history (BMCs that reject vendor commands) is exactly the case an operator
+// needs to see. So BOTH absences are carried when both sides failed, and the firmware side is first in the
+// list, which is all the old "wins" ever justified.
 //
 // WHY THE SILENT/REFUSED MAPPING APPEARS ONCE PER SIDE. A gap that cannot name which side stayed quiet
 // cannot be routed -- the firmware row and the OS row are different places to go and different humans -- so
@@ -214,6 +257,7 @@ type AxisReport<T>
   = BothAnswered { pre_value: T, post_value: T }
   | PreQuiet { absence: RuntimeIdentityAbsence }
   | PostQuiet { absence: RuntimeIdentityAbsence }
+  | BothQuiet { pre_absence: RuntimeIdentityAbsence, post_absence: RuntimeIdentityAbsence }
 
 fn standing_report<T>(pre: AxisStanding<T>, post: AxisStanding<T>) -> AxisReport<T> {
   match pre {
@@ -222,8 +266,33 @@ fn standing_report<T>(pre: AxisStanding<T>, post: AxisStanding<T>) -> AxisReport
       AxisStayedSilent { reason: r } => PostQuiet { absence: Unread { reason: r } }
       AxisWasRefused { refusal: f } => PostQuiet { absence: ControllerRefused { refusal: f } }
     }
-    AxisStayedSilent { reason: r } => PreQuiet { absence: Unread { reason: r } }
-    AxisWasRefused { refusal: f } => PreQuiet { absence: ControllerRefused { refusal: f } }
+    AxisStayedSilent { reason: r } => match post {
+      AxisWasRead { value: _ } => PreQuiet { absence: Unread { reason: r } }
+      AxisStayedSilent { reason: r2 } =>
+        BothQuiet { pre_absence: Unread { reason: r }, post_absence: Unread { reason: r2 } }
+      AxisWasRefused { refusal: f } =>
+        BothQuiet { pre_absence: Unread { reason: r }, post_absence: ControllerRefused { refusal: f } }
+    }
+    AxisWasRefused { refusal: f } => match post {
+      AxisWasRead { value: _ } => PreQuiet { absence: ControllerRefused { refusal: f } }
+      AxisStayedSilent { reason: r2 } =>
+        BothQuiet { pre_absence: ControllerRefused { refusal: f }, post_absence: Unread { reason: r2 } }
+      AxisWasRefused { refusal: f2 } =>
+        BothQuiet { pre_absence: ControllerRefused { refusal: f }, post_absence: ControllerRefused { refusal: f2 } }
+    }
+  }
+}
+
+// THE GAPS ONE REPORT LEAVES, in report order: firmware side first, then the booted-OS side.
+fn gaps_of_report<T>(row: RuntimeIdentityAxisRow, report: AxisReport<T>) -> List<RuntimeIdentityGap> {
+  match report {
+    BothAnswered { pre_value: _, post_value: _ } => []
+    PreQuiet { absence: a } => [RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, absence: a }]
+    PostQuiet { absence: a } => [RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, absence: a }]
+    BothQuiet { pre_absence: pa, post_absence: oa } => [
+      RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, absence: pa },
+      RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, absence: oa },
+    ]
   }
 }
 
@@ -234,7 +303,7 @@ fn standing_report<T>(pre: AxisStanding<T>, post: AxisStanding<T>) -> AxisReport
 fn examination_axis(e: AxisExamination) -> RuntimeIdentityAxis {
   match e {
     AxisCompared { axis: a, pair: _, weight: _ } => a
-    AxisUnanswered { gap: g, weight: _ } => g.axis
+    AxisUnanswered { axis: a, gaps: _, weight: _ } => a
   }
 }
 
@@ -246,25 +315,44 @@ fn examine_axis<T>(
   post: AxisStanding<T>,
   build: fn(T, T) -> AxisReadingPair,
 ) -> AxisExamination {
-  match standing_report(pre: pre, post: post) {
+  let report = standing_report(pre: pre, post: post)
+  match report {
     BothAnswered { pre_value: pv, post_value: ov } =>
       AxisCompared { axis: row.axis, pair: build(pv, ov), weight: row.weight }
-    PreQuiet { absence: a } =>
-      AxisUnanswered { gap: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, absence: a }, weight: row.weight }
-    PostQuiet { absence: a } =>
-      AxisUnanswered { gap: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, absence: a }, weight: row.weight }
+    PreQuiet { absence: _ } => unanswered(row: row, report: report)
+    PostQuiet { absence: _ } => unanswered(row: row, report: report)
+    BothQuiet { pre_absence: _, post_absence: _ } => unanswered(row: row, report: report)
   }
 }
 
+// WHY THIS IS ITS OWN FN AND NOT THREE COPIES OF ONE LITERAL. `examination_axis` cannot bind the report to
+// a name and still match on it exhaustively, so the three quiet arms call this. Writing the AxisUnanswered
+// literal out three times is the DESIGN section 3 fork this avoids: a fifth AxisReport arm would then have
+// to be noticed in three places instead of one.
+fn unanswered<T>(row: RuntimeIdentityAxisRow, report: AxisReport<T>) -> AxisExamination {
+  AxisUnanswered { axis: row.axis, gaps: gaps_of_report(row: row, report: report), weight: row.weight }
+}
 // What an axis did not answer, and WHETHER it stayed quiet or was refused. The absence is a SUM, not a
 // string: `Unread` (nobody got an answer) and `ControllerRefused` (an answer of "no" came back, with its
 // reason) lead to different human actions, and once both are flattened into one `NonEmptyStr` the closed
 // refusal sum cannot be recovered from the gap -- a declared variant that is then erased is the anemic
 // modeling DESIGN section 2 forbids. The witness
 // `test_refusal_is_unprovable_and_preserves_its_kind` is what keeps this honest.
+// THE THIRD ARM IS NOT A SYNONYM FOR `Unread`. `Unread` means the side gave no answer at all; this arm
+// means the side ANSWERED and the answer was not evidence -- it reported a list of addresses, and not one
+// of them was a permanent interface identity (all-null, every entry locally administered or group, or the
+// list simply empty). Folding that into `Unread` would tell an operator "nobody answered", which is the
+// wrong diagnosis and the wrong next human; folding it into a divergence would report two machines that
+// never disagreed as disagreeing (DESIGN section 5, a fabricated output). Only `reported_count` is carried:
+// the eligible count is 0 by definition here -- that is what the arm's NAME asserts -- and a field that can
+// hold exactly one value is noise beside a real one. The count is what makes the gap actionable: "reported
+// 4, none eligible" is a probe bug, "reported 0" is a unit problem, and those are different tickets. The
+// addresses themselves are NOT carried, because this module must not become a storable register of who the
+// fleet's machines are (header), and a gap is not the place to start.
 type RuntimeIdentityAbsence
   = Unread { reason: NonEmptyStr }
   | ControllerRefused { refusal: RuntimeIdentityRefusal }
+  | NoEligibleEvidence { reported_count: Int }
 
 // Which axis did not answer, on which side, and whether it was silence or a refusal.
 type RuntimeIdentityGap {
@@ -399,7 +487,7 @@ fn runtime_identity_match(
 fn all_divergences(examined: List<AxisExamination>) -> List<RuntimeIdentityDivergence> {
   examined.flat_map(e => match e {
     AxisCompared { axis: a, pair: p, weight: _ } => if axes_agree(pair: p) { [] } else { [RuntimeIdentityDivergence { axis: a, readings: p }] }
-    AxisUnanswered { gap: _, weight: _ } => []
+    AxisUnanswered { axis: _, gaps: _, weight: _ } => []
   })
 }
 
@@ -410,10 +498,10 @@ fn all_divergences(examined: List<AxisExamination>) -> List<RuntimeIdentityDiver
 // that acts on it, and a new weight makes this stop compiling instead of quietly returning false.
 fn fatal_gaps(examined: List<AxisExamination>) -> List<RuntimeIdentityGap> {
   examined.flat_map(e => match e {
-    AxisUnanswered { gap: g, weight: w } => match w {
+    AxisUnanswered { axis: _, gaps: gs, weight: w } => gs.flat_map(g => match w {
       DecisiveAxis => [g]
       CorroboratingAxis => []
-    }
+    }))
     AxisCompared { axis: _, pair: _, weight: _ } => []
   })
 }
@@ -427,7 +515,7 @@ fn axes_checked_and_passed(examined: List<AxisExamination>) -> List<RuntimeIdent
       DecisiveAxis => [a]
       CorroboratingAxis => []
     }
-    AxisUnanswered { gap: _, weight: _ } => []
+    AxisUnanswered { axis: _, gaps: _, weight: _ } => []
   })
 }
 
@@ -451,9 +539,7 @@ fn examinations(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> L
     ModelAxis => examine_axis(
       row: r, pre: pre.model, post: post.model,
       build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
-    NicSetAxis => examine_axis(
-      row: r, pre: pre.nics, post: post.nics,
-      build: (pv, ov) => AddressSetPair { pre_addresses: pv, post_addresses: ov })
+    NicSetAxis => nic_examination(row: r, pre: pre.nics, post: post.nics)
   })
 }
 
@@ -494,6 +580,9 @@ type AxisReadingPair
 fn axes_agree(pair: AxisReadingPair) -> Bool {
   match pair {
     TextPair { pre_text: pt, post_text: pt2 } => pt == pt2
+    // Both lists were screened non-empty by `examine_screened_addresses`, which is the only constructor
+    // of this arm, so a shared-none result here means two real addresses that differ -- a divergence --
+    // and an empty list can never reach it to masquerade as one.
     AddressSetPair { pre_addresses: pa, post_addresses: po } => mac_sets_share_an_address(pre: pa, post: po)
   }
 }
@@ -506,10 +595,94 @@ fn axes_agree(pair: AxisReadingPair) -> Bool {
 // BEFORE intersecting, which is what makes the row's Decisive weight earned rather than claimed. Filtering
 // is intersection-only: it can turn an agreement into a non-agreement, never the reverse, and the fold
 // reports that as a divergence an operator sees rather than as silence.
+// THE NIC AXIS IS SCREENED BEFORE IT IS COMPARED, which is why it cannot use `examine_axis` like the
+// three text axes: for a text axis, an answer is evidence, but for this axis an ANSWER CAN FAIL TO BE
+// EVIDENCE, and the two cases have different verdicts.
+//
+// WHAT EACH OUTCOME MEANS, and what it used to be:
+//  - both sides keep at least one permanent address and share one   -> AxisCompared, agrees  -> Match
+//  - both sides keep at least one and share none                    -> AxisCompared, diverges -> Mismatch
+//  - either side keeps NOTHING                                      -> a located gap on THAT side -> Unprovable
+// The middle row is the only one that may call itself a divergence, because it is the only one where two
+// pieces of evidence actually contradict each other. The third row used to fall through the comparison and
+// come out as a Mismatch, which condemned a unit twice over: two sides that both answered 00:00:00:00:00:00
+// (the null address, which the IEEE reserves and which is what a stack reports when it has NO address --
+// `extdeps.network.mac.mac_address_is_null`) agreed, and two sides where the OS reported an empty list
+// disagreed with a firmware that had plenty. Neither is a divergence; both mean "this axis did not answer",
+// and now they say which side failed and how, so an operator can tell a mute NIC from a probe that read the
+// wrong file. The screen is not re-implemented here: `mac_is_permanent_interface_identity` is the authority,
+// and it excludes null, locally administered and group addresses together (merry-fox-82's side-chat verdict on d5a72591).
+fn nic_examination(
+  row: RuntimeIdentityAxisRow,
+  pre: AxisStanding<List<Eui48Address>>,
+  post: AxisStanding<List<Eui48Address>>,
+) -> AxisExamination {
+  let report = standing_report(pre: pre, post: post)
+  match report {
+    BothAnswered { pre_value: pv, post_value: ov } =>
+      examine_screened_addresses(
+        row: row,
+        pre_reported: pv.length(),
+        post_reported: ov.length(),
+        pre_eligible: pv.filter(a => mac_is_permanent_interface_identity(addr: a)),
+        post_eligible: ov.filter(a => mac_is_permanent_interface_identity(addr: a)))
+    PreQuiet { absence: _ } => unanswered(row: row, report: report)
+    PostQuiet { absence: _ } => unanswered(row: row, report: report)
+    BothQuiet { pre_absence: _, post_absence: _ } => unanswered(row: row, report: report)
+  }
+}
+
+// THE FIVE OUTCOMES OF THE SCREENED PAIR, with the pre-side gap listed first so a both-sides-empty pair
+// reports the firmware side first -- the same reading order the fold uses everywhere else.
+// ONE GAP FOR A SIDE THAT ANSWERED WITH NON-EVIDENCE. Written once because all four combinations of
+// (pre short, post short) must say the SAME thing about the side that failed, with the same counts and the
+// same located side; four inline copies is the DESIGN section 3 fork, and one of them drifting would be a
+// gap that reports the wrong count for the firmware side only.
+fn no_eligible_gap(row: RuntimeIdentityAxisRow, side: IdentitySide, reported: Int) -> RuntimeIdentityGap {
+  RuntimeIdentityGap {
+    axis: row.axis, side: side,
+    absence: NoEligibleEvidence { reported_count: reported },
+  }
+}
+
+fn examine_screened_addresses(
+  row: RuntimeIdentityAxisRow,
+  pre_reported: Int,
+  post_reported: Int,
+  pre_eligible: List<Eui48Address>,
+  post_eligible: List<Eui48Address>,
+) -> AxisExamination {
+  // The gaps for the sides that came back with non-evidence, in firmware-then-OS order. Both are built
+  // unconditionally through the one constructor so the two sides cannot drift in wording, counts or side.
+  let pre_gap = no_eligible_gap(row: row, side: PreBootFirmwareSide, reported: pre_reported)
+  let post_gap = no_eligible_gap(row: row, side: PostBootOsSide, reported: post_reported)
+  let pre_short = pre_eligible.length() == 0
+  let post_short = post_eligible.length() == 0
+  if pre_short || post_short {
+    let gaps =
+      if pre_short && post_short { [pre_gap, post_gap] }
+      else if pre_short { [pre_gap] }
+      else { [post_gap] }
+    AxisUnanswered { axis: row.axis, gaps: gaps, weight: row.weight }
+  } else {
+    // Both sides hold evidence, so whatever follows is a real answer about the machine. The pair carries
+    // the SCREENED lists, because those are what the rule compared: reporting raw readings here would
+    // show an operator addresses that were never part of the decision.
+    AxisCompared {
+      axis: row.axis,
+      pair: AddressSetPair { pre_addresses: pre_eligible, post_addresses: post_eligible },
+      weight: row.weight,
+    }
+  }
+}
+
+// PURE INTERSECTION, ON PURPOSE. The screen has ALREADY run -- `examine_screened_addresses` is the only
+// constructor of the pair this reads and it filters through `mac_is_permanent_interface_identity` there --
+// so filtering again here would be the same fact derived twice, which is what produced the unreachable arm
+// review 81890 caught: two derivations of one thing, free to disagree. What remains is the one claim
+// this axis makes: the two sides share at least one of the addresses they both hold as permanent.
 fn mac_sets_share_an_address(pre: List<Eui48Address>, post: List<Eui48Address>) -> Bool {
-  let permanent_pre = pre.filter(a => mac_is_permanent_interface_identity(addr: a))
-  let permanent_post = post.filter(a => mac_is_permanent_interface_identity(addr: a))
-  permanent_pre.any(a => permanent_post.any(b => same_mac_address(left: a, right: b)))
+  pre.any(a => post.any(b => same_mac_address(left: a, right: b)))
 }
 
 // Addresses compared octet by octet, so the comparison is about the address and not about how it was

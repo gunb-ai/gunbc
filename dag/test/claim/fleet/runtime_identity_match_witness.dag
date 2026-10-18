@@ -12,7 +12,7 @@ module test.claim.fleet.runtime_identity_match_witness
 // file, and none appears in the module either; the module ships no identity data at all (the brief's rule:
 // no fabricated identity rows in the model, synthetic fixtures in test fns only).
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionPending, DissolutionFired, BoundDissolution, DeclarationAppears }
 import v2.std.decl_index { DeclFact, decl_facts }
@@ -40,6 +40,7 @@ import gunbc.fleet.runtime_identity_match {
   RuntimeIdentityAbsence,
   ControllerRefused,
   Unread,
+  NoEligibleEvidence,
   AxisStanding,
   AxisWasRead,
   AxisStayedSilent,
@@ -103,6 +104,13 @@ fn fixture_mac_locally_administered() -> Eui48Address {
 // never a single interface.
 fn fixture_mac_group() -> Eui48Address {
   mac_address(octet1: 1, octet2: 11, octet3: 12, octet4: 13, octet5: 14, octet6: 15)
+}
+
+// THE NULL ADDRESS. What a stack reports when it has NO address; the flags say
+// universally-administered-and-individual, so a screen that only reads the flags accepts it. This is
+// the fixture that must never be able to bind two sightings (merry-fox-82's side-chat verdict on d5a72591).
+fn fixture_mac_null() -> Eui48Address {
+  mac_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 0)
 }
 
 // A pre-boot standing with every axis answered.
@@ -374,13 +382,21 @@ test fn test_corroborating_gap_does_not_void_the_binding() -> Bool {
 test fn test_fold_is_total_over_a_mixed_observation() -> Bool {
   let pres = [pre_all_read(), pre_with_every_unobserved(), pre_with_every_refused()]
   let posts = [post_agreeing(), post_with_serial_unobserved(), post_with_every_unobserved(), post_with_every_refused()]
-  pres.any(pre => posts.all(post => verdict_is_coherent(pre: pre, post: post)))
+  // .all over BOTH lists, not .any over the first: a fold that is total on one convenient pre-boot
+  // standing and broken on another is not total, and `.any` would let 11 of 12 combinations go unchecked.
+  // Each combination must classify as exactly one of the three verdicts, which is what verdict_is_coherent
+  // asserts as ONE conjunction.
+  pres.all(pre => posts.all(post => verdict_is_coherent(pre: pre, post: post)))
 }
 
 fn verdict_is_coherent(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> Bool {
   let verdict = runtime_identity_match(pre: pre, post: post)
-  classifies_as_match(verdict: verdict) || classifies_as_mismatch(verdict: verdict) || classifies_as_unprovable(verdict: verdict)
-    && exactly_one_of_three(verdict: verdict)
+  // ONE conjunction, written out, because `a || b || c && d` binds as `a || b || (c && d)` -- a chain of
+  // classifiers joined by || before an && is satisfied whenever ANY one classifier fires, which is the
+  // opposite of a coherence check. `exactly_one_of_three` already REQUIRES that one of the three fires and
+  // no more, so the disjunction below it was both unsound in isolation and redundant; what remains is the
+  // uniqueness, the unit pair, and nothing else pretending to check classification.
+  exactly_one_of_three(verdict: verdict)
     && verdict_units(verdict: verdict) == [fixture_unit, fixture_unit]
 }
 
@@ -447,22 +463,6 @@ test fn test_one_shared_address_binds() -> Bool {
   classifies_as_match(verdict: runtime_identity_match(pre: pre_all_read(), post: post_agreeing()))
 }
 
-// A PRE-BOOT SET WITH NO ADDRESSES is a reading that reported nothing, and the intersection rule must
-// answer it as a divergence rather than as "nothing to compare". An empty set vacuously agreeing with
-// everything is how a wrong machine walks out as the right one.
-test fn test_empty_pre_boot_address_set_is_not_an_agreement() -> Bool {
-  let pre = PreBootIdentityStanding {
-    unit: fixture_unit,
-    board_serial: AxisWasRead { value: fixture_serial },
-    bios_version: AxisWasRead { value: fixture_bios },
-    model: AxisWasRead { value: fixture_model },
-    nics: AxisWasRead { value: [] },
-  }
-  match runtime_identity_match(pre: pre, post: post_agreeing()) {
-    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && (first_axis(divergences: ds) == NicSetAxis)
-    _ => false
-  }
-}
 
 // A DIVERGENCE MUST BE ABLE TO SAY THAT A SIDE SAID NOTHING. The module's own policy makes an empty address
 // set a reading rather than a gap, so this input is reached by a rule the module asserts -- and a report
@@ -472,7 +472,13 @@ test fn test_empty_pre_boot_address_set_is_not_an_agreement() -> Bool {
 // readings, or rendering the silent side as one empty string, passes a length-only check. The other side is
 // asserted non-empty in the same breath, so the witness cannot be satisfied by a rendering that answers []
 // to everything.
-test fn test_a_divergence_can_report_a_side_that_reported_no_addresses() -> Bool {
+// AN EMPTY ADDRESS SET IS NOT A DISAGREEMENT. This used to be Mismatch: the firmware reported no
+// addresses, the OS reported two, and the fold called that a divergence between two readings when only one
+// side had actually read anything -- and the divergence carried an empty pre-boot side, which is a
+// rendering of nothing. Two machines that never disagreed were told they were different machines. An empty
+// list is now the located outcome it is: the firmware side produced no evidence, on that side, with the
+// count it reported (0), and the verdict is Unprovable.
+test fn test_an_empty_address_set_is_a_located_gap_not_a_divergence() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
     board_serial: AxisWasRead { value: fixture_serial },
@@ -481,11 +487,17 @@ test fn test_a_divergence_can_report_a_side_that_reported_no_addresses() -> Bool
     nics: AxisWasRead { value: [] },
   }
   match runtime_identity_match(pre: pre, post: post_agreeing()) {
-    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1
-      && first_pre_side(divergences: ds).length() == 0
-      && first_post_side(divergences: ds).length() == 2
-      && first_post_side(divergences: ds).all(side => side != "")
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.length() == 1 && gaps.all(g => g.axis == NicSetAxis && g.side == PreBootFirmwareSide
+        && gap_reported_count(gap: g) == 0)
     _ => false
+  }
+}
+
+fn gap_reported_count(gap: RuntimeIdentityGap) -> Int {
+  match gap.absence {
+    NoEligibleEvidence { reported_count: r } => r
+    _ => -1
   }
 }
 
@@ -522,8 +534,12 @@ test fn test_a_shared_locally_administered_address_is_not_a_binding() -> Bool {
     model: AxisWasRead { value: fixture_model },
     nics: AxisWasRead { value: [fixture_mac_locally_administered()] },
   }
+  // NOT a Mismatch: nothing here diverged. The booted OS reported an address the screen excludes, so that
+  // side produced no evidence, and "no evidence" is a located gap -- not an argument that two units differ.
   match runtime_identity_match(pre: pre, post: post) {
-    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && (first_axis(divergences: ds) == NicSetAxis)
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.length() == 1
+        && gaps.all(g => g.axis == NicSetAxis && g.side == PostBootOsSide && gap_reported_count(gap: g) == 1)
     _ => false
   }
 }
@@ -544,8 +560,12 @@ test fn test_a_shared_group_address_is_not_a_binding() -> Bool {
     model: AxisWasRead { value: fixture_model },
     nics: AxisWasRead { value: [fixture_mac_group()] },
   }
+  // As above: a group address names no interface, so the OS side holds no evidence. Located gap, not
+  // divergence.
   match runtime_identity_match(pre: pre, post: post) {
-    Mismatch { diverged: ds, pre_unit: _, post_unit: _ } => ds.length() == 1 && (first_axis(divergences: ds) == NicSetAxis)
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.length() == 1
+        && gaps.all(g => g.axis == NicSetAxis && g.side == PostBootOsSide && gap_reported_count(gap: g) == 1)
     _ => false
   }
 }
@@ -553,6 +573,45 @@ test fn test_a_shared_group_address_is_not_a_binding() -> Bool {
 // A permanent address still binding, after the filter exists: without this, the two tests above could be
 // satisfied by an address comparison that refuses everything, and a module that never binds the address axis
 // would look correct.
+// TWO SIDES REPORTING THE NULL ADDRESS AGREE ON NOTHING. Both sides naming 00:00:00:00:00:00 used to
+// produce Match -- the null address passes the two flag tests, so the intersection was non-empty and the
+// fold bound two machines that had each told us they have no NIC. Now the screen leaves neither side with
+// evidence, and the axis is Unprovable, with a located gap per side carrying how much each side reported.
+test fn test_shared_null_addresses_bind_nothing() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_null()] },
+  }
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_null()] },
+  }
+  match runtime_identity_match(pre: pre, post: post) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.filter(g => g.axis == NicSetAxis).length() == 2
+        && gaps.filter(g => g.side == PreBootFirmwareSide && gap_reports_none_eligible(gap: g)).length() == 1
+        && gaps.filter(g => g.side == PostBootOsSide && gap_reports_none_eligible(gap: g)).length() == 1
+    _ => false
+  }
+}
+
+// A side that reported ADDRESSES but none of them permanent. Reported count is carried so an operator can
+// tell "the probe read the wrong file" (reported 0) from "the probe read 1 address and it was not a NIC's"
+// (reported 1, as here) -- the difference between a probe bug and a unit problem.
+fn gap_reports_none_eligible(gap: RuntimeIdentityGap) -> Bool {
+  match gap.absence {
+    NoEligibleEvidence { reported_count: r } => r == 1
+    _ => false
+  }
+}
+
 test fn test_a_shared_permanent_address_still_binds() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
@@ -749,6 +808,9 @@ fn gap_is_refusal(gap: RuntimeIdentityGap) -> Bool {
   match gap.absence {
     ControllerRefused { refusal: _ } => true
     Unread { reason: _ } => false
+    // A side that answered with non-evidence is not a refusal either -- it is its own kind, and a
+    // NoEligibleEvidence gap reaching a refusal-shaped check must be visible, not defaulted away.
+    NoEligibleEvidence { reported_count: _ } => false
   }
 }
 
@@ -760,6 +822,9 @@ fn gap_detail(gap: RuntimeIdentityGap) -> NonEmptyStr {
       ReplyUnreadable { detail: d } => d
     }
     Unread { reason: r } => r
+    // no fabricated NonEmptyStr: the counts are what this kind carries, so a caller asking for words is
+    // told which kind it actually got.
+    NoEligibleEvidence { reported_count: _ } => "no eligible address; reported count"
   }
 }
 
@@ -786,6 +851,7 @@ fn first_gap_refusal_kind(gaps: List<RuntimeIdentityGap>) -> NonEmptyStr {
         ReplyUnreadable { detail: _ } => "reply-unreadable"
       }
       Unread { reason: _ } => "unread"
+      NoEligibleEvidence { reported_count: _ } => "no-eligible-evidence"
     }
     Absent => "none"
   }
@@ -806,6 +872,59 @@ test fn test_silence_reports_its_own_words_not_a_substitute() -> Bool {
         && first_gap_detail(gaps: gaps) == "the OS image reports no board serial"
         && !first_gap_is_refusal(gaps: gaps)
     _ => false
+  }
+}
+
+// WHEN BOTH SIDES FAIL THE SAME AXIS, NEITHER FAILURE MAY SWALLOW THE OTHER. The first version of
+// standing_report had only PreQuiet/PostQuiet and claimed the firmware side "won" when both were quiet --
+// an argument about the ORDER to report two absences, used to justify DELETING one. Consequence: a silent
+// BMC paired with a booted OS that REFUSED the read came out Unprovable for one firmware Unread, and the
+// refusal vanished, while the fleet's own history (BMCs and OS agents that reject vendor reads) is exactly
+// the case whose next human differs from a silence's. The verdict stayed Unprovable, so no witness caught
+// it: the record just looked complete. Now both absences travel, firmware first, and the KIND of each is
+// what an operator routes on.
+test fn test_both_sides_failing_one_axis_reports_both_failures() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisStayedSilent { reason: "the controller never asked" },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
+  }
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: AxisWasRefused { refusal: AuthenticationFailed { detail: "the OS agent denied the read" } },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [fixture_mac_b()] },
+  }
+  match runtime_identity_match(pre: pre, post: post) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.length() == 2
+        && gaps.all(g => g.axis == BoardSerialAxis)
+        && gaps.filter(g => g.side == PreBootFirmwareSide && !gap_is_refusal(gap: g)).length() == 1
+        && gaps.filter(g => g.side == PostBootOsSide && gap_is_refusal(gap: g)).length() == 1
+        // the pre gap keeps its own words and the post gap keeps its own kind AND its detail: neither
+        // failure is allowed to be reported as the other
+        && gaps.filter(g => g.side == PreBootFirmwareSide
+             && gap_detail(gap: g) == "the controller never asked").length() == 1
+        && gaps.filter(g => g.side == PostBootOsSide
+             && gap_detail(gap: g) == "the OS agent denied the read").length() == 1
+        && gaps.filter(g => g.side == PostBootOsSide
+             && gap_refusal_kind(gap: g) == "authentication-failed").length() == 1
+    _ => false
+  }
+}
+
+fn gap_refusal_kind(gap: RuntimeIdentityGap) -> NonEmptyStr {
+  match gap.absence {
+    ControllerRefused { refusal: r } => match r {
+      QueryUnsupported { detail: _ } => "query-unsupported"
+      AuthenticationFailed { detail: _ } => "authentication-failed"
+      ReplyUnreadable { detail: _ } => "reply-unreadable"
+    }
+    _ => "not-a-refusal"
   }
 }
 
@@ -908,19 +1027,17 @@ test fn test_the_agreement_rule_follows_the_evidence_not_the_table() -> Bool {
 // is empty for an unrelated reason.
 test fn test_axis_table_citations_resolve_against_the_declaration_census() -> Bool {
   let facts = decl_facts(pool_roots: ["dag", "src/v2"])
-  every_row_cites_two_homes(rows: runtime_identity_axis_rows)
-    && every_row_citation_resolves(rows: runtime_identity_axis_rows, facts: facts)
-    && cites(facts: facts, qualified: "gunbc.machine_intake.subject.BoardSerialObservation")
-    && cites(facts: facts, qualified: "gunbc.machine_intake.subject.bind_unit_key")
-    && cites(facts: facts, qualified: "gunbc.machine_intake.subject.FirmwareManifest")
-    && cites(facts: facts, qualified: "gunbc.machine_intake.subject.firmware_manifest_digest")
-    && cites(facts: facts, qualified: "gunbc.machine_intake.mtjade1_access_observation.FruIdentityFields")
-    && cites(facts: facts, qualified: "gunbc.machine_intake.mtjade1_access_observation.RecordedFruObservation")
-    && cites(facts: facts, qualified: "extdeps.network.mac.Eui48Address")
-    && cites(facts: facts, qualified: "extdeps.network.mac.mac_is_permanent_interface_identity")
-    // the negative half, kept in this witness for the cost reason above: a citation naming a declaration that
-    // was never written must resolve to NOTHING, or the eight positives above would also pass on an empty or
-    // broken census. This is the exact defect I shipped once -- three invented decl names in the table.
+  // The POSITIVE half is derived from the rows, never listed: what every row cites must resolve in the
+  // census. A hand-listed set of eight strings kept passing over three INVENTED citation names I shipped
+  // once, because the list described the table as its author remembered it. If a citation is renamed or
+  // invented today, this line is what goes red.
+  every_row_citation_resolves(rows: runtime_identity_axis_rows, facts: facts)
+    && every_row_cites_two_homes(rows: runtime_identity_axis_rows)
+    && cites_decisive_rows_have_a_binding_home(rows: runtime_identity_axis_rows, facts: facts)
+    // THE CENSUS ITSELF MUST BE ABLE TO FAIL, or every derived check above is vacuous: it must resolve a
+    // name that really exists and refuse one that has never been written. Without this half, an empty or
+    // broken census makes `cites` return false for everything and the positives pass on nothing.
+    && cites(facts: facts, qualified: "gunbc.machine_intake.subject.UnitKey")
     && !cites(facts: facts, qualified: "gunbc.plans.physical_machine_boot_program.board_serial_is_the_unit")
     && runtime_identity_axis_rows.length() == 4
 }
@@ -931,9 +1048,17 @@ test fn test_axis_table_citations_resolve_against_the_declaration_census() -> Bo
 // what this checks, is that a row cannot satisfy the two-home requirement by citing one declaration under
 // two names: the reading home and the binding home must be different declarations, since a home that owns
 // the field does not thereby own the identity claim (DESIGN section 3b, scope mismatch).
+// A row may not cite the SAME declaration as both its reading home and its binding home: that is one
+// authority asked to be two, and it is how a citation becomes decorative. A `Present` binding authority
+// that differs from the reading authority is two homes; `Absent` is not a second home at all, it is the
+// statement that this axis binds nothing, so it passes here and is checked where it belongs --
+// `cites_decisive_binding` requires a Decisive row to carry a `Present` one.
 fn every_row_cites_two_homes(rows: List<RuntimeIdentityAxisRow>) -> Bool {
-  rows.all(row => !(row.reading_authority.module_path == row.binding_authority.module_path
-    && row.reading_authority.decl_name == row.binding_authority.decl_name))
+  rows.all(row => match row.binding_authority {
+    Absent => true
+    Present { value: b } => !(row.reading_authority.module_path == b.module_path
+      && row.reading_authority.decl_name == b.decl_name)
+  })
 }
 
 // EVERY authority the TABLE carries must resolve to exactly one declaration in the corpus. The explicit
@@ -942,10 +1067,41 @@ fn every_row_cites_two_homes(rows: List<RuntimeIdentityAxisRow>) -> Bool {
 // forgetting a row. It is the mechanical half of DESIGN section 3b: an fn cannot judge whether a home OWNS
 // a claim, but it can refuse a row that cites a spelling the corpus does not declare -- the defect review
 // 38602 round 2 found in three rows, and the same defect my own first replacement citations committed.
+// Every citation in the table must name a declaration that EXISTS, read out of the rows themselves rather
+// than from a restated list -- a restated list keeps passing over a row whose citation was renamed or
+// invented, and a citation that resolves to nothing reads as audited. A binding authority may be `Absent`,
+// which is a CLAIM (this axis binds nothing), not a gap to be filled: it resolves by being absent, and the
+// decisive rows are still required to name one, checked below, because a Decisive axis that cites no
+// binding home is borrowing power from nowhere.
 fn every_row_citation_resolves(rows: List<RuntimeIdentityAxisRow>, facts: List<DeclFact>) -> Bool {
   rows.all(row =>
     cites(facts: facts, qualified: qualified_of(row.reading_authority))
-      && cites(facts: facts, qualified: qualified_of(row.binding_authority)))
+      && optional_citation_resolves(opt: row.binding_authority, facts: facts)
+      && cites_decisive_binding(row: row, facts: facts))
+}
+
+fn optional_citation_resolves(opt: DeclarationRef?, facts: List<DeclFact>) -> Bool {
+  match opt {
+    Present { value: r } => cites(facts: facts, qualified: qualified_of(r))
+    Absent => true
+  }
+}
+
+// A Decisive axis asserts that one field can bind two sightings to one unit, so it MUST name the home that
+// granted it that power. A Corroborating axis may say `Absent` (it binds nothing); a Decisive one saying so
+// would be a weight with no source.
+fn cites_decisive_rows_have_a_binding_home(rows: List<RuntimeIdentityAxisRow>, facts: List<DeclFact>) -> Bool {
+  rows.all(row => cites_decisive_binding(row: row, facts: facts))
+}
+
+fn cites_decisive_binding(row: RuntimeIdentityAxisRow, facts: List<DeclFact>) -> Bool {
+  match row.weight {
+    DecisiveAxis => match row.binding_authority {
+      Present { value: r } => cites(facts: facts, qualified: qualified_of(r))
+      Absent => false
+    }
+    CorroboratingAxis => true
+  }
 }
 
 fn qualified_of(d_ref: DeclarationRef) -> String {
