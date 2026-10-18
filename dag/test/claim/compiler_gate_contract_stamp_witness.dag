@@ -1,4 +1,4 @@
-module test.claim.witness.compiler_gate_contract_stamp
+module test.claim.compiler_gate_contract_stamp_witness
 
 import std.types { Bool, Int, List, String }
 import std.algebra { for_all, length, list_map, string_contains }
@@ -310,12 +310,14 @@ fn compiler_gate_contract_stamp_awk_matches_stamped_document() -> Bool {
   )
   match compiler_gate_contract_stamp_read_from(src: paired) {
     StampPresent { stamp: s } =>
-      if s != stamp then false
-      else
+      if s != stamp {
+        false
+      } else {
         match compiler_gate_contract_stamp_read_from(src: stale) {
           StampPresent { stamp: o } => o == stamp_other
           _ => false
         }
+      }
     _ => false
   }
 }
@@ -410,7 +412,8 @@ test fn the_guard_precedes_every_binary_invoking_step_holds() -> Bool {
 fn index_of(names: List<String>, want: String, at: Int) -> Int {
   match names {
     [] => -1
-    [head, ...rest] => if head == want then at else index_of(rest, want, at + 1)
+    [head, ...rest] =>
+      if head == want { at } else { index_of(rest, want, at + 1) }
   }
 }
 
@@ -420,9 +423,11 @@ fn first_invoking_index(steps: List<Step>, at: Int) -> Int {
   match steps {
     [] => -1
     [head, ...rest] =>
-      if step_invokes_built_binary(body: step_run_text(step: head))
-      then at
-      else first_invoking_index(rest, at + 1)
+      if step_invokes_built_binary(body: step_run_text(step: head)) {
+        at
+      } else {
+        first_invoking_index(rest, at + 1)
+      }
   }
 }
 

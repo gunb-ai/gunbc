@@ -133,26 +133,27 @@ type CompilerGateContractStampDerivation
   | CompilerGateContractStampNotDerived { reason: String }
 
 fn compiler_gate_contract_stamp_derivation() -> CompilerGateContractStampDerivation {
-  if length(compiler_gate_invocation_contract_canonical_rows()) == 0
-  then CompilerGateContractStampNotDerived {
-    reason: "the invocation contract declares no rows, so nothing would be promised and nothing could be refused"
-  }
-  else if fold(
+  if length(compiler_gate_invocation_contract_canonical_rows()) == 0 {
+    CompilerGateContractStampNotDerived {
+      reason: "the invocation contract declares no rows, so nothing would be promised and nothing could be refused"
+    }
+  } else if fold(
     compiler_gate_invocation_contract_canonical_rows(),
     init: false,
     f: fn(any_empty, row) { any_empty || string_length(s: row) == 0 }
-  )
-  then CompilerGateContractStampNotDerived {
-    reason: "a declared contract row is empty, so two different contracts could hash alike"
-  }
-  else if string_contains(s: compiler_gate_invocation_contract_material(), pattern: "${{")
-  then CompilerGateContractStampNotDerived {
-    reason: "a contract row carries a GitHub expression, so the stamp would not be a literal and could not be compared"
-  }
-  else
+  ) {
+    CompilerGateContractStampNotDerived {
+      reason: "a declared contract row is empty, so two different contracts could hash alike"
+    }
+  } else if string_contains(s: compiler_gate_invocation_contract_material(), pattern: "${{") {
+    CompilerGateContractStampNotDerived {
+      reason: "a contract row carries a GitHub expression, so the stamp would not be a literal and could not be compared"
+    }
+  } else {
     CompilerGateContractStampDerived {
       stamp: content_hash_of_value(value: compiler_gate_invocation_contract_material())
     }
+  }
 }
 
 fn compiler_gate_contract_stamp_is_derived() -> Bool {
@@ -246,11 +247,13 @@ fn compiler_gate_stamp_from_entry(kvs: List<YamlKeyValue>) -> CompilerGateContra
         Present { value: kv } =>
           match kv.value {
             YamlString { value: s } =>
-              if string_length(s: s) == 0
-              then StampUnreadable { detail: "the stamp member is the empty string" }
-              else if string_contains(s: s, pattern: "${{")
-              then StampUnreadable { detail: "the stamp member is a GitHub expression, not a literal" }
-              else StampPresent { stamp: trim(s) }
+              if string_length(s: s) == 0 {
+                StampUnreadable { detail: "the stamp member is the empty string" }
+              } else if string_contains(s: s, pattern: "${{") {
+                StampUnreadable { detail: "the stamp member is a GitHub expression, not a literal" }
+              } else {
+                StampPresent { stamp: trim(s) }
+              }
             YamlNull => StampUnreadable { detail: "the stamp member is not a string" }
             YamlBool { value: _ } => StampUnreadable { detail: "the stamp member is not a string" }
             YamlInt { lexeme: _ } => StampUnreadable { detail: "the stamp member is not a string" }
@@ -298,8 +301,11 @@ fn compiler_gate_contract_stamp_compare(
 ) -> CompilerGateContractStampReading {
   match tree {
     StampPresent { stamp: tree_stamp } =>
-      if tree_stamp == running then StampPresent { stamp: tree_stamp }
-      else StampMismatch { running: running, tree: tree_stamp }
+      if tree_stamp == running {
+        StampPresent { stamp: tree_stamp }
+      } else {
+        StampMismatch { running: running, tree: tree_stamp }
+      }
     StampAbsent => StampAbsent
     StampUnreadable { detail: d } => StampUnreadable { detail: d }
   }
