@@ -3,7 +3,7 @@ module gunbc.fleet.fleet_converge_workflow
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
-  RunScopedMode, RunScopedMainRoute, MainUsesGrantedAccount, MainUsesFleetIdentity, run_scoped_modes_with_route, run_scoped_federation_named,
+  RunScopedMode, RunScopedMainRoute, MainUsesGrantedAccount, MainUsesFleetIdentity, run_scoped_modes_with_route, run_scoped_federation_named, run_scoped_modes,
   branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
   BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
   RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
@@ -4833,8 +4833,7 @@ fn fleet_converge_branch_run_grant_await_step() -> Step {
 
 // ONE SIGN-IN STEP PER GRANTED-ACCOUNT ROW, its id the account's: wif_auth_<account id, dashes as
 // underscores>, which the mode's consumers read.
-fn fleet_converge_granted_account_auth_step(row: RunScopedMode) -> Step {
-  let email = match run_scoped_federation_named(account_id: row.account_id as String) { Present { value: f } => f.service_account as String  Absent => "" }
+fn fleet_converge_granted_account_auth_step(row: RunScopedMode, email: String) -> Step {
   ci_wif_auth_step_with_condition(
     name: join(["WIF auth (OIDC -> branch-dispatch pool -> ", row.account_id as String, " SA; only after this run's grant)"], ""),
     id: concat("wif_auth_", (row.account_id as String).replace(from: "-", to: "_")),
@@ -4844,8 +4843,28 @@ fn fleet_converge_granted_account_auth_step(row: RunScopedMode) -> Step {
   )
 }
 
+// A row whose account names no federation yields no step here and no arm below; it is never given an
+// empty service account. fleet_converge_unfederated_run_scoped_refusal refuses generation first, so the
+// omission is unreachable in an emitted workflow.
 fn fleet_converge_granted_account_auth_steps() -> List<Step> {
-  map(run_scoped_modes_with_route(route: MainUsesGrantedAccount), r => fleet_converge_granted_account_auth_step(row: r))
+  flat_map(run_scoped_modes_with_route(route: MainUsesGrantedAccount), r =>
+    map(fleet_converge_row_service_accounts(row: r), email => fleet_converge_granted_account_auth_step(row: r, email: email)))
+}
+
+fn fleet_converge_row_service_accounts(row: RunScopedMode) -> List<String> {
+  match run_scoped_federation_named(account_id: row.account_id as String) { Present { value: f } => [f.service_account as String]  Absent => [] }
+}
+
+fn fleet_converge_unfederated_run_scoped_refusal_of(rows: List<RunScopedMode>) -> String? {
+  let bad = filter(rows, r => fleet_converge_row_service_accounts(row: r).length() == 0)
+  if bad.length() == 0 { Absent } else {
+    Present { value: join(["REFUSED gunbc.fleet.fleet_converge_workflow: run_scoped_modes row(s) name an account with no federation (gunbc.auth.branch_dispatch_federation run_scoped_federation_named), so the sign-in would carry no service account: ",
+      join(map(bad, r => join(["mode ", r.mode as String, " account_id ", r.account_id as String], "")), "; "), ". No workflow yaml was emitted."], "") }
+  }
+}
+
+fn fleet_converge_unfederated_run_scoped_refusal() -> String? {
+  fleet_converge_unfederated_run_scoped_refusal_of(rows: run_scoped_modes())
 }
 
 // THE FLEET IDENTITY STEP (id wif_auth, which every fleet consumer reads): the main-only provider and
@@ -4853,7 +4872,7 @@ fn fleet_converge_granted_account_auth_steps() -> List<Step> {
 // account, derived from the relation. Everything outside the relation reads the main pair.
 fn fleet_converge_branch_account_expression() -> String {
   fold(run_scoped_modes_with_route(route: MainUsesFleetIdentity), init: "", f: (acc, r) =>
-    join([acc, fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: [r])), " && '", match run_scoped_federation_named(account_id: r.account_id as String) { Present { value: f } => f.service_account as String  Absent => "" }, "' || "], ""))
+    join([acc, fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: [r])), "", join(map(fleet_converge_row_service_accounts(row: r), e => join([" && '", e, "' || "], "")), "")], ""))
 }
 
 fn fleet_converge_fleet_identity_auth_step(if_condition: String) -> Step {
@@ -5359,6 +5378,13 @@ type FleetConvergeYamlGenerationOutcome
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
+  match fleet_converge_unfederated_run_scoped_refusal() {
+    Present { value: r } => FleetConvergeYamlGenerationRefused { reason: r }
+    Absent => fleet_converge_yml_after_run_scoped_admission()
+  }
+}
+
+fn fleet_converge_yml_after_run_scoped_admission() -> FleetConvergeYamlGenerationOutcome {
   if count(fleet_converge_empty_choice_input_names()) > 0 {
     FleetConvergeYamlGenerationRefused {
       reason: join([
