@@ -347,51 +347,6 @@ fn list_runners_by_name_with(token: ControllerInstallationToken, organization: N
   }
 }
 
-// THE WHOLE ORGANIZATION LISTING, every page the bound allows, merged into one wire value that keeps
-// GitHub's total_count. A page that is refused ends the walk as that refusal; a walk that ends short
-// of total_count is returned short, and gunbc.runner.runner_jit_deregistration lost_boot_sweep
-// refuses a count that disagrees with total_count, so an unread page never reads as an absent runner.
-data organization_runner_listing_pages: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-
-// ONE PAGE FOLDED INTO THE WALK. Pages that disagree on total_count did not observe one population
-// (gunbc.fleet.organization_runner_roster_read says the same of its walk), so a later page whose
-// total_count differs from the first page's REFUSES rather than overwriting it. This walk diverges from
-// that reader in transport only: the typed ListOrganizationRunners operation under the App installation
-// token carries no Link header, so it walks by page number to a declared bound, and a walk that ends
-// short is refused downstream by the lost_boot_sweep count-versus-total_count check.
-fn organization_runner_listing_page_merged(so_far: OrganizationRunnerListWire, page: Int, read: OrganizationRunnerListWire) -> RestResult<OrganizationRunnerListWire> {
-  if page > 1 && read.total_count != so_far.total_count {
-    RestRefused { refusal: RestTransportRefused { cause: join([
-      "organization runner listing pages disagree on total_count: page 1 read ", so_far.total_count as String,
-      ", page ", page as String, " read ", read.total_count as String,
-    ], "") as NonEmptyStr } }
-  } else {
-    RestAnswered { answer: OrganizationRunnerListWire {
-      total_count: read.total_count,
-      runners: concat(so_far.runners, read.runners),
-    } }
-  }
-}
-
-fn list_organization_runners_with(token: ControllerInstallationToken, organization: NonEmptyStr) -> RestResult<OrganizationRunnerListWire>
-  uses net: Network
-{
-  fold(organization_runner_listing_pages, init: RestAnswered { answer: OrganizationRunnerListWire { total_count: 0, runners: [] } }, f: fn(acc, page) {
-    match acc {
-      RestRefused { refusal } => RestRefused { refusal: refusal }
-      RestAnswered { answer: so_far } =>
-        if page > 1 && count(so_far.runners) >= so_far.total_count {
-          acc
-        } else {
-          match github.ActionsSelfHostedRunners.ListOrganizationRunners(installation_token: token.token, org: organization, page: page) {
-            RestRefused { refusal } => RestRefused { refusal: refusal }
-            RestAnswered { answer } => organization_runner_listing_page_merged(so_far: so_far, page: page, read: answer.result)
-          }
-        }
-    }
-  })
-}
-
 fn delete_runner_with(token: ControllerInstallationToken, organization: NonEmptyStr, runner_id: Int) -> RestResult<OrganizationRunnerDeletedBody>
   uses net: Network
 {

@@ -4076,7 +4076,8 @@ fn gunbc_ci_arrival_admit_invoke() -> String {
 // WIF_ACCESS_TOKEN (gunbc.github_effect_perform stage_controller_app_key), so no credential is
 // minted, exported or traced in shell.
 fn gunbc_ci_service_runner_lost_boot_sweep_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_service_runner_lost_boot_sweep_target.entry,
     function: gunbc_ci_service_runner_lost_boot_sweep_target.function,

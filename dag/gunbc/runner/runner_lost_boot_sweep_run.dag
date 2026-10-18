@@ -14,7 +14,11 @@ import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, 
 import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
 import gunbc.fleet.app_control_plane_inspection { gunbai_ci_registration_goal }
-import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
+import gunbc.fleet.fleet_runner_connectivity { github_organization_ref, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
+import gunbc.fleet.organization_runner_roster_read { OrganizationRunnerRosterReport, organization_runner_roster_report }
+import extdeps.github.pagination { github_max_page_size }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestTransportRefused }
 import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
 import extdeps.uuid { uuid_of }
@@ -22,7 +26,7 @@ import gunbc.machine_intake.host_capture_envelope { KernelBootId }
 import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, current_service_population, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentServicePopulationRefusal, CurrentPopulationWidthUnresolved, CurrentPopulationHostNotControlled, CurrentPopulationSlotRefused, CurrentPopulationEmpty }
 import gunbc.github_effect_perform {
   ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token_with_key,
-  ControllerInstallationToken, list_organization_runners_with,
+  ControllerInstallationToken,
   ControllerKeyStaged, ControllerKeyNotStaged, stage_controller_app_key, remove_staged_controller_key,
 }
 import gunbc.runner.runner_jit_deregistration {
@@ -226,6 +230,25 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
   }
 }
 
+// THE SWEEP READS THE ORGANIZATION THROUGH THE ONE ROSTER READ (gunbc.fleet.organization_runner_roster_read),
+// not a walk of its own. That read follows the authority's Link continuations and reports Observed only
+// when the listing closed, every page agreed on total_count, no id was read with disagreeing payloads
+// and the distinct ids equal the total. Anything less is refused here with the report's own cause: a
+// prefix is never handed to lost_boot_sweep, where a runner on an unread page would read as absent.
+fn sweep_listing_of_roster(report: OrganizationRunnerRosterReport) -> RestResult<OrganizationRunnerListWire> {
+  match report.evidence {
+    RosterObserved { observed_on: _, registrations: regs } =>
+      RestAnswered { answer: OrganizationRunnerListWire {
+        total_count: length(xs: regs),
+        runners: map(regs, r => OrganizationRunnerWire { id: r.id as Int, name: r.name as String }),
+      } }
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: seen, authority_total: total } =>
+      RestRefused { refusal: RestTransportRefused { cause: join(["organization runner roster was partial (", to_string(seen), " of total_count ", to_string(total), "): ", report.note], "") as NonEmptyStr } }
+    RosterReadUnavailable { reason: why } =>
+      RestRefused { refusal: RestTransportRefused { cause: concat("organization runner roster was unavailable: ", why) as NonEmptyStr } }
+  }
+}
+
 fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
   uses net: Network
 {
@@ -237,7 +260,7 @@ fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, t
     organization: organization,
     population: population,
     authority: sweep_authority(),
-    listing: list_organization_runners_with(token: token, organization: organization.login),
+    listing: sweep_listing_of_roster(report: organization_runner_roster_report(org: organization.login, page_size: github_max_page_size)),
   ) {
     LostBootSweepRefused { refusal } => exit_failure(reason: sweep_refusal_text(refusal: refusal))
     LostBootSweepSelected { subjects, untouched } => {

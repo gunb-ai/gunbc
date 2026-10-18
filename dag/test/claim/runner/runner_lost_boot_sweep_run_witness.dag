@@ -4,8 +4,10 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
-import gunbc.github_effect_perform { organization_runner_listing_page_merged }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
+import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOnline }
+import gunbc.fleet.fleet_runner_connectivity { RosterObserved, RosterObservedPartial, RosterReadUnavailable, OrganizationRunnerRosterEvidence }
+import gunbc.fleet.organization_runner_roster_read { OrganizationRunnerRosterReport }
 import extdeps.uuid { uuid_of }
 import std.decl_ref { decl_ref }
 import gunbc.host.host_control_route { HostControlStanding }
@@ -25,7 +27,7 @@ import gunbc.runner.runner_jit_deregistration {
 import gunbc.runner.runner_lost_boot_sweep_run {
   LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input,
   sweep_authority, sweep_host_standing, SweepHostBound, SweepHostNotManaged,
-  sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name,
+  sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, sweep_listing_of_roster,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -278,15 +280,23 @@ test fn each_non_sweep_outcome_names_its_own_cause() -> Bool {
   }
 }
 
-// PAGES THAT DISAGREE ON total_count DID NOT OBSERVE ONE POPULATION. RED: overwriting total_count with the
-// latest page merges two populations and reads as complete. Positive control: agreeing pages merge in order.
-test fn pages_disagreeing_on_total_count_refuse_and_agreeing_pages_merge() -> Bool {
-  let first = OrganizationRunnerListWire { total_count: 2, runners: [OrganizationRunnerWire { id: 1, name: "a" }] }
-  (match organization_runner_listing_page_merged(so_far: first, page: 2, read: OrganizationRunnerListWire { total_count: 3, runners: [OrganizationRunnerWire { id: 2, name: "b" }] }) {
+// THE SWEEP'S LISTING IS THE SHARED ROSTER READ'S, AND ONLY AN OBSERVED ROSTER SERVES IT. RED: a partial
+// roster passed through as a listing lets a runner on an unread page read as absent. Positive control: an
+// observed roster becomes the listing, ids and names intact.
+fn roster_report(e: OrganizationRunnerRosterEvidence) -> OrganizationRunnerRosterReport {
+  OrganizationRunnerRosterReport { evidence: e, pages: [], pages_read: 0, disputed_ids: [], note: "n" }
+}
+
+test fn only_an_observed_roster_becomes_the_sweep_listing() -> Bool {
+  let reg = GitHubSelfHostedRunnerRegistration { id: 7, name: "a", status: GitHubRunnerOnline {}, busy: false, ephemeral: none, version: none, os: "Linux", labels: [] }
+  (match sweep_listing_of_roster(report: roster_report(RosterObserved { observed_on: "d", registrations: [reg] })) {
+    RestAnswered { answer: w } => w.total_count == 1 && count(w.runners) == 1
+    RestRefused { refusal: _ } => false
+  }) && (match sweep_listing_of_roster(report: roster_report(RosterObservedPartial { observed_on: "d", registrations: [reg], observed_count: 1, authority_total: 1 })) {
     RestRefused { refusal: _ } => true
     RestAnswered { answer: _ } => false
-  }) && (match organization_runner_listing_page_merged(so_far: first, page: 2, read: OrganizationRunnerListWire { total_count: 2, runners: [OrganizationRunnerWire { id: 2, name: "b" }] }) {
-    RestAnswered { answer: w } => w.total_count == 2 && count(w.runners) == 2
-    RestRefused { refusal: _ } => false
+  }) && (match sweep_listing_of_roster(report: roster_report(RosterReadUnavailable { reason: "r" })) {
+    RestRefused { refusal: _ } => true
+    RestAnswered { answer: _ } => false
   })
 }
