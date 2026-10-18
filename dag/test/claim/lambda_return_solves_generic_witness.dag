@@ -52,7 +52,10 @@ data lambda_return_disagrees_with_a_fixed_parameter_source: String = "module tes
 data lambda_before_the_fixing_argument_source: String = "module test.claim.lrs_two_round_boundary\nimport std.types { Bool, Int }\nfn lrs_apply2<T, R>(f: fn(T) -> R, x: T) -> R { f(x) }\nfn lrs_take(b: Bool) -> Bool { b }\nfn probe() -> Bool { lrs_take(b: lrs_apply2(f: fn(v) { v }, x: 1)) }\n"
 
 test fn a_lambda_return_that_disagrees_with_a_fixed_parameter_refuses() -> Bool {
-  blocking_class_count_for(source: lambda_return_disagrees_with_a_fixed_parameter_source, wanted_class: "TypeMismatch") >= 1
+  // Exactly one TypeMismatch and nothing else blocking: a duplicated refusal of the node, or an
+  // unrelated blocking row beside it, fails this as written.
+  blocking_class_count_for(source: lambda_return_disagrees_with_a_fixed_parameter_source, wanted_class: "TypeMismatch") == 1 &&
+    total_blocking_count_for(source: lambda_return_disagrees_with_a_fixed_parameter_source) == 1
 }
 
 test fn a_lambda_before_the_argument_that_fixes_its_parameter_stays_unsolved_at_the_two_round_bound() -> Bool {

@@ -8,6 +8,7 @@ use self::OperatorRealization::*;
 use self::OperatorRealizationRefusal::*;
 use self::OrderingTest::*;
 use self::StructuralOrderingLookup::*;
+pub use crate::std_algebra::{collection_concat_shape, collection_count_shape};
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,

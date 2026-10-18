@@ -13,7 +13,7 @@ import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, Occ
 import v2.extdeps.languages.dag { dag_kernel_string_type_spelling, dag_string_literal_value_optional, dag_kernel_type_binding_optional, dag_kernel_type_declaration_binding_optional, dag_kernel_type_foreign_declaration, ForeignDeclarationBinds, ForeignDeclarationRefuses, dag_node_is_float_literal_atom, dag_node_is_int_literal_atom, dag_symbol_literal_name_optional, dag_string_literal_value_symbol_optional, dag_node_is_module_root_conj, dag_resolve_preserve_module_metadata_subtree, dag_surface_module_header_metadata_edge, dag_surface_operator_canonicalization_lookup, namespace_graft_spine_body_optional, qualified_name_from_module_node }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
 import v2.std.witness { map_get_checked }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.optional_layers { wrap_type_node_occupancy_at }
