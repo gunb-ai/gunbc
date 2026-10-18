@@ -928,7 +928,7 @@ data compiler_gate_contract_stamp_evidence_shell_emit_scaffold: Disposition = Sc
   }
 }
 
-data compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compiler_gate_contract_stamp_evidence_statements -- the case TABLE, the expected exit codes and the expected findings are already modeled in .dag (compiler_gate_contract_stamp_evidence_cases); what remains here is SPAWNING the guard and reading its exit status and stdout, which has no capability in the substrate (dag/std/process.dag models an exit VALUE, not an exec). Dissolves when a .dag claim can execute a program and observe its exit code and output, at which point these rows become a `gunbc test` row in gunbc.instrument_targets and this runner dissolves into that row.")
+data compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compiler_gate_contract_stamp_evidence_statements -- the case TABLE, the expected exit codes and the expected findings are already modeled in .dag (compiler_gate_contract_stamp_evidence_cases), and the generated step hands them to the harness as argv; what remains here is spawning the guard and reading its exit status INSIDE A STEP ON THE REQUIRED PATH. NOT a missing exec capability: shell.Exec.RunArgv exists (extdeps/shell/exec.dag, ProcessObservation {exit_code, stdout, stderr}) and is callable from a test fn (test/claim/machine_intake/fan_observe_witness.dag:297). Dissolves when a test fn is EVALUATED ON THE REQUIRED pull_request PATH -- today the only pull_request workflows are heal.yml and witnesses.yml, neither of which invokes one (heal runs claim_executor --regen-round-cost, an instrument its own source places outside //:required, plus three plain-fn entry points), and the instrument that runs `gunbc test <label>` is workflow_dispatch-only. When such a claim exists, these rows become a `gunbc test` row in gunbc.instrument_targets and this step dissolves into it. A runner-side pre-build reader of a committed workflow member that does not run tree code (GitHub's own workflow_sha) retires it too; moving the cases into a claim that nothing executes would de-enrol them, which is the defect review 82145 filed as blocking.")
 
 data compiler_gate_contract_stamp_evidence_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ gunbc contract stamp evidence emission was rejected by v2.workflow.bash_emit: the case table's bash node tree could not be rendered. This literal must never reach a committed workflow; the generation gate refuses instead."
 
@@ -963,7 +963,128 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
         bash_build_word_lit(text: "bash"),
         bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_harness_path),
         bash_build_word_lit(text: "--prepare"),
-        bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_path)
+        bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_path),
+        // THE TRANSCRIPT IS CLEARED TOO, not just the marker. /tmp survives between steps on a reused
+        // runner, so a transcript left by an earlier run would make the count below reach the modelled
+        // number even if THIS run executed nothing -- a third fail-open of the same shape, found while
+        // auditing the first two.
+        bash_build_word_lit(text: "--transcript"),
+        bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_transcript_path)
+      ]
+    )
+  ]
+  // THE STEPS OWNS ITS OWN COMPLETENESS. Two fail-opens existed in the first version of this step,
+  // both discovered by RUNNING the emitted bytes against a tampered tree, and both are this class's
+  // exact shape -- green while checking nothing:
+  //
+  //   * if the harness file is DELETED, `bash <path>` fails, and with `set_e: false` the step carries
+  //     on to the marker check, finds no marker, and EXITS 0. Verified: `bash step.sh` -> 0.
+  //   * if `--prepare` crashes, the same thing happens: nothing checked anything, and nothing checked
+  //     that anything checked anything. Verified: a harness whose --prepare exits 3 -> step 0.
+  //
+  // Checking file EXISTENCE would not be enough either: a harness can exit 0 without running every
+  // case. So the step counts the per-case lines the harness printed and refuses unless the number
+  // EQUALS the modelled table -- which means a row that vanishes from either side reddens the gate.
+  // Only shapes the guard already proves serializable are used (assign from cmdsubst over an or_else,
+  // test_bracket, if, printf, exit); `if ! <command>` still has no node form, which is why the
+  // comparison is != against the modelled count rather than a negated grep.
+  // A PER-RUN TOKEN is what makes the count meaningful. Counting the modelled token alone is NOT
+  // enough: my own simulation of the emitted step reproduced the hole -- with the harness DELETED, the
+  // step still exited 0, because a transcript left behind by an earlier invocation already held the
+  // expected number of modelled-token lines. A stale file satisfies a count of a CONSTANT; it cannot
+  // satisfy a count of a value that only exists in THIS run. Built from var words so it expands (a
+  // literal word would be single-quoted by the serializer and stay literal).
+  let run_token = [
+    bash_build_assign(
+      name: "GUNBC_CONTRACT_STAMP_RUN_TOKEN",
+      value: bash_build_word_concat_from_nodes(
+        parts: [
+          bash_build_word_var(name: "GITHUB_RUN_ID"),
+          bash_build_word_lit(text: "-"),
+          bash_build_word_var(name: "GITHUB_RUN_ATTEMPT")
+        ]
+      )
+    )
+  ]
+  let count_check = [
+    bash_build_assign(
+      name: "GUNBC_CONTRACT_STAMP_CASES_RAN",
+      value: bash_build_word_cmdsubst(
+        body: bash_build_or_else(
+          left: bash_build_command_with_words(
+            words: [
+              bash_build_word_lit(text: "grep"),
+              bash_build_word_lit(text: "-c"),
+              bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_RUN_TOKEN"),
+              bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_transcript_path)
+            ]
+          ),
+          right: bash_build_command_from_lits(lits: ["true"])
+        )
+      )
+    ),
+    // THE TOKEN MUST EXIST BEFORE ITS COUNT MEANS ANYTHING. Outside Actions -- the step's bytes run by
+    // hand -- both vars are unset and the token degenerates to the single character "-", which a
+    // transcript full of hyphens would satisfy. Refuse on an empty token rather than grep a meaningless
+    // one.
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(
+        words: [
+          bash_build_word_lit(text: "-z"),
+          bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_RUN_TOKEN")
+        ]
+      ),
+      then_stmts: [
+        bash_build_command_with_words(
+          words: [
+            bash_build_word_lit(text: "printf"),
+            bash_build_word_lit(text: "%s\n"),
+            bash_build_word_lit(
+              text: join(
+                [
+                  "REFUSED gunbc contract stamp evidence: no run token (GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT ",
+                  "unset), so the transcript count could not tell this run from a stale transcript."
+                ],
+                ""
+              )
+            )
+          ]
+        ),
+        bash_build_exit(code: "1")
+      ]
+    ),
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(
+        words: [
+          // A WORD VAR, not a literal: the serializer single-quotes literals, which would compare the
+          // NAME as text and never expand it. Var words render as "$NAME". The golden at
+          // instrument-dispatch.yml:46 shows the same shape ('[' "$machine" '-lt' "$X" ']').
+          bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_CASES_RAN"),
+          bash_build_word_lit(text: "!="),
+          bash_build_word_lit(text: to_string(length(compiler_gate_contract_stamp_evidence_cases())))
+        ]
+      ),
+      then_stmts: [
+        bash_build_command_with_words(
+          words: [
+            bash_build_word_lit(text: "printf"),
+            bash_build_word_lit(text: "%s\n"),
+            bash_build_word_lit(
+              text: join(
+                [
+                  "REFUSED gunbc contract stamp evidence: the harness reported ",
+                  compiler_gate_contract_stamp_evidence_transcript_marker,
+                  " case lines, expected ",
+                  to_string(length(compiler_gate_contract_stamp_evidence_cases())),
+                  " modelled cases FOR THIS RUN -- the harness is missing, crashed, or ran a table that is not the model's. See ",
+                  compiler_gate_contract_stamp_evidence_transcript_path
+                ],
+                ""
+              )
+            )
+          ]
+        ),
+        bash_build_exit(code: "1")
       ]
     )
   ]
@@ -987,7 +1108,10 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
       ]
     )
   ]
-  list_append(left: prepare, right: list_append(left: case_nodes, right: summary))
+  list_append(
+    left: prepare,
+    right: list_append(left: case_nodes, right: list_append(left: count_check, right: summary))
+  )
 }
 
 // ONE CASE INVOCATION: `bash <harness> --case <label> <subject> <running> <expected-exit> <finding>`.
@@ -1007,7 +1131,11 @@ fn compiler_gate_contract_stamp_evidence_case_command(c: CompilerGateContractSta
       bash_build_word_lit(text: "--transcript"),
       bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_transcript_path),
       bash_build_word_lit(text: "--fail-marker"),
-      bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_path)
+      bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_fail_marker_path),
+      bash_build_word_lit(text: "--marker"),
+      bash_build_word_lit(text: compiler_gate_contract_stamp_evidence_transcript_marker),
+      bash_build_word_lit(text: "--run-token"),
+      bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_RUN_TOKEN")
     ]
   )
 }
@@ -1031,6 +1159,16 @@ data compiler_gate_contract_stamp_evidence_transcript_path: String = "/tmp/gunbc
 // parsing its own verdict prose, so a harness that crashes mid-case -- or is deleted, or is never
 // enrolled -- still leaves a marker behind: absence of the marker is only green if the harness got
 // far enough to remove a stale one, which it does as its first act.
+// Every modelled case prints exactly one line beginning with this token, through the harness. It is
+// a MODEL value: the step counts occurrences of it and the harness prints it, so neither side can
+// quietly shrink the table.
+// THE COUNTED TOKEN IS THE MODEL'S, handed to the harness as argv, so the harness prints exactly what
+# the step greps for: one spelling, not two that can drift. It is long and distinctive because
+# `grep -c` counts LINES, and the tail of each line carries the guard's own diagnostic -- counting a
+# weak token like `rc=` would let a guard message containing those two characters inflate the tally and
+# make a partial run look complete.
+data compiler_gate_contract_stamp_evidence_transcript_marker: String = "gunbc-contract-stamp-evidence-case"
+
 data compiler_gate_contract_stamp_evidence_fail_marker_path: String = "/tmp/gunbc-contract-stamp-evidence.fail"
 
 data compiler_gate_contract_stamp_evidence_verdict_ok: String = "ALL ASSERTIONS HELD"

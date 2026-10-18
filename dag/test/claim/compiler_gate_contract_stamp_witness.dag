@@ -550,6 +550,19 @@ test fn the_evidence_step_carries_the_dissolution_marker_and_refuses_on_the_mark
     // serializer supports, while `if ! <command>` has no node representation at all
     // (bash_fold_serialize_negation_inner admits only or_else/and_then/pipe/negation).
     && string_contains(s: body, pattern: "'[' '-e' ")
+    // THE STEP REFUSES WHEN THE HARNESS DID NOT RUN THE WHOLE TABLE. Found by executing the emitted
+    // bytes against tampered trees, not by reading them: with the harness DELETED, and with --prepare
+    // made to CRASH, the first version of this step exited 0 -- green while checking nothing, which is
+    // the exact shape of the failure mode this module exists to end (and, with set_e: false, no other
+    // mechanism would have caught it). The step now counts the per-case lines the harness printed and
+    // refuses unless the count equals the modelled table.
+    && string_contains(s: body, pattern: "'grep' '-c' ")
+    && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_transcript_marker)
+    && string_contains(s: body, pattern: "'[' \"$GUNBC_CONTRACT_STAMP_CASES_RAN\" '!='")
+    && string_contains(s: body, pattern: "'--prepare'")
+    // the transcript is cleared as well as the marker, or a stale transcript could reach the modelled
+    // count on a runner that executed nothing
+    && string_contains(s: body, pattern: "--transcript' '/tmp/gunbc-contract-stamp-evidence.log'")
     && !string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_emit_refused_poison)
 }
 

@@ -87,6 +87,7 @@ guard_step_name='- name: Refuse a subject older than the instruction running it'
 evidence_step_name='- name: Execute the contract-stamp guard against the recorded silent-green subject'
 placeholder='${{ env.GUNBC_COMPILER_GATE_CONTRACT_STAMP }}'
 running_probe_token="__FROM_WORKFLOW__"
+case_token_default="gunbc-contract-stamp-evidence-case"
 transcript="${GUNBC_CONTRACT_STAMP_EVIDENCE_TRANSCRIPT:-/tmp/gunbc-contract-stamp-evidence.log}"
 fail_marker="${GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER:-/tmp/gunbc-contract-stamp-evidence.fail}"
 
@@ -219,11 +220,16 @@ if [ "${1:-}" = "--case" ]; then
   label="${1:-}"; subject="${2:-}"; running="${3:-}"; expect_rc="${4:-}"; finding="${5:-}"
   [ "$#" -ge 5 ] || bail "--case needs label, subject, running, expected-exit and finding"
   shift 5
-  case_transcript="$transcript"; marker="$fail_marker"
+  case_transcript="$transcript"; marker="$fail_marker"; token="$case_token_default"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --transcript) case_transcript="$2"; shift 2 ;;
       --fail-marker) marker="$2"; shift 2 ;;
+      # THE PRINTED TOKEN IS THE MODEL'S, not this file's. The generated step counts occurrences of
+      # this exact string in the transcript and refuses unless the count equals the modelled table, so
+      # the string the harness prints and the string the step greps for come from ONE value in
+      # .dag rather than two spellings free to disagree.
+      --marker) token="$2"; shift 2 ;;
       *) bail "--case: unknown argument $1" ;;
     esac
   done
@@ -265,8 +271,12 @@ if [ "${1:-}" = "--case" ]; then
   cp "$tree" "$d/.github/workflows/witnesses.yml"
   emit_guard "$running" "$d/guard.sh"
   out="$(cd "$d" && bash -e -o pipefail ./guard.sh 2>&1)"; rc=$?
-  printf '%-46s rc=%s expect=%s | %s\n' "$label" "$rc" "$expect_rc" \
-    "$(printf '%s' "$out" | tr '\n' ' ' | cut -c1-118)" | tee -a "$case_transcript"
+  # ONE line per case, beginning with the model's token. `grep -c` counts LINES, so the token appears
+  # exactly once here and never inside the diagnostic that follows -- a guard message containing the
+  # token could otherwise inflate the tally and make a partial run look complete.
+  printf '%s label=%-40s rc=%s expect=%s\n' "$token" "$label" "$rc" "$expect_rc" \
+    | tee -a "$case_transcript"
+  printf '   | %s\n' "$(printf '%s' "$out" | tr '\n' ' ' | cut -c1-118)" | tee -a "$case_transcript"
 
   ok=1
   if [ "$rc" != "$expect_rc" ]; then
@@ -291,9 +301,20 @@ fi
 if [ "${1:-}" = "--prepare" ]; then
   marker="${2:-}"
   [ -n "$marker" ] || bail "--prepare needs the fail-marker path"
+  shift 2
+  prep_transcript=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --transcript) prep_transcript="$2"; shift 2 ;;
+      *) bail "--prepare: unknown argument $1" ;;
+    esac
+  done
   rm -f "$marker"
-  : > "$marker.prepared"
-  printf 'gunbc contract stamp evidence: prepared (stale fail marker cleared)\n'
+  # Both /tmp artifacts are cleared: the marker so a stale failure cannot redden a clean run, and the
+  # TRANSCRIPT so a stale success cannot GREEN a run that executed nothing. The generated step counts
+  # lines in it, so leaving an old one behind would let the count reach the modelled number by itself.
+  [ -n "$prep_transcript" ] && : > "$prep_transcript"
+  printf 'gunbc contract stamp evidence: prepared (stale fail marker and transcript cleared)\n'
   exit 0
 fi
 
