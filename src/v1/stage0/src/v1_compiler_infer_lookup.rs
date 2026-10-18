@@ -651,14 +651,10 @@ pub fn constructor_declaration_for_admission(
 ) -> Rc<ConstructorDeclarationLookup> {
     {
         let decl_name = crate::v1_std_core::qualified_last_segment(name.clone());
-        let qualified = if v1_rt::contains(name.clone(), ".".to_string()) {
-            name.clone()
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(owner_module_path.clone(), ".".to_string()),
-                name.clone(),
-            )
-        };
+        let qualified = v1_rt::concat(
+            v1_rt::concat(owner_module_path.clone(), ".".to_string()),
+            decl_name.clone(),
+        );
         let identity = Rc::new(ExactDeclarationIdentity {
             owner_module_path: owner_module_path.clone(),
             decl_name: decl_name.clone(),

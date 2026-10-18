@@ -41,8 +41,8 @@ pub use crate::std_types::{
     container_template_alias_algebra, container_template_alias_rows, is_container_type, SourceSpan,
 };
 pub use crate::v1_compiler_infer_env::{
-    alias_settled_agree, settled_type, text_crossing_by_identity, type_reference_declaration_ref,
-    TypeBinding, TypeEnv,
+    alias_names_settled_agree, alias_settled_agree, settled_type, text_crossing_by_identity,
+    type_reference_declaration_ref, TypeBinding, TypeEnv,
 };
 pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_rt;
@@ -2927,6 +2927,33 @@ pub fn alias_identity_in_judgment(
     match (*text.clone()).clone() {
         TextJudgment::TextJudgedIn { env: e, .. } => {
             crate::v1_compiler_infer_env::alias_settled_agree(
+                left.clone(),
+                right.clone(),
+                source_indices.clone(),
+                e.clone(),
+                |a, b| {
+                    applied_argument_agrees(
+                        child_type_node(a.clone()),
+                        child_type_node(b.clone()),
+                        source_indices.clone(),
+                        text.clone(),
+                    )
+                },
+            )
+        }
+        TextJudgment::TextNotAsked { reason: _, .. } => false,
+    }
+}
+
+pub fn alias_names_identity_in_judgment(
+    left: String,
+    right: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    match (*text.clone()).clone() {
+        TextJudgment::TextJudgedIn { env: e, .. } => {
+            crate::v1_compiler_infer_env::alias_names_settled_agree(
                 left.clone(),
                 right.clone(),
                 source_indices.clone(),
