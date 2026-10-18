@@ -34,7 +34,13 @@ BASE_SHA=$(timeout 300 git ls-remote $URL0 refs/heads/main | cut -f1)
 B_SHA=$(timeout 300 git ls-remote $URL0 refs/heads/session/gentle-carp-16 | cut -f1)
 [ -n "$BASE_SHA" ] && [ -n "$B_SHA" ] || { echo "could not resolve main / the WIP branch"; exit 20; }
 echo "BASE(main, includes S0)=$BASE_SHA"; echo "WIP=$B_SHA"
-CARRIER_SHA=ef64c3fd645ece80e5f6827a52cf3e5aac72cebb  # scratch head: probe v4 patcher WITH lconn/rconn/lname/rname
+# DERIVED from the ref, NEVER typed. This script died at 16 s (exit 29) carrying a hand-written 40-char
+# literal for this SHA, and the commit it named did not contain carriers/A_infer_merged.dag -- the typed-SHA
+# trap this lane has now paid for five times. The ref head does carry all four carrier files (checked with
+# git cat-file -e on each). If the ref ever moves to a head without them, the per-file asserts below abort
+# LOUDLY rather than feeding an empty file to the patcher.
+CARRIER_SHA=$(timeout 300 git ls-remote $URL0 refs/heads/scratch/rebind-census | cut -f1)
+[ -n "$CARRIER_SHA" ] || { echo "could not resolve scratch/rebind-census"; exit 20; }
 URL=https://github.com/gunb-ai/gunbc.git
 D=/tmp/probeV4; rm -rf $D; mkdir -p $D
 LOGS=$D/logs; mkdir -p $LOGS

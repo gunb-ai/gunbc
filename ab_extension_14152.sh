@@ -31,6 +31,12 @@ set -uo pipefail
 export PATH="/opt/cargo/bin:/usr/local/bin:/usr/local/sbin:$PATH"
 MODE=${1:-}
 case "$MODE" in A|B) ;; (*) echo "usage: $0 A|B"; exit 2;; esac
+# SHIP_MIRRORS must be settable from the COMMAND LINE, not only the environment: ctrl-build forwards the
+# command STRING to the runner and NOT the local environment, so `SHIP_MIRRORS=1 ctrl-build ...` silently
+# shipped nothing (the block is guarded by ${SHIP_MIRRORS:-0}, which was unset on the remote). Same class of
+# bug as needing `export MODE` for the census heredoc. `bash ab_extension_14152.sh B ship` is what goes in
+# the dispatch command.
+[ "${2:-}" = "ship" ] && export SHIP_MIRRORS=1
 
 # Gates ship their artifacts and exit 0. ctrl-build reads a NON-ZERO exit as a TRANSIENT failure and re-runs
 # the whole dispatch -- which is how a 28-minute run became an hour and a second attempt started behind my
