@@ -2419,14 +2419,21 @@ pub fn render_rust_applied_type_arg(
                         env.clone(),
                     ) {
                         Some(scalar) => scalar.clone(),
-                        std::option::Option::None => render_rust_decl_type(
+                        std::option::Option::None => render_rust_declaration_position(
                             n.clone(),
-                            generic_param_names.clone(),
+                            render_rust_decl_type(
+                                n.clone(),
+                                generic_param_names.clone(),
+                                shared_types.clone(),
+                                source_indices.clone(),
+                                variant_to_enum.clone(),
+                                env.clone(),
+                                type_decl_items.clone(),
+                            ),
                             shared_types.clone(),
                             source_indices.clone(),
-                            variant_to_enum.clone(),
-                            env.clone(),
                             type_decl_items.clone(),
+                            generic_param_names.clone(),
                         ),
                     },
                 }
@@ -3244,6 +3251,26 @@ pub fn render_rust_fn_sig_type(
             env.clone(),
             type_decl_items.clone(),
         );
+        render_rust_declaration_position(
+            n.clone(),
+            spelled.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+            type_decl_items.clone(),
+            generic_param_names.clone(),
+        )
+    }
+}
+
+pub fn render_rust_declaration_position(
+    n: Rc<Node>,
+    spelled: String,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    generic_param_names: Rc<Vec<String>>,
+) -> String {
+    {
         let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
         let names_declaration =
             match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
