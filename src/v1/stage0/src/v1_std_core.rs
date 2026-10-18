@@ -4,6 +4,7 @@
 use self::AdmitCallersEntry::*;
 use self::CallSemantics::*;
 use self::CallTargetIdentity::*;
+use self::Cardinality::*;
 use self::CompilerDiagnostic::*;
 use self::Connective::*;
 use self::ContainerSpellingVerdict::*;
@@ -44,8 +45,7 @@ use crate::std_coercion::TypeReferenceIdentity::{
 pub use crate::std_coercion::{
     ReferenceIdentityUnavailableCause, TypeDeclarationProvenance, TypeReferenceIdentity,
 };
-use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
-pub use crate::std_decl_ref::{decl_ref, DeclField, DeclarationRef};
+pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_induction::SubValueRelation;
@@ -63,7 +63,6 @@ pub use crate::std_occurrence_identity::{
     OccurrenceIdAllocator, OccurrenceTransportRefusal,
 };
 pub use crate::std_operator_realization::OperandDeclaration;
-pub use crate::std_optional::Optional;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -157,6 +156,15 @@ pub enum Connective {
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
+pub enum Cardinality {
+    Required,
+    CardOptional,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
 pub enum FieldAccessStyle {
     StoredField,
     EnumAccessor,
@@ -206,6 +214,7 @@ pub fn divergent_type() -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::Divergent)),
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -557,6 +566,20 @@ pub enum CompilerDiagnostic {
         importing_module: String,
         span: Rc<SourceSpan>,
     },
+    ImportCollidesWithKernelName {
+        name: String,
+        module_path: String,
+        importing_module: String,
+        kernel_declaration_module: String,
+        span: Rc<SourceSpan>,
+    },
+    KernelMintDeclarationAmbiguousAtImport {
+        name: String,
+        module_path: String,
+        importing_module: String,
+        row_count: i64,
+        span: Rc<SourceSpan>,
+    },
     UnresolvedType {
         name: String,
         span: Rc<SourceSpan>,
@@ -705,7 +728,7 @@ pub enum CompilerDiagnostic {
         type_name: String,
         span: Rc<SourceSpan>,
     },
-    OptionalDeclarationShapeMismatch {
+    KernelMintShapeMismatch {
         declaration_name: String,
         cause: String,
         span: Rc<SourceSpan>,
@@ -981,6 +1004,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::UnresolvedImport { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingExport { span: s, .. } => s.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ImportCollidesWithKernelName { span: s, .. } => s.clone(),
+        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { span: s, .. } => {
             s.clone()
@@ -1013,7 +1038,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
-        CompilerDiagnostic::OptionalDeclarationShapeMismatch { span: s, .. } => s.clone(),
+        CompilerDiagnostic::KernelMintShapeMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::OptionalCastNotEliminated { span: s, .. } => s.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { span: s, .. } => s.clone(),
         CompilerDiagnostic::ConstructorCallAdmissionRefused { span: s, .. } => s.clone(),
@@ -1061,6 +1086,8 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::UnresolvedImport { module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unresolved import: module '".to_string(), m.clone()), "' not found (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' is discarded: '".to_string()), i.clone()), "' also defines '".to_string()), n.clone()), "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '".to_string()), m.clone()), ".".to_string()), n.clone()), "(...)' to reach the imported one, or rename one of the two.".to_string()),
+    CompilerDiagnostic::ImportCollidesWithKernelName { name: n, module_path: m, importing_module: i, kernel_declaration_module: k, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "') collides with the kernel name whose mint is the declaration in '".to_string()), k.clone()), "'. An authored import of a different type of that name is refused so the type environment and the field binding cannot type the same spelling two ways.".to_string()),
+    CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { name: n, module_path: m, importing_module: i, row_count: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "') cannot be judged against the kernel mint: ".to_string()), (c.clone()).to_string()), " kernel_mint_declaration_rows bind that minted name, so the owning declaration is undecidable and the import is refused rather than bound to a guessed module.".to_string()),
     CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name: n, .. } => v1_rt::concat(v1_rt::concat("unit-variant marker identity evidence unavailable for '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
@@ -1091,7 +1118,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::OwnershipViolation { binding: b, fn_name: f, consumers: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ownership: binding '".to_string(), b.clone()), "' in '".to_string()), f.clone()), "' has ".to_string()), (c.clone()).to_string()), " consumers".to_string()),
     CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
-    CompilerDiagnostic::OptionalDeclarationShapeMismatch { declaration_name: d, cause: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("optional declaration: '".to_string(), d.clone()), "' is the declaration gunbc.structural_realization_bindings optional_declaration_ref names, and `T?` denotes it, but ".to_string()), c.clone()),
+    CompilerDiagnostic::KernelMintShapeMismatch { declaration_name: d, cause: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("kernel mint binding: '".to_string(), d.clone()), "' is bound to a kernel mint (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but ".to_string()), c.clone()),
     CompilerDiagnostic::OptionalCastNotEliminated { source_type: st, target_type: tt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cannot cast optional '".to_string(), st.clone()), "' to '".to_string()), tt.clone()), "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first".to_string()),
     CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("bare 'None' cannot inhabit field '".to_string(), f.clone()), "' of '".to_string()), t.clone()), "': declared type '".to_string()), dt.clone()), "' carries no absence — it is not optional and declares no 'None' variant".to_string()),
     CompilerDiagnostic::ConstructorCallAdmissionRefused { constructor_module_path: cm, constructor_decl_name: cn, caller_module_path: caller_m, caller_decl_name: caller_n, permitted_callers: permitted, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor call admission refused: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' refuses call from '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' — permitted callers: [".to_string()), permitted.clone().join(&", ".to_string())), "]".to_string()),
@@ -1177,6 +1204,14 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ImportCollidesWithKernelName { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -1309,7 +1344,7 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
-    CompilerDiagnostic::OptionalDeclarationShapeMismatch { .. } => Rc::new(DiagnosticDisposition {
+    CompilerDiagnostic::KernelMintShapeMismatch { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -1540,6 +1575,7 @@ pub struct Node {
     pub connective: Connective,
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Option<Rc<InferredNode>>,
+    pub return_cardinality: Cardinality,
     pub uses: Rc<Vec<Rc<Node>>>,
     pub body: Option<Rc<Node>>,
     pub transport: Option<Rc<Node>>,
@@ -1589,6 +1625,7 @@ pub fn make_expr_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: inferred.clone(),
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -1623,6 +1660,7 @@ pub fn make_named_expr_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: inferred.clone(),
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -1673,6 +1711,7 @@ pub fn make_expr_error_node(
             message: message.clone(),
             span: span.clone(),
         })),
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -1713,6 +1752,7 @@ pub fn make_arg_node(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -1751,6 +1791,7 @@ pub fn make_arm_node(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -1784,6 +1825,7 @@ pub fn make_resource_use_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -1835,6 +1877,7 @@ pub fn make_field_init_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -1867,6 +1910,7 @@ pub fn make_field_binding_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -1911,6 +1955,7 @@ pub fn make_text_part_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -1945,6 +1990,7 @@ pub fn make_interp_part_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -1983,6 +2029,7 @@ pub fn make_param_node(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -2025,6 +2072,7 @@ pub fn make_resolved_param_node(
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: type_expr.clone(),
             })),
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -2155,6 +2203,7 @@ pub fn make_field_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     type_expr: Rc<Node>,
+    cardinality: Cardinality,
     default_value: Option<Rc<Node>>,
     from_key_properties: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
@@ -2174,6 +2223,7 @@ pub fn make_field_node(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: cardinality.clone(),
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -2208,6 +2258,10 @@ pub fn field_node_type_expr(n: Rc<Node>) -> Rc<Node> {
             n.span.clone(),
         ),
     }
+}
+
+pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
+    n.return_cardinality.clone()
 }
 
 pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
@@ -2261,6 +2315,7 @@ pub fn make_variant_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -2433,7 +2488,7 @@ pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
     thread_local! {
             static CACHED: Rc<HashMap<String, Rc<FunctionSizeEffect>>> = {
                 let mut __m = HashMap::new();
-                __m.insert("optional_payload".to_string(), Rc::new(FunctionSizeEffect::PropertyContraction {
+                __m.insert("with_required_cardinality".to_string(), Rc::new(FunctionSizeEffect::PropertyContraction {
         domain_size: 2,
     }));
                 __m.insert("resolved_type".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
@@ -3121,6 +3176,7 @@ pub fn make_transport_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: body.clone(),
         transport: std::option::Option::None,
@@ -3270,6 +3326,7 @@ pub fn shell_transport_node(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -3305,6 +3362,7 @@ pub fn shell_transport_node(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: Some(shell_marker.clone()),
             transport: std::option::Option::None,
@@ -3816,6 +3874,7 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
         connective: node.connective.clone(),
         params: node.params.clone(),
         inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(),
         uses: node.uses.clone(),
         body: node.body.clone(),
         transport: node.transport.clone(),
@@ -4333,6 +4392,7 @@ pub fn module_node(
         connective: Connective::NoConnective,
         params: imports.clone(),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -4368,6 +4428,7 @@ pub fn import_node(
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
                 inferred: std::option::Option::None,
+                return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: std::option::Option::None,
                 transport: std::option::Option::None,
@@ -4394,6 +4455,7 @@ pub fn import_node(
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: wildcard_marker.clone(),
             transport: std::option::Option::None,
@@ -4450,6 +4512,7 @@ pub fn leaf_node_with_span(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -4631,6 +4694,7 @@ pub fn unit_type() -> Rc<Node> {
         connective: Connective::Conj,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -4662,6 +4726,7 @@ pub fn bool_type() -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -4693,6 +4758,7 @@ pub fn string_type() -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -4724,6 +4790,7 @@ pub fn hash_type() -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -4755,6 +4822,7 @@ pub fn int_type() -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -4786,6 +4854,7 @@ pub fn float_type() -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -4817,6 +4886,7 @@ pub fn none_type() -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -4860,6 +4930,7 @@ pub fn error_type() -> Rc<Node> {
         message: "unresolved type".to_string(),
         span: no_span(),
     })),
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -5106,7 +5177,7 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
             let merged_allocator =
                 crate::std_occurrence_identity::occurrence_id_allocator_advance_to(
-                    merged.authored_token_ordinals.clone().allocator.clone(),
+                    merged.authored_token_ordinals.allocator.clone(),
                     t.authored_token_ordinals.clone(),
                 );
             let merged = intern_table_with_authored_token_ordinals(
@@ -5150,139 +5221,85 @@ pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> 
         })
 }
 
-pub fn bootstrap_optional_ref() -> Rc<DeclarationRef> {
-    thread_local! {
-        static CACHED: Rc<DeclarationRef> = {
-            crate::std_decl_ref::decl_ref("std.optional".to_string(), "Optional".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<DeclarationRef>| c.clone())
+pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: n.occurrence_identity.clone(),
+        name: n.name.clone(),
+        ident: n.ident.clone(),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: n.children.clone(),
+        connective: n.connective.clone(),
+        params: n.params.clone(),
+        inferred: n.inferred.clone(),
+        return_cardinality: Cardinality::CardOptional,
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        module_item_kind: n.module_item_kind.clone(),
+        declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
+        expr_data: n.expr_data.clone(),
+    })
 }
 
-pub fn optional_application_node(
-    occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    payload: Rc<Node>,
-    span: Rc<SourceSpan>,
-) -> Rc<Node> {
+pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: n.occurrence_identity.clone(),
+        name: n.name.clone(),
+        ident: n.ident.clone(),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: n.children.clone(),
+        connective: n.connective.clone(),
+        params: n.params.clone(),
+        inferred: n.inferred.clone(),
+        return_cardinality: Cardinality::Required,
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        module_item_kind: n.module_item_kind.clone(),
+        declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
+        expr_data: n.expr_data.clone(),
+    })
+}
+
+pub fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {
     {
-        let generated_name = bootstrap_optional_ref().decl_name.clone();
-        let generated_span = kernel_span(generated_name.clone());
-        Rc::new(Node {
-            occurrence_identity: occurrence_identity.clone(),
-            name: generated_name.clone(),
-            ident: std::option::Option::None,
-            span: span.clone(),
-            ident_span: Some(generated_span.clone()),
-            children: Rc::new(vec![payload.clone()]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: Some(bootstrap_optional_ref()),
-            expr_data: Rc::new(ExprData::NoExprData),
-        })
-    }
-}
-
-pub fn optional_of(payload: Rc<Node>) -> Rc<Node> {
-    optional_application_node(
-        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        payload.clone(),
-        payload.span.clone(),
-    )
-}
-
-pub fn declaration_carried_through_resolution(
-    mut __tco_loop_n: Rc<Node>,
-    mut __tco_loop_hops: i64,
-) -> Option<Rc<DeclarationRef>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut hops = __tco_loop_hops;
-        match n.declaration.clone() {
-            Some(d) => match (*d.field.clone()).clone() {
-                DeclField::WholeDeclaration => {
-                    break Some(d.clone());
-                }
-                DeclField::NamedField { field_name: _, .. } => {
-                    break std::option::Option::None;
-                }
-                DeclField::TypeParameter { name: _, .. } => {
-                    break std::option::Option::None;
-                }
-            },
-            std::option::Option::None => {
-                if (hops.clone() <= 0) {
-                    break std::option::Option::None;
-                } else {
-                    match n.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: r, .. }) => {
-                            let __tco_0 = r.clone();
-                            let __tco_1 = v1_rt::int_sub(hops, 1);
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_hops = __tco_1;
-                            continue;
-                        }
-                        _ => {
-                            break std::option::Option::None;
-                        }
-                    }
-                }
-            }
+        let merge_optional = ((left.clone() == Cardinality::CardOptional)
+            || (right.clone() == Cardinality::CardOptional));
+        if merge_optional.clone() {
+            Cardinality::CardOptional
+        } else {
+            right.clone()
         }
     }
 }
 
-pub fn type_is_optional(n: Rc<Node>) -> bool {
-    match declaration_carried_through_resolution(n.clone(), 3) {
-        Some(d) => (d.clone() == bootstrap_optional_ref()),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn optional_payload(n: Rc<Node>) -> Rc<Node> {
-    match n.declaration.clone() {
-        Some(d) => {
-            if ((d.clone() == bootstrap_optional_ref())
-                && (n.connective.clone() == Connective::NoConnective))
-            {
-                match n.children.clone().first().cloned() {
-                    Some(p) => p.clone(),
-                    std::option::Option::None => n.clone(),
-                }
-            } else {
-                n.clone()
-            }
+pub fn preserve_outer_optional_cardinality(outer: Rc<Node>, inner: Rc<Node>) -> Rc<Node> {
+    {
+        let joined = join_optional_cardinality(
+            outer.return_cardinality.clone(),
+            inner.return_cardinality.clone(),
+        );
+        let needs_restore = ((joined.clone() == Cardinality::CardOptional)
+            && (inner.return_cardinality.clone() != Cardinality::CardOptional));
+        if needs_restore.clone() {
+            with_optional_cardinality(inner.clone())
+        } else {
+            inner.clone()
         }
-        std::option::Option::None => {
-            if (type_is_optional(n.clone()) && (n.connective.clone() == Connective::NoConnective)) {
-                match n.children.clone().first().cloned() {
-                    Some(p) => p.clone(),
-                    std::option::Option::None => n.clone(),
-                }
-            } else {
-                n.clone()
-            }
-        }
-    }
-}
-
-pub fn preserve_outer_optional(outer: Rc<Node>, inner: Rc<Node>) -> Rc<Node> {
-    if (type_is_optional(outer.clone()) && !type_is_optional(inner.clone())) {
-        optional_of(inner.clone())
-    } else {
-        inner.clone()
     }
 }
 
@@ -5478,6 +5495,10 @@ pub struct Disj;
 pub struct NoConnective;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Arrow;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Required;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CardOptional;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StoredField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

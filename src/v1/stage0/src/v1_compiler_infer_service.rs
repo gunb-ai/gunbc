@@ -17,6 +17,7 @@ use crate::v1_std_core::CallSemantics::FunctionValueCallSemantics;
 use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
+use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::{
@@ -28,8 +29,9 @@ use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, call_semantics_target, callable_identity, expr_call_func_at,
     expr_var_name_at, field_access_base, field_access_field_at, is_rest_transport, method_receiver,
-    no_span, param_node_type_expr, unit_type, CallSemantics, CallTargetIdentity, Connective,
-    DeclarationMarker, DeclaredCallableIdentity, ExprData, InferredNode, NewlineIndex, Node,
+    no_span, param_node_type_expr, unit_type, CallSemantics, CallTargetIdentity, Cardinality,
+    Connective, DeclarationMarker, DeclaredCallableIdentity, ExprData, InferredNode, NewlineIndex,
+    Node,
 };
 pub use crate::v1_std_core::{ParsedModuleItemKind, VarBindingKind};
 use crate::NonEmptyBTreeSet;
@@ -371,7 +373,7 @@ pub fn item_callees_for(
         let item_identity = Rc::new(DeclaredCallableIdentity {
             owner_module_path: module_name.clone(),
             decl_name: crate::v1_std_core::authored_name_at(
-                m.type_env.clone().source_indices.clone(),
+                m.type_env.source_indices.clone(),
                 item.clone(),
             ),
         });
@@ -388,7 +390,7 @@ pub fn item_callees_for(
                 has_body: true,
                 called: collect_callee_edges(
                     item.body.clone().clone().unwrap(),
-                    m.type_env.clone().source_indices.clone(),
+                    m.type_env.source_indices.clone(),
                 ),
             })
         }
@@ -401,7 +403,7 @@ pub fn build_module_callees(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Vec<Rc<Modu
         for m in modules.iter().cloned() {
             __result.push({
                 let module_name = crate::v1_std_core::authored_name_at(
-                    m.type_env.clone().source_indices.clone(),
+                    m.type_env.source_indices.clone(),
                     m.module.clone(),
                 );
                 Rc::new(ModuleCallees {
@@ -885,6 +887,7 @@ pub fn check_service_method_call_node(
                                                         f.clone(),
                                                     ),
                                                 })),
+                                                return_cardinality: Cardinality::Required,
                                                 uses: Rc::new(vec![]),
                                                 body: std::option::Option::None,
                                                 transport: std::option::Option::None,
@@ -906,6 +909,7 @@ pub fn check_service_method_call_node(
                                     connective: Connective::Conj,
                                     params: Rc::new(vec![]),
                                     inferred: std::option::Option::None,
+                                    return_cardinality: Cardinality::Required,
                                     uses: Rc::new(vec![]),
                                     body: std::option::Option::None,
                                     transport: std::option::Option::None,

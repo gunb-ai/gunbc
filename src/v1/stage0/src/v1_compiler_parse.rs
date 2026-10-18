@@ -13,7 +13,6 @@ use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
-pub use crate::gunbc_structural_realization_bindings::optional_declaration_ref;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_import_statement::ImportStatementParseCause::{
     ImportParseInstrumentAnomaly, ImportStatementMalformed, ModuleDeclarationPathMalformed,
@@ -40,7 +39,6 @@ pub use crate::std_occurrence_identity::{
     OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry,
     OccurrenceProjection, OccurrenceTransport, ReferenceOccurrence,
 };
-pub use crate::std_optional::Optional;
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::BodyKind::{
@@ -58,6 +56,7 @@ use crate::std_target_representation::VariantParentIdentity::VariantParentBefore
 pub use crate::std_types::{is_container_type, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::{TestMarked, Unmarked};
@@ -87,22 +86,23 @@ pub use crate::v1_std_core::{
     arg_name_at, arg_value, authored_name_at, byte_to_line_col, empty_intern_table, error_type,
     expr_call_func_at, expr_var_name_at, field_access_base, field_access_field_at,
     field_access_spine, field_binding_pattern, field_from_key_property_name, field_init_node_value,
-    field_node_default_value, field_node_from_key, field_node_name_at, field_node_type_expr,
-    file_transport_node, import_node, intern, intern_table_with_authored_token_ordinals,
-    is_compiler_error, kernel_span, leaf_node_with_span, local_transport_node, make_arg_node,
-    make_arm_node, make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
-    make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
-    make_param_node, make_pattern_binder_declaration_node, make_resource_use_node,
-    make_text_part_node, make_variant_node, module_node, no_span, node_name_span,
-    optional_application_node, optional_payload, param_node_default_value, param_node_type_expr,
-    pre_intern_tokens, rest_transport_node, service_config_properties, shell_transport_node,
-    transport_auth_basic_key, transport_body_key, transport_headers_key, transport_method_key,
-    transport_path_key, transport_path_template_key, transport_query_key,
+    field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
+    field_node_type_expr, file_transport_node, import_node, intern,
+    intern_table_with_authored_token_ordinals, is_compiler_error, kernel_span, leaf_node_with_span,
+    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
+    make_expr_node, make_field_binding_node, make_field_init_node, make_field_node,
+    make_interp_part_node, make_named_expr_node, make_param_node,
+    make_pattern_binder_declaration_node, make_resource_use_node, make_text_part_node,
+    make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
+    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
+    shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
+    transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
     transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
-    type_is_optional, type_param_kind_property_name, variant_node_fields, variant_node_name_at,
-    CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind,
-    FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
-    OperationModifier, ParsedModuleItemKind, StringPart, Token, TokenShape, UnaryOpKind,
+    type_param_kind_property_name, variant_node_fields, variant_node_name_at,
+    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
+    ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable,
+    MatchPattern, NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, StringPart, Token,
+    TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -205,7 +205,7 @@ pub fn token_window_consumed_end(
                             let __tco_0 = all;
                             let __tco_1 = v1_rt::int_add(from, 1);
                             let __tco_2 = until;
-                            let __tco_3 = Some(t.span.clone().end.clone());
+                            let __tco_3 = Some(t.span.end.clone());
                             __tco_loop_all = __tco_0;
                             __tco_loop_from = __tco_1;
                             __tco_loop_until = __tco_2;
@@ -233,8 +233,8 @@ pub struct ParseContext {
     pub intern_table: Rc<InternTable>,
     pub occurrence_allocator: OccurrenceIdAllocator,
     pub occurrence_index: Option<Rc<OccurrenceIndex>>,
-    pub declaration_occurrences: Rc<Vec<Rc<DeclarationOccurrence>>>,
-    pub reference_occurrences: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    pub declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
+    pub reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
     pub heads_only: bool,
     pub env: Rc<ParseEnvironment>,
     pub source_extents: Rc<ParseSourceExtentState>,
@@ -629,13 +629,13 @@ pub fn parse_context_record_extent(
         ctx.clone(),
         Rc::new(ParseSourceExtentState {
             recorded: v1_rt::rc_map_insert(
-                ctx.source_extents.clone().recorded.clone(),
+                ctx.source_extents.recorded.clone(),
                 occurrence.clone(),
                 extent.clone(),
             ),
-            published: ctx.source_extents.clone().published.clone(),
-            erased_scopes: ctx.source_extents.clone().erased_scopes.clone(),
-            absorbed: ctx.source_extents.clone().absorbed.clone(),
+            published: ctx.source_extents.published.clone(),
+            erased_scopes: ctx.source_extents.erased_scopes.clone(),
+            absorbed: ctx.source_extents.absorbed.clone(),
         }),
     )
 }
@@ -706,17 +706,17 @@ pub fn parse_context_record_erased_scope(
                 Some(extent) => parse_context_with_source_extents(
                     ctx.clone(),
                     Rc::new(ParseSourceExtentState {
-                        recorded: ctx.source_extents.clone().recorded.clone(),
-                        published: ctx.source_extents.clone().published.clone(),
+                        recorded: ctx.source_extents.recorded.clone(),
+                        published: ctx.source_extents.published.clone(),
                         erased_scopes: v1_rt::rc_list_push(
-                            ctx.source_extents.clone().erased_scopes.clone(),
+                            ctx.source_extents.erased_scopes.clone(),
                             Rc::new(RecordedErasedScope {
                                 kind: kind.clone(),
                                 extent: extent.clone(),
                                 enclosed: id.clone(),
                             }),
                         ),
-                        absorbed: ctx.source_extents.clone().absorbed.clone(),
+                        absorbed: ctx.source_extents.absorbed.clone(),
                     }),
                 ),
             }
@@ -735,11 +735,11 @@ pub fn parse_context_record_absorbed(
             parse_context_with_source_extents(
                 ctx.clone(),
                 Rc::new(ParseSourceExtentState {
-                    recorded: ctx.source_extents.clone().recorded.clone(),
-                    published: ctx.source_extents.clone().published.clone(),
-                    erased_scopes: ctx.source_extents.clone().erased_scopes.clone(),
+                    recorded: ctx.source_extents.recorded.clone(),
+                    published: ctx.source_extents.published.clone(),
+                    erased_scopes: ctx.source_extents.erased_scopes.clone(),
                     absorbed: absorbed_subtree_into(
-                        ctx.source_extents.clone().absorbed.clone(),
+                        ctx.source_extents.absorbed.clone(),
                         absorbed.clone(),
                         to.clone(),
                     ),
@@ -855,21 +855,27 @@ pub fn parse_context_occurrence_index(ctx: Rc<ParseContext>) -> Rc<OccurrenceInd
 pub fn parse_context_declaration_occurrences(
     ctx: Rc<ParseContext>,
 ) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
-    ctx.declaration_occurrences.clone()
+    match ctx.declaration_occurrences.clone() {
+        Some(occurrences) => occurrences.clone(),
+        std::option::Option::None => Rc::new(vec![]),
+    }
 }
 
 pub fn parse_context_reference_occurrences(
     ctx: Rc<ParseContext>,
 ) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
-    ctx.reference_occurrences.clone()
+    match ctx.reference_occurrences.clone() {
+        Some(occurrences) => occurrences.clone(),
+        std::option::Option::None => Rc::new(vec![]),
+    }
 }
 
 pub fn parse_context_with_occurrence_state(
     ctx: Rc<ParseContext>,
     occurrence_allocator: OccurrenceIdAllocator,
     occurrence_index: Option<Rc<OccurrenceIndex>>,
-    declaration_occurrences: Rc<Vec<Rc<DeclarationOccurrence>>>,
-    reference_occurrences: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
+    reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
 ) -> Rc<ParseContext> {
     Rc::new(ParseContext {
         source_indices: ctx.source_indices.clone(),
@@ -912,6 +918,7 @@ pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
         connective: node.connective.clone(),
         params: node.params.clone(),
         inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(),
         uses: node.uses.clone(),
         body: node.body.clone(),
         transport: node.transport.clone(),
@@ -2292,7 +2299,7 @@ pub fn test_marker_admits_form(form: Option<Rc<ItemForm>>) -> bool {
 pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let form = find_item_form(
-            ctx.env.clone().syntax_spec.clone().item_forms.clone(),
+            ctx.env.syntax_spec.item_forms.clone(),
             tok_keyword_text(token_stream_first(tokens.clone())),
         );
         if !test_marker_admits_form(form.clone()) {
@@ -2307,6 +2314,7 @@ pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -
                         children: Rc::new(vec![]),
                         params: Rc::new(vec![]),
                         inferred: std::option::Option::None,
+                        return_cardinality: Cardinality::Required,
                         uses: Rc::new(vec![]),
                         body: std::option::Option::None,
                         connective: Connective::NoConnective,
@@ -2347,6 +2355,7 @@ pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -
                 connective: n.connective.clone(),
                 params: n.params.clone(),
                 inferred: n.inferred.clone(),
+                return_cardinality: n.return_cardinality.clone(),
                 uses: n.uses.clone(),
                 body: n.body.clone(),
                 transport: n.transport.clone(),
@@ -2934,7 +2943,7 @@ pub fn is_operator_continuation_token(tok: Option<Rc<Token>>, env: Rc<ParseEnvir
             if is_prefix_infix_dual_role_operator(t.text.clone()) {
                 false
             } else {
-                match find_operator_bp(env.syntax_spec.clone().operators.clone(), t.text.clone()) {
+                match find_operator_bp(env.syntax_spec.operators.clone(), t.text.clone()) {
                     Some(_) => true,
                     std::option::Option::None => false,
                 }
@@ -3161,6 +3170,7 @@ pub fn leaf_type_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -3191,6 +3201,7 @@ pub fn literal_width_nat_type_node(
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: std::option::Option::None,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         transport: std::option::Option::None,
@@ -3302,6 +3313,7 @@ pub fn node_inferred_to_outputs(
                                 ch.clone(),
                             ),
                             child_inferred_or_empty(ch.clone()),
+                            Cardinality::Required,
                             ch.body.clone(),
                             Rc::new(vec![]),
                             ch.span.clone(),
@@ -3319,6 +3331,7 @@ pub fn node_inferred_to_outputs(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "value".to_string(),
             rt.clone(),
+            Cardinality::Required,
             std::option::Option::None,
             Rc::new(vec![]),
             rt.span.clone(),
@@ -3366,7 +3379,7 @@ pub fn parse_dotted_ident_rest(
                 let extended = Rc::new(SourceSpan {
                     file: span.file.clone(),
                     start: span.start.clone(),
-                    end: r.span.clone().end.clone(),
+                    end: r.span.end.clone(),
                 });
                 {
                     let __tco_0 = r.tokens.clone();
@@ -3414,14 +3427,9 @@ pub fn occurrence_allocator_after_index(
     entries.iter().cloned().fold(
         alloc.clone(),
         |current: OccurrenceIdAllocator, entry: Rc<OccurrenceIndexEntry>| {
-            if (current.next_id.clone()
-                <= entry.projection.clone().occurrence.clone().value.clone())
-            {
+            if (current.next_id.clone() <= entry.projection.occurrence.value.clone()) {
                 OccurrenceIdAllocator {
-                    next_id: v1_rt::int_add(
-                        entry.projection.clone().occurrence.clone().value.clone(),
-                        1,
-                    ),
+                    next_id: v1_rt::int_add(entry.projection.occurrence.value.clone(), 1),
                 }
             } else {
                 current.clone()
@@ -3811,7 +3819,7 @@ pub fn parse_context_record_occurrence(
             ctx.clone(),
             ctx.occurrence_allocator.clone(),
             ctx.occurrence_index.clone(),
-            v1_rt::rc_list_push(
+            Some(v1_rt::rc_list_push(
                 parse_context_declaration_occurrences(ctx.clone()),
                 Rc::new(DeclarationOccurrence {
                     occurrence: occurrence.clone(),
@@ -3819,7 +3827,7 @@ pub fn parse_context_record_occurrence(
                     category: category.clone(),
                     diagnostic_span: diagnostic_span.clone(),
                 }),
-            ),
+            )),
             ctx.reference_occurrences.clone(),
         ),
         ParsedOccurrenceRole::ParsedOccurrenceReference {
@@ -3829,7 +3837,7 @@ pub fn parse_context_record_occurrence(
             ctx.occurrence_allocator.clone(),
             ctx.occurrence_index.clone(),
             ctx.declaration_occurrences.clone(),
-            v1_rt::rc_list_push(
+            Some(v1_rt::rc_list_push(
                 parse_context_reference_occurrences(ctx.clone()),
                 Rc::new(ReferenceOccurrence {
                     occurrence: occurrence.clone(),
@@ -3837,7 +3845,7 @@ pub fn parse_context_record_occurrence(
                     category: category.clone(),
                     diagnostic_span: diagnostic_span.clone(),
                 }),
-            ),
+            )),
         ),
         ParsedOccurrenceRole::ParsedOccurrenceUnclassified => ctx.clone(),
     }
@@ -4226,8 +4234,8 @@ pub fn parse_context_for_tokens(
         occurrence_index: Some(Rc::new(OccurrenceIndex {
             entries: Rc::new(vec![]),
         })),
-        declaration_occurrences: Rc::new(vec![]),
-        reference_occurrences: Rc::new(vec![]),
+        declaration_occurrences: Some(Rc::new(vec![])),
+        reference_occurrences: Some(Rc::new(vec![])),
         heads_only: heads_only.clone(),
         env: env.clone(),
         source_extents: parse_source_extent_state_empty(),
@@ -4261,8 +4269,8 @@ pub fn parse_with_table_at(
             {
                 let occurrence_transport = occurrence_transport_from_parse_context(r.ctx.clone());
                 let occurrence_allocator = occurrence_allocator_after_index(
-                    r.ctx.clone().occurrence_allocator.clone(),
-                    occurrence_transport.index.clone().entries.clone(),
+                    r.ctx.occurrence_allocator.clone(),
+                    occurrence_transport.index.entries.clone(),
                 );
                 Rc::new(ParseWithTableResult {
                     result: Rc::new(ParseResult {
@@ -4270,7 +4278,7 @@ pub fn parse_with_table_at(
                         error: r.err.clone(),
                     }),
                     intern_table: crate::v1_std_core::intern_table_with_authored_token_ordinals(
-                        r.ctx.clone().intern_table.clone(),
+                        r.ctx.intern_table.clone(),
                         crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
                             occurrence_allocator.clone(),
                         ),
@@ -4296,8 +4304,8 @@ pub fn parse_with_table_at(
                 let occurrence_transport =
                     occurrence_transport_from_parse_context(stamped.ctx.clone());
                 let occurrence_allocator = occurrence_allocator_after_index(
-                    stamped.ctx.clone().occurrence_allocator.clone(),
-                    occurrence_transport.index.clone().entries.clone(),
+                    stamped.ctx.occurrence_allocator.clone(),
+                    occurrence_transport.index.entries.clone(),
                 );
                 Rc::new(ParseWithTableResult {
                     result: Rc::new(ParseResult {
@@ -4309,7 +4317,7 @@ pub fn parse_with_table_at(
                         error: stamped.err.clone(),
                     }),
                     intern_table: crate::v1_std_core::intern_table_with_authored_token_ordinals(
-                        stamped.ctx.clone().intern_table.clone(),
+                        stamped.ctx.intern_table.clone(),
                         crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
                             occurrence_allocator.clone(),
                         ),
@@ -4317,7 +4325,7 @@ pub fn parse_with_table_at(
                     occurrence_allocator: occurrence_allocator.clone(),
                     occurrence_transport: occurrence_transport.clone(),
                     source_extents: parsed_source_extents_published(
-                        stamped.ctx.clone().source_extents.clone(),
+                        stamped.ctx.source_extents.clone(),
                     ),
                 })
             }
@@ -4375,9 +4383,9 @@ pub fn parse_heads_with_table(
 }
 
 pub fn parse_with_table_ready_module_path(parsed: Rc<ParseWithTableResult>) -> Option<String> {
-    match parsed.result.clone().error.clone() {
+    match parsed.result.error.clone() {
         Some(_) => std::option::Option::None,
-        std::option::Option::None => match parsed.result.clone().module.clone() {
+        std::option::Option::None => match parsed.result.module.clone() {
             Some(module_node) => Some(module_node.name.clone()),
             std::option::Option::None => std::option::Option::None,
         },
@@ -4494,6 +4502,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             connective: Connective::NoConnective,
             params: imports.clone(),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -4585,7 +4594,7 @@ pub fn parse_import_statement_extents_acc(
                     cause: Rc::new(ImportStatementParseCause::ImportStatementMalformed),
                 });
             }
-            match parsed_source_extent_of(r.ctx.clone().source_extents.clone(), r.import.clone()) {
+            match parsed_source_extent_of(r.ctx.source_extents.clone(), r.import.clone()) {
                 std::option::Option::None => {
                     break Rc::new(ParsedImportStatements::ImportStatementParseRefused {
                         cause: Rc::new(ImportStatementParseCause::ImportParseInstrumentAnomaly {
@@ -4602,7 +4611,7 @@ pub fn parse_import_statement_extents_acc(
                         acc,
                         Rc::new(ParsedImportStatement {
                             span: extent.clone(),
-                            imported_module: r.import.clone().name.clone(),
+                            imported_module: r.import.name.clone(),
                         }),
                     );
                     __tco_loop_tokens = __tco_0;
@@ -4935,10 +4944,7 @@ pub fn parse_unmarked_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
         let tok = token_stream_first(tokens.clone());
         let kw = tok_keyword_text(tok.clone());
         let span = token_span(tok.clone());
-        let form = find_item_form(
-            ctx.env.clone().syntax_spec.clone().item_forms.clone(),
-            kw.clone(),
-        );
+        let form = find_item_form(ctx.env.syntax_spec.item_forms.clone(), kw.clone());
         match form.clone() {
     Some(f) => parse_item_by_form(tokens.clone(), ctx.clone(), f.clone()),
     std::option::Option::None => Rc::new(ItemResult {
@@ -4950,6 +4956,7 @@ pub fn parse_unmarked_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
     children: Rc::new(vec![]),
     params: Rc::new(vec![]),
     inferred: std::option::Option::None,
+    return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
     body: std::option::Option::None,
     connective: Connective::NoConnective,
@@ -5136,6 +5143,7 @@ pub fn parse_item_by_form(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -5248,6 +5256,7 @@ pub fn field_to_child_node(
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: ret_type.clone(),
             })),
+            return_cardinality: crate::v1_std_core::field_node_cardinality(field.clone()),
             uses: Rc::new(vec![]),
             body: crate::v1_std_core::field_node_default_value(field.clone()),
             transport: std::option::Option::None,
@@ -5291,6 +5300,7 @@ pub fn variant_to_child_node(
             },
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -5330,6 +5340,7 @@ pub fn outputs_to_inferred(
                 connective: Connective::Conj,
                 params: Rc::new(vec![]),
                 inferred: std::option::Option::None,
+                return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: std::option::Option::None,
                 transport: std::option::Option::None,
@@ -5393,6 +5404,7 @@ pub fn make_operation_node(
                 __result
             }),
             inferred: outputs_to_inferred(outputs.clone(), span.clone(), source_indices.clone()),
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -5441,6 +5453,7 @@ pub fn make_capability_node(
             __result
         }),
         inferred: outputs_to_inferred(outputs.clone(), span.clone(), source_indices.clone()),
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
         connective: Connective::NoConnective,
@@ -5469,6 +5482,7 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -5516,6 +5530,7 @@ pub fn parse_type_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -5566,6 +5581,7 @@ pub fn parse_type_after_kw(
                     children: Rc::new(vec![]),
                     params: type_params.clone(),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     connective: Connective::NoConnective,
@@ -5629,6 +5645,7 @@ pub fn parse_type_after_kw(
                     connective: Connective::Conj,
                     params: type_params.clone(),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -5694,6 +5711,7 @@ pub fn parse_type_after_kw(
                                     name_span.clone(),
                                 ),
                             })),
+                            return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
                             body: std::option::Option::None,
                             transport: std::option::Option::None,
@@ -5738,6 +5756,7 @@ pub fn parse_type_body_from_prefix(
             children: Rc::new(vec![]),
             params: type_params.clone(),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -5813,6 +5832,7 @@ pub fn parse_type_body_from_prefix(
                     connective: Connective::Conj,
                     params: type_params.clone(),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -5878,6 +5898,7 @@ pub fn parse_type_body_from_prefix(
                                     name_span.clone(),
                                 ),
                             })),
+                            return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
                             body: std::option::Option::None,
                             transport: std::option::Option::None,
@@ -5930,6 +5951,7 @@ pub fn type_item_from_alias_rhs(
             connective: Connective::Conj,
             params: type_params.clone(),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -5954,6 +5976,7 @@ pub fn type_item_from_alias_rhs(
             connective: Connective::NoConnective,
             params: type_params.clone(),
             inferred: Some(Rc::new(InferredNode::Resolved { node: te.clone() })),
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -5991,6 +6014,7 @@ pub fn parse_type_body_after_eq(
             children: Rc::new(vec![]),
             params: type_params.clone(),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -6071,6 +6095,7 @@ pub fn parse_type_body_after_eq(
                     connective: Connective::Disj,
                     params: type_params.clone(),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -6167,6 +6192,7 @@ pub fn parse_type_body_after_eq(
                                     connective: Connective::Disj,
                                     params: type_params.clone(),
                                     inferred: std::option::Option::None,
+                                    return_cardinality: Cardinality::Required,
                                     uses: Rc::new(vec![]),
                                     body: std::option::Option::None,
                                     transport: std::option::Option::None,
@@ -6354,6 +6380,7 @@ pub fn try_where_clause(
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -6377,6 +6404,7 @@ pub fn try_where_clause(
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -7059,7 +7087,7 @@ pub fn parse_positional_variant_type_fields(
     from: tokens.clone(),
     to: r.tokens.clone(),
 }));
-let field = crate::v1_std_core::make_field_node(minted.identity.clone(), "0".to_string(), r.type_expr.clone(), std::option::Option::None, Rc::new(vec![]), r.type_expr.clone().span.clone(), crate::v1_std_core::kernel_span("0".to_string()));
+let field = crate::v1_std_core::make_field_node(minted.identity.clone(), "0".to_string(), r.type_expr.clone(), Cardinality::Required, std::option::Option::None, Rc::new(vec![]), r.type_expr.span.clone(), crate::v1_std_core::kernel_span("0".to_string()));
 Rc::new(FieldsResult {
     fields: Rc::new(vec![field.clone()]),
     tokens: r.tokens.clone(),
@@ -7343,6 +7371,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -7505,6 +7534,7 @@ pub fn parse_callable_type_expr(
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: ret.type_expr.clone(),
             })),
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             transport: std::option::Option::None,
@@ -7561,8 +7591,8 @@ pub fn parse_callable_param_types(
             "".to_string(),
             r.type_expr.clone(),
             std::option::Option::None,
-            r.type_expr.clone().span.clone(),
-            r.type_expr.clone().span.clone(),
+            r.type_expr.span.clone(),
+            r.type_expr.span.clone(),
         );
         acc = v1_rt::rc_list_push(acc.clone(), param.clone());
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
@@ -7653,6 +7683,7 @@ pub fn finish_type_expr_from_name(
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -7857,6 +7888,7 @@ pub fn with_type_param_kind_property(param: Rc<Node>, kind: Option<Rc<Node>>) ->
                 connective: param.connective.clone(),
                 params: param.params.clone(),
                 inferred: param.inferred.clone(),
+                return_cardinality: param.return_cardinality.clone(),
                 uses: param.uses.clone(),
                 body: param.body.clone(),
                 transport: param.transport.clone(),
@@ -7936,27 +7968,36 @@ pub fn maybe_optional(
 ) -> Rc<TypeResult> {
     match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectQuestion))).clone() {
         EatResult::EatConsumed { tokens: __ec, .. } => {
-            let inner_ctx = parse_context_record_node_from(
+            let ctx = parse_context_record_node_from(
                 ctx.clone(),
                 te.clone(),
                 start_span.clone(),
                 __ec.clone(),
             );
-            let minted = mint_parsed_node_identity(
-                inner_ctx.clone(),
-                Rc::new(ParsedExtentAt::CompletedLater),
-            );
-            let ote = crate::v1_std_core::optional_application_node(
-                minted.identity.clone(),
-                te.clone(),
-                start_span.clone(),
-            );
-            let ctx = parse_context_record_node_from(
-                minted.ctx.clone(),
-                ote.clone(),
-                start_span.clone(),
-                __ec.clone(),
-            );
+            let ote = Rc::new(Node {
+                occurrence_identity: te.occurrence_identity.clone(),
+                name: te.name.clone(),
+                span: te.span.clone(),
+                ident_span: te.ident_span.clone(),
+                children: te.children.clone(),
+                connective: te.connective.clone(),
+                params: te.params.clone(),
+                inferred: te.inferred.clone(),
+                return_cardinality: Cardinality::CardOptional,
+                uses: te.uses.clone(),
+                body: te.body.clone(),
+                transport: te.transport.clone(),
+                properties: te.properties.clone(),
+                type_annotation: te.type_annotation.clone(),
+                is_self_recursive: te.is_self_recursive.clone(),
+                has_non_tail_self_call: te.has_non_tail_self_call.clone(),
+                match_pattern: te.match_pattern.clone(),
+                module_item_kind: te.module_item_kind.clone(),
+                declaration_marker: te.declaration_marker.clone(),
+                declaration: te.declaration.clone(),
+                expr_data: te.expr_data.clone(),
+                ident: None,
+            });
             Rc::new(TypeResult {
                 type_expr: ote.clone(),
                 tokens: __ec.clone(),
@@ -8053,6 +8094,7 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                 "".to_string(),
                 start_span.clone(),
             ),
+            Cardinality::Required,
             std::option::Option::None,
             Rc::new(vec![]),
             start_span.clone(),
@@ -8132,6 +8174,7 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                     minted.identity.clone(),
                     name.clone(),
                     te.clone(),
+                    te.return_cardinality.clone(),
                     Some(r4.expr.clone()),
                     from_key_properties.clone(),
                     start_span.clone(),
@@ -8156,6 +8199,7 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                     minted.identity.clone(),
                     name.clone(),
                     te.clone(),
+                    te.return_cardinality.clone(),
                     std::option::Option::None,
                     from_key_properties.clone(),
                     start_span.clone(),
@@ -8347,6 +8391,7 @@ pub fn parse_fn_body_from_prefix(
             children: Rc::new(vec![]),
             params: all_params.clone(),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: prefix.uses.clone(),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -8442,6 +8487,7 @@ pub fn parse_fn_body_from_prefix(
             children: Rc::new(vec![]),
             params: all_params.clone(),
             inferred: inferred.clone(),
+            return_cardinality: Cardinality::Required,
             uses: prefix.uses.clone(),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
@@ -8485,6 +8531,7 @@ pub fn parse_block_body_from_prefix(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -8525,6 +8572,7 @@ pub fn parse_block_body_from_prefix(
             children: Rc::new(vec![]),
             params: params.clone(),
             inferred: inferred.clone(),
+            return_cardinality: Cardinality::Required,
             uses: uses.clone(),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
@@ -8569,6 +8617,7 @@ pub fn parse_no_body_from_prefix(
             children: Rc::new(vec![]),
             params: prefix.params.clone(),
             inferred: prefix.inferred.clone(),
+            return_cardinality: Cardinality::Required,
             uses: prefix.uses.clone(),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -8739,26 +8788,27 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     });
                 }
                 let res_node = Rc::new(Node {
-                    occurrence_identity: r3.type_expr.clone().occurrence_identity.clone(),
-                    name: r3.type_expr.clone().name.clone(),
-                    span: r3.type_expr.clone().span.clone(),
-                    ident_span: r3.type_expr.clone().ident_span.clone(),
-                    children: r3.type_expr.clone().children.clone(),
-                    params: r3.type_expr.clone().params.clone(),
-                    inferred: r3.type_expr.clone().inferred.clone(),
-                    uses: r3.type_expr.clone().uses.clone(),
-                    body: r3.type_expr.clone().body.clone(),
-                    connective: r3.type_expr.clone().connective.clone(),
-                    transport: r3.type_expr.clone().transport.clone(),
+                    occurrence_identity: r3.type_expr.occurrence_identity.clone(),
+                    name: r3.type_expr.name.clone(),
+                    span: r3.type_expr.span.clone(),
+                    ident_span: r3.type_expr.ident_span.clone(),
+                    children: r3.type_expr.children.clone(),
+                    params: r3.type_expr.params.clone(),
+                    inferred: r3.type_expr.inferred.clone(),
+                    return_cardinality: r3.type_expr.return_cardinality.clone(),
+                    uses: r3.type_expr.uses.clone(),
+                    body: r3.type_expr.body.clone(),
+                    connective: r3.type_expr.connective.clone(),
+                    transport: r3.type_expr.transport.clone(),
                     properties: ar.fields.clone(),
-                    type_annotation: r3.type_expr.clone().type_annotation.clone(),
-                    is_self_recursive: r3.type_expr.clone().is_self_recursive.clone(),
-                    has_non_tail_self_call: r3.type_expr.clone().has_non_tail_self_call.clone(),
-                    match_pattern: r3.type_expr.clone().match_pattern.clone(),
-                    module_item_kind: r3.type_expr.clone().module_item_kind.clone(),
-                    declaration_marker: r3.type_expr.clone().declaration_marker.clone(),
-                    declaration: r3.type_expr.clone().declaration.clone(),
-                    expr_data: r3.type_expr.clone().expr_data.clone(),
+                    type_annotation: r3.type_expr.type_annotation.clone(),
+                    is_self_recursive: r3.type_expr.is_self_recursive.clone(),
+                    has_non_tail_self_call: r3.type_expr.has_non_tail_self_call.clone(),
+                    match_pattern: r3.type_expr.match_pattern.clone(),
+                    module_item_kind: r3.type_expr.module_item_kind.clone(),
+                    declaration_marker: r3.type_expr.declaration_marker.clone(),
+                    declaration: r3.type_expr.declaration.clone(),
+                    expr_data: r3.type_expr.expr_data.clone(),
                     ident: None,
                 });
                 let configured_ctx = parse_context_extend_node_extent(
@@ -8957,6 +9007,7 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -9004,6 +9055,7 @@ pub fn parse_service_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -9045,6 +9097,7 @@ pub fn parse_service_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -9143,6 +9196,7 @@ pub fn parse_service_after_kw(
             children: r.operations.clone(),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -10055,8 +10109,8 @@ pub fn parse_rest_fields(
                                     }
                                 } else {
                                     if (fname.clone() == transport_headers_key()) {
-                                        let h = match (*r3.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { .. } => r3.expr.clone().children.clone(),
+                                        let h = match (*r3.expr.expr_data.clone()).clone() {
+    ExprData::ExprRecordLit { .. } => r3.expr.children.clone(),
     _ => return Rc::new(TransportResult {
     transport: dummy.clone(),
     tokens: tokens.clone(),
@@ -11553,9 +11607,9 @@ pub fn node_to_name_str(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_optional = crate::v1_std_core::type_is_optional(n.clone());
+        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         let effective_n = if is_optional.clone() {
-            crate::v1_std_core::optional_payload(n.clone())
+            crate::v1_std_core::with_required_cardinality(n.clone())
         } else {
             n.clone()
         };
@@ -11704,7 +11758,7 @@ pub fn parse_exit_entries_acc(
                 minted.identity.clone(),
                 prop_name.clone(),
                 r3.type_expr.clone(),
-                r3.type_expr.clone().span.clone(),
+                r3.type_expr.span.clone(),
                 crate::v1_std_core::no_span(),
             );
             let e = eat(desc_tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
@@ -12329,17 +12383,17 @@ pub fn parse_response_entries_acc(
                 minted.identity.clone(),
                 prop_name.clone(),
                 crate::v1_std_core::make_named_expr_node(
-                    r3.type_expr.clone().occurrence_identity.clone(),
+                    r3.type_expr.occurrence_identity.clone(),
                     type_name.clone(),
                     Rc::new(ExprData::ExprVar {
                         binding_kind: std::option::Option::None,
                     }),
                     Rc::new(vec![]),
                     std::option::Option::None,
-                    r3.type_expr.clone().span.clone(),
-                    r3.type_expr.clone().span.clone(),
+                    r3.type_expr.span.clone(),
+                    r3.type_expr.span.clone(),
                 ),
-                r3.type_expr.clone().span.clone(),
+                r3.type_expr.span.clone(),
                 crate::v1_std_core::no_span(),
             );
             let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
@@ -12538,6 +12592,7 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -12585,6 +12640,7 @@ pub fn parse_resource_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -12619,6 +12675,7 @@ pub fn parse_resource_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -12684,6 +12741,7 @@ pub fn parse_resource_after_kw(
             children: r.capabilities.clone(),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13116,10 +13174,9 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
                         });
                     }
                     let outputs = match ret.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(
-                            rt.clone(),
-                            ret.ctx.clone().source_indices.clone(),
-                        ),
+                        Some(InferredNode::Resolved { node: rt, .. }) => {
+                            node_inferred_to_outputs(rt.clone(), ret.ctx.source_indices.clone())
+                        }
                         _ => Rc::new(vec![]),
                     };
                     let minted = mint_parsed_node_identity(
@@ -13334,6 +13391,7 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13381,6 +13439,7 @@ pub fn parse_alias_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13415,6 +13474,7 @@ pub fn parse_alias_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13496,6 +13556,7 @@ pub fn parse_alias_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13534,6 +13595,7 @@ pub fn parse_data_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13568,6 +13630,7 @@ pub fn parse_data_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
@@ -13640,6 +13703,7 @@ pub fn parse_data_after_kw(
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
             inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: Some(r.expr.clone()),
             connective: Connective::NoConnective,
@@ -14068,7 +14132,7 @@ pub fn parse_data_value_heads_only(
     {
         let skipped = heads_skip_data_value_tokens_at(
             tokens.clone(),
-            ctx.env.clone().syntax_spec.clone().item_forms.clone(),
+            ctx.env.syntax_spec.item_forms.clone(),
             0,
             0,
             0,
@@ -14460,6 +14524,7 @@ pub fn parse_constrained_assignment(
                     children: Rc::new(vec![r3.expr.clone()]),
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     connective: Connective::NoConnective,
@@ -14556,6 +14621,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
                     inferred: ret.inferred.clone(),
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -14626,6 +14692,7 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                     children: Rc::new(vec![r3.expr.clone()]),
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     connective: Connective::NoConnective,
@@ -14704,8 +14771,8 @@ pub fn parse_expr_loop(
                     let operator_span =
                         token_span(token_stream_first(skip_newlines(tokens.clone())));
                     let ambiguity_span = crate::v1_std_core::make_file_span(
-                        lhs.span.clone().file.clone(),
-                        lhs.span.clone().start.clone(),
+                        lhs.span.file.clone(),
+                        lhs.span.start.clone(),
                         operator_span.end.clone(),
                     );
                     return Rc::new(ExprResult {
@@ -14853,12 +14920,7 @@ pub fn parse_expr_loop(
                                                     });
                                                 }
                                                 let binop_opt = find_operator_binop(
-                                                    ctx.env
-                                                        .clone()
-                                                        .syntax_spec
-                                                        .clone()
-                                                        .operators
-                                                        .clone(),
+                                                    ctx.env.syntax_spec.operators.clone(),
                                                     op_tok.text.clone(),
                                                 );
                                                 match binop_opt.clone() {
@@ -14950,7 +15012,7 @@ pub fn parse_expr_loop(
 
 pub fn infix_bp(tokens: Rc<TokenStream>, env: Rc<ParseEnvironment>) -> Option<BindingPower> {
     match token_stream_first(tokens.clone()) {
-        Some(t) => find_operator_bp(env.syntax_spec.clone().operators.clone(), t.text.clone()),
+        Some(t) => find_operator_bp(env.syntax_spec.operators.clone(), t.text.clone()),
         std::option::Option::None => std::option::Option::None,
     }
 }
@@ -15322,7 +15384,7 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                 let call_span = crate::v1_std_core::make_file_span(
                     span.file.clone(),
                     span.start.clone(),
-                    r2.token.clone().span.clone().end.clone(),
+                    r2.token.span.end.clone(),
                 );
                 let callee_mint = mint_parsed_node_identity(
                     r.ctx.clone(),
@@ -15401,7 +15463,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
             Some(TokenShape::ShKeyword) => {
                 let kw_text = tok.clone().unwrap().text.clone();
                 let lit_val = v1_rt::lookup(
-                    &ctx.env.clone().syntax_spec.clone().keyword_literals.clone(),
+                    &ctx.env.syntax_spec.keyword_literals.clone(),
                     kw_text.clone(),
                 );
                 match lit_val.clone() {
@@ -15957,7 +16019,7 @@ pub fn try_postfix(
                                     ctx: parse_context_record_absorbed(
                                         r.ctx.clone(),
                                         lhs.clone(),
-                                        r.expr.clone().occurrence_identity.clone(),
+                                        r.expr.occurrence_identity.clone(),
                                     ),
                                     err: std::option::Option::None,
                                 })
@@ -16017,7 +16079,7 @@ pub fn try_postfix(
                                         ctx: parse_context_record_absorbed(
                                             r.ctx.clone(),
                                             lhs.clone(),
-                                            r.expr.clone().occurrence_identity.clone(),
+                                            r.expr.occurrence_identity.clone(),
                                         ),
                                         err: std::option::Option::None,
                                     })
@@ -16795,8 +16857,8 @@ pub fn parse_expr_loop_no_brace(
                     let operator_span =
                         token_span(token_stream_first(skip_newlines(tokens.clone())));
                     let ambiguity_span = crate::v1_std_core::make_file_span(
-                        lhs.span.clone().file.clone(),
-                        lhs.span.clone().start.clone(),
+                        lhs.span.file.clone(),
+                        lhs.span.start.clone(),
                         operator_span.end.clone(),
                     );
                     return Rc::new(ExprResult {
@@ -16988,12 +17050,7 @@ pub fn parse_expr_loop_no_brace(
                                                     });
                                                 }
                                                 let binop_opt = find_operator_binop(
-                                                    ctx.env
-                                                        .clone()
-                                                        .syntax_spec
-                                                        .clone()
-                                                        .operators
-                                                        .clone(),
+                                                    ctx.env.syntax_spec.operators.clone(),
                                                     op_tok.text.clone(),
                                                 );
                                                 match binop_opt.clone() {
@@ -17590,7 +17647,7 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
             Some(TokenShape::ShKeyword) => {
                 let kw_text = tok.clone().unwrap().text.clone();
                 let lit_val = v1_rt::lookup(
-                    &ctx.env.clone().syntax_spec.clone().keyword_literals.clone(),
+                    &ctx.env.syntax_spec.keyword_literals.clone(),
                     kw_text.clone(),
                 );
                 match lit_val.clone() {
@@ -17844,12 +17901,12 @@ pub fn parse_variant_bindings_brace_acc(
                 Some(t) => {
                     if is_keyword_shape(t.shape.clone()) {
                         match v1_rt::lookup(
-                            &ctx.env.clone().syntax_spec.clone().keyword_literals.clone(),
+                            &ctx.env.syntax_spec.keyword_literals.clone(),
                             t.text.clone(),
                         ) {
                             Some(_) => {}
                             std::option::Option::None => match v1_rt::lookup(
-                                &ctx.env.clone().non_name_keywords.clone(),
+                                &ctx.env.non_name_keywords.clone(),
                                 t.text.clone(),
                             ) {
                                 Some(_) => {
@@ -18197,6 +18254,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
                     inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
@@ -18384,7 +18442,7 @@ pub fn field_access_chain_span(texpr: Rc<Node>) -> Rc<SourceSpan> {
                     field_access_chain_span(crate::v1_std_core::field_access_base(texpr.clone()));
                 let chain_end = match texpr.ident_span.clone() {
                     Some(is) => is.end.clone(),
-                    std::option::Option::None => texpr.span.clone().end.clone(),
+                    std::option::Option::None => texpr.span.end.clone(),
                 };
                 Rc::new(SourceSpan {
                     file: base_span.file.clone(),
@@ -18516,7 +18574,7 @@ pub fn parse_field_init_list_acc(
                     err: r.err.clone(),
                 });
             }
-            let key = r.field.clone().name.clone();
+            let key = r.field.name.clone();
             let duplicate = match v1_rt::map_get(&seen, key.clone()) {
                 Some(first_span) => {
                     if (key.clone() == "_".to_string()) {
@@ -18527,9 +18585,9 @@ pub fn parse_field_init_list_acc(
                                 ctx.clone(),
                                 key.clone(),
                                 first_span.clone(),
-                                r.field.clone().span.clone(),
+                                r.field.span.clone(),
                             ),
-                            r.field.clone().span.clone(),
+                            r.field.span.clone(),
                         ))
                     }
                 }
@@ -18552,7 +18610,7 @@ pub fn parse_field_init_list_acc(
                 let __tco_0 = tokens;
                 let __tco_1 = parse_context_after_node(r.ctx.clone(), r.field.clone());
                 let __tco_2 = v1_rt::rc_list_push(acc, r.field.clone());
-                let __tco_3 = v1_rt::rc_map_insert(seen, key.clone(), r.field.clone().span.clone());
+                let __tco_3 = v1_rt::rc_map_insert(seen, key.clone(), r.field.span.clone());
                 __tco_loop_tokens = __tco_0;
                 __tco_loop_ctx = __tco_1;
                 __tco_loop_acc = __tco_2;

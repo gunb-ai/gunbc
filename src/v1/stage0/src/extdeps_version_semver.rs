@@ -14,7 +14,6 @@ use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_algebra::{trim, Ordering};
 pub use crate::std_coercion::unicode_scalar_fold;
 pub use crate::std_integer::NonNegativeInt;
-pub use crate::std_optional::Optional;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -367,14 +366,14 @@ pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
 pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
     {
         let core = v1_rt::concat(
-            semver_label_from_code_points(v.major.clone().digits()),
+            semver_label_from_code_points(v.major.digits()),
             v1_rt::concat(
                 ".".to_string(),
                 v1_rt::concat(
-                    semver_label_from_code_points(v.minor.clone().digits()),
+                    semver_label_from_code_points(v.minor.digits()),
                     v1_rt::concat(
                         ".".to_string(),
-                        semver_label_from_code_points(v.patch.clone().digits()),
+                        semver_label_from_code_points(v.patch.digits()),
                     ),
                 ),
             ),

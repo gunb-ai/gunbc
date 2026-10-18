@@ -525,6 +525,16 @@ import gunbc.runner.microvm_guest_artifacts {
   ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
 }
 import gunbc.runner.workspace_guest_image { workspace_installed_image_root, workspace_image_path }
+import gunbc.runner.runner_revision_job_image { revision_job_image_path, revision_job_toolchain_receipt_path }
+import gunbc.runner.runner_revision_job_unit {
+  revision_job_image_pinned_sha256, revision_job_image_staging_root, revision_job_installed_image_root,
+  revision_job_installed_kernel, revision_job_installed_rootfs, revision_job_installed_toolchain,
+  revision_job_state_root, revision_job_spec_dir, revision_job_receipt_store, revision_job_instance_dir,
+  revision_job_cache_dir, revision_job_work_dir, revision_job_runner_unit_path, revision_job_runner_unit_file,
+}
+import gunbc.runner.runner_slot_allocation { revision_job_slots }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.workspace_image_delivery { workspace_image_staging_root }
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import extdeps.crypto.hash { sha256_digest, sha256sum_file_command, sha256sum_line_digest }
@@ -7826,6 +7836,77 @@ fn microvm_controller_install_staging(revision: ReleaseRevisionBinding) -> Micro
   }
 }
 
+fn revision_job_install_file_step(name: String, source: String, dest: String) -> MicrovmControllerInstallStep {
+  microvm_controller_argv_step(
+    name: name,
+    command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+      mode: install_file_shared_mode, owner: microvm_controller_owner, group: microvm_controller_owner, source: source, dest: dest)),
+  )
+}
+
+fn revision_job_owned_dir_step(name: String, path: String) -> MicrovmControllerInstallStep {
+  microvm_controller_argv_step(name: name, command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: path)))
+}
+
+// THE REVISION JOB'S LEG: its image installed root-owned and verified against the pin, its state
+// directories, and its templated unit. Present exactly when the authority declares a revision-job
+// slot (gunbc.runner.runner_slot_allocation revision_job_slots). Like every leg here it starts
+// nothing: the job unit is started by the granted request, never by the install.
+fn microvm_controller_revision_job_steps(release_dir: String, guest_kernel_pinned_digest: Digest) -> List<MicrovmControllerInstallStep> {
+  if count(revision_job_slots) == 0 {
+    []
+  } else {
+    let root = revision_job_installed_image_root(release_dir: release_dir)
+    let kernel = revision_job_installed_kernel(release_dir: release_dir)
+    let rootfs = revision_job_installed_rootfs(release_dir: release_dir)
+    let toolchain = revision_job_installed_toolchain(release_dir: release_dir)
+    let staging = revision_job_image_staging_root
+    let operator = fleet_posix_operator_user.name
+    let instances = map(revision_job_slots, slot => runner_slot_instance_name(slot: slot))
+    concat(
+      [
+        revision_job_owned_dir_step(name: "revision-job image dir", path: root),
+        revision_job_install_file_step(name: "revision-job kernel install", source: runner_guest_base_artifact_path(root: staging, artifact: runner_guest_kernel_artifact), dest: kernel),
+        MicrovmControllerVerifyStep {
+          name: "revision-job guest kernel digest",
+          command: sha256sum_file_command(path: kernel),
+          expected: guest_kernel_pinned_digest,
+          subject: kernel,
+        },
+        revision_job_install_file_step(name: "revision-job rootfs install", source: revision_job_image_path(root: staging), dest: rootfs),
+        MicrovmControllerVerifyStep {
+          name: "revision-job rootfs digest",
+          command: sha256sum_file_command(path: rootfs),
+          expected: sha256_digest(hex: revision_job_image_pinned_sha256 as String),
+          subject: rootfs,
+        },
+        revision_job_install_file_step(name: "revision-job toolchain receipt install", source: revision_job_toolchain_receipt_path(root: staging), dest: toolchain),
+        revision_job_owned_dir_step(name: "revision-job state dir", path: revision_job_state_root),
+        revision_job_owned_dir_step(name: "revision-job receipt store", path: revision_job_receipt_store),
+        microvm_controller_argv_step(
+          name: "revision-job spec dir",
+          command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
+            mode: install_d_shared_mode, owner: operator, group: operator, path: revision_job_spec_dir)),
+        ),
+      ],
+      concat(
+        flat_map(instances, i => [
+          revision_job_owned_dir_step(name: concat("revision-job instance dir ", i), path: revision_job_instance_dir(instance: i)),
+          revision_job_owned_dir_step(name: concat("revision-job cache dir ", i), path: revision_job_cache_dir(instance: i)),
+          revision_job_owned_dir_step(name: concat("revision-job work dir ", i), path: revision_job_work_dir(instance: i)),
+        ]),
+        microvm_controller_staged_write_steps(
+          name: "revision-job runner unit",
+          dest: revision_job_runner_unit_path() as String,
+          mode: microvm_controller_unit_mode,
+          content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
+            file: revision_job_runner_unit_file(release_dir: release_dir), release_dir: release_dir)),
+        ),
+      ),
+    )
+  }
+}
+
 // THE STEP LIST, exactly the retired intent's order. The tree-copy leg is
 // W6's vertical and is named here as ONE step (the fold calls the real
 // function; see microvm_controller_run_tree_install).
@@ -8090,10 +8171,10 @@ fn microvm_controller_install_steps(
             ],
             // systemctl daemon-reload, LAST: the units above are templates; the
             // reload makes them known and starts nothing.
-            [microvm_controller_argv_step(
+            concat(microvm_controller_revision_job_steps(release_dir: release_dir, guest_kernel_pinned_digest: guest_kernel_pinned_digest), [microvm_controller_argv_step(
               name: "systemd daemon-reload",
               command: extdeps.systemd.systemctl.systemctl_daemon_reload_command(),
-            )],
+            )]),
           ),
         ),
       ),

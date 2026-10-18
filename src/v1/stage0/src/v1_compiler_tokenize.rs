@@ -4,7 +4,6 @@
 use self::EscapeProcessResult::*;
 use self::ScanStep::*;
 use self::StringScanResult::*;
-pub use crate::std_optional::Optional;
 use crate::std_source_annotation::AnnotationPlacement::{
     LeadingAfterLineIndent, TrailingAfterSemanticToken,
 };
@@ -32,7 +31,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_keyword_text(text: String, env: Rc<ParseEnvironment>) -> bool {
-    match v1_rt::lookup(&env.syntax_spec.clone().keyword_set.clone(), text.clone()) {
+    match v1_rt::lookup(&env.syntax_spec.keyword_set.clone(), text.clone()) {
         Some(_) => true,
         std::option::Option::None => false,
     }
