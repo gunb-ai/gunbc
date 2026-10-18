@@ -9,6 +9,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.nist_p256 { p256_ecdsa_verify_octets }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoAdmission, DeviceCryptoAdmitted, DeviceCryptoRefused }
 
 // ECDSA per FIPS 186-5 (Digital Signature Standard), over the NIST P-256 curve (SP 800-186) with
 // SHA-256 (FIPS 180-4, cited by extdeps.crypto.hash). The anchor is the standard, not Apple and not
@@ -153,6 +154,24 @@ fn signature_verification_from_implementation(
       } else {
         SignatureInvalid { suite: signature.suite }
       }
+  }
+}
+
+// THE SECOND ADMITTED MINT: A SUCCESS THE DEVICE-CRYPTO VERIFIER SIDECAR ANSWERED. verify_signature above is
+// the in-process fold; when the broker instead asks the natively emitted sidecar
+// (gunbc.auth.approval_device_crypto_serve) the same success arrives as bytes, and this is the only way the broker
+// turns those bytes back into a SignedMessage. It takes the admission itself, so a refused admission mints
+// nothing: a SignedMessage cannot be assembled from a decode that no admitted realization stood behind. Its one
+// admitted caller is the client decode, so the roster below, not a convention, is what keeps every other module
+// from minting.
+fn signed_message_from_sidecar(admission: DeviceCryptoAdmission, key: VerifyingKey, message: NonEmptyStr) -> SignedMessage?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_crypto_client", decl_name: "signature_from_answer"),
+  ]
+{
+  match admission {
+    DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } => Present { value: SignedMessage { key: key, message: message } }
+    DeviceCryptoRefused { status: _, reason: _ } => none
   }
 }
 

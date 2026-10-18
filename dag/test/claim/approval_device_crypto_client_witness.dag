@@ -1,0 +1,160 @@
+module test.claim.approval_device_crypto_client_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Int, HttpStatus }
+import extdeps.crypto.signature { SignatureVerification, VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed, SignatureVerified, SignatureInvalid }
+import extdeps.apple.app_attest { AttestationVerification, AssertionVerification, AppAttestProduction, AttestKeyId, AttestationVerified, AttestationRefused, AssertionAuthentic, AssertionRefused }
+import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
+import gunbc.auth.approval_device_crypto_realization {
+  DeviceCryptoAdmission, NativeDeviceCryptoBound, NativeDeviceCryptoUnavailable, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations,
+}
+import gunbc.auth.approval_device_crypto_wire {
+  DeviceCryptoAnswer, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, NoPayload, SignedPayload, AttestedPayload, AssertedPayload,
+  device_crypto_arm_signature_verified, device_crypto_arm_attestation_verified, device_crypto_arm_assertion_verified,
+  device_crypto_answer_json, decode_device_crypto_answer,
+}
+import gunbc.auth.approval_device_crypto_client {
+  SidecarResult, SidecarReply, SidecarAnswered, SidecarFailed, SidecarReplied, SidecarReplyFailed,
+  sidecar_reply_from, signature_from_answer, attestation_from_answer, assertion_from_answer,
+}
+import gunbc.auth.approval_device_routes { DeviceRouteResponse, sidecar_failure_response }
+
+fn admitted() -> DeviceCryptoAdmission {
+  device_crypto_admission(r: NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture", exact_revision: "0000000", covered: device_crypto_obligations } })
+}
+
+fn unavailable() -> DeviceCryptoAdmission {
+  device_crypto_admission(r: NativeDeviceCryptoUnavailable { cause: "fixture" })
+}
+
+fn key() -> VerifyingKey {
+  VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEY" }
+}
+
+fn signed_answer() -> DeviceCryptoAnswer {
+  DeviceCryptoAnswer { verdict: CryptoVerified, arm: device_crypto_arm_signature_verified, payload: SignedPayload { key: key(), message: "the message" } }
+}
+
+fn attested_answer() -> DeviceCryptoAnswer {
+  DeviceCryptoAnswer {
+    verdict: CryptoVerified, arm: device_crypto_arm_attestation_verified,
+    payload: AttestedPayload { key_id: "kid" as AttestKeyId, public_key_point_b64url: "BPK", receipt_b64: "RCPT", environment: AppAttestProduction, client_data: "cd" },
+  }
+}
+
+fn asserted_answer() -> DeviceCryptoAnswer {
+  DeviceCryptoAnswer {
+    verdict: CryptoVerified, arm: device_crypto_arm_assertion_verified,
+    payload: AssertedPayload { key_id: "kid" as AttestKeyId, public_key_point_b64url: "BPK", counter: 3, client_data: "cd" },
+  }
+}
+
+fn refused_answer() -> DeviceCryptoAnswer {
+  DeviceCryptoAnswer { verdict: CryptoRefused, arm: "AttestationNonceMismatch", payload: NoPayload }
+}
+
+// THE WIRE ROUND-TRIPS EVERY VERIFIED PAYLOAD: what the service writes is what the broker decodes.
+test fn witness_every_verified_payload_round_trips_the_wire() -> Bool {
+  [signed_answer(), attested_answer(), asserted_answer(), refused_answer()]
+    |> all(a => match decode_device_crypto_answer(text: device_crypto_answer_json(a: a)) {
+      WireDecoded { value: back } => device_crypto_answer_json(a: back) == device_crypto_answer_json(a: a)
+      WireRefused { at: _, cause: _ } => false
+    })
+}
+
+// A verified verdict whose arm names another outcome, or whose payload is missing, is refused at decode.
+test fn witness_a_verified_verdict_without_its_payload_is_refused() -> Bool {
+  let no_payload = DeviceCryptoAnswer { verdict: CryptoVerified, arm: device_crypto_arm_signature_verified, payload: NoPayload }
+  let wrong_arm = DeviceCryptoAnswer { verdict: CryptoVerified, arm: "SignatureInvalid", payload: SignedPayload { key: key(), message: "m" } }
+  [no_payload, wrong_arm]
+    |> all(a => match decode_device_crypto_answer(text: device_crypto_answer_json(a: a)) {
+      WireRefused { at: _, cause: _ } => true
+      WireDecoded { value: _ } => false
+    })
+}
+
+// DECODING MINTS ONLY UNDER AN ADMISSION: a refused admission mints nothing, for each of the three evidence types.
+fn signature_failed(r: SidecarResult<SignatureVerification>) -> Bool {
+  match r { SidecarFailed { cause: _ } => true  _ => false }
+}
+
+fn attestation_failed(r: SidecarResult<AttestationVerification>) -> Bool {
+  match r { SidecarFailed { cause: _ } => true  _ => false }
+}
+
+fn assertion_failed(r: SidecarResult<AssertionVerification>) -> Bool {
+  match r { SidecarFailed { cause: _ } => true  _ => false }
+}
+
+test fn witness_decoding_without_an_admission_mints_nothing() -> Bool {
+  signature_failed(r: signature_from_answer(admission: unavailable(), answer: signed_answer()))
+    && attestation_failed(r: attestation_from_answer(admission: unavailable(), answer: attested_answer()))
+    && assertion_failed(r: assertion_from_answer(admission: unavailable(), answer: asserted_answer()))
+}
+
+// THE CONTROL: under an admission the same answers mint the fold's own verified arms.
+test fn witness_decoding_under_an_admission_mints_the_verified_arms() -> Bool {
+  let signature = match signature_from_answer(admission: admitted(), answer: signed_answer()) {
+    SidecarAnswered { verification: SignatureVerified { verified: v } } => v.message == "the message"
+    _ => false
+  }
+  let attestation = match attestation_from_answer(admission: admitted(), answer: attested_answer()) {
+    SidecarAnswered { verification: AttestationVerified { verified: _ } } => true
+    _ => false
+  }
+  let assertion = match assertion_from_answer(admission: admitted(), answer: asserted_answer()) {
+    SidecarAnswered { verification: AssertionAuthentic { authentic: a } } => a.counter == 3
+    _ => false
+  }
+  signature && attestation && assertion
+}
+
+// EVERY REFUSAL ARM maps to the fold's refusal, never to a verified value.
+test fn witness_refused_and_invalid_answers_map_to_the_refusal_arms() -> Bool {
+  let invalid = DeviceCryptoAnswer { verdict: CryptoInvalid, arm: "SignatureInvalid", payload: NoPayload }
+  let signature = match signature_from_answer(admission: admitted(), answer: invalid) {
+    SidecarAnswered { verification: SignatureInvalid { suite: _ } } => true
+    _ => false
+  }
+  let attestation = match attestation_from_answer(admission: admitted(), answer: refused_answer()) {
+    SidecarAnswered { verification: AttestationRefused { cause: _ } } => true
+    _ => false
+  }
+  let assertion = match assertion_from_answer(admission: admitted(), answer: refused_answer()) {
+    SidecarAnswered { verification: AssertionRefused { cause: _ } } => true
+    _ => false
+  }
+  signature && attestation && assertion
+}
+
+// A verdict that is not an answer to this route is a sidecar failure, not a verification result.
+test fn witness_an_unexpected_verdict_is_a_sidecar_failure() -> Bool {
+  let odd = DeviceCryptoAnswer { verdict: CryptoInfinity, arm: "PointAtInfinity", payload: NoPayload }
+  match signature_from_answer(admission: admitted(), answer: odd) {
+    SidecarFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+// THE TRANSPORT: a timeout (curl exit 28), a non-200 status and an undecodable 200 each fail; only a decodable 200 replies.
+fn reply_failed(r: SidecarReply) -> Bool {
+  match r { SidecarReplyFailed { cause: _ } => true  SidecarReplied { answer: _ } => false }
+}
+
+fn reply_answered(r: SidecarReply) -> Bool {
+  match r { SidecarReplied { answer: _ } => true  SidecarReplyFailed { cause: _ } => false }
+}
+
+test fn witness_a_timeout_a_bad_status_and_a_bad_body_are_sidecar_failures() -> Bool {
+  let good = device_crypto_answer_json(a: signed_answer())
+  reply_failed(r: sidecar_reply_from(exit_code: 28, stdout: "", stderr: "timed out"))
+    && reply_failed(r: sidecar_reply_from(exit_code: 0, stdout: "\{\"error\":\"x\"\}\n503", stderr: ""))
+    && reply_failed(r: sidecar_reply_from(exit_code: 0, stdout: "not json\n200", stderr: ""))
+    && reply_answered(r: sidecar_reply_from(exit_code: 0, stdout: join([good, "\n200"], ""), stderr: ""))
+}
+
+// THE ROUTE'S MAPPING: a sidecar failure is a 503 carrying its cause, never a 200.
+test fn witness_a_sidecar_failure_answers_503() -> Bool {
+  let r = sidecar_failure_response(cause: "timed out")
+  (r.status as Int) == 503 && string_contains(s: r.body, pattern: "timed out")
+}

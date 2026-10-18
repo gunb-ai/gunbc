@@ -1,0 +1,174 @@
+module gunbc.auth.approval_device_crypto_client
+
+import std.types { String, Int, List, NonEmptyStr, Port }
+import std.measure { Second, second }
+import extdeps.http.client
+import extdeps.http.client { http_client_max_time_flag }
+import extdeps.tools.curl { CurlTransferCompleted, curl_exit_outcome, curl_exit_outcome_name, classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
+import extdeps.crypto.signature {
+  VerifyingKey, SignatureBytes, SignatureVerification, SignatureVerified, SignatureInvalid, EcdsaP256Sha256, signed_message_from_sidecar,
+}
+import extdeps.apple.app_attest {
+  AttestationExpectation, AssertionExpectation,
+  AttestationVerification, AttestationVerified, AttestationRefused, AttestationUndecodable,
+  AssertionVerification, AssertionAuthentic, AssertionRefused, AssertionSignatureInvalid, AssertionUndecodable,
+  verified_attestation_from_sidecar, authentic_assertion_from_sidecar,
+}
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoAdmission }
+import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
+import gunbc.auth.approval_device_crypto_wire {
+  device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path,
+  SignatureCheck, signature_check_request_json, attestation_check_request_json, assertion_check_request_json,
+  DeviceCryptoAnswer, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused,
+  DeviceCryptoPayload, NoPayload, SignedPayload, AttestedPayload, AssertedPayload,
+  decode_device_crypto_answer,
+}
+
+// THE BROKER'S CLIENT OF THE DEVICE-CRYPTO VERIFIER SIDECAR (gunbc.auth.approval_device_crypto_serve). When
+// device_crypto_admission admits, the device routes ask the sidecar instead of folding the verifiers in the
+// interpreted process, over the broker's existing HTTP effect (extdeps.http.client PostStdinWithin) and the
+// byte contract of gunbc.auth.approval_device_crypto_wire: no second transport, no second request shape.
+//
+// WHAT COMES BACK IS THE FOLD'S OWN CARRIER. A `verified` answer carries the verified payload on the wire and
+// the decode below mints extdeps.crypto.signature SignedMessage / extdeps.apple.app_attest VerifiedAttestation /
+// AuthenticAssertion again through the admitted mints declared beside those sole constructors
+// (signed_message_from_sidecar, verified_attestation_from_sidecar, authentic_assertion_from_sidecar). Each takes
+// the DeviceCryptoAdmission, so no decode without an admitted realization yields a verified value, and each
+// names the fold here as its one admitted caller. The redemption joins therefore read the same types and fields
+// they read from the in-process folds, and a payload that disagrees with the request is refused by the join's own
+// comparison, not by a second one here.
+//
+// THE SIDECAR FAILING IS NOT THE VERIFIER REFUSING. A refused or invalid answer is the fold's own negative and is
+// returned as the fold's own refusal arm; an unreachable sidecar, a timeout, a non-200 status or an undecodable
+// reply is SidecarFailed, which the routes answer 503 with its cause. There is no fallback to the interpreted
+// verifiers: that path costs minutes and gigabytes per signature, and a fallback would turn a dead sidecar into a
+// silently different service.
+//
+// DISSOLUTION CONDITION. This client and the sidecar's wire dissolve together when the native broker links the
+// verifier handler in process (see gunbc.auth.approval_device_crypto_serve); the folds they frame stay.
+data approval_device_crypto_sidecar_port: Port = 8086
+data approval_device_crypto_sidecar_endpoint: NonEmptyStr = "http://127.0.0.1:8086"
+
+// The sidecar is local, so connecting is immediate; the request bound covers one native verification, which a
+// full attestation chain walk dominates.
+data approval_device_crypto_connect_bound: Second = second(count: 2)
+data approval_device_crypto_request_bound: Second = second(count: 30)
+
+type SidecarResult<V>
+  = SidecarAnswered { verification: V }
+  | SidecarFailed { cause: NonEmptyStr }
+
+type SidecarReply
+  = SidecarReplied { answer: DeviceCryptoAnswer }
+  | SidecarReplyFailed { cause: NonEmptyStr }
+
+fn sidecar_reply_from_status(stdout: String) -> SidecarReply {
+  let lines = split(stdout, separator: "\n")
+  let body = join(lines |> take(n: length(lines) - 1), "\n")
+  match classify_curl_http_code_after_newline(stdout: stdout) {
+    CurlWroteNoHttpStatus { cause: c } => SidecarReplyFailed { cause: c }
+    CurlWroteHttpStatus { status: st } =>
+      if (st as Int) != 200 { SidecarReplyFailed { cause: join(["the sidecar answered HTTP ", to_string(st as Int), ": ", body], "") as NonEmptyStr } }
+      else {
+        match decode_device_crypto_answer(text: body) {
+          WireRefused { at: a, cause: c } => SidecarReplyFailed { cause: join(["the sidecar's answer is undecodable at ", a as String, ": ", c as String], "") as NonEmptyStr }
+          WireDecoded { value: answer } => SidecarReplied { answer: answer }
+        }
+      }
+  }
+}
+
+fn sidecar_reply_from(exit_code: Int, stdout: String, stderr: String) -> SidecarReply {
+  match curl_exit_outcome(code: exit_code) {
+    CurlTransferCompleted => sidecar_reply_from_status(stdout: stdout)
+    other => SidecarReplyFailed { cause: join(["the sidecar was not reached: ", curl_exit_outcome_name(outcome: other), ": ", stderr], "") as NonEmptyStr }
+  }
+}
+
+fn sidecar_post(path: NonEmptyStr, request: String) -> SidecarReply {
+  let r = http.Client.PostStdinWithin(
+    url: join([approval_device_crypto_sidecar_endpoint as String, path as String], "") as NonEmptyStr,
+    request_body: request,
+    connect_seconds: http_client_max_time_flag(max_time: approval_device_crypto_connect_bound),
+    max_seconds: http_client_max_time_flag(max_time: approval_device_crypto_request_bound),
+  )
+  sidecar_reply_from(exit_code: r.exit_code, stdout: r.body, stderr: r.stderr)
+}
+
+fn sidecar_refusal_cause(what: String, answer: DeviceCryptoAnswer) -> NonEmptyStr {
+  join(["the sidecar refused the ", what, ": ", answer.arm], "") as NonEmptyStr
+}
+
+// ── Each decode, from the admitted answer to the fold's own result ────────────────────────────
+// `admission` is the admission the route obtained; the mints refuse to mint on a refused one.
+fn signature_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCryptoAnswer) -> SidecarResult<SignatureVerification> {
+  match answer.verdict {
+    CryptoVerified =>
+      match answer.payload {
+        SignedPayload { key: k, message: m } =>
+          match signed_message_from_sidecar(admission: admission, key: k, message: m) {
+            Present { value: v } => SidecarAnswered { verification: SignatureVerified { verified: v } }
+            Absent => SidecarFailed { cause: "the device-crypto admission refused the sidecar's verified answer" }
+          }
+        _ => SidecarFailed { cause: "the sidecar's verified signature answer carries no signed message" }
+      }
+    CryptoInvalid => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
+    CryptoRefused => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
+    _ => SidecarFailed { cause: sidecar_refusal_cause(what: "signature check with an unexpected verdict", answer: answer) }
+  }
+}
+
+fn attestation_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCryptoAnswer) -> SidecarResult<AttestationVerification> {
+  match answer.verdict {
+    CryptoVerified =>
+      match answer.payload {
+        AttestedPayload { key_id: id, public_key_point_b64url: pk, receipt_b64: r, environment: e, client_data: c } =>
+          match verified_attestation_from_sidecar(admission: admission, key_id: id, public_key_point_b64url: pk, receipt_b64: r, environment: e, client_data: c) {
+            Present { value: v } => SidecarAnswered { verification: AttestationVerified { verified: v } }
+            Absent => SidecarFailed { cause: "the device-crypto admission refused the sidecar's verified answer" }
+          }
+        _ => SidecarFailed { cause: "the sidecar's verified attestation answer carries no attestation" }
+      }
+    CryptoRefused => SidecarAnswered { verification: AttestationRefused { cause: AttestationUndecodable { cause: sidecar_refusal_cause(what: "attestation", answer: answer) as String } } }
+    _ => SidecarFailed { cause: sidecar_refusal_cause(what: "attestation check with an unexpected verdict", answer: answer) }
+  }
+}
+
+fn assertion_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCryptoAnswer) -> SidecarResult<AssertionVerification> {
+  match answer.verdict {
+    CryptoVerified =>
+      match answer.payload {
+        AssertedPayload { key_id: id, public_key_point_b64url: pk, counter: n, client_data: c } =>
+          match authentic_assertion_from_sidecar(admission: admission, key_id: id, public_key_point_b64url: pk, counter: n, client_data: c) {
+            Present { value: v } => SidecarAnswered { verification: AssertionAuthentic { authentic: v } }
+            Absent => SidecarFailed { cause: "the device-crypto admission refused the sidecar's verified answer" }
+          }
+        _ => SidecarFailed { cause: "the sidecar's verified assertion answer carries no assertion" }
+      }
+    CryptoInvalid => SidecarAnswered { verification: AssertionRefused { cause: AssertionSignatureInvalid } }
+    CryptoRefused => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: sidecar_refusal_cause(what: "assertion", answer: answer) as String } } }
+    _ => SidecarFailed { cause: sidecar_refusal_cause(what: "assertion check with an unexpected verdict", answer: answer) }
+  }
+}
+
+// ── The three calls, the routes' one entry to the verifiers ───────────────────────────────────
+fn sidecar_signature_verification(admission: DeviceCryptoAdmission, key: VerifyingKey, signature: SignatureBytes, message: NonEmptyStr) -> SidecarResult<SignatureVerification> {
+  match sidecar_post(path: device_crypto_signature_path, request: signature_check_request_json(c: SignatureCheck { key: key, signature: signature, message: message })) {
+    SidecarReplyFailed { cause: c } => SidecarFailed { cause: c }
+    SidecarReplied { answer: a } => signature_from_answer(admission: admission, answer: a)
+  }
+}
+
+fn sidecar_attestation_verification(admission: DeviceCryptoAdmission, object_b64: NonEmptyStr, e: AttestationExpectation) -> SidecarResult<AttestationVerification> {
+  match sidecar_post(path: device_crypto_attestation_path, request: attestation_check_request_json(object_b64: object_b64, e: e)) {
+    SidecarReplyFailed { cause: c } => SidecarFailed { cause: c }
+    SidecarReplied { answer: a } => attestation_from_answer(admission: admission, answer: a)
+  }
+}
+
+fn sidecar_assertion_verification(admission: DeviceCryptoAdmission, object_b64: NonEmptyStr, e: AssertionExpectation) -> SidecarResult<AssertionVerification> {
+  match sidecar_post(path: device_crypto_assertion_path, request: assertion_check_request_json(object_b64: object_b64, e: e)) {
+    SidecarReplyFailed { cause: c } => SidecarFailed { cause: c }
+    SidecarReplied { answer: a } => assertion_from_answer(admission: admission, answer: a)
+  }
+}

@@ -26,7 +26,8 @@ import gunbc.auth.approval_device_crypto_wire {
   device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path, device_crypto_p256_order_path,
   SignatureCheck, AttestationCheck, AssertionCheck, P256Multiple, OrderItself, OrderMinusOne,
   decode_signature_check, decode_attestation_check, decode_assertion_check, decode_p256_multiple,
-  DeviceCryptoAnswer, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, CryptoFinite,
+  DeviceCryptoAnswer, DeviceCryptoPayload, NoPayload, signed_payload_of, attested_payload_of, asserted_payload_of,
+  device_crypto_arm_signature_verified, device_crypto_arm_attestation_verified, device_crypto_arm_assertion_verified, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, CryptoFinite,
   device_crypto_answer_json, device_crypto_wire_refusal_body,
 }
 
@@ -55,13 +56,17 @@ fn crypto_response(status: Int, body: String) -> ServeWireResponse {
 }
 
 fn crypto_answered(verdict: DeviceCryptoVerdict, arm: String) -> ServeWireResponse {
-  crypto_response(status: 200, body: device_crypto_answer_json(a: DeviceCryptoAnswer { verdict: verdict, arm: arm }))
+  crypto_verified_with(verdict: verdict, arm: arm, payload: NoPayload)
+}
+
+fn crypto_verified_with(verdict: DeviceCryptoVerdict, arm: String, payload: DeviceCryptoPayload) -> ServeWireResponse {
+  crypto_response(status: 200, body: device_crypto_answer_json(a: DeviceCryptoAnswer { verdict: verdict, arm: arm, payload: payload }))
 }
 
 // ── Each fold's answer, named by its own arm ──────────────────────────────────────────────────
 fn signature_answer(v: SignatureVerification) -> ServeWireResponse {
   match v {
-    SignatureVerified { verified: _ } => crypto_answered(verdict: CryptoVerified, arm: "SignatureVerified")
+    SignatureVerified { verified: m } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_signature_verified, payload: signed_payload_of(v: m))
     SignatureInvalid { suite: _ } => crypto_answered(verdict: CryptoInvalid, arm: "SignatureInvalid")
     SignatureMalformed { declared: _, expected: _ } => crypto_answered(verdict: CryptoRefused, arm: "SignatureMalformed")
     VerifyingKeyMalformed { declared: _, expected: _ } => crypto_answered(verdict: CryptoRefused, arm: "VerifyingKeyMalformed")
@@ -91,7 +96,7 @@ fn attestation_refusal_arm(r: AttestationRefusal) -> String {
 
 fn attestation_answer(v: AttestationVerification) -> ServeWireResponse {
   match v {
-    AttestationVerified { verified: _ } => crypto_answered(verdict: CryptoVerified, arm: "AttestationVerified")
+    AttestationVerified { verified: a } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_attestation_verified, payload: attested_payload_of(v: a))
     AttestationRefused { cause: c } => crypto_answered(verdict: CryptoRefused, arm: attestation_refusal_arm(r: c))
   }
 }
@@ -122,7 +127,7 @@ fn assertion_refusal_arm(r: AssertionRefusal) -> String {
 
 fn assertion_answer(v: AssertionVerification) -> ServeWireResponse {
   match v {
-    AssertionAuthentic { authentic: _ } => crypto_answered(verdict: CryptoVerified, arm: "AssertionAuthentic")
+    AssertionAuthentic { authentic: a } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_assertion_verified, payload: asserted_payload_of(v: a))
     AssertionRefused { cause: c } => crypto_answered(verdict: assertion_refusal_verdict(r: c), arm: assertion_refusal_arm(r: c))
   }
 }

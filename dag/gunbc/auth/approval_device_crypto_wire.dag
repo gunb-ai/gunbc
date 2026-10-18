@@ -3,12 +3,12 @@ module gunbc.auth.approval_device_crypto_wire
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.algebra { trim }
 import std.encoding { base64_decode, Standard }
-import extdeps.crypto.signature { VerifyingKey, SignatureBytes }
+import extdeps.crypto.signature { VerifyingKey, SignatureBytes, SignedMessage }
 import extdeps.apple.app_attest {
   AttestKeyId, AppAttestEnvironment, AppAttestDevelopment, AppAttestProduction,
-  AttestationExpectation, AssertionExpectation,
+  AttestationExpectation, AssertionExpectation, VerifiedAttestation, AuthenticAssertion,
 }
-import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
 import gunbc.auth.approval_device_wire {
   WireDecode, WireDecoded, WireRefused, wire_object, wire_string, wire_refused_at,
@@ -277,16 +277,197 @@ fn device_crypto_verdict_wire(v: DeviceCryptoVerdict) -> String {
   }
 }
 
+// THE VERIFIED PAYLOAD RIDES THE ANSWER, flat beside verdict and arm, so the broker can rebuild the fold's own
+// success (extdeps.crypto.signature SignedMessage, extdeps.apple.app_attest VerifiedAttestation /
+// AuthenticAssertion) field for field and the redemption joins keep reading those types. Only a `verified`
+// verdict carries one, and which members it carries is a function of the arm, so a verdict and a payload that
+// disagree are refused at the decode, never reconciled.
+data device_crypto_arm_signature_verified: String = "SignatureVerified"
+data device_crypto_arm_attestation_verified: String = "AttestationVerified"
+data device_crypto_arm_assertion_verified: String = "AssertionAuthentic"
+
+type DeviceCryptoPayload
+  = NoPayload
+  | SignedPayload { key: VerifyingKey, message: NonEmptyStr }
+  | AttestedPayload { key_id: AttestKeyId, public_key_point_b64url: NonEmptyStr, receipt_b64: NonEmptyStr, environment: AppAttestEnvironment, client_data: NonEmptyStr }
+  | AssertedPayload { key_id: AttestKeyId, public_key_point_b64url: NonEmptyStr, counter: Int, client_data: NonEmptyStr }
+
 type DeviceCryptoAnswer {
   verdict: DeviceCryptoVerdict
   arm: String
+  payload: DeviceCryptoPayload
+}
+
+fn signed_payload_of(v: SignedMessage) -> DeviceCryptoPayload {
+  SignedPayload { key: v.key, message: v.message }
+}
+
+fn attested_payload_of(v: VerifiedAttestation) -> DeviceCryptoPayload {
+  AttestedPayload { key_id: v.key_id, public_key_point_b64url: v.public_key_point_b64url, receipt_b64: v.receipt_b64, environment: v.environment, client_data: v.client_data }
+}
+
+fn asserted_payload_of(v: AuthenticAssertion) -> DeviceCryptoPayload {
+  AssertedPayload { key_id: v.key_id, public_key_point_b64url: v.public_key_point_b64url, counter: v.counter, client_data: v.client_data }
+}
+
+fn payload_members(p: DeviceCryptoPayload) -> List<JsonKeyValue> {
+  match p {
+    NoPayload => []
+    SignedPayload { key: k, message: m } => [
+      json_kv(key: "key", value: verifying_key_json(k: k)),
+      json_kv(key: "message", value: json_string(s: m as String)),
+    ]
+    AttestedPayload { key_id: id, public_key_point_b64url: pk, receipt_b64: r, environment: e, client_data: c } => [
+      json_kv(key: "key_id", value: json_string(s: id as String)),
+      json_kv(key: "public_key_point_b64url", value: json_string(s: pk as String)),
+      json_kv(key: "receipt_b64", value: json_string(s: r as String)),
+      json_kv(key: "environment", value: json_string(s: app_attest_environment_wire(e: e) as String)),
+      json_kv(key: "client_data", value: json_string(s: c as String)),
+    ]
+    AssertedPayload { key_id: id, public_key_point_b64url: pk, counter: n, client_data: c } => [
+      json_kv(key: "key_id", value: json_string(s: id as String)),
+      json_kv(key: "public_key_point_b64url", value: json_string(s: pk as String)),
+      json_kv(key: "counter", value: json_string(s: to_string(value: n))),
+      json_kv(key: "client_data", value: json_string(s: c as String)),
+    ]
+  }
 }
 
 fn device_crypto_answer_json(a: DeviceCryptoAnswer) -> String {
-  serialize_json(v: json_object(members: [
+  serialize_json(v: json_object(members: fold(payload_members(p: a.payload), init: [
     json_kv(key: "verdict", value: json_string(s: device_crypto_verdict_wire(v: a.verdict))),
     json_kv(key: "arm", value: json_string(s: a.arm)),
-  ]))
+  ], f: (acc, m) => acc |> list_push(m))))
+}
+
+fn device_crypto_verdict_of_wire(w: String) -> DeviceCryptoVerdict? {
+  if w == device_crypto_verdict_wire(v: CryptoVerified) { Present { value: CryptoVerified } }
+  else if w == device_crypto_verdict_wire(v: CryptoInvalid) { Present { value: CryptoInvalid } }
+  else if w == device_crypto_verdict_wire(v: CryptoRefused) { Present { value: CryptoRefused } }
+  else if w == device_crypto_verdict_wire(v: CryptoInfinity) { Present { value: CryptoInfinity } }
+  else if w == device_crypto_verdict_wire(v: CryptoFinite) { Present { value: CryptoFinite } }
+  else { none }
+}
+
+fn wire_counter(o: JsonValue, key: String) -> WireDecode<Int> {
+  match wire_string(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: w } =>
+      match parse_int(s: w as String) {
+        Present { value: n } => WireDecoded { value: n }
+        Absent => WireRefused { at: key as NonEmptyStr, cause: "not an integer" }
+      }
+  }
+}
+
+fn decode_signed_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
+  match wire_parsed(text: text, allowed: ["verdict", "arm", "key", "message"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match decode_verifying_key_in(o: o, key: "key") {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: key } =>
+          match wire_string(obj: o, key: "message") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: m } => WireDecoded { value: SignedPayload { key: key, message: m } }
+          }
+      }
+  }
+}
+
+fn decode_attested_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
+  match wire_parsed(text: text, allowed: ["verdict", "arm", "key_id", "public_key_point_b64url", "receipt_b64", "environment", "client_data"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_string(obj: o, key: "key_id") {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: id } =>
+          match wire_string(obj: o, key: "public_key_point_b64url") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: pk } =>
+              match wire_string(obj: o, key: "receipt_b64") {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: r } =>
+                  match wire_environment(o: o, key: "environment") {
+                    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                    WireDecoded { value: e } =>
+                      match wire_string(obj: o, key: "client_data") {
+                        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                        WireDecoded { value: cd } => WireDecoded { value: AttestedPayload { key_id: id as AttestKeyId, public_key_point_b64url: pk, receipt_b64: r, environment: e, client_data: cd } }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn decode_asserted_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
+  match wire_parsed(text: text, allowed: ["verdict", "arm", "key_id", "public_key_point_b64url", "counter", "client_data"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_string(obj: o, key: "key_id") {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: id } =>
+          match wire_string(obj: o, key: "public_key_point_b64url") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: pk } =>
+              match wire_counter(o: o, key: "counter") {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: n } =>
+                  match wire_string(obj: o, key: "client_data") {
+                    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                    WireDecoded { value: cd } => WireDecoded { value: AssertedPayload { key_id: id as AttestKeyId, public_key_point_b64url: pk, counter: n, client_data: cd } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A payload exists exactly when the verdict is `verified`, and its members are those of the arm the answer names.
+// A verified verdict naming another arm, or a non-verified verdict naming a verified arm, is refused.
+fn decode_device_crypto_payload(verdict: DeviceCryptoVerdict, arm: String, text: String) -> WireDecode<DeviceCryptoPayload> {
+  match verdict {
+    CryptoVerified =>
+      if arm == device_crypto_arm_signature_verified { decode_signed_payload(text: text) }
+      else if arm == device_crypto_arm_attestation_verified { decode_attested_payload(text: text) }
+      else if arm == device_crypto_arm_assertion_verified { decode_asserted_payload(text: text) }
+      else { WireRefused { at: "arm", cause: "a verified verdict names no verified arm" } }
+    _ =>
+      if arm == device_crypto_arm_signature_verified || arm == device_crypto_arm_attestation_verified || arm == device_crypto_arm_assertion_verified {
+        WireRefused { at: "arm", cause: "a verified arm under a verdict that is not verified" }
+      } else {
+        match wire_parsed(text: text, allowed: ["verdict", "arm"]) {
+          WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+          WireDecoded { value: _ } => WireDecoded { value: NoPayload }
+        }
+      }
+  }
+}
+
+// THE CLIENT'S READ OF AN ANSWER: the broker's one decode of what the service wrote with device_crypto_answer_json.
+fn decode_device_crypto_answer(text: String) -> WireDecode<DeviceCryptoAnswer> {
+  match wire_parsed(text: text, allowed: ["verdict", "arm", "key", "message", "key_id", "public_key_point_b64url", "receipt_b64", "environment", "client_data", "counter"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_string(obj: o, key: "verdict") {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: w } =>
+          match device_crypto_verdict_of_wire(w: w as String) {
+            Absent => WireRefused { at: "verdict", cause: "not a device-crypto verdict" }
+            Present { value: verdict } =>
+              match wire_string(obj: o, key: "arm") {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: arm } =>
+                  match decode_device_crypto_payload(verdict: verdict, arm: arm as String, text: text) {
+                    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                    WireDecoded { value: p } => WireDecoded { value: DeviceCryptoAnswer { verdict: verdict, arm: arm as String, payload: p } }
+                  }
+              }
+          }
+      }
+  }
 }
 
 // A REFUSED REQUEST is the wire's own refusal, never a verdict: the caller must tell a request the
