@@ -13352,9 +13352,9 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
   let target_is_runtime = call_target_is_runtime_primitive(target: call_target)
-  let machine_word_lowered = emit_machine_word_lowered_call(call_target: call_target, func: func, args: args, call_semantics: call_semantics, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  if machine_word_lowered != none {
-    return match machine_word_lowered { Present { value: lowered } => lowered  Absent => "" }
+  match emit_machine_word_lowered_call(call_target: call_target, func: func, args: args, call_semantics: call_semantics, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
+    Present { value: lowered } => return lowered
+    Absent => {}
   }
   if target_is_runtime && func == "get" {
     let get_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
