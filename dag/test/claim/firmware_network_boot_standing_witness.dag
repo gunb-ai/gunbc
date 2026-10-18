@@ -107,6 +107,8 @@ import gunbc.firmware_network_boot_standing {
   GroundedByBiosAttributeRead,
   firmware_attribute_name_from_read,
   RouteBindingStanding,
+  RouteBindingRefusal,
+  BindingRefused,
   RouteBound,
   RouteBindingUnresolvedRoute,
   RouteBindingStaleGrounding,
@@ -825,7 +827,7 @@ fn attempt_carries_the_fleet_route(blocker: PreparationBlockingOn) -> Bool {
         && route_matches_the_catalog_row(blocker: blocker, route: built.route)
         && blocker_of(route: built.route) == blocker
     AttemptBlockerUncataloged { blocker: _ } => false
-    AttemptRouteUnbound { blocker: _, mechanism: _, standing: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
   }
 }
 
@@ -893,10 +895,10 @@ fn labels_are_inert_in_selection(
             // The two labels must be observably different, or the agreement above is vacuous.
             && !(left.unit_label == right.unit_label)
         AttemptBlockerUncataloged { blocker: _ } => false
-    AttemptRouteUnbound { blocker: _, mechanism: _, standing: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
       }
     AttemptBlockerUncataloged { blocker: _ } => false
-    AttemptRouteUnbound { blocker: _, mechanism: _, standing: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
   }
 }
 
@@ -913,7 +915,7 @@ fn the_two_labels_arrive_unchanged() -> Bool {
   ) {
     AttemptConstructed { attempt: built } => built.unit_label == "mtcollins1"
     AttemptBlockerUncataloged { blocker: _ } => false
-    AttemptRouteUnbound { blocker: _, mechanism: _, standing: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
   }
 }
 
@@ -945,10 +947,10 @@ fn same_name_different_blocker_changes_the_route() -> Bool {
           !(authoring.route == redirect.route)
             && authoring.unit_label == redirect.unit_label
         AttemptBlockerUncataloged { blocker: _ } => false
-    AttemptRouteUnbound { blocker: _, mechanism: _, standing: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
       }
     AttemptBlockerUncataloged { blocker: _ } => false
-    AttemptRouteUnbound { blocker: _, mechanism: _, standing: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
   }
 }
 
@@ -964,7 +966,7 @@ test fn the_attempt_receipt_cannot_be_minted_without_its_attempt_and_control_rec
   match synthetic_attempt() {
     AttemptConstructed { attempt: built } => boot_control_is_the_imported_standing(control: built.boot_control)
     AttemptBlockerUncataloged { blocker: _ } => false
-    AttemptRouteUnbound { blocker: _, mechanism: _, standing: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
   }
 }
 
@@ -1102,7 +1104,7 @@ test fn the_attempt_receipt_keeps_the_outcome_and_the_foreign_offer_too() -> Boo
                }
       }
     AttemptBlockerUncataloged { blocker: _ } => false
-    AttemptRouteUnbound { blocker: _, mechanism: _, standing: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
   }
 }
 
@@ -1127,7 +1129,7 @@ test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silen
         DhcpOfferObserved { offer_ref: _ } => false
       }
     AttemptBlockerUncataloged { blocker: _ } => false
-    AttemptRouteUnbound { blocker: _, mechanism: _, standing: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
   }
     && match network_boot_attempt(
          blocker: NetworkBootOptionNotSelected,
@@ -1145,7 +1147,7 @@ test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silen
              _ => false
            }
          AttemptBlockerUncataloged { blocker: _ } => false
-    AttemptRouteUnbound { blocker: _, mechanism: _, standing: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
        }
 }
 
