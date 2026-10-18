@@ -90,6 +90,13 @@ pub mod v1_compiler_infer_types {
     pub fn node_type_equals(_l: Rc<Node>, _r: Rc<Node>, _si: Rc<HashMap<String, Rc<NewlineIndex>>>, _t: Rc<TextJudgment>) -> bool { false }
     pub fn node_type_equals_core(_l: Rc<Node>, _r: Rc<Node>, _si: Rc<HashMap<String, Rc<NewlineIndex>>>, _t: Rc<TextJudgment>) -> bool { false }
     pub fn text_crossing_in_judgment(_l: Rc<Node>, _r: Rc<Node>, _t: Rc<TextJudgment>) -> bool { false }
+    // S1B COUNTER STUBS: the real dispatch applies patch_s1b_counter.py to the types mirror, so a
+    // gate without these reports 4 phantom E0425s and hides real errors in the noise. Fidelity of the
+    // stub is the gate's whole value -- an earlier version passed a helper that failed remotely because
+    // the stub typed Vec as std's while the emission aliases it to im::Vector.
+    pub fn s1b_enter() {}
+    pub fn s1b_exit() {}
+    pub fn s1b_mint_snapshot() -> i64 { 0 }
 }
 pub mod v1_compiler_infer_env {
     use super::*;
