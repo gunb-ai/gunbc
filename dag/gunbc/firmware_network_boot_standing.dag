@@ -1333,7 +1333,12 @@ fn ready_or_refuse_on_nics(
           observed_at: observed_at,
           observation: observation,
         ),
-        gaps: [],
+        // NO gaps FIELD, AND NOT AN OMITTED ONE -- Ready has no such arm field (only Refused does,
+        // review 81689). This is the one place in the module that may mint a Ready, and it is
+        // reachable only after every axis has been matched as answered, so a gap list here could only
+        // ever be empty: an always-empty list would invite a reader to believe gaps are sometimes
+        // reported on a Ready. If a future change lets a Ready be reached with an unanswered axis, the
+        // compiler makes that a type error rather than a silent short-circuit.
       }
   }
 }
