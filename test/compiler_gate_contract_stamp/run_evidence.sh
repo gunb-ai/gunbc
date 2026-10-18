@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Execute the contract-stamp guard against the real bytes, and fail if it does not refuse what it
 # is supposed to refuse.
-# SCAFFOLD - dissolve-on: a pre-build executor for a committed workflow member that is not the
-# tree's own code -- i.e. something that, BEFORE the subject binary exists, can read a committed
-# workflow step out of .github/workflows/witnesses.yml, run it, and report its exit status. Candidates
-# named as capabilities, not files: GitHub's own workflow_sha / a runner-side typed reader of a workflow
-# member, or a claim executed on the REQUIRED path (see the honest note below). When either lands this
-# file dissolves into it.
+# SCAFFOLD - dissolve-on: the restoration_trigger of gunbc.rung_drop v1_required_lanes_withdrawn --
+# "on every landing revision, a binary built from an emission of v2 ... judges this population on the
+# required path with a discriminating red". That is THE trigger, cited by symbol so this carrier and the
+# drop retire together rather than separately (manager ruling on review 82166, 2026-10-18). When that
+# drop is retired, the modelled rows in compiler_gate_contract_stamp_evidence_cases become a `gunbc test`
+# row in gunbc.instrument_targets and run the guard through shell.Exec.RunArgvOutcome, and THIS FILE IS
+# DELETED. A runner-side pre-build reader of a committed workflow member (GitHub's own workflow_sha)
+# would retire the guard's read too, but it is not what dissolves the SPAWNING residual here.
 #
 # HONEST STATE OF THE RESIDUAL, corrected after review 82166 (claude/opus[1m]) caught me claiming a
 # capability gap that does not exist. I wrote that "the substrate has no process-exec surface at all"
