@@ -41,7 +41,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_bound_secrets,
 }
 
-import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account }
+import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
 import gunbc.auth.gcp_iam_bootstrap_authority {
   bootstrap_operator_matches, iam_bootstrap_operator_member, iam_bootstrap_operator_subject,
   iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_authority_dependency_plan,
@@ -625,7 +625,8 @@ fn iam_bootstrap_negative_probes(token: Secret) -> String {
   let accounts = fold([iam_observe_service_account, iam_converge_service_account, iam_bootstrap_service_account], init: "", f: (prior, account) =>
     if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapAccount { account: account }, requested: ["iam.serviceAccounts.setIamPolicy"], expected: [], token: token) })
   let pool = if accounts != "" { accounts } else {
-    iam_bootstrap_check_probe(resource: BootstrapPool { pool: gcp_iam_observe_dedicated_federation().pool_id }, requested: ["iam.workloadIdentityPoolProviders.create"], expected: [], token: token)
+    fold([gcp_iam_observe_dedicated_federation().pool_id, gcp_iam_bootstrap_wif_pool_id], init: "", f: (prior, pool) =>
+      if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapPool { pool: pool }, requested: ["iam.workloadIdentityPoolProviders.create"], expected: [], token: token) })
   }
   if pool != "" { pool } else { fold(gcp_iam_converge_grant_set_secrets(), init: "", f: (prior, secret) =>
     if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapSecret { secret: secret }, requested: grant_set_payload_permissions, expected: [], token: token) }) }
