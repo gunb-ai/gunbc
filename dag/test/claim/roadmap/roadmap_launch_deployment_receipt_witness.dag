@@ -906,8 +906,10 @@ test fn witness_falsified_api_dispatch_sha_for_dashboard_is_incomplete_at_run_pr
 // A receipt that falsifies its own dispatch field disagrees with the API read, so it refuses too.
 test fn witness_receipt_dispatch_field_that_disagrees_with_the_api_is_incomplete_at_run_provenance() -> Bool {
   let plan = rlm_plan(run: rlm_run(run_id: "1001", revision: rlm_fixture_r), host: "srv1")
+  let apply = rlm_apply(run: rlm_run_split(run_id: "1002", dispatched: rlm_fixture_r, executed: rlm_fixture_r), plan_identity: fleet_converge_plan_receipt_identity_hex(r: plan))
   incomplete_at(
-    facts: with_apply(f: rlm_split_facts(apply_exec: rlm_fixture_r, dashboard_exec: rlm_fixture_r, api_apply_sha: rlm_fixture_other_r, api_dashboard_sha: rlm_fixture_other_r),
-      apply: ApplyReceiptRead { receipt: rlm_apply(run: rlm_run_split(run_id: "1002", dispatched: rlm_fixture_r, executed: rlm_fixture_r), plan_identity: fleet_converge_plan_receipt_identity_hex(r: plan)) }),
+    facts: with_dashboard(
+      f: with_apply(f: rlm_split_facts(apply_exec: rlm_fixture_r, dashboard_exec: rlm_fixture_r, api_apply_sha: rlm_fixture_other_r, api_dashboard_sha: rlm_fixture_other_r), apply: ApplyReceiptRead { receipt: apply }),
+      d: DashboardReceiptRead { receipt: rlm_dashboard_citing(run: rlm_run_split(run_id: "1003", dispatched: rlm_fixture_other_r, executed: rlm_fixture_r), expected: rlm_fixture_r, apply_identity: fleet_converge_apply_receipt_identity_hex(r: apply)) }),
     member: "run_provenance")
 }
