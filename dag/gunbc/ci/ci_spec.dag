@@ -761,6 +761,16 @@ data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "fleet_converge_apply_wet",
 }
 
+data gunbc_ci_fleet_converge_plan_revision_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+  function: "resolve_plan_revision",
+}
+
+data gunbc_ci_fleet_converge_checkout_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+  function: "verify_checkout_at_plan_revision",
+}
+
 data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/org_actions_inspection.dag",
   function: "org_actions_inspect_wet",
@@ -1333,6 +1343,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_workspace_image_build_target,
     gunbc_ci_workspace_allocation_plan_target,
     gunbc_ci_fleet_converge_apply_target,
+    gunbc_ci_fleet_converge_plan_revision_target,
+    gunbc_ci_fleet_converge_checkout_verify_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
     gunbc_ci_r2_bucket_ensure_target,
@@ -2193,6 +2205,26 @@ fn gunbc_ci_fleet_converge_apply_plan_hash_prelude() -> List<PipelineStep> {
       )
     }
   ]
+}
+
+fn gunbc_ci_fleet_converge_plan_revision_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_plan_revision_target.entry,
+    function: gunbc_ci_fleet_converge_plan_revision_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_checkout_verify_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_checkout_verify_target.entry,
+    function: gunbc_ci_fleet_converge_checkout_verify_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
 }
 
 fn gunbc_ci_fleet_converge_apply_invoke() -> String {
