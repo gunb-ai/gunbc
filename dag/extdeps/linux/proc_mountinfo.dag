@@ -62,6 +62,8 @@ fn mountinfo_mount_points(content: String) -> MountinfoMountPoints {
 // option list and is not read here: a tmpfs size/mode/noswap setting is a superblock option). The
 // separator is " - " with spaces on both sides because every space inside a path field is escaped.
 type MountinfoEntry {
+  mount_id: Int
+  parent_id: Int
   mount_point: String
   fs_type: String
   super_options: List<String>
@@ -76,8 +78,29 @@ type MountinfoEntryReading
   | MountinfoEntryRefused { cause: NonEmptyStr }
 
 data mountinfo_super_options_field_index: Int = 2
+data mountinfo_mount_id_field_index: Int = 0
+data mountinfo_parent_id_field_index: Int = 1
 
 fn mountinfo_entry_of_fields(before: List<String>, after: List<String>) -> MountinfoEntryReading {
+  match before[mountinfo_mount_id_field_index] {
+    Absent => MountinfoEntryRefused { cause: "the line has no mount ID" as NonEmptyStr }
+    Present { value: id_text } =>
+      match before[mountinfo_parent_id_field_index] {
+        Absent => MountinfoEntryRefused { cause: "the line has no parent mount ID" as NonEmptyStr }
+        Present { value: parent_text } =>
+          match parse_int(s: id_text) {
+            Absent => MountinfoEntryRefused { cause: "the mount ID is not an integer" as NonEmptyStr }
+            Present { value: id } =>
+              match parse_int(s: parent_text) {
+                Absent => MountinfoEntryRefused { cause: "the parent mount ID is not an integer" as NonEmptyStr }
+                Present { value: parent } => mountinfo_entry_over_ids(id: id, parent: parent, before: before, after: after)
+              }
+          }
+      }
+  }
+}
+
+fn mountinfo_entry_over_ids(id: Int, parent: Int, before: List<String>, after: List<String>) -> MountinfoEntryReading {
   match before[mountinfo_mount_point_field_index] {
     Absent => MountinfoEntryRefused { cause: "the line has fewer than five fields before its separator, so it names no mount point" as NonEmptyStr }
     Present { value: point } =>
@@ -90,7 +113,7 @@ fn mountinfo_entry_of_fields(before: List<String>, after: List<String>) -> Mount
               if string_contains(s: point, pattern: "\\") {
                 MountinfoEntryRefused { cause: "the mount point carries a kernel octal escape, which this model does not decode" as NonEmptyStr }
               } else {
-                MountinfoEntryParsed { entry: MountinfoEntry { mount_point: point, fs_type: fs, super_options: split(s: options, delimiter: ",") } }
+                MountinfoEntryParsed { entry: MountinfoEntry { mount_id: id, parent_id: parent, mount_point: point, fs_type: fs, super_options: split(s: options, delimiter: ",") } }
               }
           }
       }
@@ -131,10 +154,15 @@ fn mountinfo_entries(content: String) -> MountinfoEntries {
   }
 }
 
-// THE MOUNT THAT HOLDS A PATH IS THE ONE WITH THE LONGEST MOUNT POINT THAT IS THE PATH OR ITS ANCESTOR.
-// A mount point matches on a path-segment boundary (`/run` holds `/run/x`, and does not hold `/runner`);
-// a later mount over the same point shadows an earlier one, which mountinfo lists in mount order, so the
-// last entry among the longest matches is the visible one.
+// THE MOUNT THAT HOLDS A PATH IS FOUND BY DESCENDING THE MOUNT TREE, NOT BY LONGEST SPELLING. proc_pid_mountinfo(5)
+// gives every mount its ID and its PARENT's ID, and a mount mounted OVER another at the same mount point has
+// that mount as its parent and hides it, together with everything mounted beneath it. So the visible holder of
+// a path starts at the one root (the mount whose parent is no listed mount) and repeatedly takes the child
+// that holds the path: a child mounted at its parent's own mount point covers the parent and wins outright (the
+// parent's other children are beneath it), otherwise the child with the longest mount point. A longest-path
+// choice over the flat list instead picks a noswap mount a later covering mount has hidden.
+// VISIBILITY THAT CANNOT BE RESOLVED IS A REFUSAL, never a guess: no unique root, two children tying for the
+// same visible position, or a descent that does not settle within one step per listed mount.
 fn mountinfo_holds_path(entry: MountinfoEntry, path: String) -> Bool {
   entry.mount_point == path || starts_with(s: path, prefix: if entry.mount_point == "/" { "/" } else { concat(entry.mount_point, "/") })
 }
@@ -142,22 +170,80 @@ fn mountinfo_holds_path(entry: MountinfoEntry, path: String) -> Bool {
 type MountinfoHolding
   = MountHolds { entry: MountinfoEntry }
   | MountHoldsNone
+  | MountVisibilityUnresolved { cause: NonEmptyStr }
 
-fn mountinfo_visible_holder(acc: MountinfoEntry?, e: MountinfoEntry, path: String) -> MountinfoEntry? {
-  if mountinfo_holds_path(entry: e, path: path) {
-    match acc {
-      Absent => Present { value: e }
-      Present { value: a } => if string_length(s: e.mount_point) >= string_length(s: a.mount_point) { Present { value: e } } else { acc }
+type MountinfoDescent
+  = DescentOn { entry: MountinfoEntry }
+  | DescentSettled { entry: MountinfoEntry }
+  | DescentUnresolved { cause: NonEmptyStr }
+
+fn mountinfo_child_holding(e: MountinfoEntry, parent: MountinfoEntry, path: String) -> Bool {
+  e.parent_id == parent.mount_id && e.mount_id != parent.mount_id && mountinfo_holds_path(entry: e, path: path)
+}
+
+fn mountinfo_covers(e: MountinfoEntry, parent: MountinfoEntry) -> Bool {
+  e.mount_point == parent.mount_point
+}
+
+fn mountinfo_longer(m: Int, k: MountinfoEntry) -> Int {
+  if string_length(s: k.mount_point) > m { string_length(s: k.mount_point) } else { m }
+}
+
+fn mountinfo_is_deepest(k: MountinfoEntry, deepest: Int) -> Bool {
+  string_length(s: k.mount_point) == deepest
+}
+
+fn mountinfo_descent_from(cur: MountinfoEntry, kids: List<MountinfoEntry>) -> MountinfoDescent {
+  let covering = filter(kids, k => mountinfo_covers(e: k, parent: cur))
+  match covering[0] {
+    Present { value: c } =>
+      if count(covering) == 1 {
+        DescentOn { entry: c }
+      } else {
+        DescentUnresolved { cause: "two mounts are mounted over the same mount, so which one is visible is not decided" as NonEmptyStr }
+      }
+    Absent => {
+      let deepest = fold(kids, init: 0, f: (m, k) => mountinfo_longer(m: m, k: k))
+      let tops = filter(kids, k => mountinfo_is_deepest(k: k, deepest: deepest))
+      match tops[0] {
+        Absent => DescentSettled { entry: cur }
+        Present { value: t } =>
+          if count(tops) == 1 {
+            DescentOn { entry: t }
+          } else {
+            DescentUnresolved { cause: "two sibling mounts tie at the same mount point, so which one is visible is not decided" as NonEmptyStr }
+          }
+      }
     }
-  } else {
-    acc
   }
 }
 
+fn mountinfo_descent_step(state: MountinfoDescent, entries: List<MountinfoEntry>, path: String) -> MountinfoDescent {
+  match state {
+    DescentOn { entry: cur } => mountinfo_descent_from(cur: cur, kids: filter(entries, e => mountinfo_child_holding(e: e, parent: cur, path: path)))
+    other => state
+  }
+}
+
+fn mountinfo_is_root(e: MountinfoEntry, entries: List<MountinfoEntry>) -> Bool {
+  !any(entries, o => o.mount_id == e.parent_id)
+}
+
 fn mountinfo_mount_holding(entries: List<MountinfoEntry>, path: String) -> MountinfoHolding {
-  let best = fold(entries, init: Absent, f: (acc, e) => mountinfo_visible_holder(acc: acc, e: e, path: path))
-  match best {
-    Present { value: e } => MountHolds { entry: e }
-    Absent => MountHoldsNone
+  let roots = filter(entries, e => mountinfo_is_root(e: e, entries: entries))
+  match roots[0] {
+    Absent => MountVisibilityUnresolved { cause: "no mount in the table is a root, so the mount tree is not decided" as NonEmptyStr }
+    Present { value: root } =>
+      if count(roots) != 1 {
+        MountVisibilityUnresolved { cause: "more than one mount has no listed parent, so the mount tree is not decided" as NonEmptyStr }
+      } else if !mountinfo_holds_path(entry: root, path: path) {
+        MountHoldsNone
+      } else {
+        match fold(entries, init: DescentOn { entry: root }, f: (st, e) => mountinfo_descent_step(state: st, entries: entries, path: path)) {
+          DescentSettled { entry: e } => MountHolds { entry: e }
+          DescentUnresolved { cause: c } => MountVisibilityUnresolved { cause: c }
+          DescentOn { entry: _ } => MountVisibilityUnresolved { cause: "the descent through the mount tree did not settle within one step per mount" as NonEmptyStr }
+        }
+      }
   }
 }

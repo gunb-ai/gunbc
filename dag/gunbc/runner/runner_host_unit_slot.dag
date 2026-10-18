@@ -104,6 +104,15 @@ fn host_unit_slot_root(unit: NonEmptyStr) -> NonEmptyStr {
   runner_slot_instance_dir(instance_name: unit)
 }
 
+// A SERVICE SLOT'S ROOT IS PER PASS, NOT PER SLOT AND BOOT: the supervisor restarts the controller within one boot
+// and the same unit name, and the listener writes its decoded configuration and credential under its root, so a
+// second pass on the slot's own root would find the previous pass's registration state. The pass identity is the
+// systemd invocation id (new for every start of the controller's unit), a typed carrier the controller validates
+// (gunbc.runner.runner_service_slot_controller ServiceSlotPassId), and the root is the slot's root keyed by it.
+fn host_unit_slot_pass_root(unit: NonEmptyStr, pass: NonEmptyStr) -> NonEmptyStr {
+  runner_slot_instance_dir(instance_name: join([unit as String, "-", pass as String], "") as NonEmptyStr)
+}
+
 fn host_unit_slot_listener_argv(root: NonEmptyStr) -> List<String> {
   [concat(root as String, actions_runner_listener_relative_path), actions_runner_listener_run_verb]
 }
