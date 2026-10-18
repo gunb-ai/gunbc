@@ -10,8 +10,7 @@ import std.algebra { Cons, Empty, fold_list }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.node { Edge, Instantiation, Node, Occupancy, TypeNode, node_subtree_nodes }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Edge, Instantiation, Node, Occupancy, TypeNode, node_subtree_nodes }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { Bool, List }
 
@@ -65,7 +64,7 @@ fn osd_is_instantiation(n: Node) -> Bool {
 
 fn osd_any(n: Node, pred: fn(Node) -> Bool) -> Bool {
   fold_list(
-    xs: node_positional_child_targets(node: n),
+    xs: positional_child_target_nodes(node: n),
     empty: pred(n),
     cons: fn(acc, c) { acc || osd_any(n: c, pred: pred) }
   )
