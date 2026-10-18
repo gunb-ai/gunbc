@@ -716,7 +716,7 @@ fn emit_info_with_type_decl_items(emit_info: EmitGraphInfo, type_decl_items: Typ
     fn_type_env: emit_info.fn_type_env,
     fn_return_type: emit_info.fn_return_type,
     expected_type: emit_info.expected_type,
-    tco_cursor_param: emit_info.tco_cursor_param,
+    tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails
   }
 }
