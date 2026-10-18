@@ -188,7 +188,7 @@ pub fn external_model_scope_foreign_subject_findings(
         for s in Rc::new({
             let mut __result = Vec::new();
             for s in m.product_fact_subjects.clone().iter().cloned() {
-                if !external_subject_ref_eq(s.clone(), m.scope.clone().subject.clone()) {
+                if !external_subject_ref_eq(s.clone(), m.scope.subject.clone()) {
                     __result.push(s);
                 }
             }
@@ -199,7 +199,7 @@ pub fn external_model_scope_foreign_subject_findings(
         {
             __result.push(Rc::new(ScopeFinding::ForeignSubjectRow {
                 module: m.module.clone(),
-                declared: m.scope.clone().subject.clone(),
+                declared: m.scope.subject.clone(),
                 foreign: s.clone(),
             }));
         }
