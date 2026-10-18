@@ -33,13 +33,28 @@ MODE=${1:-}
 case "$MODE" in A|B) ;; (*) echo "usage: $0 A|B"; exit 2;; esac
 export MODE            # the census python heredoc below reads it; unexported it read '' and produced a
                        # census for a file named census_.json -- a missing value that looks like a zero.
-BASE_SHA=59606870e8ba3001a845627696509e8aa16bb0f0        # main
-NOEXT_SHA=a8e23ad9db56c29781789004102e57f91806a3f4       # durability tip, no arms
-EXT_SHA=706f059d3d606652171fea45940a64322c37c00b         # the extension commit
-CARRIER_SHA=9531e67c97a0ff4477a6db251322053d864dcae6     # scratch: carriers + tools (proven by probe v4 and the first A run; typed SHAs keep failing, this one is copied from a working log)
-if [ "$MODE" = "A" ]; then SRC_SHA=$NOEXT_SHA; else SRC_SHA=$EXT_SHA; fi
-echo "CONFIG $MODE: 04_infer.dag from $SRC_SHA ; tests from $EXT_SHA (identical in both configs)"
 URL=https://github.com/gunb-ai/gunbc.git
+BASE_SHA=$(timeout 300 git ls-remote "$URL" refs/heads/main | cut -f1)
+# DERIVED, not typed: three dispatches in this lane have already been lost to a mistyped 40-character
+# literal, and a typo inside one is invisible to the eye and to grep. Pinning to the tip is also what
+# makes 'main' mean the S0 base the parent asked for, rather than a stale SHA I happened to write down.
+[ -n "$BASE_SHA" ] || { echo "could not resolve main"; exit 20; }
+# Every SHA is resolved from a REF NAME by ls-remote. My first draft of this block hardcoded A_SHA from
+# memory and it was simply wrong (8f43f87779... where the real head is a63bfbf5a5...), which the fetch
+# would have reported as 'not our ref' after several minutes of build. A 40-character literal cannot be
+# proofread by eye, so none are authored here.
+resolve() { timeout 300 git ls-remote "$URL" "refs/heads/$1" | cut -f1; }
+A_SHA=$(resolve scratch/rebind-census)     # carriers/A_infer_merged.dag + my_04_types_backup + census tool
+B_SHA=$(resolve session/gentle-carp-16)   # the fold arms + tests, merged with main at S0
+for v in A_SHA B_SHA; do [ -n "${!v}" ] || { echo "could not resolve $v"; exit 20; }; echo "  $v=${!v}"; done
+EXT_SHA=$B_SHA                                            # the TESTS are B's, in both configs
+CARRIER_SHA=$A_SHA                                        # same commit carries tools/rebind_census.sh
+# The old NOEXT_SHA line is gone: it referenced a variable this block no longer defines, and under
+# `set -u` a stale reference aborts the script at once rather than silently using an empty value.
+if [ "$MODE" = "A" ]; then SRC_SHA=$A_SHA; else SRC_SHA=$B_SHA; fi
+echo "CONFIG $MODE: 04_infer.dag from $SRC_SHA ; tests from $EXT_SHA (identical in both configs)"
+echo "BASE: origin/main at the S0 merge (cca99de010f is an ancestor), so the mixed application-vs-
+non-application acceptance is GONE and the inverted refusal control is meaningful in BOTH configs."
 D=/tmp/ab_$MODE
 rm -rf $D; mkdir -p $D/logs; LOGS=$D/logs; export LOGS   # the census heredoc below reads os.environ['LOGS']
 cd $D
@@ -61,11 +76,25 @@ fetch_at() { # $1 sha, $2 log
 }
 S1=$(fetch_at "$SRC_SHA" $LOGS/fs.log)
 echo "fetched source $S1 (want $SRC_SHA)"; [ "$S1" = "$SRC_SHA" ] || { echo "WRONG SOURCE"; exit 30; }
-git show "$S1":src/v1/04_infer.dag > $LOGS/src_04_infer.dag || { echo "no 04_infer"; exit 31; }
+if [ "$MODE" = "A" ]; then
+  # A's fold source is the carrier file, produced by the SAME 3-way merge as B's (same base, same theirs
+  # side) with the pre-extension source on my side, then diffed against B: 74 lines added, 0 removed, all
+  # of them my arms/helpers/comments. So A is a strict subset of B and the delta is the arms, not my
+  # editing. It is read from the repo, never from a shared /tmp, so the run is reproducible.
+  git show "$S1":carriers/A_infer_merged.dag > $LOGS/src_04_infer.dag || { echo "no A carrier"; exit 31; }
+else
+  git show "$S1":src/v1/04_infer.dag > $LOGS/src_04_infer.dag || { echo "no 04_infer"; exit 31; }
+fi
 git show "$S1":src/v1/tests/claim/generic_identity_census.dag > src/v1/tests/claim/generic_identity_census.dag || { echo "no census claim"; exit 31; }
 S2=$(fetch_at "$EXT_SHA" $LOGS/fe.log)
 echo "fetched tests $S2 (want $EXT_SHA)"; [ "$S2" = "$EXT_SHA" ] || { echo "WRONG TESTS SHA"; exit 30; }
 git show "$S2":src/v1/tests/src/cross_coproduct_generic_locate_test.rs > src/v1/tests/src/cross_coproduct_generic_locate_test.rs || { echo "no fold test"; exit 31; }
+# THE MODULE DECLARATION IS PART OF THE TEST. main's src/v1/tests/src/lib.rs has NO
+# 'mod cross_coproduct_generic_locate_test' line, so installing only the .rs file yields a test that does
+# not exist: cargo compiled 52 other tests, filtered them all, and reported 'ok' -- zero tests run.
+git show "$S2":src/v1/tests/src/lib.rs > src/v1/tests/src/lib.rs || { echo "no tests lib.rs"; exit 31; }
+[ "$(grep -ac 'mod cross_coproduct_generic_locate_test' src/v1/tests/src/lib.rs)" = "1" ] \
+  || { echo "lib.rs does not declare the fold test module -- the suite would silently run zero tests"; exit 31; }
 S3=$(fetch_at "$CARRIER_SHA" $LOGS/fc.log)
 echo "fetched carriers $S3 (want $CARRIER_SHA)"; [ "$S3" = "$CARRIER_SHA" ] || { echo "WRONG CARRIER"; exit 32; }
 git show "$S3":carriers/my_04_types_backup.dag > $LOGS/my_04_types.dag || { echo "no 04_types carrier"; exit 32; }
@@ -156,14 +185,55 @@ fi
 OKN=$(grep -c 'ok$' $LOGS/suite_${MODE}.txt)
 BADN=$(grep -c FAILED $LOGS/suite_${MODE}.txt)
 echo "suite passed=$OKN failed=$BADN"
+# A suite that runs ZERO tests is not a pass. Config A produced '0 passed; 0 failed; 52 filtered out'
+# because cargo compiles the whole test lib and my filter selects one module -- and if the module is not
+# DECLARED in src/v1/tests/src/lib.rs it simply does not exist, so everything is filtered out and the run
+# reports ok. Installing lib.rs is therefore part of installing the tests, and N>0 is a gate, not a log line.
+if [ "$((OKN + BADN))" -eq 0 ]; then
+  echo "SUITE RAN ZERO TESTS -- VOID, not a pass. Is 'mod cross_coproduct_generic_locate_test' declared in src/v1/tests/src/lib.rs? (in this tree: $(grep -ac 'mod cross_coproduct_generic_locate_test' src/v1/tests/src/lib.rs))"
+  tail -8 $LOGS/tb_${MODE}.log
+  echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="
+  exit 8
+fi
 grep FAILED $LOGS/suite_${MODE}.txt | cut -c1-100 | sed 's/^/   FAIL /'
 grep -aE '^test result' $LOGS/suite_${MODE}.txt | head -3 | cut -c1-170
 # The two rows that must differ between configs, printed explicitly so a mislabel is visible rather than
 # buried in a pass count: the accept control must be GREEN only in B; the twin must be RED in BOTH.
+# Three controls, each with a STATED expectation per config, so a wrong outcome is visible at a glance
+# rather than being read out of a pass count afterwards:
+#   accept control  -- MUST be ok in B and FAILED in A (without the arms the pair still refuses, which is
+#                      the RED-before that makes the arm's value checkable at all)
+#   fold twin        -- MUST be FAILED in BOTH: two distinct settled instances still refuse, whatever the
+#                      arms do. Green anywhere means the arms over-admit.
+#   S0 relation row  -- MUST be ok in BOTH: since S0 deleted the mixed application-vs-non-application
+#                      acceptance, Box<Int> vs a Disj Box<Int> refuses at relation grain in both configs,
+#                      because neither of them owns the relation.
 for t in fold_replaces_a_binding_that_is_the_generic_declarations_own_form \
-         fold_refuses_a_declared_parameter_type_bound_to_a_distinct_settled_instance; do
+         fold_refuses_a_declared_parameter_type_bound_to_a_distinct_settled_instance \
+         fold_refuses_an_applied_spelling_against_a_non_application_spelling_of_one_name; do
   L=$(grep -a "^test $t" $LOGS/suite_${MODE}.txt | head -1)
   echo "  CONTROL $t -> ${L:-ROW ABSENT FROM THE SUITE OUTPUT}"
+  case "$t" in
+    fold_replaces_a_binding_that_is_the_generic_declarations_own_form)
+      if [ "$MODE" = "B" ]; then WANTP=" ok"; else WANTP="FAILED"; fi ;;
+    *) WANTP="" ;;
+  esac
+  if [ -n "$WANTP" ]; then
+    case "$L" in
+      *"$WANTP") ;;
+      *) echo "  CONTROL WRONG OUTCOME: $t expected '${WANTP}' in config $MODE, got '${L}'";
+         echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="; exit 8;;
+    esac
+  fi
+  # Absent is a FAILURE. A control that never ran cannot support 'the accept control is green only in B',
+  # and the first version of this script printed the note and carried on, which is how a config with ZERO
+  # controls compiled would have produced a clean-looking A/B.
+  case "$L" in
+    *" ok") ;;
+    *FAILED) ;;
+    *) echo "CONTROL ROW MISSING: $t -- the suite did not run this test; refusing to report a delta";
+       echo "=== BEGIN-TAR ==="; ( cd $LOGS && tar -c . 2>/dev/null | base64 -w0 ); echo; echo "=== END-TAR ==="; exit 8;;
+  esac
 done
 
 # THE BINARY MUST BE BUILT BEFORE IT IS RUN. The first run of this script went straight to
