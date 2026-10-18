@@ -3643,7 +3643,7 @@ type EmitRustContext {
 fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let base_info = build_emit_graph_info(modules: typed.modules, registry: typed.item_registry)
   let ownership = build_ownership_results(modules: typed.modules)
-  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust, by_value_records: !compiler_pipeline_entry_is_retained_host(modules: typed.modules))
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust, by_value_records: !compiler_pipeline_entry_has_hand_authored_main(modules: typed.modules))
   let closure_source_indices = merged_module_source_indices(modules: typed.modules)
   let clone_bounded = v1_clone_bounded_type_params(
     type_decl_items: base_info.type_decl_items,
@@ -8379,9 +8379,9 @@ fn emit_sealed_struct_accessors(name: String, type_params: String, generic_param
   concat("\nimpl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
-// By-value clone-free records (is_clone_allocation_free) are for corpora with NO retained-host driver: the
-// seed's own realization (compiler_entry_retained_host_driver) is peered by hand-authored Rust that pins the
-// Rc representation, so the stage0 mirror target keeps today's sharing. The exclusion dissolves as that
+// By-value clone-free records (is_clone_allocation_free) are for corpora with NO CompilerEntryDriver: every
+// driver arm is peered by hand-authored Rust (the stage0 seed's host Rust, the emitter's main templates)
+// that pins the Rc representation, so those corpora keep today's sharing. The exclusion dissolves as that
 // hand Rust migrates.
 // A record that is not Rc-shared derives Copy only when it is a Copy constant; the clone-allocation-free
 // records of is_clone_allocation_free are by-value but hold Rc fields, so they take the heap roster
@@ -19164,6 +19164,15 @@ fn compiler_pipeline_entry_module_name(modules: List<TypedModule>) -> String {
     Present { value: d } => d.module_name
     Absent => ""
   }
+}
+
+// A corpus that declares ANY CompilerEntryDriver gets a main whose Rust is authored in this emitter's
+// templates, and those templates spell the Rc representation of the record types they name (the
+// retained-host CLI, and every native arm: read_census_ingest, census_infer_walk, exchange ...). That
+// is the hand-authored boundary by_value_records must respect; a corpus with no driver has none.
+// The exclusion dissolves as those templates are emitted from the model instead of authored.
+fn compiler_pipeline_entry_has_hand_authored_main(modules: List<TypedModule>) -> Bool {
+  (compiler_pipeline_entry_decls(modules: modules) |> count) > 0
 }
 
 fn compiler_pipeline_entry_is_retained_host(modules: List<TypedModule>) -> Bool {
