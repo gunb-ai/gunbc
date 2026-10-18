@@ -549,32 +549,30 @@ test fn a_bios_attribute_name_is_accepted_only_for_the_version_it_was_read_again
 // gap to go and re-ask. Review 81802 is why the expected blocker is ABSENT rather than NOT_SELECTED
 // here: the enumeration reported no option, so nothing exists to redirect to, and the only admissible
 // mechanism is the one that creates one. The Unobserved arm staying false is the point of the test.
-test fn answered_and_absent_is_preparation_not_unobserved() -> Bool {
-  match standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [] })) {
-    NeedsPreparation { route: r, blocking: b } =>
-      is_a_fleet_route(route: r)
-        && match b {
-             NetworkBootOptionAbsent => true
-             _ => false
-           }
-    Unobserved { unanswered: _ } => false
-    _ => false
-  }
+// THE DISTINCTION THIS TEST EXISTED TO DRAW IS INTACT: an empty enumeration is a BOARD FACT, not a
+// missing read, so the verdict must not be Unobserved. What changed is the other half. The seam used
+// to answer with a BIOS-attribute route whose attribute name nobody had read; now it refuses, still
+// naming the authoring mechanism. `Unobserved { unanswered: _ } => false` is the arm that carries the
+// test's name and is unchanged.
+test fn answered_and_absent_names_the_authoring_mechanism_and_is_not_unobserved() -> Bool {
+  refused_naming_the_authoring_mechanism(
+    standing: standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [] })),
+    mechanism: "redfish-bios-network-stack",
+  )
 }
 
 // More than one candidate NIC and no evidence which carries PXE must NOT silently pick the first.
 // This is the machine-name-selection failure wearing a different hat: deterministic, reproducible,
 // and wrong on the first board whose ports differ from the guess.
-test fn two_candidate_nics_refuse_to_guess_the_first() -> Bool {
-  match standing_of(observation: with_nics(nics: NicsObserved { nics: ["eth0", "eth1"] })) {
-    NeedsPreparation { route: r, blocking: b } =>
-      is_a_fleet_route(route: r)
-        && match b {
-             NoInterfaceCarriesPxe => true
-             _ => false
-           }
-    _ => false
-  }
+// THE CLAIM IS ABOUT THE FIRST NIC, and it is unchanged: with two candidates the seam must not pick
+// `eth0` and call it a decision. It now declines for a second reason too -- the port-selection
+// attribute has no name anyone read -- and the mechanism it names is the port selector rather than the
+// stack author, which is the difference between this blocker and 'no option exists'.
+test fn two_candidate_nics_refuse_to_guess_the_first_and_name_the_port_selector() -> Bool {
+  refused_naming_the_authoring_mechanism(
+    standing: standing_of(observation: with_nics(nics: NicsObserved { nics: ["eth0", "eth1"] })),
+    mechanism: "redfish-bios-nic-boot-selection",
+  )
 }
 
 // THE READINESS FN IS TOTAL: twelve inputs covering every axis arm of every axis produce a
@@ -629,8 +627,71 @@ fn every_emitted_route_cataloged(standing: FirmwareNetworkBootStanding) -> Bool 
 // route_is_cataloged: route identity is structural `==`, and 'is this one of ours' is a lookup in
 // the one table that owns the routes. The fold's route comes OUT of that table, so this is testing
 // that the fold reached the table at all -- a route fabricated elsewhere would not be in it.
+// IS THIS ROUTE ONE THE FLEET ACTUALLY OWNS. NOT a whole-value `==` against the catalog: once blocker
+// 3 binds a route, the emitted row is the catalog row with a firmware-side slot FILLED, so it can
+// never be byte-equal to its own catalog row -- a `==` here would reject every route the seam is
+// allowed to emit, and would do it by demanding the very literal (a catalog-side firmware name) that
+// blocker 3 removed. The claim being made is 'the fleet owns this mechanism, including the fields the
+// fleet owns'; the unit-derived slot is checked by `route_matches_the_catalog_row` alongside.
+//
+// WHY COMPARING FIELD GROUPS RATHER THAN DROPPING THE CHECK: `mechanism_name` alone would let a route
+// with the right arm and a wrong service root or channel through, and those ARE fleet-owned -- a
+// redirect pointed at the wrong Redfish container is still an actuation. So: same mechanism, and every
+// fleet-owned field equal to the catalog's row for that mechanism.
 fn is_a_fleet_route(route: FirmwareNetworkBootPreparationRoute) -> Bool {
-  length(xs: filter(firmware_network_boot_preparation_routes, candidate => candidate == route)) > 0
+  length(xs: filter(firmware_network_boot_preparation_routes, candidate =>
+    mechanism_name(route: candidate) == mechanism_name(route: route)
+      && fleet_owned_fields_agree(row: candidate, route: route))) > 0
+}
+
+// THE FLEET-OWNED FIELDS OF A ROUTE, arm by arm, with the unit-derived slot excluded. Every arm is
+// named: a new arm is a compile error here rather than a check that quietly returns true.
+fn fleet_owned_fields_agree(
+  row: FirmwareNetworkBootPreparationRoute,
+  route: FirmwareNetworkBootPreparationRoute
+) -> Bool {
+  match row {
+    EnableNetworkStack { service_root: a, attribute: _, authority: _ } =>
+      match route {
+        EnableNetworkStack { service_root: b, attribute: _, authority: _ } => a == b
+        _ => false
+      }
+    PointUefiBootNext { service_root: a, boot_option: _, authority: _ } =>
+      match route {
+        PointUefiBootNext { service_root: b, boot_option: _, authority: _ } => a == b
+        _ => false
+      }
+    RedfishOneShotOverride { service_root: a, authority: _ } =>
+      match route {
+        RedfishOneShotOverride { service_root: b, authority: _ } => a == b
+        _ => false
+      }
+    IpmiOneShotOverride { channel: a, authority: _ } =>
+      match route {
+        IpmiOneShotOverride { channel: b, authority: _ } => a == b
+        _ => false
+      }
+    SelectNicBoot { service_root: a, attribute: _, authority: _ } =>
+      match route {
+        SelectNicBoot { service_root: b, attribute: _, authority: _ } => a == b
+        _ => false
+      }
+    SetSecureBootAttribute { service_root: a, attribute: _, authority: _ } =>
+      match route {
+        SetSecureBootAttribute { service_root: b, attribute: _, authority: _ } => a == b
+        _ => false
+      }
+    UefiShellOverSol { sol_channel: a, shell_script: sa, authority: _ } =>
+      match route {
+        UefiShellOverSol { sol_channel: b, shell_script: sb, authority: _ } => a == b && sa == sb
+        _ => false
+      }
+    HumanConsole { instruction: a, authority: _ } =>
+      match route {
+        HumanConsole { instruction: b, authority: _ } => a == b
+        _ => false
+      }
+  }
 }
 
 // THE FOLD'S ROUTE AND THE CATALOG'S ROUTE AGREE ON EVERYTHING THE EXECUTOR READS. Compared by
@@ -722,6 +783,36 @@ fn bind_the_preferred_row(
         owed_read: "the catalog has no row for this blocker",
       },
     }
+  }
+}
+
+// THE STANDING A BIOS-ATTRIBUTE BLOCKER MUST HAVE, and the distinction it is built to hold. The unit
+// ANSWERED EVERY AXIS, so this is not Unobserved; the fleet OWNS the mechanism, so the cause names it;
+// and the write does not happen, because the name was never read. Three blockers are in this class --
+// 'no option exists', 'no interface carries PXE', 'Secure Boot is on' -- and each names a different
+// mechanism, which is what keeps one test from standing in for the other three.
+fn refused_naming_the_authoring_mechanism(
+  standing: FirmwareNetworkBootStanding,
+  mechanism: NonEmptyStr
+) -> Bool {
+  match standing {
+    Refused {
+      cause: RouteBindingUnresolved { mechanism: named, owed_read: owed },
+      gaps: _,
+    } =>
+      named == mechanism
+        // THE OWED READ IS AN INSTRUCTION: it has to name the read (a GET, or an enumeration to
+        // perform). A refusal whose remedy is blank is a dead end wearing a remedy's clothes.
+        && (string_contains(s: owed, pattern: "GET")
+          || string_contains(s: owed, pattern: "enumerat")
+          || string_contains(s: owed, pattern: "read"))
+    // THE REST OF THE VERDICTS, each named. Unobserved is the one that matters most: a seam that
+    // could not name a write would be quietly relabelled 'we never asked', which sends someone to
+    // re-read a firmware that already answered.
+    Unobserved { unanswered: _ } => false
+    Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
+    NeedsPreparation { route: _, blocking: _ } => false
+    Refused { cause: _, gaps: _ } => false
   }
 }
 
@@ -899,12 +990,26 @@ fn route_has_authority(route: FirmwareNetworkBootPreparationRoute) -> Bool {
 // asserted: for every blocker the attempt's route is exactly the cataloged one, and the blocker it
 // carries is the one asked for. The refusal arm (AttemptBlockerUncataloged) stays reachable only to
 // an edit that deletes a catalog row, which every_blocker_has_a_route_that_can_act_on_it refuses.
-test fn an_attempt_can_only_ever_carry_the_cataloged_route_for_its_blocker() -> Bool {
-  attempt_carries_the_fleet_route(blocker: NetworkBootOptionAbsent)
-    && attempt_carries_the_fleet_route(blocker: NetworkBootOptionNotSelected)
-    && attempt_carries_the_fleet_route(blocker: NoInterfaceCarriesPxe)
-    && attempt_carries_the_fleet_route(blocker: SecureBootBlocksUnsignedChainloader)
+// THE MINT DERIVES ITS OWN ROUTE, and the census now covers BOTH outcomes: the blockers whose
+// mechanism needs no firmware-side name must construct with the cataloged route, and the blockers
+// whose mechanism is a BIOS attribute must come back unbound rather than carrying a guessed key. A
+// census that only listed the constructible half would silently bless a mint that handed out
+// unexamined routes for the other half -- which is what it used to do.
+test fn an_attempt_constructs_only_for_a_nameable_mechanism_and_refuses_otherwise() -> Bool {
+  attempt_carries_the_fleet_route(blocker: NetworkBootOptionNotSelected)
     && attempt_carries_the_fleet_route(blocker: OverrideMechanismUnsupported)
+    && attempt_refuses_to_name_the_mechanism(
+         blocker: NetworkBootOptionAbsent,
+         mechanism: "redfish-bios-network-stack",
+       )
+    && attempt_refuses_to_name_the_mechanism(
+         blocker: NoInterfaceCarriesPxe,
+         mechanism: "redfish-bios-nic-boot-selection",
+       )
+    && attempt_refuses_to_name_the_mechanism(
+         blocker: SecureBootBlocksUnsignedChainloader,
+         mechanism: "redfish-bios-secure-boot",
+       )
 }
 
 fn attempt_carries_the_fleet_route(blocker: PreparationBlockingOn) -> Bool {
@@ -944,13 +1049,17 @@ fn attempt_carries_the_fleet_route(blocker: PreparationBlockingOn) -> Bool {
 test fn a_machine_name_never_selects_the_route_and_is_never_defaulted() -> Bool {
   // Same everything except the name: the name must not move the route, the reset, the control
   // standing, or the DHCP.
+  // THE TWO BLOCKERS CHOSEN ARE THE TWO WHOSE ATTEMPTS CONSTRUCT. The BIOS-attribute blockers now
+  // return AttemptRouteUnbound and would short-circuit this test to false without testing anything
+  // about names -- so the name claim is carried by the redirect and the SOL route, which is where an
+  // attempt actually reaches an actuator. The refused blockers are covered by the attempt census.
   labels_are_inert_in_selection(
-    blocker: NetworkBootOptionAbsent,
+    blocker: NetworkBootOptionNotSelected,
     first: "mtcollins1",
     second: "owen",
   )
     && labels_are_inert_in_selection(
-      blocker: SecureBootBlocksUnsignedChainloader,
+      blocker: OverrideMechanismUnsupported,
       first: "mtjade1",
       second: "board-5",
     )
@@ -960,6 +1069,59 @@ test fn a_machine_name_never_selects_the_route_and_is_never_defaulted() -> Bool 
     && the_two_labels_arrive_unchanged()
     // Same name, different blocker -> different route. The blocker selects; the name never does.
     && same_name_different_blocker_changes_the_route()
+}
+
+// THE OTHER HALF OF THE ATTEMPT CENSUS: the mint refused, and said which mechanism it could not name.
+// `AttemptBlockerUncataloged => false` is load-bearing -- that arm would mean the fleet has no row at
+// all, which is a catalog gap, and a mint that reported a gap instead of its own inability to bind
+// would send an operator to the wrong place.
+fn attempt_refuses_to_name_the_mechanism(
+  blocker: PreparationBlockingOn,
+  mechanism: NonEmptyStr
+) -> Bool {
+  match network_boot_attempt(
+    blocker: blocker,
+    join: fixture_join(),
+    available: fixture_available(),
+    observed_bios_version: present(version: "1.08"),
+    boot_control: BootControlUnobserved,
+    reset_observed_at: witness_epoch,
+    resulting_dhcp: DhcpOfferObserved { offer_ref: "synthetic-offer" },
+    unit_label: "synthetic-unit",
+  ) {
+    AttemptRouteUnbound { blocker: carried, mechanism: named, refusal: _ } =>
+      named == mechanism && blocker_of_route_matches(blocker: carried, expected: blocker)
+    AttemptConstructed { attempt: _ } => false
+    AttemptBlockerUncataloged { blocker: _ } => false
+  }
+}
+
+// THE BLOCKER TRAVELS OUT UNCHANGED, so a caller can tell which attempt it is looking at without
+// keeping the input around. Compared through the arm-derived mapping rather than an Optional-of-union
+// `==`, which the toolchain will not resolve.
+fn blocker_of_route_matches(blocker: PreparationBlockingOn, expected: PreparationBlockingOn) -> Bool {
+  match blocker {
+    NetworkBootOptionAbsent => match expected {
+      NetworkBootOptionAbsent => true
+      _ => false
+    }
+    NetworkBootOptionNotSelected => match expected {
+      NetworkBootOptionNotSelected => true
+      _ => false
+    }
+    NoInterfaceCarriesPxe => match expected {
+      NoInterfaceCarriesPxe => true
+      _ => false
+    }
+    SecureBootBlocksUnsignedChainloader => match expected {
+      SecureBootBlocksUnsignedChainloader => true
+      _ => false
+    }
+    OverrideMechanismUnsupported => match expected {
+      OverrideMechanismUnsupported => true
+      _ => false
+    }
+  }
 }
 
 fn labels_are_inert_in_selection(
@@ -1005,7 +1167,9 @@ fn labels_are_inert_in_selection(
 
 fn the_two_labels_arrive_unchanged() -> Bool {
   match network_boot_attempt(
-    blocker: NoInterfaceCarriesPxe,
+    // A BLOCKER WHOSE ATTEMPT CONSTRUCTS (see the note in the test above): the label has to survive
+    // into a real attempt, and an unbound refusal carries no attempt to carry it.
+    blocker: NetworkBootOptionNotSelected,
     join: fixture_join(),
     available: fixture_available(),
     observed_bios_version: present(version: "1.08"),
@@ -1022,7 +1186,10 @@ fn the_two_labels_arrive_unchanged() -> Bool {
 
 fn same_name_different_blocker_changes_the_route() -> Bool {
   match network_boot_attempt(
-    blocker: NetworkBootOptionAbsent,
+    // THE PAIR IS 'redirect' AND 'SOL SHELL', both of which construct: the claim is that the BLOCKER
+    // selects the mechanism and the name does not, and a pair where one side refuses to construct
+    // would satisfy `!(a == b)` for the wrong reason -- by not existing.
+    blocker: OverrideMechanismUnsupported,
     join: fixture_join(),
     available: fixture_available(),
     observed_bios_version: present(version: "1.08"),
@@ -1033,8 +1200,9 @@ fn same_name_different_blocker_changes_the_route() -> Bool {
   ) {
     AttemptConstructed { attempt: authoring } =>
       match network_boot_attempt(
-        // The SAME name, a different blocker: a redirect, not a persistent write. If a name ever
-        // selected, these two would agree and the attempt would drive the wrong mechanism.
+        // The SAME name, a different blocker: a one-time SOL shell instead of a firmware redirect.
+        // If a name ever selected, these two would agree and the attempt would drive the wrong
+        // mechanism -- and both sides here are real attempts, so the inequality is earned.
         blocker: NetworkBootOptionNotSelected,
         join: fixture_join(),
         available: fixture_available(),
@@ -1087,10 +1255,6 @@ fn fixture_available() -> AvailableNetworkStanding {
 // current-version witness must differ by exactly one token and nothing else.
 fn present(version: NonEmptyStr) -> Optional<NonEmptyStr> {
   Present { value: version }
-}
-
-fn no_version_read() -> Optional<NonEmptyStr> {
-  Absent
 }
 
 fn synthetic_attempt() -> NetworkBootAttemptConstruction {
@@ -1528,12 +1692,16 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
     Ready { firmware_mode: _, network_interface: _, boot_target: _, evidence: _ } => false
     Unobserved { unanswered: _ } => false
   }
-    // ...and the empty-list neighbour must stay a preparation, which is the guard that keeps this
-    // refusal from being reachable by the ordinary unconfigured board.
-    && match standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [] })) {
-         NeedsPreparation { route: _, blocking: _ } => true
-         _ => false
-       }
+    // ...and the empty-list neighbour must stay DISTINGUISHABLE from this case, which is the guard
+    // that keeps this refusal from being reachable by the ordinary unconfigured board. The neighbour is
+    // now a different refusal cause (it cannot name an authoring attribute) rather than a preparation,
+    // and that difference is the whole point: two boards that look similar from outside get named
+    // differently -- 'your order names an option you never enumerated' versus 'you have no network
+    // option and we have not read your BIOS'.
+    && refused_naming_the_authoring_mechanism(
+      standing: standing_of(observation: with_boot_options(options: BootOptionsObserved { options: [] })),
+      mechanism: "redfish-bios-network-stack",
+    )
 }
 
 // ---------------------------------------------------------------------------
