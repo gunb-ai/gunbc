@@ -15,6 +15,7 @@ import extdeps.git {
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
+import std.algebra { trim }
 import extdeps.access.posix {
   FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
 }
@@ -2302,59 +2303,71 @@ fn dashboard_ensure_git_shared_repository_posture(instance: HostDashboardInstanc
   }
 }
 
-// THE READBACK'S ONE LINE, AS A FIGURE. `find -printf "%m %P\n"` prints the MODE FIRST and the path
-// RELATIVE TO THE WALKED SUBTREE after it, which is why the path can be recovered by taking the head
-// as the mode and the REST AS THE PATH (joined back with spaces): a path containing a space survives,
-// and there is no counting of legs. `%P` of the start point is empty, so the subtree's own directory
-// is the line whose path is empty -- that line is the one whose mode is the exact per-subtree grant,
-// because a subtree top is created by the migration's chmod and never by git.
-// THE THREE FACTS find printed, in the order it prints them: the TYPE LETTER from `%y`, the mode from
-// `%m`, and the path from `%P`. `is_directory` is decided by the LETTER, never by the mode -- see
-// find_subtree_mode_readback_command for why the execute bit cannot carry it. A line whose letter is
-// neither of the two the model names is read as NOTHING (`none`), and the fold below treats an
-// unreadable line as a refusal: a symlink, socket or device in a git object store is not a granted entry,
-// and guessing which of the two it is would be the fabricated output DESIGN 5 forbids.
-type DashboardGitSubtreeReadbackLine {
-  mode_text: String
-  is_directory: Bool
-  path: String
-  is_top: Bool
-}
+// WHAT ONE LINE OF THE WALK CAN BE: the subtree's OWN directory, a directory beneath it, or a file.
+// THREE CASES, not two booleans -- review 82172 on this PR. `is_directory` beside `is_top` admitted a
+// fourth state (top, and not a directory) that the parser never built but nothing prevented anyone else
+// from building, and it left the fold re-deriving the three-way choice by hand. DESIGN 4b's fourth rung
+// is that the invalid state has NO CONSTRUCTOR; declaring the sum is what buys it, and the fold then
+// matches instead of testing.
+//
+// THE MODE IS A FileMode, PARSED AS THE LINE IS READ, not text carried to the fold: a line whose mode the
+// model cannot parse is not a line at all (the parser yields `none`), so the fold is never handed an
+// unreadable mode and left to notice.
+//
+// THE KIND COMES FROM find's `%y` LETTER, never from the mode -- see find_subtree_mode_readback_command
+// for why the execute bit cannot carry it (a setgid FILE sets it; review 82165). A letter outside the two
+// the model names is read as NOTHING, because a symlink, socket or device inside a git object store is
+// not a granted entry, and guessing which of the two it was would be DESIGN 5's fabricated verdict. The
+// subtree's own directory is the line whose `%P` came back EMPTY, and only a directory can be the start
+// point -- so a file claiming the empty path is not a line either.
+type DashboardGitSubtreeReadbackLine
+  = ReadbackSubtreeTop {
+      mode: FileMode,
+    }
+  | ReadbackInteriorDirectory {
+      mode: FileMode,
+      path: NonEmptyStr,
+    }
+  | ReadbackEntryFile {
+      mode: FileMode,
+      path: NonEmptyStr,
+    }
 
+// THE ONE PARSER: `<letter> <mode> <path>`, split on the separator with the PATH TAKEN AS EVERYTHING
+// AFTER THE TWO PRINTED FIELDS so a path holding a space comes back whole. Every failure to read a line
+// -- no legs, a mode that is not octal, a letter the model does not name, a file claiming the empty path
+// that means "the start point" -- is `none`, and the fold refuses a receipt containing one.
 fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadbackLine? {
-  match split(s: trim(s: line), delimiter: " ") {
+  let legs: List<String> = line.split(delimiter: " ")
+  match legs.first() {
     Absent => none
-    Present { value: legs } =>
-      match legs.first() {
+    Present { value: letter } =>
+      match legs.skip(n: 1).first() {
         Absent => none
-        Present { value: entry } =>
-          match legs.skip(n: 1).first() {
+        Present { value: printed_mode } =>
+          match file_mode_of_octal_text(text: trim(s: printed_mode)) {
             Absent => none
             Present { value: mode } =>
-              // The path is EVERYTHING AFTER the two printed fields, rejoined with the separator, so a
-              // path holding a space comes back intact rather than truncated at it -- and the start point
-              // of the walk is recognised by that path being EMPTY (`%P` strips the starting point to
-              // nothing), which is decided from the recovered path rather than from a leg count, since
-              // the trailing separator may or may not print as an empty leg.
               {
                 let path = join(legs.skip(n: 2), " ")
-                if entry == (find_printf_type_directory_letter as String) {
-                  Present {
-                    value: DashboardGitSubtreeReadbackLine {
-                      mode_text: trim(s: mode),
-                      is_directory: true,
-                      path: path,
-                      is_top: path == "",
-                    },
+                if letter == (find_printf_type_directory_letter as String) {
+                  if path == "" {
+                    Present { value: ReadbackSubtreeTop { mode: mode } }
+                  } else {
+                    Present {
+                      value: ReadbackInteriorDirectory {
+                        mode: mode,
+                        path: path as NonEmptyStr,
+                      },
+                    }
                   }
-                } else if entry == (find_printf_type_regular_file_letter as String) {
-                  Present {
-                    value: DashboardGitSubtreeReadbackLine {
-                      mode_text: trim(s: mode),
-                      is_directory: false,
-                      path: path,
-                      is_top: false,
-                    },
+                } else if letter == (find_printf_type_regular_file_letter as String) {
+                  if path == "" {
+                    none
+                  } else {
+                    Present {
+                      value: ReadbackEntryFile { mode: mode, path: path as NonEmptyStr },
+                    }
                   }
                 } else {
                   none
@@ -2363,23 +2376,14 @@ fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadb
           }
       }
   }
-}// DID THE READBACK PROVE THE SUBTREE GRANTED? One fold over the walk's receipt, so the apply's refusal
+}
+
+// DID THE READBACK PROVE THE SUBTREE GRANTED? One fold over the walk's receipt, so the apply's refusal
 // and the claims' assertion are the SAME decision over the same figure -- a second copy of this
 // reasoning is exactly the drift the §3 rounds on this PR kept removing.
 //
-// WHAT EACH LINE IS DECIDED UNDER:
-//  - the subtree's own directory (empty path): the EXACT per-subtree grant, 03775 for objects/ and
-//    02775 elsewhere. Nothing lenient here: this is the directory the migration itself sets.
-//  - a line beneath it: a DIRECTORY or a FILE AS find PRINTED IT, from the `%y` letter -- not from the
-//    mode. Deciding on the execute bit was review 82165's finding on this PR: a regular file can be
-//    setgid, setgid sets the owner-execute leg, and the fold waved such a file through as an interior
-//    directory, i.e. it could report a repository carrying a setgid FILE as granted while this PR's own
-//    migration comment says setgid on a file is a privilege shape that belongs on directories alone.
-//    With the letter in hand the two predicates genuinely partition the receipt, and any mode outside the
-//    accepted set (the measured 0775, a 0755, a 0666, or a file at 02775) is refused by whichever
-//    predicate it lands on. Interior directories get the LENIENT window (02775 or 03775) because a
-//    fan-out directory git creates tomorrow inherits setgid but NOT the sticky bit; a file must be
-//    group-writable and not world-writable.
+// WHAT EACH CASE IS DECIDED UNDER is written at the arm that decides it, because the three cases are a
+// declared sum (DashboardGitSubtreeReadbackLine) rather than booleans to be tested in an order.
 //  - an UNPARSEABLE mode text refuses the receipt. A walk that printed something the model cannot read
 //    has not proved a grant, and treating it as one is the fabricated output DESIGN 5 forbids.
 //  - an EMPTY receipt refuses. A walk that matched nothing proves nothing about an existing tree --
@@ -2401,28 +2405,40 @@ fn dashboard_git_subtree_readback_is_granted_under(top: FileMode, receipt: Strin
   let lines = filter(split(s: receipt, delimiter: "\n"), l => trim(s: l) != "")
   let parsed = map(lines, l => dashboard_git_subtree_readback_line(line: l))
   length(parsed) > 0
+    // an unreadable line is a refusal, not a line to be argued about;
     && all(parsed, entry => match entry {
       Absent => false
       Present { value: _ } => true
     })
+    // and the subtree's OWN directory has to be in the receipt: a walk that matched only entries below it
+    // says nothing about the mode that decides whether tomorrow's fan-out directory can be created.
     && any(parsed, entry => match entry {
       Absent => false
-      Present { value: line } => line.is_top
+      Present { value: line } => match line {
+        ReadbackSubtreeTop { mode: _ } => true
+        ReadbackInteriorDirectory { mode: _, path: _ } => false
+        ReadbackEntryFile { mode: _, path: _ } => false
+      }
     })
     && all(parsed, entry => match entry {
       Absent => false
-      Present { value: line } =>
-        match file_mode_of_octal_text(text: line.mode_text) {
-          Absent => false
-          Present { value: mode } =>
-            if line.is_top {
-              dashboard_git_worker_file_modes_are_equal(a: mode, b: top)
-            } else if line.is_directory {
-              dashboard_git_worker_interior_directory_mode_is_accepted(mode: mode)
-            } else {
-              dashboard_git_worker_file_mode_is_granted(mode: mode)
-            }
-        }
+      Present { value: line } => match line {
+        // The TOP is held to the exact per-subtree grant -- 03775 for objects/, 02775 elsewhere. Nothing
+        // lenient here: this is the directory the migration itself sets, and the two shapes are not
+        // interchangeable (see dashboard_git_worker_sticky_children).
+        ReadbackSubtreeTop { mode: mode } =>
+          dashboard_git_worker_file_modes_are_equal(a: mode, b: top)
+        // An INTERIOR directory gets the lenient window, 02775 or 03775: a fan-out directory git creates
+        // tomorrow inherits setgid from its parent but NOT the sticky bit, so demanding 03775 inside
+        // objects/ would refuse a tree that is correctly granted.
+        ReadbackInteriorDirectory { mode: mode, path: _ } =>
+          dashboard_git_worker_interior_directory_mode_is_accepted(mode: mode)
+        // A FILE must be group-writable and not world-writable. This is the case the execute-bit
+        // classifier got wrong (review 82165): a file at 02775 now lands here, where its missing
+        // world-write leg refuses it, instead of being read as an interior directory.
+        ReadbackEntryFile { mode: mode, path: _ } =>
+          dashboard_git_worker_file_mode_is_granted(mode: mode)
+      }
     })
 }
 
