@@ -22,7 +22,7 @@ fn lowers_to_the_declared_row(op_spelling: String, width_spelling: String, label
   compile_dag_rust_emit_check(
     concat("module test.claim.mw_literal_probe\nimport std.types { Int }\nimport std.machine_word { machine_word_apply, ", op_spelling, ", ", width_spelling, " }\nfn probe(a: Int, b: Int) -> Int { machine_word_apply(op: ", op_spelling, ", width: ", width_spelling, ", a: a, b: b) }\n"),
     "src/test_claim_mw_literal_probe.rs",
-    [concat("machine_word_operate_at::<\{machine_word_row_index(\"", label, "\")\}, ", to_string(value: bits), ">(")],
+    [concat("v1_rt::machine_word_operate_at::<\{v1_rt::machine_word_row_index(\"", label, "\")\}, ", to_string(value: bits), ">(")],
     ["machine_word_apply(", "machine_word_native_operate"]
   )
 }

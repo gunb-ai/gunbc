@@ -96,7 +96,7 @@ data rust_machine_word_lowering: MachineWordLowering = {
   b_param: "b",
   operator_label_fn: "machine_word_operator_label",
   width_bits_fn: "word_width_bits",
-  template: "machine_word_operate_at::<\{machine_word_row_index(\"\{label\}\")\}, \{bits\}>(\{a\}, \{b\})"
+  template: "v1_rt::machine_word_operate_at::<\{v1_rt::machine_word_row_index(\"\{label\}\")\}, \{bits\}>(\{a\}, \{b\})"
 }
 
 data rust_simple_method_specs: List<SimpleMethodSpec> = [
