@@ -39,6 +39,7 @@ type JoinEntry {
 type JoinDelta
   = JoinAdmitted { coordinate: String, spelling: String, home: String }
   | JoinRefused { cause: String, coordinate: String, detail: String }
+  | JoinUnobserved { coordinate: String, detail: String }
 
 fn join_field(line: String, index: Int) -> String {
   match list_at_optional(xs: split(s: line, delimiter: "\t"), index: index) {
@@ -135,7 +136,7 @@ fn occurrence_join_module(rows: List<AmbientNameHome>, module: String, base_stdo
   let base_n = join_line_count(stdout: base_stdout, module: module)
   let head_n = join_line_count(stdout: head_stdout, module: module)
   if (base_n < 0) || (head_n < 0) {
-    [JoinRefused { cause: "NoLineCount", coordinate: module, detail: "no binding_file line count on " + (if base_n < 0 { "base" } else { "head" }) }]
+    [JoinUnobserved { coordinate: module, detail: "no binding_file line count on " + (if base_n < 0 { "base" } else { "head" }) }]
   } else {
     occurrence_join_entries(rows: rows, base: join_side(entries: join_entries(stdout: base_stdout, module: module), line_count: base_n), head: join_side(entries: join_entries(stdout: head_stdout, module: module), line_count: head_n))
   }
@@ -186,6 +187,7 @@ fn join_delta_line(d: JoinDelta) -> String {
   match d {
     JoinAdmitted { coordinate: c, spelling: _, home: h } => "admitted\tUnboundToDeclaredHome\t" + c + "\t" + h
     JoinRefused { cause: k, coordinate: c, detail: t } => "refused\t" + k + "\t" + c + "\t" + t
+    JoinUnobserved { coordinate: c, detail: t } => "unobserved_join\t" + c + "\t" + t
   }
 }
 
@@ -193,13 +195,15 @@ fn join_delta_admitted(d: JoinDelta) -> Bool {
   match d {
     JoinAdmitted { coordinate: _, spelling: _, home: _ } => true
     JoinRefused { cause: _, coordinate: _, detail: _ } => false
+    JoinUnobserved { coordinate: _, detail: _ } => false
   }
 }
 
 fn join_delta_unobserved(d: JoinDelta) -> Bool {
   match d {
     JoinAdmitted { coordinate: _, spelling: _, home: _ } => false
-    JoinRefused { cause: c, coordinate: _, detail: _ } => c == "NoLineCount"
+    JoinRefused { cause: _, coordinate: _, detail: _ } => false
+    JoinUnobserved { coordinate: _, detail: _ } => true
   }
 }
 
@@ -230,7 +234,7 @@ fn join_control_head(first_line: String, second_line: String, second_target: Str
 fn join_control_case(name: String, head: String, want_admitted: Int, want_refused: List<String>) -> String {
   let deltas = occurrence_join_module(rows: join_control_rows(), module: "m", base_stdout: join_control_base(), head_stdout: head)
   let admitted = count(deltas |> filter(d => join_delta_admitted(d: d)))
-  let refused = deltas |> filter(d => !join_delta_admitted(d: d)) |> map(d => match d { JoinRefused { cause: k, coordinate: _, detail: _ } => k  JoinAdmitted { coordinate: _, spelling: _, home: _ } => "" })
+  let refused = deltas |> filter(d => !join_delta_admitted(d: d)) |> map(d => match d { JoinRefused { cause: k, coordinate: _, detail: _ } => k  JoinUnobserved { coordinate: _, detail: _ } => "Unobserved"  JoinAdmitted { coordinate: _, spelling: _, home: _ } => "" })
   if (admitted == want_admitted) && (count(refused) == count(want_refused)) && (count(want_refused |> filter(w => count(refused |> filter(r => r == w)) != count(want_refused |> filter(x => x == w)))) == 0) {
     ""
   } else {
