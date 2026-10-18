@@ -25286,116 +25286,183 @@ pub fn substitute_generics(
     }
 }
 
+pub fn generic_substitution_leaf(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: _, .. }) => true,
+        _ => {
+            ((((n.children.clone().len() as i64) == 0)
+                && (n.connective.clone() == Connective::NoConnective))
+                && ((n.params.clone().len() as i64) == 0))
+        }
+    }
+}
+
+pub fn generic_leaf_replacement(
+    n: Rc<Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+            match v1_rt::map_get(&subst, tv_id.clone()) {
+                Some(c) => {
+                    if (type_node_label(c.clone(), source_indices.clone()) == tv_id.clone()) {
+                        std::option::Option::None
+                    } else {
+                        Some(crate::v1_std_core::preserve_outer_optional_cardinality(
+                            n.clone(),
+                            c.clone(),
+                        ))
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+        _ => match v1_rt::map_get(&subst, type_node_label(n.clone(), source_indices.clone())) {
+            Some(c) => Some(crate::v1_std_core::preserve_outer_optional_cardinality(
+                n.clone(),
+                c.clone(),
+            )),
+            std::option::Option::None => std::option::Option::None,
+        },
+    }
+}
+
+pub fn generic_slot_holding(slot: Rc<Node>, ty: Rc<Node>) -> Rc<Node> {
+    match ty.inferred.clone() {
+        std::option::Option::None => ty.clone(),
+        Some(_) => Rc::new(Node {
+            occurrence_identity: slot.occurrence_identity.clone(),
+            name: slot.name.clone(),
+            span: slot.span.clone(),
+            ident_span: slot.ident_span.clone(),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: ty.clone() })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        }),
+    }
+}
+
+pub fn substitute_generics_child(
+    c: Rc<Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    if generic_substitution_leaf(c.clone(), source_indices.clone()) {
+        match generic_leaf_replacement(c.clone(), subst.clone(), source_indices.clone()) {
+            Some(ty) => match c.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: _, .. }) => {
+                    generic_slot_holding(c.clone(), ty.clone())
+                }
+                _ => ty.clone(),
+            },
+            std::option::Option::None => c.clone(),
+        }
+    } else {
+        substitute_generics_apply(c.clone(), subst.clone(), source_indices.clone())
+    }
+}
+
 pub fn substitute_generics_apply(
     n: Rc<Node>,
     subst: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
-                match v1_rt::map_get(&subst, tv_id.clone()) {
-                    Some(c) => {
-                        if (type_node_label(c.clone(), source_indices.clone()) == tv_id.clone()) {
-                            n.clone()
-                        } else {
-                            crate::v1_std_core::preserve_outer_optional_cardinality(
-                                n.clone(),
-                                c.clone(),
-                            )
-                        }
-                    }
-                    std::option::Option::None => n.clone(),
-                }
+        if generic_substitution_leaf(n.clone(), source_indices.clone()) {
+            match generic_leaf_replacement(n.clone(), subst.clone(), source_indices.clone()) {
+                Some(ty) => ty.clone(),
+                std::option::Option::None => n.clone(),
             }
-            _ => {
-                let nm = type_node_label(n.clone(), source_indices.clone());
-                let is_bare = ((((n.children.clone().len() as i64) == 0)
-                    && (n.connective.clone() == Connective::NoConnective))
-                    && ((n.params.clone().len() as i64) == 0));
-                if is_bare.clone() {
-                    match v1_rt::map_get(&subst, nm.clone()) {
-                        Some(c) => crate::v1_std_core::preserve_outer_optional_cardinality(
-                            n.clone(),
+        } else {
+            {
+                let new_children = Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result.push(substitute_generics_child(
                             c.clone(),
-                        ),
-                        std::option::Option::None => n.clone(),
+                            subst.clone(),
+                            source_indices.clone(),
+                        ));
                     }
-                } else {
-                    {
-                        let new_children = Rc::new({
-                            let mut __result = Vec::new();
-                            for c in n.children.clone().iter().cloned() {
-                                __result.push(substitute_generics_apply(
-                                    c.clone(),
-                                    subst.clone(),
-                                    source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        });
-                        let new_params = Rc::new({
-                            let mut __result = Vec::new();
-                            for p in n.params.clone().iter().cloned() {
-                                __result.push(substitute_generics_apply(
-                                    p.clone(),
-                                    subst.clone(),
-                                    source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        });
-                        let new_inferred = match n.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: rt, .. }) => {
-                                let new_rt = substitute_generics_apply(
-                                    rt.clone(),
-                                    subst.clone(),
-                                    source_indices.clone(),
-                                );
-                                if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
-                                    n.inferred.clone()
-                                } else {
-                                    Some(Rc::new(InferredNode::Resolved {
-                                        node: new_rt.clone(),
-                                    }))
-                                }
-                            }
-                            _ => n.inferred.clone(),
-                        };
-                        if ((v1_rt::rc_vec_ptr_eq(new_children.clone(), n.children.clone())
-                            && v1_rt::rc_vec_ptr_eq(new_params.clone(), n.params.clone()))
-                            && (new_inferred.clone() == n.inferred.clone()))
-                        {
-                            n.clone()
+                    __result
+                });
+                let new_params = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in n.params.clone().iter().cloned() {
+                        __result.push(substitute_generics_apply(
+                            p.clone(),
+                            subst.clone(),
+                            source_indices.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let new_inferred = match n.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        let new_rt = substitute_generics_apply(
+                            rt.clone(),
+                            subst.clone(),
+                            source_indices.clone(),
+                        );
+                        if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
+                            n.inferred.clone()
                         } else {
-                            Rc::new(Node {
-                                occurrence_identity: Rc::new(
-                                    NodeOccurrenceIdentity::OccurrenceSynthetic,
-                                ),
-                                name: n.name.clone(),
-                                span: n.span.clone(),
-                                ident_span: n.ident_span.clone(),
-                                children: new_children.clone(),
-                                connective: n.connective.clone(),
-                                params: new_params.clone(),
-                                inferred: new_inferred.clone(),
-                                return_cardinality: n.return_cardinality.clone(),
-                                uses: n.uses.clone(),
-                                body: n.body.clone(),
-                                transport: n.transport.clone(),
-                                properties: n.properties.clone(),
-                                type_annotation: n.type_annotation.clone(),
-                                is_self_recursive: n.is_self_recursive.clone(),
-                                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                                match_pattern: n.match_pattern.clone(),
-                                module_item_kind: n.module_item_kind.clone(),
-                                declaration_marker: n.declaration_marker.clone(),
-                                declaration: n.declaration.clone(),
-                                expr_data: n.expr_data.clone(),
-                                ident: None,
-                            })
+                            Some(Rc::new(InferredNode::Resolved {
+                                node: new_rt.clone(),
+                            }))
                         }
                     }
+                    _ => n.inferred.clone(),
+                };
+                if ((v1_rt::rc_vec_ptr_eq(new_children.clone(), n.children.clone())
+                    && v1_rt::rc_vec_ptr_eq(new_params.clone(), n.params.clone()))
+                    && (new_inferred.clone() == n.inferred.clone()))
+                {
+                    n.clone()
+                } else {
+                    Rc::new(Node {
+                        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                        name: n.name.clone(),
+                        span: n.span.clone(),
+                        ident_span: n.ident_span.clone(),
+                        children: new_children.clone(),
+                        connective: n.connective.clone(),
+                        params: new_params.clone(),
+                        inferred: new_inferred.clone(),
+                        return_cardinality: n.return_cardinality.clone(),
+                        uses: n.uses.clone(),
+                        body: n.body.clone(),
+                        transport: n.transport.clone(),
+                        properties: n.properties.clone(),
+                        type_annotation: n.type_annotation.clone(),
+                        is_self_recursive: n.is_self_recursive.clone(),
+                        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                        match_pattern: n.match_pattern.clone(),
+                        module_item_kind: n.module_item_kind.clone(),
+                        declaration_marker: n.declaration_marker.clone(),
+                        declaration: n.declaration.clone(),
+                        expr_data: n.expr_data.clone(),
+                        ident: None,
+                    })
                 }
             }
         }
