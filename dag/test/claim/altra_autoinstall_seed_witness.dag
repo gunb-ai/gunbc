@@ -1266,6 +1266,46 @@ test fn each_transport_states_its_own_console_story() -> Bool {
     && console_stanza_is_answered(stanza: console_stanza_for(strategy: http_boot_strategy))
 }
 
+// THE STANZA'S RENDERED SPELLING, NOT JUST ITS ARM. The witness above checks the semantic arm; this checks
+// the token that reaches a boot log and the digest. They are different guarantees: an implementation that
+// rendered ConsoleAnsweredByUnattended with the suppression spelling kept every arm-level witness green while
+// making the two postures indistinguishable in the only artifact anyone reads after the fact — and a seed
+// that claims its prompts were suppressed when UEFI in fact prints to a console is a false non-interactivity
+// proof. Each transport must say exactly one of the two, and must not say the other.
+test fn the_stanza_token_says_suppression_or_answering_and_never_both() -> Bool {
+  suppressed_transports_render_suppressed() && answered_transports_render_unattended_answer()
+}
+
+fn suppressed_transports_render_suppressed() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: legacy_bios_strategy, target: target_altra, ) {
+    Absent => false
+    Present { value: bios } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Absent => false
+        Present { value: media } =>
+          render_altra_autoinstall_seed(seed: bios).contains("console=suppressed")
+            && render_altra_autoinstall_seed(seed: media).contains("console=suppressed")
+            && !render_altra_autoinstall_seed(seed: bios).contains("console=unattended-answer")
+            && !render_altra_autoinstall_seed(seed: media).contains("console=unattended-answer")
+      }
+  }
+}
+
+fn answered_transports_render_unattended_answer() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: pxe_strategy, target: target_altra, ) {
+    Absent => false
+    Present { value: pxe } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: http_boot_strategy, target: target_altra, ) {
+        Absent => false
+        Present { value: http } =>
+          render_altra_autoinstall_seed(seed: pxe).contains("console=unattended-answer")
+            && render_altra_autoinstall_seed(seed: http).contains("console=unattended-answer")
+            && !render_altra_autoinstall_seed(seed: pxe).contains("console=suppressed")
+            && !render_altra_autoinstall_seed(seed: http).contains("console=suppressed")
+      }
+  }
+}
+
 fn console_stanza_is_suppressed(stanza: NonInteractiveConsoleStanza) -> Bool {
   match stanza {
     ConsoleSuppressed => true
