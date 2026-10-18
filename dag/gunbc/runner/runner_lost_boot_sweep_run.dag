@@ -18,8 +18,7 @@ import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
 import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
 import gunbc.machine_intake.host_capture_envelope { KernelBootId }
-import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_population }
-import gunbc.runner.runner_registration_labels { runner_registration_labels }
+import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, current_service_population, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentServicePopulationRefusal, CurrentPopulationWidthUnresolved, CurrentPopulationHostNotControlled, CurrentPopulationSlotRefused, CurrentPopulationEmpty }
 import gunbc.github_effect_perform {
   ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token_with_key,
   ControllerInstallationToken, list_organization_runners_with,
@@ -29,7 +28,7 @@ import gunbc.runner.runner_jit_deregistration {
   JitRegistration, JitDeregistration, JitRunnerDeregistered, JitDeregistrationRefused, JitDeregistrationRefusal,
   JitSlotExit, SlotLostBoot, ensure_jit_runner_deregistered,
   LostBootSweep, LostBootSweepSelected, LostBootSweepRefused, LostBootSweepRefusal,
-  SweepListingUnreadable, SweepPopulationNotDerived, SweepRegistrationRefused, deregistration_name, lost_boot_sweep, jit_runner_deregistered,
+  SweepListingUnreadable, SweepRegistrationRefused, deregistration_name, lost_boot_sweep, jit_runner_deregistered,
 }
 
 // THE LOST-BOOT SWEEP RUN (fleet-converge mode service_runner_lost_boot_sweep): the production consumer of
@@ -125,10 +124,18 @@ fn sweep_all_deregistered(outcomes: List<JitDeregistration>) -> Bool {
   fold(outcomes, init: true, f: (ok, o) => ok && jit_runner_deregistered(result: o))
 }
 
+fn population_refusal_text(refusal: CurrentServicePopulationRefusal) -> String {
+  match refusal {
+    CurrentPopulationWidthUnresolved { cause: _ } => "lost-boot sweep: the current boot's slot population is not derivable: runner width unresolved"
+    CurrentPopulationHostNotControlled { refusal: _ } => "lost-boot sweep: the current boot's slot population is not derivable: host not controlled"
+    CurrentPopulationSlotRefused { refusal: _ } => "lost-boot sweep: the current boot's slot population is not derivable: a slot was refused"
+    CurrentPopulationEmpty => "lost-boot sweep: the current boot's slot population is empty"
+  }
+}
+
 fn sweep_refusal_text(refusal: LostBootSweepRefusal) -> String {
   match refusal {
     SweepListingUnreadable { reason: _, cause: c } => concat("lost-boot sweep: listing unreadable: ", c as String)
-    SweepPopulationNotDerived { population: _ } => "lost-boot sweep: the current boot's slot population is not derivable"
     SweepRegistrationRefused { listed: l, refusal: _ } => concat("lost-boot sweep: a listed registration was refused: ", l)
   }
 }
@@ -207,7 +214,7 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
             required: gunbai_ci_registration_goal.required_permissions,
             reason: "the lost-boot sweep observes the gunbai-ci App control plane before deregistering stale registrations" as NonEmptyStr,
           )
-          sweep_and_deregister(host: host, standing: standing, current: current, token: token, control_plane: control_plane)
+          sweep_and_deregister(standing: standing, current: current, token: token, control_plane: control_plane)
         }
       }
       match remove_staged_controller_key(key_path: key_path) {
@@ -218,16 +225,17 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
   }
 }
 
-fn sweep_and_deregister(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
+fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
   uses net: Network
 {
   let organization = github_organization_ref()
+  match current_service_population(host: standing, boot: current) {
+    CurrentServicePopulationRefused { refusal } => exit_failure(reason: population_refusal_text(refusal: refusal))
+    CurrentServicePopulationDerived { population } =>
   match lost_boot_sweep(
     organization: organization,
-    host: standing,
-    population: service_slot_population(host: standing, boot: current),
+    population: population,
     authority: sweep_authority(),
-    registration_labels: runner_registration_labels(host: host),
     listing: list_organization_runners_with(token: token, organization: organization.login),
   ) {
     LostBootSweepRefused { refusal } => exit_failure(reason: sweep_refusal_text(refusal: refusal))
@@ -242,5 +250,6 @@ fn sweep_and_deregister(host: HostIdentity, standing: HostControlStanding, curre
       let wrote = write_sweep_receipt(lines: sweep_report_lines(outcomes: outcomes, untouched: untouched))
       if sweep_all_deregistered(outcomes: outcomes) { wrote } else { exit_failure(reason: "lost-boot sweep: at least one selected registration was not deregistered; see the receipt") }
     }
+  }
   }
 }

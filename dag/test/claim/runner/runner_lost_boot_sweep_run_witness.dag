@@ -12,10 +12,11 @@ import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInsta
 import gunbc.host.managed_host { ManagedHost, managed_hosts }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId }
-import gunbc.runner.runner_slot_allocation { RunnerWidthDerived }
-import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_unit, service_slot_population_over, service_slot_population }
+import gunbc.runner.runner_slot_allocation { RunnerWidthDerived, RunnerWidthUnresolved, gunbc_runner_committed_width }
+import test.claim.runner.runner_jit_listed_registration_witness { population_over_host }
+import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_unit, current_service_population, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentPopulationWidthUnresolved }
 import gunbc.runner.runner_jit_deregistration {
-  LostBootSweep, SweepRegistrationRefused, ListedNameOutsideServiceGrammar, LostBootSweepSelected, LostBootSweepRefused, SweepPopulationNotDerived, lost_boot_sweep, deregistration_name, deregistration_app, deregistration_installation,
+  LostBootSweep, SweepRegistrationRefused, ListedNameOutsideServiceGrammar, LostBootSweepSelected, LostBootSweepRefused, lost_boot_sweep, deregistration_name, deregistration_app, deregistration_installation,
   JitDeregistration, JitDeregistrationRefused, DeregistrationAuthorityForAnotherInstallation, SlotLostBoot,
 }
 import gunbc.runner.runner_lost_boot_sweep_run {
@@ -56,11 +57,10 @@ fn run_sweep(m: ManagedHost, authority: GitHubCredentialAuthority, current: Stri
   match sweep_host_standing(host: m.host as String as NonEmptyStr) {
     SweepHostNotManaged { host: _ } => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: "", refusal: ListedNameOutsideServiceGrammar { listed: "" } } }
     SweepHostBound { host: _, standing: s } =>
-      match service_boot_id_of(run: kernel_boot(id: current)) {
-        Present { value: b } =>
-          lost_boot_sweep(organization: org, host: s, population: service_slot_population_over(host: s, width: RunnerWidthDerived { slots: 2 }, registration_labels: supplied_labels, boot: b), authority: authority,
-            registration_labels: supplied_labels, listing: listing(names: names))
-        Absent => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: "", refusal: ListedNameOutsideServiceGrammar { listed: "" } } }
+      match population_over_host(host: s, m: m, width: RunnerWidthDerived { slots: 2 }, labels: supplied_labels, id: current) {
+        CurrentServicePopulationDerived { population: p } =>
+          lost_boot_sweep(organization: org, population: p, authority: authority, listing: listing(names: names))
+        CurrentServicePopulationRefused { refusal: _ } => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: "", refusal: ListedNameOutsideServiceGrammar { listed: "" } } }
       }
   }
 }
@@ -167,11 +167,12 @@ test fn one_receipt_line_per_runner_and_any_refusal_fails_the_run() -> Bool {
 }
 
 // PAIRING OBLIGATION (DESIGN 3): the witnesses above SUPPLY a population; this claim is the last execution
-// of the mode's REAL route -- sweep_host_standing -> service_slot_population (the host's committed width)
-// -> lost_boot_sweep. The host has no derived width today, so the route must end in
-// SweepPopulationNotDerived and select nothing even over a listing that holds a stale name. RED: a sweep
-// that selects when the population is underivable fails this.
-test fn the_real_route_refuses_when_the_slot_population_is_not_derivable() -> Bool {
+// of the mode's REAL route -- sweep_host_standing -> current_service_population (the host's committed
+// width). The sealed population is refused at construction when the width cannot be derived, so a sweep
+// cannot be called at all; the claim asserts the route's standing equals the independent
+// gunbc_runner_committed_width reading, whichever arm the host is in today. RED: a route that yields a
+// population while the width is unresolved (or refuses a derived one) fails this.
+test fn the_real_route_population_follows_the_committed_width() -> Bool {
   match the_host() {
     Absent => false
     Present { value: m } =>
@@ -181,12 +182,17 @@ test fn the_real_route_refuses_when_the_slot_population_is_not_derivable() -> Bo
           match service_boot_id_of(run: kernel_boot(id: "new")) {
             Absent => false
             Present { value: b } =>
-              match lost_boot_sweep(organization: org, host: st, population: service_slot_population(host: st, boot: b),
-                authority: sweep_authority(), registration_labels: supplied_labels,
-                listing: listing(names: [unit(m: m, id: "old", index: 0)])) {
-                LostBootSweepRefused { refusal: SweepPopulationNotDerived { population: _ } } => true
-                LostBootSweepRefused { refusal: _ } => false
-                LostBootSweepSelected { subjects: _, untouched: _ } => false
+              match gunbc_runner_committed_width(host: m.host) {
+                RunnerWidthUnresolved { cause: _ } =>
+                  match current_service_population(host: st, boot: b) {
+                    CurrentServicePopulationRefused { refusal: CurrentPopulationWidthUnresolved { cause: _ } } => true
+                    _ => false
+                  }
+                RunnerWidthDerived { slots: n } =>
+                  match current_service_population(host: st, boot: b) {
+                    CurrentServicePopulationDerived { population: p } => count(p.units) == n
+                    _ => false
+                  }
               }
           }
       }

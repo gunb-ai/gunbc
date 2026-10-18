@@ -14,13 +14,9 @@ import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
 }
-import gunbc.runner.jit_registration_subject {
-  JitRegistrationSubject, JitRegistrationSubjectRefusal, JitRegistrationSubjectProven, JitRegistrationSubjectRefused, SubjectHostUnitSlotRefused, host_unit_registration_subject,
-}
-import gunbc.host.host_control_route { HostControlStanding, HostControlled, HostControlRefused }
-import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution }
+import gunbc.runner.jit_registration_subject { JitRegistrationSubject }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlotRefusal, HostUnitSlotHostNotControlled, RecoveredServiceSlot, ServiceBootId, ServiceSlotPopulation, service_slot_member_units, service_slot_name_parse, service_slot_selected_workflow, host_unit_slot_over,
+  CurrentServicePopulation, ServiceBootId, current_population_has_unit, service_slot_name_parse, service_slot_unit_spelled,
 }
 import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused, authority_installation,
@@ -120,23 +116,23 @@ fn deregistration_installation(subject: JitDeregistrationSubject) -> GitHubAppIn
 
 // THE LISTED NAME, RE-DERIVED FROM MODELED STATE. A boot that was lost leaves registrations in the
 // organization and no dispatch value to mint from. The name GitHub lists is evidence, not authority: it
-// is parsed through the service-slot grammar, the slot it names is REBUILT with the same fold that mints
-// it (host_unit_slot_over a RecoveredServiceSlot), and the name is admitted only if the rebuilt unit name
-// equals the listed name EXACTLY -- so a forged or near-miss name (leading zeros, another host, trailing
-// text) has no standing. The App and installation are the authority's.
+// is parsed through the service-slot grammar, its unit name is REBUILT with the same spelling the fold
+// mints with (service_slot_unit_spelled -- no HostUnitSlot is built, so nothing launch- or mint-capable
+// exists for a recovered name), and the name is admitted only if the rebuilt name equals the listed
+// name EXACTLY, so a forged or near-miss name (leading zeros, another host, trailing text) has no
+// standing. The host is the sealed population's, so a sweep cannot be pointed at another host's names;
+// the App and installation are the authority's.
 type ListedRegistrationRefusal
   = ListedNameOutsideServiceGrammar { listed: String }
   | ListedNameDoesNotRoundTrip { listed: String, rebuilt: String }
-  | ListedSlotRefused { refusal: HostUnitSlotRefusal }
-  | ListedSubjectRefused { refusal: JitRegistrationSubjectRefusal }
   | ListedAuthorityNamesNoInstallation
 
 // WHAT A CANONICAL LISTED NAME IS. The round trip proves spelling, not that any boot minted it, and no
 // mint receipt exists for a listed name, so the only fact a name can have is MEMBERSHIP: it is one of the
-// units of the CURRENT service-slot population (the admitted boot AND an index inside the bound slot set,
-// service_slot_member_units). Every other canonical name -- another boot, or the current boot with an
-// index nobody was assigned -- is a reserved-namespace recovery: gunbc-service-<host>-* is the fleet's
-// reserved runner-name namespace, so such a name is fleet-owned and deletable.
+// units of the sealed CURRENT population (the admitted boot AND an index inside the bound slot set).
+// Every other canonical name -- another boot, or the current boot with an index nobody was assigned --
+// is a reserved-namespace recovery: gunbc-service-<host>-* is the fleet's reserved runner-name
+// namespace, so such a name is fleet-owned and deletable.
 type ListedRegistrationStanding
   = ListedCurrentPopulationMember
   | ListedRecoveredReserved { subject: JitDeregistrationSubject }
@@ -144,46 +140,32 @@ type ListedRegistrationStanding
 
 fn listed_deregistration_subject_of(
   organization: GitHubOrganizationRef,
-  host: HostControlStanding,
-  members: List<NonEmptyStr>,
+  population: CurrentServicePopulation,
   listed: String,
   authority: GitHubCredentialAuthority,
-  registration_labels: RunnerRegistrationLabelsResolution,
 ) -> ListedRegistrationStanding admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "sweep_class"),
-  decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "reg_with"),
+  decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "reg"),
 ] {
-  match host {
-    HostControlRefused { refusal: r } => ListedRegistrationRefused { refusal: ListedSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: r } } }
-    HostControlled { controlled: b } =>
-    match service_slot_name_parse(host: b.host, name: listed) {
-      Absent => ListedRegistrationRefused { refusal: ListedNameOutsideServiceGrammar { listed: listed } }
-      Present { value: parsed } =>
-        match host_unit_registration_subject(standing: host_unit_slot_over(
-          host: host,
-          purpose: RecoveredServiceSlot { name: parsed },
-          workflow: service_slot_selected_workflow(),
-          registration_labels: registration_labels,
-        )) {
-          JitRegistrationSubjectRefused { refusal: SubjectHostUnitSlotRefused { refusal: r } } => ListedRegistrationRefused { refusal: ListedSlotRefused { refusal: r } }
-          JitRegistrationSubjectRefused { refusal: other } => ListedRegistrationRefused { refusal: ListedSubjectRefused { refusal: other } }
-          JitRegistrationSubjectProven { subject: subject } =>
-            if (subject.name.value as String) != listed {
-              ListedRegistrationRefused { refusal: ListedNameDoesNotRoundTrip { listed: listed, rebuilt: subject.name.value as String } }
-            } else if members |> any(m => (m as String) == listed) {
-              ListedCurrentPopulationMember
-            } else {
-              match authority_installation(authority: authority) {
-                Absent => ListedRegistrationRefused { refusal: ListedAuthorityNamesNoInstallation }
-                Present { value: held } =>
-                  ListedRecoveredReserved {
-                    subject: RecoveredReservedServiceRegistration {
-                      recovered: RecoveredReservedRegistration { organization: organization, name: subject.name, app: held.app, installation: held.installation },
-                    },
-                  }
-              }
+  match service_slot_name_parse(host: population.host.host, name: listed) {
+    Absent => ListedRegistrationRefused { refusal: ListedNameOutsideServiceGrammar { listed: listed } }
+    Present { value: parsed } => {
+      let rebuilt = service_slot_unit_spelled(host: population.host.host, boot_id: parsed.boot_id, index: parsed.index)
+      if (rebuilt as String) != listed {
+        ListedRegistrationRefused { refusal: ListedNameDoesNotRoundTrip { listed: listed, rebuilt: rebuilt as String } }
+      } else if current_population_has_unit(population: population, unit: listed) {
+        ListedCurrentPopulationMember
+      } else {
+        match authority_installation(authority: authority) {
+          Absent => ListedRegistrationRefused { refusal: ListedAuthorityNamesNoInstallation }
+          Present { value: held } =>
+            ListedRecoveredReserved {
+              subject: RecoveredReservedServiceRegistration {
+                recovered: RecoveredReservedRegistration { organization: organization, name: JitRunnerName { value: rebuilt }, app: held.app, installation: held.installation },
+              },
             }
         }
+      }
     }
   }
 }
@@ -234,29 +216,28 @@ fn jit_runner_listing_of_read(name: JitRunnerName, read: OrganizationRunnerListR
 // returned as deregistration subjects, never as JitRegistration. Names outside the grammar, and names
 // that parse but do not round-trip, are untouched (typed and countable, not dropped); the current
 // population's members are untouched. A page shorter than total_count refuses, as in
-// jit_runner_listing_of: a runner on an unread page is not absent. A POPULATION THAT CANNOT BE DERIVED
-// REFUSES (width unresolved, host not controlled, any slot refused -- mtcollins1 today, with no
-// offer): "no population" must never read as "nothing is a member", which would select every
-// current-boot runner. A host or authority that refuses to rebuild a grammar name refuses the sweep.
+// jit_runner_listing_of: a runner on an unread page is not absent. The population is a sealed value
+// that cannot be built when underivable or empty (mtcollins1 today, with no offer), so "no population"
+// can never read as "nothing is a member" and select every current-boot runner. An authority that
+// names no installation refuses the sweep.
 type LostBootSweep
   = LostBootSweepSelected { subjects: List<JitDeregistrationSubject>, untouched: List<String> }
   | LostBootSweepRefused { refusal: LostBootSweepRefusal }
 
 type LostBootSweepRefusal
   = SweepListingUnreadable { reason: JitListingUnreadableReason, cause: NonEmptyStr }
-  | SweepPopulationNotDerived { population: ServiceSlotPopulation }
   | SweepRegistrationRefused { listed: String, refusal: ListedRegistrationRefusal }
 
 // CONSUMED BY fleet-converge mode service_runner_lost_boot_sweep (gunbc.runner.runner_lost_boot_sweep_run
 // lost_boot_sweep_wet), which feeds each selected subject to ensure_jit_runner_deregistered with
-// SlotLostBoot (success = absent from the listing). The population is the caller's
-// service_slot_population over the current admitted boot.
+// SlotLostBoot (success = absent from the listing). The population is the sealed
+// current_service_population over the admitted boot: it carries the host (so there is no separate
+// host argument to disagree with it) and is refused at construction when it cannot be derived or is
+// empty, so a sweep cannot be called over "no population".
 fn lost_boot_sweep(
   organization: GitHubOrganizationRef,
-  host: HostControlStanding,
-  population: ServiceSlotPopulation,
+  population: CurrentServicePopulation,
   authority: GitHubCredentialAuthority,
-  registration_labels: RunnerRegistrationLabelsResolution,
   listing: RestResult<OrganizationRunnerListWire>,
 ) -> LostBootSweep {
   match listing {
@@ -272,24 +253,20 @@ fn lost_boot_sweep(
           cause: join(["runner listing returned ", to_string(count(body.runners)), " of total_count ", to_string(body.total_count)], "") as NonEmptyStr,
         } }
       } else {
-        match service_slot_member_units(population: population) {
-          Absent => LostBootSweepRefused { refusal: SweepPopulationNotDerived { population: population } }
-          Present { value: members } =>
-            sweep_over(organization: organization, host: host, members: members, authority: authority, registration_labels: registration_labels, runners: body.runners)
-        }
+        sweep_over(organization: organization, population: population, authority: authority, runners: body.runners)
       }
   }
 }
 
 fn sweep_over(
   organization: GitHubOrganizationRef,
-  host: HostControlStanding,
-  members: List<NonEmptyStr>,
+  population: CurrentServicePopulation,
   authority: GitHubCredentialAuthority,
-  registration_labels: RunnerRegistrationLabelsResolution,
   runners: List<OrganizationRunnerWire>,
-) -> LostBootSweep {
-  let classes = map(runners, r => sweep_class(organization: organization, host: host, members: members, authority: authority, registration_labels: registration_labels, listed: r.name))
+) -> LostBootSweep admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "lost_boot_sweep"),
+] {
+  let classes = map(runners, r => sweep_class(organization: organization, population: population, authority: authority, listed: r.name))
   match filter(classes, c => match c { SweepClassRefused { listed: _, refusal: _ } => true _ => false }).first() {
     Present { value: SweepClassRefused { listed: l, refusal: f } } => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: l, refusal: f } }
     _ =>
@@ -307,13 +284,13 @@ type SweepClass
 
 fn sweep_class(
   organization: GitHubOrganizationRef,
-  host: HostControlStanding,
-  members: List<NonEmptyStr>,
+  population: CurrentServicePopulation,
   authority: GitHubCredentialAuthority,
-  registration_labels: RunnerRegistrationLabelsResolution,
   listed: String,
-) -> SweepClass {
-  match listed_deregistration_subject_of(organization: organization, host: host, members: members, listed: listed, authority: authority, registration_labels: registration_labels) {
+) -> SweepClass admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "sweep_over"),
+] {
+  match listed_deregistration_subject_of(organization: organization, population: population, listed: listed, authority: authority) {
     ListedCurrentPopulationMember => SweepClassUntouched { listed: listed }
     ListedRecoveredReserved { subject: g } => SweepClassSelected { subject: g }
     ListedRegistrationRefused { refusal: ListedNameOutsideServiceGrammar { listed: _ } } => SweepClassUntouched { listed: listed }
