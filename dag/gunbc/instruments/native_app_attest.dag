@@ -22,6 +22,10 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_client_data,
   sample_team_identifier, sample_bundle_identifier, sample_assertion_counter,
 }
+import gunbc.instruments.app_attest_sample_rows {
+  AppAttestSample, OwedAttestationVerdict, OwesAttestationVerified, OwesAttestationRefusedWith, OwedAssertionVerdict, OwesAssertionAuthentic, OwesAssertionRefusedWith,
+  ios_14_4_sample, sample_app_id, sample_expectation, assertion_expectation, assertion_expectation_of, no_assertion_expectation,
+}
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -53,52 +57,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // the fold owes is to carry the counter out unaltered, which the assertion counter case asserts
 // against the corpus's published value.
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
-
-// ONE ROW PER APPLE OBJECT PAIR, so a second capture is another row and not another program. The
-// row carries the object's bytes (from its own extdeps module, never transcribed here), the
-// caller's expectation for it, and THE VERDICT THE FOLD OWES that object -- a refusal arm for the
-// 2021 sample, a success for a capture carrying the extension steps. Every case identity is
-// prefixed with the row's name, so the roster join names which object a failure is about.
-//
-// PLANNED ROW, NOT YET AUTHORABLE: "operator_device_ios_26_6_2" -- an attestation and assertions
-// produced by apps/approve-ios on the operator's iPhone (iOS 26.6.2) once gunbc#12000 lands,
-// recorded as an OBSERVED ARTIFACT in its own extdeps.apple module with its provenance (device,
-// OS version, app bundle, capture date), never transcribed from a message. Its expected verdicts are
-// AttestationVerified and AssertionAuthentic; it is the whole-fold positive control the 14.4 row
-// cannot be.
-type AppAttestSample {
-  name: String
-  attestation: List<Int>
-  assertion: List<Int>
-  expectation: AttestationExpectation
-  owed_attestation: OwedAttestationVerdict
-  owed_assertion: OwedAssertionVerdict
-  published_assertion_counter: Int
-}
-
-// WHAT A SAMPLE ROW OWES, AS A CLOSED SUM OVER THE FOLD'S OWN RESULT TYPES (review 71337): a row owes
-// either the success arm or one named refusal arm of extdeps.apple.app_attest AttestationRefusal /
-// AssertionRefusal. The owed refusal is carried AS that refusal type and compared by constructor
-// in the matches below -- never as text -- so a reworded detail string cannot move a verdict.
-type OwedAttestationVerdict
-  = OwesAttestationVerified
-  | OwesAttestationRefusedWith { refusal: AttestationRefusal }
-
-type OwedAssertionVerdict
-  = OwesAssertionAuthentic
-  | OwesAssertionRefusedWith { refusal: AssertionRefusal }
-
-fn ios_14_4_sample() -> AppAttestSample {
-  AppAttestSample {
-    name: "ios_14_4",
-    attestation: sample_attestation_octets,
-    assertion: sample_assertion_octets,
-    expectation: sample_expectation(),
-    owed_attestation: OwesAttestationRefusedWith { refusal: AttestationValidationCategoryAbsent },
-    owed_assertion: OwesAssertionRefusedWith { refusal: AssertionValidationCategoryAbsent },
-    published_assertion_counter: sample_assertion_counter,
-  }
-}
 
 fn app_attest_samples() -> List<AppAttestSample> {
   [ios_14_4_sample()]
@@ -228,22 +186,6 @@ fn counter_refusal_is(n: Int, got: AttestationRefusal?) -> Bool {
   }
 }
 
-fn sample_app_id() -> NonEmptyStr {
-  app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier)
-}
-
-fn sample_expectation() -> AttestationExpectation {
-  AttestationExpectation {
-    key_id: sample_key_id_b64 as AttestKeyId,
-    client_data: sample_client_data,
-    app_id: sample_app_id(),
-    environment: AppAttestDevelopment,
-    observed_at: "2021-01-23T12:13:35Z",
-    admitted_validation_categories: [2, 3, 4],
-    expected_bundle_version: "1" as NonEmptyStr,
-  }
-}
-
 fn with_client_data(e: AttestationExpectation, c: NonEmptyStr) -> AttestationExpectation {
   AttestationExpectation { key_id: e.key_id, client_data: c, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }
 }
@@ -348,30 +290,6 @@ fn bool_verdict(v: Bool?) -> String {
 
 // The assertion's key is the attestation's leaf key rendered by base64_of, so the
 // attestation -> assertion join is one chain here as in the interpreted witness.
-fn assertion_expectation(s: AppAttestSample, d: AttestationDecoded) -> AssertionExpectation? {
-  match base64_of(octets: d.leaf.tbs.spki_public_key, url_safe: true) {
-    Absent => no_assertion_expectation()
-    Present { value: point } => assertion_expectation_of(e: AssertionExpectation {
-      key_id: s.expectation.key_id,
-      public_key_point_b64url: point as NonEmptyStr,
-      client_data: s.expectation.client_data,
-      app_id: s.expectation.app_id,
-      admitted_validation_categories: s.expectation.admitted_validation_categories,
-      expected_bundle_version: s.expectation.expected_bundle_version,
-    })
-  }
-}
-
-// Optional built through typed helpers, not Present/Absent literals in arms (the emit path does
-// not unify those; the same shape gunbc.instruments.native_crypto_vectors verified_as uses).
-fn assertion_expectation_of(e: AssertionExpectation) -> AssertionExpectation? {
-  Present { value: e }
-}
-
-fn no_assertion_expectation() -> AssertionExpectation? {
-  Absent
-}
-
 fn assertion_with(e: AssertionExpectation, client_data: NonEmptyStr, app_id: NonEmptyStr) -> AssertionExpectation {
   AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: client_data, app_id: app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }
 }
