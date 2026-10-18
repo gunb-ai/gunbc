@@ -21,7 +21,7 @@ import extdeps.bmc.ipmi {
   InBandHostTransportChannel, NotInBandHostTransport, InBandHostTransport,
   OpenIpmiDriver, BmcKernelDriver, LanPlusTransport, LanTransport,
   IpmiDeviceIdentity, IpmiDeviceNode, IpmiDevIpmiNode, IpmiImbDeviceNode,
-  ipmi_device_nodes_are_same_device, ipmi_device_node_canonical_text,
+  ipmi_device_node_canonical_text,
 }
 // THE RECEIPT SHELF, NOT THE VENDOR MODULE (section 3). What the firmware DID when asked to write the
 // published password is a measurement this repository took, so it is read from the observing layer's own
@@ -194,7 +194,7 @@ type InBandIpmiPresenceVerdict
   | RecoveryKernelModulesMissing { missing: List<LinuxKernelModuleName> }
 
 fn in_band_ipmi_presence_verdict(presence: InBandIpmiPresence) -> InBandIpmiPresenceVerdict {
-  if ipmi_device_nodes_are_same_device(a: presence.device_node, b: recovery_ipmi_device_node) == false {
+  if presence.device_node != recovery_ipmi_device_node {
     // BOTH SIDES ARE KEPT. "It is not the node we read the route through" is unactionable without the
     // node that WAS found: a reported /dev/imb means a different driver is loaded, which is a different
     // fix from a missing one.
@@ -485,7 +485,7 @@ fn in_band_channel_admits(
           PrivilegeReadBackIsNotAdministrator { reported: _ } => false
         })
         && observation.rescue_host_address == a
-        && ipmi_device_nodes_are_same_device(a: observation.device_node, b: ipmi.device_node)
+        && observation.device_node == ipmi.device_node
         && observation.kernel_modules |> all(m => ipmi.kernel_modules |> any(h => h == m))
         && ipmi.kernel_modules |> all(m => observation.kernel_modules |> any(h => h == m))
     RescueHostUnreachable { cause: _ } => false
@@ -1892,8 +1892,8 @@ test fn a_wrong_device_node_is_refused_as_the_node_it_is_and_names_both_nodes() 
     RescueHostUnreachable { cause: RescueHostReachedAtTheWrongDeviceNode { address: a, expected: e, reported: r } } =>
       a == recovery_rescue_host_address()
         // BOTH NODES ARE CARRIED: "not the one we read through" is unactionable without the one found.
-        && ipmi_device_nodes_are_same_device(a: e, b: recovery_ipmi_device_node)
-        && ipmi_device_nodes_are_same_device(a: r, b: IpmiImbDeviceNode)
+        && e == recovery_ipmi_device_node
+        && r == IpmiImbDeviceNode
         // and the module refusal is NOT the one produced, which is the defect this replaces
         && match recovery_host_refusal(reachability: at_the_wrong_node) {
              Present { value: RescueHostReachedWithoutInBandIpmi { address: _, missing_modules: m } } =>
@@ -2931,11 +2931,11 @@ test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool 
 // shows (02_inband_channel.txt: `crw------- 1 root root 235, 0 ... /dev/ipmi0`), so the derivation has an
 // outside referent rather than being the definition of itself.
 test fn a_device_node_is_the_same_device_only_when_the_arm_and_the_number_match() -> Bool {
-  ipmi_device_nodes_are_same_device(a: IpmiDevIpmiNode { device_number: 0 }, b: IpmiDevIpmiNode { device_number: 0 })
+  IpmiDevIpmiNode { device_number: 0 } == IpmiDevIpmiNode { device_number: 0 }
     // /dev/ipmi1 is a different controller's queue on a multi-controller host
-    && ipmi_device_nodes_are_same_device(a: IpmiDevIpmiNode { device_number: 0 }, b: IpmiDevIpmiNode { device_number: 1 }) == false
+    && (IpmiDevIpmiNode { device_number: 0 } == IpmiDevIpmiNode { device_number: 1 }) == false
     // and the IMB device is not an IPMI queue at all
-    && ipmi_device_nodes_are_same_device(a: IpmiDevIpmiNode { device_number: 0 }, b: IpmiImbDeviceNode) == false
+    && (IpmiDevIpmiNode { device_number: 0 } == IpmiImbDeviceNode) == false
     && ipmi_device_node_canonical_text(node: recovery_ipmi_device_node) == "/dev/ipmi0"
     && ipmi_device_node_canonical_text(node: IpmiImbDeviceNode) == "/dev/imb"
 }

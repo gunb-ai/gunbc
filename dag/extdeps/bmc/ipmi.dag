@@ -627,24 +627,6 @@ fn ipmi_device_node_canonical_text(node: IpmiDeviceNode) -> String {
   }
 }
 
-// THE ONE THING A DEVICE NODE CAN BE WRONG ABOUT WITHOUT FABRICATING A PATH: which number. /dev/ipmi1
-// exists on a multi-controller host and is a different controller's queue, so equality on this sum is
-// total and cheap; there is no arm for "a path someone typed", which is the spelling this replaces.
-fn ipmi_device_nodes_are_same_device(a: IpmiDeviceNode, b: IpmiDeviceNode) -> Bool {
-  match a {
-    IpmiDevIpmiNode { device_number: an } =>
-      match b {
-        IpmiDevIpmiNode { device_number: bn } => an == bn
-        IpmiImbDeviceNode => false
-      }
-    IpmiImbDeviceNode =>
-      match b {
-        IpmiDevIpmiNode { device_number: _ } => false
-        IpmiImbDeviceNode => true
-      }
-  }
-}
-
 // THE ANSWER TO `ipmitool mc info`, TYPED ─────────────────────────────────────────────────────
 //
 // WHY THIS EXISTS ALONGSIDE extdeps.bmc.capability's BmcFirmwareVersion RATHER THAN REPLACING IT.
