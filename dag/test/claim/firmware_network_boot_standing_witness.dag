@@ -624,6 +624,109 @@ fn attempt_carries_the_fleet_route(blocker: PreparationBlockingOn) -> Bool {
   }
 }
 
+// MACHINE NAMES NEVER SELECT (operator policy), and this module is where a name could sneak in: the
+// attempt record carries `unit_label`, the one string in the fold's output. Nothing in the module
+// branches on it -- but "nothing branches on it" is exactly the kind of claim that survives a
+// refactor as a comment. So the property is pinned two ways: two attempts that differ ONLY in the
+// label must agree on every field that decides what the fleet does next, and two attempts that share
+// a label but differ in blocker must NOT agree on the route. Without this, replacing `unit_label`
+// with a constant, or reading it into route selection, would leave all 40 witnesses green -- the
+// first would attribute an mtcollins1 boot to owen while every decision-relevant field still read
+// correct.
+test fn a_machine_name_never_selects_the_route_and_is_never_defaulted() -> Bool {
+  // Same everything except the name: the name must not move the route, the reset, the control
+  // standing, or the DHCP.
+  labels_are_inert_in_selection(
+    blocker: NetworkBootOptionAbsent,
+    first: "mtcollins1",
+    second: "owen",
+  )
+    && labels_are_inert_in_selection(
+      blocker: SecureBootBlocksUnsignedChainloader,
+      first: "mtjade1",
+      second: "board-5",
+    )
+    // ...and the label is carried VERBATIM, never defaulted to a plausible host. This is the half
+    // that makes the first half mean anything: if both attempts silently carried "mtcollins1", they
+    // would agree on every field AND lose the finding.
+    && the_two_labels_arrive_unchanged()
+    // Same name, different blocker -> different route. The blocker selects; the name never does.
+    && same_name_different_blocker_changes_the_route()
+}
+
+fn labels_are_inert_in_selection(
+  blocker: PreparationBlockingOn,
+  first: NonEmptyStr,
+  second: NonEmptyStr,
+) -> Bool {
+  match network_boot_attempt(
+    blocker: blocker,
+    boot_control: BootControlUnobserved,
+    reset_observed_at: witness_epoch,
+    resulting_dhcp: DhcpOfferObserved { offer_ref: "synthetic-offer" },
+    unit_label: first,
+  ) {
+    AttemptConstructed { attempt: left } =>
+      match network_boot_attempt(
+        blocker: blocker,
+        boot_control: BootControlUnobserved,
+        reset_observed_at: witness_epoch,
+        resulting_dhcp: DhcpOfferObserved { offer_ref: "synthetic-offer" },
+        unit_label: second,
+      ) {
+        AttemptConstructed { attempt: right } =>
+          left.route == right.route
+            && left.reset_observed_at == right.reset_observed_at
+            && left.boot_control == right.boot_control
+            && left.resulting_dhcp == right.resulting_dhcp
+            // The two labels must be observably different, or the agreement above is vacuous.
+            && !(left.unit_label == right.unit_label)
+        AttemptBlockerUncataloged { blocker: _ } => false
+      }
+    AttemptBlockerUncataloged { blocker: _ } => false
+  }
+}
+
+fn the_two_labels_arrive_unchanged() -> Bool {
+  match network_boot_attempt(
+    blocker: NoInterfaceCarriesPxe,
+    boot_control: BootControlUnobserved,
+    reset_observed_at: witness_epoch,
+    resulting_dhcp: DhcpOfferObserved { offer_ref: "synthetic-offer" },
+    unit_label: "mtcollins1",
+  ) {
+    AttemptConstructed { attempt: built } => built.unit_label == "mtcollins1"
+    AttemptBlockerUncataloged { blocker: _ } => false
+  }
+}
+
+fn same_name_different_blocker_changes_the_route() -> Bool {
+  match network_boot_attempt(
+    blocker: NetworkBootOptionAbsent,
+    boot_control: BootControlUnobserved,
+    reset_observed_at: witness_epoch,
+    resulting_dhcp: DhcpOfferObserved { offer_ref: "synthetic-offer" },
+    unit_label: "mtcollins1",
+  ) {
+    AttemptConstructed { attempt: authoring } =>
+      match network_boot_attempt(
+        // The SAME name, a different blocker: a redirect, not a persistent write. If a name ever
+        // selected, these two would agree and the attempt would drive the wrong mechanism.
+        blocker: NetworkBootOptionNotSelected,
+        boot_control: BootControlUnobserved,
+        reset_observed_at: witness_epoch,
+        resulting_dhcp: DhcpOfferObserved { offer_ref: "synthetic-offer" },
+        unit_label: "mtcollins1",
+      ) {
+        AttemptConstructed { attempt: redirect } =>
+          !(authoring.route == redirect.route)
+            && authoring.unit_label == redirect.unit_label
+        AttemptBlockerUncataloged { blocker: _ } => false
+      }
+    AttemptBlockerUncataloged { blocker: _ } => false
+  }
+}
+
 fn boot_control_is_the_imported_standing(control: BootControlReceiptStanding) -> Bool {
   match control {
     BootControlUnobserved => true
