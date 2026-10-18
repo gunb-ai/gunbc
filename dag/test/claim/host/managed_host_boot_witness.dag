@@ -91,6 +91,7 @@ import gunbc.host.managed_host_boot {
   VirtualMediaBootSelectionAdmitted,
   VirtualMediaBootSelectionRefused,
 }
+import std.decl_ref { decl_ref }
 
 
 // THE EVIDENCE AN OPERATOR BRINGS FOR A FIXTURE MACHINE, keyed by its own endpoint. A boot resolves the
@@ -106,7 +107,20 @@ fn fixture_build_reading_evidence() -> EvidenceRef {
   }
 }
 
-fn fixture_evidence_at(h: ManagedHost, firmware: BmcFirmwareReleaseIdentity) -> MegaRacOperationEvidence {
+// THE SANCTIONED EVIDENCE HELPER, SEALED TO ITS CLAIM ROSTER. It sits between the witness claims and
+// the sealed mint megarac_operation_evidence_fixture_for, so it needs its own roster: sealing the
+// mint alone would push every claim through an unsealed door. An unrostered caller -- forged or
+// accidental -- is refused HERE, and that refusal is what the indirect forged probe measures beside
+// the admitted control.
+fn fixture_evidence_at(h: ManagedHost, firmware: BmcFirmwareReleaseIdentity) -> MegaRacOperationEvidence
+  admit_callers: [
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_bound_host_with_no_boot_selection_is_refused"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_build_reading_for_another_controller_grounds_no_capability_row"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_reflash_resolves_the_new_builds_row_or_refuses_with_no_per_unit_edit"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_0_45_3_row_is_attested_and_never_rendered_as_machine_read"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_handoff_consumes_the_row_the_boot_was_admitted_on"),
+  ]
+{
   match h.access {
     BmcAccessObserved { observation: o } => megarac_operation_evidence_fixture_for(
       endpoint: o.endpoint,
