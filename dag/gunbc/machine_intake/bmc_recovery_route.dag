@@ -2157,6 +2157,8 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
     ) {
       ReadbackInconclusive { detail: _ } => true
       FactoryCredentialActiveAwaitingChange { message_id: _, evidence: _, observed_at: _ } => false
+      // no mint: this fold reads a body, it does not report a rejected credential
+      CredentialNotAccepted { evidence: _, observed_at: _ } => false
     })
     // and the hand-off refuses such a carrier too, whether the parse produced it or a caller did
     && (match recovery_readback_proves_reset(
