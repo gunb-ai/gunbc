@@ -3495,6 +3495,11 @@ fn admit_candidate_manifest(
     Ok(admitted)
 }
 
+/// THE DECLARED ROUND LIMIT. A partition-moving change converges in a handful of generations
+/// (install, rebuild, confirm); a loop past this bound is a cycle or an authority that disagrees with
+/// its projection, and it REFUSES with the per-generation record rather than running on.
+const REGEN_CONVERGENCE_MAX_GENERATIONS: usize = 6;
+
 fn regen_convergence_journal_path(workspace: &Path) -> PathBuf {
     workspace.join(REGEN_CONVERGENCE_JOURNAL_REL)
 }
@@ -3629,6 +3634,25 @@ fn journal_stage0_paths_for_subject(
     basenames: &[String],
     subject: &RegenConvergenceCheckpointSubject,
 ) -> Result<(), String> {
+    let entries = basenames
+        .iter()
+        .map(|basename| {
+            (
+                format!("src/v1/stage0/src/{basename}"),
+                stage0_src.join(basename),
+            )
+        })
+        .collect::<Vec<_>>();
+    journal_paths_for_subject(workspace, &entries, subject)
+}
+
+/// THE CHECKPOINT IS KEYED BY WORKSPACE-RELATIVE PATH, so a partition boundary file (outside the
+/// seed's `src/`) is restored by the same journal a mirror is: one rollback, not a second one beside it.
+fn journal_paths_for_subject(
+    workspace: &Path,
+    paths: &[(String, PathBuf)],
+    subject: &RegenConvergenceCheckpointSubject,
+) -> Result<(), String> {
     let root = regen_convergence_journal_path(workspace);
     fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
     let manifest_path = root.join("journal.json");
@@ -3674,8 +3698,8 @@ fn journal_stage0_paths_for_subject(
             }
         }
     }
-    for basename in basenames {
-        let relative_path = format!("src/v1/stage0/src/{basename}");
+    for (relative_path, source) in paths {
+        let relative_path = relative_path.clone();
         if journal
             .entries
             .iter()
@@ -3683,7 +3707,7 @@ fn journal_stage0_paths_for_subject(
         {
             continue;
         }
-        let source = stage0_src.join(basename);
+        let source = source.clone();
         let backup_name = format!("surface-{}.bak", journal.entries.len());
         let pre_stage_state = if source.is_file() {
             fs::copy(&source, root.join(&backup_name))
@@ -4311,6 +4335,9 @@ struct PartitionRebuildActuation {
     /// build by construction (e.g. a `#[cfg(test)]`-gated module), so the correct package
     /// closure IS the empty set and the build runs purely as verification of that claim.
     release_scope_empty: bool,
+    /// The decision is the positively modeled partition-generation class (the partition mirror
+    /// moved). Whether that move is EXPLAINED is derived by the host, never read from here.
+    partition_generation_move: bool,
 }
 
 type ModelValue = crate::v1_interpreter::Value;
@@ -4423,13 +4450,124 @@ fn partition_rebuild_actuation(
             ))
         }
     };
+    let partition_generation_move =
+        match call("stage0_partition_rebuild_is_partition_generation_move_today")? {
+            ModelValue::Bool(value) => value,
+            other => {
+                return Err(format!(
+                    "refusal: stage0_partition_rebuild_is_partition_generation_move_today returned {} instead of Bool",
+                    other.type_label_public()
+                ))
+            }
+        };
     Ok(PartitionRebuildActuation {
         actuatable,
         package_closure,
         excluded_packages,
         decision_line,
         release_scope_empty,
+        partition_generation_move,
     })
+}
+
+/// THE DIFF PATH OF THE PARTITION AUTHORITY THE ROWS ARE READ FROM: module
+/// `gunbc.stage0.stage0_crate_partition_generated` under the name-to-path rule, the same file
+/// `emitted_tree_packages` decodes. Not a second roster: the path is the module's storage.
+const PARTITION_AUTHORITY_DAG_PATH: &str = "dag/gunbc/stage0/stage0_crate_partition_generated.dag";
+
+/// A partition move is ADMITTED only when it is DERIVED, never asserted (no flag, no input, no
+/// allow-list). Two conjuncts, both read from the tree and the change, neither from the mirror:
+///   1. the partition authority the rows are decoded from is in THIS change's own diff, so the
+///      mirror moved because its authority moved and not because something drifted;
+///   2. the boundary files the move needs are RENDERED FROM THE CANDIDATE TREE'S ROWS, not the
+///      predecessor's compiled-in ones.
+/// The converse equality (the built seed's own compiled-in rows project to these same bytes) is
+/// checked after the build by `admit_built_seed_partition_projection`. Anything else keeps the
+/// typed `WholeCompilerRebuildRequired` refusal.
+fn admit_derived_partition_move(
+    workspace: &Path,
+) -> Result<crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome, String> {
+    let diff = super::required_floor_runner::floor_git_diff_range().map_err(|e| {
+        format!(
+            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the change's diff \
+             could not be read, so the move cannot be derived from it: {e}"
+        )
+    })?;
+    let names_authority = diff.lines().any(|line| {
+        line.strip_prefix("diff --git ")
+            .map(|rest| rest.ends_with(&format!("b/{PARTITION_AUTHORITY_DAG_PATH}")))
+            .unwrap_or(false)
+    });
+    if !names_authority {
+        return Err(format!(
+            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the partition \
+             mirror moved but {PARTITION_AUTHORITY_DAG_PATH} is not in this change's diff"
+        ));
+    }
+    let packages = emitted_tree_packages(workspace)?;
+    let outcome = crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
+        packages.rows.clone(),
+        crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
+    );
+    Ok((*outcome).clone())
+}
+
+/// The whole-compiler rebuild the partition-generation class requires: the closure is NOT shown
+/// complete for a partition move, so the correct scope is everything. The boundary files are
+/// journalled (the one rollback) and installed BEFORE the build that needs them.
+fn partition_move_rebuild(
+    workspace: &Path,
+    subject: &RegenConvergenceCheckpointSubject,
+    outcome: &crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome,
+) -> Result<CargoBuildObservation, String> {
+    let files = match outcome {
+        crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files } => files,
+        crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause } => {
+            return Err(format!(
+                "PartitionBoundaryCarrierRefused: the candidate tree's partition does not render: {cause:?}"
+            ))
+        }
+    };
+    let entries = files
+        .iter()
+        .map(|f| (f.path.clone(), workspace.join(&f.path)))
+        .collect::<Vec<_>>();
+    journal_paths_for_subject(workspace, &entries, subject)?;
+    match super::partition_crate_boundary_host::run_partition_crate_boundary_over(outcome, true) {
+        super::partition_crate_boundary_host::PartitionCrateBoundaryOutcome::CarrierRefused {
+            cause,
+        } => return Err(format!("PartitionBoundaryWriteRefused: {cause}")),
+        super::partition_crate_boundary_host::PartitionCrateBoundaryOutcome::Rendered {
+            ..
+        } => {}
+    }
+    seed_cargo_build(workspace, "round.rebuild_from_installed")
+}
+
+/// THE FIXED-POINT CONJUNCT FOR A MOVED PARTITION: the seed built from the installed mirrors
+/// projects, from its OWN compiled-in rows, exactly the boundary files this round installed. The
+/// read-only producer exits nonzero on any divergence, so a mirror that disagrees with the
+/// authority it was meant to project refuses here instead of converging.
+fn admit_built_seed_partition_projection(workspace: &Path) -> Result<(), String> {
+    let on_disk = current_exe_on_disk()?;
+    let output = Command::new(&on_disk)
+        .arg("--emit-partition-crates")
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| {
+            format!(
+                "PartitionProjectionUnobserved: spawn {}: {e}",
+                on_disk.display()
+            )
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "PartitionProjectionDiverges: the built seed's own partition projects boundary \
+             files that differ from the installed ones: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(())
 }
 
 fn partitioned_rebuild_from_installed(
@@ -5125,7 +5263,7 @@ fn install_convergence_stage(
     candidate_tree_id: &str,
     candidate_tree_digest: &str,
     dependency_closure_id: &str,
-) -> Result<RegenConvergenceStageReceipt, String> {
+) -> Result<(RegenConvergenceStageReceipt, bool), String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
     // The generated shell declares the emitted modules not owned by a partition.
     // Read the same declaration surface convergence_surface_roles uses for seed
@@ -5133,7 +5271,12 @@ fn install_convergence_stage(
     let declared_shell_modules =
         super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
     let actuation = partition_rebuild_actuation(source_roots, basenames, &declared_shell_modules)?;
-    install_convergence_stage_with_backend(
+    let partition_move = if actuation.partition_generation_move {
+        Some(admit_derived_partition_move(workspace)?)
+    } else {
+        None
+    };
+    let receipt = install_convergence_stage_with_backend(
         model,
         workspace,
         stage0_src,
@@ -5149,9 +5292,13 @@ fn install_convergence_stage(
         candidate_tree_digest,
         dependency_closure_id,
         &subject,
-        |workspace| partitioned_rebuild_from_installed(workspace, &actuation),
+        |workspace| match &partition_move {
+            Some(outcome) => partition_move_rebuild(workspace, &subject, outcome),
+            None => partitioned_rebuild_from_installed(workspace, &actuation),
+        },
         || next_pass_executable_digest(workspace),
-    )
+    )?;
+    Ok((receipt, partition_move.is_some()))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5904,7 +6051,20 @@ pub fn run_regen_round_cost(
         );
     }
 
+    let mut partition_moved = false;
+    let mut round_records: Vec<String> = Vec::new();
     while !drifted.is_empty() {
+        round_records.push(format!(
+            "generation {generation_ordinal}: first_generation_equal=false drifted={drifted:?}"
+        ));
+        if generation_ordinal >= REGEN_CONVERGENCE_MAX_GENERATIONS {
+            restore_regen_convergence_journal(&workspace)?;
+            return Err(format!(
+                "RegenConvergenceBoundExceeded: no fixed point within {REGEN_CONVERGENCE_MAX_GENERATIONS} \
+                 generations; checkpoint restored; nothing is published -- {}",
+                round_records.join("; ")
+            ));
+        }
         let admitted_manifest = admit_candidate_manifest(
             &convergence_model,
             &candidate_src,
@@ -5997,7 +6157,10 @@ pub fn run_regen_round_cost(
         );
         v1_rt::trace_mark("round.install.done".to_string());
         let mut stage = match stage_result {
-            Ok(stage) => stage,
+            Ok((stage, moved)) => {
+                partition_moved |= moved;
+                stage
+            }
             Err(failure) => {
                 restore_regen_convergence_journal(&workspace)?;
                 return Err(format!(
@@ -6066,6 +6229,12 @@ pub fn run_regen_round_cost(
         }
     }
 
+    if partition_moved {
+        if let Err(failure) = admit_built_seed_partition_projection(&workspace) {
+            restore_regen_convergence_journal(&workspace)?;
+            return Err(format!("{failure}; checkpoint restored"));
+        }
+    }
     // Anything still drifting at the terminal is a PROMISE, not an outcome, and the lineage join
     // refuses it. The loop exits on an empty drift so a converged run records none -- the arm
     // exists because a fixed point that was never reached must not be able to render as one.

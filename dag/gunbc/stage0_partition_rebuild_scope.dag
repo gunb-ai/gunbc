@@ -585,6 +585,25 @@ fn stage0_partition_rebuild_release_scope_empty_today(
   }
 }
 
+// THE FIFTH HOST QUESTION: is this round's refusal the positively modeled partition-generation
+// class? The host decides whether the move is EXPLAINED (derived from the change's own diff and
+// the candidate tree's authority, never asserted) only when this answers true; every other
+// WholeCompilerRebuildRequired cause and every refusal keeps refusing. The class is read by
+// variant here, never recovered from the decision line's spelling.
+fn stage0_partition_rebuild_is_partition_generation_move_today(
+  changed_mirrors: List<String>,
+  unlocatable: List<String>,
+  host_shell_modules: List<String>
+) -> Bool {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: changed_mirrors, unlocatable: unlocatable, host_shell_modules: host_shell_modules) {
+    WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: _ } } => true
+    WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: _ } } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
 // THE PACKAGES THAT MUST NOT BE COMPILED. Reported to the host as identities so a build that
 // touches one of them is a located refusal rather than an unnoticed widening: an exclusion no
 // consumer can read is not evidence of anything, and this is the exclusion the whole
