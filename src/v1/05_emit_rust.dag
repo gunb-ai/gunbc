@@ -237,7 +237,7 @@ import v1.compiler.infer {
   caller_resource_requirements, established_resource_binding
 }
 import v1.compiler.infer_emit_info {
-  FieldClone, FieldCloneShallow, FieldCloneOwned, FieldCloneDeclared, shared_collection_template_keys,
+  FieldClone, FieldCloneShallow, FieldCloneOwned, FieldCloneDeclared,
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, TypeSummaryQuestion, QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf,
   lookup_emit_type_summary, empty_emit_graph_info,
   TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf,
@@ -3424,21 +3424,25 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Set<String>) -> Bo
 // differently. The next rung is S (strict linear unwrap with field-grain last-use of dying owned
 // records), the roadmap node emission-ownership-facts-survive-lowering: it removes the clones
 // instead of narrowing them.
-// THE SHARED COLLECTION CARRIERS, ONE ANSWER: shared_collection_template_keys in
-// v1.compiler.infer_emit_info, which the field-clone fact also reads.
+// THE SHARED COLLECTION CARRIERS, ONE ANSWER for the sharing decision and for F.
 fn shared_collection_leaves() -> List<String> {
-  shared_collection_template_keys() |> map(k => to_pascal(name: k))
+  sorted_map_keys(rust_container_templates)
+    |> filter(k => k != "optional" && k != "boolean_algebra")
+    |> map(k => to_pascal(name: k))
 }
 
 fn field_clone_is_shallow(type_summaries: TypeSummaryIndex, type_name: String, clone: FieldClone) -> Bool {
   match clone {
     FieldCloneShallow => true
     FieldCloneOwned => false
-    FieldCloneDeclared =>
-      match string_index_of(haystack: type_name, needle: "<") {
-        Present { value: i } => nested_record_is_decided(type_summaries: type_summaries, leaf: substring(s: type_name, start: 0, end: i))
-        Absent => nested_record_is_decided(type_summaries: type_summaries, leaf: type_name)
+    FieldCloneDeclared { applied_to_owned: owned } =>
+      let leaf = match string_index_of(haystack: type_name, needle: "<") {
+        Present { value: i } => substring(s: type_name, start: 0, end: i)
+        Absent => type_name
       }
+      if shared_collection_leaves() |> any(c => c == leaf) { true }
+      else if owned { false }
+      else { nested_record_is_decided(type_summaries: type_summaries, leaf: leaf) }
   }
 }
 

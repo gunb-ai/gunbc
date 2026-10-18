@@ -30,9 +30,7 @@ import v1.compiler.infer_types {
   child_type_node, emit_map_has, node_type_equals
 }
 import v1.compiler.artifact { Rust }
-import std.unicode.scalar { ascii_lowercase }
 import v1.compiler.coercion { realized_checkpoint, declaration_realization, type_reference_realization, realization_is_host_numeric }
-import extdeps.languages.rust.emit { rust_container_templates }
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
@@ -182,23 +180,20 @@ fn type_summary_values(index: TypeSummaryIndex) -> List<TypeSummary> {
 // only when every argument is, so Optional<String> is Owned. RESIDUE: the shared-collection test is
 // the container-template roster the sharing decision itself uses (by name), and a Declared field is
 // looked up by leaf in the summary index; both dissolve with field_type_map's own trigger.
-type FieldClone = FieldCloneShallow | FieldCloneOwned | FieldCloneDeclared
-
-// THE SHARED COLLECTION CARRIERS' TEMPLATE KEYS, the one list: build_shared_types (which holds each
-// behind Rc) pascal-cases them, and the field-clone fact below tests a head against them. The two
-// templates excluded render the host Option and bool, which are not held behind Rc.
-fn shared_collection_template_keys() -> List<String> {
-  sorted_map_keys(rust_container_templates) |> filter(k => k != "optional" && k != "boolean_algebra")
-}
-
-fn template_key_names_leaf(key: String, leaf: String) -> Bool {
-  join(split(s: ascii_lowercase(s: key), delimiter: "_"), "") == ascii_lowercase(s: leaf)
-}
+type FieldClone = FieldCloneShallow | FieldCloneOwned | FieldCloneDeclared { applied_to_owned: Bool }
 
 fn field_clone_head_leaf(name: String) -> String {
   match string_index_of(haystack: name, needle: "<") {
     Present { value: i } => substring(s: name, start: 0, end: i)
     Absent => name
+  }
+}
+
+fn field_clone_arguments_own(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match field_clone_of_type_node(n: n, source_indices: source_indices) {
+    FieldCloneOwned => true
+    FieldCloneDeclared { applied_to_owned: owned } => owned
+    FieldCloneShallow => false
   }
 }
 
@@ -211,10 +206,10 @@ fn field_clone_of_type_node(n: Node, source_indices: Map<String, NewlineIndex>) 
     Realized { checkpoint: cp, ground: _ } =>
       if realization_is_host_numeric(decision: decision) || cp.is_copy == Present { value: true } { FieldCloneShallow } else { FieldCloneOwned }
     Unrealized =>
-      if shared_collection_template_keys() |> any(k => template_key_names_leaf(key: k, leaf: leaf)) { FieldCloneShallow }
-      else if peeled.connective == NoConnective && (peeled.children |> count) > 0
-        && peeled.children |> any(ch => field_clone_of_type_node(n: ch, source_indices: source_indices) == FieldCloneOwned) { FieldCloneOwned }
-      else { FieldCloneDeclared }
+      FieldCloneDeclared {
+        applied_to_owned: peeled.connective == NoConnective && (peeled.children |> count) > 0
+          && peeled.children |> any(ch => field_clone_arguments_own(n: ch, source_indices: source_indices))
+      }
   }
 }
 
