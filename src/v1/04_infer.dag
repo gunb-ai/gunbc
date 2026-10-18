@@ -808,11 +808,43 @@ fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expe
       name: name,
       expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: decided_name, parent_identity: variant_parent_identity_of(owner: Present { value: decided }, scope: scope) } } },
       children: [],
-      inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided) } },
+      inferred: Present { value: Resolved { node: expected_decided_variant_type(name: name, decided: decided, decided_name: decided_name, expected: expected, scope: scope) } },
       span: texpr.span,
       name_span: texpr.span
     ),
     diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: texpr.span, owner: Present { value: decided })
+  }
+}
+
+// THE NULLARY ARM OF THE OPTIONAL, UNDER AN OPTIONAL EXPECTATION, HAS THE EXPECTED OPTIONAL AS ITS ONLY
+// TYPE. `Absent` carries no payload, so the kernel coproduct that elected it types the value with an
+// unbound payload (`Optional<T>` with T a variable), and an `if c { Absent } else { <T?> }` join then
+// compares that unbound payload against T?. variant_reference_inferred_node refuses an Optional
+// expectation on purpose -- `Mod` against `BinOp?` is a coercion the emitter owes a wrap for -- but
+// that hazard is an arm of ANOTHER coproduct (`Red` against `Color?`); the Optional's own nullary arm is
+// already the optional. The owner is identified by declaration (declaration_is_std_optional), never by
+// the arm's shape: a user coproduct's no-payload arm keeps the refusal.
+fn expected_decided_variant_type(name: String, decided: Node, decided_name: String, expected: Node?, scope: InferScope) -> Node {
+  match expected {
+    Present { value: exp } =>
+      if exp.return_cardinality == CardOptional && optional_nullary_arm_of(owner: decided, name: name, scope: scope) {
+        exp
+      } else {
+        variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided)
+      }
+    Absent => variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided)
+  }
+}
+
+fn optional_nullary_arm_of(owner: Node, name: String, scope: InferScope) -> Bool {
+  match variant_parent_identity_of(owner: Present { value: owner }, scope: scope) {
+    VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } =>
+      declaration_is_std_optional(d: d)
+        && match find_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
+          Present { value: arm } => (arm.children |> count) == 0
+          Absent => false
+        }
+    _ => false
   }
 }
 
@@ -2166,19 +2198,6 @@ fn type_node_is_established(n: Node, source_indices: Map<String, NewlineIndex>) 
   authored_name_at(source_indices: source_indices, node: n) != ""
     || n.children |> count > 0
     || n.params |> count > 0
-}
-
-// CALLABILITY IS THE ARROW CONNECTIVE; A NON-EMPTY PARAMETER LIST IS SUFFICIENT, NEVER NECESSARY.
-// Every callable value type is minted as an Arrow node (make_callable_type, parse_callable_type_expr),
-// and a nullary `fn() -> R` is an Arrow with an empty parameter list. This predicate used to be
-// `params |> count > 0` alone, which read "takes an argument" as "is a function type": every nullary
-// function type answered false, so the call seam discarded a found nullary local and retried its
-// name as a global ("function 'pick' not found in scope"), and the nominal brand checks below treated
-// a nullary arrow as a named type. The params disjunct is kept because a declaration-shaped node
-// carries its formals in params, and on such a node a non-empty list IS a callable fact.
-// gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
-fn type_node_is_callable(n: Node) -> Bool {
-  n.connective == Arrow || n.params |> count > 0
 }
 
 // THE v1.compiler.* ARM IS DELETED RATHER THAN REPAIRED, and the deletion preserves live behaviour
@@ -11272,16 +11291,6 @@ fn node_is_std_optional(n: Node, scope: InferScope) -> Bool {
   }
 }
 
-fn std_optional_declaration_ref() -> DeclarationRef {
-  decl_ref(module_path: "std.optional", decl_name: "Optional")
-}
-
-// CANONICAL DeclarationRef EQUALITY against the one reference the kernel mint is bound to; no
-// module-path or name part is compared on its own.
-fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
-  d == std_optional_declaration_ref()
-}
-
 // THE PRESENT ARM AND ITS MEMBER, READ FROM THE CANONICAL DECLARATION: the arm of
 // std.optional::Optional that carries a member, and that member's name. Neither is a spelling
 // compared against "Present" / "value".
@@ -11342,34 +11351,6 @@ fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarati
   match carried {
     Present { value: d } => if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
     Absent => optional_reading_by_census(n: n, scope: scope, spelling: spelling)
-  }
-}
-
-// THE IDENTITY A REFERENCE CARRIES: a type application's resolved node is stamped with the
-// declaration it applies (generic_declaration_application), and the reference reads it through
-// `inferred`. A use-site reference's own span declares nothing, so the span join cannot recover it.
-fn whole_declaration_carried(n: Node) -> DeclarationRef? {
-  match n.declaration {
-    Present { value: d } =>
-      match d.field {
-        WholeDeclaration => Present { value: d }
-        NamedField { field_name: _ } => none
-        TypeParameter { name: _ } => none
-      }
-    Absent => none
-  }
-}
-
-fn declaration_carried_through_resolution(n: Node, hops: Int) -> DeclarationRef? {
-  match whole_declaration_carried(n: n) {
-    Present { value: d } => Present { value: d }
-    Absent =>
-      if hops <= 0 { none } else {
-        match n.inferred {
-          Present { value: Resolved { node: r } } => declaration_carried_through_resolution(n: r, hops: hops - 1)
-          _ => none
-        }
-      }
   }
 }
 
@@ -15687,19 +15668,6 @@ fn transparent_alias_representatives(module_nodes: List<Node>, source_indices: M
   )
 }
 
-fn node_declaration_file(n: Node) -> String {
-  match n.ident_span {
-    Present { value: sp } => sp.file
-    Absent => ""
-  }
-}
-
-fn node_declaration_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  type_declaration_identity_key(
-    decl_file: node_declaration_file(n: n),
-    declared_name: authored_name_at(source_indices: source_indices, node: n))
-}
-
 fn type_reference_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Present { value: Resolved { node: rt } } => node_declaration_identity(n: rt, source_indices: source_indices)
@@ -15851,7 +15819,7 @@ fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: St
 // v1.compiler.infer_resolve with_authored_identity keeps only the alias's ident_span and takes the
 // target's declaration, so both branches name the same DeclarationRef. They agree when both carry a
 // whole-declaration ref (whole_declaration_carried), the refs are equal, the optional layer
-// matches, and every applied argument is identical (if_branch_argument_types_identical).
+// matches, and every applied argument is identical (applied_argument_types_identical).
 // transparent_alias_identity_agrees cannot answer this: it admits only bare-name aliases and
 // deliberately records no edge for `type A = B<C>`.
 // A side with no declaration declines, so the mismatch stays loud: a branch typed straight from a
@@ -15878,115 +15846,7 @@ fn if_branch_types_agree_through_alias_identity(left: Node, right: Node, scope: 
     }
     same_declaration
       && (left_args |> count) == (right_args |> count)
-      && if_branch_type_arguments_identical(left_args: left_args, right_args: right_args, source_indices: scope.type_env.source_indices)
-  }
-}
-
-fn if_branch_type_arguments_identical(left_args: List<Node>, right_args: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match left_args |> first {
-    Present { value: l } =>
-      match right_args |> first {
-        Present { value: r } =>
-          if_branch_argument_types_identical(left: child_type_node(ch: l), right: child_type_node(ch: r), source_indices: source_indices)
-            && if_branch_type_arguments_identical(left_args: left_args |> skip(1), right_args: right_args |> skip(1), source_indices: source_indices)
-        Absent => false
-      }
-    Absent => true
-  }
-}
-
-// AN APPLIED ARGUMENT AGREES BY IDENTITY, NEVER BY COMPATIBILITY. node_type_compatible is wider
-// than identity on purpose: it admits a compiler-error side, an unresolved type variable, an
-// optional against a unit, and a non-container application by its head name alone. None of those
-// may stand as "the same instantiation" here, so this relation does not consult it. Two arguments
-// are identical when their cardinality is equal, their heads are identical, and every applied
-// argument is identical in turn.
-fn if_branch_argument_types_identical(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  left.return_cardinality == right.return_cardinality
-    && if_branch_argument_heads_identical(left: left, right: right, source_indices: source_indices)
-    && (left.children |> count) == (right.children |> count)
-    && if_branch_type_arguments_identical(left_args: left.children, right_args: right.children, source_indices: source_indices)
-}
-
-// A HEAD IS IDENTICAL BY THE STRONGEST IDENTITY BOTH SIDES CARRY. A callable compares its whole
-// signature under this same relation. A compiler-error side is never identical to anything. A type
-// variable is identical only to the same owner's parameter (if_branch_type_variables_identical). Otherwise two carried whole-declaration refs must
-// be equal; with no carried ref on either side, the reference identities (type_reference_identity's
-// declaring file and declared name) must be equal and name something. One side carrying a ref and
-// the other not declines, so the join stays refused.
-fn if_branch_argument_heads_identical(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if type_node_is_callable(n: left) || type_node_is_callable(n: right) {
-    type_node_is_callable(n: left) && type_node_is_callable(n: right)
-      && callable_signatures_agree(left: left, right: right, agree: (a, b) => if_branch_argument_types_identical(left: a, right: b, source_indices: source_indices))
-  } else {
-    match left.inferred {
-      Present { value: CompilerError { message: _, span: _ } } => false
-      Present { value: TypeVariable { id: left_id } } =>
-        match right.inferred {
-          Present { value: TypeVariable { id: right_id } } =>
-            if_branch_type_variables_identical(left: left, right: right, left_id: left_id, right_id: right_id)
-          _ => false
-        }
-      _ =>
-        match right.inferred {
-          Present { value: CompilerError { message: _, span: _ } } => false
-          Present { value: TypeVariable { id: _ } } => false
-          _ =>
-            match whole_declaration_carried(n: left) {
-              Present { value: l } =>
-                match whole_declaration_carried(n: right) {
-                  Present { value: r } => declaration_ref_eq(a: l, b: r)
-                  Absent => false
-                }
-              Absent =>
-                match whole_declaration_carried(n: right) {
-                  Present { value: _ } => false
-                  Absent =>
-                    match if_branch_reference_identity(n: left, source_indices: source_indices) {
-                      Present { value: li } =>
-                        match if_branch_reference_identity(n: right, source_indices: source_indices) {
-                          Present { value: ri } => li == ri
-                          Absent => false
-                        }
-                      Absent => false
-                    }
-                }
-            }
-        }
-    }
-  }
-}
-
-// A TYPE VARIABLE IS ITS OWNER'S PARAMETER, NOT ITS SPELLING. The resolver stamps a reference to a
-// declaration's own parameter with a TypeParameter declaration ref naming that owner, so two `T`s
-// from different declarations carry different refs. Both carrying a ref compares the refs; only two
-// unowned synthetic variables fall back to the bare id; one owned and one unowned declines.
-fn if_branch_type_variables_identical(left: Node, right: Node, left_id: String, right_id: String) -> Bool {
-  match left.declaration {
-    Present { value: l } =>
-      match right.declaration {
-        Present { value: r } => declaration_ref_eq(a: l, b: r)
-        Absent => false
-      }
-    Absent =>
-      match right.declaration {
-        Present { value: _ } => false
-        Absent => left_id == right_id
-      }
-  }
-}
-
-// type_reference_identity's key, refused when the reference names nothing: an empty declared name
-// would make every unnamed reference in one file identical to every other.
-fn if_branch_reference_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  let target = match n.inferred {
-    Present { value: Resolved { node: rt } } => rt
-    _ => n
-  }
-  if authored_name_at(source_indices: source_indices, node: target) == "" {
-    none
-  } else {
-    Present { value: node_declaration_identity(n: target, source_indices: source_indices) }
+      && applied_arguments_identical(left_args: left_args, right_args: right_args, source_indices: scope.type_env.source_indices)
   }
 }
 

@@ -4,6 +4,7 @@
 use self::KeyedRosterBuild::*;
 use self::KeyedRosterInsert::*;
 use self::KeyedRosterSecondRowScan::*;
+pub use crate::std_algebra::collection_concat_shape;
 pub use crate::std_keyed_row::{keyed_row_find, KeyedRow};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List};

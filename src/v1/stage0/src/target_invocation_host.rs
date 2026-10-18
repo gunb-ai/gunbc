@@ -582,6 +582,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::RegenRoundCost,
         ),
         (
+            instrument_label("roster-import-sweep-controls"),
+            TargetProducer::CliWireProgram {
+                entry: "src/v2/workflow/roster_import_sweep.dag",
+                function: "roster_import_sweep_controls_wire",
+            },
+        ),
+        (
             instrument_label("compute-run-unit-cold"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
