@@ -77,7 +77,13 @@ fn cargo_run_release_manifest_offline_command(manifest_path: String, target_dir:
 // fixes the working directory to `/` (`env -C /`) and takes an isolated, empty-by-construction
 // CARGO_HOME from the caller; the manifest and output are named by absolute path.
 fn cargo_vendor_command(manifest_path: String, output_dir: String, cargo_home: String) -> ArgvCommand {
-  argv_command(program: uncataloged_program(invocation: "env"), arguments: ["-C", "/", concat("CARGO_HOME=", cargo_home), "cargo", "vendor", "--locked", "--versioned-dirs", "--manifest-path", manifest_path, output_dir])
+  cargo_vendor_command_from(directory: "/", manifest_path: manifest_path, output_dir: output_dir, cargo_home: cargo_home)
+}
+
+// The same argv with the working directory a parameter, so the claim that `/` is what keeps the tree's
+// configuration unread has a control that names the tree instead (the red the production form avoids).
+fn cargo_vendor_command_from(directory: String, manifest_path: String, output_dir: String, cargo_home: String) -> ArgvCommand {
+  argv_command(program: uncataloged_program(invocation: "env"), arguments: ["-C", directory, concat("CARGO_HOME=", cargo_home), "cargo", "vendor", "--locked", "--versioned-dirs", "--manifest-path", manifest_path, output_dir])
 }
 
 // The cargo identity: `cargo --version` prints `cargo <semver> (<commit> <date>)`.
