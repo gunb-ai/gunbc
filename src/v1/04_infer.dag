@@ -100,6 +100,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, declaration_provenance
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
+  TextNotAskedForCallableComponentResidue,
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, collection_carrier_node, is_fully_resolved,
   kernel_profile_lookup,
