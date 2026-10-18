@@ -11,6 +11,7 @@ import extdeps.git {
   git_core_shared_repository_config_key, git_gc_auto_config_key, git_maintenance_auto_config_key,
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
+import std.nat { Nat }
 import std.measure { ByteSize }
 import std.materialization_store_grant {
   MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
@@ -1958,14 +1959,60 @@ fn dashboard_git_worker_subtree_confined_children(child: NonEmptyStr) -> List<St
   }
 }
 
+// HOW DEEP THE MIGRATION AND ITS READBACK MAY WALK, in one bounded step. `-maxdepth` is find's option,
+// but the NUMBER is this deployment's policy, which is why it is declared here and passed down rather
+// than fixed inside extdeps.tools.findutils: git's object fan-out is two hex characters (depth 2 below
+// objects/), refs are arbitrarily nested user-named paths, and the walk is the migration's entire
+// runtime -- so the bound is simultaneously a correctness bound (deep enough to reach every entry a
+// commit can create) and a cost bound (a run-away walk over a repository is the migration hanging).
+// 32 is comfortably past any real refs/ nesting and past the object fan-out, while keeping the walk
+// bounded on a repository whose refs somebody has nested pathologically. THE WALK DEPTH IS NOT A
+// GRANT: it bounds which existing entries are touched, and every path a commit needs is far shallower.
+// An unbounded walk would be worse than a shallow one -- it would descend into a repository's own
+// packed-refs-free history for no benefit, and a bounded one has a receipt that can be read in full.
+data dashboard_git_worker_subtree_walk_depth: Nat = 32
+
 fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr, pruned: List<String>) -> ArgvCommand {
-  find_subtree_regroup_command(target: target, group: group as String, pruned: pruned)
+  find_subtree_regroup_command(
+    target: target,
+    group: group as String,
+    pruned: pruned,
+    depth: dashboard_git_worker_subtree_walk_depth
+  )
 }
 
-// Group-writable on everything in ONE subtree, and setgid on its DIRECTORIES ONLY -- the bit that
-// makes a fan-out directory git creates later inherit the attempt group.
-fn dashboard_git_worker_subtree_chmod_command(target: String, pruned: List<String>) -> ArgvCommand {
-  find_subtree_group_writable_command(target: target, pruned: pruned)
+// WHICH GRANTED SUBTREES GET THE STICKY BIT, and the answer is deliberately not "all of them".
+// +t is the bit that stops a group-writable PARENT from letting its writer rename or unlink entries
+// it does not own, and it is needed exactly where such entries exist: .git/objects holds the two
+// subtrees #13942 keeps for root (pack, info), and the root maintenance job this PR names later
+// WRITES AND DELETES THROUGH objects/pack (`git gc` runs `repack -d`). Without +t, one `mv
+// objects/pack objects/pack.x && ln -s <worker's dir> objects/pack` from inside a confined attempt
+// points that root job at a directory the worker chose -- root writing and deleting where a worker
+// directed it, which voids the confinement against the job it names (bright-moth-475's finding,
+// 2026-10-18; rename(2) checks the parent, not the entry, so a 0555 objects/pack renames freely
+// under a writable objects/). refs and logs get NO +t because they hold no entries the worker is
+// forbidden to remove -- every ref and reflog there is created by an attempt, and attempts all run
+// as the ONE account gunbc-worker, so there is no foreign-owned entry to protect and +t would buy
+// nothing while adding a bit to read back. The per-attempt worktree entry is excluded for a
+// different, harder reason: root's `git worktree add` checks the entry out, so its index and HEAD
+// are root-owned entries that the worker's first `git add` renames OVER (index.lock -> index);
+// +t there would make the very commit this PR enables fail with EPERM.
+data dashboard_git_worker_sticky_children: List<NonEmptyStr> = [".git/objects"] as List<NonEmptyStr>
+
+fn dashboard_git_worker_subtree_needs_sticky(child: NonEmptyStr) -> Bool {
+  any(xs: dashboard_git_worker_sticky_children, predicate: c => (c as String) == (child as String))
+}
+
+// Group-writable on everything in ONE subtree, setgid on its DIRECTORIES ONLY -- the bit that makes a
+// fan-out directory git creates later inherit the attempt group -- and, where the subtree contains
+// entries the walker must not be able to remove, the sticky bit (dashboard_git_worker_subtree_needs_sticky).
+fn dashboard_git_worker_subtree_chmod_command(target: String, pruned: List<String>, sticky: Bool) -> ArgvCommand {
+  find_subtree_group_writable_command(
+    target: target,
+    pruned: pruned,
+    sticky: sticky,
+    depth: dashboard_git_worker_subtree_walk_depth
+  )
 }
 
 fn dashboard_git_worker_subtree_path(instance: HostDashboardInstance, child: NonEmptyStr) -> String {
@@ -1993,6 +2040,7 @@ fn dashboard_instance_worker_git_subtree_migration(instance: HostDashboardInstan
         child => dashboard_git_worker_subtree_chmod_command(
           target: dashboard_git_worker_subtree_path(instance: instance, child: child),
           pruned: dashboard_git_worker_subtree_confined_children(child: child),
+          sticky: dashboard_git_worker_subtree_needs_sticky(child: child),
         ),
       ),
     )
@@ -2097,6 +2145,37 @@ data posix_mode_owner_triple_step: Int = 64
 data posix_mode_group_triple_step: Int = 8
 data dashboard_git_worker_granted_directory_mode: Int = 1533
 data dashboard_git_worker_granted_file_mode: Int = 436
+
+// 03775 in decimal: 1533 (the granted directory above) + 512 (01000, sticky). THE MODE OF A GRANTED
+// DIRECTORY THAT HOLDS ROOT-OWNED ENTRIES -- .git/objects, whose pack/ and info/ #13942 keeps and the
+// root maintenance job writes and deletes through. See dashboard_git_worker_sticky_children for why
+// one subtree needs it and the others must not get it.
+data posix_mode_sticky_bit: Int = 512
+data dashboard_git_worker_granted_shared_directory_mode: Int = 2045
+
+// IS `mode` THE GRANTED SHAPE FOR ONE SUBTREE, asked per subtree rather than as one global answer:
+// objects/ is 03775 (a root-owned entry lives under it), refs/ and logs/ are 02775 (nothing foreign-
+// owned lives under them). A single "is it 1533" predicate over all three would make the sticky fix
+// invisible to the model -- the receipt would refuse the tree that is actually correct.
+// IS A DIRECTORY *BENEATH* A GRANTED SUBTREE ACCEPTED? Both shapes are, and the pair is not
+// redundancy: the migration's own chmod leaves every directory it walked at 03775 under objects/, but
+// a fan-out directory git CREATES TOMORROW can never be sticky -- mkdir inherits S_ISGID from the
+// parent and does NOT inherit S_ISVTX, and git's adjust_shared_perm (core.sharedRepository=group) then
+// adds only the group triple. So the honest expected mode for a directory git makes is 02775 even
+// under a 03775 parent, and a readback that demanded 03775 throughout would refuse a repository that
+// is correctly granted. Measured on the host: mkdir under a 3775 parent -> 2755, then git's shared
+// perm -> 2775.
+fn dashboard_git_worker_interior_directory_mode_is_accepted(mode: Int) -> Bool {
+  mode == dashboard_git_worker_granted_directory_mode || mode == dashboard_git_worker_granted_shared_directory_mode
+}
+
+fn dashboard_git_worker_subtree_directory_mode_is_granted(child: NonEmptyStr) -> Int {
+  if dashboard_git_worker_subtree_needs_sticky(child: child) {
+    dashboard_git_worker_granted_shared_directory_mode
+  } else {
+    dashboard_git_worker_granted_directory_mode
+  }
+}
 
 // THE OWNER/GROUP/OTHER TRIPLE of one leg: r=4, w=2, x=1, read positionally. Steps are 8 to that
 // power: 64 (owner), 8 (group), 1 (other).

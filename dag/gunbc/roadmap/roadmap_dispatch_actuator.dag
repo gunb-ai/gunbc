@@ -213,6 +213,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_provider_executable_refusal_detail,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
+  dashboard_git_worker_subtree_walk_depth,
 }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
@@ -3160,6 +3161,13 @@ fn dispatch_attempt_worker_git_entry_migration(instance: HostDashboardInstance, 
       dashboard_git_worker_subtree_chmod_command(
         target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
         pruned: [],
+        // NO STICKY BIT HERE, and it is the one granted subtree where getting it wrong would BREAK the
+        // feature rather than weaken it: root's `git worktree add` checks the entry out, so its index
+        // and HEAD are ROOT-owned entries inside a directory the attempt group writes, and the worker's
+        // first `git add` renames index.lock OVER index -- a rename of an entry it does not own, which
+        // +t refuses with EPERM. The objects/ argument does not transfer: nothing under this entry is
+        // confined, and no root job writes or deletes through it.
+        sticky: false,
       ),
     ]
   }
@@ -3198,7 +3206,11 @@ fn dispatch_repository_shared_posture_commands(instance: HostDashboardInstance) 
 // dashboard_git_worker_directory_mode_is_granted / dashboard_git_worker_file_mode_is_granted, and the
 // state srv1 measured (0775, no setgid) fails them.
 fn dispatch_worker_git_subtree_readback_command(target: String, pruned: List<String>) -> ArgvCommand {
-  find_subtree_mode_readback_command(target: target, pruned: pruned)
+  find_subtree_mode_readback_command(
+    target: target,
+    pruned: pruned,
+    depth: dashboard_git_worker_subtree_walk_depth
+  )
 }
 
 // THE SHARED REF STORE IS A DECLARED RESIDUAL, NOT CONFINED. refs/ and logs/ stay writable as wholes

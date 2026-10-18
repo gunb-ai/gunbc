@@ -204,7 +204,6 @@ fn find_path_probe_command(path: String, kind: String, clause: List<String>) -> 
 // so an unbalanced `(` is not a cosmetic defect -- find aborts with "Expected a )" and the migration's
 // chmod simply never runs, while the argv still LOOKS like a grant (caught at 2dc2b8de; the executed
 // claim in test.claim.roadmap.worker_dedicated_account_witness is what pins it).
-data dashboard_git_subtree_max_depth: String = "32"
 
 // THE PRUNE GROUP, `<target>/<name>` for each RELATIVE name the caller declares. Empty pruned list
 // means no prune group at all -- an empty OR-group would be a syntax error, so the words are simply
@@ -233,27 +232,46 @@ fn find_subtree_prune_words(target: String, pruned: List<String>) -> List<String
   }
 }
 
-// IS THE GROUP STILL OPEN, i.e. only "(" has been emitted so far. Fold's accumulator shape question:
-// after the separator and the first term the next term needs a leading "-o".
+// HAS THE GROUP EMITTED NO TERM YET? THE SEPARATOR IS DECIDED BY POSITION, and the first version of
+// this predicate decided it by COUNTING "-o" WORDS IN THE ACCUMULATOR -- wrong in a way that hid behind
+// a single-prune test: after the first term the accumulator holds `(`, `-path`, `<target>/pack` and
+// still contains NO `-o`, so the second term was emitted without its separator too. The group rendered
+// `( -path <t>/pack -path <t>/info )`, which find reads as an AND of two -path tests on one path -- a
+// conjunction that can never hold -- so NOTHING WAS PRUNED and the migration walked straight into the
+// two subtrees #13942 keeps for root: chgrp gunbc-attempt and chmod g+w on objects/pack and
+// objects/info, handing a confined attempt a writable objects/info/alternates and a writable
+// objects/pack. Found by bright-moth-475's srv1 probe at ec03cef3ab2, whose readback showed
+// "2775 pack / 664 pack/pack.pack / 2775 info"; the wet claim over TWO pruned names was red for exactly
+// this reason, and would have been green with one.
+// THE STRUCTURAL FACT IS THE ACCUMULATOR'S LENGTH: the init is exactly one word, and every term adds at
+// least two, so length 1 means "the next term is the first and takes no separator". A lexical proxy
+// cannot tell "no terms yet" from "one term, separator not yet emitted" -- and those two states must
+// render differently, which is precisely the pair this bug collapsed.
 fn find_subtree_prune_group_is_open(acc: List<String>) -> Bool {
-  count(filter(xs: acc, predicate: w => w == "-o")) == 0
+  length(xs: acc) == 1
 }
 
 // THE WALK, up to and including the predicate: target, depth bound, prunes, no symlinks. Every one of
 // the three builders below hangs its action(s) off this, so all three walk the same set of paths.
-fn find_subtree_walk_words(target: String, pruned: List<String>) -> List<String> {
+// THE DEPTH IS A PARAMETER, NOT A CONSTANT HERE. `-maxdepth` is find's own option, so the SHAPE belongs
+// to this module; how deep to walk a repository's object store is a fact about git's fan-out and about
+// what this deployment is willing to re-group in one bounded step, which is the consumer's -- it is a
+// policy figure with a cost shape (the walk is the migration's whole runtime) and it has to be legible
+// and changeable where the rest of the repository posture lives. An upstream tool module that hard-codes
+// a downstream number inverts the dependency: the consumer would have to know what findutils decided.
+fn find_subtree_walk_words(target: String, pruned: List<String>, depth: Nat) -> List<String> {
   concat(
-    concat([target, "-maxdepth", dashboard_git_subtree_max_depth], find_subtree_prune_words(target: target, pruned: pruned)),
+    concat([target, "-maxdepth", to_string(depth)], find_subtree_prune_words(target: target, pruned: pruned)),
     ["-not", "-type", "l"],
   )
 }
 
 // Re-group a subtree to one group. No user field: this cannot re-own anything.
-fn find_subtree_regroup_command(target: String, group: String, pruned: List<String>) -> ArgvCommand {
+fn find_subtree_regroup_command(target: String, group: String, pruned: List<String>, depth: Nat) -> ArgvCommand {
   argv_command(
     program: find_program(),
     arguments: concat(
-      find_subtree_walk_words(target: target, pruned: pruned),
+      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
       ["-exec", "chgrp", "--no-dereference", group, "{}", "+"],
     ),
   )
@@ -265,15 +283,37 @@ fn find_subtree_regroup_command(target: String, group: String, pruned: List<Stri
 // later inherit the group rather than the creating process's primary group. BOTH actions and their
 // guards are inside the walk's right operand, and the `(` that opens `-type d` is CLOSED: an action
 // list that opens a group and never closes it makes find refuse the whole expression.
-fn find_subtree_group_writable_command(target: String, pruned: List<String>) -> ArgvCommand {
+fn find_subtree_group_writable_command(target: String, pruned: List<String>, sticky: Bool, depth: Nat) -> ArgvCommand {
   argv_command(
     program: find_program(),
     arguments: concat(
-      find_subtree_walk_words(target: target, pruned: pruned),
-      [
-        "-exec", "chmod", "g+w", "{}", "+",
-        "(", "-type", "d", "-exec", "chmod", "g+s", "{}", "+", ")",
-      ],
+      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+      concat(
+        [
+          "-exec", "chmod", "g+w", "{}", "+",
+          "(", "-type", "d", "-exec", "chmod", "g+s", "{}", "+", ")",
+        ],
+        // THE STICKY BIT, on directories only, and only where the caller says this subtree holds
+        // entries the walker must not be able to remove. WHY IT EXISTS (bright-moth-475, 2026-10-18,
+        // the finding this closes): rename(2) checks the PARENT for write, not the entry -- a write
+        // check on the moved item applies only when it changes parent. So a group-writable objects/
+        // let a confined worker do `mv objects/pack objects/pack.x` even with objects/pack at 0555,
+        // and plant `ln -s <any dir> objects/pack` in its place. The named ROOT maintenance job then
+        // writes new pack-*.pack files into, and `repack -d` deletes "redundant" ones from, a
+        // directory the WORKER chose: root writing and deleting through a worker-planted symlink,
+        // which voids the confinement against the very job this PR names. With +t the parent stays
+        // group-writable for CREATING entries and only an entry's OWNER (or root) may rename or unlink
+        // it -- measured on the host: mv of a foreign-owned entry under a 3775 parent returns
+        // non-zero, while the owner renaming its OWN entry under the same parent still exits 0, so
+        // the worker keeps replacing its own refs, objects and lock files.
+        // NOT `-R`: the same reason as the g+s action. `chmod +t` recursively would follow the walk's
+        // reach into files; the -type d guard keeps it where it means something.
+        if sticky {
+          ["(", "-type", "d", "-exec", "chmod", "a+t", "{}", "+", ")"]
+        } else {
+          []
+        },
+      ),
     ),
   )
 }
@@ -284,9 +324,9 @@ fn find_subtree_group_writable_command(target: String, pruned: List<String>) -> 
 // (dashboard_git_worker_directory_mode_is_granted / _file_mode_is_granted) decide whether it is a
 // grant -- so a hand step on srv1 is a declared, bounded step whose readback the model checks rather
 // than a thing a person asserts.
-fn find_subtree_mode_readback_command(target: String, pruned: List<String>) -> ArgvCommand {
+fn find_subtree_mode_readback_command(target: String, pruned: List<String>, depth: Nat) -> ArgvCommand {
   argv_command(
     program: find_program(),
-    arguments: concat(find_subtree_walk_words(target: target, pruned: pruned), ["-printf", "%m %P\\n"]),
+    arguments: concat(find_subtree_walk_words(target: target, pruned: pruned, depth: depth), ["-printf", "%m %P\\n"]),
   )
 }

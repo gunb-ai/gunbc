@@ -31,6 +31,16 @@ data git_config_nosystem_env: String = "GIT_CONFIG_NOSYSTEM=1"
 data git_config_global_env_binding: EnvBinding = EnvSet { name: "GIT_CONFIG_GLOBAL", value: "/dev/null" }
 data git_config_nosystem_env_binding: EnvBinding = EnvSet { name: "GIT_CONFIG_NOSYSTEM", value: "1" }
 data git_terminal_prompt_disabled_env: String = "GIT_TERMINAL_PROMPT=0"
+// THE TYPED FORMS, for a builder that composes through EnvBinding rather than spelling `NAME=value`
+// words. They sit beside the word rows they stand for so the two cannot drift into different values;
+// the maintenance builder used to RE-SPELL GIT_CONFIG_GLOBAL and GIT_CONFIG_NOSYSTEM inline, which is
+// exactly the second source §3 forbids -- it would have kept repacking under a user's global config
+// after the config writers stopped reading one.
+data git_terminal_prompt_disabled_env_binding: EnvBinding = EnvSet { name: "GIT_TERMINAL_PROMPT", value: "0" }
+
+fn git_home_env_binding(home: FilePath) -> EnvBinding {
+  EnvSet { name: "HOME", value: home as String }
+}
 
 // core.sharedRepository is git's OWN answer to "this repository has more than one POSIX identity
 // writing it" (WORKER-ROOT-EQUIVALENT-3). `group` makes git create everything group-shareable: a
@@ -46,6 +56,14 @@ data git_core_shared_repository_config_key: String = "core.sharedRepository"
 data git_core_shared_repository_group_value: String = "group"
 data git_gc_auto_config_key: String = "gc.auto"
 data git_disabled_config_value: String = "0"
+
+// THE BOOLEAN KEY'S OFF VALUE, spelled `false` rather than reusing gc.auto's "0". THE TWO KEYS ARE
+// DIFFERENT TYPES in git's own parser: gc.auto is an INTEGER (0 disables the repack threshold) while
+// maintenance.auto is a BOOLEAN read with git_config_bool. "0" parses as false for the boolean too,
+// so both spellings work -- but a receipt that reads the file back with `git config --get` gets "0"
+// for one and "false" for the other, and the model's own claim must compare against what the
+// repository will actually say. Spelled as the type git documents, and asserted as read.
+data git_disabled_maintenance_config_value: String = "false"
 data git_maintenance_auto_config_key: String = "maintenance.auto"
 
 // THE ENVIRONMENT THE CONFIG WRITES RUN UNDER, as TYPED BINDINGS (std.env_binding EnvBinding), not
@@ -83,7 +101,7 @@ fn git_gc_auto_disabled_config_tail(repo: FilePath) -> List<String> {
 
 fn git_maintenance_auto_disabled_config_tail(repo: FilePath) -> List<String> {
   ["-C", repo as String, "config", "--local", "--replace-all",
-   git_maintenance_auto_config_key, git_disabled_config_value]
+   git_maintenance_auto_config_key, git_disabled_maintenance_config_value]
 }
 
 // THE FIVE SEALED BUILDERS for the shared-repository posture and the root maintenance it defers to.
@@ -149,18 +167,19 @@ fn git_pack_refs_all_command(repo: FilePath) -> ArgvCommand {
 // THE MAINTENANCE ENVIRONMENT: the isolated HOME inside the repository plus the two config refusals
 // and the prompt refusal, as TYPED BINDINGS. See git_repack_quiet_command for why root may own a HOME
 // here and the worker may not.
+// The environment a maintenance or repack runs in: the SAME untrusted-config bindings every other
+// git builder in this module uses -- so the two can never disagree about whether a repack reads a
+// user's global config -- plus HOME pinned at the repository (git reads $HOME/.gitconfig, and the
+// nightly unit has no home to fall back to) and the terminal prompt closed. A root maintenance job
+// that inherited a HOME with a gitconfig in it would repack under someone's aliases and hooks;
+// that is the whole reason this function exists rather than passing no environment at all.
 fn git_maintenance_env_bindings(home: FilePath) -> List<EnvBinding> {
-  [
-    EnvSet { name: "HOME", value: home as String },
-    EnvSet { name: "GIT_CONFIG_GLOBAL", value: "/dev/null" },
-    EnvSet { name: "GIT_CONFIG_NOSYSTEM", value: "1" },
-    EnvSet { name: "GIT_TERMINAL_PROMPT", value: "0" },
-  ]
+  concat(
+    [git_home_env_binding(home: home), git_terminal_prompt_disabled_env_binding],
+    git_untrusted_config_env_bindings(),
+  )
 }
 
-// What a repository is configured to hold locally before it is packed (git's own default is 6700
-// loose objects); the maintenance claim compares a repository's declared posture against it.
-data git_auto_gc_object_threshold_default: Int = 6700
 data git_worktree_commondir_relative: String = "../.."
 data git_dir_flag_prefix: String = "--git-dir="
 data git_work_tree_flag_prefix: String = "--work-tree="
