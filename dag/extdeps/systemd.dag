@@ -1,6 +1,6 @@
 module extdeps.systemd
 
-import std.types { NonEmptyStr, String, Int }
+import std.types { NonEmptyStr, String, Int, Bool }
 import std.types { list_length }
 import std.algebra { trim }
 import std.types { List }
@@ -71,6 +71,7 @@ type SystemdUnitProperty
   | Result
   | ExecMainStatus
   | ExecStartProperty
+  | ExecStopProperty
   | ExecStopPostProperty
   | User
   | WorkingDirectoryProperty
@@ -79,6 +80,11 @@ type SystemdUnitProperty
   | NextElapseUSecMonotonic
   | AccuracyUSec
   | TimersMonotonic
+  // When the unit's main process started and exited, in CLOCK_MONOTONIC microseconds (systemd.exec(5)
+  // / org.freedesktop.systemd1.Service ExecMainStartTimestampMonotonic, ExecMainExitTimestampMonotonic).
+  // Zero when the event has not happened.
+  | ExecMainStartTimestampMonotonic
+  | ExecMainExitTimestampMonotonic
   | NeedDaemonReload
   | IdProperty
   | KillModeProperty
@@ -96,10 +102,18 @@ type SystemdUnitProperty
   | ProtectHomeProperty
   | PrivateTmpProperty
   | ReadWritePathsProperty
+  // systemd.exec(5) BindPaths=: a space-separated list of SOURCE[:DESTINATION[:OPTIONS]] bind mounts made in the
+  // unit's own mount namespace, which is how a unit sees a private path at a name other units also use.
+  | BindPathsProperty
+  | ReadOnlyPathsProperty
+  // systemd.exec(5) InaccessiblePaths=: paths made unreachable in the unit's mount namespace.
+  | InaccessiblePathsProperty
   | RemainAfterExitProperty
   | RuntimeMaxSecProperty
   | CollectModeProperty
   | JobProperty
+  | NoNewPrivilegesProperty
+  | RestrictSUIDSGIDProperty
 
 // THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
 //
@@ -150,6 +164,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     Result => "Result" as NonEmptyStr
     ExecMainStatus => "ExecMainStatus" as NonEmptyStr
     ExecStartProperty => "ExecStart" as NonEmptyStr
+    ExecStopProperty => "ExecStop" as NonEmptyStr
     ExecStopPostProperty => "ExecStopPost" as NonEmptyStr
     User => "User" as NonEmptyStr
     WorkingDirectoryProperty => "WorkingDirectory" as NonEmptyStr
@@ -158,6 +173,8 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     NextElapseUSecMonotonic => "NextElapseUSecMonotonic" as NonEmptyStr
     AccuracyUSec => "AccuracyUSec" as NonEmptyStr
     TimersMonotonic => "TimersMonotonic" as NonEmptyStr
+    ExecMainStartTimestampMonotonic => "ExecMainStartTimestampMonotonic" as NonEmptyStr
+    ExecMainExitTimestampMonotonic => "ExecMainExitTimestampMonotonic" as NonEmptyStr
     NeedDaemonReload => "NeedDaemonReload" as NonEmptyStr
     IdProperty => "Id" as NonEmptyStr
     KillModeProperty => "KillMode" as NonEmptyStr
@@ -175,10 +192,15 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     ProtectHomeProperty => "ProtectHome" as NonEmptyStr
     PrivateTmpProperty => "PrivateTmp" as NonEmptyStr
     ReadWritePathsProperty => "ReadWritePaths" as NonEmptyStr
+    BindPathsProperty => "BindPaths" as NonEmptyStr
+    ReadOnlyPathsProperty => "ReadOnlyPaths" as NonEmptyStr
+    InaccessiblePathsProperty => "InaccessiblePaths" as NonEmptyStr
     RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
     RuntimeMaxSecProperty => "RuntimeMaxSec" as NonEmptyStr
     CollectModeProperty => "CollectMode" as NonEmptyStr
     JobProperty => "Job" as NonEmptyStr
+    NoNewPrivilegesProperty => "NoNewPrivileges" as NonEmptyStr
+    RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
   }
 }
 
@@ -186,6 +208,26 @@ data systemd_unit_load_state_not_found_wire: NonEmptyStr = "not-found" as NonEmp
 
 // systemd.unit(5) LoadState `masked`: the unit file is linked to /dev/null, so the manager will not start it.
 data systemd_unit_load_state_masked_wire: NonEmptyStr = "masked" as NonEmptyStr
+
+// THE LOAD STATE AS A CLOSED VOCABULARY, beside the active state above. systemd.unit(5) and
+// org.freedesktop.systemd1(5) (Unit.LoadState): `loaded`, `not-found`, `bad-setting`, `error`,
+// `masked`. A word outside the set is not guessed into one: the parse answers nothing and the caller
+// refuses it as unread.
+type SystemdUnitLoadState
+  = UnitLoaded
+  | UnitLoadNotFound
+  | UnitLoadBadSetting
+  | UnitLoadError
+  | UnitLoadMasked
+
+fn parse_systemd_unit_load_state(raw: String) -> SystemdUnitLoadState? {
+  if raw == "loaded" { Present { value: UnitLoaded } }
+  else { if raw == (systemd_unit_load_state_not_found_wire as String) { Present { value: UnitLoadNotFound } }
+  else { if raw == "bad-setting" { Present { value: UnitLoadBadSetting } }
+  else { if raw == "error" { Present { value: UnitLoadError } }
+  else { if raw == (systemd_unit_load_state_masked_wire as String) { Present { value: UnitLoadMasked } }
+  else { none } } } } }
+}
 
 data systemd_memory_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryMax)
 
@@ -533,6 +575,101 @@ fn systemd_slice_cgroup_path(mount_point: NonEmptyStr, slice: NonEmptyStr) -> Sy
         ) as NonEmptyStr,
       }
     }
+  }
+}
+
+// UNIT NAMES, cited to systemd.unit(5): at most 255 characters from ASCII letters, digits, `:`,
+// `_`, `.`, `-`, and `\` (the escape character). `@` is reserved for instantiated template units
+// and is not admitted here. A service unit is stem plus `.service`; the only constructor is
+// systemd_service_unit_name, which refuses an empty stem, a disallowed character, or an overlong
+// result rather than letting a later string check guess.
+data systemd_unit_name_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/systemd.unit.5.html"
+  }
+}
+
+data systemd_unit_name_max_length: Int = 255
+
+data systemd_service_unit_suffix: String = ".service"
+
+type SystemdUnitKind = | ServiceUnit
+
+type SystemdUnitName sole_constructor {
+  stem: String
+  kind: SystemdUnitKind
+}
+
+type SystemdUnitNameAdmission
+  = SystemdUnitNameAdmitted { name: SystemdUnitName }
+  | SystemdUnitNameStemEmpty
+  | SystemdUnitNameDisallowedCharacter { stem: String, character: String }
+  | SystemdUnitNameOverlong { length: Int }
+
+type SystemdUnitNameCharWalk
+  = SystemdUnitNameCharsWalking { index: Int }
+  | SystemdUnitNameCharHit { index: Int }
+
+fn systemd_unit_name_char_admitted(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 90)
+    || (cp >= 97 && cp <= 122)
+    || cp == 58
+    || cp == 95
+    || cp == 46
+    || cp == 45
+    || cp == 92
+}
+
+fn systemd_unit_name_first_disallowed(stem: String) -> String? {
+  match fold(chars(s: stem), init: SystemdUnitNameCharsWalking { index: 0 }, f: (acc, cp) =>
+    match acc {
+      SystemdUnitNameCharHit { index: i } => SystemdUnitNameCharHit { index: i }
+      SystemdUnitNameCharsWalking { index: i } =>
+        if systemd_unit_name_char_admitted(cp: cp) {
+          SystemdUnitNameCharsWalking { index: i + 1 }
+        } else {
+          SystemdUnitNameCharHit { index: i }
+        }
+    }) {
+    SystemdUnitNameCharsWalking { index: _ } => none
+    SystemdUnitNameCharHit { index: i } => Present { value: substring(s: stem, start: i, end: i + 1) }
+  }
+}
+
+fn systemd_unit_name_wire(name: SystemdUnitName) -> NonEmptyStr {
+  match name.kind {
+    ServiceUnit => join([name.stem, systemd_service_unit_suffix], "") as NonEmptyStr
+  }
+}
+
+fn systemd_service_unit_name(stem: String) -> SystemdUnitNameAdmission {
+  if string_length(s: stem) == 0 {
+    SystemdUnitNameStemEmpty
+  } else {
+    match systemd_unit_name_first_disallowed(stem: stem) {
+      Present { value: ch } => SystemdUnitNameDisallowedCharacter { stem: stem, character: ch }
+      Absent => {
+        let n = string_length(s: stem) + string_length(s: systemd_service_unit_suffix)
+        if n > systemd_unit_name_max_length {
+          SystemdUnitNameOverlong { length: n }
+        } else {
+          SystemdUnitNameAdmitted { name: SystemdUnitName { stem: stem, kind: ServiceUnit } }
+        }
+      }
+    }
+  }
+}
+
+fn systemd_unit_name_refusal_detail(admission: SystemdUnitNameAdmission) -> String {
+  match admission {
+    SystemdUnitNameAdmitted { name: _ } => "systemd unit name was admitted"
+    SystemdUnitNameStemEmpty => "systemd unit name stem is empty"
+    SystemdUnitNameDisallowedCharacter { stem: _, character: ch } =>
+      join(["systemd unit name has a character systemd.unit(5) disallows: ", ch], "")
+    SystemdUnitNameOverlong { length: n } =>
+      join(["systemd unit name length ", to_string(n), " exceeds 255"], "")
   }
 }
 

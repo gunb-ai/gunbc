@@ -1,0 +1,84 @@
+module test.claim.runner.runner_revision_job_toolchain_witness
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import extdeps.exec.command { argv_words }
+import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage }
+import gunbc.runner.revision_job_toolchain_pins { ToolchainPinnedDeb, ToolchainAlternativeChoice, toolchain_pinned_debs, toolchain_closure_roots }
+import gunbc.runner.runner_revision_job_toolchain {
+  toolchain_closure_completeness, ToolchainClosed, ToolchainOpen, ToolchainRelationUnreadable,
+  control_disagreements, toolchain_effect_commands, stanza_field, toolchain_rows_canonical,
+}
+
+// THE CLOSURE'S PROOF OBLIGATIONS, AT THEIR INTERFACE. The pinned rows themselves are the positive
+// control (the committed closure is complete); each red is a one-field edit of a supplied row.
+
+fn row(package: String, version: String, depends: String) -> ToolchainPinnedDeb {
+  ToolchainPinnedDeb { deb: UbuntuArchiveBinaryPackage { package: package, version: version, architecture: "arm64", filename: "f", sha256: "00" }, depends: depends, pre_depends: "", alternatives: [] }
+}
+
+test fn the_committed_closure_is_complete() -> Bool {
+  match toolchain_closure_completeness(rows: toolchain_pinned_debs, roots: toolchain_closure_roots) {
+    ToolchainClosed => true
+    _ => false
+  }
+}
+
+test fn a_missing_dependency_an_unmet_version_and_a_missing_root_each_refuse() -> Bool {
+  let missing = match toolchain_closure_completeness(rows: [row(package: "a", version: "1", depends: "b")], roots: ["a"]) {
+    ToolchainOpen { unsatisfied: u } => join(u, ",") == "a needs b"
+    _ => false
+  }
+  let too_old = match toolchain_closure_completeness(rows: [row(package: "a", version: "1", depends: "b (>= 2.0~)"), row(package: "b", version: "1.9", depends: "")], roots: ["a"]) {
+    ToolchainOpen { unsatisfied: u } => count(u) == 1
+    _ => false
+  }
+  let tilde_ok = match toolchain_closure_completeness(rows: [row(package: "a", version: "1", depends: "b (>= 2.0~)"), row(package: "b", version: "2.0~rc1", depends: "")], roots: ["a"]) {
+    ToolchainClosed => true
+    _ => false
+  }
+  let no_root = match toolchain_closure_completeness(rows: [row(package: "a", version: "1", depends: "")], roots: ["a", "z"]) {
+    ToolchainOpen { unsatisfied: u } => join(u, ",") == "root z"
+    _ => false
+  }
+  missing && too_old && tilde_ok && no_root
+}
+
+test fn an_alternative_is_held_to_the_branch_the_closure_recorded() -> Bool {
+  let chosen = ToolchainPinnedDeb { deb: UbuntuArchiveBinaryPackage { package: "a", version: "1", architecture: "arm64", filename: "f", sha256: "00" }, depends: "x | y", pre_depends: "",
+    alternatives: [ToolchainAlternativeChoice { relation: "x | y", chosen: "y" }] }
+  let unrecorded = ToolchainPinnedDeb { deb: UbuntuArchiveBinaryPackage { package: "a", version: "1", architecture: "arm64", filename: "f", sha256: "00" }, depends: "x | y", pre_depends: "", alternatives: [] }
+  let held = match toolchain_closure_completeness(rows: [chosen, row(package: "y", version: "1", depends: "")], roots: ["a"]) { ToolchainClosed => true  _ => false }
+  let other_branch = match toolchain_closure_completeness(rows: [chosen, row(package: "x", version: "1", depends: "")], roots: ["a"]) { ToolchainOpen { unsatisfied: _ } => true  _ => false }
+  let no_record = match toolchain_closure_completeness(rows: [unrecorded, row(package: "x", version: "1", depends: "")], roots: ["a"]) { ToolchainOpen { unsatisfied: _ } => true  _ => false }
+  held && other_branch && no_record
+}
+
+test fn an_unreadable_relation_refuses_rather_than_passing() -> Bool {
+  match toolchain_closure_completeness(rows: [row(package: "a", version: "1", depends: "b (>=)")], roots: ["a"]) {
+    ToolchainRelationUnreadable { package: p, field: f } => p == "a" && f == "Depends"
+    _ => false
+  }
+}
+
+// The control text below is what `dpkg-deb -f libc6_2.39-0ubuntu8_arm64.deb Package Version
+// Architecture Depends Pre-Depends` printed for the pinned deb (no Pre-Depends field, so none printed).
+test fn a_deb_whose_control_disagrees_with_its_row_refuses() -> Bool {
+  let control = "Package: libc6\nVersion: 2.39-0ubuntu8\nArchitecture: arm64\nDepends: libgcc-s1\n"
+  let pinned = row(package: "libc6", version: "2.39-0ubuntu8", depends: "libgcc-s1")
+  count(control_disagreements(r: pinned, control: control)) == 0
+    && count(control_disagreements(r: row(package: "libc6", version: "2.39-0ubuntu8.3", depends: "libgcc-s1"), control: control)) == 1
+    && count(control_disagreements(r: row(package: "libc6", version: "2.39-0ubuntu8", depends: ""), control: control)) == 1
+    && stanza_field(stanza: "Depends: a,\n b\nVersion: 1", name: "Depends") == Present { value: "a, b" }
+}
+
+test fn the_effects_link_cc_and_cpp_keep_nsswitch_and_run_the_closures_own_ldconfig() -> Bool {
+  join(map(toolchain_effect_commands(tree: "/t"), c => join(argv_words(command: c), " ")), "\n")
+    == "ln -sfnT gcc /t/usr/bin/cc\nln -sfnT ../bin/cpp /t/usr/lib/cpp\ncp -p --update=none /t/usr/share/libc-bin/nsswitch.conf /t/etc/nsswitch.conf\n/t/usr/sbin/ldconfig.real -r /t"
+}
+
+test fn every_pinned_field_reaches_the_row_digest_preimage() -> Bool {
+  let a = row(package: "a", version: "1", depends: "")
+  let b = ToolchainPinnedDeb { deb: UbuntuArchiveBinaryPackage { package: "a", version: "1", architecture: "arm64", filename: "f", sha256: "00" }, depends: "", pre_depends: "c", alternatives: [] }
+  toolchain_rows_canonical(rows: [a]) != toolchain_rows_canonical(rows: [b])
+}

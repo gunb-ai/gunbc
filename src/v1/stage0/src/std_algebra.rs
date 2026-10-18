@@ -8,13 +8,12 @@ use self::CarrierRowMembership::*;
 use self::CollectionSizeEffect::*;
 use self::ContainerSource::*;
 use self::CostShape::*;
+use self::ListAtLookup::*;
 use self::Ordering::*;
-pub use crate::std_error_primitives::pure_dag_seam_unreachable_string;
 use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
-pub use crate::std_error_primitives::{DivError, Result};
-pub use crate::std_optional::Optional;
-pub use crate::std_optional::{optional_absent, optional_present};
+pub use crate::std_error_primitives::{pure_dag_seam_unreachable_string, DivError, Result};
+pub use crate::std_optional::{optional_absent, optional_present, Optional};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -320,12 +319,20 @@ pub struct MapIntroductionEntry<K: Clone, V: Clone> {
 pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     entries: Rc<FreeMonoid<Rc<MapIntroductionEntry<K, V>>>>,
 ) -> Rc<HashMap<K, V>> {
-    entries.iter().cloned().fold(
-        v1_rt::rc_empty_map::<_, _>(),
-        |acc: _, entry: Rc<MapIntroductionEntry<K, V>>| {
-            v1_rt::rc_map_insert(acc, entry.key.clone(), entry.value.clone())
-        },
-    )
+    {
+        let entries_seed = v1_rt::rc_empty_map::<_, _>();
+        entries
+            .iter()
+            .cloned()
+            .fold(entries_seed.clone(), map_entry_insert)
+    }
+}
+
+pub fn map_entry_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    acc: Rc<HashMap<K, V>>,
+    entry: Rc<MapIntroductionEntry<K, V>>,
+) -> Rc<HashMap<K, V>> {
+    v1_rt::rc_map_insert(acc.clone(), entry.key.clone(), entry.value.clone())
 }
 
 #[derive(Clone)]
@@ -635,6 +642,37 @@ pub fn collection_count_shape() -> Rc<AlgebraFieldTemplate> {
         param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
         return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
             name: "Int".to_string(),
+        }),
+        size_effect: std::option::Option::None,
+        cost_shape: Some(CostShape::ShapeLinearScan),
+        callback_element_position: std::option::Option::None,
+    })
+}
+
+pub fn collection_first_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "first".to_string(),
+        param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+        return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
+            inner: Rc::new(AlgebraTypeTemplate::ReceiverElement),
+        }),
+        size_effect: Some(CollectionSizeEffect::ProjectionEffect),
+        cost_shape: Some(CostShape::ShapeLinearScan),
+        callback_element_position: std::option::Option::None,
+    })
+}
+
+pub fn collection_join_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "join".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                name: "String".to_string(),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+            name: "String".to_string(),
         }),
         size_effect: std::option::Option::None,
         cost_shape: Some(CostShape::ShapeLinearScan),
@@ -1043,111 +1081,126 @@ pub fn carrier_spelling_row_present(m: Rc<CarrierRowMembership>) -> bool {
 }
 
 pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, AlgebraProfile>(),
-        |acc: Rc<HashMap<String, AlgebraProfile>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, AlgebraProfile>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.method_surface.clone()) {
-                        v1_rt::rc_map_insert(
-                            inner.clone(),
-                            spelling.text.clone(),
-                            carrier.profile.clone(),
-                        )
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, AlgebraProfile>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, AlgebraProfile>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.method_surface.clone()) {
+                            v1_rt::rc_map_insert(
+                                inner.clone(),
+                                spelling.text.clone(),
+                                carrier.profile.clone(),
+                            )
+                        } else {
+                            inner.clone()
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 pub fn carrier_container_algebra_rows() -> Rc<HashMap<String, String>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
-                        v1_rt::rc_map_insert(
-                            inner.clone(),
-                            spelling.text.clone(),
-                            carrier.name.clone(),
-                        )
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
+                            v1_rt::rc_map_insert(
+                                inner.clone(),
+                                spelling.text.clone(),
+                                carrier.name.clone(),
+                            )
+                        } else {
+                            inner.clone()
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.container_alias_row.clone()) {
-                        v1_rt::rc_map_insert(
-                            inner.clone(),
-                            spelling.text.clone(),
-                            carrier.name.clone(),
-                        )
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.container_alias_row.clone()) {
+                            v1_rt::rc_map_insert(
+                                inner.clone(),
+                                spelling.text.clone(),
+                                carrier.name.clone(),
+                            )
+                        } else {
+                            inner.clone()
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
-                        v1_rt::rc_map_insert(inner.clone(), spelling.text.clone(), true)
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
+                            v1_rt::rc_map_insert(inner.clone(), spelling.text.clone(), true)
+                        } else {
+                            inner.clone()
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, i64>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.container_arity_row.clone()) {
-                        v1_rt::rc_map_insert(
-                            inner.clone(),
-                            spelling.text.clone(),
-                            algebra_type_param_names(carrier.profile.clone())
-                                .iter()
-                                .fold(0, |n: i64, _| v1_rt::int_add(n, 1)),
-                        )
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, i64>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, i64>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.container_arity_row.clone()) {
+                            v1_rt::rc_map_insert(
+                                inner.clone(),
+                                spelling.text.clone(),
+                                algebra_type_param_names(carrier.profile.clone())
+                                    .iter()
+                                    .fold(0, |n: i64, _| v1_rt::int_add(n, 1)),
+                            )
+                        } else {
+                            inner.clone()
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 #[derive(
@@ -1221,25 +1274,28 @@ pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
 }
 
 pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
-                        v1_rt::rc_map_insert(
-                            inner.clone(),
-                            spelling.text.clone(),
-                            algebra_profile_equality_extensional(carrier.profile.clone()),
-                        )
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
+                            v1_rt::rc_map_insert(
+                                inner.clone(),
+                                spelling.text.clone(),
+                                algebra_profile_equality_extensional(carrier.profile.clone()),
+                            )
+                        } else {
+                            inner.clone()
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
@@ -1855,16 +1911,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
         collection_any_shape(),
         collection_all_shape(),
         collection_count_shape(),
-        Rc::new(AlgebraFieldTemplate {
-            name: "first".to_string(),
-            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
-                inner: Rc::new(AlgebraTypeTemplate::ReceiverElement),
-            }),
-            size_effect: Some(CollectionSizeEffect::ProjectionEffect),
-            cost_shape: Some(CostShape::ShapeLinearScan),
-            callback_element_position: std::option::Option::None,
-        }),
+        collection_first_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "last".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -1965,21 +2012,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: Some(CostShape::ShapeLinearScan),
             callback_element_position: std::option::Option::None,
         }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "join".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                    name: "String".to_string(),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "String".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeLinearScan),
-            callback_element_position: std::option::Option::None,
-        }),
+        collection_join_shape(),
         collection_concat_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "list_push".to_string(),
@@ -2536,6 +2569,249 @@ pub fn skip<T: Clone>(
             }
         }
     }
+}
+
+pub fn take_prefix<T: Clone>(xs: Rc<FreeMonoid<T>>, n: i64) -> Rc<FreeMonoid<T>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (n.clone() <= 0) {
+            Rc::new(vec![])
+        } else {
+            {
+                let __fm = xs.clone();
+                if __fm.is_empty() {
+                    Rc::new(vec![])
+                } else {
+                    let h = (*__fm)[0].clone();
+                    let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                    Rc::new({
+                        let mut __cons_v =
+                            (*take_prefix(t.clone(), v1_rt::int_sub(n.clone(), 1))).clone();
+                        __cons_v.insert(0, h.clone());
+                        __cons_v
+                    })
+                }
+            }
+        }
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SortKeyed<T: Clone, K: Clone> {
+    pub key: K,
+    pub item: T,
+    pub _phantom: std::marker::PhantomData<(T, K)>,
+}
+
+pub fn sort_merge_runs<T: Clone, K: Clone>(
+    left: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    right: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    order: Rc<TotalOrder<K>>,
+) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let __fm = left.clone();
+        if __fm.is_empty() {
+            right.clone()
+        } else {
+            let l = (*__fm)[0].clone();
+            let lt: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            {
+                let __fm = right.clone();
+                if __fm.is_empty() {
+                    left.clone()
+                } else {
+                    let r = (*__fm)[0].clone();
+                    let rt: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                    match (order.compare)(l.key.clone(), r.key.clone()) {
+                        Ordering::Greater => Rc::new({
+                            let mut __cons_v =
+                                (*sort_merge_runs(left.clone(), rt.clone(), order.clone())).clone();
+                            __cons_v.insert(0, r.clone());
+                            __cons_v
+                        }),
+                        Ordering::Less => Rc::new({
+                            let mut __cons_v =
+                                (*sort_merge_runs(lt.clone(), right.clone(), order.clone()))
+                                    .clone();
+                            __cons_v.insert(0, l.clone());
+                            __cons_v
+                        }),
+                        Ordering::Equal => Rc::new({
+                            let mut __cons_v =
+                                (*sort_merge_runs(lt.clone(), right.clone(), order.clone()))
+                                    .clone();
+                            __cons_v.insert(0, l.clone());
+                            __cons_v
+                        }),
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn sort_keyed_runs<T: Clone, K: Clone>(
+    xs: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    n: i64,
+    order: Rc<TotalOrder<K>>,
+) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (n.clone() <= 1) {
+            xs.clone()
+        } else {
+            sort_merge_runs(
+                sort_keyed_runs(
+                    take_prefix(xs.clone(), v1_rt::int_div(n.clone(), 2)),
+                    v1_rt::int_div(n.clone(), 2),
+                    order.clone(),
+                ),
+                sort_keyed_runs(
+                    skip(xs.clone(), v1_rt::int_div(n.clone(), 2)),
+                    v1_rt::int_sub(n.clone(), v1_rt::int_div(n.clone(), 2)),
+                    order.clone(),
+                ),
+                order.clone(),
+            )
+        }
+    })
+}
+
+pub fn int_compare_canonical(a: i64, b: i64) -> Ordering {
+    if (a.clone() < b.clone()) {
+        Ordering::Less
+    } else {
+        if (a.clone() > b.clone()) {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
+}
+
+pub fn int_total_order() -> Rc<TotalOrder<i64>> {
+    Rc::new(TotalOrder {
+        compare: Rc::new(int_compare_canonical),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn list_sort_by_key<T: Clone, K: Clone>(
+    xs: Rc<FreeMonoid<T>>,
+    key: impl Fn(T) -> K + Clone,
+    order: Rc<TotalOrder<K>>,
+) -> Rc<FreeMonoid<T>> {
+    list_map(
+        sort_keyed_runs(
+            list_map(xs.clone(), |item| {
+                Rc::new(SortKeyed {
+                    key: key(item.clone()),
+                    item: item.clone(),
+                    _phantom: std::marker::PhantomData,
+                })
+            }),
+            length(xs.clone()),
+            order.clone(),
+        ),
+        |k| k.item.clone(),
+    )
+}
+
+pub fn empty_map_primitive_delegate<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
+    v1_rt::rc_empty_map()
+}
+
+pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
+    v1_rt::rc_empty_map()
+}
+
+pub fn map_insert_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+    key: K,
+    value: V,
+) -> Rc<HashMap<K, V>> {
+    v1_rt::rc_map_insert(m.clone(), key.clone(), value.clone())
+}
+
+pub fn map_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+    key: K,
+    value: V,
+) -> Rc<HashMap<K, V>> {
+    v1_rt::rc_map_insert(m.clone(), key.clone(), value.clone())
+}
+
+pub fn map_lookup_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+    key: K,
+) -> Option<V> {
+    v1_rt::lookup(&m, key.clone())
+}
+
+pub fn map_lookup<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+    key: K,
+) -> Option<V> {
+    v1_rt::lookup(&m, key.clone())
+}
+
+pub fn map_contains_key<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+    key: K,
+) -> bool {
+    match v1_rt::lookup(&m, key.clone()) {
+        Some(_) => true,
+        std::option::Option::None => false,
+    }
+}
+
+pub fn list_at_primitive_delegate<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
+    v1_rt::list_get_optional(&xs, index.clone())
+}
+
+pub fn list_at_optional<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
+    v1_rt::list_get_optional(&xs, index.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ListAtLookup<T> {
+    ListAtMissing { remaining: i64 },
+    ListAtFound { value: T },
+}
+
+pub fn list_at_reference<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
+    match (*fold_list(
+        xs.clone(),
+        Rc::new(ListAtLookup::ListAtMissing {
+            remaining: index.clone(),
+        }),
+        |acc, item| match (*acc.clone()).clone() {
+            ListAtLookup::ListAtFound { value: _, .. } => acc.clone(),
+            ListAtLookup::ListAtMissing { remaining: r, .. } => {
+                if (r.clone() == 0) {
+                    Rc::new(ListAtLookup::ListAtFound {
+                        value: item.clone(),
+                    })
+                } else {
+                    Rc::new(ListAtLookup::ListAtMissing {
+                        remaining: v1_rt::int_sub(r.clone(), 1),
+                    })
+                }
+            }
+        },
+    ))
+    .clone()
+    {
+        ListAtLookup::ListAtFound { value: v, .. } => {
+            crate::std_optional::optional_present(v.clone())
+        }
+        ListAtLookup::ListAtMissing { remaining: _, .. } => crate::std_optional::optional_absent(),
+    }
+}
+
+pub fn map_support_keys<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+) -> Rc<FreeMonoid<K>> {
+    Rc::new(v1_rt::map_keys(&m))
 }
 
 pub fn is_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {

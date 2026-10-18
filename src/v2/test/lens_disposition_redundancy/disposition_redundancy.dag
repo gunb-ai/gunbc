@@ -326,8 +326,8 @@ data redundancy_region_fleet_converge_marks: List<Disposition> = [
 
 data redundancy_region_fleet_converge_successors_present: List<DeclarationRef> = [
   DeclarationRef {
-    module_path: "extdeps.jobserver",
-    decl_name: "jobserver_build_pool_bytes",
+    module_path: "gunbc.fleet.fleet_host_budget",
+    decl_name: "compile_pool_bytes_for",
     field: WholeDeclaration
   },
   DeclarationRef {

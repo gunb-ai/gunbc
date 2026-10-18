@@ -14,7 +14,7 @@ import gunbc.command_runner { run_shell_commands, run_shell_command_capture, Loc
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh, SshShell, EmitArtifactThenThinRun }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.runner.runner_host_deploy {
@@ -137,12 +137,17 @@ fn observe_admitted_host_wet(deploy: RunnerHostDeploy, host: HostIdentity, gener
     match prepare_fleet_ssh_agent_context(attempt_raw: runner_microvm_network_observe_attempt_raw) {
       FleetSshContextRefused { cause: c } => exit_failure(reason: join(["microvm-network-observe: ", c], ""))
       FleetSshContextReady { context: context, receipt: _ } =>
-        record_converge_readback_wet(
-          slots: runner_microvm_network_slot_identities_of(deploy: deploy),
-          host: host,
-          generation: generation,
-          reads: read_privileged_network(transport: FleetSsh { target: runner_microvm_administrator_target(host: host), context: context }),
-        )
+        match runner_microvm_administrator_target(host: host) {
+          SshTargetRefused { endpoint: e, refusal: why } =>
+            exit_failure(reason: join(["microvm-network-observe: ", ssh_target_refusal_text(endpoint: e, refusal: why)], ""))
+          SshTargetResolved { target: target } =>
+            record_converge_readback_wet(
+              slots: runner_microvm_network_slot_identities_of(deploy: deploy),
+              host: host,
+              generation: generation,
+              reads: read_privileged_network(transport: FleetSsh { target: target, context: context }),
+            )
+        }
     }
   }
 }

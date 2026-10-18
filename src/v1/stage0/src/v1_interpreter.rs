@@ -10994,6 +10994,15 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
             }
+            // std.host_text chars (operator ruling H4): a HostRealizedSeam reached by DECLARATION, the
+            // module literal below, never by the bare spelling -- `is_v4_bridge_family` admits the arm
+            // only when the item registry says the called `chars` IS std.host_text's. Unicode scalar
+            // values in source order: a Rust `char` is exactly one scalar value.
+            family STD_HOST_TEXT_BRIDGE_FNS "std.host_text"
+                lookup_eval_call_bridge_std_host_text eval_call_bridge__std_host_text_arm {
+                arm "v4_bridge.host_text_chars" { "chars" } =>
+                    eval_host_text_chars(&$args),
+            }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
@@ -11031,6 +11040,14 @@ macro_rules! v1_bridge_dispatch {
             }
         )*
     };
+}
+
+/// std.host_text chars: the host text's Unicode scalar values, in source order, as the
+/// `List<Char>` it is declared to return (a `Char` is an `Int` scalar on this carrier).
+fn eval_host_text_chars(args: &[(Option<String>, Value)]) -> InterpResult<Value> {
+    let text = expect_str_free_monoid(args.first().map(|(_, v)| v), "chars")?;
+    let items: Vec<Value> = text.chars().map(|c| Value::Int(c as i64)).collect();
+    Ok(list_value(items))
 }
 
 /// One guard for every bridge family.
@@ -11080,7 +11097,7 @@ macro_rules! v1_map_grounding_dispatch {
     };
 }
 
-const V2_STD_COLLECTION_MODULE: &str = "v2.std.collection";
+const V2_STD_COLLECTION_MODULE: &str = "std.algebra";
 
 pub fn std_node_reflection_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_REFLECTION_BRIDGE_FNS
@@ -15783,6 +15800,7 @@ fn reference_derived_closure_admission_value(
             T::P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515",
             T::P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515",
             T::P2aPoolIndependentDependencyProjection7515 => "P2aPoolIndependentDependencyProjection7515",
+            T::NoDagReachableNativeOccurrenceTransportProducer => "NoDagReachableNativeOccurrenceTransportProducer",
         };
         nullary("ReferenceDerivedClosureTrigger", name.to_string())
     };
@@ -24106,6 +24124,40 @@ macro_rules! v1_builtin_arms {
                 }),
             },
 
+            // ObserveAllocationAtSubject availability: the seed interpreter runs under the default
+            // allocator and selected no counting provider, so the answer is the typed `false`, not a
+            // refusal and not a count (std.realization_measurement allocation_reading).
+            arm "free_call.observed_allocation_available" { "observed_allocation_available" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Ok(Some(Value::Bool(false))),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_available takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
+            // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
+            // reading (std.realization_measurement AllocationCounter).
+            arm "free_call.observed_allocation_operations" { "observed_allocation_operations" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Err(InterpError::TypeError {
+                    msg: "observed_allocation_operations: unobservable in the interpreter (no counting allocator); only a native entry that uses AllocationCounter observes it".to_string(),
+                }),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_operations takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
+            // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
+            // reading (std.realization_measurement AllocationCounter).
+            arm "free_call.observed_allocation_bytes" { "observed_allocation_bytes" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Err(InterpError::TypeError {
+                    msg: "observed_allocation_bytes: unobservable in the interpreter (no counting allocator); only a native entry that uses AllocationCounter observes it".to_string(),
+                }),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_bytes takes exactly one boundary label".to_string(),
+                }),
+            },
+
             arm "free_call.hash_combine" { "hash_combine" } => match $positional.as_slice() {
                 [Value::Str(a), Value::Str(b)] if $positional.len() == 2 => {
                     if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
@@ -25016,20 +25068,8 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.class_b_import_closure_gate_not_affected_skip" { "class_b_import_closure_gate_not_affected_skip" } => Ok(Some(Value::Bool(
-                crate::cli_run::class_b_import_closure_gate_not_affected_skip_for_ci(),
-            ))),
-
             arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
-            ))),
-
-            arm "free_call.witness_layer_roots_compile_clean_emit_check" { "witness_layer_roots_compile_clean_emit_check" } => Ok(Some(Value::Bool(
-                crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
-            ))),
-            arm "free_call.install_or_consume_floor_compile_clean_gate_receipt" { "install_or_consume_floor_compile_clean_gate_receipt" } => Ok(Some(gate_receipt_value(
-                crate::cli_run::install_or_consume_floor_compile_clean_gate_receipt(),
-                $ctx,
             ))),
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
@@ -25047,10 +25087,6 @@ macro_rules! v1_builtin_arms {
             arm "free_call.consume_generated_artifact_drift_gate_receipt" { "consume_generated_artifact_drift_gate_receipt" } => Ok(Some(gate_receipt_value(
                 crate::cli_run::consume_generated_artifact_drift_gate_receipt(),
                 $ctx,
-            ))),
-
-            arm "free_call.witness_compile_clean_cli_floor_verdicts_agree" { "witness_compile_clean_cli_floor_verdicts_agree" } => Ok(Some(Value::Bool(
-                crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
             ))),
 
             arm "free_call.test_migration_debt_module_names" { "test_migration_debt_module_names" } => {

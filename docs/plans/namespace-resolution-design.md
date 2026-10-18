@@ -774,10 +774,27 @@ NamespaceOnlyY on both paths, with unique-on-chain-still-resolves and
 unbound-stays-`UnresolvedType` controls. No subtree is flipped; the flip (step 4) still
 gates on import→alias transmutation landing with-or-before it.
 
-**Builtins bind at root.** The root namespace is on **every** chain, so builtins bound at root are
-unique-on-chain everywhere — this **structurally dissolves** the prelude-shaped `neither_bound`
-class (#6936, 739) rather than special-casing it, pending still-hawk's confirmation of the (c)
-subclass.
+**No ambient prelude (operator, 2026-10-04 and 2026-10-13; kernel-op ruling B, 2026-10-14).** A
+module sees only its own declarations and its own imports. The superseded “builtins bind at
+root” reading is retired so it cannot license an ambient last-tier bind.
+
+**Roster surface heads are import-scoped.** The one declaration for each collection callee is
+the `std.algebra` `collection_*_shape` row (no free `fn concat`; `kernel_mint_declaration_rows`
+is the Optional mint only). A bare `concat` / `count` binds only when the module imported that
+template identity (or is `std.algebra`). Native: `resolve_atom_unscoped` reads
+`collection_roster_rows` and unbound-refuses a roster head that is not visible — it does not
+fall through to `resolve_atom_primitive_authority`. Seed: `infer_builtin_call_type` / the
+builtin registry still admit concat/count (v1 semantics-frozen). That is a declared
+migration window / unclimbed seed path, not a rung drop: the seed never held import-scoped
+resolution, and native is climbing. The window is bounded by the generated corpus import
+sweep (gunbc#14017). Restoration: native `emit --entry v2.cli.compile_cli` over dag + src/v2
+first-fatals no concat/count as `resolve_reason_unbound_symbol` for missing template
+import. Methods bind by receiver inhabitance, not import: deleting the last-tier free-call
+bind must not remove `map_get` (or `count`/`map`/`any`) from the carrier template lists.
+The named fn `collection_map_get_shape` (free-call / import identity) is deleted;
+`map_lookup` is the surviving free fn. The inline `map_get` METHOD template and
+`map_lookup` are one operation held twice until v1 method uses migrate or a dedicated
+rename. `map_insert` / `empty_map` / `map_lookup` wait on #13872's real fns.
 
 **RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The re-adjudication
 is done: the pool-filter reading of (Y) dies with the `global_bare` tier (there is never a pool

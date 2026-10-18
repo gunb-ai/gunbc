@@ -1,11 +1,11 @@
 module gunbc.instruments.layout_migration
 
-import std.types { FilePath, Int, List, String }
+import std.types { FilePath, Int, List, String, Map }
 import std.optional { Absent, Optional, Present, optional_present }
 import extdeps.git
 import extdeps.shell
-import std.algebra { skip }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.algebra { skip, empty_map, map_insert, map_lookup }
+
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io {
   Filesystem,

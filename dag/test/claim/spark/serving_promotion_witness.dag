@@ -9,7 +9,7 @@ import std.algebra { length }
 import extdeps.nvidia.nccl { NcclTransportIbVerbs }
 import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff, IndexerKvDtypeOmitted, vllm_scheduler_admission_omitted }
 import gunbc.spark.serving_arm { Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4 }
-import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_performance_subject, serving_subject_key, ServingSubjectKey }
+import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_performance_subject, serving_subject_key, ServingSubjectKey, serving_engine_vllm, AcceleratorSparkGb10 }
 import gunbc.spark.serving_compatibility { AdmitsNormalServing, AdmitsBoundedExperimentOnly }
 import gunbc.spark.arm_memory_fit { ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished, ArmPhaseModelLoad, CacheFitProved, gb10_memory_tier }
 import gunbc.spark.serving_promotion {
@@ -31,12 +31,15 @@ fn fx_subject_at(ceiling: Nat, profile: String) -> ServingPerformanceSubject {
     context_ceiling: Present { value: token_count(count: 262144) },
     max_num_batched_tokens: token_count(count: 2048),
     max_num_seqs: Present { value: ceiling },
-    kv_cache_dtype: Present { value: KvFp8 },
-    speculative: Present { value: SpeculativeDecodingOff },
     collective_transport: none,
-    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted },
-    scheduler_admission: Present { value: vllm_scheduler_admission_omitted },
-    launch_profile_key: Present { value: profile }, deployment_env_key: Present { value: "env=none" } )
+    launch_profile_key: Present { value: profile }, deployment_env_key: Present { value: "env=none" },
+    engine: serving_engine_vllm(
+      kv_cache_dtype: Present { value: KvFp8 },
+      speculative: Present { value: SpeculativeDecodingOff },
+      indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted },
+      scheduler_admission: Present { value: vllm_scheduler_admission_omitted },
+    ),
+    accelerator: AcceleratorSparkGb10)
 }
 
 fn fx_subject() -> ServingPerformanceSubject { fx_subject_at(ceiling: 12, profile: "candidate-profile") }

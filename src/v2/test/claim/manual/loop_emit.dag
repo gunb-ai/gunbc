@@ -18,9 +18,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.compiler.translate { translate_emitted_node }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional
 }

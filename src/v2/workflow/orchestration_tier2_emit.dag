@@ -17,7 +17,7 @@ import v2.std.orchestration {
   ExprCmdSubst,
   StrEmpty
 }
-import v2.std.collection { Absent }
+import std.optional { Absent }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

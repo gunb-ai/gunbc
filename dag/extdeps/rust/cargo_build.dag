@@ -45,6 +45,39 @@ fn cargo_clippy_command(extra_args: List<String>, lint_args: List<String>) -> Ar
 }
 
 
+// A RELEASE BUILD OF ONE BIN OF ONE PACKAGE THAT CANNOT FETCH. One bin, because a caller that runs one
+// binary should not pay the memory and time of building the package's every target. `--locked` refuses a Cargo.lock that would have to
+// change, and `--offline` refuses any network access, so a dependency the vendored source does not
+// hold is a build failure rather than a download; cargo verifies each vendored crate against its
+// .cargo-checksum.json, so a vendor set that does not match the lockfile refuses too. The source
+// replacement that points cargo at the vendor directory is configuration (a .cargo/config.toml the
+// caller places), not an argument here.
+fn cargo_build_release_bin_offline_command(package: String, bin: String) -> ArgvCommand {
+  argv_command(program: cargo_program(), arguments: ["build", "--release", "-p", package, "--bin", bin, "--locked", "--offline"])
+}
+
+// `cargo run`: the same offline, locked release build for a package named by its manifest, into a
+// target directory the caller names, then the package's binary run with cargo's own exit status --
+// for a package outside the workspace the caller sits in. Build output goes to stderr and the
+// program's to stdout. The source replacement is still configuration cargo discovers from the
+// working directory.
+fn cargo_run_release_manifest_offline_command(manifest_path: String, target_dir: String) -> ArgvCommand {
+  argv_command(program: cargo_program(), arguments: ["run", "--release", "--manifest-path", manifest_path, "--target-dir", target_dir, "--locked", "--offline"])
+}
+
+// THE DEPENDENCY SOURCES A LOCKFILE PINS, written to a directory. `--locked` refuses a lockfile that
+// would change; `--versioned-dirs` names each crate directory with its version so two versions of
+// one crate cannot collide. Its output layout and .cargo-checksum.json files are cargo's, so a
+// vendor set is keyed by the cargo that wrote it as well as by the lockfile (cargo_version_command).
+fn cargo_vendor_command(manifest_path: String, output_dir: String) -> ArgvCommand {
+  argv_command(program: cargo_program(), arguments: ["vendor", "--locked", "--versioned-dirs", "--manifest-path", manifest_path, output_dir])
+}
+
+// The cargo identity: `cargo --version` prints `cargo <semver> (<commit> <date>)`.
+fn cargo_version_command() -> ArgvCommand {
+  argv_command(program: cargo_program(), arguments: ["--version"])
+}
+
 fn cargo_build_jobs_flag(count: Int) -> List<String> {
   ["--jobs", to_string(count)]
 }

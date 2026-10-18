@@ -9,6 +9,7 @@ module gunbc.tools.bmc_first_contact
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path, write_netrc_outcome, netrc_write_succeeded, netrc_failure_reason,
 }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 
 // `shell.Env.Get` answers `value: String?`, and this func reached it with `as NonEmptyStr`, which

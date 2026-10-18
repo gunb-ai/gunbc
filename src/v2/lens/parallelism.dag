@@ -16,9 +16,7 @@ import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent, inferred_facts_subject_node, infer_facts_lookup_miss_diagnostic }
 import std.algebra { list_snoc_item, bag_eq }
-import v2.std.collection {
-  optional_present_witness
-}
+
 import std.optional {
   Optional,
   optional_absent,
@@ -40,7 +38,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.node { Symbol }
-import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional, optional_present_witness }
 
 type ParallelismFact {
   dependencies: List<ClassifiedDependencyView<ParallelismRelation>>

@@ -174,9 +174,7 @@ import v2.std.compilers.target_model {
   WrapGateDecided,
   target_reference_layer_apply_value_expression
 }
-import v2.std.collection {
-  list_at_optional
-}
+
 import v2.std.arrow_signature {
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,
@@ -202,7 +200,8 @@ import std.algebra {
   list_snoc_item,
   fold_list,
   is_empty,
-  length
+  length,
+  list_at_optional
 }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.text {

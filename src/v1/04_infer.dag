@@ -9,8 +9,8 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
+import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentBeforeInference, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
@@ -28,7 +28,7 @@ import v1.compiler.type_head_exposure {
   type_declaration_identity_key,
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
-import v1.std.core { Unmarked, declaration_provenance_of,
+import v1.std.core { Unmarked, ModuleItemTypeDeclaration, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
@@ -86,7 +86,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right,
-  make_transport_node, local_transport_node,
+  make_transport_node, local_transport_node, is_shell_transport,
   Text, Interpolation,
   with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
   no_span, NewlineIndex,
@@ -101,7 +101,7 @@ import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
-  node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, is_fully_resolved,
+  node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, collection_carrier_node, is_fully_resolved,
   kernel_profile_lookup,
   resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
   bare_map_node, bare_set_node,
@@ -140,7 +140,7 @@ import v1.compiler.infer_env { overlay_skips_kernel_name,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -223,6 +223,9 @@ import v1.compiler.infer_patterns {
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
   check_match_exhaustiveness,
+  node_is_never_declaration,
+  constructor_roster_for,
+  ConstructorRoster, ConstructorsClosed, ConstructorsOpen,
   expand_scrut_type_for_variant_lookup,
   pattern_matches_constructor,
   constructor_fields
@@ -235,7 +238,7 @@ import v1.compiler.infer_lookup {
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig, func_env_declared_func_sig,
+  lookup_in_scope, lookup_func_sig, func_env_declared_func_sig, func_sig_from_global_bare,
   resolved_plain_call_target_for_outcome, resolved_declaration_call_target, census_declaration_identity,
   global_bare_callable_node, constructor_declaration_for_admission,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
@@ -1671,6 +1674,14 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
+  else if value_at_never_declared_type(declared: declared, produced: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
   else if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
     declared_type_obligation_diags(
       obligation: DeclaredTypeObligation {
@@ -1698,6 +1709,14 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
   }
   else if type_node_is_arrow(n: declared) && type_node_is_arrow(n: produced)
       && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if product_versus_coproduct_head_mismatch(declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -3107,6 +3126,56 @@ fn match_arm_body_is_present_payload_binding(arm: ArmInferResult, scope: InferSc
   }
 }
 
+// IDENTITY IS THE RESOLVED DECLARATION, NEVER A POSITION. A corpus declaration is identified by the
+// DeclarationRef its reference carries (Node.declaration, minted once by infer_resolve
+// reference_with_declaration); two nodes without it are not joined. The kernel Optional has no
+// DeclarationRef (a kernel spelling names no corpus declaration), so its identity is the kernel
+// scope's own binding, the node kernel_optional_owner_declaring hands out.
+fn type_is_kernel_optional_declaration(t: Node, owner: Node?) -> Bool {
+  match owner {
+    Present { value: o } => t.connective == Disj && t == o
+    Absent => false
+  }
+}
+
+// A BARE DECLARATION ARM IS DROPPED FROM THE JOIN WHEN A SIBLING ARM INHABITS THE SAME DECLARATION.
+// A sibling inhabits a corpus declaration when it carries the same DeclarationRef at a different
+// application (the node differs), and the kernel Optional when it is `T?`: that cardinality IS that
+// declaration, so the inhabitance is established by the owner's identity.
+//
+// READING OF THE CORPUS RULE: `t.connective == Disj` makes t the BARE declaration (an application of a
+// generic coproduct is not Disj). Siblings that are applications of the same DeclarationRef (Box<Int>,
+// Box<String>) are not Disj either, so none of them drops and the join between them is unchanged;
+// when every arm would drop, inhabited_join_types keeps them all.
+// PREMISE: v1 types a NULLARY arm literal (`Absent`, `CtlNil`) as the bare declaration. A
+// payload-carrying arm typed bare would ride this rule wrongly, so that typing must not be introduced
+// without revisiting it. The kernel Optional is identified by node equality with the kernel scope's own
+// binding, so a user coproduct that spells `Present`/`Absent` arms never matches.
+fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, optional_owner: Node?) -> Bool {
+  t.connective == Disj && (siblings |> any(s =>
+    (s != t && t.declaration != none && s.declaration == t.declaration)
+      || (s.return_cardinality == CardOptional && type_is_kernel_optional_declaration(t: t, owner: optional_owner))
+  ))
+}
+
+// THE ARM-JOIN AND THE BRANCH-JOIN SHARE ONE RULE: a bare declaration arm yields to a sibling that
+// inhabits it. Dropping it leaves the sibling, which carries the type argument the declaration lacks.
+fn inhabited_join_types(types: List<Node>, scope: InferScope) -> List<Node> {
+  let optional_owner = kernel_optional_owner_declaring(env: scope.type_env, name: "Absent")
+  let kept = types |> filter(t => !arm_is_bare_declaration_of_sibling(t: t, siblings: types, optional_owner: optional_owner))
+  if kept |> count == 0 { types } else { kept }
+}
+
+// A FOLD INIT THAT IS A BARE DECLARATION FIXES NO ELEMENT TYPE: the fold's expected result, when it
+// inhabits that declaration, does. One rule for the method-call and the free-call fold forms.
+fn fold_init_joined_with_expected(init_type: Node, expected: Node?, scope: InferScope) -> Node {
+  match expected {
+    Present { value: exp } =>
+      if arm_is_bare_declaration_of_sibling(t: init_type, siblings: [exp], optional_owner: kernel_optional_owner_declaring(env: scope.type_env, name: "Absent")) { exp } else { init_type }
+    Absent => init_type
+  }
+}
+
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
   if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
     []
@@ -3274,6 +3343,36 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
 // bound stops a multi-type cycle (`type A = B` / `type B = A`) regardless. Both exhaust to the
 // ADMITTING arm -- where an unfollowable reference already landed -- never to a fabricated refusal,
 // because exhausting the walk establishes ignorance, not a mismatch.
+//
+// THE VALUE SHAPE IS NOT THE WALL (gunbc node://adhoc-ed047a8d-5b3, measured 2026-10-17). This
+// relation used to bail whenever the produced node had ANY children -- `(actual_base.children |>
+// count) > 0` -- on the reading that a structured produced side is another relation's judgment.
+// That reading was keyed on the VALUE'S RUNTIME SHAPE, not on its DECLARED type, and it admitted
+// the floor failure it now refuses: the corpus Bool is `type Bool = True | False`, so a Bool
+// VARIABLE's node carries two children while the `true` literal is a childless kernel spelling --
+// `takes(x: true)` refused and `takes(x: q)` with `q: Bool` accepted with zero diagnostics, and
+// `fn entry() -> Int { probe(q: true) }` then INTERPRETED the Bool through the Int formal
+// (measured; the emitted Rust carried `fn probe(q:bool) -> i64`). The shape gate was never the
+// exemption anyone meant to grant: every case it actually exempted (coproduct-pair at a
+// coproduct formal, record at a coproduct, refinement children) is refused or admitted elsewhere
+// by a cited name-level judgment -- the two-relation declared_type_obligation_diags wall, the
+// coproduct-head arm, the where-refinement peel above -- while what it wrongly exempted and this
+// rung now refuses is a KERNEL-NAMED declared type whose values are shaped: the corpus Bool
+// (`type Bool = True | False`) at a scalar formal at every consulted position, and `Bool` at a
+// differently-parameterised declared head (`FreeMonoid<Int>`), including through the generic type
+// argument this relation is consulted at as well (all eight flips measured on the pinned pair).
+// WHAT THIS RUNG DOES NOT CLAIM: a value whose declared head is NOT kernel-named -- a user
+// `type Nat = Zero | Succ { predecessor: Nat }`, a user `type Opt<T>`, a user coproduct -- still
+// leaves through the guard above (`is_kernel_type(actual_name) == false` admits, and `Unit` is
+// excluded) and is judged only by the two-relation wall, exactly as before this change; measured
+// unchanged on both sides of the pin. Closing that guard is the named next rung of
+// gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel, not this one.
+// The surviving accepts each carry a cited reason: name equality, the declared `dag_can_cast`
+// rows (Int<->Float) and the grounded identity rows (Int->Nat, String->FreeMonoid in
+// dag/std/coercion.dag -- the declared text unfold the operator ruled legitimate), the
+// structural-carrier template, the single-child refinement. A literal and a named value of the
+// same declared type now receive the SAME verdict, which is the DESIGN section 4b floor: values
+// inhabit their DECLARED types, not their literal spellings.
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   kernel_value_declared_type_mismatch_bounded(
     formal: formal, actual: actual, type_env: type_env, source_indices: source_indices,
@@ -3298,7 +3397,7 @@ fn kernel_value_declared_type_mismatch_bounded(
   let formal_carries_optional = formal.return_cardinality == CardOptional
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: formal)) == "Optional"
   let actual_base = if formal_carries_optional { actual } else { peel_where_refinement_base(ty: actual, type_env: type_env) }
-  if formal.connective == Arrow || actual.connective == Arrow || (actual_base.children |> count) > 0 {
+  if formal.connective == Arrow || actual.connective == Arrow {
     false
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
@@ -4165,6 +4264,7 @@ type InhabitanceRefusalReason
   | RefusedDistinctAppliedTypeArgument
   | RefusedOptionalAtRequired
   | RefusedProductAtScalar
+  | RefusedValueAtNever
 
 
 type InhabitanceVerdict
@@ -4436,6 +4536,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceRefused { reason: RefusedOptionalAtRequired }
   } else if either_optional {
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
+  } else if value_at_never_declared_type(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedValueAtNever }
   } else if declared_is_generic {
     InhabitanceUndecidable { reason: UndecidableGenericFormal }
   } else if declared_name == "" {
@@ -4696,6 +4798,33 @@ fn collection_versus_established_identity(declared: Node, produced: Node, scope:
 fn product_at_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
   type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: produced, scope: scope))
     && declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope)
+}
+
+// A VALUE NEVER INHABITS NEVER. Never has no producer, so any produced value that is not itself
+// Never (by DeclarationRef identity, node_is_never_declaration) is refused at a Never position.
+// Without this arm the declared head exposes as OpaqueTypeHead, which the relations above leave
+// unjudged, so absurd(i: Int) was admitted (gunbc.recurring_failure_mode
+// a_value_of_any_type_is_admitted_at_an_opaque_declared_type: this is one leaf of that class, to
+// be folded in when the relation distinguishes host-realized opaques from constructor-less
+// declarations). A generic or unresolved produced type is not judged here.
+fn value_at_never_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let env = scope.type_env
+  let declared_resolved = match lookup_type_for(env: env, node: declared) {
+    Present { value: r } => r
+    Absent => declared
+  }
+  let produced_resolved = match lookup_type_for(env: env, node: produced) {
+    Present { value: r } => r
+    Absent => produced
+  }
+  let produced_is_generic = (produced.params |> count) > 0 || match produced.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+  node_is_never_declaration(resolved: declared_resolved, env: env)
+    && !produced_is_generic
+    && authored_name_at(source_indices: env.source_indices, node: produced) != ""
+    && !node_is_never_declaration(resolved: produced_resolved, env: env)
 }
 
 fn declared_head_is_kernel_scalar_through_refinement(declared: Node, scope: InferScope) -> Bool {
@@ -5269,6 +5398,8 @@ fn inhabitance_refusal_position_label(
   match reason {
     RefusedProductCoproductHeadMismatch =>
       concat(base, " [RefusedProductCoproductHeadMismatch]")
+    RefusedValueAtNever =>
+      concat(base, " [RefusedValueAtNever]")
     _ => base
   }
 }
@@ -5512,6 +5643,21 @@ fn kernel_container_carrier_verdict(formal: Node, owner: DeclarationRef?, scope:
   }
 }
 
+// AN OPTIONAL-MARKED FORMAL IS INHABITED BY THE OPTIONAL LITERAL. `xs: List<T>?` is a formal whose
+// optionality lives in a cardinality marker (std.optional::Optional is the nominal representation of
+// the same fact), so a `Present { .. }` literal whose owner IS std.optional::Optional is the value
+// the formal states. The kernel-container identity verdict judges the literal against the container
+// carrier alone and, once the owner is recovered, would refuse it as a non-List.
+fn optional_marked_formal_takes_optional_literal(formal: Node, formal_peeled: Node, lit_name: String, scope: InferScope) -> Bool {
+  let marked = formal.return_cardinality == CardOptional || formal_peeled.return_cardinality == CardOptional
+  if !marked { false } else {
+    match structured_literal_owner_declaration(lit_name: lit_name, scope: scope) {
+      Present { value: owner } => declaration_is_std_optional(d: owner)
+      Absent => false
+    }
+  }
+}
+
 fn structured_application_site_type_mismatch_with_peeled(
   formal: Node,
   formal_peeled: Node,
@@ -5533,7 +5679,7 @@ fn structured_application_site_type_mismatch_with_peeled(
           match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
             Present { value: lit_name } =>
               match structured_kernel_container_identity_verdict(formal_peeled: formal_peeled, lit_name: lit_name, scope: scope) {
-                Present { value: admitted } => !admitted
+                Present { value: admitted } => !admitted && !optional_marked_formal_takes_optional_literal(formal: formal, formal_peeled: formal_peeled, lit_name: lit_name, scope: scope)
                 Absent =>
               if application_type_names_compatible(
                 formal_name: formal_name, lit_name: lit_name,
@@ -7720,7 +7866,7 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
 // accumulator type was fully known). The lambda arm still admits the return as the body's
 // expected type only when it is established and fully resolved, so an accumulator whose own
 // type is unknown expects nothing, as before.
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node?, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -7731,14 +7877,16 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         Present { value: fi } => fi
         Absent => infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
       }
-    } else if is_fold && fold_info != none {
+    } else if is_fold && fold_info != none && fold_acc_type != none {
+      match fold_acc_type {
+      Present { value: fold_acc } =>
       let fold_params = [
-        make_param_node(occurrence_identity: OccurrenceSynthetic, name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span(), name_span: no_span()),
+        make_param_node(occurrence_identity: OccurrenceSynthetic, name: "acc", type_expr: fold_acc, default_value: none, span: no_span(), name_span: no_span()),
         make_param_node(occurrence_identity: OccurrenceSynthetic, name: "elem", type_expr: element_type, default_value: none, span: no_span(), name_span: no_span())
       ]
       let fold_callable = Node {
         occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [],
-        connective: NoConnective, params: fold_params, inferred: Present { value: Resolved { node: fold_acc_type } },
+        connective: NoConnective, params: fold_params, inferred: Present { value: Resolved { node: fold_acc } },
         return_cardinality: Required, uses: [], body: none, transport: none,
         properties: [], type_annotation: none, is_self_recursive: false,
         has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
@@ -7764,6 +7912,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
       ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
+      Absent => infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
+      }
     } else {
       let nf_lam_value = arg_value(n: a)
       let nf_prov_map = match elem_provenance {
@@ -7812,13 +7962,39 @@ fn is_lambda_expr(e: Node) -> Bool {
   }
 }
 
+// A lambda argument contributes NOTHING to the call's generic substitution -- the
+// argument fold skips it -- yet its own parameter types are read OUT of that
+// substitution. So the substitution a lambda is inferred under is whatever the
+// arguments to its LEFT happened to bind, and a type variable bound by an argument to
+// its RIGHT, or by a sibling field of the record literal that CONTAINS it, is not there
+// yet: the parameter falls to type_variable_node("callable_param") and every method
+// call on it then fails to resolve. Measured before this pass existed, both blocking:
+// a lambda field beside the field that binds R refused `map` and `count` on its own
+// parameter with receiver type 'Primitive()', and a lambda argument declared ahead of
+// the argument that binds R refused a field access with "no field 'px' on type 'R'".
+// The repair is one extra ROUND of the same fold, not a second rule: the fold is run
+// again from the substitution the first round ended with, so every argument sees every
+// binding derivable in one forward pass regardless of authored order. Re-running is
+// sound rather than merely convenient because the substitution is a fixed point of the
+// second round: a lambda argument contributes to the substitution in ROUND 1 ONLY
+// (unify_lambda_solves), and only informative bindings that fill an Absent slot; in
+// round 2 lambdas are skipped, so deferring what they
+// would contribute cannot change the result, and a formal whose generic slot is already
+// bound is substituted to a concrete node that unify_generics no longer binds.
+// The narrowing this note used to state -- a binding derivable only from a lambda's
+// return -- is LIFTED by
+// that round-1 contribution (unify_callable_generics unifies the callable's params and
+// return). It stays bounded at two rounds: a round-2 return is not fed back again, and a
+// return that depends on a binding only round 2 supplies contributes nothing.
+// A round-2 MISMATCH between a lambda's return and its substituted formal return is ALREADY
+// judged, because the lambda is inferred against the substituted expected callable: a call
+// such as `ap(f: fn(v) { v }, x: 1, r: 's')` refuses the callable mismatch. No second check
+// belongs here. The open gap is the UNSOLVED case, whose specimens and wall are recorded in
+// gunbc.recurring_failure_mode unbound_generic_reaches_conformance_unjudged.
 fn expr_contains_lambda(n: Node) -> Bool {
   is_lambda_expr(e: n) || (n.children |> any(c => expr_contains_lambda(n: c)))
 }
 
-// Second pass of a call is admitted only when the old trigger would have run one:
-// the callee has generics, discovery produced a nonempty substitution, and some
-// argument contains a lambda. Per-argument recheck is then a subset of that pass.
 fn call_needs_generic_rebinding_pass(call_args: List<Node>, generic_names: List<String>, subst: Map<String, Node>) -> Bool {
   if generic_names |> count == 0 {
     false
@@ -7827,50 +8003,6 @@ fn call_needs_generic_rebinding_pass(call_args: List<Node>, generic_names: List<
   } else {
     call_args |> any(a => expr_contains_lambda(n: arg_value(n: a)))
   }
-}
-
-// A lambda argument's parameter types are read OUT of the call substitution, which
-// only arguments to its LEFT have had a chance to extend. A generic bound to its RIGHT
-// is missing from its expected context on the discovery pass. Recheck demand is exactly
-// those missing names that are STILL missing after this argument's own evidence and are
-// bound in the settled substitution — a later argument bound them. A name this argument
-// itself solved (the lambda's return generic R) is not demand: rechecking it re-enters
-// the body and re-runs inner discover+recheck. Formal selection is retained in the plan.
-// DiscoverBindings is the only phase that solves lambda evidence. The open unsolved case
-// remains gunbc.recurring_failure_mode unbound_generic_reaches_conformance_unjudged.
-
-type GenericArgumentPhase
-  = DiscoverBindings
-  | RecheckWithSettledBindings
-
-type CallArgumentPlan {
-  argument: Node
-  argument_index: Int
-  selected_formal: CallArgumentFormalSelection
-  substitution_basis: Node
-  declared_context: Node
-  declaration_bound_conformance: Node
-  code_point_view: Node?
-}
-
-type CallArgumentExpectedContext {
-  expected: Node?
-  missing_context_generics: List<String>
-  has_formal: Bool
-  formal_is_code_point_sequence: Bool
-  code_point_formal: Node
-}
-
-type ArgumentFirstReading {
-  plan: CallArgumentPlan
-  result: ArgInferResult
-  missing_context_generics: List<String>
-  still_missing_after: List<String>
-}
-
-type GenericArgDiscoverState {
-  subst: Map<String, Node>
-  readings: List<ArgumentFirstReading>
 }
 
 fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -7972,278 +8104,73 @@ fn formal_code_point_view_peeled(formal: ResolvedFormal, env: TypeEnv) -> Node? 
   }
 }
 
-fn call_argument_plan_has_formal(plan: CallArgumentPlan) -> Bool {
-  match plan.selected_formal {
-    CallArgumentFormalSelected { formal_index: _, formal: _ } => true
-    CallArgumentFormalUnavailable => false
-  }
-}
-
-fn plan_call_argument(argument: Node, argument_index: Int, arguments: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, scope: InferScope) -> CallArgumentPlan {
-  let selected_formal = select_formal_for_call_argument(argument: argument, argument_index: argument_index, arguments: arguments, value_params: value_params, source_indices: scope.type_env.source_indices)
-  match selected_formal {
-    CallArgumentFormalSelected { formal_index: formal_index, formal: p } =>
-      match formals |> skip(formal_index) |> first {
-        Present { value: carried } => CallArgumentPlan {
-          argument: argument,
-          argument_index: argument_index,
-          selected_formal: selected_formal,
-          substitution_basis: carried.substitution_basis,
-          declared_context: param_node_type_expr(n: p),
-          declaration_bound_conformance: carried.declaration_bound_conformance,
-          code_point_view: formal_code_point_view(formal: carried, env: scope.type_env)
-        }
-        Absent => CallArgumentPlan {
-          argument: argument,
-          argument_index: argument_index,
-          selected_formal: selected_formal,
-          substitution_basis: error_type,
-          declared_context: error_type,
-          declaration_bound_conformance: error_type,
-          code_point_view: none
-        }
+fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
+  fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
+    let a = pair.second
+    let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
+    let formal_raw = match formal_selection {
+      CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
+        Present { value: carried } => carried.substitution_basis
+        Absent => error_type
       }
-    CallArgumentFormalUnavailable => CallArgumentPlan {
-      argument: argument,
-      argument_index: argument_index,
-      selected_formal: selected_formal,
-      substitution_basis: type_variable_node(id: "callable_param"),
-      declared_context: type_variable_node(id: "callable_param"),
-      declaration_bound_conformance: type_variable_node(id: "callable_param"),
-      code_point_view: none
+      CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
     }
-  }
-}
-
-fn type_mentions_generic_name(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  (type_node_label(n: n, source_indices: source_indices) == name)
-    || (n.children |> any(c => type_mentions_generic_name(n: c, name: name, source_indices: source_indices)))
-    || (n.params |> any(p => type_mentions_generic_name(n: p, name: name, source_indices: source_indices)))
-    || match n.inferred {
-      Present { value: TypeVariable { id: tv_id } } => tv_id == name
-      Present { value: Resolved { node: rt } } => type_mentions_generic_name(n: rt, name: name, source_indices: source_indices)
+    let formal_declared_context = match formal_selection {
+      CallArgumentFormalSelected { formal_index: _, formal: p } => param_node_type_expr(n: p)
+      CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
+    }
+    let has_formal = match formal_selection { CallArgumentFormalSelected { formal_index: _, formal: _ } => true  CallArgumentFormalUnavailable => false }
+    let formal_param_type = substitute_generics(n: formal_declared_context, subst: st.subst, source_indices: scope.type_env.source_indices)
+    let formal_conformance_type = match formal_selection {
+      CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
+        Present { value: carried } => substitute_generics(n: carried.declaration_bound_conformance, subst: st.subst, source_indices: scope.type_env.source_indices)
+        Absent => error_type
+      }
+      CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
+    }
+    let formal_declaration_bound = match formal_selection {
+      CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
+        Present { value: carried } => formal_code_point_view(formal: carried, env: scope.type_env)
+        Absent => none
+      }
+      CallArgumentFormalUnavailable => none
+    }
+    let formal_is_code_point_sequence = formal_declaration_bound != none
+    let code_point_formal = match formal_declaration_bound { Present { value: bound } => bound  Absent => formal_conformance_type }
+    let argument_is_literal = match arg_value(n: a).expr_data {
+      ExprLiteral { value: _ } => true
       _ => false
     }
-}
-
-fn missing_context_generics(expected: Node, generic_names: List<String>, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  generic_names |> filter(g =>
-    match map_get(subst, g) {
-      Present { value: _ } => false
-      Absent => type_mentions_generic_name(n: expected, name: g, source_indices: source_indices)
-    }
-  )
-}
-
-fn still_missing_context_generics(missing_context_generics: List<String>, subst: Map<String, Node>) -> List<String> {
-  missing_context_generics |> filter(g => match map_get(subst, g) {
-    Present { value: _ } => false
-    Absent => true
-  })
-}
-
-fn argument_needs_generic_recheck(still_missing_after: List<String>, subst_final: Map<String, Node>) -> Bool {
-  still_missing_after |> any(g => match map_get(subst_final, g) {
-    Present { value: _ } => true
-    Absent => false
-  })
-}
-
-fn empty_shadowed_names() -> Map<String, Bool> {
-  empty_map()
-}
-
-fn typed_expr_is_stale(n: Node, scope: InferScope, shadowed: Map<String, Bool>) -> Bool {
-  match n.expr_data {
-    ExprVar { binding_kind: _ } =>
-      let name = expr_var_name_at(texpr: n, source_indices: scope.type_env.source_indices)
-      if map_has(shadowed, name) { false }
-      else {
-        match map_get(scope.locals, name) {
-          Absent => false
-          Present { value: binding } =>
-            match n.inferred {
-              Present { value: Resolved { node: rt } } =>
-                !node_type_equals(left: rt, right: binding.resolved, source_indices: scope.type_env.source_indices, text: TextNotAsked { reason: TextNotAskedForCallableComponentResidue })
-              _ => true
-            }
-        }
-      }
-    ExprLambda =>
-      let names = lambda_param_names_at(texpr: n, source_indices: scope.type_env.source_indices)
-      let inner_shadowed = fold(names, init: shadowed, f: (acc, name) => map_insert(acc, name, true))
-      typed_expr_is_stale(n: lambda_body(texpr: n), scope: scope, shadowed: inner_shadowed)
-    _ => n.children |> any(c => typed_expr_is_stale(n: c, scope: scope, shadowed: shadowed))
-  }
-}
-
-fn recheck_expr(source: Node, prior: Node, scope: InferScope, expected: Node?, shadowed: Map<String, Bool>) -> InferResult {
-  match source.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
-      if typed_expr_is_stale(n: prior, scope: scope, shadowed: shadowed) {
-        infer_expr(texpr: source, scope: scope, expected: expected)
-      } else {
-        InferResult { typed: prior, diagnostics: [] }
-      }
-    ExprLambda =>
-      if typed_expr_is_stale(n: prior, scope: scope, shadowed: shadowed) {
-        infer_expr(texpr: source, scope: scope, expected: expected)
-      } else {
-        InferResult { typed: prior, diagnostics: [] }
-      }
-    ExprBlock =>
-      if (source.children |> count) != (prior.children |> count) {
-        infer_expr(texpr: source, scope: scope, expected: expected)
-      } else {
-        let parts = source.children |> enumerate |> map(pair =>
-          match prior.children |> skip(pair.first) |> first {
-            Absent => infer_expr(texpr: pair.second, scope: scope, expected: none)
-            Present { value: prior_stmt } =>
-              let stmt_expected = if pair.first == ((source.children |> count) - 1) { expected } else { none }
-              recheck_expr(source: pair.second, prior: prior_stmt, scope: scope, expected: stmt_expected, shadowed: shadowed)
-          }
+    let contextual_expected = if formal_is_code_point_sequence && argument_is_literal { code_point_formal } else { match arg_value(n: a).expr_data {
+      ExprVar { binding_kind: _ } => if expression_is_uppercase_constructor_reference(n: arg_value(n: a), source_indices: scope.type_env.source_indices) { formal_conformance_type } else { formal_param_type }
+      ExprRecordLit { parent_enum: _ } => formal_param_type
+      _ => formal_param_type
+    } }
+    let expected = if has_formal { Present { value: contextual_expected } } else { none }
+    let ar_inferred = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
+    let ar = if formal_is_code_point_sequence {
+      InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
+    } else { ar_inferred }
+    let next_subst = if !has_formal {
+      st.subst
+    } else if is_lambda_expr(e: arg_value(n: a)) {
+      if map_is_empty(init_subst) {
+        unify_lambda_solves(
+          solved: unify_generics(formal: formal_raw, actual: lambda_callable_type(lambda: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: empty_map()),
+          generic_names: generic_names,
+          acc: st.subst
         )
-        InferResult {
-          typed: make_expr_node(occurrence_identity: source.occurrence_identity, expr_data: ExprBlock, children: parts |> map(p => p.typed), inferred: match parts |> last {
-            Present { value: last } => last.typed.inferred
-            Absent => none
-          }, span: source.span),
-          diagnostics: flat_map(parts, p => p.diagnostics)
-        }
-      }
-    _ =>
-      if typed_expr_is_stale(n: prior, scope: scope, shadowed: shadowed) {
-        infer_expr(texpr: source, scope: scope, expected: expected)
-      } else {
-        InferResult { typed: prior, diagnostics: [] }
-      }
-  }
-}
-
-fn infer_planned_lambda_recheck(plan: CallArgumentPlan, expected_context: CallArgumentExpectedContext, first: ArgumentFirstReading, scope: InferScope) -> ArgInferResult {
-  let source = arg_value(n: plan.argument)
-  let prior = arg_value(n: first.result.typed_arg)
-  let shadowed = empty_shadowed_names()
-  let ar_inferred = recheck_expr(source: source, prior: prior, scope: scope, expected: expected_context.expected, shadowed: shadowed)
-  let ar = if expected_context.formal_is_code_point_sequence {
-    InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: expected_context.code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
-  } else { ar_inferred }
-  ArgInferResult { typed_arg: make_arg_node(occurrence_identity: plan.argument.occurrence_identity, name: arg_name_at(n: plan.argument, source_indices: scope.type_env.source_indices), value: ar.typed, span: plan.argument.span, name_span: plan.argument.span), diagnostics: concat(first.result.diagnostics, ar.diagnostics) }
-}
-
-fn call_argument_expected_context(plan: CallArgumentPlan, subst: Map<String, Node>, generic_names: List<String>, scope: InferScope) -> CallArgumentExpectedContext {
-  let si = scope.type_env.source_indices
-  let has_formal = call_argument_plan_has_formal(plan: plan)
-  let formal_param_type = substitute_generics(n: plan.declared_context, subst: subst, source_indices: si)
-  let formal_conformance_type = substitute_generics(n: plan.declaration_bound_conformance, subst: subst, source_indices: si)
-  let formal_is_code_point_sequence = plan.code_point_view != none
-  let code_point_formal = match plan.code_point_view { Present { value: bound } => bound  Absent => formal_conformance_type }
-  let argument_is_literal = match arg_value(n: plan.argument).expr_data {
-    ExprLiteral { value: _ } => true
-    _ => false
-  }
-  let contextual_expected = if formal_is_code_point_sequence && argument_is_literal { code_point_formal } else { match arg_value(n: plan.argument).expr_data {
-    ExprVar { binding_kind: _ } => if expression_is_uppercase_constructor_reference(n: arg_value(n: plan.argument), source_indices: si) { formal_conformance_type } else { formal_param_type }
-    ExprRecordLit { parent_enum: _ } => formal_param_type
-    _ => formal_param_type
-  } }
-  let expected = if has_formal { Present { value: contextual_expected } } else { none }
-  CallArgumentExpectedContext {
-    expected: expected,
-    missing_context_generics: missing_context_generics(expected: contextual_expected, generic_names: generic_names, subst: subst, source_indices: si),
-    has_formal: has_formal,
-    formal_is_code_point_sequence: formal_is_code_point_sequence,
-    code_point_formal: code_point_formal
-  }
-}
-
-fn infer_planned_call_argument(plan: CallArgumentPlan, expected_context: CallArgumentExpectedContext, scope: InferScope) -> ArgInferResult {
-  let a = plan.argument
-  let ar_inferred = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected_context.expected)
-  let ar = if expected_context.formal_is_code_point_sequence {
-    InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: expected_context.code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
-  } else { ar_inferred }
-  ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
-}
-
-type CallArgumentGenericEvidence
-  = NoGenericEvidence
-  | LambdaGenericEvidence { callable: Node }
-  | RecordLitGenericEvidence { record: Node }
-  | OrdinaryGenericEvidence { actual: Node }
-
-fn call_argument_generic_evidence(plan: CallArgumentPlan, typed_arg: Node, phase: GenericArgumentPhase, generic_names: List<String>, scope: InferScope) -> CallArgumentGenericEvidence {
-  if !call_argument_plan_has_formal(plan: plan) {
-    NoGenericEvidence
-  } else if is_lambda_expr(e: arg_value(n: plan.argument)) {
-    match phase {
-      DiscoverBindings => LambdaGenericEvidence { callable: lambda_callable_type(lambda: typed_arg) }
-      RecheckWithSettledBindings => NoGenericEvidence
+      } else { st.subst }
+    } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
+      unify_record_lit_generics(formal: formal_raw, record: ar.typed, generic_names: generic_names, scope: scope, acc: st.subst)
+    } else {
+      unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
     }
-  } else if should_unify_record_lit_generics(formal: plan.substitution_basis, arg_expr: arg_value(n: plan.argument), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
-    RecordLitGenericEvidence { record: typed_arg }
-  } else {
-    OrdinaryGenericEvidence { actual: resolved_type(n: typed_arg) }
-  }
-}
-
-fn extend_call_substitution(plan: CallArgumentPlan, evidence: CallArgumentGenericEvidence, generic_names: List<String>, subst: Map<String, Node>, scope: InferScope) -> Map<String, Node> {
-  match evidence {
-    NoGenericEvidence => subst
-    LambdaGenericEvidence { callable: callable } => unify_lambda_solves(
-      solved: unify_generics(formal: plan.substitution_basis, actual: callable, generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: empty_map()),
-      generic_names: generic_names,
-      acc: subst
-    )
-    RecordLitGenericEvidence { record: record } => unify_record_lit_generics(formal: plan.substitution_basis, record: record, generic_names: generic_names, scope: scope, acc: subst)
-    OrdinaryGenericEvidence { actual: actual } => unify_generics(formal: plan.substitution_basis, actual: actual, generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: subst)
-  }
-}
-
-fn replace_arg_infer_result(results: List<ArgInferResult>, index: Int, replacement: ArgInferResult) -> List<ArgInferResult> {
-  results |> enumerate |> map(p => if p.first == index { replacement } else { p.second })
-}
-
-fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, scope: InferScope) -> ArgGenericFoldState {
-  let plans = call_args |> enumerate |> map(pair => plan_call_argument(argument: pair.second, argument_index: pair.first, arguments: call_args, value_params: value_params, formals: formals, scope: scope))
-  let discovered = fold(plans, init: GenericArgDiscoverState { subst: empty_map(), readings: [] }, f: (st, plan) =>
-    let expected_context = call_argument_expected_context(plan: plan, subst: st.subst, generic_names: generic_names, scope: scope)
-    let result = infer_planned_call_argument(plan: plan, expected_context: expected_context, scope: scope)
-    let next_subst = extend_call_substitution(plan: plan, evidence: call_argument_generic_evidence(plan: plan, typed_arg: arg_value(n: result.typed_arg), phase: DiscoverBindings, generic_names: generic_names, scope: scope), generic_names: generic_names, subst: st.subst, scope: scope)
-    GenericArgDiscoverState {
-      subst: next_subst,
-      readings: concat(st.readings, [ArgumentFirstReading {
-        plan: plan,
-        result: result,
-        missing_context_generics: expected_context.missing_context_generics,
-        still_missing_after: still_missing_context_generics(missing_context_generics: expected_context.missing_context_generics, subst: next_subst)
-      }])
+    ArgGenericFoldState {
+      results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
+      subst: next_subst
     }
   )
-  let first_state = ArgGenericFoldState {
-    results: discovered.readings |> map(r => r.result),
-    subst: discovered.subst
-  }
-  if !call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: discovered.subst) {
-    first_state
-  } else {
-    fold(discovered.readings |> enumerate, init: first_state, f: (st, pair) =>
-      if argument_needs_generic_recheck(still_missing_after: pair.second.still_missing_after, subst_final: st.subst) {
-        let expected_context = call_argument_expected_context(plan: pair.second.plan, subst: st.subst, generic_names: generic_names, scope: scope)
-        let result = if is_lambda_expr(e: arg_value(n: pair.second.plan.argument)) {
-          infer_planned_lambda_recheck(plan: pair.second.plan, expected_context: expected_context, first: pair.second, scope: scope)
-        } else {
-          infer_planned_call_argument(plan: pair.second.plan, expected_context: expected_context, scope: scope)
-        }
-        ArgGenericFoldState {
-          results: replace_arg_infer_result(results: st.results, index: pair.first, replacement: result),
-          subst: extend_call_substitution(plan: pair.second.plan, evidence: call_argument_generic_evidence(plan: pair.second.plan, typed_arg: arg_value(n: result.typed_arg), phase: RecheckWithSettledBindings, generic_names: generic_names, scope: scope), generic_names: generic_names, subst: st.subst, scope: scope)
-        }
-      } else {
-        st
-      }
-    )
-  }
 }
 
 fn seed_override_map() -> Map<String, Node> {
@@ -9163,9 +9090,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let call_method_args = call_args |> skip(1)
       let call_method_name = Present { value: func_name }
       let call_fold_info = extract_fold_init_info(method_name: call_method_name, method_args: call_method_args, min_args: 2, scope: scope, expected: expected)
-      let call_fold_acc_type = match call_fold_info {
-        Present { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
-        Absent => error_type
+      let call_fold_acc_type: Node? = match call_fold_info {
+        Present { value: fi } => Present { value: fold_init_joined_with_expected(init_type: resolved_type(n: arg_value(n: fi.typed_arg)), expected: expected, scope: scope) }
+        Absent => none
       }
       let declared_formal_authority_failed = match call_target {
         DeclaredCallableResolved { sig: _, declared: _ } => !formal_authority_available
@@ -9209,7 +9136,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
         let value_params = call_sig_split.value_params
         let generic_names = call_sig_split.generic_names
-        infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, scope: scope)
+        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope)
+        if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
+          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
+        } else {
+          first_pass
+        }
       }
       let arg_infer_results = variant_tag_reference_argument_results(func_name: func_name, callee_is_body_binding: call_target_is_locally_bound(outcome: call_target), results: arg_call.results, scope: scope)
 
@@ -9337,14 +9269,16 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: ta } => arg_value(n: ta)
           Absent => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
-        let call_acc_is_under_resolved = !is_fully_resolved(n: call_fold_acc_type, source_indices: scope.type_env.source_indices)
-          || fold_accumulator_is_unapplied_generic(n: call_fold_acc_type)
-        let refined_call_fold_acc_type = if call_fold_info != none && call_acc_is_under_resolved {
-          match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-            Present { value: lambda_arg } => resolved_type(n: arg_value(n: lambda_arg))
-            Absent => call_fold_acc_type
-          }
-        } else { call_fold_acc_type }
+        let refined_call_fold_acc_type: Node? = match call_fold_acc_type {
+          Present { value: acc } =>
+            if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
+              match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+                Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
+                Absent => call_fold_acc_type
+              }
+            } else { call_fold_acc_type }
+          Absent => none
+        }
         let method_resolution = if listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
           KnownMethodResolution { semantics: none, result_type: none, diagnostics: [], rest_operation: false }
         } else {
@@ -9352,7 +9286,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             receiver: method_receiver,
             receiver_type: resolve_method_receiver_type(receiver_type: first_arg_type, env: scope.type_env),
             method_name: func_name,
-            fold_accumulator_type: if call_fold_info != none { Present { value: refined_call_fold_acc_type } } else { none },
+            fold_accumulator_type: refined_call_fold_acc_type,
             service_registry: scope.service_registry,
             source_indices: scope.type_env.source_indices
           )
@@ -9376,7 +9310,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: t } =>
                     if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type, source_indices: scope.type_env.source_indices) {
                       let call_arg_types = remaining |> map(a => resolved_type(n: arg_value(n: a)))
-                      let fold_overrides = if call_fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_call_fold_acc_type) } else { empty_override_map() }
+                      let fold_overrides = match refined_call_fold_acc_type {
+                        Present { value: acc } => fold_override_map(key: "FoldAccumulator", value: acc)
+                        Absent => empty_override_map()
+                      }
                       resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides, source_indices: scope.type_env.source_indices)
                     } else {
                       KernelTypeBuild { ty: base_result_type, diagnostics: [] }
@@ -9626,7 +9563,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected) {
             Present { value: ctor_result } => ctor_result
             Absent =>
-              let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
+              // CallTargetOutcome already selected a census callable. lookup_type_by_name
+              // consults the same global_bare map and will return that function NODE as a
+              // type (Named(exit_failure)), so the call is typed as the name instead of the
+              // return (ProcessExit vs Named(exit_failure) at srv3_boot_once_cd).
+              let type_match = type_match_for_direct_call_target(type_env: scope.type_env, func_name: func_name, call_target: call_target)
               let global_bare_callable = match type_match {
                 Present { value: _ } => none
                 Absent => match call_target {
@@ -9694,7 +9635,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             true => none
             false =>
               let dotted = concat(recv_spine.dotted, ".", method_name)
-              match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: dotted) {
+              // A service operation is classified BEFORE a module path or a receiver (#14147: the
+              // module-path rewrite turned effect operations into missing functions).
+              match service_spine_projection(texpr: recv, scope: scope) {
+                Present { value: _ } => none
+                Absent =>
+              match declared_module_owner(index: scope.type_env.symbol_index, name: dotted) {
                 Absent => none
                 Present { value: _ } =>
                   Present { value: infer_expr(
@@ -9710,6 +9656,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     expected: expected
                   ) }
               }
+              }
           }
       }
       match qualified_direct_call {
@@ -9722,27 +9669,32 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let recv_elem_type = for_each_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
       let mc_method_name = Present { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
-      let fold_acc_type = match fold_info {
-        Present { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
-        Absent => error_type
+      // AN INIT THAT IS A BARE DECLARATION (`init: Absent`) FIXES NO ELEMENT TYPE; the fold's expected
+      // result, when it inhabits that declaration, does. Same rule as the arm join, same helper.
+      let fold_acc_type: Node? = match fold_info {
+        Present { value: fi } => Present { value: fold_init_joined_with_expected(init_type: resolved_type(n: arg_value(n: fi.typed_arg)), expected: expected, scope: scope) }
+        Absent => none
       }
       let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
       let mc_arg_contract = declared_arg_types_for_method(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices, expand_field_type: n => expand_type_for_field_access(n: n, env: scope.type_env, module_name: scope.module_name).resolved)
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
-      let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type, source_indices: scope.type_env.source_indices)
-      let refined_fold_acc_type = if fold_info != none && mc_acc_is_under_resolved {
-        match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-          Present { value: lambda_arg } => resolved_type(n: arg_value(n: lambda_arg))
-          Absent => fold_acc_type
-        }
-      } else { fold_acc_type }
+      let refined_fold_acc_type: Node? = match fold_acc_type {
+        Present { value: acc } =>
+          if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) {
+            match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+              Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
+              Absent => fold_acc_type
+            }
+          } else { fold_acc_type }
+        Absent => none
+      }
       let method_resolution = resolve_known_method_node(
         receiver: recv_typed,
         receiver_type: recv_rt,
         method_name: method_name,
-        fold_accumulator_type: if fold_info != none { Present { value: refined_fold_acc_type } } else { none },
+        fold_accumulator_type: refined_fold_acc_type,
         service_registry: scope.service_registry,
         source_indices: scope.type_env.source_indices
       )
@@ -9762,7 +9714,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               Present { value: t } =>
                 if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type, source_indices: scope.type_env.source_indices) {
                   let mc_arg_types = typed_mc_args |> map(a => resolved_type(n: arg_value(n: a)))
-                  let mc_fold_overrides = if fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_fold_acc_type) } else { empty_override_map() }
+                  let mc_fold_overrides = match refined_fold_acc_type {
+                    Present { value: acc } => fold_override_map(key: "FoldAccumulator", value: acc)
+                    Absent => empty_override_map()
+                  }
                   resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides, source_indices: scope.type_env.source_indices)
                 } else {
                   KernelTypeBuild { ty: base_result_type, diagnostics: [] }
@@ -9845,9 +9800,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Absent => [divergent_type()]
         }
       }
-      let unified_arm_type = match arm_body_types |> first {
+      // AN ARM THAT NAMES A DECLARATION ITSELF (a bare `Absent`) CARRIES NO ELEMENT TYPE, and a sibling
+      // arm inhabiting that declaration (here `T?`) carries it. The join used to hand the declaration, with its
+      // formal unapplied, to the first-wins prefer_specific_type, which returned it and dropped T: a
+      // fold accumulator refined from that lambda rendered as `Option<Present<_>>`. The declaration is
+      // identified by its declaring site against the kernel Optional owner, never by spelling.
+      let joined_arm_types = inhabited_join_types(types: arm_body_types, scope: scope)
+      let unified_arm_type = match joined_arm_types |> first {
         Present { value: first_type } =>
-          arm_body_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
+          joined_arm_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
             prefer_specific_type(left: acc, right: t, source_indices: scope.type_env.source_indices)
           )
         Absent => scrut_rt
@@ -9906,11 +9867,30 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       let result_type = unified_arm_type
       let empty_arms_diags = if count(arm_infer_results) == 0 {
-        [inference_error(
-          message: "match expression has no arms",
-          span: span,
-          module_name: scope.module_name
-        )]
+        match resolve_pattern_subject(scope: scope, scrutinee_subject: scrut_subject) {
+          PatternResolved { node: resolved_scrutinee } =>
+            match constructor_roster_for(type_node: resolved_scrutinee, env: scope.type_env) {
+              ConstructorsClosed { names: _ } => []
+              ConstructorsOpen =>
+                [inference_error(
+                  message: "match expression has no arms",
+                  span: span,
+                  module_name: scope.module_name
+                )]
+            }
+          PatternDynamic { span: _ } =>
+            [inference_error(
+              message: "match expression has no arms",
+              span: span,
+              module_name: scope.module_name
+            )]
+          PatternLookupBlocked =>
+            [inference_error(
+              message: "match expression has no arms",
+              span: span,
+              module_name: scope.module_name
+            )]
+        }
       } else {
         []
       }
@@ -9964,13 +9944,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let else_diags = else_result.diagnostics
           let then_rt = resolved_type(n: then_typed)
           let else_rt = resolved_type(n: else_typed)
-          let unified = prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
-          let branch_diags = if node_type_compatible(
+          let inhabited_branch_types = inhabited_join_types(types: [then_rt, else_rt], scope: scope)
+          let branch_declaration_yields = inhabited_branch_types |> count == 1
+          let unified = match inhabited_branch_types |> first {
+            Present { value: only } => if branch_declaration_yields { only } else { prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices) }
+            Absent => prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
+          }
+          let branch_diags = if branch_declaration_yields || node_type_compatible(
             left: then_rt,
             right: else_rt,
             source_indices: scope.type_env.source_indices,
             text: TextJudgedIn { env: scope.type_env }
-          ) {
+          ) || if_branch_types_agree_through_alias_identity(left: then_rt, right: else_rt, scope: scope) {
             []
           } else {
             [inference_error(
@@ -10069,8 +10054,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let elements = texpr.children
       let elem_expected = match expected {
         Present { value: exp } =>
-          if node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
-            match exp.children |> first { Present { value: elem } => Present { value: child_type_node(ch: elem) }  Absent => none }
+          let col = collection_carrier_node(n: exp)
+          if node_is_element_collection(n: col, source_indices: scope.type_env.source_indices) {
+            match col.children |> first { Present { value: elem } => Present { value: child_type_node(ch: elem) }  Absent => none }
           } else { none }
         Absent => none
       }
@@ -11091,7 +11077,11 @@ fn record_lit_expected_through_generic_alias(expected: Node?, scope: InferScope,
   match expected {
     Absent => none
     Present { value: exp } =>
-      if fuel <= 0 || exp.connective != NoConnective || (exp.children |> count) == 0 {
+      // Nominal Optional<T> is the coproduct Present inhabits. Treating a kernel Optional
+      // decl as a parameterized alias peels it to T / T? and Present { value: 5 } types as Int?.
+      if node_is_std_optional(n: exp, scope: scope) {
+        expected
+      } else if fuel <= 0 || exp.connective != NoConnective || (exp.children |> count) == 0 {
         expected
       } else {
         match lookup_type_by_name(env: scope.type_env, name: authored_name_at(source_indices: scope.type_env.source_indices, node: exp)) {
@@ -11148,6 +11138,27 @@ fn transparent_alias_application_at_head(exp: Node, decl: Node, scope: InferScop
 }
 
 fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+  let unrecovered_optional = match expected {
+    Present { value: exp } =>
+      if exp.return_cardinality == CardOptional { none } else {
+        match optional_declaration_reading(n: exp, scope: scope) {
+          OptionalUnrecovered { spelling: sp } => Present { value: sp }
+          _ => none
+        }
+      }
+    Absent => none
+  }
+  match unrecovered_optional {
+    Present { value: sp } =>
+      InferResult {
+        typed: semantic_expr_error_node(message: concat("expected type '", sp, "' names no identifiable declaration; its Optional payload cannot be stamped"), span: span),
+        diagnostics: [inference_error(
+          message: concat("the expected type spelled '", sp, "' resolves to no declaration the census can identify, so whether it is std.optional Optional is undecidable here; refusing rather than leaving its payload unstamped"),
+          span: span,
+          module_name: scope.module_name
+        )]
+      }
+    Absent =>
   match map_literal_expected_keyed_node(type_name: type_name, expected: expected, scope: scope) {
     Present { value: map_node } =>
       infer_map_literal(occurrence_identity: occurrence_identity, map_node: map_node, field_inits: field_inits, span: span, scope: scope)
@@ -11161,6 +11172,7 @@ fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: Stri
         scope: scope,
         expected: record_lit_expected_through_generic_alias(expected: expected, scope: scope, fuel: 8)
       )
+  }
   }
 }
 
@@ -11196,33 +11208,221 @@ fn type_node_mentions_any_name(n: Node, names: List<String>, source_indices: Map
   }
 }
 
-// `Present { value: v }` UNDER AN EXPECTED `T?` EXPECTS `T` FOR ITS VALUE. Optional's constructor is
-// special-cased everywhere else in this stage (is_present_ctor types the literal from its value), and
-// the one direction it was never given is the downward one: the expected optional reached the literal
-// and stopped, so a generic constructor built as the value -- `Present { value: Refused { .. } }`
-// returned from a fn declared `-> Attempt<A, B>?` -- was inferred with no expected type although
-// the declaration states its instantiation. The element is the expected node with its optional
-// cardinality removed. Only an expected that IS optional is read; anything else answers none and
-// the declared-field route below decides as before. ONLY A CONSTRUCTION RECEIVES IT, which is the
-// population this exists for and the one measured clean. A collection literal or a call carries its
-// own expected-type handling, and handing it the peeled element refused two correct sites in the v1
-// seed (`Present { value: fold(.., init: empty_map(), ..) }` under `Map<String, Node>?`, and
-// `Present { value: [] }` in an if-chain) as not a keyed collection / not a collection. That the
-// peeled node does not read as the container there is an open finding, not a settled one; it was
-// not reproduced outside the seed.
-fn present_value_expected_from_optional(type_name: String, field_name: String, value: Node, expected: Node?) -> Node? {
-  let value_is_construction = match value.expr_data {
-    ExprRecordLit { parent_enum: _ } => true
+// WHICH DECLARATION AN EXPECTED TYPE NAMES, ASKED OF THE CENSUS, NEVER OF A SPELLING. The nominal
+// Optional coproduct is std.optional::Optional (the declaration the kernel mint is bound to by
+// gunbc.structural_realization_bindings kernel_mint_declaration_rows); a user type that spells
+// itself Optional is a different declaration and reads IsOtherType. The authored spelling gates
+// only the REFUSAL arm: a reference spelled Optional whose declaration the census cannot identify
+// is OptionalUnrecovered, which the caller refuses typed and located rather than leaving the
+// payload unstamped (a List under it was silently erased in emitted Rust).
+type OptionalDeclarationReading
+  = IsStdOptional
+  | IsOtherType
+  | OptionalUnrecovered { spelling: String }
+
+// The Bool is only read after infer_record_lit has refused OptionalUnrecovered (the refusal is
+// decided there, on the reading itself); every other site asks only "is it std.optional::Optional".
+fn node_is_std_optional(n: Node, scope: InferScope) -> Bool {
+  match optional_declaration_reading(n: n, scope: scope) {
+    IsStdOptional => true
     _ => false
   }
-  if type_name != "Present" || field_name != "value" || value_is_construction == false {
-    none
-  } else {
-    match expected {
-      Present { value: exp } =>
-        if (exp.return_cardinality == CardOptional) { Present { value: with_required_cardinality(n: exp) } } else { none }
-      Absent => none
-    }
+}
+
+fn std_optional_declaration_ref() -> DeclarationRef {
+  decl_ref(module_path: "std.optional", decl_name: "Optional")
+}
+
+// CANONICAL DeclarationRef EQUALITY against the one reference the kernel mint is bound to; no
+// module-path or name part is compared on its own.
+fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
+  d == std_optional_declaration_ref()
+}
+
+// THE PRESENT ARM AND ITS MEMBER, READ FROM THE CANONICAL DECLARATION: the arm of
+// std.optional::Optional that carries a member, and that member's name. Neither is a spelling
+// compared against "Present" / "value".
+fn std_optional_present_arm(scope: InferScope) -> Node? {
+  match declaration_node_of_ref(d: std_optional_declaration_ref(), env: scope.type_env) {
+    Absent => none
+    Present { value: decl } => decl.children |> filter(a => (a.children |> count) > 0) |> first
+  }
+}
+
+fn std_optional_present_arm_name(scope: InferScope) -> String? {
+  match std_optional_present_arm(scope: scope) {
+    Present { value: arm } => Present { value: arm.name }
+    Absent => none
+  }
+}
+
+fn std_optional_payload_member_name(scope: InferScope) -> String? {
+  match std_optional_present_arm(scope: scope) {
+    Present { value: arm } =>
+      match arm.children |> first {
+        Present { value: member } => Present { value: member.name }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn name_is_std_optional_present_arm(scope: InferScope, name: String) -> Bool {
+  match std_optional_present_arm_name(scope: scope) {
+    Present { value: arm_name } => arm_name == name
+    Absent => false
+  }
+}
+
+fn name_is_std_optional_payload_member(scope: InferScope, name: String) -> Bool {
+  match std_optional_payload_member_name(scope: scope) {
+    Present { value: member_name } => member_name == name
+    Absent => false
+  }
+}
+
+// A parent spelling is asked of the census (the declaration its mint is bound to), never compared.
+fn parent_name_is_std_optional(parent_name: String) -> Bool {
+  match kernel_mint_parent_identity(minted_name: parent_name) {
+    VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } => declaration_is_std_optional(d: d)
+    VariantParentIdentified { key: _ } => false
+    VariantParentUnrecovered { cause: _ } => false
+    VariantParentBeforeInference => false
+  }
+}
+
+// THE CARRIED IDENTITY FIRST: a reference the resolver stamped (Node.declaration) names its
+// declaration; a binder carries a TypeParameter/NamedField field and is not a whole declaration.
+fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarationReading {
+  let spelling = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: n))
+  let carried = declaration_carried_through_resolution(n: n, hops: 3)
+  match carried {
+    Present { value: d } => if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+    Absent => optional_reading_by_census(n: n, scope: scope, spelling: spelling)
+  }
+}
+
+// THE IDENTITY A REFERENCE CARRIES: a type application's resolved node is stamped with the
+// declaration it applies (generic_declaration_application), and the reference reads it through
+// `inferred`. A use-site reference's own span declares nothing, so the span join cannot recover it.
+fn whole_declaration_carried(n: Node) -> DeclarationRef? {
+  match n.declaration {
+    Present { value: d } =>
+      match d.field {
+        WholeDeclaration => Present { value: d }
+        NamedField { field_name: _ } => none
+        TypeParameter { name: _ } => none
+      }
+    Absent => none
+  }
+}
+
+fn declaration_carried_through_resolution(n: Node, hops: Int) -> DeclarationRef? {
+  match whole_declaration_carried(n: n) {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      if hops <= 0 { none } else {
+        match n.inferred {
+          Present { value: Resolved { node: r } } => declaration_carried_through_resolution(n: r, hops: hops - 1)
+          _ => none
+        }
+      }
+  }
+}
+
+fn optional_reading_by_census(n: Node, scope: InferScope, spelling: String) -> OptionalDeclarationReading {
+  match type_reference_declaration_reading(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+    TypeReferenceNamesDeclaration { declaration: d } =>
+      if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+    TypeReferenceIsKernelType { name: kernel } => optional_reading_of_kernel_mint(kernel: kernel)
+    TypeReferenceIsTypeVariable { id: _ } => IsOtherType
+    TypeReferenceUnidentified { authored: _, resolved: _ } =>
+      if spelling == "Optional" { OptionalUnrecovered { spelling: spelling } } else { IsOtherType }
+  }
+}
+
+fn optional_reading_of_kernel_mint(kernel: String) -> OptionalDeclarationReading {
+  match kernel_mint_parent_identity(minted_name: kernel) {
+    VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } =>
+      if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+    VariantParentIdentified { key: _ } => IsOtherType
+    VariantParentUnrecovered { cause: _ } =>
+      if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
+    VariantParentBeforeInference =>
+      if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
+  }
+}
+
+// `Present { value: v }` UNDER AN EXPECTED OPTIONAL EXPECTS THE PAYLOAD FOR ITS VALUE. `T?`
+// (CardOptional) peels its cardinality; the nominal Optional is recognized by DECLARATION
+// IDENTITY (optional_declaration_reading), and the arm and its payload field are read from that
+// declaration's own arm, not from the spellings "Present"/"value". A nested record construction
+// receives the peeled node; a list literal only when that node admits a list, so
+// `Present { value: [] }` under `Map<K, V>?` still answers none; a call is unchanged.
+fn std_optional_payload_node(exp: Node, type_name: String, field_name: String, scope: InferScope) -> Node? {
+  let declaration = declaration_node_of_ref(d: std_optional_declaration_ref(), env: scope.type_env)
+  match declaration {
+    Absent => none
+    Present { value: decl } =>
+      let arm = decl.children |> filter(a => a.name == type_name) |> first
+      match arm {
+        Absent => none
+        Present { value: arm_node } =>
+          let field = arm_node.children |> filter(f => f.name == field_name) |> first
+          match field {
+            Absent => none
+            Present { value: field_node } =>
+              match exp.children |> first {
+                Present { value: applied } => Present { value: applied }
+                Absent => Present { value: child_type_node(ch: field_node) }
+              }
+          }
+      }
+  }
+}
+
+// THE PRESENT PAYLOAD IS A DECLARED-TYPE POSITION WHATEVER THE PAYLOAD'S SYNTAX. present_value_expected_from_optional hands the
+// peeled payload type to a nested record or list literal only, so `Present { value: r }` for a plain reference `r` was never
+// judged against the declared payload and a whole record escaped a declared `T?` (gunbc.recurring_failure_mode
+// record_value_escapes_declared_optional_return). This is the same peeled node without the value-shape filter; it answers none
+// for any expected that is not a plain `T?` (return_cardinality CardOptional), so an alias or a nominal `Optional<T>` expected keeps
+// abstaining: this is a product-versus-coproduct judgment of a plain-`T?` Present payload, not general recursive Optional conformance.
+fn present_payload_declared_from_optional(type_name: String, field_name: String, expected: Node?, scope: InferScope) -> Node? {
+  match expected {
+    Absent => none
+    Present { value: exp } =>
+      let names_present_payload = name_is_std_optional_present_arm(scope: scope, name: type_name) && name_is_std_optional_payload_member(scope: scope, name: field_name)
+      if exp.return_cardinality == CardOptional && names_present_payload {
+        Present { value: with_required_cardinality(n: exp) }
+      } else { none }
+  }
+}
+
+// FREEZE-ONLY: the `T?` arm peels only the Present payload, keyed on the std.optional Present arm and
+// payload member read from the canonical declaration (name_is_std_optional_present_arm and name_is_std_optional_payload_member), the same declaration the
+// nominal arm reads; it dissolves with slice 3, the kernel Optional mint cut.
+fn present_value_expected_from_optional(type_name: String, field_name: String, value: Node, expected: Node?, scope: InferScope) -> Node? {
+  match expected {
+    Absent => none
+    Present { value: exp } =>
+      let names_present_payload = name_is_std_optional_present_arm(scope: scope, name: type_name) && name_is_std_optional_payload_member(scope: scope, name: field_name)
+      let payload = if exp.return_cardinality == CardOptional && names_present_payload {
+        Present { value: with_required_cardinality(n: exp) }
+      } else if node_is_std_optional(n: exp, scope: scope) {
+        std_optional_payload_node(exp: exp, type_name: type_name, field_name: field_name, scope: scope)
+      } else { none }
+      match payload {
+        Absent => none
+        Present { value: inner } =>
+          match value.expr_data {
+            ExprRecordLit { parent_enum: _ } => Present { value: inner }
+            ExprListLit =>
+              if node_admits_list_literal(n: inner, source_indices: scope.type_env.source_indices) {
+                Present { value: inner }
+              } else { none }
+            _ => none
+          }
+      }
   }
 }
 
@@ -11414,7 +11614,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       } }
       Absent => error_type
     }
-    let field_expected = match present_value_expected_from_optional(type_name: tn_str, field_name: fi_name, value: field_init_node_value(n: fi), expected: expected) {
+    let field_expected = match present_value_expected_from_optional(type_name: tn_str, field_name: fi_name, value: field_init_node_value(n: fi), expected: expected, scope: scope) {
       Present { value: element } => Present { value: element }
       Absent =>
         match field_declared_type {
@@ -11521,10 +11721,23 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         }
       Absent => []
     }
+    let present_payload_diags = match present_payload_declared_from_optional(type_name: tn_str, field_name: fi_name, expected: expected, scope: scope) {
+      Present { value: payload_declared } =>
+        let payload_produced = resolved_type(n: ar_typed)
+        if product_versus_coproduct_head_mismatch(declared: payload_declared, produced: payload_produced, scope: scope) {
+          [type_mismatch_error(
+            expected: node_type_shape(n: payload_declared, source_indices: scope.type_env.source_indices),
+            got: node_type_shape(n: payload_produced, source_indices: scope.type_env.source_indices),
+            span: ar_typed.span,
+            module_name: scope.module_name
+          )]
+        } else { [] }
+      Absent => []
+    }
     FieldInferResult {
       typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity, name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      diagnostics: concat(concat(concat(ar_diags, field_type_diags), unknown_field_diags), bare_none_field_construction_diags(
+      diagnostics: concat(concat(concat(concat(ar_diags, field_type_diags), present_payload_diags), unknown_field_diags), bare_none_field_construction_diags(
         fi: fi,
         fi_name: fi_name,
         field_declared_type: field_declared_type,
@@ -11616,10 +11829,24 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           && name_binding.resolved.connective == Conj
       Absent => false
     }
-    let skip_owner_widen = type_name_declares_own_product || match local_variant_parent {
-      Present { value: parent_name } => parent_name == "Optional"
+    let parent_is_std_optional = (match expected_decided_owner {
+      Present { value: decided } => node_is_std_optional(n: decided, scope: scope)
       Absent => false
-    }
+    }) || (match owner_from_variant_node {
+      Present { value: owner } => node_is_std_optional(n: owner, scope: scope)
+      Absent => false
+    }) || (match expected {
+      Present { value: exp } =>
+        node_is_std_optional(n: exp, scope: scope) || match exp.inferred {
+          Present { value: Resolved { node: rt } } => node_is_std_optional(n: rt, scope: scope)
+          _ => false
+        }
+      Absent => false
+    }) || (match local_variant_parent {
+      Present { value: parent_name } => parent_name_is_std_optional(parent_name: parent_name)
+      Absent => false
+    })
+    let skip_owner_widen = type_name_declares_own_product || (parent_is_std_optional && name_is_std_optional_present_arm(scope: scope, name: type_name.value))
     let interned_owner = match local_variant_parent {
       Present { value: parent_name } =>
         if skip_owner_widen { none } else {
@@ -11661,18 +11888,40 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           }
       }
     }
-    let expected_optional_parent = Present { value: "Optional" }
-    let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
-    let applied_expected_owner = if is_present_ctor { none } else {
-      variant_literal_expected_application(owner: raw_resolved, expected: expected, scope: scope)
+    let is_present_ctor = parent_is_std_optional && name_is_std_optional_present_arm(scope: scope, name: type_name.value)
+    // Present skip_owner_widen leaves raw_resolved as the Present product (Conj), not Optional.
+    // variant_literal_expected_application requires the coproduct owner; expected_owner is that
+    // Optional declaration when the context is nominal Optional<T>. T? still answers none.
+    let present_application_owner = match expected_owner {
+      Present { value: coproduct } => coproduct
+      Absent => raw_resolved
+    }
+    let applied_expected_owner = if is_present_ctor {
+      none
+    } else {
+      variant_literal_expected_application(owner: present_application_owner, expected: expected, scope: scope)
     }
     let resolved_node = if applied_expected_owner != none {
       applied_expected_owner.value
     } else if is_present_ctor {
-      let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == "value") |> first
-      match val_field {
-        Present { value: val_fir } => with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
+      let val_field = fi_infer_results |> filter(fir => name_is_std_optional_payload_member(scope: scope, name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices))) |> first
+      let payload_optional = match val_field {
+        Present { value: val_fir } =>
+          with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
         Absent => raw_resolved
+      }
+      match expected {
+        Present { value: exp } =>
+          if node_is_std_optional(n: exp, scope: scope) || exp.return_cardinality == CardOptional {
+            exp
+          } else {
+            match exp.inferred {
+              Present { value: Resolved { node: rt } } =>
+                if node_is_std_optional(n: rt, scope: scope) { rt } else { payload_optional }
+              _ => payload_optional
+            }
+          }
+        Absent => payload_optional
       }
     } else { raw_resolved }
     let type_diags = match effective_lookup {
@@ -11694,9 +11943,16 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       name_span: name_span
     )
     let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
+    let optional_owner_unrecovered_diags = if parent_is_std_optional && std_optional_present_arm(scope: scope) == none {
+      [inference_error(
+          message: concat("the literal '", type_name.value, "' is owned by std.optional Optional, but that declaration is not resolvable in this closure, so its Present arm and payload member are undecidable here; refusing rather than leaving its payload unstamped"),
+          span: span,
+          module_name: scope.module_name
+        )]
+    } else { [] }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags)
+      diagnostics: concat(concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags)
     }
   }
 }
@@ -14055,23 +14311,34 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
   }
 }
 
+// SHELL ARGV CHILDREN ARE EXPRESSIONS IN THE OPERATION'S PARAM SCOPE. Copying them
+// untyped left emit to classify by leaf name (review 80758). This is the earliest
+// unjustified boundary: transport_scope already has the params; infer_expr is the
+// stamp body expressions already receive.
 fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportResult {
   match transport {
     Absent => InferTransportResult { transport: none, diagnostics: [] }
-    Present { value: t } =>
+    Present { value: t } => {
       let prop_result = infer_property_values(props: t.properties, scope: scope)
+      let argv_results = if (is_shell_transport(t: t)) {
+        t.children |> map(c => infer_expr(texpr: c, scope: scope, expected: none))
+      } else { [] }
+      let typed_children = if (is_shell_transport(t: t)) {
+        argv_results |> map(r => r.typed)
+      } else { t.children }
       InferTransportResult {
         transport: Present { value: Node {
           occurrence_identity: OccurrenceSynthetic, name: t.name, span: t.span, ident_span: t.ident_span,
-          children: t.children, connective: t.connective,
+          children: typed_children, connective: t.connective,
           params: t.params, inferred: t.inferred, return_cardinality: t.return_cardinality,
           uses: t.uses, body: t.body, transport: t.transport, properties: prop_result.props,
           type_annotation: t.type_annotation, is_self_recursive: t.is_self_recursive,
           has_non_tail_self_call: t.has_non_tail_self_call, match_pattern: t.match_pattern,
           module_item_kind: t.module_item_kind, declaration_marker: t.declaration_marker, declaration: t.declaration, expr_data: t.expr_data
         } },
-        diagnostics: prop_result.diagnostics
+        diagnostics: concat(prop_result.diagnostics, argv_results |> flat_map(r => r.diagnostics))
       }
+    }
   }
 }
 
@@ -14221,6 +14488,16 @@ type SigParamSplit {
   generic_names: List<String>
 }
 
+// IdentityResolved is census-Present with FuncSigUnresolved (OtherItem: bodiless,
+// zero params, no inferred result, no type_annotation). That node is not a type;
+// lookup_type_by_name would still steal it as Named.
+fn type_match_for_direct_call_target(type_env: TypeEnv, func_name: String, call_target: CallTargetOutcome) -> Node? {
+  match call_target {
+    DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => none
+    _ => lookup_type_by_name(env: type_env, name: func_name)
+  }
+}
+
 // DISSOLVED body_shadow_aware_func_sig, WHICH LAUNDERED A SHADOW INTO "NO SIGNATURE".
 //
 // Its match answered FuncSigUnresolved for a body-local callee -- the same constructor the
@@ -14235,6 +14512,18 @@ type SigParamSplit {
 // one and absent from the other is a scope-construction defect rather than a case to absorb --
 // it REFUSES, and if that refusal ever fires it has found something real.
 fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTargetOutcome {
+  if declared_module_owner(index: scope.type_env.symbol_index, name: func_name) != none {
+    match func_env_declared_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
+      FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
+      FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
+      FuncSigUnresolved =>
+        match func_sig_from_global_bare(type_env: scope.type_env, name: func_name) {
+          FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
+          FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
+          FuncSigUnresolved => CallableUnresolved { name: func_name }
+        }
+    }
+  } else {
   match map_get(scope.body_locals, func_name) {
     Present { value: _ } =>
       match map_get(scope.locals, func_name) {
@@ -14259,14 +14548,20 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
               }
             DeclarationOnly =>
               match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
-                Present { value: bd } => DeclaredCallableIdentityResolved {
-                  declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
-                  borrowed_declaration: bd.node
-                }
+                Present { value: bd } =>
+                  match func_sig_from_global_bare(type_env: scope.type_env, name: func_name) {
+                    FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
+                    FuncSigUnresolved => DeclaredCallableIdentityResolved {
+                      declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
+                      borrowed_declaration: bd.node
+                    }
+                    FuncSigAmbiguous { candidates: _ } => CallableUnresolved { name: func_name }
+                  }
                 Absent => CallableUnresolved { name: func_name }
               }
           }
       }
+  }
   }
 }
 
@@ -14980,6 +15275,15 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
     Present { value: nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)) }
+  } else if item.module_item_kind == ModuleItemTypeDeclaration && item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.children |> count == 0 && item.transport == none {
+    let type_node = Node {
+      occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+      connective: NoConnective, params: [], inferred: none,
+      return_cardinality: item.return_cardinality,
+      uses: [], body: none, transport: none, properties: item.properties,
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else {
     none
   }
@@ -15452,6 +15756,152 @@ fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: St
     }
 }
 
+// AN IF-JOIN DECIDES TYPE IDENTITY BY DECLARATION, NOT BY SPELLING. node_type_compatible compares
+// authored names, so a branch typed by an alias of an applied generic (`IntBox` for `Boxed<Int>`,
+// std.measure MegatransfersPerSecond for Measure<Frequency, Mega, Nat>) and a branch typed by its
+// target refused here although they are one type. Resolution already carries the answer:
+// v1.compiler.infer_resolve with_authored_identity keeps only the alias's ident_span and takes the
+// target's declaration, so both branches name the same DeclarationRef. They agree when both carry a
+// whole-declaration ref (whole_declaration_carried), the refs are equal, the optional layer
+// matches, and every applied argument is identical (if_branch_argument_types_identical).
+// transparent_alias_identity_agrees cannot answer this: it admits only bare-name aliases and
+// deliberately records no edge for `type A = B<C>`.
+// A side with no declaration declines, so the mismatch stays loud: a branch typed straight from a
+// parameter's declared type reference carries none today, so `if c { a } else { b }` over
+// `a: IntBox, b: Boxed<Int>` still refuses. This is the if-join instance only; node_type_compatible
+// itself still judges by spelling (gunbc.recurring_failure_mode
+// carrier_alias_refuses_its_own_carriers_constructor).
+fn if_branch_types_agree_through_alias_identity(left: Node, right: Node, scope: InferScope) -> Bool {
+  let left_opt = left.return_cardinality == CardOptional
+  let right_opt = right.return_cardinality == CardOptional
+  if left_opt != right_opt { false }
+  else {
+    let left_inner = if left_opt { with_required_cardinality(n: left) } else { left }
+    let right_inner = if right_opt { with_required_cardinality(n: right) } else { right }
+    let left_args = left_inner.children
+    let right_args = right_inner.children
+    let same_declaration = match whole_declaration_carried(n: left_inner) {
+      Present { value: l } =>
+        match whole_declaration_carried(n: right_inner) {
+          Present { value: r } => declaration_ref_eq(a: l, b: r)
+          Absent => false
+        }
+      Absent => false
+    }
+    same_declaration
+      && (left_args |> count) == (right_args |> count)
+      && if_branch_type_arguments_identical(left_args: left_args, right_args: right_args, source_indices: scope.type_env.source_indices)
+  }
+}
+
+fn if_branch_type_arguments_identical(left_args: List<Node>, right_args: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match left_args |> first {
+    Present { value: l } =>
+      match right_args |> first {
+        Present { value: r } =>
+          if_branch_argument_types_identical(left: child_type_node(ch: l), right: child_type_node(ch: r), source_indices: source_indices)
+            && if_branch_type_arguments_identical(left_args: left_args |> skip(1), right_args: right_args |> skip(1), source_indices: source_indices)
+        Absent => false
+      }
+    Absent => true
+  }
+}
+
+// AN APPLIED ARGUMENT AGREES BY IDENTITY, NEVER BY COMPATIBILITY. node_type_compatible is wider
+// than identity on purpose: it admits a compiler-error side, an unresolved type variable, an
+// optional against a unit, and a non-container application by its head name alone. None of those
+// may stand as "the same instantiation" here, so this relation does not consult it. Two arguments
+// are identical when their cardinality is equal, their heads are identical, and every applied
+// argument is identical in turn.
+fn if_branch_argument_types_identical(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  left.return_cardinality == right.return_cardinality
+    && if_branch_argument_heads_identical(left: left, right: right, source_indices: source_indices)
+    && (left.children |> count) == (right.children |> count)
+    && if_branch_type_arguments_identical(left_args: left.children, right_args: right.children, source_indices: source_indices)
+}
+
+// A HEAD IS IDENTICAL BY THE STRONGEST IDENTITY BOTH SIDES CARRY. A callable compares its whole
+// signature under this same relation. A compiler-error side is never identical to anything. A type
+// variable is identical only to the same owner's parameter (if_branch_type_variables_identical). Otherwise two carried whole-declaration refs must
+// be equal; with no carried ref on either side, the reference identities (type_reference_identity's
+// declaring file and declared name) must be equal and name something. One side carrying a ref and
+// the other not declines, so the join stays refused.
+fn if_branch_argument_heads_identical(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if type_node_is_callable(n: left) || type_node_is_callable(n: right) {
+    type_node_is_callable(n: left) && type_node_is_callable(n: right)
+      && callable_signatures_agree(left: left, right: right, agree: (a, b) => if_branch_argument_types_identical(left: a, right: b, source_indices: source_indices))
+  } else {
+    match left.inferred {
+      Present { value: CompilerError { message: _, span: _ } } => false
+      Present { value: TypeVariable { id: left_id } } =>
+        match right.inferred {
+          Present { value: TypeVariable { id: right_id } } =>
+            if_branch_type_variables_identical(left: left, right: right, left_id: left_id, right_id: right_id)
+          _ => false
+        }
+      _ =>
+        match right.inferred {
+          Present { value: CompilerError { message: _, span: _ } } => false
+          Present { value: TypeVariable { id: _ } } => false
+          _ =>
+            match whole_declaration_carried(n: left) {
+              Present { value: l } =>
+                match whole_declaration_carried(n: right) {
+                  Present { value: r } => declaration_ref_eq(a: l, b: r)
+                  Absent => false
+                }
+              Absent =>
+                match whole_declaration_carried(n: right) {
+                  Present { value: _ } => false
+                  Absent =>
+                    match if_branch_reference_identity(n: left, source_indices: source_indices) {
+                      Present { value: li } =>
+                        match if_branch_reference_identity(n: right, source_indices: source_indices) {
+                          Present { value: ri } => li == ri
+                          Absent => false
+                        }
+                      Absent => false
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// A TYPE VARIABLE IS ITS OWNER'S PARAMETER, NOT ITS SPELLING. The resolver stamps a reference to a
+// declaration's own parameter with a TypeParameter declaration ref naming that owner, so two `T`s
+// from different declarations carry different refs. Both carrying a ref compares the refs; only two
+// unowned synthetic variables fall back to the bare id; one owned and one unowned declines.
+fn if_branch_type_variables_identical(left: Node, right: Node, left_id: String, right_id: String) -> Bool {
+  match left.declaration {
+    Present { value: l } =>
+      match right.declaration {
+        Present { value: r } => declaration_ref_eq(a: l, b: r)
+        Absent => false
+      }
+    Absent =>
+      match right.declaration {
+        Present { value: _ } => false
+        Absent => left_id == right_id
+      }
+  }
+}
+
+// type_reference_identity's key, refused when the reference names nothing: an empty declared name
+// would make every unnamed reference in one file identical to every other.
+fn if_branch_reference_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  let target = match n.inferred {
+    Present { value: Resolved { node: rt } } => rt
+    _ => n
+  }
+  if authored_name_at(source_indices: source_indices, node: target) == "" {
+    none
+  } else {
+    Present { value: node_declaration_identity(n: target, source_indices: source_indices) }
+  }
+}
+
 // A MODULE'S NAMED IMPORTS, leaf -> the module it is imported from, read from its import nodes: the
 // import half of v1.compiler.infer_env bare_occurrence_binding.
 fn file_named_imports_of(module_node: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
@@ -15769,47 +16219,6 @@ fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> Symbo
   }
 }
 
-fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let raw = fold(modules, init: empty_symbol_index(), f: (index, module_node) =>
-    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
-    let items = module_items(n: module_node)
-    let with_items = fold(items, init: index, f: (acc, item) =>
-      match local_binding_for_item(item: item, source_indices: source_indices) {
-        Absent => acc
-        Present { value: binding } =>
-          symbol_index_insert(index: acc, qualified_name: concat(concat(module_path, "."), binding.name), resolved: binding.resolved)
-      }
-    )
-    let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
-    fold(items, init: with_items, f: (acc, item) =>
-      match item.connective {
-        Disj =>
-          fold(item.children, init: acc, f: (a2, child) =>
-            let vname = authored_name_at(source_indices: source_indices, node: child)
-            match map_get(counts, vname) {
-              Present { value: 1 } =>
-                symbol_index_insert(index: a2, qualified_name: concat(concat(module_path, "."), vname), resolved: item)
-              _ => a2
-            }
-          )
-        _ => acc
-      }
-    )
-  )
-  census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
-}
-
-fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> SymbolIndex {
-  let entries2 = map_merge(fill.entries, closure.entries)
-  SymbolIndex {
-    entries: entries2, global_bare: closure.global_bare, services: closure.services,
-    transparent_alias_rep: map_merge(fill.transparent_alias_rep, closure.transparent_alias_rep),
-    type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures),
-    file_modules: map_merge(fill.file_modules, closure.file_modules),
-    module_named_imports: map_merge(fill.module_named_imports, closure.module_named_imports)
-  }
-}
-
 data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. KERNEL INSTALLATION IS INDEPENDENT OF IMPORT CARDINALITY (build_ancestry_precedence, 2026-08-31): the kernel overlay applies unconditionally over the import union and both type-env builders consume the one producer - the former shape skipped the overlay when a module had exactly one import, so kernel identity won or lost by ancestry occupancy (a leak-dependent regime: identical imports, different realizations). Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded)."
 
 
@@ -15973,7 +16382,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     } else { [] }
   )
 
-  let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
+  let local_bindings_seed: Map<Int, TypeBinding> = empty_map()
+  let local_bindings = fold(module_items(n: module.module), init: local_bindings_seed, f: (acc, item) =>
     if is_namespace_alias_item(item: item, source_indices: source_indices) {
       match namespace_alias_target_path(item: item, source_indices: source_indices) {
         Absent => acc
@@ -15997,7 +16407,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     }
   )
 
-  let param_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
+  let param_bindings_seed: Map<Int, TypeBinding> = empty_map()
+  let param_bindings = fold(module_items(n: module.module), init: param_bindings_seed, f: (acc, item) =>
     let is_type_decl = match map_get(local_bindings, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id) { Present { value: _ } => true  Absent => false }
     if item.params |> count > 0 && is_type_decl && item.body == none {
       let result = fold(item.params, init: acc, f: (pacc, p) =>
@@ -16006,7 +16417,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       result
     } else { acc }
   )
-  let local_name_set = fold(local_bindings |> map_keys, init: empty_map(), f: (acc, ident) => map_insert(acc, ident, true))
+  let local_name_seed: Map<Int, Bool> = empty_map()
+  let local_name_set = fold(local_bindings |> map_keys, init: local_name_seed, f: (acc, ident) => map_insert(acc, ident, true))
   let all_local_bindings = map_merge(local_bindings, param_bindings)
 
   let kernel_cache = type_env_cache_from_bindings(
@@ -16018,16 +16430,19 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let ancestry_cache = ancestry_precedence.cache
   let binding_forks = ancestry_precedence.conflicts
 
-  let local_deps_map = fold(all_local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
+  let deps_seed: Map<String, List<String>> = empty_map()
+  let local_deps_map = fold(all_local_bindings |> map_values, init: deps_seed, f: (acc, b) =>
     map_insert(acc, b.name, deps_excluding_leaf_self(b: b, source_indices: source_indices))
   )
-  let local_str_bindings = fold(all_local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
+  let local_str_seed: Map<String, TypeBinding> = empty_map()
+  let local_str_bindings = fold(all_local_bindings |> map_values, init: local_str_seed, f: (acc, b) =>
     map_insert(acc, b.name, b)
   )
 
   let all_deps_map = map_merge(ancestry_cache.deps_map, local_deps_map)
   let new_cycle_names = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: local_str_bindings)
-  let new_cycle_set_str = fold(new_cycle_names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let cycle_set_seed: Map<String, Bool> = empty_map()
+  let new_cycle_set_str = fold(new_cycle_names, init: cycle_set_seed, f: (acc, name) => map_insert(acc, name, true))
   let cycle_set_str = map_merge(map_merge(ancestry_cache.cycle_set_str, new_cycle_set_str), compiler_recursive_name_set())
   let cycle_set = map(sorted_map_keys(cycle_set_str), name => intern(table: intern_table, s: name).id)
   let cross_type_set = fold(sorted_map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
@@ -16042,7 +16457,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
   let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings
-  let svn_local = fold(map_keys(local_str_bindings), init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
+  let svn_local_seed: Map<String, Bool> = empty_map()
+  let svn_local = fold(map_keys(local_str_bindings), init: svn_local_seed, f: (acc, n) => map_insert(acc, n, true))
   let svn_kernel = fold(map_keys(kernel_type_set), init: svn_local, f: (acc, n) => map_insert(acc, n, true))
   let source_visible_names = fold(module.resolved_imports, init: svn_kernel, f: (acc, imp) =>
     if imp.is_all {
@@ -16123,7 +16539,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     }
   )
   let scope_parents = concat(import_parents, [kernel])
-  let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
+  let local_bindings_seed: Map<Int, TypeBinding> = empty_map()
+  let local_bindings = fold(module_items(n: module.module), init: local_bindings_seed, f: (acc, item) =>
     if is_namespace_alias_item(item: item, source_indices: source_indices) {
       acc
     } else {
@@ -16140,6 +16557,9 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
+    } else if item.module_item_kind == ModuleItemTypeDeclaration && item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.children |> count == 0 && item.transport == none {
+      let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none })
     } else {
       acc
     }
@@ -16153,7 +16573,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let ancestry_precedence = build_ancestry_precedence(resolved_imports: module.resolved_imports, parent_index: parent_index, kernel_cache: kernel_cache)
   let ancestry_cache = ancestry_precedence.cache
 
-  let local_deps_map = fold(local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
+  let deps_seed: Map<String, List<String>> = empty_map()
+  let local_deps_map = fold(local_bindings |> map_values, init: deps_seed, f: (acc, b) =>
     map_insert(acc, b.name, deps_excluding_leaf_self(b: b, source_indices: source_indices))
   )
   let local_str_bindings = fold(local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
@@ -16162,7 +16583,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
 
   let all_deps_map = map_merge(ancestry_cache.deps_map, local_deps_map)
   let new_cycle_names = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: local_str_bindings)
-  let new_cycle_set_str = fold(new_cycle_names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let cycle_set_seed: Map<String, Bool> = empty_map()
+  let new_cycle_set_str = fold(new_cycle_names, init: cycle_set_seed, f: (acc, name) => map_insert(acc, name, true))
   let cycle_set_str = map_merge(map_merge(ancestry_cache.cycle_set_str, new_cycle_set_str), compiler_recursive_name_set())
   let cycle_set = map(sorted_map_keys(cycle_set_str), name => intern(table: intern_table, s: name).id)
   let cross_type_set = fold(sorted_map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
@@ -18165,7 +18587,8 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
 }
 
 fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
-  let index = fold(modules, init: empty_map(), f: (acc, m) =>
+  let index_seed: Map<String, TypedModule> = empty_map()
+  let index = fold(modules, init: index_seed, f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
   let shared_kernel = match modules |> flat_map(m =>
@@ -18220,7 +18643,8 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
 }
 
 fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
-  let index = fold(modules, init: empty_map(), f: (acc, m) =>
+  let index_seed: Map<String, TypedModule> = empty_map()
+  let index = fold(modules, init: index_seed, f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
   map(modules, m =>

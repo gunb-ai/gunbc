@@ -1,15 +1,16 @@
 module gunbc.auth.gcp_iam_converge
 
-import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation }
+import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation, mtcollins1_boot_run_scoped_federations }
 import std.types { Int, List, NonEmptyStr, String, Bool, Secret, Map }
 import std.measure { Second, second, second_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, optional_present }
 import extdeps.crypto.sha2 { sha256_hex }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail, wif_pool_resource }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, wif_pool_resource, WifProviderOperation }
+import gunbc.auth.gcp_operation_wait { wif_create_operation_wait, iam_converge_token_lifetime }
 import extdeps.cloud.gcp.iam {
   IamCondition, GcpPolicy, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
@@ -24,7 +25,7 @@ import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_c
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified,
   heal_publisher_dedicated_federation, private_heal_publisher_dedicated_federation, impersonation_cells, observe_and_classify,
-  rest_refusal_text, outcome_is_not_found, StandingPoolImpersonation }
+  rest_refusal_text, outcome_is_not_found, StandingPoolImpersonation, dedicated_federation_input_refusals }
 import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
 import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
 import gunbc.native_product_federation { native_product_federations }
@@ -34,7 +35,12 @@ import gunbc.auth.mtjade1_arrival_federation_provision { mtjade1_arrival_dedicat
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for, provisioned_boot_federations }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
 import gunbc.cloudflare.r2_mint_secret_access { r2_mint_custody_grants }
-import gunbc.auth.fleet_secret_accessor_roster { openrouter_free_tier_key_accessor_row, oracle_oci_api_signing_key_accessor_row, cursor_api_key_harness_accessor_row, fleet_accessor_grant }
+import gunbc.auth.fleet_secret_accessor_roster { openrouter_free_tier_key_accessor_row, oracle_oci_api_signing_key_accessor_row, FleetAccessorGrantRow, fleet_accessor_grant_roster, fleet_accessor_grant }
+import gunbc.fleet.host_credential_custody_converge {
+  HostCustodyCredential, host_custody_credential_roster, host_credential_custody_row,
+  ControllerAppKey, ApprovalNtfyPublisherToken, FabricStateWriterKey, CursorWorkerTurnApiKey, CodexWorkerTurnAuth,
+  OracleOciApiSigningKey, ClaudeCodeOauthHarnessToken, TrackerWebTestOauthClientSecret, GunbaiBotPublicationAppKey, FlexVastApiKey,
+}
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
 import gunbc.auth.gcp_iam_converge_federation {
@@ -101,10 +107,6 @@ data iam_observe_service_account: ServiceAccountEmail = "iam-observe@gunbai-secr
 // own policy and no other grant. The provider's condition pins this repository, the fleet-converge
 // workflow file at reviewed main, a workflow_dispatch on main and the gcp-iam-converge environment. That binding is
 // written once by the bootstrap ceremony; iam-converge's own policy is never a converge target.
-// THE ACTUATION TOKEN'S LIFETIME, passed to the impersonating auth step. Ten minutes covers a
-// provisioning run (three creates, one impersonation reconcile, a handful of secret grants, each with
-// readback) and ends before a leaked token is worth much.
-data iam_converge_token_lifetime: Second = second(count: 600)
 
 // ── The reach of setIamPolicy, bounded in three layers ───────────────────────────────────────
 // 1. FOUR CUSTOM ROLES, EACH BOUND ON THE RESOURCE ITS PERMISSIONS ARE AUTHORIZED AGAINST (HOLD
@@ -222,7 +224,7 @@ data gcp_iam_converge_targets: List<DedicatedFederation> = concat(
     map(provisioned_boot_federations(), f => boot_dedicated_federation(f: f)),
   ),
   concat(
-    concat([namecheap_dedicated_federation(), fleet_convergence_federation(), printer_dedicated_federation(), hetzner_cloud_control_federation()], native_product_federations()),
+    concat(concat([namecheap_dedicated_federation(), fleet_convergence_federation(), printer_dedicated_federation(), hetzner_cloud_control_federation()], mtcollins1_boot_run_scoped_federations()), native_product_federations()),
     [mtjade1_arrival_dedicated_federation()],
   ),
 )
@@ -307,23 +309,57 @@ type GrantSet {
 data gcp_iam_converge_grant_sets: List<GrantSet> = [
   GrantSet { label: "r2 mint custody cells", grants: r2_mint_custody_grants() },
   GrantSet { label: "fleet accessor cells applied by hand", grants: hand_applied_accessor_grants() },
-  GrantSet { label: "worker-turn custody accessor cells", grants: worker_turn_custody_accessor_grants() },
+  GrantSet { label: "custody accessor cells", grants: custody_accessor_grants() },
 ]
 
-// THE CURSOR WORKER-TURN KEY'S ACCESSOR CELL, NEVER APPLIED BY HAND: gunbc.fleet.host_credential_custody_converge
-// reads cursor-api-key-harness over WIF for srv2, and the cell that read needs is declared once by the
-// roster (cursor_api_key_harness_accessor_row). Its own set, not a third hand-picked entry in
-// hand_applied_accessor_grants, because that set's label and witness say its cells were applied by hand.
-// THE SET IS SELECTED, NOT YET DERIVED from the custody rows. Deriving it from every row of
-// host_custody_credential_roster would hand this converge the secrets of the controller GitHub App key
-// (gunbai_ci_app_pem_secret), the fabric state key, the claude token, the ntfy token and codex: the
-// bootstrap would create each bare and bind secretPolicy on it, widening what the estate's approval
-// covers well past the one grant asked for, and codex is host-authoritative with a separate
-// versionAdder cell, a different contract. Next step, trigger: when a second custody credential needs
-// a converge-owned accessor cell, derive the set from the custody rows named by an explicit
-// closed selection over host_credential_custody_row's `secret`, not before.
-fn worker_turn_custody_accessor_grants() -> List<SecretAccessGrant> {
-  map([cursor_api_key_harness_accessor_row], row => fleet_accessor_grant(row: row))
+// WHICH CUSTODY CREDENTIALS' ACCESSOR CELLS THIS CONVERGE OWNS: an explicit closed selection over the custody
+// coproduct (gunbc.fleet.host_credential_custody_converge HostCustodyCredential), one arm per credential, so a
+// new credential cannot join or stay out of the estate's approval without a decision here. The trigger the
+// earlier hand-picked set named has arrived: a second custody credential (the flex pool's Vast key) needs a
+// converge-owned accessor cell. Selecting a credential has the bootstrap create its secret bare and bind
+// secretPolicy on it, widening what the estate's approval covers, so a credential nobody asked to move is
+// AccessorCellNotRequested: the widening is the operator's decision, not a consequence of having a row.
+type CustodyAccessorCellOwner
+  = AccessorCellConvergeOwned
+  | AccessorCellNotRequested
+  | AccessorCellOwnedByAnotherSet { label: String }
+  | AccessorCellDifferentContract { contract: String }
+
+fn custody_accessor_cell_owner(c: HostCustodyCredential) -> CustodyAccessorCellOwner {
+  match c {
+    CursorWorkerTurnApiKey => AccessorCellConvergeOwned
+    FlexVastApiKey => AccessorCellConvergeOwned
+    OracleOciApiSigningKey => AccessorCellOwnedByAnotherSet { label: "fleet accessor cells applied by hand" }
+    CodexWorkerTurnAuth => AccessorCellDifferentContract { contract: "host-authoritative: the custody converge writes the rotated file back through a separate versionAdder cell (fleet_version_adder_grant_roster)" }
+    ControllerAppKey => AccessorCellNotRequested
+    ApprovalNtfyPublisherToken => AccessorCellNotRequested
+    FabricStateWriterKey => AccessorCellNotRequested
+    ClaudeCodeOauthHarnessToken => AccessorCellNotRequested
+    TrackerWebTestOauthClientSecret => AccessorCellNotRequested
+    GunbaiBotPublicationAppKey => AccessorCellNotRequested
+  }
+}
+
+fn custody_accessor_cell_converge_owned(c: HostCustodyCredential) -> Bool {
+  match custody_accessor_cell_owner(c: c) {
+    AccessorCellConvergeOwned => true
+    AccessorCellNotRequested => false
+    AccessorCellOwnedByAnotherSet { label: _ } => false
+    AccessorCellDifferentContract { contract: _ } => false
+  }
+}
+
+// THE ROSTER STAYS THE CELL'S ONE DECLARER: the set is the roster rows whose target is the custody row's
+// `secret` for each selected credential, never a grant minted here. A selected credential with no roster
+// row contributes nothing and is red in test.claim.gcp_iam_converge_witness (the identity join).
+fn custody_accessor_roster_rows() -> List<FleetAccessorGrantRow> {
+  flat_map(filter(host_custody_credential_roster, c => custody_accessor_cell_converge_owned(c: c)), c =>
+    filter(fleet_accessor_grant_roster, r => (r.target.secret as String) == (host_credential_custody_row(c: c).secret.secret as String))
+  )
+}
+
+fn custody_accessor_grants() -> List<SecretAccessGrant> {
+  map(custody_accessor_roster_rows(), row => fleet_accessor_grant(row: row))
 }
 
 // THE TWO ACCESSOR CELLS THE OPERATOR APPLIED BY HAND, DERIVED FROM THE ROSTER: the cell is declared once,
@@ -878,14 +914,24 @@ fn read_secret_policy(g: SecretAccessGrant, token: Secret) -> PolicyReading
   }
 }
 
+// A target whose declared inputs the upstream would refuse is refused before it is observed, so
+// consent is never requested for a create that cannot succeed and the rest of the estate still plans.
+fn federation_input_refused_plan(f: DedicatedFederation) -> GcpIamPlan? {
+  let refusals = dedicated_federation_input_refusals(federations: [f])
+  if count(refusals) == 0 { Absent } else { optional_present(value: GcpIamRefused { target: f.label, reasons: refusals }) }
+}
+
 fn observe_and_plan(f: DedicatedFederation, token: Secret) -> GcpIamPlan
 {
-  plan_dedicated_federation(
-    f: f,
-    classification: observe_and_classify(f: f, token: token),
-    account_policy: read_account_policy(f: f, token: token),
-    secret_policies: map(f.secret_grants, g => GrantPolicyReading { grant: g, reading: read_secret_policy(g: g, token: token) }),
-  )
+  match federation_input_refused_plan(f: f) {
+    Present { value: refused } => refused
+    Absent => plan_dedicated_federation(
+      f: f,
+      classification: observe_and_classify(f: f, token: token),
+      account_policy: read_account_policy(f: f, token: token),
+      secret_policies: map(f.secret_grants, g => GrantPolicyReading { grant: g, reading: read_secret_policy(g: g, token: token) }),
+    )
+  }
 }
 
 fn read_named_secret_policy(secret: NonEmptyStr, token: Secret) -> SecretPolicyReading
@@ -1021,7 +1067,7 @@ fn execute_create(e: GcpIamEffect, token: Secret) -> String
   match e {
     CreateProvider { pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c } =>
       match gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c as NonEmptyStr) {
-        RestAnswered { answer: _ } => ""
+        RestAnswered { answer: a } => wif_create_operation_wait(token: token, subject: WifProviderOperation { pool_id: p as String, provider_id: v as String }, operation_name: a.operation_name, done: a.done, error: a.error, render_refusal: o => rest_refusal_text(o: o))
         RestRefused { refusal } => create_refusal(subject: concat("provider ", v as String), o: refusal)
       }
     AddPolicyCells { subject: _, observed_etag: _, cells: _ } => ""
@@ -1036,7 +1082,9 @@ fn first_refusal(xs: List<GcpIamEffect>, run: fn(GcpIamEffect) -> String) -> Str
   fold(xs, init: "", f: (acc, e) => if acc != "" { acc } else { run(e) })
 }
 
-// ONE TARGET: its approved creates, then -- only when something was created -- a re-read and
+// ONE TARGET: its approved creates, each followed by a wait for the create's long-running operation
+// (gunbc.auth.gcp_operation_wait: done, failed or the declared budget; a spent budget refuses and never
+// reissues the create), then -- only when something was created -- a re-read and
 // re-classification of the whole federation against its declaration (a created provider must read
 // back with the approved condition before anything is granted through it), then its approved policy
 // adds. No effect outside the approved list is issued.

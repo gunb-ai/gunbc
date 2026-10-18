@@ -278,10 +278,10 @@ test fn w_clone_bound_forwards_transitively_over_two_call_hops() -> Bool {
 // row proves the qualified path reaches the DECLARATION and not the bridge.
 test fn w_qualified_call_emits_only_the_declaration_last_segment() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.qualified_call_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { map_get_checked }\nimport v2.std.diagnostic { Outcome }\nimport std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { v2.std.collection.map_get_checked(m: m, key: \"key\") }\n",
+    "module test.claim.qualified_call_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.witness { map_get_checked }\nimport v2.std.diagnostic { Outcome }\nimport std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { v2.std.witness.map_get_checked(m: m, key: \"key\") }\n",
     "src/test_claim_qualified_call_probe.rs",
-    ["crate::v2_std_collection::map_get_checked("],
-    ["::v2.std.collection", "v2.std.collection.map_get_checked("]
+    ["crate::v2_std_witness::map_get_checked("],
+    ["::v2.std.witness", "v2.std.witness.map_get_checked("]
   )
 }
 
@@ -305,7 +305,7 @@ test fn w_unbridged_modeled_primitive_emits_its_declaration() -> Bool {
 // v2.std.collection map_insert's former `Map { lookup: fn .. }` body against an Rc map carrier.
 test fn w_bridged_modeled_primitive_still_lowers_to_the_bridge() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.bridged_empty_map_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
+    "module test.claim.bridged_empty_map_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport std.algebra { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
     "src/test_claim_bridged_empty_map_probe.rs",
     ["v1_rt::rc_empty_map"],
     ["crate::v2_std_collection::empty_map("]
@@ -432,7 +432,7 @@ test fn w_ordinary_recursion_is_not_read_as_a_host_seam() -> Bool {
 // the decl_facts row green, so the two cannot be satisfied by one edit.
 test fn w_rostered_seam_resolves_realization_through_its_primitive_not_its_decl_name() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.delegate_seam_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
+    "module test.claim.delegate_seam_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport std.algebra { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
     "src/test_claim_delegate_seam_probe.rs",
     ["v1_rt::rc_empty_map"],
     ["has no realization for this target"]
@@ -697,7 +697,7 @@ test fn w_generic_forwarded_by_a_returned_closure_carries_clone() -> Bool {
 // met a HashMap parameter. The positive control is the field position on the same fixture.
 test fn w_alias_of_a_keyed_collection_renders_the_host_map_template() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.map_alias_probe\nimport v2.std.collection { Map }\ntype Slot\ntype Slots = Map<Int, Slot>\ntype Holder { slots: Slots, direct: Map<Int, Slot> }\n",
+    "module test.claim.map_alias_probe\nimport std.types { Map }\ntype Slot\ntype Slots = Map<Int, Slot>\ntype Holder { slots: Slots, direct: Map<Int, Slot> }\n",
     "src/test_claim_map_alias_probe.rs",
     ["pub type Slots = Rc<HashMap<i64, ", "pub direct: Rc<HashMap<i64, "],
     ["crate::std_types::Map<", "FinitelySupportedFunction<"]
@@ -709,7 +709,7 @@ test fn w_alias_of_a_keyed_collection_renders_the_host_map_template() -> Bool {
 // call (E0277, three sites in v2_std_collection). The bound is read from the signature.
 test fn w_generic_map_key_parameter_carries_the_host_key_bounds() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.map_key_bound_probe\nimport v2.std.collection { Map, map_lookup }\nimport std.optional { Optional }\nfn probe<K, V>(m: Map<K, V>, key: K) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\n",
+    "module test.claim.map_key_bound_probe\nimport std.types { Map }\nimport std.algebra { map_lookup }\nimport std.optional { Optional }\nfn probe<K, V>(m: Map<K, V>, key: K) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\n",
     "src/test_claim_map_key_bound_probe.rs",
     ["pub fn probe<K: Clone + std::cmp::Eq + std::hash::Hash, V"],
     ["pub fn probe<K: Clone, V", "pub fn probe<K, V"]
@@ -911,7 +911,7 @@ test fn w_sort_by_over_a_generic_list_keeps_the_key_function() -> Bool {
 // carrier, never as the arrow's resolved return type.
 test fn w_arrow_type_argument_at_a_record_field_renders_the_callable_carrier() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.arrow_map_field_probe\nimport std.types { String }\nimport v2.std.collection { Map }\nimport v2.std.node { Symbol }\ntype Xf { transforms: Map<Symbol, fn(String) -> String> }\n",
+    "module test.claim.arrow_map_field_probe\nimport std.types { String, Map }\n\nimport v2.std.node { Symbol }\ntype Xf { transforms: Map<Symbol, fn(String) -> String> }\n",
     "src/test_claim_arrow_map_field_probe.rs",
     ["Rc<HashMap<Symbol, Rc<dyn Fn(String) -> String>>>"],
     ["HashMap<Symbol, String>"]

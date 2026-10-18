@@ -1,0 +1,46 @@
+module extdeps.llm.cursor_agent_distribution
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cursor.com/install"
+  }
+}
+
+// HOW CURSOR DISTRIBUTES THE AGENT CLI, AS UPSTREAM DOES IT. The installer script at the anchor
+// downloads one tarball per (version, os, arch) from downloads.cursor.com/lab/<version>/<os>/<arch>/
+// agent-cli-package.tar.gz and unpacks it into ~/.local/share/cursor-agent/versions/<version>. This
+// module owns that URL shape and the tarball layout, and NOTHING about where a host puts it, which
+// version a host runs or what digest it expects: those are host facts (gunbc.host.cursor_agent_realization).
+//
+// LAYOUT, read from the 2026.09.15-d2fe57e linux/arm64 tarball: a single top-level directory
+// `dist-package` whose members are the whole version tree (the `cursor-agent` launcher, the
+// `cursorsandbox` helper, the bundled node, rg, native modules and chunked JS). The sandbox helper
+// is looked up beside the launcher, which is why the realization must be the COMPLETE tree.
+//
+// THE CLI CARRIES ITS OWN UPDATER. Its hidden `--disable-auto-update` option ("Disable auto-updates")
+// and its minimum-version exit are the upstream facts a pinned realization has to account for; they
+// are recorded here as the upstream surface, and consuming them is the invocation's concern
+// (extdeps.llm.cursor_cli), not this module's.
+
+data cursor_agent_linux_arm64_tarball_name: NonEmptyStr = "agent-cli-package.tar.gz" as NonEmptyStr
+
+data cursor_agent_tarball_root_directory: NonEmptyStr = "dist-package" as NonEmptyStr
+
+data cursor_agent_executable_name: NonEmptyStr = "cursor-agent" as NonEmptyStr
+
+data cursor_agent_sandbox_helper_name: NonEmptyStr = "cursorsandbox" as NonEmptyStr
+
+fn cursor_agent_linux_arm64_tarball_uri(version: NonEmptyStr) -> Uri {
+  Uri {
+    scheme: Https
+    locator: join([
+      "downloads.cursor.com/lab/", version as String, "/linux/arm64/",
+      cursor_agent_linux_arm64_tarball_name as String,
+    ], "") as NonEmptyStr
+  }
+}

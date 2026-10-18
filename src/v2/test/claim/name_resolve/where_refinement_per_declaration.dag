@@ -1,0 +1,106 @@
+module v2.test.claim.name_resolve.where_refinement_per_declaration
+
+import v2.compiler.source_root_eval {
+  native_test_context_from_ingest,
+  native_lane_file_refusal_index,
+  native_module_resolve_verdict,
+  NativeTestContext,
+  NativeModuleResolveVerdict,
+  NativeModuleResolveAccepted,
+  NativeModuleResolveRefused
+}
+import v2.compiler.name_resolve { closure_declarations_demand }
+import v2.compiler.resolve {
+  DeclarationAvailable,
+  DeclarationRefused,
+  declaration_available,
+  ModuleObserved,
+  ModuleOutcome,
+  ModuleUnavailable
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  UserInputBoundary,
+  diagnostics_fatal_reason,
+  diagnostics_list_has_reason,
+  diagnostics_singleton,
+  invariant_port_locus
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.types { Bool, List }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A WHERE PREDICATE IMPORTED INTO ITS DECLARING MODULE, THROUGH THE PER-DECLARATION PASS
+// (v2.compiler.name_resolve closure_declarations_demand). `pred` declares fn p; `refd` imports p and
+// declares `type Ch = Int where p`; `user` imports Ch. Whole-module resolve of refd accepted this
+// while the per-declaration pass refused refd.Ch (declarer_refused for every importer, #14029): the
+// predicate spelling had been indexed as a declaration under Ch, a candidate the per-declaration walk
+// (no declaring position) could not exclude. The two paths must agree, so the control asserts BOTH
+// the declaration's availability and the importer's accepted resolve.
+data wrd_pred_source: String = "module v2.test.wrd.pred\n\nfn p(x: Int) -> Bool { x >= 0 }\n"
+
+data wrd_refd_source: String = "module v2.test.wrd.refd\n\nimport v2.test.wrd.pred { p }\n\ntype Ch = Int where p\n"
+
+data wrd_user_source: String = "module v2.test.wrd.user\n\nimport v2.test.wrd.refd { Ch }\n\nfn u(c: Ch) -> Ch { c }\n"
+
+fn wrd_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+fn wrd_context() -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest(ingest: [
+    wrd_read(text: wrd_pred_source, id: ^wrd_pred, path: "src/v2/test/fixture/wrd/pred.dag"),
+    wrd_read(text: wrd_refd_source, id: ^wrd_refd, path: "src/v2/test/fixture/wrd/refd.dag"),
+    wrd_read(text: wrd_user_source, id: ^wrd_user, path: "src/v2/test/fixture/wrd/user.dag")
+  ])
+}
+
+test fn wrd_refined_alias_with_imported_predicate_is_available() -> Bool {
+  match wrd_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      match context.resolution {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: shared, diagnostics: _ } =>
+          declaration_available(
+            outcomes: closure_declarations_demand(shared: shared).module_outcomes,
+            path: qualified_name_from_dotted_string(dotted: "v2.test.wrd.refd.Ch")
+          )
+      }
+  }
+}
+
+test fn wrd_importer_of_the_refined_alias_binds() -> Bool {
+  match wrd_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      match native_module_resolve_verdict(
+        context: context,
+        refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+        module: "v2.test.wrd.user",
+        path: ^wrd_user
+      ).verdict {
+        NativeModuleResolveAccepted { resolved: _ } => true
+        _ => false
+      }
+  }
+}

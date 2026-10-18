@@ -2,7 +2,7 @@ module gunbc.machine_intake.pre_os_replay
 
 import gunbc.machine_intake.pre_os_refusal { PreOsSourceChanged, PreOsRefusal, PreOsOwnershipRefusal, PreOsSubjectRefusal, PreOsCommitRefusal, PreOsContinuityRefusal, PreOsSourceRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at }
 import std.types { Bool, List, Map, NonEmptyStr, String }
-import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.content_hash { ContentHash }
 import std.decl_ref { declaration_ref_eq }
@@ -10,8 +10,9 @@ import gunbc.fleet_observation.observation_envelope {
   SourceMachineBinding, SourceGenerationStanding, NativeRecordCursor, ProducerTimestamp, ReceiveObservation,
   SubjectAgreement, subject_agreement, EvidenceNamesOneSubject, CollectorSessionDisagrees, EnrolledMachineDisagrees, OwnershipGenerationDisagrees, BindingMachineDisagrees, ChunkStreamDisagrees, ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, NoNativeCursor,
 }
+import std.durable_transfer { LocalCommitStanding, DownstreamAcceptanceStanding }
 import gunbc.fleet_observation.capture_chunk {
-  ChunkOccurrence, SourceStreamRange, LocalCommitStanding, DownstreamAcceptanceStanding, StreamContinuity,
+  ChunkOccurrence, SourceStreamRange, DurableCommitProof, CapturePersistenceRefusal, StreamContinuity,
   range_end, ContinuityCoverage, ContinuityCoversRange, continuity_covers, commit_attests_chunk, CommitAttestsThisChunk, CommitAttestsOtherPayload, CommitBindingIncomparable, CommitNoReceipt, ContinuityNotEstablished, ContinuityShortOfRange, ContinuityPositionsIncomparable,
 }
 import gunbc.machine_intake.sel_stimulus_listener {
@@ -181,8 +182,8 @@ type PreOsEnvelopeKey {
   ownership: EndpointOwnership
   producer_timestamp: ProducerTimestamp
   received: ReceiveObservation
-  local_commit: LocalCommitStanding
-  downstream: DownstreamAcceptanceStanding
+  local_commit: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>
+  downstream: DownstreamAcceptanceStanding<CapturePersistenceRefusal>
   continuity: StreamContinuity
 }
 

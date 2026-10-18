@@ -5,7 +5,7 @@ import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_no
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { list_at_optional }
+
 import v2.std.compilers.body_lowering { Application, ApplicationRefused, NotApplication, application_read }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
@@ -16,7 +16,7 @@ import v2.std.node_query { node_positional_child_targets }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.extdeps.languages.dag { dag_language_model }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional }
 import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -11,7 +11,7 @@ import gunbc.roadmap.roadmap_model {
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
 
-import v2.std.collection { Map }
+import std.types { Map }
 import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
 
 fn roadmap_max_depth() -> Int { 12 }

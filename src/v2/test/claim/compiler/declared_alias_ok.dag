@@ -1,0 +1,13 @@
+module v2.test.claim.compiler.declared_alias_ok
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type AliasInt = Int
+
+fn f() -> AliasInt { 1 }
+
+test fn a_declared_alias_unfolds_before_inhabitance_holds() -> Bool {
+  true
+}

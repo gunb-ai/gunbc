@@ -16,14 +16,15 @@ use crate::std_computation::CallPattern::{
 };
 use crate::std_computation::IterationDimension::{ArithmeticRepeat, CollectionFold, TreeDescent};
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-pub use crate::std_computation::{lower_call_pattern, size_bound_param, type_iteration_dimension};
-pub use crate::std_computation::{CallPattern, IterationDimension, LoweringTarget, ShrinkFactor};
+pub use crate::std_computation::{
+    lower_call_pattern, size_bound_param, type_iteration_dimension, CallPattern,
+    IterationDimension, LoweringTarget, ShrinkFactor,
+};
 pub use crate::std_graph::{
     build_call_graph_from_proof_edges, dfs_collect_component, dfs_finish_order, forward_adjacency,
     graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, reverse_adjacency,
-    seed_adjacency_map,
+    seed_adjacency_map, CallGraph, DfsFinishAcc, GraphEdge, SccComponentAcc,
 };
-pub use crate::std_graph::{CallGraph, DfsFinishAcc, GraphEdge, SccComponentAcc};
 use crate::std_induction::AtomicCost::PolyCost;
 use crate::std_induction::CostBound::{AtomicBound, ConstantBound, ErrorBound, ForeverBound};
 use crate::std_induction::PolynomialExponent::*;
@@ -32,11 +33,10 @@ use crate::std_induction::SubValueRelation::{
 };
 pub use crate::std_induction::{
     catamorphism_bound, cost_constant, cost_poly, derive_bound, sub_value_to_call_pattern,
-    sub_value_to_evidence, sub_value_to_lowering_target,
+    sub_value_to_evidence, sub_value_to_lowering_target, AtomicCost, CostBound, PolynomialExponent,
+    SubValueRelation,
 };
-pub use crate::std_induction::{AtomicCost, CostBound, PolynomialExponent, SubValueRelation};
-pub use crate::std_measure::ByteSize;
-pub use crate::std_measure::{byte_size, byte_size_count};
+pub use crate::std_measure::{byte_size, byte_size_count, ByteSize};
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::BinOp::{Div, Sub};
 use crate::std_syntax::LiteralValue::*;
@@ -53,8 +53,6 @@ use crate::std_termination::RankingDimension::{
 };
 pub use crate::std_termination::{
     descent_evidence_lattice_meet, evidence_rank, map_evidence_merge_at, optional_evidence_meet,
-};
-pub use crate::std_termination::{
     DescentEvidence, DescentSource, PositiveDescentAmount, ProofEdge, RankingDimension,
     TerminationProof,
 };
@@ -69,8 +67,8 @@ use crate::v1_compiler_parse::ParserResultWitness::{
 };
 pub use crate::v1_compiler_parse::{
     parser_passthrough_state_expr, parser_progress_flag_var, parser_result_witness,
+    ParserCallIdentity, ParserResultWitness,
 };
-pub use crate::v1_compiler_parse::{ParserCallIdentity, ParserResultWitness};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::{
@@ -90,9 +88,8 @@ pub use crate::v1_std_core::{
     is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing,
     lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, param_node_name_at, param_node_type_expr,
-    return_value,
+    return_value, ExprData, MatchPattern, MethodSemantics, NewlineIndex, Node,
 };
-pub use crate::v1_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -7112,14 +7109,16 @@ pub fn collect_scc_independent_dim_edges(
             for name in members.iter().cloned() {
                 __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-            let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+            let tree_edge_seed = v1_rt::rc_empty_map::<String, DescentEvidence>();
+let tree_edge_map = entry.params.clone().iter().cloned().fold(tree_edge_seed.clone(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
 let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
 let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
-let list_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+let list_edge_seed = v1_rt::rc_empty_map::<String, DescentEvidence>();
+let list_edge_map = entry.params.clone().iter().cloned().fold(list_edge_seed.clone(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
 let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), false, true, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), list_vars.clone(), scc_name_set.clone(), false, true, measure_params.clone(), si.clone());
@@ -7127,7 +7126,8 @@ let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, D
 pick_best_param_edges(best_map, param_map.clone())
 });
 let all_keys = v1_rt::concat(Rc::new(v1_rt::map_keys(&tree_edge_map)), Rc::new(v1_rt::map_keys(&list_edge_map)));
-let unique_keys = all_keys.iter().cloned().fold(v1_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
+let unique_seed = v1_rt::rc_empty_map::<String, bool>();
+let unique_keys = all_keys.iter().cloned().fold(unique_seed.clone(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
                 let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
@@ -7199,7 +7199,8 @@ pub fn collect_scc_tree_parser_dim_edges(
                     for name in members.iter().cloned() {
                         __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-                    let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                    let tree_edge_seed = v1_rt::rc_empty_map::<String, DescentEvidence>();
+let tree_edge_map = entry.params.clone().iter().cloned().fold(tree_edge_seed.clone(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                         let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
 let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
@@ -7209,7 +7210,8 @@ pick_best_param_edges(best_map, param_map.clone())
 let my_parser_edges = Rc::new({ let mut __result = Vec::new(); for pe in all_parser_edges.iter().cloned() { if (pe.caller.clone() == name.clone()) { __result.push(pe); } } __result });
 let parser_edge_map = my_parser_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 let all_keys = v1_rt::concat(Rc::new(v1_rt::map_keys(&tree_edge_map)), Rc::new(v1_rt::map_keys(&parser_edge_map)));
-let unique_keys = all_keys.iter().cloned().fold(v1_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
+let unique_seed = v1_rt::rc_empty_map::<String, bool>();
+let unique_keys = all_keys.iter().cloned().fold(unique_seed.clone(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
                         let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
@@ -10549,8 +10551,9 @@ pub fn build_complexity_report(
 ) -> Rc<ComplexityReport> {
     {
         let si = source_indices.clone();
+        let func_index_seed = v1_rt::rc_empty_map::<String, Rc<FuncEntry>>();
         let func_index = func_entries.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<FuncEntry>>(),
+            func_index_seed.clone(),
             |acc: Rc<HashMap<String, Rc<FuncEntry>>>, entry: Rc<FuncEntry>| {
                 v1_rt::rc_map_insert(acc, entry.name.clone(), entry.clone())
             },
@@ -10602,15 +10605,17 @@ pub fn build_complexity_report(
             }),
             scc_result.call_graph.clone(),
         );
+        let fan_in_seed = v1_rt::rc_empty_map::<String, i64>();
         let fan_in = func_entries.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, i64>(),
+            fan_in_seed.clone(),
             |acc: Rc<HashMap<String, i64>>, entry: Rc<FuncEntry>| {
                 let callees = match v1_rt::map_get(&call_forward, entry.name.clone()) {
                     Some(cs) => cs.clone(),
                     std::option::Option::None => Rc::new(vec![]),
                 };
+                let unique_set_seed = v1_rt::rc_empty_map::<String, bool>();
                 let unique_set = callees.iter().cloned().fold(
-                    v1_rt::rc_empty_map::<String, bool>(),
+                    unique_set_seed.clone(),
                     |s: Rc<HashMap<String, bool>>, c: String| {
                         v1_rt::rc_map_insert(s, c.clone(), true)
                     },
@@ -10698,8 +10703,9 @@ pub fn build_complexity_report(
                         Some(cs) => cs.clone(),
                         std::option::Option::None => Rc::new(vec![]),
                     };
+                    let unique_set_seed = v1_rt::rc_empty_map::<String, bool>();
                     let unique_set = callees.iter().cloned().fold(
-                        v1_rt::rc_empty_map::<String, bool>(),
+                        unique_set_seed.clone(),
                         |s: Rc<HashMap<String, bool>>, c: String| {
                             v1_rt::rc_map_insert(s, c.clone(), true)
                         },

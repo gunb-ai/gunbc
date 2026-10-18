@@ -1,0 +1,122 @@
+module v2.test.claim.compiler.kernel_op_declaration_import
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
+import std.types { Bool }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra {
+  collection_concat_shape,
+  collection_count_shape,
+  collection_filter_shape,
+  collection_first_shape,
+  collection_join_shape,
+  collection_map_shape,
+  fold_list
+}
+import std.literal_elaboration {
+  KernelMintDeclarationAbsent,
+  KernelMintDeclarationAmbiguous,
+  KernelMintDeclarationFound,
+  kernel_mint_declaration_for
+}
+import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import std.optional { Absent, Present }
+import v2.std.node { node_subtree_nodes }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
+  collection_concat_shape().name == "concat"
+    && collection_count_shape().name == "count"
+    && collection_map_shape().name == "map"
+    && collection_filter_shape().name == "filter"
+    && collection_first_shape().name == "first"
+    && collection_join_shape().name == "join"
+}
+
+test fn concat_has_no_kernel_mint_row() -> Bool {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "concat") {
+    KernelMintDeclarationAbsent => true
+    KernelMintDeclarationFound { declaration: _ } => false
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}
+
+test fn optional_mint_row_is_unchanged() -> Bool {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "Optional") {
+    KernelMintDeclarationFound { declaration: d } =>
+      declaration_ref_eq(a: d, b: decl_ref(module_path: "std.optional", decl_name: "Optional"))
+    KernelMintDeclarationAbsent => false
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}
+
+data kodi_concat_red: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(a: List<Int>, b: List<Int>) -> List<Int> {\n  concat(a, b)\n}\n"
+
+data kodi_concat_green: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { collection_concat_shape }\n\nfn f(a: List<Int>, b: List<Int>) -> List<Int> {\n  concat(a, b)\n}\n"
+
+// NATIVE RESOLVE: last-tier roster bind deleted. Bare concat without the template identity is unbound.
+test fn native_bare_concat_without_import_is_unbound() -> Bool {
+  match fmi_assemble(src: kodi_concat_red) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+test fn native_concat_with_identity_import_binds_the_template() -> Bool {
+  match fmi_assemble(src: kodi_concat_green) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold_list(xs: node_subtree_nodes(root: tree.root), empty: false, cons: fn(acc, n) {
+        acc || (match declaration_reference_path_optional(node: n) {
+          Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
+          Absent => false
+        })
+      })
+  }
+}
+
+data kodi_own_concat: String = "module p\n\nimport std.algebra { collection_concat_shape }\n\nfn concat(a: Int, b: Int) -> Int {\n  a\n}\n\nfn f() -> Int {\n  concat(1, 2)\n}\n"
+
+test fn own_fn_concat_binds_the_local_declaration() -> Bool {
+  match fmi_assemble(src: kodi_own_concat) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold_list(xs: node_subtree_nodes(root: tree.root), empty: false, cons: fn(acc, n) {
+        acc || (match declaration_reference_path_optional(node: n) {
+          Present { value: p } => qualified_name_to_dotted_string(qn: p) == "p.concat"
+          Absent => false
+        })
+      })
+  }
+}
+
+data kodi_seed_algebra: String = "module std.algebra\n\nfn collection_concat_shape() -> Int {\n  0\n}\n"
+
+data kodi_seed_green: String = "module p\n\nimport std.algebra { collection_concat_shape }\n\nfn f(a: String, b: String) -> String {\n  concat(a, b)\n}\n"
+
+fn kodi_seed_compiles(source: String) -> Bool {
+  match compile_fixture(fixture: MultiModuleCompileFixture { sources: [fixture_source("std/algebra.dag", kodi_seed_algebra), fixture_source("p.dag", source)], entry: "p.dag" }) {
+    FixtureInstrumentRefused { cause: _ } => false
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows: rows)) == 0
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows: rows)) == 0
+  }
+}
+
+// SEED: builtin registry unchanged. The new import form must still typecheck.
+test fn seed_accepts_concat_with_collection_concat_shape_import() -> Bool {
+  kodi_seed_compiles(source: kodi_seed_green)
+}

@@ -36,7 +36,7 @@ import gunbc.fleet.fleet_intent { srv1_host, srv2_host }
 import extdeps.languages.json.emit {
   json_object, json_kv, json_string, json_int, json_array, serialize_json,
 }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.units.iso8601_calendar {
   Iso8601CivilDate, iso8601_days_from_civil, iso8601_seconds_per_day,
 }

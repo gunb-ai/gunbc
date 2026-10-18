@@ -14,15 +14,14 @@ use crate::std_algebra::AlgebraTypeTemplate::{
     ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
-pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
 pub use crate::std_algebra::{
-    AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
+    algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile,
+    AlgebraTypeTemplate, ContainerSource,
 };
-pub use crate::std_coercion::dag_subtraction_refinement;
-pub use crate::std_coercion::SubtractionRefinement;
 use crate::std_coercion::SubtractionRefinement::{
     SubtractionEscapesTo, SubtractionRefinementAmbiguous, SubtractionStaysInOperandAlgebra,
 };
+pub use crate::std_coercion::{dag_subtraction_refinement, SubtractionRefinement};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
@@ -34,13 +33,14 @@ use crate::std_syntax::BinOp::{And, Eq, Ge, Gt, Le, Lt, Ne, NullCoalesce, Or};
 use crate::std_syntax::LiteralValue::LitStr;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitSymbol};
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
-pub use crate::std_types::SourceSpan;
+pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
-    container_template_alias_algebra, container_template_alias_rows, is_container_type,
+    container_template_alias_algebra, container_template_alias_rows, is_container_type, SourceSpan,
 };
-pub use crate::v1_compiler_infer_env::{text_crossing_by_identity, type_reference_declaration_ref};
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{
+    text_crossing_by_identity, type_reference_declaration_ref, TypeBinding, TypeEnv,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -60,12 +60,9 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, bool_type, default_ident_span,
     error_type, find_child_named, float_type, has_inferred, int_type, is_compiler_error,
-    is_kernel_type, kernel_span, leaf_node_with_span, make_error_node, make_expr_error_node,
-    make_expr_node, make_param_node, no_span, none_type, param_node_type_expr,
-    qualified_last_segment, string_type, type_name_compatible, unit_type,
-    with_optional_cardinality, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
+    kernel_span, leaf_node_with_span, make_error_node, make_expr_error_node, make_expr_node,
+    make_param_node, no_span, none_type, param_node_type_expr, qualified_last_segment, string_type,
+    type_name_compatible, unit_type, with_optional_cardinality, with_required_cardinality,
     Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, DeclarationMarker,
     ErrorNode, ExprData, ExprErrorKind, InferredNode, NewlineIndex, Node,
 };
@@ -152,12 +149,26 @@ pub fn node_is_keyed_collection(
         && node_is_collection(n.clone(), source_indices.clone()))
 }
 
+pub fn collection_carrier_node(n: Rc<Node>) -> Rc<Node> {
+    if ((n.children.clone().len() as i64) == 0) {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+            _ => n,
+        }
+    } else {
+        n
+    }
+}
+
 pub fn node_is_element_collection(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (((n.children.clone().len() as i64) == 1)
-        && node_is_collection(n.clone(), source_indices.clone()))
+    {
+        let c = collection_carrier_node(n.clone());
+        (((c.children.clone().len() as i64) == 1)
+            && node_is_collection(c.clone(), source_indices.clone()))
+    }
 }
 
 pub fn node_is_set_collection(

@@ -6,7 +6,7 @@ import std.measure { ObservationInstant, InstantOrder, InstantBefore, InstantSam
 import std.interval { OrderedClosedInterval, IntervalReady, IntervalRefused, closed_interval, interval_low, interval_high }
 import std.list { first_duplicate_by_key }
 import std.observation { OccurrenceId }
-import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 

@@ -15,8 +15,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
   portable_remote_word,
-  portable_remote_words,
-}
+  portable_remote_words, ssh_target_wire }
 import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 
 // Typed remote file-bytes write at the FleetSsh seam. TypedRemoteFileWrite is sole_constructor: the
@@ -468,7 +467,7 @@ fn typed_remote_file_write_execute_preflight_outcome(
         value: TypedRemoteFileWriteOutcomeRefused {
           reason: concat(
             "typed_remote_file_write: remote argv refused as non-portable for ",
-            target.endpoint as String,
+            ssh_target_wire(target: target) as String,
           ),
         },
       }
@@ -510,7 +509,7 @@ fn typed_remote_file_write_over_fleet_ssh(
           TypedRemoteFileWriteOutcomeRefused {
             reason: concat(
               "typed_remote_file_write: remote argv refused as non-portable for ",
-              target.endpoint as String,
+              ssh_target_wire(target: target) as String,
             ),
           }
         Present { value: words } =>

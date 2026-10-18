@@ -45,7 +45,7 @@ import gunbc.crate_partition {
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { Empty, fold_list, length }
+import std.algebra { Empty, fold_list, length, empty_map, map_insert }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
   CallGraph,
@@ -64,11 +64,7 @@ import gunbc.rust_emitted_edge {
 import std.disposition { RealizationDispatch }
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.std.collection {
-  empty_map,
-  map_get_checked,
-  map_insert
-}
+import v2.std.witness { map_get_checked }
 import std.optional {
   Absent,
   Optional,

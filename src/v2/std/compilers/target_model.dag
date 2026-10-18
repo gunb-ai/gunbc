@@ -1,215 +1,33 @@
 module v2.std.compilers.target_model
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
-import std.types { List }
-
+import std.types { List, brand, Map }
 import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.layout { Doc, DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest_by }
-import std.dissolution {
-  DissolutionCondition,
-  unbound_dissolution
-}
-
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, Equal, Greater, Less, Ordering, fold_list, fold_list_right, is_empty, length, list_tail }
-import v2.std.text { String, string_replace }
-import v2.std.collection {
-  Map,
-  empty_map,
-  list_at_optional,
-  map_get_checked,
-  map_insert,
-  map_lookup
-}
-import std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
-import v2.std.diagnostic {
-  Accepted,
-  CorrectionNotModeled,
-  Diagnostic,
-  Diagnostics,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  diagnostics_merge,
-  diagnostics_singleton,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected,
-  invariant_port_locus,
-  rejected_with_pending,
-  None,
-  outcome_with_diagnostics
-}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, Equal, Greater, Less, Ordering, fold_list, fold_list_right, is_empty, length, list_tail, empty_map, list_at_optional, map_insert, map_lookup }
+import v2.std.text { String, string_replace, Char }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Diagnostics, ExternalContractUnknown, Outcome, Rejected, Unavailable, bind_outcome, diagnostics_merge, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, rejected_with_pending, None, outcome_with_diagnostics }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
-import v2.std.compilers.lexing {
-  AnnotationRule,
-  KeywordPattern,
-  LexPattern,
-  LexRule,
-  LexRules,
-  LexicalPhrase,
-  LiteralPattern,
-  ModeledLexRules,
-  TokenRule,
-  ModeTransitionTokenRule,
-  NotFollowedByPattern,
-  lex_rule_set_matching_rules,
-  lex_rule_token_class_optional,
-  TriviaRule,
-  VoidLexRules,
-  CharClassPattern,
-  CharPattern,
-  ChoicePattern,
-  DelimitedPattern,
-  EmptyPattern,
-  OneOrMorePattern,
-  OptionalPattern,
-  RepeatPattern,
-  SequencePattern
-}
-import v2.std.find_witness {
-  CandidateSet,
-  PreservationPredicate,
-  UniqueOnly,
-  find_witness
-}
-import v2.std.passing_candidate_fold {
-  ManyPassingCandidates,
-  NoPassingCandidate,
-  OnePassingCandidate,
-  PassingCandidateFold
-}
-import v2.std.type_binder { cast_target_optional, type_annotation_optional }
-import v2.std.node {
-  StructuralLabel,
-  LoopBoundMeasure,
-  LoopCarrierBinder,
-  LoopDomainValue,
-  LoopEdgeUnrecognized,
-  LoopIteratedBody,
-  LoopRealizedDeclaration,
-  loop_edge_role,
-  Arrow,
-  ComputationBody,
-  DirectAtomBody,
-  FunctionValueBody,
-  RecordConstructBody,
-  DeclarationReferenceBody,
-  ParameterReferenceBody,
-  LexicalReferenceBody,
-  UnsupportedArrowBody,
-  classify_arrow_body_form,
-  ArrowBodyEdges,
-  Atom,
-  Branch,
-  Occupancy,
-  ComputationNode,
-  Conj,
-  Connective,
-  Disj,
-  Edge,
-  EdgeDiscipline,
-  Instantiation,
-  LabeledEdges,
-  LoopBoundEdges,
-  Match,
-  Authored,
-  NoEdges,
-  Node,
-  NodeFold,
-  Positional,
-  PositionalEdges,
-  Symbol,
-  Transform,
-  TypeNode,
-  all_edges_named,
-  all_edges_positional,
-  connective_edge_discipline,
-  content_hash,
-  fold_node,
-  match_arm_children_conform_skip_first,
-  name_occurrences,
-  node_rebuild,
-  symbol_intern_lexeme,
-  symbol_lexeme,
-  MatchArmBodyEdge,
-  MatchArmPatternEdge,
-  core_edge,
-  core_occurrences,
-  edge_is_core,
-  production_edge_label,
-  Bind,
-  Loop,
-  PositionalPlusNamedMarkerEdges,
-  PositionalPrefixThenLabeledEdges,
-  fold_list_node
-}
-import v2.std.witness {
-  StructuralPropertyWitness
-}
+import v2.std.compilers.lexing { AnnotationRule, KeywordPattern, LexPattern, LexRule, LexRules, LexicalPhrase, LiteralPattern, ModeledLexRules, TokenRule, ModeTransitionTokenRule, NotFollowedByPattern, lex_rule_set_matching_rules, lex_rule_token_class_optional, TriviaRule, VoidLexRules, CharClassPattern, CharPattern, ChoicePattern, DelimitedPattern, EmptyPattern, OneOrMorePattern, OptionalPattern, RepeatPattern, SequencePattern }
+import v2.std.find_witness { CandidateSet, PreservationPredicate, UniqueOnly, find_witness }
+import v2.std.passing_candidate_fold { ManyPassingCandidates, NoPassingCandidate, OnePassingCandidate, PassingCandidateFold }
+import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names, kinded_type_param_kind_optional }
+import v2.std.node { StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, Occupancy, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
+import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import v2.std.node_query {
-  declared_field_from_edge,
-  member_edge_type_node,
-  NamedChildAmbiguous,
-  NamedChildFound,
-  NamedChildMissing,
-  arrow_domain_named_param_bindings,
-  find_arrow_body_child,
-  find_named_child,
-  named_child_lookup,
-  node_labeled_child_edges,
-  node_positional_child_targets,
-  nullary_inhabitant_by_discriminant,
-  is_wildcard_pattern_identity,
-  pattern_wildcard_name,
-  find_core_child,
-  find_labeled_child,
-  construct_field_edges,
-  construct_tag_optional,
-}
-import v2.std.qualified_name {
-  QualifiedName,
-  qualified_name_from_node,
-  qualified_name_init,
-  qualified_name_last_segment,
-  parameter_reference_path_optional,
-  lexical_reference_label_optional,
-  declaration_reference_path_optional
-}
-import v2.std.text {
-  Char,
-  String
-}
-
-import v2.std.host_transport {
-  EmitHostRuntimeRow,
-  TargetEmitHostRuntimeRow,
-  configured_emit_host_runtime_row_from_target_row
-}
+import v2.std.node_query { declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, node_positional_child_targets, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
+import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
 import v2.std.integer { integer_decimal_magnitude_node_to_int }
 import std.integer { int_to_decimal_string }
-import v2.std.fold_assembly {
-  node_list_from_node
-}
-import extdeps.external_authority {
-  ExternalAuthority
-}
-import extdeps.uri {
-  Uri,
-  UriScheme,
-  uri_scheme_inhabitants
-}
-import std.types { brand }
+import v2.std.fold_assembly { node_list_from_node }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, UriScheme, uri_scheme_inhabitants }
 import std.roster_frontier { FrontierRow, PathSubject }
+
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
 // The compiler asks a target for a produced declaration and receives a bodied-arrow
@@ -258,6 +76,7 @@ import std.roster_frontier { FrontierRow, PathSubject }
 type ProducedDeclSignatureSegment
   = ProducedSignatureFixed { token_class: Symbol }
   | ProducedSignatureDeclName { token_class: Symbol }
+  | ProducedSignatureTypeParams { open: Symbol, separator: Symbol, close: Symbol, name_class: Symbol }
   | ProducedSignatureParams
   | ProducedSignatureReturnType
 
@@ -373,8 +192,20 @@ type ProducedDeclSupport
 // per declaration rather than per segment.
 type ProducedDeclSignatureSubject {
   fn_name: Symbol
+  type_params: List<ProducedTypeParam>
   params: List<Edge>
   codomain: Node
+}
+
+// ONE DECLARED TYPE PARAMETER OF A PRODUCED DECLARATION, as the header model carries it: its name
+// and, when the binder is KINDED (`bits: WidthResolution`, v2.std.type_binder
+// kinded_type_param_kind_optional), the kind. The header model carries the kind so a const-generic
+// parameter (a Rust `const N: u128`) is a row the target declares rather than a second model;
+// no target declares a kind-spelling row yet, so a kinded parameter refuses typed at render
+// (produced_decl_render_type_param_kind_unrealized), never rendering as an unkinded one.
+type ProducedTypeParam {
+  name: Symbol
+  kind: Optional<Node>
 }
 
 fn produced_decl_render_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -553,25 +384,115 @@ fn produced_decl_params_tokens(
   )
 }
 
-fn produced_decl_signature_segment_tokens(
+// THE TYPE-PARAMETER LIST: nothing at all for a declaration with none, so a non-generic header is
+// byte-identical to what the rows rendered before this segment existed; otherwise OPEN name
+// (SEPARATOR name)* CLOSE, every token named by the target's own row. A parameter that is a binder
+// introduces its own name, so the name is bound to itself -- it is not a type reference that
+// type_binding must resolve. A KINDED parameter refuses: no target row spells a kind yet.
+fn produced_decl_type_params_tokens(
+  type_params: List<ProducedTypeParam>,
+  open: Symbol,
+  separator: Symbol,
+  close: Symbol,
+  name_class: Symbol,
+  anchor: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  if is_empty(xs: type_params) {
+    outcome_accepted(value: Empty)
+  } else {
+    bind_outcome(
+      o: fold_list(
+        xs: type_params,
+        empty: outcome_accepted(value: ProducedDeclParamsFold { any_written: false, tokens: Empty }),
+        cons: fn(acc, p) {
+          bind_outcome(
+            o: acc,
+            f: fn(so_far) {
+              match p.kind {
+                Present { value: kind } =>
+                  outcome_rejected(
+                    d: produced_decl_render_diagnostic(reason: ^produced_decl_render_type_param_kind_unrealized, node: kind)
+                  )
+                Absent =>
+                  outcome_accepted(
+                    value: ProducedDeclParamsFold {
+                      any_written: true,
+                      tokens: list_append(
+                        left: so_far.tokens,
+                        right: match so_far.any_written {
+                          true => [FixedToken { token_class: separator }, BoundToken { token_class: name_class, binding: p.name }]
+                          false => [BoundToken { token_class: name_class, binding: p.name }]
+                        }
+                      )
+                    }
+                  )
+              }
+            }
+          )
+        }
+      ),
+      f: fn(folded) {
+        outcome_accepted(
+          value: list_append(
+            left: [FixedToken { token_class: open }],
+            right: list_append(left: folded.tokens, right: [FixedToken { token_class: close }])
+          )
+        )
+      }
+    )
+  }
+}
+
+// ONE SEGMENT'S RENDERING AND THE DEBT IT DISCHARGES. A declaration's type parameters are owed to
+// exactly one segment, the type-parameter segment, so the segment that renders them is the one that
+// returns them as `placed`; every other segment places none. The signature fold reads the debt off
+// what the segments returned, so rows with no type-parameter segment leave it unpaid and refuse there,
+// with no second scan over the rows' shape.
+type ProducedSegmentRender {
+  tokens: List<ConcreteSyntaxToken>
+  placed_type_params: List<ProducedTypeParam>
+}
+
+fn produced_segment_placing_no_type_params(tokens: Outcome<List<ConcreteSyntaxToken>>) -> Outcome<ProducedSegmentRender> {
+  bind_outcome(
+    o: tokens,
+    f: fn(toks) { outcome_accepted(value: ProducedSegmentRender { tokens: toks, placed_type_params: Empty }) }
+  )
+}
+
+fn produced_decl_signature_segment_render(
   rows: ProducedDeclRenderRows,
   subject: ProducedDeclSignatureSubject,
   segment: ProducedDeclSignatureSegment,
   type_binding: fn(Node) -> Outcome<Symbol>
-) -> Outcome<List<ConcreteSyntaxToken>> {
+) -> Outcome<ProducedSegmentRender> {
   match segment {
     ProducedSignatureFixed { token_class: tc } =>
-      outcome_accepted(value: [FixedToken { token_class: tc }])
+      produced_segment_placing_no_type_params(tokens: outcome_accepted(value: [FixedToken { token_class: tc }]))
     ProducedSignatureDeclName { token_class: tc } =>
-      outcome_accepted(value: [BoundToken { token_class: tc, binding: subject.fn_name }])
+      produced_segment_placing_no_type_params(tokens: outcome_accepted(value: [BoundToken { token_class: tc, binding: subject.fn_name }]))
+    ProducedSignatureTypeParams { open: open, separator: separator, close: close, name_class: name_class } =>
+      bind_outcome(
+        o: produced_decl_type_params_tokens(
+          type_params: subject.type_params,
+          open: open,
+          separator: separator,
+          close: close,
+          name_class: name_class,
+          anchor: subject.codomain
+        ),
+        f: fn(toks) { outcome_accepted(value: ProducedSegmentRender { tokens: toks, placed_type_params: subject.type_params }) }
+      )
     ProducedSignatureParams =>
-      produced_decl_params_tokens(rows: rows, params: subject.params, type_binding: type_binding)
+      produced_segment_placing_no_type_params(tokens: produced_decl_params_tokens(rows: rows, params: subject.params, type_binding: type_binding))
     ProducedSignatureReturnType =>
-      produced_decl_type_tokens_at(
-        rows: rows,
-        position: FunctionTypeAtItemReturn,
-        type_node: subject.codomain,
-        type_binding: type_binding
+      produced_segment_placing_no_type_params(
+        tokens: produced_decl_type_tokens_at(
+          rows: rows,
+          position: FunctionTypeAtItemReturn,
+          type_node: subject.codomain,
+          type_binding: type_binding
+        )
       )
   }
 }
@@ -707,26 +628,42 @@ fn produced_decl_signature_segments_tokens(
   segments: List<ProducedDeclSignatureSegment>,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  fold_list(
-    xs: segments,
-    empty: outcome_accepted(value: Empty),
-    cons: fn(acc, segment) {
-      bind_outcome(
-        o: acc,
-        f: fn(so_far) {
-          bind_outcome(
-            o: produced_decl_signature_segment_tokens(
-              rows: rows,
-              subject: subject,
-              segment: segment,
-              type_binding: type_binding
-            ),
-            f: fn(toks) {
-              outcome_accepted(value: list_append(left: so_far, right: toks))
-            }
-          )
-        }
-      )
+  bind_outcome(
+    o: fold_list(
+      xs: segments,
+      empty: outcome_accepted(value: ProducedSegmentRender { tokens: Empty, placed_type_params: Empty }),
+      cons: fn(acc, segment) {
+        bind_outcome(
+          o: acc,
+          f: fn(so_far) {
+            bind_outcome(
+              o: produced_decl_signature_segment_render(
+                rows: rows,
+                subject: subject,
+                segment: segment,
+                type_binding: type_binding
+              ),
+              f: fn(seg) {
+                outcome_accepted(
+                  value: ProducedSegmentRender {
+                    tokens: list_append(left: so_far.tokens, right: seg.tokens),
+                    placed_type_params: list_append(left: so_far.placed_type_params, right: seg.placed_type_params)
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    ),
+    f: fn(rendered) {
+      if length(xs: rendered.placed_type_params) == length(xs: subject.type_params) {
+        outcome_accepted(value: rendered.tokens)
+      } else {
+        outcome_rejected(
+          d: produced_decl_render_diagnostic(reason: ^translate_reason_generic_arrow_not_rendered, node: subject.codomain)
+        )
+      }
     }
   )
 }
@@ -793,6 +730,17 @@ fn produced_decl_domain_binder(arrow: Node, domain: Node, label: Symbol) -> Outc
   }
 }
 
+// The Arrow's declared type parameters in declaration order, each with the kind its binder carries.
+fn produced_decl_type_params_of_arrow(arrow: Node) -> List<ProducedTypeParam> {
+  fold_list(
+    xs: type_param_names(n: arrow),
+    empty: Empty,
+    cons: fn(acc, name) {
+      list_snoc_item(xs: acc, item: ProducedTypeParam { name: name, kind: kinded_type_param_kind_optional(n: arrow, name: name) })
+    }
+  )
+}
+
 fn produced_decl_subject_from_name_and_arrow(
   fn_name: Symbol,
   arrow: Node
@@ -807,6 +755,7 @@ fn produced_decl_subject_from_name_and_arrow(
               outcome_accepted(
                 value: ProducedDeclSignatureSubject {
                   fn_name: fn_name,
+                  type_params: produced_decl_type_params_of_arrow(arrow: arrow),
                   params: params,
                   codomain: codomain
                 }
@@ -895,7 +844,21 @@ fn produced_decl_signature_with_open_from_rows(
         rows: rows,
         subject: subject,
         segments: rows.signature,
-        type_binding: type_binding
+        // A TYPE-PARAMETER ATOM IS A BINDER'S OWN NAME, not a type the target realizes: an atom naming one of
+        // the declaration's own type parameters binds to itself, every other atom goes to the outer binding
+        // unchanged (so a name that is not declared still refuses as unrealized). Written inline, not as a
+        // function returning the closure, so the outer binding is passed down and never retained.
+        type_binding: fn(type_node) {
+          match type_node.kind {
+            TypeNode { connective: Atom { identity: id } } =>
+              if fold_list(xs: subject.type_params, empty: false, cons: fn(acc, p) { acc || p.name == id }) {
+                outcome_accepted(value: id)
+              } else {
+                type_binding(type_node)
+              }
+            _ => type_binding(type_node)
+          }
+        }
       )
     }
   )
@@ -13380,7 +13343,7 @@ fn target_use_site_ownership_catalog_lookup_step_from_valid_acc(
         use_site: use_site
       ) {
         TargetUseSiteOwnershipMissing => TargetUseSiteOwnershipCatalogMissing
-        TargetUseSiteOwnershipUnique { row: row } => TargetUseSiteOwnershipCatalogUnique { row: row }
+        TargetUseSiteOwnershipUnique { row: unique_row } => TargetUseSiteOwnershipCatalogUnique { row: unique_row }
         TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipCatalogAmbiguous
       }
     Rejected { diagnostics: _ } => TargetUseSiteOwnershipCatalogInvalid

@@ -3,8 +3,7 @@
 
 use self::PrimitiveProjectionAnswer::*;
 use self::ProjectionFidelity::*;
-pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -245,6 +244,15 @@ pub fn primitive_utf8_encode_bytes() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_octets_bytes() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("octets_bytes".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_pure_dag_seam_unreachable() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -263,10 +271,47 @@ pub fn primitive_to_string() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn never_type_declaration() -> Rc<DeclarationRef> {
+    thread_local! {
+        static CACHED: Rc<DeclarationRef> = {
+            crate::std_decl_ref::decl_ref("std.error_primitives".to_string(), "Never".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DeclarationRef>| c.clone())
+}
+
+pub fn never_eliminator_declaration() -> Rc<DeclarationRef> {
+    thread_local! {
+        static CACHED: Rc<DeclarationRef> = {
+            crate::std_decl_ref::decl_ref("std.error_primitives".to_string(), "absurd".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DeclarationRef>| c.clone())
+}
+
+pub fn never_type_qualified_path() -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            never_type_declaration().module_path.clone(),
+            ".".to_string(),
+        ),
+        never_type_declaration().decl_name.clone(),
+    )
+}
+
 pub fn primitive_string_contains() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
             primitive_identity_slug("string_contains".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
+pub fn primitive_chars() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("chars".to_string())
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -340,25 +385,25 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
         ),
         primitive_projection_row(
             primitive_empty_map(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "empty_map_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
             primitive_map_insert(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_insert_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
             primitive_lookup(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_lookup_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
             primitive_get(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "list_at_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
@@ -393,6 +438,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
+            primitive_octets_bytes(),
+            "std.bytes".to_string(),
+            "octets_bytes".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
             primitive_pure_dag_seam_unreachable(),
             "std.error_primitives".to_string(),
             "pure_dag_seam_unreachable".to_string(),
@@ -405,6 +456,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
+            primitive_chars(),
+            "std.host_text".to_string(),
+            "chars".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
             primitive_length(),
             "std.algebra".to_string(),
             "length".to_string(),
@@ -412,31 +469,31 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
         ),
         primitive_projection_row(
             primitive_map_insert(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_insert".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_lookup(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_lookup".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_get(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "list_at_optional".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_empty_map(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "empty_map".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_map_get(),
-            "v2.std.collection".to_string(),
+            "v2.std.witness".to_string(),
             "map_get_checked".to_string(),
             Rc::new(ProjectionFidelity::DivergentProjection {
                 divergence:

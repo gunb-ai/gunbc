@@ -1,24 +1,11 @@
 module v2.lens.text_string_importer_census
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
-import extdeps.filesystem.filesystem_io {
-  Filesystem,
-  filesystem_read_outcome,
-  FilesystemReadSucceeded,
-  FilesystemReadRefused,
-}
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import v2.compiler.parse { grammar_validate_for_parse, parse_production }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.common.source_analysis_standing {
-  LanguageGrammarRejected,
-  LanguageGrammarUnavailable,
-  SourceAnalysisNotEstablishedCause,
-  SourceNormalizationRejected,
-  SourceParseRejected,
-  SourceTokenizationRejected,
-  SourceUnreadable
-}
+import v2.lens.common.source_analysis_standing { LanguageGrammarRejected, LanguageGrammarUnavailable, SourceAnalysisNotEstablishedCause, SourceNormalizationRejected, SourceParseRejected, SourceTokenizationRejected, SourceUnreadable }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -29,35 +16,12 @@ import std.optional { Optional, Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length, list_reverse }
+import std.types { Map, List, NonEmptyStr }
+import std.algebra { empty_map, map_insert, map_lookup, Cons, Empty, FreeMonoid, contains, fold_list, length, list_reverse }
 import v2.std.source_position { source_newline_byte_offsets }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.types { List, NonEmptyStr }
-import std.primitives {
-  primitive_contract_roster,
-  PrimitiveContract,
-  char_at_contract,
-  string_length_contract,
-  substring_contract,
-  string_contains_contract,
-  starts_with_contract,
-  ends_with_contract,
-  trim_contract,
-  split_contract,
-  repeat_contract,
-  chars_contract,
-  to_string_contract,
-  parse_int_contract,
-  str_eq_contract,
-  replace_section_contract,
-  code_point_contract,
-  scan_while_contract,
-  skip_horizontal_ws_contract,
-  scan_to_eol_contract,
-  scan_string_end_contract
-}
+import std.primitives { primitive_contract_roster, PrimitiveContract, char_at_contract, string_length_contract, substring_contract, string_contains_contract, starts_with_contract, ends_with_contract, trim_contract, split_contract, repeat_contract, chars_contract, to_string_contract, parse_int_contract, str_eq_contract, replace_section_contract, code_point_contract, scan_while_contract, skip_horizontal_ws_contract, scan_to_eol_contract, scan_string_end_contract }
 import std.roster_frontier { FrontierRow, PathSubject }
 
 // THE CENSUS OF `import v2.std.text { String }` IMPORTERS, AT SITE GRAIN (gunbc#12760, decision A;

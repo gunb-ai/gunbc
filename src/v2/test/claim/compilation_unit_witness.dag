@@ -14,7 +14,7 @@ import gunbc.crate_partition {
   partition_provenance_policy_derived
 }
 
-import std.algebra { Empty }
+import std.algebra { Empty, empty_map, map_insert }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -39,7 +39,7 @@ import v2.std.compilers.compilation_unit {
   partition_unit_by_id,
   resolve_member_interfaces
 }
-import v2.std.collection { empty_map, map_insert }
+
 import std.optional { Absent, Optional, Present }
 import v2.std.node {
   Arrow,

@@ -28,7 +28,7 @@ import gunbc.secret_provision_actuator {
 import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, estate_refused_texts, GcpIamEstatePartialNoop, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
 import gunbc.auth.heal_publisher_provision {
   standing_principal_set,
-  DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present, dedicated_federation_pool_display_name_refusals,
+  DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present, dedicated_federation_input_refusals,
   FederationClassified, FederationUnclassified, rest_refusal_text, outcome_is_not_found,
 }
 import gunbc.auth.gcp_iam_bootstrap_model {
@@ -105,7 +105,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
   let cells = map(iam_bootstrap_capability_bindings() + iam_bootstrap_trust_bindings(), b => join([
     "binding ", iam_bootstrap_resource_key(resource: b.resource), " ", cell_preimage(c: b.cell),
   ], ""))
-  let input_refusals = dedicated_federation_pool_display_name_refusals(federations: iam_bootstrap_identity_federations())
+  let input_refusals = dedicated_federation_input_refusals(federations: iam_bootstrap_identity_federations())
   CliWirePrintable { bytes: join(["Bootstrap stages: ", join(map(iam_bootstrap_stages, s => iam_bootstrap_stage_wire(stage: s)), " -> "), "\n", join(boundary + roles + cells, "\n")], ""),
     exit: if !iam_bootstrap_model_admitted() { exit_failure(reason: "bootstrap model does not preserve the declared trust boundary") }
       else if count(input_refusals) > 0 { exit_failure(reason: join(input_refusals, "; ")) } else { ExitSuccess } }
@@ -525,7 +525,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
 // re-observed under a new receipt identity, never silently counted as completed from an exit code.
 fn iam_bootstrap_apply() -> ProcessExit {
   let receipt = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_RECEIPT")
-  let input_refusals = dedicated_federation_pool_display_name_refusals(federations: iam_bootstrap_identity_federations())
+  let input_refusals = dedicated_federation_input_refusals(federations: iam_bootstrap_identity_federations())
   if !path_segment_is_safe(raw: receipt) || !iam_bootstrap_model_admitted() { exit_failure(reason: "bootstrap requires a safe receipt identity and an admitted model") }
   else if count(input_refusals) > 0 { exit_failure(reason: join(input_refusals, "; ")) }
   else { match read_supplied_access_token() {

@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.fci1_controls_unrunnable_under_wrap_policy
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fci1_controls_unrunnable_under_wrap_policy: RecurringFailureMode = RecurringFailureMode {
+  identity: "fci1_controls_unrunnable_under_wrap_policy" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a posture whose only executor is an operator-invoked root shell on a host where the gunbc wrap policy refuses that shell. The FCI-1 controls (tools/fabric_ci_fci1_live_instrument.sh, tools/fabric_ci_fci1_bounded_execution_controls.sh and the evidence driver they call) run `gunbc run` as root over ssh on srv3 and inside transient systemd-run units in system.slice. gunbc.compute.unit_bounds user_work_scope_standing refuses the first as UserSessionAbsent (a root ssh shell has no user manager) and the second as UncappedSystemSlice (system.slice is not a declared capped slice); with a user manager present it refuses UserWorkSliceAbsent, because the wrapper never creates gunbc-user-work.slice and srv3 does not provision it. No standing exists under which the controls run.",
+
+    "HARM: gunbc.rung_drop fabric_evidence_gating names the live FCI-1 controls as the surviving, operator-invoked evidence once the evidence lane was withdrawn. If they cannot run, that posture has executed nothing since the wrap landed, while the rung-drop reads as covered. Observed 2026-10-16: the pinned root command at head 373df755 exited 2 with UserSessionAbsent at every step on srv3 (reported by the lane owner).",
+
+    "DISTINGUISHING FACT: the refusal is typed, located and correct. It is the CONTROLS that carried no standing. The wrap landed in two steps: gunbc#13966 (4242613b2b2, 2026-10-14) introduced user_work_scope_standing with UserSessionAbsent and the seed trampoline user_work_scope.rs; gunbc#14024 (be9e31e65bb, 2026-10-15) added UncappedSystemSlice and the modeled capped system slices (repository_convergence, approval_broker). Neither modeled an FCI-1 slice. Dating search: `git log -S UserSessionAbsent` and `git log -S UncappedSystemSlice` over dag and src.",
+
+    "RECEIPT SEARCH (2026-10-16): no accepted FCI-1 live-instrument or bounded-controls run receipt was found in the repository (no checked-in receipt, no ledger row, no tools/ or docs/ artifact recording an accepted run), so the claim that the controls ran after 2026-10-14 is unsupported and the claim that they ran before is unrecorded either way. Absence of a receipt is not evidence of a failure before 2026-10-14; it is the finding that the posture left no trace.",
+
+    "RECOGNITION RULE: an operator-invoked host script that starts `gunbc run` or a systemd-run unit, with no modeled slice or session standing for the unit, on any host the wrap policy governs; the typed standing in its transcript is UserSessionAbsent, UncappedSystemSlice or UserWorkSliceAbsent.",
+
+    "RUNG FOUND AT: mitigatable (the wrap refuses loudly; nothing passes silently). CEILING: structurally guaranteed for the standing (the declared slice row plus a live finite memory.max, gunbc.live_deploy.slice_bounds fci1_controls_slice_unit_name). NEXT-RUNG TRIGGER: a root-owned FCI-1 executor that installs the emitted slice (gunbc.fabric.fci1_controls_slice) as part of its own run and has a witness that executes the controls on the fleet; until then the controls are runnable only by the pinned srv3 root command attached to the landing PR.",
+
+    "CONSUMPTION: gunbc.compute.unit_bounds user_work_scope_standing; claims in test.claim.live_deploy.user_work_slice_witness (fci1_control_in_the_declared_capped_slice_is_exempt and the three refusals). Sibling class: wrap_refusal_after_host_script_proceed_mutation.",
+  ],
+
+  evidence: [],
+}

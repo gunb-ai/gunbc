@@ -64,6 +64,7 @@ type ReferenceDerivedClosureTrigger
   = P2aStructuralCandidateProducer7515
   | P2aReferenceDependencyProjection7515
   | P2aPoolIndependentDependencyProjection7515
+  | NoDagReachableNativeOccurrenceTransportProducer
 
 fn file_present(xs: List<FilePath>, wanted: FilePath) -> Bool {
   xs |> any(x => (x as String) == (wanted as String))

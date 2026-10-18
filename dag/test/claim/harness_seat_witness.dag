@@ -4,10 +4,11 @@ import std.types { Bool, String, Int, NonEmptyStr }
 import std.measure { second_count }
 import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant }
-import product.capacity.lease { QuiescenceRequired, FencedResource }
+import std.resource_release_law { QuiescenceRequired, FencedResource }
 import gunbc.harness.harness_seat {
   harness_seat_partition, SeatCeilingByDeclaredPolicy, AdmissionCeilingUnestablished,
   harness_seat_capacity_for, harness_interactive_quality_seats, harness_seat_reference,
+  harness_placement_rounds, harness_seat_retry_law,
 }
 import gunbc.serving.serving_enrollment { ServingRoute, ServingRouteUnresolved, serving_replica_route, CeilingByDeclaredPolicy }
 import gunbc.harness.harness_cli {
@@ -75,6 +76,10 @@ test fn an_unresolved_route_establishes_no_ceiling_and_names_its_replica() -> Bo
 
 // THE SEAT DEADLINE IS THE DECLARED REQUEST DEADLINE PLUS THE RELEASE ALLOWANCE, and the release
 // law is quiescence-required, because the engine cannot fence a superseded holder.
+test fn placement_rounds_are_the_retry_laws_whole_history_bound() -> Bool {
+  harness_placement_rounds == harness_seat_retry_law.real_work_failure_bound
+}
+
 test fn the_seat_policy_is_declared_from_the_request_deadline_and_requires_quiescence() -> Bool {
   harness_seat_policy.maximum_duration_seconds == second_count(s: harness_request_deadline) + harness_seat_release_allowance_seconds
     && (match harness_seat_policy.release_law { QuiescenceRequired => true  FencedResource => false })

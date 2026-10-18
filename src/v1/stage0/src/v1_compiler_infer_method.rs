@@ -10,10 +10,8 @@ use crate::std_algebra::AlgebraTypeTemplate::{
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{
     algebra_templates_for_profile, all_algebra_profiles, free_monoid_scalar_templates,
-    kernel_algebra_profile,
-};
-pub use crate::std_algebra::{
-    AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
+    kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate,
+    ContainerSource,
 };
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -33,10 +31,8 @@ pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     bool_type, error_type, hash_type, int_type, no_span, string_type, unit_type,
-    with_optional_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, Connective, DeclarationMarker, ErrorNode, ExprData, InferredNode, Node,
+    with_optional_cardinality, Cardinality, Connective, DeclarationMarker, ErrorNode, ExprData,
+    InferredNode, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -777,6 +773,33 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         returns: int_type(),
     }));
                 __m.insert("observed_thread_cpu_nanos".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: int_type(),
+    }));
+                __m.insert("observed_allocation_available".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: bool_type(),
+    }));
+                __m.insert("observed_allocation_operations".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: int_type(),
+    }));
+                __m.insert("observed_allocation_bytes".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "label".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
@@ -1550,21 +1573,9 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: type_variable_node("declared_import_closure_binding_result".to_string()),
     }));
-                __m.insert("class_b_import_closure_gate_not_affected_skip".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
                 __m.insert("witness_layer_roots_compile_clean_check".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: bool_type(),
-    }));
-                __m.insert("witness_layer_roots_compile_clean_emit_check".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
-                __m.insert("install_or_consume_floor_compile_clean_gate_receipt".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: type_variable_node("gate_receipt_result".to_string()),
     }));
                 __m.insert("record_generated_artifact_drift_gate_failure_detail".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1582,10 +1593,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
                 __m.insert("consume_generated_artifact_drift_gate_receipt".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: type_variable_node("gate_receipt_result".to_string()),
-    }));
-                __m.insert("witness_compile_clean_cli_floor_verdicts_agree".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
     }));
                 __m.insert("test_migration_debt_module_names".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),

@@ -6,8 +6,8 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
-import std.algebra { list_append }
-import v2.std.collection { list_at_optional }
+import std.algebra { list_append, list_at_optional }
+
 import v2.std.compilers.body_lowering {
   AtomHead,
   ArrowHead,

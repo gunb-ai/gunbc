@@ -1,6 +1,6 @@
 module v2.test.claim.execution.long.add_arrow_eval_by_execution
 
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { declared_signature }
 import v2.compiler.ingested_fixture_arrows {
@@ -33,11 +33,7 @@ import v2.extdeps.languages.dag {
   dag_int_literal_node_from_lexeme,
   dag_language_model
 }
-import v2.std.collection {
-  Map,
-  list_at_optional,
-  map_insert
-}
+import std.algebra { list_at_optional, map_insert }
 import std.optional {
   Absent,
   Optional,

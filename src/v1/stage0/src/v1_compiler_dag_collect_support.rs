@@ -7,14 +7,14 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_emit_core_support::escape_json_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::make_error_node;
 use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
 use crate::v1_std_core::ExprData::ExprElaboratedLiteral;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node,
+    make_error_node, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode,
+    MatchPattern, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

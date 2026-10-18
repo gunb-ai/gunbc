@@ -8,9 +8,7 @@ import v2.extdeps.languages.bash {
   emit_directive_bash_target_model,
   emit_directive_bash_to_stdout_wrong_target_model
 }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

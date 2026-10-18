@@ -1,5 +1,7 @@
 module test.claim.build_cache_endpoint_observe
 
+import std.optional { Absent, Present }
+import std.types { NonEmptyStr, Bool, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
@@ -583,14 +585,16 @@ test fn witness_non_socket_at_the_endpoint_path_is_a_conflict() -> Bool {
   }
 }
 
-test fn witness_stat_type_word_decodes_socket_and_absence() -> Bool {
-  let socket_kind = gunbc.build_cache.build_cache_endpoint_observe.path_kind_of_stat_read(
-    read: gunbc.build_cache.build_cache_endpoint_observe.HostReadText { text: "socket\n" },
+test fn witness_socket_test_decodes_socket_and_absence() -> Bool {
+  let socket_kind = gunbc.build_cache.build_cache_endpoint_observe.path_kind_of_socket_test_read(
+    read: gunbc.build_cache.build_cache_endpoint_observe.HostReadText { text: "/run/sccache/server.sock\n" },
     exit_success: true,
+    parent: gunbc.build_cache.build_cache_endpoint_observe.ParentListsEntry,
   )
-  let absent_kind = gunbc.build_cache.build_cache_endpoint_observe.path_kind_of_stat_read(
+  let absent_kind = gunbc.build_cache.build_cache_endpoint_observe.path_kind_of_socket_test_read(
     read: gunbc.build_cache.build_cache_endpoint_observe.HostReadText { text: "" },
     exit_success: false,
+    parent: gunbc.build_cache.build_cache_endpoint_observe.ParentOmitsEntry,
   )
   match socket_kind {
     gunbc.build_cache.build_cache_endpoint_observe.PathKindSocket =>
@@ -1002,4 +1006,60 @@ test fn witness_refused_step_with_observed_discard_reports_each_truthfully() -> 
         && string_contains(s: r, pattern: "staged bytes discarded, exit 0")
     Converged { evidence: _, applied: _ } => false
   }
+}
+
+// RED (review on #14053): a nonzero find exit is NOT absence. Permission denied on the path, with the
+// parent listing it or a parent that cannot be listed, is unreadable; only the parent omitting the
+// entry is absent.
+fn kind_is_unreadable(k: gunbc.build_cache.build_cache_endpoint_observe.EndpointPathKind) -> Bool {
+  match k {
+    gunbc.build_cache.build_cache_endpoint_observe.PathKindUnreadable { detail: _ } => true
+    gunbc.build_cache.build_cache_endpoint_observe.PathKindAbsent => false
+    gunbc.build_cache.build_cache_endpoint_observe.PathKindSocket => false
+    gunbc.build_cache.build_cache_endpoint_observe.PathKindOtherObject { described: _ } => false
+    gunbc.build_cache.build_cache_endpoint_observe.PathKindNoFilesystemPath => false
+  }
+}
+
+test fn witness_a_failed_socket_test_is_absent_only_when_the_parent_omits_it() -> Bool {
+  let denied = gunbc.build_cache.build_cache_endpoint_observe.HostReadText { text: "" }
+  kind_is_unreadable(k: gunbc.build_cache.build_cache_endpoint_observe.path_kind_of_socket_test_read(read: denied, exit_success: false, parent: gunbc.build_cache.build_cache_endpoint_observe.ParentListsEntry))
+    && kind_is_unreadable(k: gunbc.build_cache.build_cache_endpoint_observe.path_kind_of_socket_test_read(read: denied, exit_success: false, parent: gunbc.build_cache.build_cache_endpoint_observe.ParentListingUnread { detail: "ls: Permission denied" as NonEmptyStr }))
+    && (match gunbc.build_cache.build_cache_endpoint_observe.endpoint_parent_listing_of(exit_success: true, stdout: "other.sock\nserver.sock\n", stderr: "", name: "server.sock") {
+      gunbc.build_cache.build_cache_endpoint_observe.ParentListsEntry => true
+      gunbc.build_cache.build_cache_endpoint_observe.ParentOmitsEntry => false
+      gunbc.build_cache.build_cache_endpoint_observe.ParentListingUnread { detail: _ } => false
+    })
+    && (match gunbc.build_cache.build_cache_endpoint_observe.endpoint_parent_listing_of(exit_success: true, stdout: "other.sock\n", stderr: "", name: "server.sock") {
+      gunbc.build_cache.build_cache_endpoint_observe.ParentOmitsEntry => true
+      gunbc.build_cache.build_cache_endpoint_observe.ParentListsEntry => false
+      gunbc.build_cache.build_cache_endpoint_observe.ParentListingUnread { detail: _ } => false
+    })
+}
+
+// The owner is the third field of `ls -ld`'s one line; a failed or empty read is unread, and the argv
+// carries no `%`, so it crosses the fleet SSH edge.
+test fn witness_the_owner_principal_is_read_from_ls_and_crosses_the_edge() -> Bool {
+  gunbc.build_cache.build_cache_endpoint_observe.owner_principal_of_ls_read(read: gunbc.build_cache.build_cache_endpoint_observe.HostReadText { text: "dr-xr-xr-x 9 ghrunner ghrunner 0 Oct 15 01:00 /proc/4242/\n" }) == "ghrunner"
+    && gunbc.build_cache.build_cache_endpoint_observe.owner_principal_of_ls_read(read: gunbc.build_cache.build_cache_endpoint_observe.HostReadText { text: "" }) == "unread"
+    && (match gunbc.fleet.fleet_known_hosts_anchor.portable_remote_words(raws: argv_words(command: gunbc.build_cache.build_cache_endpoint_observe.owner_principal_command(pid: 4242))) {
+      Absent => false
+      Present { value: _ } => true
+    })
+}
+
+// Review 80635: a dot-prefixed socket name is listed (ls -A) and found, and a path ending in `/` names
+// no entry and refuses as unread rather than reading absent.
+test fn witness_a_hidden_socket_name_is_listed_and_a_trailing_slash_refuses() -> Bool {
+  (match gunbc.build_cache.build_cache_endpoint_observe.endpoint_parent_listing_of(exit_success: true, stdout: "other\n.sccache.sock\n", stderr: "", name: gunbc.build_cache.build_cache_endpoint_observe.endpoint_path_name(path: "/run/x/.sccache.sock")) {
+    gunbc.build_cache.build_cache_endpoint_observe.ParentListsEntry => true
+    gunbc.build_cache.build_cache_endpoint_observe.ParentOmitsEntry => false
+    gunbc.build_cache.build_cache_endpoint_observe.ParentListingUnread { detail: _ } => false
+  })
+    && (match gunbc.build_cache.build_cache_endpoint_observe.endpoint_parent_listing_of(exit_success: true, stdout: "other\n", stderr: "", name: gunbc.build_cache.build_cache_endpoint_observe.endpoint_path_name(path: "/run/x/")) {
+      gunbc.build_cache.build_cache_endpoint_observe.ParentListingUnread { detail: _ } => true
+      gunbc.build_cache.build_cache_endpoint_observe.ParentListsEntry => false
+      gunbc.build_cache.build_cache_endpoint_observe.ParentOmitsEntry => false
+    })
+    && argv_words(command: gunbc.build_cache.build_cache_endpoint_observe.endpoint_parent_listing_command(path: "/run/x/.sccache.sock" as NonEmptyStr)) == ["ls", "-1", "-A", "--", "/run/x"]
 }

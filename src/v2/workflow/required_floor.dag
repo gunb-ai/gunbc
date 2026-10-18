@@ -2036,23 +2036,15 @@ fn opaque_host_call_grandfather_population() -> List<String> {
         head: "compile_dag_multi_module_fixture",
         tail: Cons {
           head: "observe_declared_import_closure_symbol_binding",
-          tail: Cons {
-            head: "witness_layer_roots_compile_clean_check",
             tail: Cons {
-              head: "witness_layer_roots_compile_clean_emit_check",
-              tail: Cons {
-                head: "install_or_consume_floor_compile_clean_gate_receipt",
-                tail: Cons {
-                  head: "witness_compile_clean_cli_floor_verdicts_agree",
-                  tail: Empty {}
-                }
-              }
+              head: "witness_layer_roots_compile_clean_check",
+              tail: Empty {}
             }
-          }
         }
       }
     }
-  } }
+  }
+}
 }
 
 // TWO PROJECTIONS OF THE POPULATION THAT EXIST FOR THE IDENTITY JOIN, NOT FOR REPORTING. The

@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
-import extdeps.network.endpoint { SocketAddress, socket_address, render_network_host, host_by_ipv4 }
+import extdeps.network.endpoint { SocketAddress, socket_address, render_uri_host, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list, ninfer_authorization_header_line, ninfer_models_path, ninfer_chat_completions_path, ninfer_health_path }
@@ -49,11 +49,10 @@ data operator_endpoint_tunnel: PortForwardSpec = PortForwardSpec {
 // THE ORIGIN IS DERIVED FROM THE TUNNEL'S LISTENER, so the address a request is sent to cannot disagree with
 // the forward that was declared. Every URL below is this origin plus a path ninfer's own module declares;
 // the server's OpenAI base URL is therefore http://127.0.0.1:18090/v1 (the common prefix of the two paths).
+// Still Optional only so its callers (harness_backend, harness_seat) keep their shape until this module
+// retires into the rented allocation route; the host render itself is total.
 fn operator_endpoint_origin() -> NonEmptyStr? {
-  match render_network_host(host: operator_endpoint_tunnel.listener.host) {
-    Absent => none
-    Present { value: h } => Present { value: join(["http://", h as String, ":", to_string(operator_endpoint_tunnel.listener.port)], "") as NonEmptyStr }
-  }
+  Present { value: join(["http://", render_uri_host(host: operator_endpoint_tunnel.listener.host) as String, ":", to_string(operator_endpoint_tunnel.listener.port)], "") as NonEmptyStr }
 }
 
 fn operator_endpoint_url(path: NonEmptyStr) -> NonEmptyStr? {

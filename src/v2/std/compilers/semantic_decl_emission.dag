@@ -1,6 +1,6 @@
 module v2.std.compilers.semantic_decl_emission
 
-import std.types { List }
+import std.types { List, Map }
 import std.unicode.scalar { from_code_point }
 import std.error_primitives { Ok, Err }
 import std.optional { Present, Absent }
@@ -51,7 +51,7 @@ import v2.std.compilers.target_model {
   text_atom
 }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.collection { Map, empty_map, map_insert }
+
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -83,7 +83,7 @@ import v2.std.node {
 import v2.std.node_query { declared_field_from_edge, find_named_child }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, fold_list_right, is_empty }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert }
 
 type TargetSemanticDeclDecorationLine {
   surface_binding: Symbol

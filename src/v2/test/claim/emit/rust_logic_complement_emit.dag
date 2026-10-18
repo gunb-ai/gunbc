@@ -11,9 +11,7 @@ import v2.extdeps.languages.rust_fixtures {
   rust_logic_complement_swapped_arms_source_text,
   rust_logic_complement_target_model_staging
 }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

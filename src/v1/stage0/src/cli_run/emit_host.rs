@@ -131,49 +131,9 @@ pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
 /// cache-impurity rule (key on declared-input content), and the reason this is not simply a
 /// `HashMap` on the source string.
 pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
-    let Some(inventory_digest) = floor_prepared_inventory_digest() else {
-        return compile_dag_diagnostic_census_uncached(source);
-    };
-    let memo_key = {
-        use crate::v1_rt::{atom_identity_hash, hash_combine};
-        let h = atom_identity_hash(source.to_string());
-        hash_combine(h, atom_identity_hash(inventory_digest))
-    };
-    if let Some(hit) =
-        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
-    {
-        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        record_fixture_closure_memo_hit(&memo_key);
-        return hit;
-    }
-    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    // A MISS FILLS A SHARED ARTIFACT, and this memo's fill is the same quantity its sibling's is.
-    // The memo above was landed without this bracket, so the census half of the attribution went
-    // unrecorded: `record_shared_artifact_fill_cpu` was wired into `compile_dag_rust_emit_check`
-    // only, and a claim that filled a CENSUS entry was still charged the whole compile. That is
-    // one accounting rule with two homes, one of which does not apply it (DESIGN §3) — and it is
-    // load-bearing rather than cosmetic, because the ceiling it feeds is a fail-stop: measured on
-    // main run 33131296988, `test.claim.callable_candidate_ambiguity_witness
-    // .neither_green_source_refuses_and_neither_mis_resolves` was the first claim to reach BOTH
-    // green sources, paid both compiles, and refused the floor at 5812ms against 5000ms, while the
-    // two later claims naming those same sources read them free. The number was a fact about
-    // discovery order, not about the row.
-    //
-    // NOTHING IS EXEMPTED. As at the sibling seam, the fill is measured on the same thread clock
-    // the claim loop enforces against, recorded rather than subtracted here, and reported by
-    // `run_claim_measured` as its own `[floor-shared-fill]` column — the claim's marginal and fill
-    // halves still sum to what it actually spent.
-    let fill_started = v1_interpreter::thread_cpu_nanos();
-    let fill_wall_started = std::time::Instant::now();
-    begin_fixture_closure_fill();
-    let census = compile_dag_diagnostic_census_uncached(source);
-    finish_fixture_closure_fill(&memo_key);
-    record_shared_artifact_fill_cpu(
-        v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
-    );
-    record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
-    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().insert(memo_key, census.clone()));
-    census
+    // The floor prepared-inventory guard that armed the content-keyed memo is deleted
+    // with `run_required_floor`. Disk is the only remaining source.
+    compile_dag_diagnostic_census_uncached(source)
 }
 
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
@@ -2033,35 +1993,9 @@ pub fn compile_dag_rust_emit_check(
     includes: &[String],
     excludes: &[String],
 ) -> Result<bool, FixtureRenderRefusal> {
-    // Memo only under the floor guard, keyed on declared inputs AND the prepared
-    // inventory digest (`build_module_path_index_from_witness_roots` reads those bytes).
-    // Outside the guard there is no snapshot, so a hit would lie about disk.
-    let Some(inventory_digest) = floor_prepared_inventory_digest() else {
-        return compile_dag_rust_emit_check_uncached(source, file_path)
-            .map(|read| emit_check_verdict(&read, includes, excludes));
-    };
-    let memo_key = compile_dag_rust_emit_check_memo_key(source, file_path, &inventory_digest);
-    if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
-    {
-        COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        record_fixture_closure_memo_hit(&memo_key);
-        return hit.map(|read| emit_check_verdict(&read, includes, excludes));
-    }
-    COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    // A MISS FILLS A SHARED ARTIFACT. Measured on the same thread clock the claim loop enforces
-    // against, so the two quantities cannot drift apart, and recorded rather than subtracted here
-    // — the claim loop does the split, this only says how much of the cost was a fill.
-    let fill_started = v1_interpreter::thread_cpu_nanos();
-    let fill_wall_started = std::time::Instant::now();
-    begin_fixture_closure_fill();
-    let verdict = compile_dag_rust_emit_check_uncached(source, file_path);
-    finish_fixture_closure_fill(&memo_key);
-    record_shared_artifact_fill_cpu(
-        v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
-    );
-    record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
-    COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict.clone()));
-    verdict.map(|read| emit_check_verdict(&read, includes, excludes))
+    // The floor prepared-inventory memo is deleted with `run_required_floor`.
+    compile_dag_rust_emit_check_uncached(source, file_path)
+        .map(|read| emit_check_verdict(&read, includes, excludes))
 }
 
 pub(crate) fn compile_dag_rust_emit_check_uncached(

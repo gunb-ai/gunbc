@@ -14,9 +14,7 @@ import v2.std.compilers.target_model {
   target_value_semantics_carriers_from_node
 }
 import std.algebra { Empty }
-import v2.std.collection {
-  Symbol
-}
+
 import std.optional {
   Absent,
   Optional,

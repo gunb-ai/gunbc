@@ -6,7 +6,7 @@ import gunbc.design.material {
 }
 import extdeps.languages.css.properties { css_property_wire }
 import extdeps.languages.css.selectors { selector_subject_wire }
-import extdeps.languages.css.media_queries { css_media_rule_wire, reduced_motion }
+import extdeps.languages.css.media_queries { css_media_rule_wire, media_condition_wire, MediaPrefersColorScheme, reduced_motion }
 import gunbc.design.theme {
   night_theme, day_theme,
 }
@@ -209,7 +209,11 @@ fn reframe_css(rules: List<BuildRule>) -> String {
 }
 
 fn alternate_scheme_query() -> String {
-  join(["(prefers-color-scheme: ", day_theme.scheme, ")"], "")
+  // Same condition, one route: media_condition_wire over the typed value on day_theme.
+  // Consumers read this as a matchMedia() argument — a string that only LOOKS like a
+  // query — so an untyped field here could silently produce a feature the spec does not
+  // define, and matchMedia would just never match.
+  media_condition_wire(c: MediaPrefersColorScheme { preference: day_theme.scheme })
 }
 
 fn reframe_watcher_program() -> TsProgram {

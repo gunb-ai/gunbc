@@ -14,7 +14,7 @@ import std.materialization_provider {
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
 }
-import std.materialization_store_grant { MaterializationStoreRoot, WitnessScratchRoot, DurableHostVolumeRoot }
+import std.materialization_store_grant { MaterializationStoreRoot, WitnessScratchRoot }
 import std.materialization_object {
   ArtifactPayload, payload_part,
   OpenedMaterializationStore,

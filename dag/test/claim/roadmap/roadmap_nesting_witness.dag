@@ -1,11 +1,11 @@
 module test.claim.roadmap.roadmap_nesting_witness
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, Map }
 import gunbc.roadmap.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_model { RoadmapNode, NodeParent, MemberOf, AdmittedRoot, Closes }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, roadmap_node, ticket, fields, in_project, admitted_root }
 import gunbc.roadmap.roadmap_lineage { lineage_walk, lineage_walk_in, lineage_walk_steps, LineageStep, lineage_index, lineage_root_ids, LineageRooted, LineageNoParent, LineageUndeclared, LineageCyclic }
-import v2.std.collection { Map }
+
 import gunbc.roadmap.roadmap_project { node_project_membership, project_member_ids, project_root_for_node, MembershipStandalone, MembershipMember, MembershipAmbiguous }
 
 // The prerequisite is shared by two projects but belongs to neither by implication.

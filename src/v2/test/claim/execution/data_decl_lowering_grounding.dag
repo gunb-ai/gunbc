@@ -4,7 +4,7 @@ import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, fold_list }
+import std.algebra { Cons, Empty, fold_list, list_at_optional }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.compiler.infer {
@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom
 }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { list_at_optional }
+
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {

@@ -1,7 +1,7 @@
 module v2.test.claim.compiler.optional_layers
 
 import std.types { Bool }
-import std.algebra { Empty }
+import std.algebra { Empty, list_at_optional }
 import std.optional { Absent, Present }
 import std.nat { Zero }
 import v2.std.optional_layers {
@@ -30,7 +30,7 @@ import v2.std.inhabitance {
   inhabitance_pair_undecidable_reason
 }
 import v2.std.symbol_index { empty_symbol_index }
-import v2.std.collection { list_at_optional }
+
 import v2.std.node { Atom, Occupancy, ComputationNode, Edge, Instantiation, Node, Positional, Symbol, TypeNode }
 import v2.std.list_introduction { list_introduction_head_path }
 import v2.std.qualified_name { declaration_reference_node }

@@ -3,8 +3,9 @@ module product.fabric.flex_policy
 import std.types { NonEmptyStr, Bool, Int, List, brand }
 import std.nat { Nat, Zero, Succ }
 import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.decimal { ExactDecimal }
+import std.apply_mode { ApplyMode }
 import std.measure {
   MoneyAmountMicro, MoneyPerHour, MoneyPerSecond,
   money_amount_micro, money_amount_micro_count, money_per_hour_micros,
@@ -18,6 +19,8 @@ import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply {
   EqualCostOfferTieBreak, PlacementAffinityKey, GrantDuration, ExactGrantDuration,
   seconds_per_hour, SupplierOffer, QuotedPerHour,
+  Fungible, TrustDomainMismatch, CapabilitiesNotOffered, IsolationNotProvided,
+  ShapeAxesNotCovered, offer_fungibility_for, QuoteExceedsMaximumBuyOrder,
 }
 import product.fabric.execution { ReservationRef }
 import product.fabric.budget {
@@ -79,10 +82,6 @@ type FlexBidSubject
   = FlexNewAcquisition
   | FlexExistingAcquisition { current_bid: MoneyPerHour }
 
-type FlexActuationMode
-  = FlexActuationDry
-  | FlexActuationWet
-
 type FlexPolicy {
   fleet_rate_cap: MoneyPerHour
   // Fraction of comparable on-demand horizon cost (setup and transfer included).
@@ -92,9 +91,9 @@ type FlexPolicy {
   // Load-bearing isolation from ctrl on the same Vast account: no second account.
   // Cap occupancy, reconcile, cleanup and release select this label exactly.
   owner: FlexOwnerLabel
-  // Write loop. FlexActuationDry is observe/plan/record; Wet is the write loop.
-  // Trial and every current constructor are Dry.
-  actuation: FlexActuationMode
+  // Write loop. Plan is observe/plan/record; Apply is the write loop, and the Vast destroy takes this
+  // value as its mode. Trial and every current constructor are Plan.
+  actuation: ApplyMode
 }
 
 type FlexAcquisitionWindow {
@@ -303,6 +302,9 @@ fn offer_quoted_at(offer: SupplierOffer<NonEmptyStr>, rate: MoneyPerHour) -> Sup
   }
 }
 
+// Fungibility is screened here against the attempt's requirements, as price_candidate does for
+// select_supply: price_over_horizon prices only, so without this screen a thin machine would price
+// as an on-demand reference and set the ceiling for a shape it cannot serve.
 fn flex_price_offer(
   offer: SupplierOffer<NonEmptyStr>,
   inputs: DispatchInputs<NonEmptyStr>,
@@ -311,6 +313,38 @@ fn flex_price_offer(
   budget_currency: CurrencyCode,
   maximum_buy_order: MoneyAmountMicro,
 ) -> FlexPricedHorizon {
+  let fungibility = offer_fungibility_for(requirements: attempt.requirements, offer: offer)
+  match fungibility {
+    TrustDomainMismatch { required: _, offered: _ } =>
+      FlexHorizonRefused { candidacy: OfferNotFungible { offer: offer.id, fungibility: fungibility } }
+    CapabilitiesNotOffered { required: _, offered: _ } =>
+      FlexHorizonRefused { candidacy: OfferNotFungible { offer: offer.id, fungibility: fungibility } }
+    IsolationNotProvided { missing: _ } =>
+      FlexHorizonRefused { candidacy: OfferNotFungible { offer: offer.id, fungibility: fungibility } }
+    ShapeAxesNotCovered { unmet: _ } =>
+      FlexHorizonRefused { candidacy: OfferNotFungible { offer: offer.id, fungibility: fungibility } }
+    Fungible =>
+      flex_price_fungible_offer(
+        offer: offer,
+        inputs: inputs,
+        policy: policy,
+        attempt: attempt,
+        budget_currency: budget_currency,
+        maximum_buy_order: maximum_buy_order,
+      )
+  }
+}
+
+fn flex_price_fungible_offer(
+  offer: SupplierOffer<NonEmptyStr>,
+  inputs: DispatchInputs<NonEmptyStr>,
+  policy: FlexPolicy,
+  attempt: FlexBidAttempt<NonEmptyStr>,
+  budget_currency: CurrencyCode,
+  maximum_buy_order: MoneyAmountMicro,
+) -> FlexPricedHorizon
+  admit_callers: [decl_ref(module_path: "product.fabric.flex_policy", decl_name: "flex_price_offer")]
+{
   let candidacy = price_over_horizon(
     offer: offer,
     inputs: inputs,
@@ -348,8 +382,8 @@ fn flex_on_demand_reference_cost(
       match flex_availability_standing(a: c.dispatch.availability) {
         FlexAvailabilityUnobserved => FlexHorizonUnobserved
         FlexAvailabilityRevocable => FlexHorizonUnobserved
-        FlexAvailabilityOnDemand =>
-          flex_price_offer(
+        FlexAvailabilityOnDemand => {
+          let priced = flex_price_offer(
             offer: c.offer,
             inputs: c.dispatch,
             policy: policy,
@@ -357,6 +391,31 @@ fn flex_on_demand_reference_cost(
             budget_currency: budget_currency,
             maximum_buy_order: maximum_buy_order,
           )
+          // The reference is a reading of what on-demand costs, not a purchase the fleet cap
+          // must afford: a quote above the cap bounds nothing about the bid. Re-read it with the
+          // exceeding quote as its own bound so start and operating cash still screen as
+          // liability and price through OfferLiabilityOverBuyOrder.
+          match priced {
+            FlexHorizonRefused { candidacy: refused } =>
+              match refused {
+                OfferUnaffordable { offer: _, affordability: shortfall } =>
+                  match shortfall {
+                    QuoteExceedsMaximumBuyOrder { quoted: own_total, maximum: _ } =>
+                      flex_price_offer(
+                        offer: c.offer,
+                        inputs: c.dispatch,
+                        policy: policy,
+                        attempt: attempt,
+                        budget_currency: budget_currency,
+                        maximum_buy_order: own_total,
+                      )
+                    _ => priced
+                  }
+                _ => priced
+              }
+            _ => priced
+          }
+        }
       }
   }
 }

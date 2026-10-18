@@ -166,7 +166,7 @@ fn lel_int_type() -> Node {
 }
 
 fn lel_elaborates(literal: Node, expected: Node) -> Bool {
-  match infer_literal_elaborates_at(literal_node: literal, expected: expected, declarations: empty_symbol_index()) {
+  match infer_literal_elaborates_at(literal_node: literal, expected: expected, declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     InferLiteralElaboratesTo { destination_type: _ } => true
     InferLiteralNotElaborated => false
     InferLiteralElaborationRefused { cause: _ } => false
@@ -174,7 +174,7 @@ fn lel_elaborates(literal: Node, expected: Node) -> Bool {
 }
 
 fn lel_not_elaborated(literal: Node, expected: Node) -> Bool {
-  match infer_literal_elaborates_at(literal_node: literal, expected: expected, declarations: empty_symbol_index()) {
+  match infer_literal_elaborates_at(literal_node: literal, expected: expected, declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     InferLiteralElaboratesTo { destination_type: _ } => false
     InferLiteralNotElaborated => true
     InferLiteralElaborationRefused { cause: _ } => false
@@ -201,7 +201,7 @@ test fn lel_literal_at_a_type_without_a_row_is_not_elaborated() -> Bool {
 // RANGE's reason so a later parse change (a signed literal token) cannot make it silent and so the refusal is the
 // grounding row's, not a check of infer's own. Before #13320 it was admitted at Nat.
 test fn lel_negative_literal_at_nat_refuses() -> Bool {
-  match infer_literal_elaborates_at(literal_node: lower_unary_prefix(operator: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_minus } }, children: []), operand: lel_literal(lexeme: "1")), expected: lel_nat_type(), declarations: empty_symbol_index()) {
+  match infer_literal_elaborates_at(literal_node: lower_unary_prefix(operator: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_minus } }, children: []), operand: lel_literal(lexeme: "1")), expected: lel_nat_type(), declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     InferLiteralElaborationRefused { cause: c } => c == ^infer_reason_literal_outside_kernel_grounding_range
     InferLiteralElaboratesTo { destination_type: _ } => false
     InferLiteralNotElaborated => false

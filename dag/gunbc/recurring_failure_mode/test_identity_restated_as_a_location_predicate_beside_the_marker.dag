@@ -19,9 +19,9 @@ data test_identity_restated_as_a_location_predicate_beside_the_marker: Recurring
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.witness.v2_native_route", decl_name: "native_route_default_pattern", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.native_route_universe", decl_name: "native_route_default_pattern", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.native_route_seed_boundary_emit", decl_name: "expected_native_route_seed_boundary_generated_rs", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.discovery_census", decl_name: "claim_route_universe", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.compiler.compile", decl_name: "native_lane_universe_selected", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.source_root_eval", decl_name: "native_lane_universe_selected", field: WholeDeclaration },
   ],
 }

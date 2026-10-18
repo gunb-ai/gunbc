@@ -10,8 +10,10 @@ import extdeps.bmc.capability {
   BmcFirmwareVersion,
 }
 import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_bmc_3_22_00_manifest_machine_name,
   asrock_altrad8ud_openbmc_3_22_00_capabilities,
 }
+import std.types { Bool, NonEmptyStr }
 import extdeps.bmc.types {
   BmcFanCurve,
   BmcFanCurveInvalid,
@@ -24,15 +26,19 @@ import gunbc.bmc.bmc_fan_converge {
   BmcFanAppliedAndVerified,
   BmcFanAppliedWithCleanupDebt,
   BmcFanBackupManifest,
+  BmcFanRouteAdmitted,
+  BmcFanRouteUnbound,
   CurveStepsParseRefused,
   bmc_fan_build_curve_steps,
   bmc_fan_backup_manifest,
   bmc_fan_backup_manifest_identity,
   bmc_fan_backup_manifest_matches_request,
+  bmc_fan_controller_machine_matches,
   bmc_fan_exact_target_admission_matches,
   bmc_fan_first_unhealthy_tach,
   bmc_fan_live_digest_matches,
   bmc_fan_record_cleanup_debt,
+  bmc_fan_route_admission,
 }
 import gunbc.bmc.bmc_fan_monitor {
   BmcFanMonitoringCompleted,
@@ -42,7 +48,12 @@ import gunbc.bmc.bmc_fan_monitor {
   bmc_fan_assess_monitoring_samples,
 }
 import gunbc.fleet.fleet_intent { srv3_host, srv4_host }
-import extdeps.bmc.endpoint { OpenBmc }
+import gunbc.fleet.fleet_fan_converge_routes {
+  fan_converge_route_for_family,
+  megarac_fan_converge_route,
+  openbmc_fan_converge_route,
+}
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.firmware.types { firmware_semantic_version }
 
@@ -380,6 +391,29 @@ test fn bounded_monitoring_completion_carries_the_admitted_bound() -> Bool {
         && second_count(receipt.maximum_sample_gap) == 30
     BmcFanMonitoringRefused { reason: _, receipt: _ } => false
   }
+}
+
+test fn openbmc_fan_route_is_admitted_and_megarac_stays_unbound() -> Bool {
+  match bmc_fan_route_admission(route: fan_converge_route_for_family(family: OpenBmc)) {
+    BmcFanRouteAdmitted { route: r } =>
+      r == openbmc_fan_converge_route
+        && match bmc_fan_route_admission(route: fan_converge_route_for_family(family: AmiMegaRac)) {
+          BmcFanRouteUnbound { read_obligation: o } =>
+            (o as String) != "" && fan_converge_route_for_family(family: AmiMegaRac) == megarac_fan_converge_route
+          BmcFanRouteAdmitted { route: _ } => false
+        }
+    BmcFanRouteUnbound { read_obligation: _ } => false
+  }
+}
+
+test fn controller_machine_match_is_the_projection_not_a_board_literal() -> Bool {
+  bmc_fan_controller_machine_matches(
+    observed: asrock_altrad8ud_bmc_3_22_00_manifest_machine_name,
+    expected: asrock_altrad8ud_bmc_3_22_00_manifest_machine_name,
+  ) && !bmc_fan_controller_machine_matches(
+    observed: "other-machine" as NonEmptyStr,
+    expected: asrock_altrad8ud_bmc_3_22_00_manifest_machine_name,
+  )
 }
 
 test fn one_late_sample_cannot_claim_monitoring_coverage() -> Bool {

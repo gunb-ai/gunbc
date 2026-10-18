@@ -1,0 +1,193 @@
+module std.retry_law
+
+import std.types { Int, List, NonEmptyStr, EpochSecs }
+import std.nat { Nat, nat_range_inclusive, nat_min, nat_max, Zero, Succ }
+import std.optional { Present, Absent }
+import std.checked_arithmetic { int_inclusive_max }
+import std.measure { Second, second, second_count }
+
+// ONE RETRY LAW. It decides only whether a retry is ADMISSIBLE and the earliest time it may run.
+// Which retry to take (now, later, or elsewhere) is a demand-policy selection; this module has
+// no preference among those (DESIGN §3d).
+//
+// Shape, taken from gunbc.serving.caller_backlog (the durable caller snapshot) and
+// gunbc.serving.caller_retry_contract:
+//   - backoff is exponential, with jitter supplied as an input so the fold stays pure;
+//   - an upstream delay hint (HttpRetryAfter mapped by the caller) is a LOWER BOUND, never a
+//     shortening of the backoff;
+//   - the attempt bound runs over the item's WHOLE history: a resume, restart or new endpoint
+//     does not reset it, because the history is an argument, not process-local state;
+//   - only REAL-WORK outcomes count, so a succeeding probe never resets a failing series;
+//   - exhaustion, cancellation and real-work success are persisted terminals carried in the
+//     history, never inferred from silence. RealWorkSuccess ends the item: a later RealWorkFailure
+//     in the same history does not reopen retry (that would retry completed work).
+//
+// Due times are EpochSecs. Delays, caps, hints and jitter are std.measure Second — the length
+// already used by belt run bounds and event_backlog — not a second Nat beside the failure count
+// (DESIGN §2/§3). ObservationInstant stays the observation-record instant. v2.std.datetime Instant
+// stays source/compiler wall-clock. std.types Seconds/Duration are not this law's length carrier.
+
+type RetryObservedClass
+  = RealWorkFailure
+  | RealWorkSuccess
+  | ProbeOutcome { succeeded: Bool }
+  | Cancelled { by: NonEmptyStr }
+  | Exhausted
+
+type RetryHistoryEvent {
+  class: RetryObservedClass
+  at: EpochSecs
+}
+
+type RetryLaw {
+  initial_delay: Second
+  delay_cap: Second
+  real_work_failure_bound: Nat
+}
+
+type RetryHint
+  = RetryHintNone
+  | RetryHintDelay { delay: Second }
+  | RetryHintUnresolved { cause: NonEmptyStr }
+
+type RetryAdmissibility
+  = RetryAdmissible { earliest: EpochSecs, real_work_failures: Nat }
+  | RetryAdmissibleNow { real_work_failures: Nat }
+  | RetryTerminalExhausted { real_work_failures: Nat }
+  | RetryTerminalCancelled { by: NonEmptyStr }
+  | RetryAlreadySucceeded
+  | RetryHintUnreadable { cause: NonEmptyStr }
+  | RetryHintUnanchored { delay: Second }
+
+fn retry_min_second(a: Second, b: Second) -> Second {
+  second(count: nat_min(a: second_count(s: a), b: second_count(s: b)))
+}
+
+fn retry_max_second(a: Second, b: Second) -> Second {
+  second(count: nat_max(a: second_count(s: a), b: second_count(s: b)))
+}
+
+fn retry_capped_double_count(n: Nat, cap: Nat) -> Nat {
+  if n >= cap {
+    cap
+  } else if (n as Int) > (int_inclusive_max() / 2) {
+    cap
+  } else {
+    let doubled = n + n
+    if doubled > cap { cap } else { doubled }
+  }
+}
+
+fn retry_backoff(law: RetryLaw, real_work_failures: Nat) -> Second {
+  match real_work_failures {
+    Zero => second(count: Zero)
+    Succ { prev: _ } =>
+      fold(
+        nat_range_inclusive(lo: Succ { prev: Zero }, hi: nat_min(a: real_work_failures, b: retry_double_steps_cap)),
+        init: retry_min_second(a: law.initial_delay, b: law.delay_cap),
+        f: (acc, i) => match i {
+          Zero => acc
+          Succ { prev: Zero } => acc
+          Succ { prev: _ } => second(count: retry_capped_double_count(n: second_count(s: acc), cap: second_count(s: law.delay_cap)))
+        },
+      )
+  }
+}
+
+data retry_double_steps_cap: Nat = 63
+
+fn retry_count_real_work_failures(history: List<RetryHistoryEvent>) -> Nat {
+  fold(history, init: Zero, f: (acc, e) => match e.class {
+    RealWorkFailure => Succ { prev: acc }
+    RealWorkSuccess => acc
+    ProbeOutcome { succeeded: _ } => acc
+    Cancelled { by: _ } => acc
+    Exhausted => acc
+  })
+}
+
+fn retry_last_real_work_failure_at(history: List<RetryHistoryEvent>) -> EpochSecs? {
+  fold(history, init: none, f: (acc, e) => match e.class {
+    RealWorkFailure => Present { value: e.at }
+    RealWorkSuccess => acc
+    ProbeOutcome { succeeded: _ } => acc
+    Cancelled { by: _ } => acc
+    Exhausted => acc
+  })
+}
+
+fn retry_terminal_in_history(history: List<RetryHistoryEvent>) -> RetryAdmissibility? {
+  fold(history, init: none, f: (acc, e) => match e.class {
+    Cancelled { by: who } => Present { value: RetryTerminalCancelled { by: who } }
+    Exhausted => Present { value: RetryTerminalExhausted { real_work_failures: retry_count_real_work_failures(history: history) } }
+    RealWorkSuccess => Present { value: RetryAlreadySucceeded }
+    RealWorkFailure => acc
+    ProbeOutcome { succeeded: _ } => acc
+  })
+}
+
+// jitter is sampled by the realization and SUPPLIED; the law never draws entropy.
+// hint is an upstream Retry-After (or none): a lower bound on the delay, never a cap.
+// An unreadable hint is RetryHintUnreadable — not RetryHintNone. Treating unknown as
+// absent would let backoff run earlier than the upstream named (DESIGN §5).
+// earliest is last RealWorkFailure in history plus the delay. No last failure and
+// no delay hint is RetryAdmissibleNow — not epoch 0. A delay hint with no last
+// failure is RetryHintUnanchored: the lower bound cannot become an instant without
+// fabricating a clock, and "now" would ignore the bound (DESIGN §3, §5).
+fn retry_admissibility(
+  law: RetryLaw,
+  history: List<RetryHistoryEvent>,
+  hint: RetryHint,
+  jitter: Second,
+) -> RetryAdmissibility {
+  match retry_terminal_in_history(history: history) {
+    Present { value: t } => t
+    Absent => match hint {
+      RetryHintUnresolved { cause: c } => RetryHintUnreadable { cause: c }
+      RetryHintNone => retry_admissibility_given_delay(
+        law: law, history: history, hinted_delay: Absent, jitter: jitter)
+      RetryHintDelay { delay: h } => retry_admissibility_given_delay(
+        law: law, history: history, hinted_delay: Present { value: h }, jitter: jitter)
+    }
+  }
+}
+
+fn retry_admissibility_given_delay(
+  law: RetryLaw,
+  history: List<RetryHistoryEvent>,
+  hinted_delay: Second?,
+  jitter: Second,
+) -> RetryAdmissibility {
+  let failures = retry_count_real_work_failures(history: history)
+  if failures >= law.real_work_failure_bound {
+    RetryTerminalExhausted { real_work_failures: failures }
+  } else {
+    match retry_last_real_work_failure_at(history: history) {
+      Absent => match hinted_delay {
+        Absent => RetryAdmissibleNow { real_work_failures: failures }
+        Present { value: h } => RetryHintUnanchored { delay: h }
+      }
+      Present { value: last_at } => {
+        let backoff = retry_backoff(law: law, real_work_failures: failures)
+        let hinted = match hinted_delay {
+          Absent => backoff
+          Present { value: h } => retry_max_second(a: backoff, b: h)
+        }
+        let delay = second(count: second_count(s: hinted) + second_count(s: jitter))
+        RetryAdmissible { earliest: last_at + (second_count(s: delay) as Int), real_work_failures: failures }
+      }
+    }
+  }
+}
+
+fn retry_hint_from_delta(delay: Second) -> RetryHint {
+  RetryHintDelay { delay: delay }
+}
+
+fn retry_no_hint() -> RetryHint {
+  RetryHintNone
+}
+
+fn retry_hint_unresolved(cause: NonEmptyStr) -> RetryHint {
+  RetryHintUnresolved { cause: cause }
+}

@@ -1,0 +1,17 @@
+module v2.test.claim.compiler.declared_alias_instantiation
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type FsList<T>
+  = FsEmpty
+  | FsNonEmpty { head: T, tail: FsList<T> }
+
+type AliasInts = FsList<Int>
+
+fn f() -> AliasInts { FsEmpty }
+
+test fn a_declared_alias_to_an_instantiation_unfolds_before_inhabitance_holds() -> Bool {
+  true
+}

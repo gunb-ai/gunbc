@@ -15,8 +15,9 @@ import std.types { List }
 // union (`non_fold_residue_identity_join_triples`).
 // Discovery: the host reader walks production `.dag` files whose source mentions the
 // data name, parses them, and keeps the exact `data non_fold_residue_frontier` item.
-// The required floor judges sites per diff (non_fold_residue_diff_verdict); the
-// whole-corpus census (nfr_whole_corpus_typed_census) derives the union.
+// The floor's per-diff typed verdict (`non_fold_residue_diff_verdict`) was deleted
+// with `run_required_floor`. Membership is still the host union
+// (`non_fold_residue_identity_join_triples`).
 // Detection-only: never auto-delete rows — greening a site deletes its row by hand with the
 // receipt on the PR. v1 seed-reader change is admissible because it unblocks residue
 // burn-down for the v2 program.

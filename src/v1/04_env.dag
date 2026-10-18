@@ -2,11 +2,13 @@ module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type, is_container_type }
 import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent, KernelMinted, CorpusDeclared, TextRepresentation, HostText, CodePointSequence, NotText, TextRepresentationUnidentified }
+import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound }
+import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
 import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.operator_realization { OperandDeclaration }
 
@@ -86,7 +88,8 @@ fn binding_unit_variant_contributions(binding: TypeBinding, source_indices: Map<
   let ty = variant_lookup_structural(ty: binding.resolved)
   match ty.connective {
     Disj =>
-      fold(ty.children, init: empty_map(), f: (acc, v) =>
+      let seed: Map<String, UnitVariantContribution> = empty_map()
+      fold(ty.children, init: seed, f: (acc, v) =>
         if is_unit_variant_node(variant: v) {
           let vname = authored_name_at(source_indices: source_indices, node: v)
           match map_get(acc, vname) {
@@ -315,6 +318,22 @@ fn bare_occurrence_import(index: SymbolIndex, name: String, reference: Node) -> 
         Absent => none
         Present { value: from_module } => Present { value: bare_occurrence_import_terminal(index: index, module_path: from_module, name: name, fuel: 16) }
       }
+  }
+}
+
+// THE ONE QUESTION "IS THIS A CALL INTO A MODULE, OR SOMETHING ELSE", ANSWERED FROM DECLARATIONS.
+// A name qualifies exactly when its owner prefix IS a module of the census (module_named_imports is
+// keyed by every census module's authored path), never because the spelling contains a dot: a
+// dotted spelling whose prefix is a value, a service or a type is not a module call, and a bare
+// spelling is never one. Every call path -- direct call, pipe callee, method form on a module
+// path, signature lookup, census borrow -- reads this result; a site that re-derives the answer
+// from the spelling is the fork gunbc.recurring_failure_mode
+// a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling records.
+fn declared_module_owner(index: SymbolIndex, name: String) -> String? {
+  let owner = qualified_all_but_last(name: name)
+  match map_get(index.module_named_imports, owner) {
+    Present { value: _ } => Present { value: owner }
+    Absent => none
   }
 }
 
@@ -1279,6 +1298,47 @@ fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitV
   }
 }
 
+// THE NAT-INDEXED WIDTH ARM, BY DECLARATION IDENTITY. std.machine_constraints declares
+// `type WidthResolution = StaticWidthIndex | PointerWidth`; the StaticWidthIndex arm is the one a
+// width Nat literal inhabits. The declaration is found in the symbol index by its qualified name
+// and the arm must be one of its unit variants, so a coproduct that merely spells StaticWidthIndex
+// in another module is a different declaration and is not this arm. NOMINAL CEILING, STATED: the
+// arm declares no index, so the index type (std.nat Nat) is not carried by the declaration; that
+// is the carrier a declared-index arm would supply, and until then this constant triple is the
+// one place the fact is spelled.
+fn static_width_index_arm_name() -> String { "StaticWidthIndex" }
+
+fn width_resolution_qualified_name() -> String { "std.machine_constraints.WidthResolution" }
+
+fn width_resolution_declaration(env: TypeEnv) -> Node? {
+  match symbol_index_lookup(index: env.symbol_index, qualified_name: width_resolution_qualified_name()) {
+    Present { value: decl } =>
+      if decl.children |> any(v => is_unit_variant_node(variant: v) && authored_name_at(source_indices: env.source_indices, node: v) == static_width_index_arm_name()) {
+        Present { value: decl }
+      } else { none }
+    Absent => none
+  }
+}
+
+// True exactly when `coproduct` IS the declaration width_resolution_declaration resolves and
+// `variant_name` is its Nat-indexed arm.
+fn is_static_width_index_arm(env: TypeEnv, coproduct: Node, variant_name: String) -> Bool {
+  variant_name == static_width_index_arm_name()
+    && match width_resolution_declaration(env: env) {
+      Present { value: decl } => decl.span.file == coproduct.span.file && decl.span.start == coproduct.span.start
+      Absent => false
+    }
+}
+
+// The module that DECLARES the arm, read from the declaration's file through the symbol index's
+// file-to-module census (the module-to-path mapping is one authority, never re-spelled here).
+fn static_width_index_declaring_module(env: TypeEnv) -> String? {
+  match width_resolution_declaration(env: env) {
+    Present { value: decl } => map_get(env.symbol_index.file_modules, decl.span.file)
+    Absent => none
+  }
+}
+
 // THE THIRD ARM: A UNIT VARIANT IS BOUND EXACTLY WHEN THE RESOLVER WOULD RESOLVE IT. A bare leaf that
 // names a zero-payload variant -- std.measure's Measure<Memory, One, Nat> passes its own Quantity and
 // scale variants as phantom type arguments -- carries no binding of its own; its binding is the
@@ -1477,7 +1537,8 @@ fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<St
 }
 
 fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, List<InductiveField>> {
-  fields |> fold(init: empty_map(), f: (acc, field) =>
+  let seed: Map<String, List<InductiveField>> = empty_map()
+  fields |> fold(init: seed, f: (acc, field) =>
     let existing = match map_get(acc, field.type_name) {
       Present { value: fs } => fs
       Absent => []
@@ -1698,6 +1759,13 @@ fn declaration_reading_of_type_node(rt: Node, source_indices: Map<String, Newlin
 fn declaration_ref_of_declaration_node(decl: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: decl))
   if decl_name == "" { return none }
+  let minted = if resolved_node_is_kernel_identity_for_name(node: decl, name: decl_name) {
+    match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: decl_name) {
+      KernelMintDeclarationFound { declaration: d } => Present { value: d }
+      _ => none
+    }
+  } else { none }
+  if minted != none { return minted }
   match decl.ident_span {
     Absent => none
     Present { value: sp } =>

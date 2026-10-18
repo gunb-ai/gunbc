@@ -11,14 +11,14 @@ import std.optional { Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Edge, Instantiation, Node, Positional, TypeNode, node_subtree_nodes, node_synthetic, symbol_intern_lexeme }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.collection { list_at_optional }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.std.list_introduction { list_introduction_head_path }
 import v2.extdeps.languages.dag { dag_binding_denotation }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.primitives { CarrierSensitive, concat_contract }
-import std.algebra { Cons, Empty, NamedTemplate }
+import std.algebra { Cons, Empty, NamedTemplate, list_at_optional }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -34,12 +34,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // v2.test.claim.compiler.generic_formal_instantiation; here they are asked of THIS route's formal, so the claims say
 // the route presents the shape that subject decides.
 //
-// DELETING THE ROUTE REDS THE REAL-PATH CLAIM: remove the concat row from collection_roster_rows and `concat(` is
-// refused resolve_reason_unbound_symbol, so assembly refuses and the reading is false (mutation run cited in the PR).
+// DELETING THE ROUTE REDS THE REAL-PATH CLAIM: remove the concat row from collection_roster_rows, or drop the
+// `collection_concat_shape` import, and `concat(` is refused resolve_reason_unbound_symbol.
 
 // The ONE real-path fixture. f joins two lists through the row; g's parameter is spelled `concat`, so its use must bind
 // the parameter -- any binding of the name precedes the roster, which resolve asks last -- never the row.
-data cca_route_source: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  concat(a, b)\n}\n\nfn g(concat: Int) -> Int {\n  concat\n}\n"
+data cca_route_source: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { collection_concat_shape }\n\ntype Pair {\n  target: Int\n}\n\nfn f(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  concat(a, b)\n}\n\nfn g(concat: Int) -> Int {\n  concat\n}\n"
 
 data cca_row_path: String = "std.algebra.collection_concat_shape"
 

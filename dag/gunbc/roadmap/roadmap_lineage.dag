@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_lineage
 
-import std.types { String, Int, Bool, List }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.types { String, Int, Bool, List, Map }
+import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.roadmap.roadmap_model { RoadmapNode, NodeParent, MemberOf, AdmittedRoot, Closes }
 
 // THE ONE PARENT WALK. Every consumer that asks where a node sits -- the alignment chain, the

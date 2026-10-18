@@ -3,12 +3,10 @@
 
 use self::ForeignParameterReading::*;
 use self::ResultCarrierObservation::*;
-pub use crate::std_decl_ref::declaration_ref_display_key;
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
-pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+pub use crate::std_decl_ref::{declaration_ref_display_key, DeclField, DeclarationRef};
 pub use crate::std_types::{Bool, List, Map};
-pub use crate::v1_compiler_compile::compile_to_resolved;
-pub use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
+pub use crate::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_infer::{
     param_is_generic_decl, substitute_generics_apply, type_node_label, unify_generics,
 };
@@ -22,8 +20,10 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::Arrow;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
-pub use crate::v1_std_core::{authored_name_at, param_node_name_at, param_node_type_expr};
-pub use crate::v1_std_core::{Connective, InferredNode, NewlineIndex, Node, ResolvedFormal};
+pub use crate::v1_std_core::{
+    authored_name_at, param_node_name_at, param_node_type_expr, Connective, InferredNode,
+    NewlineIndex, Node, ResolvedFormal,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -1125,13 +1125,18 @@ pub fn gi_supplied_node_reading_lines(
 }
 
 pub fn gi_tally(keys: Rc<Vec<String>>) -> Rc<HashMap<String, i64>> {
-    keys.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
-            Some(n) => v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1)),
-            std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
-        },
-    )
+    {
+        let tally_seed = v1_rt::rc_empty_map::<String, i64>();
+        keys.iter().cloned().fold(
+            tally_seed.clone(),
+            |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
+                Some(n) => {
+                    v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1))
+                }
+                std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
+            },
+        )
+    }
 }
 
 pub fn gi_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Vec<String>> {

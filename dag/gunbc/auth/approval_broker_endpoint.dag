@@ -8,7 +8,7 @@ import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, Cite
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, tailnet_host_from }
 import gunbc.serve_liveness { serve_liveness_path }
 import extdeps.shell
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────

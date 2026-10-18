@@ -1,0 +1,14 @@
+module v2.test.claim.compiler.declared_alias_empty_monoid
+
+import std.algebra { Empty, FreeMonoid }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type AliasFM = FreeMonoid<Int>
+
+data xs: AliasFM = Empty
+
+test fn a_nullary_alias_to_freemonoid_inhabits_empty_holds() -> Bool {
+  true
+}

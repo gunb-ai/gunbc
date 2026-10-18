@@ -24,10 +24,8 @@ import v2.lens.subsumption {
   rust_language_model_emit_subsumption
 }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection {
-  Map,
-  PointwisePower
-}
+import std.types { Map }
+import std.algebra { PointwisePower }
 import std.optional {
   Optional,
   Present,

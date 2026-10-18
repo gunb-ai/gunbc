@@ -1,6 +1,6 @@
 module v2.test.native_file_refusal_locus
 
-import v2.compiler.compile { native_test_file_refusal }
+import v2.compiler.source_root_eval { native_test_file_refusal }
 import v2.compiler.native_test_vocabulary {
   NativeTestFileRefusal, FileRefusalAtLine, FileRefusalAtOtherFile, FileRefusalAtInvariant,
   native_test_file_refusal_fatal_reason

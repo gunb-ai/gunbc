@@ -1,6 +1,6 @@
 module extdeps.boards.asrock_rack
 
-import extdeps.boards.types {
+import extdeps.boards.types { HeldManualRevision,
   BaseboardCatalogRow, DimmPopulation,
   BaseboardPhysicalProfile,
   PowerInputPopulationStanding, PowerInputMinimumOneStated,
@@ -473,6 +473,8 @@ data asrock_altrad8ud_bmc_3_22_00_push_artifact_digest: Digest = sha256_digest(
 )
 
 data asrock_altrad8ud_bmc_3_22_00_manifest_purpose: NonEmptyStr = "xyz.openbmc_project.Software.Version.VersionPurpose.BMC"
+
+data asrock_altrad8ud_bmc_3_22_00_manifest_machine_name: NonEmptyStr = "altrad8ud-1l2t"
 
 data asrock_altrad8ud_firmware_release_catalog: List<FirmwareReleaseRow> = [
   asrock_altrad8ud_bios_3_10_instant_flash_release,
@@ -950,17 +952,12 @@ data asrock_altrad8ud_open_mounting_unknowns: List<Altrad8udMountingUnknown> = [
 // read from, so a later revision of the manual can be diffed against the row rather than against
 // a memory of it.
 // =============================================================================================
-type HeldManualRevision {
-  version_label: NonEmptyStr
-  published_label: NonEmptyStr
-  page_count: Nat
-  authority: ExternalAuthority
-}
-
 data asrock_altrad8ud_manual_held: HeldManualRevision = HeldManualRevision {
+  title: Absent,
   version_label: "1.20",
   published_label: "Jul. 2025",
   page_count: 95,
+  sha256_hex: Absent,
   authority: extdeps_external_authority_anchor,
 }
 

@@ -1,7 +1,8 @@
 module gunbc.live_deploy.slice_bounds
 
-import std.types { NonEmptyStr }
-import std.nat { Nat, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
+import std.types { NonEmptyStr, String, List, Bool }
+import std.optional { Present, Absent }
+import std.nat { Nat, Succ, Zero, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
@@ -214,6 +215,8 @@ data approval_broker_slice_memory_max: ByteSize = byte_size(17179869184)
 
 data approval_broker_slice_memory_high: ByteSize = byte_size(15032385536)
 
+data approval_broker_slice_unit_name: NonEmptyStr = "gunbc-approval-broker.slice"
+
 // ── THE REPOSITORY CONVERGENCE ONESHOT'S OWN BOUND ──────────────────────────────────────────
 // IT HAS ITS OWN ENVELOPE BECAUSE A SHARED ONE IS A MOVING TARGET. The oneshot ran inside the roadmap
 // deployment slice beside the serving members, so its headroom was whatever those members had not
@@ -242,6 +245,8 @@ data repository_convergence_slice_memory_max: ByteSize = byte_size(25769803776)
 
 data repository_convergence_slice_memory_high: ByteSize = byte_size(21474836480)
 
+data repository_convergence_slice_unit_name: NonEmptyStr = "gunbc-repository-convergence.slice"
+
 // THE CONVERGENCE SLICE FORBIDS SWAP FOR ITS OWN REASON, NOT THE SERVED SLICES'. The deployment-wide
 // row above denies swap because the served processes are latency-bound and operator-facing, which
 // this oneshot is not, so consuming that row here would stretch its argument over a subject it does
@@ -251,13 +256,46 @@ data repository_convergence_slice_memory_high: ByteSize = byte_size(21474836480)
 // MemoryMax, a located failure the restart step's diagnosis arm prints.
 data repository_convergence_slice_memory_swap_max: ByteSize = byte_size(0)
 
-// ── USER-MANAGER WORK (--user transients: gunbc test/run scopes, gunbc-attempt-*, gunbc-compute-*,
+// ── THE FCI-1 BOUNDED CONTROLS' OWN SLICE ───────────────────────────────────────────────────
+// WHY A DECLARED SLICE AT ALL. The FCI-1 bounded controls start `gunbc run` inside transient SYSTEM
+// units (systemd-run, root, srv3). The wrap policy (gunbc.compute.unit_bounds user_work_scope_standing)
+// classifies a system .service whose slice is not a declared, live-capped row as UncappedSystemSlice
+// and refuses; in a root ssh shell with no user manager it refuses UserSessionAbsent; and the
+// user-work slice is a --user slice that srv3 does not provision. So the controls had NO admissible
+// placement, and borrowing another row's slice (repository convergence, approval broker) would charge
+// their budget for work that is not theirs (DESIGN section 3: a slice named for one workload is that
+// workload's fact). They get their own row.
+//
+// THE CAP IS DERIVED, NOT AUTHORED: it is the envelope gunbc.fabric.fci1_bounded_execution_context
+// already projects for the bounded driver (gunbc_runner_slot_desired memory_max/high), so the slice
+// the units sit in is exactly as large as the single unit the controls run at a time. The rows run
+// sequentially, each its own `--wait` transient unit, so one unit's envelope is the demand and the
+// slice adds no headroom for a second concurrent unit. A witness joins this row to that context.
+// The unbounded negative controls are deliberately NOT placed here (their MemoryMax=infinity unit
+// would be bounded by this ancestor and stop being the control); they stay in system.slice and must
+// refuse UncappedSystemSlice, which is the RED this row's positive control is paired with.
+//
+// THE NAME has the dash-parent edge gunbc.slice, the same as gunbc-repository-convergence.slice;
+// swap is denied for the reason the convergence slice states (an overrun kills at MemoryMax, located).
+data fci1_controls_slice_unit_name: NonEmptyStr = "gunbc-fci1-controls.slice"
+
+fn fci1_controls_slice_memory_max() -> ByteSize {
+  gunbc_runner_slot_desired().memory_max
+}
+
+fn fci1_controls_slice_memory_high() -> ByteSize {
+  gunbc_runner_slot_desired().memory_high
+}
+
+data fci1_controls_slice_memory_swap_max: ByteSize = byte_size(0)
+
+// ── USER-MANAGER WORK (--user transients: gunbc test/run scopes, gunbc-compute-*,
 // gunbc-review-*, gunbc-audit-*, gunbc-supervisor-*) ─
 // THESE UNITS LEAVE EVERY SYSTEM SLICE. systemd-run --user starts them under
 // user@1000.service/app.slice, which is not sessions.slice and not gunbc-roadmap.slice. A pid
 // cannot be moved across that delegation boundary. So this work needs its OWN declared slice,
-// swap 0. The slice MemoryMax is the charged appropriation (operator ruling 2026-10-14
-// option C: two 22 GiB slots). It is added in served_deployment_slice_allowance.
+// swap 0. The slice MemoryMax is the charged appropriation (operator ruling 2026-10-16: four
+// 22 GiB slots, gunbc.live_deploy.user_work_pool_slots). It is added in served_deployment_slice_allowance.
 //
 // THE NAME SHARES NO systemd HIERARCHY PREFIX with a serving slice (a dash is a parent edge).
 data user_work_slice_unit_name: NonEmptyStr = "gunbc-user-work.slice"
@@ -299,4 +337,63 @@ fn user_slice_backstop_memory_max_of(work_slice_max: ByteSize) -> ByteSize {
 
 fn user_slice_backstop_memory_swap_max() -> ByteSize {
   user_work_slice_memory_swap_max
+}
+
+// SYSTEM-MANAGER ATTEMPT WORKERS (PID 1 transients via the attempt-system-unit launcher).
+// Naming Slice= without this file existing is systemd creating an unbounded slice on first use
+// (review 80576). Bounds live here; emit installs the unit under /etc/systemd/system. The name
+// shares no systemd hierarchy prefix with a serving slice (a dash is a parent edge).
+data attempt_worker_slice_unit_name: NonEmptyStr = "gunbc-attempt-worker.slice"
+
+// APPROPRIATION: two 22 GiB slots, the same function as user_work_slice_memory_max_of.
+// Operator decision 2026-10-15 (escalation msg_57614325): stack this 2 x 22 GiB with
+// user-work, srv1 CI width 7 to 5. Charge is served_deployment_slice_allowance, not the wrap.
+data attempt_worker_slice_charged_slots: Nat = Succ { prev: Succ { prev: Zero } }
+
+data attempt_worker_slice_memory_max: ByteSize = user_work_slice_memory_max_of(slots: attempt_worker_slice_charged_slots)
+
+fn attempt_worker_slice_memory_high() -> UserWorkSliceHigh {
+  user_work_slice_memory_high_of(memory_max: attempt_worker_slice_memory_max)
+}
+
+// SYSTEM SLICES THAT DECLARE MemoryMax on the deploy host that owns these rows. Wrap exemption
+// does not consume these magnitudes: membership is recognized_system_slice (names), and a skip
+// is only a live finite memory.max on that slice. user-work is a --user slice and is not here.
+// Attempt workers sit in attempt_worker_slice_unit_name, so that name is a row here: membership in
+// gunbc.compute.unit_bounds recognized_system_slice is read from this census rather than kept as a
+// second wrap policy, and the skip still needs the slice's live finite memory.max.
+type DeclaredSliceMemoryMax {
+  unit: NonEmptyStr
+  memory_max: ByteSize
+}
+
+fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
+  [
+    DeclaredSliceMemoryMax {
+      unit: repository_convergence_slice_unit_name,
+      memory_max: repository_convergence_slice_memory_max,
+    },
+    DeclaredSliceMemoryMax {
+      unit: approval_broker_slice_unit_name,
+      memory_max: approval_broker_slice_memory_max,
+    },
+    DeclaredSliceMemoryMax {
+      unit: attempt_worker_slice_unit_name,
+      memory_max: attempt_worker_slice_memory_max,
+    },
+    DeclaredSliceMemoryMax {
+      unit: fci1_controls_slice_unit_name,
+      memory_max: fci1_controls_slice_memory_max(),
+    },
+  ]
+}
+
+fn modeled_system_slice_memory_max(unit: String) -> ByteSize? {
+  match (
+    declared_system_slice_memory_maxes()
+      |> filter(row => (row.unit as String) == unit && byte_size_count(b: row.memory_max) > 0)
+  ).first() {
+    Absent => none
+    Present { value: row } => Present { value: row.memory_max }
+  }
 }

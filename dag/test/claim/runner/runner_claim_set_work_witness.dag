@@ -1,0 +1,187 @@
+module test.claim.runner.runner_claim_set_work_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import extdeps.bazel.label { Label }
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.git.object_store { git_sha1_object_id }
+import product.fabric.identity { WorkKey }
+import gunbc.floor.floor_demand { floor_execution_requirements }
+import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
+import gunbc.runner.microvm_guest_artifacts {
+  GuestBaseArtifact, ArtifactDigestPinned, ArtifactDigestNotPinnable, FirstObservedOnFetch,
+  runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact,
+}
+import gunbc.fabric.fabric_witness_run {
+  FabricCiSource, ExactGitSource, MovingGitRef, GitCommitTreeVerified, GitCommitTreeMismatch,
+  verify_git_commit_tree, FabricCiWorkBinding, FabricCiWorkBound, FabricCiWorkRefused,
+  FabricCiMovingRefRefused, FabricCiCoordinateMissing, required_witnesses_build_work,
+}
+import gunbc.runner.runner_claim_set_work { claim_set_run_work, claim_set_run_work_with_guest }
+
+// FCI-0 FOR THE CLAIM-SET RUN. Every input is supplied at the binder's interface: the source is a
+// fixture commit and tree, the requirements are the floor's (an identity fixture, not a sizing
+// claim), and the guest artifacts are the production rows or a mutation of them. The positive
+// control is identity stability; each red changes exactly one coordinate and must move the key or
+// refuse.
+
+fn exact_source(tree_hex: NonEmptyStr) -> FabricCiSource? {
+  match git_sha1_object_id(hex: "e9eaa579ed0b6585a48965842b43ee09af5671a1") {
+    Absent => none
+    Present { value: commit } => match git_sha1_object_id(hex: tree_hex) {
+      Absent => none
+      Present { value: tree } => match verify_git_commit_tree(commit: commit, declared_tree: tree, observed_commit_tree: tree) {
+        GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } => none
+        GitCommitTreeVerified { subject } => Present { value: ExactGitSource { subject: subject } }
+      }
+    }
+  }
+}
+
+fn one_claim(label: Label) -> FreeSemigroup<Label> {
+  FreeSemigroup { head: label, tail: [] }
+}
+
+fn two_claims() -> FreeSemigroup<Label> {
+  FreeSemigroup { head: self_host_label(), tail: [v2_native_cli_label()] }
+}
+
+fn binding_key(binding: FabricCiWorkBinding) -> WorkKey? {
+  match binding {
+    FabricCiWorkRefused { cause: _ } => none
+    FabricCiWorkBound { work, source_tree_digest: _, environment_materialization_digest: _ } => Present { value: work.id.key }
+  }
+}
+
+fn bound_key(source: FabricCiSource, claims: FreeSemigroup<Label>) -> WorkKey? {
+  binding_key(binding: claim_set_run_work(source: source, claims: claims, requirements: floor_execution_requirements()))
+}
+
+data fixture_tree: NonEmptyStr = "c8983a3d8412a5e37a309b2d90ceafc698856619"
+
+test fn production_claim_set_work_is_possessed() -> Bool {
+  match exact_source(tree_hex: fixture_tree) {
+    Absent => false
+    Present { value: source } => match bound_key(source: source, claims: one_claim(label: self_host_label())) {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
+test fn identical_claim_set_inputs_derive_identical_work_identity() -> Bool {
+  match exact_source(tree_hex: fixture_tree) {
+    Absent => false
+    Present { value: source } => match bound_key(source: source, claims: two_claims()) {
+      Absent => false
+      Present { value: left } => bound_key(source: source, claims: two_claims()) == Present { value: left }
+    }
+  }
+}
+
+test fn changed_claim_changes_work_identity() -> Bool {
+  match exact_source(tree_hex: fixture_tree) {
+    Absent => false
+    Present { value: source } => match bound_key(source: source, claims: one_claim(label: self_host_label())) {
+      Absent => false
+      Present { value: left } => match bound_key(source: source, claims: one_claim(label: v2_native_cli_label())) {
+        Absent => false
+        Present { value: right } => left != right
+      }
+    }
+  }
+}
+
+test fn added_claim_changes_work_identity() -> Bool {
+  match exact_source(tree_hex: fixture_tree) {
+    Absent => false
+    Present { value: source } => match bound_key(source: source, claims: one_claim(label: self_host_label())) {
+      Absent => false
+      Present { value: left } => match bound_key(source: source, claims: two_claims()) {
+        Absent => false
+        Present { value: right } => left != right
+      }
+    }
+  }
+}
+
+test fn changed_verified_tree_changes_work_identity() -> Bool {
+  match exact_source(tree_hex: fixture_tree) {
+    Absent => false
+    Present { value: left_source } => match exact_source(tree_hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+      Absent => false
+      Present { value: right_source } => match bound_key(source: left_source, claims: two_claims()) {
+        Absent => false
+        Present { value: left } => match bound_key(source: right_source, claims: two_claims()) {
+          Absent => false
+          Present { value: right } => left != right
+        }
+      }
+    }
+  }
+}
+
+fn kernel_with_digest(hex: NonEmptyStr) -> GuestBaseArtifact {
+  GuestBaseArtifact {
+    url: runner_guest_kernel_artifact.url,
+    filename: runner_guest_kernel_artifact.filename,
+    integrity: ArtifactDigestPinned {
+      digest: sha256_digest(hex: hex),
+      provenance: FirstObservedOnFetch { observed_from: "witness fixture", observed_on: "2026-10-13" },
+    },
+  }
+}
+
+test fn changed_guest_image_digest_changes_work_identity() -> Bool {
+  match exact_source(tree_hex: fixture_tree) {
+    Absent => false
+    Present { value: source } => match binding_key(binding: claim_set_run_work_with_guest(source: source, claims: two_claims(), requirements: floor_execution_requirements(), kernel: runner_guest_kernel_artifact, rootfs: runner_guest_base_rootfs_artifact)) {
+      Absent => false
+      Present { value: left } => match binding_key(binding: claim_set_run_work_with_guest(source: source, claims: two_claims(), requirements: floor_execution_requirements(), kernel: kernel_with_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000"), rootfs: runner_guest_base_rootfs_artifact)) {
+        Absent => false
+        Present { value: right } => left != right
+      }
+    }
+  }
+}
+
+test fn unpinned_guest_artifact_refuses_instead_of_entering_identity_by_name() -> Bool {
+  match exact_source(tree_hex: fixture_tree) {
+    Absent => false
+    Present { value: source } => {
+      let unpinnable = GuestBaseArtifact {
+        url: runner_guest_kernel_artifact.url,
+        filename: runner_guest_kernel_artifact.filename,
+        integrity: ArtifactDigestNotPinnable { cause: "witness fixture" },
+      }
+      match claim_set_run_work_with_guest(source: source, claims: two_claims(), requirements: floor_execution_requirements(), kernel: unpinnable, rootfs: runner_guest_base_rootfs_artifact) {
+        FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate } } => coordinate == "guest-artifact-pinned-digest"
+        FabricCiWorkRefused { cause: _ } => false
+        FabricCiWorkBound { work: _, source_tree_digest: _, environment_materialization_digest: _ } => false
+      }
+    }
+  }
+}
+
+test fn moving_ref_refuses_before_claim_set_work_construction() -> Bool {
+  match claim_set_run_work(source: MovingGitRef { ref_name: "main" }, claims: two_claims(), requirements: floor_execution_requirements()) {
+    FabricCiWorkRefused { cause: FabricCiMovingRefRefused { ref_name: _ } } => true
+    FabricCiWorkRefused { cause: _ } => false
+    FabricCiWorkBound { work: _, source_tree_digest: _, environment_materialization_digest: _ } => false
+  }
+}
+
+// The subject namespace is what keeps the two jobs from sharing a name: the same exact source as a
+// claim-set run and as the required build are different Work.
+test fn claim_set_run_and_required_build_are_different_work() -> Bool {
+  match exact_source(tree_hex: fixture_tree) {
+    Absent => false
+    Present { value: source } => match bound_key(source: source, claims: two_claims()) {
+      Absent => false
+      Present { value: claim_key } => match binding_key(binding: required_witnesses_build_work(source: source)) {
+        Absent => false
+        Present { value: build_key } => claim_key != build_key
+      }
+    }
+  }
+}

@@ -3518,7 +3518,7 @@ mod import_binding_authority_tests {
 
     /// The declaration must sit in a PARENT env: `callable_lookup_over_candidates` checks
     /// `func_env.local` first and returns immediately on a hit, so a local declaration never
-    /// reaches the authored-membership branch. `v2.std.collection` / `map_get_checked` is not an arbitrary
+    /// reaches the authored-membership branch. `v2.std.witness` / `map_get_checked` is not an arbitrary
     /// choice -- it is the specimen carrying `DivergentProjection` fidelity, which is the condition
     /// `declared_candidate_rivals_the_builtin` requires.
     fn parent_env_declaring_map_get_checked() -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>
@@ -3537,7 +3537,7 @@ mod import_binding_authority_tests {
             variant_provenance: crate::v1_rt::rc_empty_map(),
         });
         let parent = Rc::new(ResolvedFuncEnv {
-            name: "v2.std.collection".to_string(),
+            name: "v2.std.witness".to_string(),
             local: Rc::new(crate::v1_rt::map_insert(
                 crate::v1_rt::empty_map(),
                 "map_get_checked".to_string(),
@@ -3565,7 +3565,7 @@ mod import_binding_authority_tests {
     /// That is an OBSERVATION-BOUNDARY defect, not a bad fixture spelling.
     ///
     /// AND IT DOES NOT MEAN THE POLICY IS DEAD. That convenient reading is refuted by a specimen in
-    /// the tree: `map_get_checked` is declared at `v2.std.collection` with `DivergentProjection` fidelity in
+    /// the tree: `map_get_checked` is declared at `v2.std.witness` with `DivergentProjection` fidelity in
     /// `std.primitive_projection`, which is exactly the condition
     /// `declared_candidate_rivals_the_builtin` tests. So the collision is real, reachable from
     /// authored source, and already witnessed by `callable_candidate_ambiguity_witness_test`.
@@ -3597,7 +3597,7 @@ mod import_binding_authority_tests {
         // shape a comparison cannot detect.
         match &*named {
             FuncSigLookup::FuncSigResolved { declared, .. } => {
-                assert_eq!(declared.owner_module_path, "v2.std.collection");
+                assert_eq!(declared.owner_module_path, "v2.std.witness");
                 assert_eq!(declared.decl_name, "map_get_checked");
             }
             other => panic!(
@@ -3609,7 +3609,7 @@ mod import_binding_authority_tests {
         // THE OLD map_get FORK IS DISSOLVED, AND THIS ARM IS ITS PERMANENT REGRESSION CONTROL,
         // checked by its exact identity set rather than a count or list order. Before the rename,
         // omitting the declaration from the authored list while calling the bare name minted TWO
-        // rival authorities -- `builtin:map_get` and `declared:v2.std.collection:map_get` -- and
+        // rival authorities -- `builtin:map_get` and `declared:v2.std.witness:map_get` -- and
         // went ambiguous. The rename moved the declaration to `map_get_checked`, so the bare
         // spelling now has no declared candidate at all: only the builtin remains, which this
         // route leaves unresolved (builtins reach inference through the method path).
@@ -3623,7 +3623,7 @@ mod import_binding_authority_tests {
         // (v1_compiler_infer_method.rs). parent_closure_callable_candidates takes the declared
         // identity's decl_name from the LOOKUP KEY, so no lookup name can carry both a rival
         // declaration and a builtin co-candidate; a synthetic fixture that "declares map_get"
-        // mints the identity (v2.std.collection, map_get), which the roster does not cover. A
+        // mints the identity (v2.std.witness, map_get), which the roster does not cover. A
         // re-widening that reclaimed the bare spelling under a registry-keyed name would
         // re-ambient the join, but THIS arm would still green until a lookup name carried both
         // authorities -- so the rival predicate's own discriminating control
@@ -3682,12 +3682,12 @@ mod import_binding_authority_tests {
 
         // The compiled roster's one DivergentProjection row: the declaration must rival.
         assert!(declared_candidate_rivals_the_builtin(candidate_for(
-            "v2.std.collection",
+            "v2.std.witness",
             "map_get_checked"
         )));
         // A modeled projection is a faithful alias, never a rival.
         assert!(!declared_candidate_rivals_the_builtin(candidate_for(
-            "v2.std.collection",
+            "std.algebra",
             "empty_map"
         )));
         // An unprojected declaration is never a rival.

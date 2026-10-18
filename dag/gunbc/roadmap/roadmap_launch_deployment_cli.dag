@@ -49,13 +49,13 @@ import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshCo
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeObservation, DeployedTreeObserved, DeployedTreeUnobservable,
-  deployed_tree_locus, observe_deployed_tree, deployed_root_tree_standing, deployed_tree_unobservable_text,
+  observe_deployed_tree_at, deployed_root_tree_standing, deployed_tree_unobservable_text,
 }
 import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBindingUnobserved }
 import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_publication_path_unit_name, deployment_publication_service_unit_name, deployment_tailnet_url }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   selected_deployment_spec,
@@ -76,6 +76,8 @@ import gunbc.live_deploy.emit {
   live_deploy_belt_service_unit_file,
   live_deploy_belt_exit_path_unit_file,
   live_deploy_belt_answer_path_unit_file,
+  live_deploy_publication_path_unit_file,
+  live_deploy_publication_service_unit_file,
 }
 import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
@@ -260,11 +262,11 @@ fn active_instance_text_routed(base: String?) -> String {
 
 fn window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardInstance, routed_base: String?) -> WindowSnapshot
 {
-  let tree = observe_deployed_tree(locus: deployed_tree_locus(
+  let tree = observe_deployed_tree_at(
     context: context,
     target: fleet_locus_ssh_target(host: rlm_receipt_host as HostIdentity),
     repo: srv1_gunbc_repo_root as String as NonEmptyStr,
-  ))
+  )
   WindowSnapshot {
     origin_main_hex: remote_ref_text(r: read_remote_main_hex()),
     deployed_revision_hex: deployed_revision_hex_text(o: tree),
@@ -408,6 +410,14 @@ fn unit_standing_fact(spec: DeploymentSpec, revision: String) -> LaunchUnitStand
     answer_path: observe_belt_event_path_standing(
       unit: deployment_belt_answer_path_unit_name(names: spec.names),
       file: live_deploy_belt_answer_path_unit_file(spec: spec),
+    ),
+    publication_path: observe_belt_event_path_standing(
+      unit: deployment_publication_path_unit_name(names: spec.names),
+      file: live_deploy_publication_path_unit_file(spec: spec),
+    ),
+    publication_helper: observe_belt_oneshot_standing(
+      unit: deployment_publication_service_unit_name(names: spec.names),
+      file: live_deploy_publication_service_unit_file(spec: spec),
     ),
     oneshot: observe_belt_oneshot_standing(
       unit: deployment_belt_service_unit_name(names: spec.names),
@@ -625,11 +635,11 @@ fn rlm_launch_deployment_receipt_bound(
     LiveDeployApplyReceiptDecoded { receipt: d } => DashboardReceiptRead { receipt: d }
     LiveDeployApplyReceiptUnreadable { reason: why } => DashboardReceiptUnreadable { reason: why }
   }
-  let tree = observe_deployed_tree(locus: deployed_tree_locus(
+  let tree = observe_deployed_tree_at(
     context: context,
     target: fleet_locus_ssh_target(host: rlm_receipt_host as HostIdentity),
     repo: srv1_gunbc_repo_root as String as NonEmptyStr,
-  ))
+  )
   let healthz_routed = match routed_base {
     Absent => HealthzRefused { detail: "tailnet route underivable: the deployment spec declares no tailnet domain" }
     Present { value: base } => observe_healthz_routed(base_url: base)

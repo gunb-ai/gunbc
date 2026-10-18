@@ -14,7 +14,7 @@ import product.host_identity { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.supply { SupplierOffer }
-import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 import product.capacity.cohort_observation {
   CohortSeal, CohortSealed, CohortRefused, SeatSucceeded, SeatFailed, cohort_refusal_wire,
 }
@@ -24,6 +24,11 @@ import gunbc.required_ci_phase_roster {
 }
 import gunbc.host.host_budget_source {
   HostBudgetResolution, HostBudgetResolved, HostBudgetDeclaredUnverified, HostBudgetUnreadable,
+  HostBudgetExternallyBounded,
+}
+import gunbc.compute.unit_bounds {
+  ExternallyBoundedExecutor,
+  user_work_scope_standing_wire,
 }
 import v2.workflow.floor_eval_step_calibration {
   EvalStepCalibration, calibration_rate, calibration_specimen_eval_steps,
@@ -252,7 +257,7 @@ fn observed_run(
 // ── THE SELECTION: EVERYTHING THE ASSESSMENT CONSUMES AND NEVER MINTS ─────────────────────────
 
 // THE HOST ALLOCATION IS A RECEIPT, NOT FACTS TO RE-PLAN FROM. `gunbc.fleet.fleet_host_budget
-// fleet_host_plan_for` derives the plan (refusing on unverified oomd, an absent jobserver citation,
+// fleet_host_plan_for` derives the plan (refusing on unverified oomd,
 // an unset headroom) and `host_allocation_verdict` says whether it conserves with the control plane
 // charged; `gunbc.runner.runner_throughput_selection selected_host_allocation` projects the two into this
 // carrier, admitting the slice and the effective runner CPU cap only when the plan derived AND the
@@ -392,6 +397,8 @@ fn bound_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQ
           SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: r as String }
         HostBudgetResolved { effective_bytes: e, requested_bytes: _, observation: _ } =>
           join_axis(run: run.run, axis: BoundAxis, holds: byte_size_count(b: e) == want, selected: want as String, observed: byte_size_count(b: e) as String)
+        HostBudgetExternallyBounded { run_id: id } =>
+          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: user_work_scope_standing_wire(s: ExternallyBoundedExecutor { run_id: id }) }
       }
   }
 }

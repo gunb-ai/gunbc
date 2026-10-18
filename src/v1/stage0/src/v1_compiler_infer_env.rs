@@ -7,6 +7,7 @@ use self::TypeNodeDeclarationReading::*;
 use self::TypeNodeUnidentifiedCause::*;
 use self::TypeReferenceDeclarationReading::*;
 use self::UnitVariantPhantomLookup::*;
+pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_coercion::TextRepresentation::{
     CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
@@ -15,24 +16,27 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{TextRepresentation, TypeDeclarationProvenance};
-pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_display_key, declaration_ref_eq};
+pub use crate::std_decl_ref::{
+    decl_ref, declaration_ref_display_key, declaration_ref_eq, DeclarationRef,
+};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+use crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationFound;
+pub use crate::std_literal_elaboration::{
+    kernel_mint_declaration_for, KernelMintDeclarationLookup,
+};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_operator_realization::OperandDeclaration;
-pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{is_container_type, is_kernel_type};
-pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
+pub use crate::std_types::{is_container_type, is_kernel_type, SourceSpan};
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::{
     ModulePathBindingAmbiguous, ModulePathBindingHit, ModulePathBindingMiss,
 };
 pub use crate::v1_compiler_infer_occurrence_binding::{
-    ambiguity_labels_from_decide, module_path_owner_binding_decide,
+    ambiguity_labels_from_decide, module_path_owner_binding_decide, ModulePathBindingProjection,
 };
 pub use crate::v1_compiler_type_head_exposure::TypeHeadExposure;
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::*;
@@ -49,11 +53,9 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
     intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
-    param_node_name_at, param_node_type_expr, qualified_last_segment, source_text_at,
-};
-pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ExprData, InferredNode,
-    InternTable, NewlineIndex, Node,
+    param_node_name_at, param_node_type_expr, qualified_last_segment,
+    resolved_node_is_kernel_identity_for_name, source_text_at, Cardinality, CompilerDiagnostic,
+    Connective, DeclarationMarker, ExprData, InferredNode, InternTable, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -117,39 +119,42 @@ pub fn binding_unit_variant_contributions(
     {
         let ty = variant_lookup_structural(binding.resolved.clone());
         match ty.connective.clone() {
-            Connective::Disj => ty.children.clone().iter().cloned().fold(
-                v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
-                |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, v: Rc<Node>| {
-                    if is_unit_variant_node(v.clone()) {
-                        {
-                            let vname = crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                v.clone(),
-                            );
-                            match v1_rt::map_get(&acc, vname.clone()) {
-                                Some(prev) => v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    vname.clone(),
-                                    Rc::new(UnitVariantContribution {
-                                        count: v1_rt::int_add(prev.count.clone(), 1),
-                                        variant: prev.variant.clone(),
-                                    }),
-                                ),
-                                std::option::Option::None => v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    vname.clone(),
-                                    Rc::new(UnitVariantContribution {
-                                        count: 1,
-                                        variant: v.clone(),
-                                    }),
-                                ),
+            Connective::Disj => {
+                let seed = v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>();
+                ty.children.clone().iter().cloned().fold(
+                    seed.clone(),
+                    |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, v: Rc<Node>| {
+                        if is_unit_variant_node(v.clone()) {
+                            {
+                                let vname = crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    v.clone(),
+                                );
+                                match v1_rt::map_get(&acc, vname.clone()) {
+                                    Some(prev) => v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        vname.clone(),
+                                        Rc::new(UnitVariantContribution {
+                                            count: v1_rt::int_add(prev.count.clone(), 1),
+                                            variant: prev.variant.clone(),
+                                        }),
+                                    ),
+                                    std::option::Option::None => v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        vname.clone(),
+                                        Rc::new(UnitVariantContribution {
+                                            count: 1,
+                                            variant: v.clone(),
+                                        }),
+                                    ),
+                                }
                             }
+                        } else {
+                            acc.clone()
                         }
-                    } else {
-                        acc.clone()
-                    }
-                },
-            ),
+                    },
+                )
+            }
             _ => v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
         }
     }
@@ -485,6 +490,16 @@ pub fn bare_occurrence_import(
                 16,
             )),
         },
+    }
+}
+
+pub fn declared_module_owner(index: Rc<SymbolIndex>, name: String) -> Option<String> {
+    {
+        let owner = qualified_all_but_last(name.clone());
+        match v1_rt::map_get(&index.module_named_imports.clone(), owner.clone()) {
+            Some(_) => Some(owner.clone()),
+            std::option::Option::None => std::option::Option::None,
+        }
     }
 }
 
@@ -2127,6 +2142,66 @@ pub fn lookup_unit_variant_phantom_type(
     }
 }
 
+pub fn static_width_index_arm_name() -> String {
+    "StaticWidthIndex".to_string()
+}
+
+pub fn width_resolution_qualified_name() -> String {
+    "std.machine_constraints.WidthResolution".to_string()
+}
+
+pub fn width_resolution_declaration(env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    match symbol_index_lookup(env.symbol_index.clone(), width_resolution_qualified_name()) {
+        Some(decl) => {
+            if {
+                let mut __found = false;
+                for v in decl.children.clone().iter().cloned() {
+                    if (is_unit_variant_node(v.clone())
+                        && (crate::v1_std_core::authored_name_at(
+                            env.source_indices.clone(),
+                            v.clone(),
+                        ) == static_width_index_arm_name()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Some(decl.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn is_static_width_index_arm(
+    env: Rc<TypeEnv>,
+    coproduct: Rc<Node>,
+    variant_name: String,
+) -> bool {
+    ((variant_name.clone() == static_width_index_arm_name())
+        && match width_resolution_declaration(env.clone()) {
+            Some(decl) => {
+                ((decl.span.clone().file.clone() == coproduct.span.clone().file.clone())
+                    && (decl.span.clone().start.clone() == coproduct.span.clone().start.clone()))
+            }
+            std::option::Option::None => false,
+        })
+}
+
+pub fn static_width_index_declaring_module(env: Rc<TypeEnv>) -> Option<String> {
+    match width_resolution_declaration(env.clone()) {
+        Some(decl) => v1_rt::map_get(
+            &env.symbol_index.clone().file_modules.clone(),
+            decl.span.clone().file.clone(),
+        ),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
     match lookup_binding_on_chain(env.clone(), name.clone()) {
         Some(_) => true,
@@ -2448,20 +2523,23 @@ pub fn merge_inductive_fields(
 pub fn inductive_fields_list_to_map(
     fields: Rc<Vec<Rc<InductiveField>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    fields.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
-            let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
-                Some(fs) => fs.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
-            v1_rt::rc_map_insert(
-                acc.clone(),
-                field.type_name.clone(),
-                v1_rt::concat(existing.clone(), Rc::new(vec![field.clone()])),
-            )
-        },
-    )
+    {
+        let seed = v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>();
+        fields.iter().cloned().fold(
+            seed.clone(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
+                let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
+                    Some(fs) => fs.clone(),
+                    std::option::Option::None => Rc::new(vec![]),
+                };
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    field.type_name.clone(),
+                    v1_rt::concat(existing.clone(), Rc::new(vec![field.clone()])),
+                )
+            },
+        )
+    }
 }
 
 pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
@@ -2835,6 +2913,27 @@ pub fn declaration_ref_of_declaration_node(
         );
         if (decl_name.clone() == "".to_string()) {
             return std::option::Option::None;
+        }
+        let minted = if crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+            decl.clone(),
+            decl_name.clone(),
+        ) {
+            match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+                kernel_mint_declaration_rows(),
+                decl_name.clone(),
+            ))
+            .clone()
+            {
+                KernelMintDeclarationLookup::KernelMintDeclarationFound {
+                    declaration: d, ..
+                } => Some(d.clone()),
+                _ => std::option::Option::None,
+            }
+        } else {
+            std::option::Option::None
+        };
+        if (minted.clone() != std::option::Option::None) {
+            return minted.clone();
         }
         match decl.ident_span.clone() {
             std::option::Option::None => std::option::Option::None,

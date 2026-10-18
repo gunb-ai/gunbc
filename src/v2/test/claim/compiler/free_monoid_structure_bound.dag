@@ -34,7 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // per DESIGN section 3's witness rule; so does the resolve-kind control (a supplied binder set, the shape the roster
 // synthesizes and resolve never sees).
 
-data fmb_kernel: String = "module p\n\nfn f(a: String, b: String) -> String {\n  concat(a, b)\n}\n"
+data fmb_kernel: String = "module p\n\nimport std.algebra { collection_concat_shape }\n\nfn f(a: String, b: String) -> String {\n  concat(a, b)\n}\n"
 
 fn fmb_binds_row(tree: ResolvedTree) -> Bool {
   fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
@@ -113,7 +113,7 @@ fn fmb_bound_reason_with(instances: List<TypeVariableInstance>) -> Symbol {
   match fmb_roster_binders() {
     Absent => ^fmb_no_binders
     Present { value: binders } =>
-      match infer_binder_set_structure_bounds(node: fmb_carrier(), binders: binders, declarations: empty_symbol_index(), instances: instances) {
+      match infer_binder_set_structure_bounds(node: fmb_carrier(), binders: binders, declarations: empty_symbol_index(), bindings: empty_symbol_index(), instances: instances) {
         Absent => ^accepted
         Present { value: d } => d.reason
       }
@@ -149,7 +149,7 @@ fn fmb_malformed_row() -> AlgebraInhabitanceDecl {
 }
 
 test fn fmb_malformed_inhabitance_row_refuses_with_its_own_cause() -> Bool {
-  match infer_instance_structure_inhabitance_in(rows: [fmb_malformed_row()], instance: fmb_kernel_type(spelling: "String"), structure: free_monoid_structure_node(inhabitant: fmb_carrier(), generator: fmb_carrier()), declarations: empty_symbol_index()) {
+  match infer_instance_structure_inhabitance_in(rows: [fmb_malformed_row()], instance: fmb_kernel_type(spelling: "String"), structure: free_monoid_structure_node(inhabitant: fmb_carrier(), generator: fmb_carrier()), declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     StructureRowMalformed { cause: c } => c != ^infer_reason_type_argument_does_not_inhabit_bound
     StructureInhabited { generator: _ } => false
     StructureNotInhabited => false
@@ -231,7 +231,7 @@ fn fmb_roster_structure() -> Node {
 }
 
 fn fmb_generator_is(instance: Node, expected: Node) -> Bool {
-  match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: instance, structure: fmb_roster_structure(), declarations: empty_symbol_index()) {
+  match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: instance, structure: fmb_roster_structure(), declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     StructureInhabited { generator: generator } =>
       match generator {
         Present { value: g } => infer_type_equal_ignoring_provenance(a: g, b: expected)
@@ -252,7 +252,7 @@ test fn fmb_kernel_text_has_generator_char() -> Bool {
 }
 
 test fn fmb_int_has_no_free_monoid_generator() -> Bool {
-  match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: fmb_kernel_type(spelling: "Int"), structure: fmb_roster_structure(), declarations: empty_symbol_index()) {
+  match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: fmb_kernel_type(spelling: "Int"), structure: fmb_roster_structure(), declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     StructureNotInhabited => true
     StructureInhabited { generator: _ } => false
     StructureRowMalformed { cause: _ } => false
@@ -318,6 +318,7 @@ fn fmb_bound_reason_at(structure: Node, instance: Node) -> Symbol {
     node: fmb_carrier(),
     binders: fmb_binders(marker: BinderStructureEdge, annotation: structure),
     declarations: empty_symbol_index(),
+    bindings: empty_symbol_index(),
     instances: [TypeVariableInstance { binder: ^fmb_carrier, instance: instance }]
   ) {
     Absent => ^accepted
@@ -329,7 +330,7 @@ fn fmb_bound_reason_at(structure: Node, instance: Node) -> Symbol {
 // that matches kernel String must refuse with that cause -- never StructureInhabited, never
 // infer_reason_inhabitance_row_declares_no_generator.
 test fn fmb_ambiguous_generator_binder_refuses_with_its_own_cause() -> Bool {
-  match infer_instance_structure_inhabitance_in(rows: [fmb_ambiguous_generator_row()], instance: fmb_kernel_type(spelling: "String"), structure: free_monoid_structure_node(inhabitant: fmb_carrier(), generator: fmb_carrier()), declarations: empty_symbol_index()) {
+  match infer_instance_structure_inhabitance_in(rows: [fmb_ambiguous_generator_row()], instance: fmb_kernel_type(spelling: "String"), structure: free_monoid_structure_node(inhabitant: fmb_carrier(), generator: fmb_carrier()), declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     StructureRowMalformed { cause: c } => c == ^algebra_free_monoid_generator_ambiguous
     StructureInhabited { generator: _ } => false
     StructureNotInhabited => false

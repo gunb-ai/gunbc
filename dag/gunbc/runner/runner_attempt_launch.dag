@@ -20,11 +20,11 @@ import extdeps.virtualization.firecracker {
   firecracker_jailer_run_command,
   firecracker_jailer_chroot_root,
 }
-import product.fabric.identity { FabricIdentity, WorkKey, DemandKey, OfferKey, fabric_identity_eq }
+import product.fabric.identity { FabricIdentity, WorkKey, DemandKey, OfferKey, GrantKey, fabric_identity_eq }
 import product.fabric.work { Work, TrustDomainRef }
 import product.fabric.sanitation { CellId }
 import gunbc.floor.floor_demand { gunbc_internal_fleet_trust_domain }
-import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellSnapshot }
+import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellSnapshot, RequiredBuildCellHolder, HeldByReservation, HeldByGrant }
 import gunbc.fabric.fabric_cell_converge { fabric_cell_id_for_slot }
 import gunbc.runner.runner_microvm_attempt_bounds { runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace }
 import product.fabric.execution { ExecutionGrant }
@@ -310,108 +310,67 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Boo
 // realization constructing the executable jailer from its own observations. That is a substantive
 // redesign, not a comment fix, and is not attempted here.
 
-// ── TWO AUTHORIZATIONS, ONE PLAN, AND THE SECOND IS A DECLARED FRONTIER'S SUBSTITUTE ─────────
+// ── THE CELL-GRANT ARM: THE COMMITTED GRANT, RE-READ FROM THE HOST CAS ─────────────────────────
 //
-// THE GRANT ARM IS THE TERMINAL CONSTRUCTION AND HAS NO PRODUCER. grant_authorizes_reservation
-// consumes an ExecutionGrant, and nothing in production constructs one (gunbc.fabric.fabric_control_plane
-// "THREE GAPS THAT ARE ONE ABSENCE": the ReleaseDirective-to-slot-key relation, the atomic
-// cross-ledger acquire join and the whole identity layer are unproduced). So, for the trusted-
-// workload microVM shakedown on srv1, the parent lane ruled (2026-09-21) that the planner admits a
-// SECOND authorization: the sealed RequiredBuildCellSnapshot, which is the host CAS's own re-read of
-// the committed reservation and is constructible only inside
-// gunbc.fabric.fabric_required_build_cell observe_required_build_cell_wet (one construction site, checked
-// by test.claim.runner.runner_attempt_launch_witness_test).
+// The shakedown used to plan under a SECOND authorization, the sealed reservation snapshot, because
+// nothing produced an ExecutionGrant (the parent lane's ruling of 2026-09-21 and its declared
+// frontier, reservation_authorization_grant_producer_frontier). gunbc.fabric.fabric_cell_grant now
+// produces one at reservation commit: the cell's hold owner IS the grant key, written in the same
+// compare-and-set as the reservation. So this arm replaces that one -- the frontier's own terminal
+// -- and the reservation arm, its type and its row are deleted in the same change.
 //
-// WHAT THE SNAPSHOT ARM PRESERVES, REFUSAL FOR REFUSAL. The grant join refuses on four facts:
-//   fence      the presented generation equals the account's held lease generation for this
-//              reservation. The MoneyAccount is a pure in-process value with no durable home, so
-//              in a later process the fence's referent does not exist; what the host DOES hold is
-//              the CAS generation the snapshot was read at, and the controller binds the attempt's
-//              allocation generation to it (gunbc.runner.runner_microvm_lifecycle controller_start's
-//              CellBindingRefusedGeneration). The arm carries that generation and refuses if the
-//              caller's allocation generation disagrees -- ReservationGenerationDisagrees.
-//   work       the reservation's demand names the Work presented -- ReservationNamesDifferentWork.
-//   demand     the hold owner the CAS holds IS fabric_hold_owner(demand, offer), checked by the
-//              snapshot's producer (ReservationPayloadWorkMismatch refuses before a snapshot
-//              exists); the snapshot's demand is therefore the held one.
-//   offer      likewise, plus the producer's own SelectedOfferCellMismatch (offer.executor must be
-//              the slot key); the arm re-checks the slot the attempt is for against the snapshot's
-//              cell -- ReservationForDifferentCell.
-// The only fact dropped is the grant's own identity (GrantKey, permit, evidence), which is exactly
-// the unproduced layer.
+// The grant is read, not received. The snapshot's producer (gunbc.fabric.fabric_required_build_cell
+// observe_granted_cell_wet) re-derives the grant key for this attempt at the generation the slot
+// reports and seals HeldByGrant only when the hold owner is exactly that key, so a removed grant
+// (slot free or absent), a corrupt one or another attempt's (owner is not this derivation) and an
+// expired one (released and re-granted at a later generation) never reach this arm as granted. A
+// cell still held under the pre-cutover reservation owner is ReservationHeldPreCutover at the
+// producer and is never planned over.
 //
-// THE ARM IS SELECTED BY THE WORK'S TRUST DOMAIN AS A TYPED FACT, NOT BY A FLAG: a Work whose
-// requirements.trust_domain is not gunbc.floor.floor_demand gunbc_internal_fleet_trust_domain
-// refuses with ReservationArmRequiresInternalFleetTrust, so the untrusted-CI route -- which the
-// migration plan keeps grant disagreement for -- cannot reach this arm by construction. The
-// witness carries the control.
-//
-// THE RECEIPT SAYS reservation-authorized, UNDER ITS OWN NAME. LaunchAuthorization keeps the two
-// arms apart all the way to the readback, so no receipt can call a reservation-authorized attempt
-// grant-authorized (a meaning fork, DESIGN section 3).
-//
-// DECLARED FRONTIER (DESIGN 3c/4b(3)), AT CAPABILITY GRAIN: an ExecutionGrant PRODUCED AT
-// RESERVATION COMMIT with the atomic cross-ledger join, persisted beside the CAS reservation and
-// re-read by the controller. When it lands, LaunchAuthorizedByReservation is DELETED, not kept:
-// the witness already carries that flip (its control over the reservation arm becomes a refusal
-// that the arm no longer exists).
-data reservation_authorization_grant_producer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner.runner_attempt_launch plan_attempt_launch, which today consumes an ExecutionGrant no production route constructs, so the microVM shakedown runs through plan_attempt_launch_reservation_authorized instead. TRIGGER, at capability grain: an ExecutionGrant produced at reservation commit with the atomic cross-ledger join (gunbc.fabric.fabric_control_plane 'THREE GAPS' note: ReleaseDirective-to-slot-key relation, atomic acquire join, produced identity layer), persisted beside the CAS reservation and re-read by the slot controller in a later process. SUFFICIENT FOR deleting LaunchAuthorizedByReservation, ReservationAuthorization, plan_attempt_launch_reservation_authorized and this row together. NOT satisfied by a witness constructing a grant, by the reservation arm being narrowed further, or by a durable MoneyAccount alone." as NonEmptyStr,
-)
-
-type ReservationAuthorization
-  = ReservationAuthorizes
-  | ReservationArmRequiresInternalFleetTrust { trust_domain: TrustDomainRef }
-  | ReservationNamesDifferentWork { reserved: FabricIdentity<NonEmptyStr, WorkKey>, presented: FabricIdentity<NonEmptyStr, WorkKey> }
-  | ReservationForDifferentCell { reserved: CellId, attempt_cell: CellId }
-  | ReservationGenerationDisagrees { reserved: Int, presented: Int }
+// THE REFUSALS THE RESERVATION ARM CARRIED ARE KEPT, REFUSAL FOR REFUSAL: trust domain, Work, cell
+// and generation, plus CellNotGrantHeld for a snapshot whose holder is a reservation rather than a
+// grant (a workspace or FCI-1 snapshot handed to the CI planner).
+type CellGrantAuthorization
+  = CellGrantAuthorizes { grant: GrantKey }
+  | CellGrantArmRequiresInternalFleetTrust { trust_domain: TrustDomainRef }
+  | CellGrantNamesDifferentWork { granted: FabricIdentity<NonEmptyStr, WorkKey>, presented: FabricIdentity<NonEmptyStr, WorkKey> }
+  | CellGrantForDifferentCell { granted: CellId, attempt_cell: CellId }
+  | CellGrantGenerationDisagrees { granted: Int, presented: Int }
+  | CellNotGrantHeld
 
 type LaunchAuthorization
   = LaunchAuthorizedByGrant { authorization: GrantAuthorization }
-  | LaunchAuthorizedByReservation { authorization: ReservationAuthorization }
+  | LaunchAuthorizedByCellGrant { authorization: CellGrantAuthorization }
   | LaunchAuthorizedByWorkspaceReservation { work: FabricIdentity<NonEmptyStr, WorkKey>, generation: Int }
 
-// THE AGREEMENT IS A PURE FOLD OVER THE RESERVED FACTS, so a witness can drive every refusal with
-// supplied values (the snapshot is sole_constructor and only its wet producer can build one); the
-// sealed wrapper below is the only production caller and reads those facts off the snapshot.
-fn reservation_agreement(
-  reserved_work: FabricIdentity<NonEmptyStr, WorkKey>,
-  reserved_cell: CellId,
-  reserved_generation: Int,
+// THE AGREEMENT IS A PURE FOLD OVER THE GRANTED FACTS, so a witness can drive every refusal with
+// supplied values (the snapshot is sole_constructor and only its wet producer can build one).
+fn cell_grant_agreement(
+  granted_work: FabricIdentity<NonEmptyStr, WorkKey>,
+  granted_cell: CellId,
+  granted_generation: Int,
+  holder: RequiredBuildCellHolder,
   work: Work<NonEmptyStr>,
   attempt: MicroVmAttempt,
   allocation_generation: Int,
-) -> ReservationAuthorization {
+) -> CellGrantAuthorization {
   if (work.requirements.trust_domain as String) != (gunbc_internal_fleet_trust_domain as String) {
-    ReservationArmRequiresInternalFleetTrust { trust_domain: work.requirements.trust_domain }
-  } else if !fabric_identity_eq(left: reserved_work, right: work.id) {
-    ReservationNamesDifferentWork { reserved: reserved_work, presented: work.id }
-  } else if (reserved_cell as String) != (fabric_cell_id_for_slot(slot: attempt.slot) as String) {
-    ReservationForDifferentCell { reserved: reserved_cell, attempt_cell: fabric_cell_id_for_slot(slot: attempt.slot) }
-  } else if reserved_generation != allocation_generation {
-    ReservationGenerationDisagrees { reserved: reserved_generation, presented: allocation_generation }
+    CellGrantArmRequiresInternalFleetTrust { trust_domain: work.requirements.trust_domain }
+  } else if !fabric_identity_eq(left: granted_work, right: work.id) {
+    CellGrantNamesDifferentWork { granted: granted_work, presented: work.id }
+  } else if (granted_cell as String) != (fabric_cell_id_for_slot(slot: attempt.slot) as String) {
+    CellGrantForDifferentCell { granted: granted_cell, attempt_cell: fabric_cell_id_for_slot(slot: attempt.slot) }
+  } else if granted_generation != allocation_generation {
+    CellGrantGenerationDisagrees { granted: granted_generation, presented: allocation_generation }
   } else {
-    ReservationAuthorizes
+    match holder {
+      HeldByReservation => CellNotGrantHeld
+      HeldByGrant { attempt: _, grant: g } => CellGrantAuthorizes { grant: g }
+    }
   }
 }
 
-fn reservation_authorizes_attempt(
-  snapshot: RequiredBuildCellSnapshot,
-  work: Work<NonEmptyStr>,
-  attempt: MicroVmAttempt,
-  allocation_generation: Int,
-) -> ReservationAuthorization {
-  reservation_agreement(
-    reserved_work: snapshot.work,
-    reserved_cell: snapshot.cell,
-    reserved_generation: snapshot.generation,
-    work: work,
-    attempt: attempt,
-    allocation_generation: allocation_generation,
-  )
-}
-
-fn plan_attempt_launch_reservation_authorized(
+fn plan_attempt_launch_cell_granted(
   snapshot: RequiredBuildCellSnapshot,
   work: Work<NonEmptyStr>,
   allocation_generation: Int,
@@ -424,12 +383,18 @@ fn plan_attempt_launch_reservation_authorized(
   rootfs_source: String,
   shape: RunnerMicroVmShape,
 ) -> AttemptLaunchPlan {
-  let authorization = reservation_authorizes_attempt(
-    snapshot: snapshot, work: work, attempt: attempt, allocation_generation: allocation_generation,
+  let authorization = cell_grant_agreement(
+    granted_work: snapshot.work,
+    granted_cell: snapshot.cell,
+    granted_generation: snapshot.generation,
+    holder: snapshot.holder,
+    work: work,
+    attempt: attempt,
+    allocation_generation: allocation_generation,
   )
   match authorization {
-    ReservationAuthorizes => plan_after_authorization(
-      authorization: LaunchAuthorizedByReservation { authorization: authorization },
+    CellGrantAuthorizes { grant: _ } => plan_after_authorization(
+      authorization: LaunchAuthorizedByCellGrant { authorization: authorization },
       attempt: attempt,
       mint: mint,
       ground: ground,
@@ -439,18 +404,21 @@ fn plan_attempt_launch_reservation_authorized(
       rootfs_source: rootfs_source,
       shape: shape,
     )
-    refused => LaunchRefusedUnauthorized { authorization: LaunchAuthorizedByReservation { authorization: refused } }
+    refused => LaunchRefusedUnauthorized { authorization: LaunchAuthorizedByCellGrant { authorization: refused } }
   }
 }
 
 type AttemptLaunchPayload
   = GitHubLaunchPayload { runner_name: JitRunnerName, registration_id: Int, device: BootstrapDeviceStaging }
   | WorkspaceLaunchPayload { bootstrap_identity: NonEmptyStr, device: BootstrapDeviceStaging }
+  // A revision job: its read-only spec device (the environment file the guest unit loads).
+  | ClaimSetLaunchPayload { grant: NonEmptyStr, device: BootstrapDeviceStaging }
 
 fn launch_payload_device(payload: AttemptLaunchPayload) -> BootstrapDeviceStaging {
   match payload {
     GitHubLaunchPayload { runner_name: _, registration_id: _, device: d } => d
     WorkspaceLaunchPayload { bootstrap_identity: _, device: d } => d
+    ClaimSetLaunchPayload { grant: _, device: d } => d
   }
 }
 
@@ -472,6 +440,7 @@ type AttemptLaunchPlan
       stage_jail_root: ArgvCommand
       stage_kernel: ArgvCommand
       stage_rootfs: ArgvCommand
+      input_drives: List<StagedInputDrive>
       workspace_path: String
       workspace_create: ArgvCommand
       workspace_format: ArgvCommand
@@ -632,6 +601,7 @@ fn plan_authorized_steps(
       source: rootfs_source,
       destination: join([jail_root, jail_rootfs_path as String], ""),
     ),
+    input_drives: [],
     workspace_path: workspace_host,
     workspace_create: busybox_dd_sparse_image_command(
       busybox_bin: host_busybox_bin,
@@ -686,6 +656,7 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
       stage_jail_root: _,
       stage_kernel: _,
       stage_rootfs: _,
+      input_drives: _,
       workspace_path: _,
       workspace_create: _,
       workspace_format: _,
@@ -882,13 +853,30 @@ type JailMaterialStep
   = JailRootStep
   | JailKernelStep
   | JailRootfsStep
+  | JailInputDriveStep { jail_path: String }
 
 fn jail_material_step_label(step: JailMaterialStep) -> String {
   match step {
     JailRootStep => "jail root"
     JailKernelStep => "kernel"
     JailRootfsStep => "rootfs"
+    JailInputDriveStep { jail_path: p } => concat("input drive ", p)
   }
+}
+
+// AN INPUT DRIVE THE PLAN STAGES INTO THE JAIL BESIDE THE KERNEL AND ROOTFS: a read-only input a
+// workload consumes (a revision job's tree, vendor set and results drive). Its staging command and
+// its readback join the jail material, so the jailer is not admitted over a drive that failed to
+// stage or is absent at its jail path. Plans whose workload has none carry an empty list.
+type StagedInputDrive {
+  stage: ArgvCommand
+  jail_path: String
+}
+
+type InputDriveStaging {
+  jail_path: String
+  exit: Int
+  present: PathExistenceReading
 }
 
 type JailMaterialStaging {
@@ -897,6 +885,7 @@ type JailMaterialStaging {
   rootfs_exit: Int
   kernel: PathExistenceReading
   rootfs: PathExistenceReading
+  inputs: List<InputDriveStaging>
 }
 
 type JailMaterialStanding
@@ -912,9 +901,19 @@ fn jail_material_standing(obs: JailMaterialStaging) -> JailMaterialStanding {
     JailMaterialStepFailed { step: JailKernelStep, exit: obs.kernel_exit }
   } else if obs.rootfs_exit != 0 {
     JailMaterialStepFailed { step: JailRootfsStep, exit: obs.rootfs_exit }
-  } else {
-    jail_material_readbacks(kernel: obs.kernel, rootfs: obs.rootfs)
-  }
+  } else { match filter(obs.inputs, i => i.exit != 0).first() {
+    Present { value: failed } => JailMaterialStepFailed { step: JailInputDriveStep { jail_path: failed.jail_path }, exit: failed.exit }
+    Absent => match jail_material_readbacks(kernel: obs.kernel, rootfs: obs.rootfs) {
+      JailMaterialReady => fold(obs.inputs, init: JailMaterialReady, f: (acc, i) => match acc {
+        JailMaterialReady => match jail_material_present(step: JailInputDriveStep { jail_path: i.jail_path }, reading: i.present) {
+          Present { value: refusal } => refusal
+          Absent => JailMaterialReady
+        }
+        refused => refused
+      })
+      refused => refused
+    }
+  } }
 }
 
 fn jail_material_readbacks(kernel: PathExistenceReading, rootfs: PathExistenceReading) -> JailMaterialStanding {
@@ -1018,6 +1017,7 @@ fn attempt_staging_verdict(
       stage_jail_root: _,
       stage_kernel: _,
       stage_rootfs: _,
+      input_drives: _,
       workspace_path: planned,
       workspace_create: _,
       workspace_format: _,

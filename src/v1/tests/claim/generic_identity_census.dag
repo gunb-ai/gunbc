@@ -580,7 +580,8 @@ fn gi_supplied_node_reading_lines(xs: ResolvedFormal, renamed_xs: ResolvedFormal
 }
 
 fn gi_tally(keys: List<String>) -> Map<String, Int> {
-  fold(keys, init: empty_map(), f: (acc, k) =>
+  let tally_seed: Map<String, Int> = empty_map()
+  fold(keys, init: tally_seed, f: (acc, k) =>
     match map_get(acc, k) {
       Present { value: n } => map_insert(acc, k, n + 1)
       Absent => map_insert(acc, k, 1)

@@ -9,8 +9,13 @@ import extdeps.cloud.gcp.iam {
   reconcile_gcp_policy, gcp_policy_cells, gcp_cell_in, gcp_policy_from_wire
 }
 import extdeps.cloud.gcp.iam_admin
-import extdeps.cloud.gcp.iam_admin { workload_identity_pool_display_name_admitted, workload_identity_pool_display_name_max_characters }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolWire, WifProviderWire }
+import extdeps.cloud.gcp.iam_admin {
+  workload_identity_pool_display_name_admitted, workload_identity_pool_display_name_max_characters,
+  workload_identity_resource_id_admitted, workload_identity_resource_id_min_characters, workload_identity_resource_id_max_characters,
+  workload_identity_resource_id_reserved_prefix,
+}
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolWire, WifProviderWire, WifPoolOperation, WifProviderOperation }
+import gunbc.auth.gcp_operation_wait { wif_create_operation_wait }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.auth.access_token_source {
   read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable,
@@ -214,8 +219,9 @@ fn bind_impersonation(f: DedicatedFederation, token: Secret) -> ProcessExit
 // observe its CONFIGURATION, which for the provider is the attribute condition -- the single fact
 // that decides which workflows may federate at all -- so reporting it as converged would be this
 // run asserting a security property it never read. CreateRefused is everything else.
-// subject_creation classifies a REFUSED create only; an answered create is SubjectCreated at the call
-// site, where the RestAnswered arm is.
+// subject_creation classifies a REFUSED create only; an answered pool or provider create is
+// SubjectCreated only once its long-running operation is done (created_after_operation), and an
+// answered account create, which is not an operation, is SubjectCreated at the call site.
 type SubjectCreation
   = SubjectCreated
   | SubjectAlreadyPresentUnverified
@@ -479,13 +485,31 @@ fn create_if(wanted: Bool, subject: String, creation: SubjectCreation) -> String
   }
 }
 
-// CreateWorkloadIdentityPool refuses an over-long display name only once a run holds a token, so
-// every route that may create a pool reads its whole creation population here before it reads one.
-fn dedicated_federation_pool_display_name_refusals(federations: List<DedicatedFederation>) -> List<String> {
-  map(filter(federations, f => !workload_identity_pool_display_name_admitted(name: f.pool_display_name)), f => join([
-    f.label, ": pool display name \"", f.pool_display_name as String, "\" is ", to_string(string_length(s: f.pool_display_name as String)),
-    " characters; CreateWorkloadIdentityPool admits at most ", to_string(workload_identity_pool_display_name_max_characters),
-  ], ""))
+fn workload_identity_resource_id_refusal(f: DedicatedFederation, input: String, id: NonEmptyStr, operation: String) -> List<String> {
+  if workload_identity_resource_id_admitted(id: id) { [] } else { [join([
+    f.label, ": ", input, " \"", id as String, "\" is ", to_string(string_length(s: id as String)), " characters; ", operation, " admits ",
+    to_string(workload_identity_resource_id_min_characters), " to ", to_string(workload_identity_resource_id_max_characters),
+    " characters of [a-z0-9-], not beginning ", workload_identity_resource_id_reserved_prefix,
+  ], "")] }
+}
+
+// The upstream refuses a malformed pool id, an over-long pool display name or a malformed provider id
+// only once a run holds a token, so every route that may create a pool or provider reads its whole
+// creation population here before it reads one.
+fn dedicated_federation_input_refusals(federations: List<DedicatedFederation>) -> List<String> {
+  flat_map(federations, f =>
+    workload_identity_resource_id_refusal(f: f, input: "pool id", id: f.pool_id, operation: "CreateWorkloadIdentityPool")
+    + (if workload_identity_pool_display_name_admitted(name: f.pool_display_name) { [] } else { [join([
+      f.label, ": pool display name \"", f.pool_display_name as String, "\" is ", to_string(string_length(s: f.pool_display_name as String)),
+      " characters; CreateWorkloadIdentityPool admits at most ", to_string(workload_identity_pool_display_name_max_characters),
+    ], "")] })
+    + workload_identity_resource_id_refusal(f: f, input: "provider id", id: f.provider_id, operation: "CreateWorkloadIdentityPoolProvider"))
+}
+
+// A create that answered 200 is created only once its long-running operation is done; a failed, spent
+// or unreadable operation halts the run and the create is not reissued (gunbc.auth.gcp_operation_wait).
+fn created_after_operation(waited: String) -> SubjectCreation {
+  if waited == "" { SubjectCreated } else { SubjectCreateRefused { cause: waited } }
 }
 
 fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationClassification) -> String
@@ -495,7 +519,7 @@ fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationCl
     FederationClassified { create_pool: cp, create_provider: cv, create_account: ca } => {
       let pool = if cp {
         create_if(wanted: true, subject: "the pool", creation: match gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, display_name: f.pool_display_name) {
-          RestAnswered { answer: _ } => SubjectCreated
+          RestAnswered { answer: a } => created_after_operation(waited: wif_create_operation_wait(token: token, subject: WifPoolOperation { pool_id: f.pool_id as String }, operation_name: a.operation_name, done: a.done, error: a.error, render_refusal: o => rest_refusal_text(o: o)))
           RestRefused { refusal } => subject_creation(o: refusal)
         })
       } else { "" }
@@ -504,7 +528,7 @@ fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationCl
       }
       let provider = if cv {
         create_if(wanted: true, subject: "the provider", creation: match gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, provider_id: f.provider_id, issuer_uri: github_wif_issuer_uri, attribute_mapping: f.attribute_mapping, attribute_condition: f.attribute_condition as NonEmptyStr) {
-          RestAnswered { answer: _ } => SubjectCreated
+          RestAnswered { answer: a } => created_after_operation(waited: wif_create_operation_wait(token: token, subject: WifProviderOperation { pool_id: f.pool_id as String, provider_id: f.provider_id as String }, operation_name: a.operation_name, done: a.done, error: a.error, render_refusal: o => rest_refusal_text(o: o)))
           RestRefused { refusal } => subject_creation(o: refusal)
         })
       } else { "" }
@@ -563,7 +587,7 @@ fn provision_dedicated_federation(f: DedicatedFederation, token: Secret) -> Proc
 
 fn dedicated_federation_provision_with_supplied_token(f: DedicatedFederation) -> ProcessExit
 {
-  let input_refusals = dedicated_federation_pool_display_name_refusals(federations: [f])
+  let input_refusals = dedicated_federation_input_refusals(federations: [f])
   if count(input_refusals) > 0 { exit_failure(reason: join(input_refusals, "; ")) }
   else { match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)

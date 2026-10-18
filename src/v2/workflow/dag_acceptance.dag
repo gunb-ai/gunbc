@@ -5,11 +5,11 @@ import std.types { List }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import v2.compiler.compile {
   CompileOutput,
+  compile_inferred,
   Eval,
   EvalResult,
   TranslateResult,
-  TranslateTo,
-  compile_inferred
+  TranslateTo
 }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.staged_front_end {

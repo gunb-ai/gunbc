@@ -172,8 +172,8 @@ fn srv3_memory_cap_swap_drift_read_unit(unit: NonEmptyStr) -> RunnerUnitMemoryLi
 }
 
 // THE HOST IS NOT CONVERGED WHEN ONLY A SLOT THE OLD PROXY DID NOT SAMPLE DIFFERS.
-// Slot 01 matches runner_slot_desired on all three knobs; slot 02 (never runner_memory_cap_probe_unit)
-// carries the 32 GiB swap the fleet actually had. The host fold must report Drifted, not hide behind -01.
+// Slot 01 matches runner_slot_desired on all three knobs; slot 02 carries the 32 GiB swap the fleet
+// actually had. The host fold must report Drifted, not hide behind -01.
 test fn witness_verify_nonsampled_slot_drift_is_not_host_converged() -> Bool {
   match runner_memory_cap_verify_result_from_unit_reads(
     host: operator_host_srv3,

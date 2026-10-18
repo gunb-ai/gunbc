@@ -2,17 +2,10 @@ module v2.std.optional_layers
 
 import std.nat { Nat, NatDifference, NatSubtrahendExceedsMinuend, Succ, Zero, nat_add, nat_sub }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node {
-  Occupancy,
-  ComputationNode,
-  Edge,
-  Node,
-  Positional,
-  TypeNode
-}
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import v2.std.node { Occupancy, node_with_occurrence_id, ComputationNode, Edge, Node, Positional, TypeNode }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.collection { list_at_optional }
+import std.algebra { list_at_optional }
 
 // OPTIONAL-LAYER DEPTH IS std.nat Nat (Zero = required / no wrappers). A two-arm
 // Required | CardOptional sum is Zero | Succ under another name (DESIGN §2/#3). gunbc#13488's
@@ -83,3 +76,15 @@ fn wrap_type_node_occupancy(base: Node, depth: Nat) -> Node {
       }
   }
 }
+
+// ONE OCCUPANCY LAYER AT A GIVEN OCCURRENCE: the wrapper an explicit `Optional<T>` becomes at resolution keeps the
+// application's own source occurrence rather than a synthetic one, so occurrence preservation survives the rewrite
+// (v2.compiler.resolve resolve_type_application_normalized).
+fn wrap_type_node_occupancy_at(base: Node, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Occupancy },
+    children: [Edge { label: Positional, target: base }],
+    occurrence_id: occurrence_id
+  )
+}
+

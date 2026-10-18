@@ -5,8 +5,8 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model, dag_symbol_literal_name_optional }
-import std.algebra { Cons, Empty, length }
-import v2.std.collection { list_at_optional }
+import std.algebra { Cons, Empty, length, list_at_optional }
+
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node { Node, Symbol, node_subtree_nodes }

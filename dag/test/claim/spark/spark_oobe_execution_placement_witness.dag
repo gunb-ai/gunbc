@@ -475,10 +475,7 @@ test fn w_a_cache_entry_alone_does_not_identify_a_chromium_build() -> Bool {
 // content. What remains worth asserting is what the shared subject IS: the pi1 local-forward leg to
 // the unit, attested by the run that halted at the account screen.
 fn host_spelling(host: NetworkHost) -> String {
-  match render_network_host(host: host) {
-    Present { value: v } => v as String
-    Absent => "unrenderable"
-  }
+  render_network_host(host: host) as String
 }
 
 fn leg_spelling(sub: ForwardingAdmissionSubject) -> String {

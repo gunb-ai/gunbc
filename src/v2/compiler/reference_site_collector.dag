@@ -1,9 +1,9 @@
 module v2.compiler.reference_site_collector
 
-import std.types { List }
+import std.types { List, Map }
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, list_init, list_map }
-import v2.std.collection { Map, empty_map, map_contains_key, map_insert }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, list_init, list_map, empty_map, map_contains_key, map_insert }
+
 import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
 import v2.std.integer { Int }
 import v2.std.node {
@@ -25,6 +25,7 @@ import v2.std.node {
 }
 import std.optional { Absent, Present }
 import v2.std.qualified_name {
+  optional_declaration_identity,
   QualifiedName,
   qualified_name_from_node,
 }
@@ -340,7 +341,13 @@ fn reference_sites_in_node(
         TypeNode { connective: Conj } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         TypeNode { connective: Disj } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         TypeNode { connective: Arrow } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
-        TypeNode { connective: Occupancy } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
+        TypeNode { connective: Occupancy } =>
+          reference_sites_in_children(
+            acc: collection_snoc_site(acc: acc, scope: scope, site: ReferenceSite { position: position, spelling: optional_declaration_identity() }),
+            position: position,
+            scope: scope,
+            node: node
+          )
         TypeNode { connective: Instantiation } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         ComputationNode { behavior: _ } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
       }

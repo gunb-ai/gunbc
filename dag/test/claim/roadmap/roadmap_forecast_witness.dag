@@ -6,7 +6,8 @@ import std.measure {
   positive_measure_count,
 }
 import std.types { Map }
-import v2.std.collection { empty_map, map_insert, map_lookup, Present, Absent }
+import std.algebra { empty_map, map_insert, map_lookup }
+import std.optional { Present, Absent }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_status { PlainLine, Unsigned }

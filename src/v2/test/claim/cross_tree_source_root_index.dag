@@ -1,0 +1,79 @@
+module v2.test.claim.cross_tree_source_root_index
+
+import std.algebra { Cons, Empty }
+import std.types { Bool }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.cross_tree.import_model { DagTree, V2Tree, source_root_ref_eq }
+import v2.std.cross_tree.resolution {
+  SourceRootIndex,
+  SourceRootResolved,
+  SourceRootAbsent,
+  SourceRootAmbiguous,
+  SourceRootLookup,
+  source_root_index_empty,
+  source_root_index_insert,
+  source_root_index_lookup
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SOURCE-ROOT INDEX ANSWERS BY MODULE, AND ITS AMBIGUITY RULE IS DECIDED AT INSERT. Supplied
+// bindings at the v2.std.cross_tree.resolution interface; the real producers (v2.compiler.program_assembly,
+// v2.compiler.source_root_eval) and the cross-tree gate that reads it (v2.compiler.name_resolve
+// admit_import_cross_tree_gate) are exercised by v2.test.claim.name_resolve_cross_tree_resolution.
+
+fn sri_qn(seg: Symbol) -> QualifiedName {
+  Cons { head: ^sri, tail: Cons { head: seg, tail: Empty } }
+}
+
+fn sri_is_resolved_to_dag(l: SourceRootLookup) -> Bool {
+  match l {
+    SourceRootResolved { root: r } => source_root_ref_eq(a: r, b: DagTree)
+    SourceRootAbsent => false
+    SourceRootAmbiguous => false
+  }
+}
+
+fn sri_is_absent(l: SourceRootLookup) -> Bool {
+  match l {
+    SourceRootAbsent => true
+    SourceRootResolved { root: _ } => false
+    SourceRootAmbiguous => false
+  }
+}
+
+fn sri_is_ambiguous(l: SourceRootLookup) -> Bool {
+  match l {
+    SourceRootAmbiguous => true
+    SourceRootResolved { root: _ } => false
+    SourceRootAbsent => false
+  }
+}
+
+fn sri_bind(index: SourceRootIndex, seg: Symbol, dag: Bool) -> SourceRootIndex {
+  source_root_index_insert(index: index, module: sri_qn(seg: seg), root: if dag { DagTree } else { V2Tree })
+}
+
+// An unbound module is absent; a bound one resolves to its tree; binding it again to the SAME tree
+// changes nothing.
+test fn sri_absent_resolved_and_rebinding_the_same_tree() -> Bool {
+  let once = sri_bind(index: source_root_index_empty(), seg: ^sri_a, dag: true)
+  let twice = sri_bind(index: once, seg: ^sri_a, dag: true)
+  sri_is_absent(l: source_root_index_lookup(index: source_root_index_empty(), module: sri_qn(seg: ^sri_a)))
+    && sri_is_resolved_to_dag(l: source_root_index_lookup(index: once, module: sri_qn(seg: ^sri_a)))
+    && sri_is_resolved_to_dag(l: source_root_index_lookup(index: twice, module: sri_qn(seg: ^sri_a)))
+}
+
+// A module bound to two DIFFERENT trees is ambiguous, in either order, and stays ambiguous when it is
+// bound again; a neighbouring module is unaffected.
+test fn sri_two_trees_are_ambiguous_in_either_order_and_stay_so() -> Bool {
+  let dag_then_v2 = sri_bind(index: sri_bind(index: source_root_index_empty(), seg: ^sri_a, dag: true), seg: ^sri_a, dag: false)
+  let v2_then_dag = sri_bind(index: sri_bind(index: source_root_index_empty(), seg: ^sri_a, dag: false), seg: ^sri_a, dag: true)
+  let rebound = sri_bind(index: sri_bind(index: dag_then_v2, seg: ^sri_a, dag: true), seg: ^sri_b, dag: true)
+  sri_is_ambiguous(l: source_root_index_lookup(index: dag_then_v2, module: sri_qn(seg: ^sri_a)))
+    && sri_is_ambiguous(l: source_root_index_lookup(index: v2_then_dag, module: sri_qn(seg: ^sri_a)))
+    && sri_is_ambiguous(l: source_root_index_lookup(index: rebound, module: sri_qn(seg: ^sri_a)))
+    && sri_is_resolved_to_dag(l: source_root_index_lookup(index: rebound, module: sri_qn(seg: ^sri_b)))
+}

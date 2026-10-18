@@ -3,9 +3,9 @@ module v2.test.claim.manual.typescript_pr3_typed_fn_translate
 import v2.compiler.emit { emit }
 import v2.compiler.compile {
   CompileOutput,
+  compile_inferred,
   TranslateResult,
-  TranslateTo,
-  compile_inferred
+  TranslateTo
 }
 import v2.compiler.eval {
   TestClaimEvalSubject,
@@ -24,10 +24,8 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v2.std.collection {
-  Map,
-  empty_map
-}
+import std.types { Map }
+import std.algebra { empty_map }
 import std.optional {
   Optional,
   Present,

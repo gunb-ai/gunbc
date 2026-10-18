@@ -1,7 +1,7 @@
 module v2.test.claim.body_lowering.atom_body_discriminator_helpers
 
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, list_at_optional }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.node {
   Arrow,
@@ -30,7 +30,7 @@ import v2.std.node_query {
   find_named_child,
   node_positional_child_targets
 }
-import v2.std.collection { list_at_optional }
+
 import std.optional { Absent, Optional, Present, optional_present }
 
 data atom_body_discriminator_module_source: String = "module atom_body_discriminator\n\nfn id(x: Int) -> Int { x }\nfn zero() -> Int { 0 }\nfn add(x: Int, y: Int) -> Int { x + y }\nfn zero_binary() -> Int { 1 + 1 }\n"

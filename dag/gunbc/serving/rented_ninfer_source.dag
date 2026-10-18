@@ -1,0 +1,189 @@
+module gunbc.serving.rented_ninfer_source
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.content_hash { Sha256Digest }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault, r2_object_url }
+import extdeps.ninfer.ninfer_serve { NinferSourceRevision, ninfer_qwen35_planner_revision }
+import extdeps.gpu.types { GpuComputeCapability }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow, qwen3_8_27b_nvfp4_row }
+import gunbc.cloudflare.r2_origin { fleet_cloudflare_account_id, OriginCredentialStanding, OriginCredentialMintEntryUnbuilt }
+
+// WHERE A RENTED CARD FETCHES THE NINFER ARTIFACTS FROM, AND UNDER WHAT CREDENTIAL. Both artifacts (the engine
+// tarball and the weights container) were read, from the live card on 2026-10-15, to come from one Cloudflare
+// R2 bucket, `models`, on this fleet's account, through credentialed S3 and not a public URL. The engine's
+// pins are created below (ninfer_serve_81c8ce09_sm120_release); the weights' pin is
+// extdeps.ninfer.qwen3_8_27b_nvfp4 qwen3_8_27b_nvfp4_row, which this module reuses rather than minting a second
+// copy. It adds the location and the credential binding.
+//
+// STATED DIVERGENCE (DESIGN 3b): `models` is not a gunbc.cloudflare.r2_origin BucketPurpose and no
+// R2OriginBucket is built for it. That roster is the injective, fleet-allocated fabric buckets, each with a
+// purpose-derived admission and a mint entry; `models` was created by hand outside it, and a purpose arm
+// would also widen every exhaustive match over BucketPurpose for a bucket nothing here writes. The R2
+// OBJECT address reuses extdeps.cloudflare.r2 R2ObjectLocator and the CREDENTIAL reuses
+// gunbc.cloudflare.r2_origin OriginCredentialStanding, so a later purpose arm re-homes this row and forks
+// nothing.
+//
+// THE CREDENTIAL IS A BINDING TO A CUSTODY LOCUS, NEVER A VALUE. The card today reads R2 with keys in its own
+// environment; those keys are not copied or named here. OriginCredentialMintEntryUnbuilt says that nothing
+// mints a read token for this bucket into custody yet, so a fetch that needs one refuses on the arm rather
+// than signing with an unnamed secret. The operator still owes rotating the keys the card holds.
+data rented_models_bucket_name: NonEmptyStr = "models" as NonEmptyStr
+
+data rented_models_read_secret_id: NonEmptyStr = "cloudflare-r2-models-read-token" as NonEmptyStr
+
+data rented_models_read_credential: OriginCredentialStanding = OriginCredentialMintEntryUnbuilt { secret_id: rented_models_read_secret_id }
+
+type RentedArtifactSource {
+  locator: R2ObjectLocator
+  read_credential: OriginCredentialStanding
+}
+
+fn rented_models_source(key: NonEmptyStr) -> RentedArtifactSource {
+  RentedArtifactSource {
+    locator: R2ObjectLocator {
+      endpoint: R2S3Endpoint { account_id: fleet_cloudflare_account_id as String, jurisdiction: R2JurisdictionDefault },
+      bucket_name: rented_models_bucket_name,
+      key: key,
+    },
+    read_credential: rented_models_read_credential,
+  }
+}
+
+// THE ENGINE RELEASE A RENTED CARD INSTALLS: ninfer-serve built by this fleet at the pinned upstream source
+// revision (extdeps.ninfer.ninfer_serve NinferSourceRevision, the upstream fact) for one GPU architecture (sm120 is
+// CUDA compute capability 12.0, extdeps.gpu.types GpuComputeCapability, not a second tag) and
+// shipped as a tarball the card extracts. The build and the installed-file figures are this repository's
+// receipts, read read-only from one live card (Vast RTX PRO 5000 Blackwell) on 2026-10-15 around 04:00Z, so they
+// live in the observing layer and not in the upstream module (DESIGN 3, external upstream decomposition).
+type NinferInstalledFile {
+  relative_path: NonEmptyStr
+  bytes: ByteSize
+  sha256: Sha256Digest
+}
+
+type NinferEngineRelease {
+  release_name: NonEmptyStr
+  source: NinferSourceRevision
+  build_target: GpuComputeCapability
+  binary: NinferInstalledFile
+  rev_file: NinferInstalledFile
+  standing: CitedFigureStanding
+}
+
+data ninfer_serve_81c8ce09_sm120_release: NinferEngineRelease = NinferEngineRelease {
+  release_name: "ninfer-serve-81c8ce09-sm120" as NonEmptyStr,
+  source: ninfer_qwen35_planner_revision,
+  build_target: GpuComputeCapability { vendor: nvidia, major: 12, minor: 0 },
+  binary: NinferInstalledFile {
+    relative_path: "ninfer/ninfer-serve" as NonEmptyStr,
+    bytes: byte_size(count: 238462696),
+    sha256: Sha256Digest { hex: "4d6b4b5ce8e4f667ffc77a7362817e713ded23946ea996529429202e9c46261b" },
+  },
+  rev_file: NinferInstalledFile {
+    relative_path: "ninfer/rev" as NonEmptyStr,
+    bytes: byte_size(count: 41),
+    sha256: Sha256Digest { hex: "e9ae34b6ca7a2496dfb45d54d2f4bf8517424a872fa2610dee3108ebdb9940dd" },
+  },
+  standing: TranscribedUncited {
+    read_obligation: "Installed-file figures were read read-only from one live card on 2026-10-15 around 04:00Z (paths relative to its /root/serve). Re-derive them by hashing the extracted tarball once the shipped tarball's own digest is read (gunbc.serving.rented_ninfer_source)." as NonEmptyStr
+  },
+}
+
+// THE SHIPPED TARBALL IS THIS REPOSITORY'S TO OBSERVE, so its missing digest is a coverage obligation here and
+// not a property of the upstream engine module. The card's run.sh deletes the tarball after extracting it, so no
+// card-side observation can supply the digest; the installed-file pins on the release are what verification
+// rests on until it is read.
+type RentedTarballPin
+  = RentedTarballUnobserved { read_obligation: NonEmptyStr }
+
+data rented_tarball_read_obligation: NonEmptyStr = "Read the sha256 and byte size of the engine tarball at its object key from the store that holds it, by an operator with custody of that store; then replace RentedTarballUnobserved with a pinned arm." as NonEmptyStr
+
+type RentedEngineArtifact {
+  engine_release: NinferEngineRelease
+  object_key: NonEmptyStr
+  tarball: RentedTarballPin
+}
+
+data rented_ninfer_81c8ce09_sm120_engine_artifact: RentedEngineArtifact = RentedEngineArtifact {
+  engine_release: ninfer_serve_81c8ce09_sm120_release,
+  object_key: "bin/ninfer-serve-81c8ce09-sm120.tgz" as NonEmptyStr,
+  tarball: RentedTarballUnobserved { read_obligation: rented_tarball_read_obligation },
+}
+
+fn rented_engine_source(artifact: RentedEngineArtifact) -> RentedArtifactSource {
+  rented_models_source(key: artifact.object_key)
+}
+
+// A MODEL'S OBJECT IS ITS OWN ROW, never a prefix applied to any row: the key names one model's container, so
+// a placement pairs the model row (the pin) with the key it is stored under, and a second model adds a second
+// row rather than inheriting this one's directory.
+type RentedWeightsPlacement {
+  model: NinferModelRow
+  object_key: NonEmptyStr
+}
+
+data rented_qwen3_8_27b_nvfp4_weights_placement: RentedWeightsPlacement = RentedWeightsPlacement {
+  model: qwen3_8_27b_nvfp4_row,
+  object_key: "ninfer/qwen3_8_27b_nvfp4/qwen3_8_27b_nvfp4.ninfer" as NonEmptyStr,
+}
+
+fn rented_weights_source(placement: RentedWeightsPlacement) -> RentedArtifactSource {
+  rented_models_source(key: placement.object_key)
+}
+
+// WHAT A PLACEMENT CLAIMS ABOUT THE WEIGHTS IT PLACED, JUDGED AGAINST THE MODEL ROW'S PIN. The pin is the row's
+// container_bytes and container_sha256 and nothing else; a claimed digest that differs is refused, never
+// accepted as a second pin.
+type RentedWeightsPinAgreement
+  = RentedWeightsPinAgrees
+  | RentedWeightsDigestDiffers { pinned: Sha256Digest, claimed: Sha256Digest }
+  | RentedWeightsBytesDiffer { pinned: ByteSize, claimed: ByteSize }
+
+fn rented_weights_pin_agreement(row: NinferModelRow, claimed_bytes: ByteSize, claimed_sha256: Sha256Digest) -> RentedWeightsPinAgreement {
+  if (row.container_sha256.hex as String) != (claimed_sha256.hex as String) {
+    RentedWeightsDigestDiffers { pinned: row.container_sha256, claimed: claimed_sha256 }
+  } else {
+    if byte_size_count(b: row.container_bytes) != byte_size_count(b: claimed_bytes) {
+      RentedWeightsBytesDiffer { pinned: row.container_bytes, claimed: claimed_bytes }
+    } else {
+      RentedWeightsPinAgrees
+    }
+  }
+}
+
+fn rented_artifact_url(source: RentedArtifactSource) -> String {
+  r2_object_url(locator: source.locator)
+}
+
+// DECLARED FRONTIER (DESIGN 3c): the executing consumers are not in this change. The verified placement leg
+// (S3a, over gunbc.host.verified_archive_install) reads the sources and the weights agreement, and the
+// rented_allocation_roster slice (S4) reads the engine release through RentedNinferEngine. Until those
+// declarations appear the witness test.claim.serving.rented_ninfer_source_witness is the only caller.
+data rented_ninfer_source_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_engine_source"),
+    reason: "no placement leg fetches the engine tarball from this source yet",
+    dissolution: unbound_dissolution(description: "feature:rented-verified-placement-leg — S3a's placement leg over gunbc.host.verified_archive_install reads the engine source to fetch the tarball; the row deletes when that leg's declaration consumes it"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_weights_source"),
+    reason: "no placement leg fetches the weights container from this source yet",
+    dissolution: unbound_dissolution(description: "feature:rented-verified-placement-leg — S3a's placement leg over gunbc.host.verified_archive_install reads the weights source to fetch the container; the row deletes when that leg's declaration consumes it"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_weights_pin_agreement"),
+    reason: "no placement leg reads back a placed weights digest to judge against the model row's pin yet",
+    dissolution: unbound_dissolution(description: "feature:rented-verified-placement-leg — S3a's placement leg over gunbc.host.verified_archive_install reads the placed weights' digest and size against the model row; the row deletes when that leg's declaration consumes it"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_artifact_url"),
+    reason: "no fetch leg renders the object address for a signed request yet",
+    dissolution: unbound_dissolution(description: "feature:rented-verified-placement-leg — S3a's placement leg over gunbc.host.verified_archive_install reads the object address to sign a request; the row deletes when that leg's declaration consumes it"),
+  ),
+]

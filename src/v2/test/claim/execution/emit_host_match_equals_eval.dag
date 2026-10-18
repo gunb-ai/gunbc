@@ -1,6 +1,6 @@
 module v2.test.claim.execution.emit_host_match_equals_eval
 
-import std.types { List }
+import std.types { List, Map }
 import v2.std.node_query { find_core_child }
 
 import v2.test.claim.complexity_gate.table_fixture_match_subject_producer {
@@ -34,10 +34,7 @@ import v2.extdeps.languages.rust_execution {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection {
-  Map,
-  list_at_optional
-}
+import std.algebra { list_at_optional }
 import std.optional {
   Optional,
   Present,

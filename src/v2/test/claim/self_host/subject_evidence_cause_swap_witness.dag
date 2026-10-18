@@ -23,7 +23,7 @@ import v2.std.verdict {
   verdict_run_failed,
   verdict_semantic_mismatch
 }
-import v2.std.collection { Absent }
+import std.optional { Absent }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

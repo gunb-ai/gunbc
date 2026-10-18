@@ -1,0 +1,200 @@
+module gunbc.runner.runner_claim_set_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup }
+import std.nat { Nat, nat_ceil_div }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { Second, second, micro_per_unit, ByteSize, byte_size, byte_size_count }
+import std.content_hash { ContentHash, serialize_content_hash, content_hash_of_value }
+import extdeps.bazel.label { Label }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.stat { stat_size_bytes_command, stat_field_reading, StatFieldRead, StatFieldUnread }
+import extdeps.systemd { ExecMainStartTimestampMonotonic, ExecMainExitTimestampMonotonic }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.exec.command { LocalExec }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_read }
+import std.decimal { decimal_digits_only }
+import product.fabric.identity { FabricIdentity, WorkKey, OfferKey, ExecutionAttemptKey, ReceiptKey }
+import product.fabric.execution { Receipt, ExecutionReceipt, LeaseIdentity }
+import product.fabric.sanitation { CellReadiness }
+import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
+import gunbc.fabric.fabric_cell_grant { CellGrantSettlement, settle_cell_grant }
+import gunbc.runner.runner_claim_set_results {
+  ClaimSetResultsDecode, ClaimSetResultsRefused, ResultsDriveSizeMismatch, ResultsDriveUnobserved, ClaimSetResultsAdmission,
+  ClaimSetResultsAdmitted, ClaimSetResult, decode_claim_set_results, admit_claim_set_results,
+}
+
+// THE REVISION JOB'S RECEIPT, BUILT ONLY FROM WHAT THE HOST READ.
+//
+// Three readings, none of them the guest's word:
+// - THE OUTPUTS: the results drive, read back after the VMM exited, decoded and admitted against
+//   the job's claims and verified revision (gunbc.runner.runner_claim_set_results). The receipt's
+//   outputs field is the host's own digest over the records it read.
+// - THE BILLABLE TIME: the attempt unit's ExecMainStartTimestampMonotonic and
+//   ExecMainExitTimestampMonotonic, read by the host from systemd and rounded UP to whole seconds.
+//   The guest reports no time.
+// - THE COMPLETION INSTANT: the host's clock, supplied by the caller that read it.
+// Any of the three missing is a typed no-receipt (ClaimSetNotReceipted): the attempt stays
+// unreceipted and visible. Nothing here synthesizes a receipt, an empty digest or a zero duration.
+//
+// The receipt then goes to gunbc.fabric.fabric_cell_grant settle_cell_grant, which admits it once
+// and releases the cell only after sanitation (FCI-4).
+//
+// Consumed by gunbc.runner.runner_revision_job_main revision_job_run, which calls
+// claim_set_receipt_and_settle once a revision job's guest has exited and its teardown settled.
+
+type UnitRuntimeReading
+  = UnitRuntimeMeasured { billable: Second }
+  | UnitRuntimeUnread { detail: String }
+
+type ClaimSetNotReceipted
+  = ResultsDriveUnreadable { path: String, detail: String }
+  | ResultsNotAdmitted { admission: ClaimSetResultsAdmission }
+  | RuntimeNotMeasured { detail: String }
+
+type ClaimSetReceiptOutcome
+  = ClaimSetReceipted { receipt: Receipt<NonEmptyStr>, outputs: ContentHash, results: List<ClaimSetResult> }
+  | ClaimSetUnreceipted { cause: ClaimSetNotReceipted }
+
+// THE RUNTIME, FROM TWO MONOTONIC MICROSECOND STAMPS. Both must be present, decimal and nonzero
+// (systemd answers 0 for an event that has not happened), and the exit must follow the start.
+fn unit_runtime_from_stamps(start_us: String, exit_us: String) -> UnitRuntimeReading {
+  if start_us == "" || exit_us == "" || !decimal_digits_only(s: start_us) || !decimal_digits_only(s: exit_us) {
+    UnitRuntimeUnread { detail: join(["unit timestamps are not decimal: start=", start_us, " exit=", exit_us], "") }
+  } else { match parse_int(s: start_us) {
+    Absent => UnitRuntimeUnread { detail: "start timestamp did not parse" }
+    Present { value: s } => match parse_int(s: exit_us) {
+      Absent => UnitRuntimeUnread { detail: "exit timestamp did not parse" }
+      Present { value: e } =>
+        if s == 0 || e == 0 { UnitRuntimeUnread { detail: "the unit's main process has not both started and exited" } }
+        else if e < s { UnitRuntimeUnread { detail: "the exit timestamp precedes the start timestamp" } }
+        else { match checked_int_to_nat(n: e - s) {
+          Absent => UnitRuntimeUnread { detail: "runtime is not a natural number" }
+          Present { value: micros } => match nat_ceil_div(a: micros, b: micro_per_unit()) {
+            Absent => UnitRuntimeUnread { detail: "runtime did not divide into seconds" }
+            Present { value: secs } => UnitRuntimeMeasured { billable: second(count: secs) }
+          }
+        } }
+    }
+  } }
+}
+
+fn property_value(capture: SystemdPropertyCapture) -> String? {
+  match capture {
+    SystemdPropertyCaptured { value: v } => Present { value: v }
+    SystemdPropertyBlank => none
+    SystemdPropertyCaptureRefused { reason: _ } => none
+  }
+}
+
+fn read_unit_runtime(unit: NonEmptyStr) -> UnitRuntimeReading {
+  match property_value(capture: systemctl_show_property_read(transport: LocalShell, unit: unit, property: ExecMainStartTimestampMonotonic)) {
+    Absent => UnitRuntimeUnread { detail: join(["ExecMainStartTimestampMonotonic unread for ", unit as String], "") }
+    Present { value: start } => match property_value(capture: systemctl_show_property_read(transport: LocalShell, unit: unit, property: ExecMainExitTimestampMonotonic)) {
+      Absent => UnitRuntimeUnread { detail: join(["ExecMainExitTimestampMonotonic unread for ", unit as String], "") }
+      Present { value: exit } => unit_runtime_from_stamps(start_us: start, exit_us: exit)
+    }
+  }
+}
+
+// THE DRIVE, READ AS THE HOST STAGED IT: its size by stat, then its text. A drive whose size is not
+// the staged size refuses before its text is interpreted; a drive whose size or text could not be
+// read at all is ResultsDriveUnobserved, never a size.
+fn read_results_drive(path: String, staged_bytes: ByteSize) -> ClaimSetResultsDecode {
+  match stat_field_reading(outcome: run_shell_command_capture(command: stat_size_bytes_command(path: path), transport: LocalExec)) {
+    StatFieldUnread { detail: d } => ClaimSetResultsRefused { cause: ResultsDriveUnobserved { detail: join(["stat of ", path, ": ", d], "") } }
+    StatFieldRead { value: v } => match parse_int(s: v) {
+      Absent => ClaimSetResultsRefused { cause: ResultsDriveUnobserved { detail: join(["stat of ", path, " printed a non-integer size: ", v], "") } }
+      Present { value: n } => match checked_int_to_nat(n: n) {
+        Absent => ClaimSetResultsRefused { cause: ResultsDriveUnobserved { detail: join(["stat of ", path, " printed a negative size: ", v], "") } }
+        Present { value: observed_count } => {
+          let observed = byte_size(count: observed_count)
+          if byte_size_count(b: observed) != byte_size_count(b: staged_bytes) {
+            ClaimSetResultsRefused { cause: ResultsDriveSizeMismatch { staged: staged_bytes, observed: observed } }
+          } else {
+            let r = Filesystem.Read(path: path)
+            if !r.success { ClaimSetResultsRefused { cause: ResultsDriveUnobserved { detail: join(["read of ", path, ": ", r.error], "") } } }
+            else { decode_claim_set_results(text: r.content, staged_bytes: staged_bytes, observed_bytes: observed) }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE RECEIPT KEY names the attempt, the lease generation and the outputs: a second delivery of the
+// same reading is the same receipt, so settlement deduplicates it; another reading is another key.
+fn claim_set_receipt_key(attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>, lease: LeaseIdentity, outputs: ContentHash) -> ReceiptKey {
+  (serialize_content_hash(hash: content_hash_of_value(value: join([
+    "gunbc.claim-set-receipt:", attempt.principal as String, "/", attempt.key as String,
+    "@", lease.lease_key as String, ".", to_string(lease.generation), ":", serialize_content_hash(hash: outputs) as String,
+  ], "") as NonEmptyStr)) as String) as ReceiptKey
+}
+
+// The pure join of the three readings: what the controller hands it is what it read.
+fn claim_set_receipt(
+  attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+  lease: LeaseIdentity,
+  decode: ClaimSetResultsDecode,
+  claims: FreeSemigroup<Label>,
+  revision: VerifiedGitCommitTree,
+  runtime: UnitRuntimeReading,
+  completed_at: Timestamp,
+) -> ClaimSetReceiptOutcome {
+  match admit_claim_set_results(decode: decode, claims: claims, revision: revision) {
+    ClaimSetResultsAdmitted { results: rs, outputs: o } => match runtime {
+      UnitRuntimeUnread { detail: d } => ClaimSetUnreceipted { cause: RuntimeNotMeasured { detail: d } }
+      UnitRuntimeMeasured { billable: b } => ClaimSetReceipted {
+        receipt: Receipt {
+          id: FabricIdentity { principal: attempt.principal, key: claim_set_receipt_key(attempt: attempt, lease: lease, outputs: o) },
+          attempt: attempt,
+          lease: lease,
+          payload: ExecutionReceipt { step_id: "claim-set", outputs: o, billable: b, completed_at: completed_at },
+        },
+        outputs: o,
+        results: rs,
+      }
+    }
+    refused => ClaimSetUnreceipted { cause: ResultsNotAdmitted { admission: refused } }
+  }
+}
+
+type ClaimSetJobEnd
+  = ClaimSetJobSettled { receipt: Receipt<NonEmptyStr>, results: List<ClaimSetResult>, settlement: CellGrantSettlement }
+  | ClaimSetJobUnreceipted { cause: ClaimSetNotReceipted }
+
+// THE CONTROLLER'S CALL once the attempt's VMM has exited and its teardown produced the readiness.
+// The two readings are the caller's: the revision job takes them in its await step, before teardown
+// destroys the jail and the unit, and hands them here.
+fn claim_set_receipt_and_settle(
+  root: NonEmptyStr,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+  lease: LeaseIdentity,
+  claims: FreeSemigroup<Label>,
+  revision: VerifiedGitCommitTree,
+  decode: ClaimSetResultsDecode,
+  runtime: UnitRuntimeReading,
+  readiness: CellReadiness,
+  completed_at: Timestamp,
+) -> ClaimSetJobEnd {
+  match claim_set_receipt(
+    attempt: attempt,
+    lease: lease,
+    decode: decode,
+    claims: claims,
+    revision: revision,
+    runtime: runtime,
+    completed_at: completed_at,
+  ) {
+    ClaimSetUnreceipted { cause: c } => ClaimSetJobUnreceipted { cause: c }
+    ClaimSetReceipted { receipt: r, outputs: _, results: rs } => ClaimSetJobSettled {
+      receipt: r,
+      results: rs,
+      settlement: settle_cell_grant(root: root, work: work, offer: offer, receipt: r, readiness: readiness),
+    }
+  }
+}

@@ -1,5 +1,6 @@
 module gunbc.build_cache.build_cache_endpoint_observe
 
+import std.optional { Absent, Present }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.decimal { decimal_digit_char }
 import std.nat { Nat }
@@ -15,8 +16,8 @@ import extdeps.linux.proc_pid_stat {
   StartTimeUnparseable,
 }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { cat_command, readlink_command }
-import extdeps.tools.stat { stat_file_type_command, stat_owner_user_name_command }
+import extdeps.tools.gnu_coreutils { cat_command, readlink_command, ls_almost_all_one_per_line_command, ls_long_directory_command }
+import extdeps.tools.findutils { find_path_is_socket_command }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
 import extdeps.linux.proc_self_cgroup {
   ProcPidCgroupMembershipRecord,
@@ -192,7 +193,7 @@ fn boot_id_read_command() -> ArgvCommand {
 }
 
 fn endpoint_path_kind_command(path: NonEmptyStr) -> ArgvCommand {
-  stat_file_type_command(path: path as String)
+  find_path_is_socket_command(path: path as String)
 }
 
 fn proc_pid_path(pid: Nat, leaf: String) -> String {
@@ -207,8 +208,23 @@ fn owner_proc_stat_command(pid: Nat) -> ArgvCommand {
   cat_command(path: proc_pid_path(pid: pid, leaf: "stat"))
 }
 
+// THE OWNER IS READ FROM `ls -ld`, NOT `stat -c %U`: `%` cannot cross the fleet SSH edge
+// (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed), so over FleetSsh and SshShell
+// the old read never executed and every remote owner read "unread". ls(1)'s long format puts the owner
+// name in the third field of the one line it prints for the path itself (extdeps.tools.gnu_coreutils
+// ls_long_directory_command); owner_principal_of_ls_read takes that field and nothing else.
 fn owner_principal_command(pid: Nat) -> ArgvCommand {
-  stat_owner_user_name_command(path: proc_pid_path(pid: pid, leaf: ""))
+  ls_long_directory_command(path: proc_pid_path(pid: pid, leaf: ""))
+}
+
+fn owner_principal_of_ls_read(read: HostRead) -> String {
+  match read {
+    HostReadFailed { detail: _ } => "unread"
+    HostReadText { text: t } => {
+      let words = filter(split(s: trim(t), delimiter: " "), w => w != "")
+      match words.skip(n: 2).first() { Absent => "unread" Present { value: o } => o }
+    }
+  }
 }
 
 fn owner_executable_command(pid: Nat) -> ArgvCommand {
@@ -395,36 +411,70 @@ fn pid_of_proc_fd_path(fd_path: String) -> EndpointListenerRead {
   }
 }
 
-// `stat -c %F` PRINTS THE OBJECT TYPE AS A WORD -- `socket`, `regular file`, `directory`, `symbolic
-// link` -- so the path axis is decided by reading it rather than by a chain of test -e/-S calls.
-// One argv, one round trip, and the non-socket answer arrives NAMED: EndpointPathConflict quotes
-// the word, so an operator sees that the endpoint path is a directory rather than merely that it is
-// not a socket. A nonzero exit is absence, which is the one place in this module where a failed
-// command is a positive reading rather than an unavailability -- and it is safe exactly because
-// stat's failure to stat a path it was asked for by name means no object is there.
+// THE PATH AXIS IS ASKED AS ONE PORTABLE TEST, NOT A FORMAT. It was `stat -c %F`, whose `%` the fleet
+// SSH edge refuses (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed), so over
+// FleetSsh and SshShell this read never executed and every remote endpoint read PathKindUnreadable.
+// `extdeps.tools.findutils` `find_path_is_socket_command` asks the same question in admitted words:
+// the operand printed is a socket; exit 0 with nothing printed is an object that is not a socket
+// (its kind is no longer named, a loss stated rather than hidden).
+//
+// A NONZERO EXIT IS NOT ABSENCE. find fails the same way on ENOENT, EACCES on an ancestor, ELOOP and
+// EIO, so reading every failure as "no object there" was fail-open: an unlink or a unit start would
+// proceed over a socket nobody could look at. Absence is established by the PARENT'S LISTING, read
+// only when find failed: the parent omitting the entry is absent; the parent listing it, or a parent
+// that could not be listed, is unreadable.
+type EndpointParentListing
+  = ParentListsEntry
+  | ParentOmitsEntry
+  | ParentListingUnread { detail: NonEmptyStr }
 
-data stat_socket_type_word: String = "socket"
+// An empty name (a path ending in `/`) names no entry, so the parent cannot say it is absent: it refuses
+// as unread (review 80635), and the listing includes dot-prefixed entries (ls -A) so a hidden socket
+// whose find failed is never read as absent.
+fn endpoint_parent_listing_of(exit_success: Bool, stdout: String, stderr: String, name: String) -> EndpointParentListing {
+  if trim(name) == "" {
+    ParentListingUnread { detail: "the endpoint path ends in `/`, so it names no entry its parent could list" as NonEmptyStr }
+  } else if !exit_success {
+    ParentListingUnread { detail: concat("the endpoint path's parent could not be listed: ", trim(stderr)) as NonEmptyStr }
+  } else if any(split(s: stdout, delimiter: "\n"), e => trim(e) == name) {
+    ParentListsEntry
+  } else {
+    ParentOmitsEntry
+  }
+}
 
-fn path_kind_of_stat_read(read: HostRead, exit_success: Bool) -> EndpointPathKind {
+fn path_kind_of_socket_test_read(read: HostRead, exit_success: Bool, parent: EndpointParentListing) -> EndpointPathKind {
   if exit_success == false {
-    PathKindAbsent
+    match parent {
+      ParentOmitsEntry => PathKindAbsent
+      ParentListsEntry => PathKindUnreadable { detail: "find failed on an endpoint path its parent lists, so the object is there and could not be tested" as NonEmptyStr }
+      ParentListingUnread { detail: d } => PathKindUnreadable { detail: d }
+    }
   } else {
     match read {
       HostReadFailed { detail: d } => PathKindUnreadable { detail: d }
-      HostReadText { text: t } => {
-        let word = trim(t)
-        if (word == stat_socket_type_word) {
-          PathKindSocket
-        } else if word == "" {
-          PathKindUnreadable {
-            detail: "stat reported success over the endpoint path and printed no object type" as NonEmptyStr,
-          }
+      HostReadText { text: t } =>
+        if trim(t) == "" {
+          PathKindOtherObject { described: "an object that is not a socket (find -type s did not match)" as NonEmptyStr }
         } else {
-          PathKindOtherObject { described: word as NonEmptyStr }
+          PathKindSocket
         }
-      }
     }
   }
+}
+
+fn endpoint_path_parent(path: String) -> String {
+  let parts = split(s: path, delimiter: "/")
+  let n = length(parts)
+  if n <= 2 { "/" } else { join(parts.take(n: n - 1), "/") }
+}
+
+fn endpoint_path_name(path: String) -> String {
+  match split(s: path, delimiter: "/").last() { Absent => path Present { value: l } => l }
+}
+
+fn endpoint_parent_listing_command(path: NonEmptyStr) -> ArgvCommand {
+  ls_almost_all_one_per_line_command(path: endpoint_path_parent(path: path as String))
 }
 
 fn currency_of_boot_id_read(read: HostRead) -> ObservationCurrency {
@@ -728,7 +778,7 @@ fn endpoint_owner_observation(
             instance: instance,
             owner: who,
             executable: read_text_or(read: reads.owner_executable, fallback: "unread") as NonEmptyStr,
-            principal: read_text_or(read: reads.owner_principal, fallback: "unread") as NonEmptyStr,
+            principal: owner_principal_of_ls_read(read: reads.owner_principal) as NonEmptyStr,
             owner_context: owner_context_of_cgroup_read(instance: instance, read: reads.owner_cgroup),
             memory_limits: none,
             memory_events: none,

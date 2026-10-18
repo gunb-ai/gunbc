@@ -1,7 +1,7 @@
 module v2.std.language_model
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.collection { PointwisePower }
+import std.algebra { PointwisePower }
 import v2.std.grammar {
   ParseGrammar,
   VoidGrammar,

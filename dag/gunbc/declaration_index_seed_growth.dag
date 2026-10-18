@@ -774,7 +774,7 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // TypeOccurrence, and the stamp is on the SLOT, so the generic-over-the-form property the first
 // construction gained is precisely the property the transport already owned. The first construction
 // was reimplementing stamp_parsed_inferred from its own output. The seam is one argument wide:
-// CensusFillParse already carries occurrence_transport and both callers already hold one at the
+// ParsedRevisionDeclarations already carries occurrence_transport and both callers already hold one at the
 // line they call record_from_module, so the fact was PRODUCED AND DISCARDED at a return boundary
 // rather than absent.
 //
