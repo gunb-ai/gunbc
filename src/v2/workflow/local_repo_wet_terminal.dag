@@ -727,6 +727,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_sticky_bit_lands_where_the_model_puts_it_and_still_lets_the_worker_work" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_sticky_bit_lands_where_the_model_puts_it_and_still_lets_the_worker_work",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_maintenance_pair_repacks_and_leaves_a_packed_refs_file" },
       entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
       function: "the_maintenance_pair_repacks_and_leaves_a_packed_refs_file",

@@ -14,6 +14,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_worker_git_subtree_migration,
   dashboard_git_worker_subtree_path, dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_directory_mode_is_granted, dashboard_git_worker_file_mode_is_granted,
+  dashboard_git_worker_subtree_directory_mode_is_granted, dashboard_git_worker_subtree_needs_sticky,
+  dashboard_git_worker_granted_shared_directory_mode, posix_mode_sticky_bit,
   dashboard_git_worker_directory_mode_is_unmigrated,
   dashboard_git_maintenance_unit_stem, dashboard_git_maintenance_principal,
   dashboard_git_maintenance_timer_on_calendar, dashboard_git_maintenance_owned_config_keys,
@@ -342,6 +344,7 @@ test fn the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_
 // 509 == 0775 (256+128+64+32+16+8+4+1), and the decimal is the read; the octal is the spelling.
 data measured_srv1_unmigrated_mode: Int = 509
 data granted_directory_mode_expected: Int = 1533
+data granted_shared_directory_mode_expected: Int = 2045
 data granted_file_mode_expected: Int = 436
 data world_writable_file_mode: Int = 438
 
@@ -374,6 +377,12 @@ fn anchored_pruned_paths(instance: HostDashboardInstance, child: NonEmptyStr) ->
   map(xs: dashboard_git_worker_subtree_confined_children(child: child), f: name => concat(target, concat("/", name)))
 }
 
+// ONE ANCHORED PRUNE PATH, read from the model's own confined-children list rather than authored, so
+// the claim and the builder cannot agree on a wrong name.
+fn objects_pruned_path(instance: HostDashboardInstance, name: String) -> String {
+  concat(lab_subtree_target(instance: instance, child: ".git/objects" as NonEmptyStr), concat("/", name))
+}
+
 test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let steps = dashboard_instance_worker_git_subtree_migration(instance: lab)
@@ -383,9 +392,12 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
   // and vice versa. Within objects, the re-group arm (chgrp) and the mode arm (chmod g+w, and g+s guarded
   // by -type d) are named separately because each carries a bit the other legitimately lacks.
   let objects_child: NonEmptyStr = ".git/objects"
+  let refs_child: NonEmptyStr = ".git/refs"
+  let logs_child: NonEmptyStr = ".git/logs"
   let objects_target = lab_subtree_target(instance: lab, child: objects_child)
   let objects_paths = anchored_pruned_paths(instance: lab, child: objects_child)
   let objects_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == objects_target))
+  let chgrp_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == "chgrp"))
   let objects_chgrp_steps = filter(xs: objects_steps, predicate: c => any(c.arguments, a => a == "chgrp"))
   let objects_chmod_steps = filter(xs: objects_steps, predicate: c => any(c.arguments, a => a == "g+s"))
   let chmod_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == "g+s"))
@@ -396,6 +408,21 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     && !dashboard_git_worker_directory_mode_is_granted(mode: measured_srv1_unmigrated_mode)
     && dashboard_git_worker_directory_mode_is_granted(mode: granted_directory_mode_expected)
     && dashboard_git_worker_file_mode_is_granted(mode: granted_file_mode_expected)
+    //     AND THE STICKY-BIT SHAPE, which is what closes bright-moth-475's 2026-10-18 finding: under a
+    //     plain 02775 objects/, rename(2) checks the PARENT, so a confined worker can `mv objects/pack
+    //     objects/pack.x` (the 0555 on pack/ is no bar) and plant a symlink there -- after which the
+    //     ROOT maintenance job writes new packs into, and `repack -d` deletes packs from, a directory the
+    //     worker chose. 03775 keeps the create bit and takes away the rename/unlink of entries the
+    //     caller does not own. THE PREDICATE IS PER SUBTREE: objects/ must be 2045 and refs/ and logs/
+    //     must be 1533, because a global "is it 02775" would make the fix invisible to the model -- the
+    //     receipt would refuse the tree that is actually correct.
+    && dashboard_git_worker_subtree_directory_mode_is_granted(child: objects_child) == granted_shared_directory_mode_expected
+    && dashboard_git_worker_subtree_directory_mode_is_granted(child: refs_child) == granted_directory_mode_expected
+    && dashboard_git_worker_subtree_directory_mode_is_granted(child: logs_child) == granted_directory_mode_expected
+    && !dashboard_git_worker_directory_mode_is_granted(mode: granted_shared_directory_mode_expected)
+    && dashboard_git_worker_subtree_needs_sticky(child: objects_child)
+    && !dashboard_git_worker_subtree_needs_sticky(child: refs_child)
+    && !dashboard_git_worker_subtree_needs_sticky(child: logs_child)
     && !dashboard_git_worker_file_mode_is_granted(mode: world_writable_file_mode)
     // a loose object is 0444 (292 = 256+32+4), read-only to everyone including its owner: git does
     // that on purpose, so it is NOT a "granted file" and does not need to be -- nobody writes an
@@ -409,11 +436,17 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
       let target = join([lab.repo_root as String, "/", child as String], "")
       occurrences(words: all_args, wanted: target) == 2
     })
-    // (c) it re-GROUPS and never re-OWNS: the shared attempt group is named, --no-dereference is on, and
-    //     no step carries chown or a user:group form. Ownership stays the service user's everywhere, so
-    //     the only thing that moves is the group.
-    && all(steps, c => any(c.arguments, a => a == (fleet_posix_worker_shared_group_name as String)))
-    && all(steps, c => any(c.arguments, a => a == "--no-dereference"))
+    // (c) it re-GROUPS and never re-OWNS: the shared attempt group is named and --no-dereference is on
+    //     ON THE RE-GROUP ARM, and no step carries chown or a user:group form, so ownership stays the
+    //     service user's everywhere and the only thing that moves is the group.
+    //     QUANTIFIED OVER THE ARM THAT CARRIES THOSE WORDS, not over every step: chmod takes no group
+    //     operand and no --no-dereference (its -R-free walk already refuses symlinks with -not -type l),
+    //     and an earlier version of this leg asserted both over all steps and was refuted by the six
+    //     mode steps doing exactly what chmod should. A leg over a word list has to say which arm owns
+    //     which word, or it tests the claim's own guess about the argv instead of the argv.
+    && all(chgrp_steps, c => any(c.arguments, a => a == (fleet_posix_worker_shared_group_name as String)))
+    && all(chgrp_steps, c => any(c.arguments, a => a == "--no-dereference"))
+    && length(chgrp_steps) == length(dashboard_git_worker_directory_children)
     && !any(all_args, a => a == "chown")
     // (d) it asserts BOTH bits the commit needs, on the RIGHT steps: g+w on everything the walk reaches,
     //     and g+s on DIRECTORIES ONLY, guarded by -type d on the mode step -- the guard is what keeps a
@@ -423,9 +456,18 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     PARENTHESES BALANCE: at 2dc2b8de the mode step opened `(` before -type d and never closed it,
     //     and find refused the whole expression ("Expected a )"), so the chmod never ran while every
     //     word-list claim stayed green. A word list that cannot be executed is not a grant.
-    && all(steps, c => any(c.arguments, a => a == "g+w"))
-    && any(steps, c => any(c.arguments, a => a == "g+s"))
+    && all(chmod_steps, c => any(c.arguments, a => a == "g+w"))
+    && all(chmod_steps, c => any(c.arguments, a => a == "g+s"))
+    && length(chmod_steps) == length(dashboard_git_worker_directory_children)
     && all(chmod_steps, c => any(c.arguments, a => a == "-type") && any(c.arguments, a => a == "d"))
+    //     ...and the sticky action, where it belongs: on objects' mode step only, behind its own
+    //     -type d guard, so a file can never receive it (a sticky file is meaningless and
+    //     RestrictSUIDSGID-adjacent noise), and NOT on refs/, logs/, or the per-attempt entry -- the
+    //     latter because root's `git worktree add` leaves root-owned index/HEAD there and the worker's
+    //     first `git add` renames index.lock OVER index, which +t would refuse with EPERM.
+    && all(objects_chmod_steps, c => any(c.arguments, a => a == "a+t"))
+    && all(objects_chmod_steps, c => occurrences(words: c.arguments, wanted: "(") == occurrences(words: c.arguments, wanted: ")"))
+    && all(refs_and_logs_steps, c => !any(c.arguments, a => a == "a+t" || a == "+t" || a == "1777"))
     && all(steps, c => occurrences(words: c.arguments, wanted: "(") == occurrences(words: c.arguments, wanted: ")"))
     && !any(all_args, a => a == "a+w" || a == "o+w")
     // (e) THE CONFINED SUBTREES ARE PRUNED BY NAME, ANCHORED TO THE TARGET, before the walk -- so the
@@ -435,9 +477,45 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     refs/heads/pack are legitimate refs. THE BARE PATTERNS ARE GONE: `*/pack` and friends matched
     //     at ANY depth, so at 2dc2b8de the walk pruned a branch named pack, info, hooks or branches and
     //     its owner could never update it. The prune is `<target>/pack`, a path, not a pattern.
-    && all(steps, c => occurrences(words: c.arguments, wanted: "-path") == occurrences(words: c.arguments, wanted: "-prune"))
+    //     THE ARITHMETIC OF ONE PRUNE GROUP, stated correctly this time. A group of N confined names
+    //     carries N `-path` tests and exactly ONE `-prune` (the group is pruned as a unit), so an
+    //     earlier version of this leg -- "-path count == -prune count" -- was false BY CONSTRUCTION for
+    //     every objects step and is the reason claim (2) stayed red at ec03cef3ab2 while its own comment
+    //     warned that a leg must name which arm owns which word. The real shape: a step that prunes
+    //     nothing carries neither word; a step that prunes carries at least one -path and exactly one
+    //     -prune; and objects' steps carry exactly as many -path tests as the model declares confined
+    //     children, so a confined child that quietly stopped being pruned is caught by NAME below and
+    //     by COUNT here.
+    && all(steps, c => {
+      let paths = occurrences(words: c.arguments, wanted: "-path")
+      let prunes = occurrences(words: c.arguments, wanted: "-prune")
+      if paths == 0 { prunes == 0 } else { prunes == 1 }
+    })
+    && all(objects_steps, c =>
+      occurrences(words: c.arguments, wanted: "-path")
+        == length(dashboard_git_worker_subtree_confined_children(child: objects_child)))
     && all(objects_steps, c => all(objects_paths, p => any(c.arguments, a => a == p)))
     && all(refs_and_logs_steps, c => !any(c.arguments, a => a == "-prune"))
+    // (e-2) THE PRUNES ARE SEPARATED BY A VISIBLE "-o", AS ONE OR-GROUP. This leg is the shape that
+    //     made a REAL production defect visible, and it needs BOTH confined names to do it: the fold
+    //     that joins the prune terms once decided each term's separator by counting "-o" words in its
+    //     accumulator, so the second term was emitted WITHOUT its separator and the group rendered
+    //     `( -path <t>/pack -path <t>/info )` -- an AND of two -path tests on one path, which never
+    //     holds, so find pruned NOTHING and the migration re-grouped and g+w'd objects/pack and
+    //     objects/info: a confined attempt with a writable objects/info/alternates. With ONE pruned
+    //     name the fold is correct by accident and the bug is invisible; the assertion below therefore
+    //     pins the whole eight-word window, names in order, separator included, over the NUL-joined
+    //     word list (the idiom this repo already uses for argv shape). A word-set assertion could not
+    //     have caught it: every word was present, only the connective was missing.
+    && all(objects_steps, c => string_contains(
+      s: join(c.arguments, separator: "\0"),
+      pattern: join(
+        ["(", "-path", objects_pruned_path(instance: lab, name: "pack"),
+         "-o", "-path", objects_pruned_path(instance: lab, name: "info"),
+         ")", "-prune", "-o"],
+        separator: "\0",
+      ),
+    ))
     //     WHY THERE IS NO "no -path outside objects" LEG, which is the shape this line once had and why
     //     it was wrong to write: a walk target is ITSELF one argument, and this instance's target is
     //     `.../source/.git/logs` -- so a predicate forbidding the word `-path` anywhere in a refs or logs
@@ -451,7 +529,24 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     // (f) the walk is BOUNDED and never follows a link: a depth cap, and symlinks excluded. (chgrp
     //     --no-dereference alone is not enough: chmod -R follows, so a link under objects/ could
     //     otherwise carry a mode change to a file outside the repository.)
-    && all(steps, c => any(c.arguments, a => a == "-maxdepth") && any(c.arguments, a => a == "-not") && any(c.arguments, a => a == "l"))
+    //     THE BOUND IS CHECKED TO BE A BOUND, not merely present: an earlier leg asked only whether the
+    //     word "-maxdepth" appeared anywhere, which a `find . -maxdepth` (no operand) would satisfy --
+    //     and the operand is where the failure hides. So each step must carry the operand IMMEDIATELY
+    //     after the flag, it must parse as a positive number, and it must be the depth the model
+    //     DECLARES. A "0" there would walk nothing at all: the migration would issue cleanly, the
+    //     readback would come back empty, and the granted subtree would stay 0775 forever -- the exact
+    //     silent no-op the last three fixes in this PR were about.
+    && all(steps, c => any(c.arguments, a => a == "-not") && any(c.arguments, a => a == "l"))
+    //     THE OPERAND SITS WHERE FIND REQUIRES IT, and it is the declared depth. A word-list leg that
+    //     only asks "is -maxdepth present" is satisfied by `find . -maxdepth` with no operand at all --
+    //     find then errors, or with the operand somewhere else in the argv where find will not read it.
+    //     So: flag and operand ADJACENT, asserted as a two-word window over the NUL-joined argv (the
+    //     same idiom the prune-window leg uses, and for the same reason -- no index arithmetic, no
+    //     off-by-one of its own), and equal to the depth the model declares.
+    && all(steps, c => string_contains(
+      s: join(c.arguments, separator: "\0"),
+      pattern: concat(concat("-maxdepth\0", to_string(dashboard_git_worker_subtree_walk_depth)), "\0")
+    ))
     // (g) PROD IS UNTOUCHED: the staged arm declares no migration and no posture step at all.
     && length(dashboard_instance_worker_git_subtree_migration(instance: srv1_live_dashboard_instance())) == 0
 }
