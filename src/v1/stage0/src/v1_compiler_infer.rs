@@ -17951,7 +17951,7 @@ pub fn expected_optional_instance(
 
 pub fn std_optional_present_arm(scope: Rc<InferScope>) -> Option<Rc<Node>> {
     match crate::v1_compiler_infer_env::declaration_node_of_ref(
-        crate::v1_compiler_infer_types::std_optional_declaration_ref(),
+        optional_declaration_ref(),
         scope.type_env.clone(),
     ) {
         std::option::Option::None => std::option::Option::None,
@@ -18115,7 +18115,7 @@ pub fn std_optional_payload_node(
 ) -> Option<Rc<Node>> {
     {
         let declaration = crate::v1_compiler_infer_env::declaration_node_of_ref(
-            crate::v1_compiler_infer_types::std_optional_declaration_ref(),
+            optional_declaration_ref(),
             scope.type_env.clone(),
         );
         match declaration.clone() {

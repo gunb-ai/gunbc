@@ -3,6 +3,7 @@ module v1.compiler.infer_types
 import std.optional { Present, Absent, Optional }
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import gunbc.structural_realization_bindings { optional_declaration_ref }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
 import v1.compiler.type_head_exposure { type_declaration_identity_key }
 
@@ -1020,14 +1021,10 @@ fn declaration_carried_through_resolution(n: Node, hops: Int) -> DeclarationRef?
   }
 }
 
-fn std_optional_declaration_ref() -> DeclarationRef {
-  decl_ref(module_path: "std.optional", decl_name: "Optional")
-}
-
 // CANONICAL DeclarationRef EQUALITY against the one reference the kernel mint is bound to; no
 // module-path or name part is compared on its own.
 fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
-  d == std_optional_declaration_ref()
+  d == optional_declaration_ref
 }
 
 fn applied_arguments_identical(left_args: List<Node>, right_args: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {

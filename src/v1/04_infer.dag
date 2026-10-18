@@ -11229,7 +11229,7 @@ fn expected_optional_instance(expected: Node?, scope: InferScope) -> Node? {
 // std.optional::Optional that carries a member, and that member's name. Neither is a spelling
 // compared against "Present" / "value".
 fn std_optional_present_arm(scope: InferScope) -> Node? {
-  match declaration_node_of_ref(d: std_optional_declaration_ref(), env: scope.type_env) {
+  match declaration_node_of_ref(d: optional_declaration_ref, env: scope.type_env) {
     Absent => none
     Present { value: decl } => decl.children |> filter(a => (a.children |> count) > 0) |> first
   }
@@ -11319,7 +11319,7 @@ fn optional_reading_of_kernel_mint(kernel: String) -> OptionalDeclarationReading
 // receives the peeled node; a list literal only when that node admits a list, so
 // `Present { value: [] }` under `Map<K, V>?` still answers none; a call is unchanged.
 fn std_optional_payload_node(exp: Node, type_name: String, field_name: String, scope: InferScope) -> Node? {
-  let declaration = declaration_node_of_ref(d: std_optional_declaration_ref(), env: scope.type_env)
+  let declaration = declaration_node_of_ref(d: optional_declaration_ref, env: scope.type_env)
   match declaration {
     Absent => none
     Present { value: decl } =>

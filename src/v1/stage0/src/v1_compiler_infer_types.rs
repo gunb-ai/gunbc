@@ -4,6 +4,7 @@
 use self::TextJudgment::*;
 use self::TextNotAskedReason::*;
 use self::TypeResolutionVerdict::*;
+pub use crate::gunbc_structural_realization_bindings::optional_declaration_ref;
 use crate::std_algebra::AlgebraProfile::{
     ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
     FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile, FreeMonoidScalarProfile,
@@ -2483,12 +2484,8 @@ pub fn declaration_carried_through_resolution(
     }
 }
 
-pub fn std_optional_declaration_ref() -> Rc<DeclarationRef> {
-    crate::std_decl_ref::decl_ref("std.optional".to_string(), "Optional".to_string())
-}
-
 pub fn declaration_is_std_optional(d: Rc<DeclarationRef>) -> bool {
-    (d.clone() == std_optional_declaration_ref())
+    (d.clone() == optional_declaration_ref())
 }
 
 pub fn applied_arguments_identical(
