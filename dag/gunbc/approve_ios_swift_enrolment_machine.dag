@@ -1,7 +1,8 @@
 module gunbc.approve_ios_swift_enrolment_machine
 
-import std.types { NonEmptyStr, String, List, Bool }
-import std.algebra { list_append, flat_map }
+import std.types { NonEmptyStr, String, List }
+import std.logic { Bool }
+import std.algebra { list_append }
 import std.optional { Present }
 import gunbc.auth.approval_device_wire { EnrolmentRefusalWire, enrolment_refusal_wire_label }
 import gunbc.approve_ios_enrolment_machine {
