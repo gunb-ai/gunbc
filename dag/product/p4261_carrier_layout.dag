@@ -2,7 +2,7 @@ module product.p4261_carrier_layout
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { Volt, Ampere, Micrometer, volt, ampere, micrometer, volt_count, micrometer_count }
+import std.measure { Volt, Ampere, Micrometer, volt, ampere, micrometer, volt_count, micrometer_count, milliampere }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
 import extdeps.electronic_component.types {
@@ -44,12 +44,24 @@ import product.electrical.connectivity {
   terminal_ref,
   terminal_ref_equal,
 }
+import product.electrical.source_draw {
+  SourceDrawObservation,
+  SourceDrawStanding,
+  SourceSetting,
+  OverCurrentShutoffArmed,
+  HeldBelowLimit,
+  source_draw_standing,
+  source_draw_text,
+  is_draw_bounded,
+  is_draw_contradicted,
+}
 import product.electrical.continuity {
   ReachabilityGraph,
   reachability_graph,
   reach,
   BenchConditions,
   Unpowered,
+  Energized,
   ModuleRemoved,
   EvidenceRef,
   OperatorStatement,
@@ -296,6 +308,7 @@ type MeasuredBoard {
   asset: PhysicalAssetIdentity
   continuity: List<ContinuityObservation>
   diode_readings: List<DiodeModeObservation>
+  source_draws: List<SourceDrawObservation>
 }
 
 // The input under study: a mapped housing and the terminal of the fuse beside it. The fused side is the
@@ -663,6 +676,78 @@ fn component_junction(layout: CarrierLayoutObservation, c: InstalledComponent) -
   }
 }
 
+// ── ENERGIZED INPUT DRAW ──────────────────────────────────────────────────────────────────────
+//
+// A source reading counts for the input only when its positive lead sat on the input's fused side and
+// its negative lead on the return side, as the established polarity places them; a reading elsewhere is
+// about another pair of terminals. Among the readings on the input, any contradicted bound contradicts
+// the input's; otherwise the bounded ones establish it. A bound says how much the board drew from the
+// input at most, never which circuit drew it or what the input's nominal is.
+
+type InputDrawGap
+  = NoEnergizedInputReading
+  | DrawPolarityNotEstablished
+  | InputReadingsInconclusive { standings: List<SourceDrawStanding> }
+
+type InputDrawStanding
+  = InputDrawBounded { bounded: List<SourceDrawStanding>, observed: List<SourceDrawStanding> }
+  | InputDrawContradicted { contradicted: List<SourceDrawStanding>, observed: List<SourceDrawStanding> }
+  | InputDrawUnestablished { gaps: List<InputDrawGap> }
+
+fn on_side(h: ConnectorHousing, side: RowSide, t: ElectricalTerminalRef) -> Bool {
+  any(side_terminals(h: h, side: side), x => terminal_ref_equal(a: x, b: t))
+}
+
+fn draws_on_input(b: MeasuredBoard, input: InputConnector, fused: RowSide, ret: RowSide) -> List<SourceDrawObservation> {
+  filter(b.source_draws, o => on_side(h: input.housing, side: fused, t: o.feed) && on_side(h: input.housing, side: ret, t: o.return_terminal))
+}
+
+fn input_draw_from(observed: List<SourceDrawStanding>) -> InputDrawStanding {
+  let contradicted = filter(observed, s => is_draw_contradicted(s: s))
+  let bounded = filter(observed, s => is_draw_bounded(s: s))
+  match contradicted.first() {
+    Present { value: _ } => InputDrawContradicted { contradicted: contradicted, observed: observed }
+    Absent => match bounded.first() {
+      Present { value: _ } => InputDrawBounded { bounded: bounded, observed: observed }
+      Absent => match observed.first() {
+        Absent => InputDrawUnestablished { gaps: [NoEnergizedInputReading] }
+        Present { value: _ } => InputDrawUnestablished { gaps: [InputReadingsInconclusive { standings: observed }] }
+      }
+    }
+  }
+}
+
+fn input_draw(layout: CarrierLayoutObservation) -> InputDrawStanding {
+  match layout.measured {
+    Absent => InputDrawUnestablished { gaps: [NoEnergizedInputReading] }
+    Present { value: b } => match layout.input {
+      Absent => InputDrawUnestablished { gaps: [NoEnergizedInputReading] }
+      Present { value: input } => match input_polarity(layout: layout) {
+        PolarityEstablished { fused_side, return_side, fused: _, returns: _, isolation: _ } =>
+          input_draw_from(observed: map(draws_on_input(b: b, input: input, fused: fused_side, ret: return_side), o => source_draw_standing(o: o)))
+        PolarityContradicted { readings: _ } => InputDrawUnestablished { gaps: [DrawPolarityNotEstablished] }
+        PolarityUnestablished { gaps: _ } => InputDrawUnestablished { gaps: [DrawPolarityNotEstablished] }
+      }
+    }
+  }
+}
+
+fn input_draw_gap_text(g: InputDrawGap) -> String {
+  match g {
+    NoEnergizedInputReading => "no energized reading across the input"
+    DrawPolarityNotEstablished => "the input's polarity is not established, so no reading is placed across it"
+    InputReadingsInconclusive { standings } => join(map(standings, s => source_draw_text(s: s)), "; ")
+  }
+}
+
+fn input_draw_text(d: InputDrawStanding) -> String {
+  match d {
+    InputDrawBounded { bounded, observed: _ } => join(["energized across its fused and return rows, module removed: ", join(map(bounded, s => source_draw_text(s: s)), "; ")], "")
+    InputDrawContradicted { contradicted, observed: _ } => join(["energized across its fused and return rows, the draw bound is CONTRADICTED: ", join(map(contradicted, s => source_draw_text(s: s)), "; ")], "")
+    InputDrawUnestablished { gaps } => join(["no energized draw established (", join(map(gaps, g => input_draw_gap_text(g: g)), "; "), ")"], "")
+  }
+}
+
 // ── HYPOTHESES (prose leads, consumed by no deduction) ───────────────────────────────────────
 
 type InvestigationHypothesis {
@@ -686,8 +771,20 @@ data p4261_j20_main_input_hypothesis: InvestigationHypothesis = InvestigationHyp
   sources: [
     "the E1's measured board puts F300 (75 V / 100 A) and the probed input-stage MOSFET's drain -- its tab and pin 4 on the IPB017N10N5LF pinout -- on J20's fused side, with none of that MOSFET's pins reaching ground: a hot-swap stage's shape, read on inferred probe points",
     "J20's nine fused positions on a 3.0 mm-pitch housing could carry a 1 kW module's input current at 48-54 V, where its 12 A F1 could not -- so F1 is either a branch or the input is elsewhere",
+    "energized 2026-10-18 with the module removed, J20 fed a real load at up to 52 V without tripping a 100 mA over-current limit (input_draw): it accepts a 48-54 V-class voltage, and the main stage drew nothing past the limit",
   ],
   decided_by: "where the probed MOSFET's sources go: terminal readings from its source pins toward the module receptacles' power contacts",
+}
+
+data p4261_standby_domain_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "J20 powers an always-on standby or bias domain on the E1 while the main power path is withheld -- by an enable through the grey connectors' sideband contacts, by management logic near U4, or by module presence through the module receptacles",
+  sources: [
+    "the E1's energized J20 draw stood above the open reading and below the limit (input_draw): something on the board draws from J20, and nothing that would exceed 100 mA did",
+    "the draw was read near 11 mA over most of the ramp and 13 mA at 52 V, with no per-step table recorded: a regulated load and a resistive one are both consistent with those readings, so no regulator is established",
+    "brief readings near 20 mA on each upward step that fell back: consistent with input capacitance charging, inferred and not read",
+    "had the main conversion path started, its draw would have exceeded the 100 mA limit and tripped the armed shutoff",
+  ],
+  decided_by: "where the 48 V path stops -- J20's rail, both ends of F300, and the input MOSFETs' drain, gate and source each read to J20's return while energized -- and the identity of the controller that drives those MOSFETs' gates, read from its marking",
 }
 
 // ── THE K1 UNIT (listing photographs; design p4261-k1-a) ────────────────────────────────────
@@ -898,6 +995,34 @@ fn fet_terminal(name: NonEmptyStr) -> ElectricalTerminalRef {
   e1_terminal(c: e1_input_fet, name: name)
 }
 
+// THE ENERGIZED READING (2026-10-18). The Jesverty SPS-6005V fed J20 through two bare-wire leads, red in a
+// cavity of the row away from the latch and black in a latch-side cavity, which cavities unrecorded, so
+// each lead's point is inferred onto its row's position 1 as the continuity readings' are. The limit was
+// set to 0.10 A on shorted leads with over-current shutoff armed; the operator stepped the voltage to
+// 52 V and the shutoff did not trip. The draw is the display at 52 V; the open reading is the same
+// setting with the board disconnected. No per-step table was recorded.
+data e1_energized_bench: BenchConditions = BenchConditions { power: Energized, module: ModuleRemoved }
+data e1_red_lead_basis: NonEmptyStr = "the red lead sat in a J20 cavity of the row away from the latch (2026-10-18 'put a red/black wire in ground/rail of the j20 slot'); which cavity is unrecorded and position 1 stands for it"
+data e1_black_lead_basis: NonEmptyStr = "the black lead sat in a latch-side J20 cavity; which cavity is unrecorded and position 1 stands for it"
+
+data e1_j20_draw: SourceDrawObservation = SourceDrawObservation {
+  asset: p4261_e1_b,
+  feed: e1_rail_ref,
+  return_terminal: e1_ground_ref,
+  leads: both_points_inferred(first_basis: e1_red_lead_basis, second_basis: e1_black_lead_basis),
+  conditions: e1_energized_bench,
+  setting: SourceSetting { voltage: volt(count: 52), current_limit: milliampere(count: 100), protection: OverCurrentShutoffArmed },
+  open_reading: milliampere(count: 0),
+  loaded_reading: milliampere(count: 13),
+  stepping_peak: Present { value: milliampere(count: 20) },
+  behaviour: HeldBelowLimit,
+  evidence: [
+    OperatorStatement { stated_on: "2026-10-18", verbatim: "its fine, its sitting at 52v, .013A, .675W / it mostly sat at .011A as power in creased" },
+    OperatorStatement { stated_on: "2026-10-18", verbatim: "when i was raising the voltage it would go to like 20ma, but then immediately back down" },
+    OperatorStatement { stated_on: "2026-10-18", verbatim: "it showed .000 with nothing connected, and then jumped immediately back to .013A when i reconnected it" },
+  ],
+}
+
 data e1_measured: MeasuredBoard = MeasuredBoard {
   asset: p4261_e1_b,
   continuity: concat(concat(concat(concat(
@@ -931,6 +1056,7 @@ data e1_measured: MeasuredBoard = MeasuredBoard {
       ],
       map(e1_fet_off_rail, n => touched_to(a: fet_terminal(name: n), reference: e1_rail_ref, first_basis: e1_only_basis, second_basis: e1_rail_basis, result: BuzzerNotAsserted, evidence: e1_fet_said))),
       map(e1_fet_terminal_names, n => touched_to(a: fet_terminal(name: n), reference: e1_ground_ref, first_basis: e1_nothing_basis, second_basis: e1_ground_basis, result: BuzzerNotAsserted, evidence: e1_fet_said)))),
+  source_draws: [e1_j20_draw],
   diode_readings: [
     DiodeModeObservation { asset: p4261_e1_b, probes: RedBlack { red: e1_d2_far, black: e1_d2_near }, display: ForwardMillivolts { millivolts: 600 }, conditions: e1_bench, evidence: OperatorStatement { stated_on: "2026-10-15", verbatim: "yeah putting the red on the ground of the diode and black on the supply reads .6" } },
     DiodeModeObservation { asset: p4261_e1_b, probes: RedBlack { red: e1_d5_top, black: e1_d5_bottom }, display: ForwardMillivolts { millivolts: 605 }, conditions: e1_bench, evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "diode reading on D5 gives .605 / yes red was on top" } },
@@ -1127,6 +1253,7 @@ type CarrierFinding
   | ComponentAcrossInput { component: ComponentInstanceIdentity }
   | ComponentIdentified { component: ComponentInstanceIdentity }
   | InputUpperBound
+  | J20EnergizedDraw
 
 type FindingStanding
   = FindingEstablished { text: String }
@@ -1191,6 +1318,11 @@ fn carrier_finding(layout: CarrierLayoutObservation, f: CarrierFinding) -> Findi
       BoundContradicted { contradicted: _, observed: _ } => FindingNotEstablished { reason: bound_text(b: input_bound(layout: layout)) }
       BoundUnestablished { observed: _ } => FindingNotEstablished { reason: bound_text(b: input_bound(layout: layout)) }
     }
+    J20EnergizedDraw => match input_draw(layout: layout) {
+      InputDrawBounded { bounded: _, observed: _ } => FindingEstablished { text: join(["J20 ", input_draw_text(d: input_draw(layout: layout))], "") }
+      InputDrawContradicted { contradicted: _, observed: _ } => FindingNotEstablished { reason: input_draw_text(d: input_draw(layout: layout)) }
+      InputDrawUnestablished { gaps: _ } => FindingNotEstablished { reason: input_draw_text(d: input_draw(layout: layout)) }
+    }
   }
 }
 
@@ -1204,7 +1336,8 @@ fn is_finding_established(s: FindingStanding) -> Bool {
 fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
   join([
     "J20 (", j20_text(layout: layout), "; ", polarity_text(p: input_polarity(layout: layout)), "): ", bound_text(b: input_bound(layout: layout)),
-    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis),
+    ". J20 ", input_draw_text(d: input_draw(layout: layout)),
+    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_standby_domain_hypothesis),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
 }

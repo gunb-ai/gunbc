@@ -2,7 +2,7 @@ module test.claim.product.p4261_carrier_layout_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { volt, volt_count }
+import std.measure { volt, volt_count, milliampere, milliampere_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
 import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification }
@@ -21,8 +21,25 @@ import product.electrical.connectivity {
   net_identity,
   net_contains_terminal,
 }
+import product.electrical.source_draw {
+  SourceDrawObservation,
+  SourceDrawStanding,
+  SourceBehaviour,
+  HeldBelowLimit,
+  EnteredConstantCurrent,
+  ProtectionTripped,
+  DrawBounded,
+  DrawBoundContradicted,
+  DrawUnestablished,
+  LoadNotDistinguished,
+  SourceNotEnergized,
+  source_draw_standing,
+}
 import product.electrical.continuity {
   ContinuityObservation,
+  BenchConditions,
+  Unpowered,
+  ModuleRemoved,
   ContinuityResult,
   DiodeModeObservation,
   DiodeDisplay,
@@ -115,6 +132,14 @@ import product.p4261_carrier_layout {
   ComponentAcrossInput,
   ComponentIdentified,
   InputUpperBound,
+  J20EnergizedDraw,
+  InputDrawStanding,
+  InputDrawBounded,
+  InputDrawContradicted,
+  InputDrawUnestablished,
+  NoEnergizedInputReading,
+  input_draw,
+  e1_j20_draw,
   carrier_finding,
   is_finding_established,
   input_bound,
@@ -148,7 +173,7 @@ fn layout_with(base: CarrierLayoutObservation, components: List<InstalledCompone
 }
 
 fn e1_with_continuity(cs: List<ContinuityObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: cs, diode_readings: e1_measured.diode_readings } }, input: p4261_e1_layout.input)
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: cs, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws } }, input: p4261_e1_layout.input)
 }
 
 fn component_of(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> List<InstalledComponent> {
@@ -243,7 +268,7 @@ test fn the_photographs_establish_no_input_bound() -> Bool {
 // derives nothing: every reading names the E1 asset, and the K1's board is the K1 asset.
 test fn a_reading_on_the_e1_cannot_qualify_the_k1() -> Bool {
   let k1_given_e1 = layout_with(base: p4261_k1_layout, components: p4261_k1_layout.components,
-    measured: Present { value: MeasuredBoard { asset: p4261_k1_a, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings } },
+    measured: Present { value: MeasuredBoard { asset: p4261_k1_a, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws } },
     input: Present { value: e1_input })
   let unpolarized = match input_polarity(layout: k1_given_e1) {
     PolarityUnestablished { gaps: _ } => true
@@ -456,7 +481,7 @@ test fn only_a_rating_across_the_input_bounds_it() -> Bool {
   let low_pos = terminal_ref(component: low, terminal: positive_term())
   let low_neg = terminal_ref(component: low, terminal: negative_term())
   let with_low = concat(p4261_e1_layout.components, [low_part])
-  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings } }, input: p4261_e1_layout.input)
+  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws } }, input: p4261_e1_layout.input)
   let unread = layout_with(base: p4261_e1_layout, components: with_low, measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
   count(f300) == 1 && all(f300, s => is_unplaced(s: s))
     && bound_volts(b: input_bound(layout: p4261_e1_layout)) == 60
@@ -513,11 +538,18 @@ fn rl_housing(h: ConnectorHousing) -> ConnectorHousing {
   ConnectorHousing { component: rl_c(c: h.component), positions: map(h.positions, p => HousingPosition { terminal: rl_t(t: p.terminal), side: p.side, index: p.index }), sides_evidence: h.sides_evidence }
 }
 
+fn rl_draw(o: SourceDrawObservation) -> SourceDrawObservation {
+  SourceDrawObservation {
+    asset: o.asset, feed: rl_ref(r: o.feed), return_terminal: rl_ref(r: o.return_terminal), leads: o.leads, conditions: o.conditions, setting: o.setting,
+    open_reading: o.open_reading, loaded_reading: o.loaded_reading, stepping_peak: o.stepping_peak, behaviour: o.behaviour, evidence: o.evidence,
+  }
+}
+
 fn relabelled_e1() -> CarrierLayoutObservation {
   layout_with(
     base: p4261_e1_layout,
     components: map(p4261_e1_layout.components, c => InstalledComponent { component: rl_c(c: c.component), terminals: map(c.terminals, t => rl_t(t: t)), identification: c.identification }),
-    measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: map(e1_measured.continuity, o => rl_obs(o: o)), diode_readings: map(e1_measured.diode_readings, o => rl_diode(o: o)) } },
+    measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: map(e1_measured.continuity, o => rl_obs(o: o)), diode_readings: map(e1_measured.diode_readings, o => rl_diode(o: o)), source_draws: map(e1_measured.source_draws, o => rl_draw(o: o)) } },
     input: Present { value: InputConnector { housing: rl_housing(h: e1_j20_housing), fuse_terminal: rl_ref(r: e1_input.fuse_terminal) } },
   )
 }
@@ -641,7 +673,7 @@ test fn population_statements_infer_their_endpoints() -> Bool {
 // E1 unestablishes D2's placement while J20's inventory and C10's identification stand untouched, so a
 // consumer citing one finding is reopened by that finding and no other.
 test fn a_narrow_finding_stands_or_falls_alone() -> Bool {
-  let e1_findings = [J20ContactInventory, J20Polarity, ComponentAcrossInput { component: e1_d2 }, ComponentAcrossInput { component: e1_d5 }, ComponentIdentified { component: e1_c10 }, ComponentIdentified { component: e1_d2 }, InputUpperBound]
+  let e1_findings = [J20ContactInventory, J20Polarity, ComponentAcrossInput { component: e1_d2 }, ComponentAcrossInput { component: e1_d5 }, ComponentIdentified { component: e1_c10 }, ComponentIdentified { component: e1_d2 }, InputUpperBound, J20EnergizedDraw]
   let e1_all = all(e1_findings, f => is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: f)))
   let k1_open = !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: J20Polarity))
     && !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: InputUpperBound))
@@ -721,4 +753,110 @@ test fn the_report_is_rendered_from_the_typed_model() -> Bool {
     && management_io_text(layout: p4261_k1_layout).contains("shows no RJ45")
     && e1_io.contains("USB 3.0 SuperSpeed Micro-B (part number, protocol and role unestablished)")
     && e1_io.contains("U522 ('TI 31 / T275') is TMP275AIDGKR; trace pins 1 SDA (serial data), 2 SCL (serial clock), 3 ALERT (alert output)")
+}
+
+// ── THE ENERGIZED INPUT DRAW ──────────────────────────────────────────────────────────────────
+
+fn draw_with(open: Nat, loaded: Nat, behaviour: SourceBehaviour, conditions: BenchConditions, feed: ElectricalTerminalRef, ret: ElectricalTerminalRef) -> SourceDrawObservation {
+  SourceDrawObservation {
+    asset: e1_j20_draw.asset, feed: feed, return_terminal: ret, leads: e1_j20_draw.leads, conditions: conditions, setting: e1_j20_draw.setting,
+    open_reading: milliampere(count: open), loaded_reading: milliampere(count: loaded), stepping_peak: Absent, behaviour: behaviour, evidence: e1_j20_draw.evidence,
+  }
+}
+
+fn on_input(open: Nat, loaded: Nat, behaviour: SourceBehaviour) -> SourceDrawObservation {
+  draw_with(open: open, loaded: loaded, behaviour: behaviour, conditions: e1_j20_draw.conditions, feed: e1_rail_ref, ret: e1_ground_ref)
+}
+
+fn e1_with_draws(ds: List<SourceDrawObservation>) -> CarrierLayoutObservation {
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: ds } }, input: p4261_e1_layout.input)
+}
+
+fn draw_finding(layout: CarrierLayoutObservation) -> Bool {
+  is_finding_established(s: carrier_finding(layout: layout, f: J20EnergizedDraw))
+}
+
+fn bounded_by(d: InputDrawStanding, above_open: Nat, headroom: Nat) -> Bool {
+  match d {
+    InputDrawBounded { bounded, observed: _ } => count(bounded) == 1 && all(bounded, s => match s {
+      DrawBounded { observation: _, above_open: a, headroom: h } => milliampere_count(i: a) == above_open && milliampere_count(i: h) == headroom
+      DrawBoundContradicted { observation: _, cause: _ } => false
+      DrawUnestablished { observation: _, gaps: _ } => false
+    })
+    InputDrawContradicted { contradicted: _, observed: _ } => false
+    InputDrawUnestablished { gaps: _ } => false
+  }
+}
+
+fn is_input_draw_contradicted(d: InputDrawStanding) -> Bool {
+  match d {
+    InputDrawContradicted { contradicted: _, observed: _ } => true
+    InputDrawBounded { bounded: _, observed: _ } => false
+    InputDrawUnestablished { gaps: _ } => false
+  }
+}
+
+fn no_input_reading(d: InputDrawStanding) -> Bool {
+  match d {
+    InputDrawUnestablished { gaps } => any(gaps, g => match g {
+      NoEnergizedInputReading => true
+      _ => false
+    })
+    InputDrawBounded { bounded: _, observed: _ } => false
+    InputDrawContradicted { contradicted: _, observed: _ } => false
+  }
+}
+
+fn has_gap(s: SourceDrawStanding, load: Bool) -> Bool {
+  match s {
+    DrawUnestablished { observation: _, gaps } => any(gaps, g => match g {
+      LoadNotDistinguished => load
+      SourceNotEnergized => !load
+    })
+    DrawBounded { observation: _, above_open: _, headroom: _ } => false
+    DrawBoundContradicted { observation: _, cause: _ } => false
+  }
+}
+
+// A DRAW IS THE BOARD'S ONLY ABOVE THE DISPLAY'S ZERO. The live E1 reading -- 13 mA loaded, 0 mA open,
+// 100 mA limit held -- establishes a bounded draw of 13 mA with 87 mA of headroom. The same reading with
+// the open reading equal to the loaded one distinguishes no draw, and a source not recorded as energized
+// establishes none; the K1, never energized, has no finding.
+test fn an_energized_draw_counts_only_above_its_open_reading() -> Bool {
+  let live = draw_finding(layout: p4261_e1_layout) && bounded_by(d: input_draw(layout: p4261_e1_layout), above_open: 13, headroom: 87)
+  let offset = on_input(open: 13, loaded: 13, behaviour: HeldBelowLimit)
+  let offset_red = !draw_finding(layout: e1_with_draws(ds: [offset])) && has_gap(s: source_draw_standing(o: offset), load: true)
+  let cold = draw_with(open: 0, loaded: 13, behaviour: HeldBelowLimit, conditions: BenchConditions { power: Unpowered, module: ModuleRemoved }, feed: e1_rail_ref, ret: e1_ground_ref)
+  let cold_red = !draw_finding(layout: e1_with_draws(ds: [cold])) && has_gap(s: source_draw_standing(o: cold), load: false)
+  let none = !draw_finding(layout: e1_with_draws(ds: [])) && no_input_reading(d: input_draw(layout: e1_with_draws(ds: [])))
+  let k1 = !draw_finding(layout: p4261_k1_layout)
+  live && offset_red && cold_red && none && k1
+}
+
+// A TRIP, CONSTANT CURRENT OR A READING AT THE LIMIT CONTRADICTS THE BOUND, and one contradicted reading
+// contradicts the input's bound even beside a bounded one.
+test fn a_trip_or_the_limit_contradicts_the_draw_bound() -> Bool {
+  let tripped = on_input(open: 0, loaded: 13, behaviour: ProtectionTripped { at: volt(count: 30) })
+  let at_limit = on_input(open: 0, loaded: 100, behaviour: HeldBelowLimit)
+  let constant = on_input(open: 0, loaded: 13, behaviour: EnteredConstantCurrent)
+  all([tripped, at_limit, constant], o => is_input_draw_contradicted(d: input_draw(layout: e1_with_draws(ds: [o]))) && !draw_finding(layout: e1_with_draws(ds: [o])))
+    && is_input_draw_contradicted(d: input_draw(layout: e1_with_draws(ds: [e1_j20_draw, tripped])))
+}
+
+// A READING ACROSS OTHER TERMINALS SAYS NOTHING ABOUT THE INPUT: the same reading with its leads swapped
+// onto the opposite rows is not placed across J20's fused and return sides.
+test fn a_reading_off_the_input_rows_is_not_the_inputs() -> Bool {
+  let swapped = draw_with(open: 0, loaded: 13, behaviour: HeldBelowLimit, conditions: e1_j20_draw.conditions, feed: e1_ground_ref, ret: e1_rail_ref)
+  !draw_finding(layout: e1_with_draws(ds: [swapped])) && no_input_reading(d: input_draw(layout: e1_with_draws(ds: [swapped])))
+}
+
+// The draw renders from the typed reading, with its inferred lead points, and survives relabelling.
+test fn the_energized_draw_renders_and_survives_relabelling() -> Bool {
+  let e1 = carrier_input_reading(layout: p4261_e1_layout)
+  e1.contains("it drew 13 mA (0 mA with the load disconnected, so 13 mA is the board's)")
+    && e1.contains("over-current shutoff armed")
+    && e1.contains("brief readings up to 20 mA while stepping, cause unread")
+    && e1.contains("on lead points inferred from the operator's words")
+    && carrier_input_reading(layout: p4261_k1_layout).contains("no energized draw established")
+    && bounded_by(d: input_draw(layout: relabelled_e1()), above_open: 13, headroom: 87)
 }
