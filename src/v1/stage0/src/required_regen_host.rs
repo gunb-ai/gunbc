@@ -4620,26 +4620,29 @@ fn built_seed_boundary_drift(workspace: &Path) -> Result<Vec<String>, String> {
             )
         })?;
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let drifted = boundary_drift_from_producer_report(&stderr);
-    if output.status.success() {
-        return Ok(Vec::new());
-    }
-    if drifted.is_empty() {
+    let drifted = boundary_drift_from_producer_report(&output.stdout).ok_or_else(|| {
+        format!(
+            "PartitionProjectionUnobserved: the built seed returned no typed boundary report: {stderr}"
+        )
+    })?;
+    if output.status.success() != drifted.is_empty() {
         return Err(format!(
-            "PartitionProjectionUnobserved: the built seed's boundary projection failed without \
-             naming a drifted file: {stderr}"
+            "PartitionProjectionUnobserved: exit status and typed report disagree: {stderr}"
         ));
     }
     Ok(drifted)
 }
 
-fn boundary_drift_from_producer_report(report: &str) -> Vec<String> {
+fn boundary_drift_from_producer_report(stdout: &[u8]) -> Option<Vec<String>> {
+    let report: serde_json::Value = serde_json::from_slice(stdout).ok()?;
+    if report.get("schema")?.as_str()? != "gunbc.partition_boundary_report.v1" {
+        return None;
+    }
     report
-        .lines()
-        .filter_map(|line| line.strip_prefix("emit-partition-crates: "))
-        .filter_map(|rest| rest.split_once(' '))
-        .filter(|(disposition, path)| *disposition != "matches" && path.contains('/'))
-        .map(|(_, path)| path.to_string())
+        .get("divergent")?
+        .as_array()?
+        .iter()
+        .map(|p| p.as_str().map(str::to_string))
         .collect()
 }
 
@@ -8265,16 +8268,21 @@ mod boundary_population_tests {
     use super::*;
 
     #[test]
-    fn producer_report_names_only_non_matching_boundary_files() {
-        let report = "emit-partition-crates: matches src/a/lib.rs\n\
-                      emit-partition-crates: drifted src/b/lib.rs\n\
-                      emit-partition-crates: absent src/c/Cargo.toml\n\
-                      emit-partition-crates: rendered=3 written=0 mode=read-only\n";
+    fn producer_report_is_read_as_a_typed_record() {
+        let report =
+            br#"{"schema":"gunbc.partition_boundary_report.v1","divergent":["src/b/lib.rs"]}"#;
         assert_eq!(
             boundary_drift_from_producer_report(report),
-            vec!["src/b/lib.rs".to_string(), "src/c/Cargo.toml".to_string()]
+            Some(vec!["src/b/lib.rs".to_string()])
         );
-        assert!(boundary_drift_from_producer_report("").is_empty());
+        assert_eq!(
+            boundary_drift_from_producer_report(b"emit-partition-crates: drifted x/y"),
+            None
+        );
+        assert_eq!(
+            boundary_drift_from_producer_report(br#"{"schema":"other","divergent":[]}"#),
+            None
+        );
     }
 
     #[test]
