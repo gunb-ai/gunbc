@@ -631,7 +631,7 @@ test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
     firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
     observed: recovery_measured_identity(),
   })
-  let readback = recovery_route_next_action(unavailable: RecoveryReadbackInconclusive { detail: "no body was saved" })
+  let readback = recovery_route_next_action(unavailable: RecoveryReadbackInconclusive { gap: ReadbackBodyCouldNotBeRead { why: "no body was saved" as NonEmptyStr } })
   // The body is a PARENTHESISED expression. Left bare, a leading `&&` after the last `let` is parsed as a
   // continuation of that let's own initializer -- which is how this claim once failed to resolve with
   // "undefined variable 'readback'" inside the definition of `readback`.

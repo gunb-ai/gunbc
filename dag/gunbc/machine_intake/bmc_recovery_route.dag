@@ -332,7 +332,13 @@ type InBandAccessWithoutCredential
       transport: InBandHostTransport
       credential_option: IpmiArgvCredentialOption
     }
-  | InBandChannelNotObserved { detail: NonEmptyStr }
+  // THE PARSE'S REFUSAL SUM, CARRIED — NOT A SENTENCE ABOUT IT (review 82692). in_band_command_from_argv
+  // already tells six causes apart, and this arm used to collapse all six into one prose `detail` that the
+  // claims then grepped by substring: a wording change silently voided six controls, two causes could be
+  // swapped with no row turning red, and one check was merely string_length(d) > 0 -- green for any refusal
+  // at all. §5 wants "a failing path [that] fails with a typed, located diagnostic" and "a discriminating
+  // input that goes red when the behavior is wrong"; a sum rebuilt from the words of a string is neither.
+  | InBandChannelNotObserved { refusal: InBandCommandRefusal }
 
 // THE OPTIONS THAT PUT A CREDENTIAL IN REACH OF THE WRITE. Declared rather than matched as strings at each
 // call site, for the same reason the transport names are: an in-band tag compared by string equality is a
@@ -402,6 +408,20 @@ type IpmiCommandInvocation
   | IpmiCommandUnmodelledOption { option: String, detail: NonEmptyStr }
   | IpmiCommandOptionNeedsValue { option: String, detail: NonEmptyStr }
   | IpmiCommandRemoteHostWithInBandName { host: NonEmptyStr, wire: String }
+
+// THE SIX WAYS A CAPTURED INVOCATION FAILS TO PROVE AN IN-BAND CHANNEL, AS A DECLARED SUM (review 82692).
+// The parse's own refusals, carried by value into the channel sum. The rule against an undeclared sum
+// applies here as much as to the transport names: a cause carried as the text of a string is a sum with no
+// members written down, and nothing in the compiler notices when two are swapped or when one loses its
+// wording. Each arm keeps a `why` for whoever is standing at the machine; `why` is presentation, and no
+// claim reads it -- every claim matches an ARM.
+type InBandCommandRefusal
+  = RefusalTransportAbsent { why: NonEmptyStr }
+  | RefusalTransportUnrecognized { wire: String, why: NonEmptyStr }
+  | RefusalTransportOutOfBand { wire: String, why_not_in_band: NonEmptyStr }
+  | RefusalUnmodelledOption { option: String, why: NonEmptyStr }
+  | RefusalOptionNeedsValue { option: String, why: NonEmptyStr }
+  | RefusalRemoteHostWithInBandName { host: NonEmptyStr, wire: String, why: NonEmptyStr }
 
 // WHERE THE WALK IS. The state is the walk's own and no other module reads it: it exists so one pass over
 // the words can carry an option and its argument together, which is what two separate scans could not do.
@@ -625,20 +645,33 @@ fn in_band_channel_of_command(command: IpmiCommandInvocation) -> InBandAccessWit
       InBandChannelPasswordless { transport: t }
     IpmiCommandInBand { transport: t, credential: Present { value: c } } =>
       InBandChannelCredentialCarriedOnArgv { transport: t, credential_option: c }
-    IpmiCommandNotInBand { wire: w, why_not_in_band: why } =>
-      InBandChannelNotObserved { detail: concat("the transport named on the command line (", concat(w, concat(") is out of band -- ", why))) as NonEmptyStr }
+    // ONE ARM IN, ONE ARM OUT. Nothing here decides a cause and nothing here merges two of them; the parse
+    // did that, and this is a rename so the route's own sum can be the thing folds and claims match on.
+    IpmiCommandTransportAbsent { detail: d } =>
+      InBandChannelNotObserved { refusal: RefusalTransportAbsent { why: d } }
     IpmiCommandUnrecognised { wire: w } =>
       InBandChannelNotObserved {
-        detail: concat("the -I name (", concat(w, ") is not a transport ipmitool implements; the words were refused before a channel could be read")) as NonEmptyStr,
+        refusal: RefusalTransportUnrecognized {
+          wire: w,
+          why: "the -I name is not a transport ipmitool implements, so ipmi_intf_load would return NULL and "
+            "the command would exit before any channel was read" as NonEmptyStr,
+        },
       }
-    IpmiCommandTransportAbsent { detail: d } => InBandChannelNotObserved { detail: d }
+    IpmiCommandNotInBand { wire: w, why_not_in_band: why } =>
+      InBandChannelNotObserved { refusal: RefusalTransportOutOfBand { wire: w, why_not_in_band: why } }
     IpmiCommandUnmodelledOption { option: o, detail: d } =>
-      InBandChannelNotObserved { detail: concat(o, concat(": ", d)) as NonEmptyStr }
+      InBandChannelNotObserved { refusal: RefusalUnmodelledOption { option: o, why: d } }
     IpmiCommandOptionNeedsValue { option: o, detail: d } =>
-      InBandChannelNotObserved { detail: concat(o, concat(": ", d)) as NonEmptyStr }
+      InBandChannelNotObserved { refusal: RefusalOptionNeedsValue { option: o, why: d } }
     IpmiCommandRemoteHostWithInBandName { host: h, wire: w } =>
       InBandChannelNotObserved {
-        detail: concat("an in-band -I name beside a remote host (", concat(w, concat(", ", concat(h, ")): in-band reaches the BMC through the host's own device node, so this is not a host-to-BMC path, and the name cannot be trusted over the argument that contradicts it")))) as NonEmptyStr,
+        refusal: RefusalRemoteHostWithInBandName {
+          host: h,
+          wire: w,
+          why: "an in-band -I name beside a -H host is a contradiction: in-band reaches the BMC through the "
+            "host's own device node, so this is not a host-to-BMC path, and the name cannot be trusted over "
+            "the argument that contradicts it" as NonEmptyStr,
+        },
       }
   }
 }
@@ -734,39 +767,91 @@ type InBandChannelObservation {
 // The channel has to have been read FROM THE HOST THAT WAS DECLARED REACHABLE, on the device and
 // drivers that host reported. A channel observation lifted from a different machine, or from before
 // the rescue OS booted, is not a precondition of anything -- it is a story about some BMC.
+//
+// WHY A MATCH RETURNING A SUM, AND NOT A BOOL. The earlier shape asked "does the channel admit?" and, when
+// the answer was no, composed a sentence about why at the call site. That is §5's bad pattern twice over: a
+// Bool asked first and then re-matched to build the answer, and a diagnostic whose content was invented at
+// print time instead of computed where the refusal was made ("no plausible output is fabricated"). So this
+// MATCHES the arms and returns the reason with the verdict. `reason` is a declared sum, and the refusal
+// standing carries that sum rather than prose (review 82692). The admitted arm has no field a credential
+// could have been written into, so nothing about it has to be re-checked.
+type InBandChannelAdmission
+  = ChannelAdmits
+  | ChannelRefused { reason: RecoveryChannelAbsence }
+
+// WHICH ARM FAILED, AND WHY, AS DATA. Distinct from the parse's InBandCommandRefusal, which answers "what
+// is wrong with these words": an invocation can be perfectly well parsed and still not satisfy this
+// route's precondition -- it can name a credential on the argv, read back an account that is not
+// ADMINISTRATOR, belong to another host or another device node, arrive with the wrong module set, or be
+// stamped before the queue it claims to have read. Those are different questions from "is this even an
+// ipmitool command", and a reader standing at the machine gets a different next action for each, which is
+// what recovery_route_unavailability derives from these arms.
+type RecoveryChannelAbsence
+  = AbsenceNoRescueHost
+  | AbsenceChannelCarriedCredential { credential_option: IpmiArgvCredentialOption }
+  | AbsenceChannelNeverRead { refusal: InBandCommandRefusal }
+  | AbsenceAccountIsNotAdministrator { reported: IpmiChannelPrivilegeLimit }
+  | AbsenceHostAddressDisagrees
+  | AbsenceDeviceNodeDisagrees
+  | AbsenceKernelModulesDisagree
+  | AbsenceNodeCreatedAfterTheReading
+
+fn in_band_channel_admission(
+  observation: InBandChannelObservation,
+  reachability: RescueHostReachability,
+) -> InBandChannelAdmission {
+  match reachability {
+    // Nothing was read FROM ANYWHERE. That is a different absence from a reachable host whose channel was
+    // never examined: the first sends someone to bring up the rescue OS, the second to take the reading.
+    RescueHostUnreachable { cause: _ } => ChannelRefused { reason: AbsenceNoRescueHost }
+    RescueHostReachable { address: a, ssh_port: _, ipmi: ipmi, medium: _ } =>
+      match observation.channel {
+        InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: c } =>
+          ChannelRefused { reason: AbsenceChannelCarriedCredential { credential_option: c } }
+        InBandChannelNotObserved { refusal: r } =>
+          ChannelRefused { reason: AbsenceChannelNeverRead { refusal: r } }
+        InBandChannelPasswordless { transport: _ } =>
+          match in_band_administrator_account_reading(account: observation.administrator) {
+            // the level that came back is carried, not paraphrased: "the account read back was OPERATOR"
+            // is an observation, "the account is not admin" is a conclusion
+            PrivilegeReadBackIsNotAdministrator { reported: p } =>
+              ChannelRefused { reason: AbsenceAccountIsNotAdministrator { reported: p } }
+            AdministratorAccountReadBack { user: _, channel: _ } =>
+              if observation.rescue_host_address != a {
+                ChannelRefused { reason: AbsenceHostAddressDisagrees }
+              } else if observation.device_node != ipmi.device_node {
+                ChannelRefused { reason: AbsenceDeviceNodeDisagrees }
+              // THE QUEUE HAD TO EXIST BEFORE THESE BYTES WERE READ. The node's creation minute and the
+              // reading's minute are separate facts on the carrier (review 82404), and this fold is what
+              // keeps them separate: an observation stamping the node as created after the reading was
+              // taken cannot have read it, so it refuses rather than being admitted on a plausible
+              // ordering.
+              } else if captured_band_precedes(
+                earlier: observation.device_node_created_at,
+                later: observation.observed_at,
+              ) == false {
+                ChannelRefused { reason: AbsenceNodeCreatedAfterTheReading }
+              } else if observation.kernel_modules |> all(m => ipmi.kernel_modules |> any(h => h == m)) == false
+                || ipmi.kernel_modules |> all(m => observation.kernel_modules |> any(h => h == m)) == false {
+                ChannelRefused { reason: AbsenceKernelModulesDisagree }
+              } else {
+                ChannelAdmits
+              }
+          }
+      }
+  }
+}
+
+// THE BOOLEAN THE STEPS AND THE CLAIMS ASK FOR, AS ONE PROJECTION OF THE MATCH ABOVE -- not a second
+// implementation of the same question, which is the two things that eventually disagree about a boundary
+// case. Anything that needs WHY calls in_band_channel_admission directly.
 fn in_band_channel_admits(
   observation: InBandChannelObservation,
   reachability: RescueHostReachability,
 ) -> Bool {
-  match reachability {
-    RescueHostReachable { address: a, ssh_port: _, ipmi: ipmi, medium: _ } =>
-      // THE CHANNEL IS MATCHED, NOT ASKED A QUESTION. Only the credential-free arm can carry an
-      // observation forward; the other two arms each name why they cannot. The arm matched as admissible
-      // has no field a credential could have been written into, so nothing about it has to be re-checked.
-      (match observation.channel {
-        InBandChannelPasswordless { transport: _ } => true
-        InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: _ } => false
-        InBandChannelNotObserved { detail: _ } => false
-      })
-        // MATCHED, not asked: only the arm that says an ADMINISTRATOR account was read back can carry an
-        // observation forward, and the other arm keeps the level that was actually reported.
-        && (match in_band_administrator_account_reading(account: observation.administrator) {
-          AdministratorAccountReadBack { user: _, channel: _ } => true
-          PrivilegeReadBackIsNotAdministrator { reported: _ } => false
-        })
-        && observation.rescue_host_address == a
-        && observation.device_node == ipmi.device_node
-        // THE QUEUE HAD TO EXIST BEFORE THESE BYTES WERE READ. The node's creation minute and the
-        // reading's minute are separate facts on the carrier (review 82404), and the fold is what keeps
-        // them separate: an observation that stamps the node as created after the reading was taken
-        // cannot have read it, so it refuses rather than being admitted on a plausible ordering.
-        && captured_band_precedes(
-          earlier: observation.device_node_created_at,
-          later: observation.observed_at,
-        )
-        && observation.kernel_modules |> all(m => ipmi.kernel_modules |> any(h => h == m))
-        && ipmi.kernel_modules |> all(m => observation.kernel_modules |> any(h => h == m))
-    RescueHostUnreachable { cause: _ } => false
+  match in_band_channel_admission(observation: observation, reachability: reachability) {
+    ChannelAdmits => true
+    ChannelRefused { reason: _ } => false
   }
 }
 
@@ -1321,6 +1406,14 @@ fn admit_recovery_in_band_password_write(
 fn password_write_admitted_after_ledger(
   route: RecoveryInBandRoute,
   write: RecoveryWriteRecord,
+  // THE HOLE THAT OPENED ONE LEVEL DOWN (side-chat HOLD blocker 1, second round). The tickets are sealed
+  // and their mints are rostered, but an UNROSTERED helper that hands one out is the same wall with a
+  // door in it: any module could call this directly and receive a real ticket without the ledger
+  // classification above it ever being read. So the gate's producer admits only the gate that runs that
+  // classification -- which is what makes the seal a wall rather than a convention.
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_in_band_password_write"),
+  ]
 ) -> PasswordWriteAuthorization {
   let kind = recovery_in_band_password_actuation()
   if match route.in_band.channel {
@@ -1328,7 +1421,7 @@ fn password_write_admitted_after_ledger(
     // arm, and that arm says so here rather than in a predicate the call site has to remember.
     InBandChannelPasswordless { transport: _ } => false
     InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: _ } => true
-    InBandChannelNotObserved { detail: _ } => true
+    InBandChannelNotObserved { refusal: _ } => true
   } {
     PasswordWriteRefused { cause: "the in-band channel is not the credential-free arm, so this is not the write the census admits" as NonEmptyStr }
   } else if recovery_write_was_attempted(record: write, kind: kind) == false {
@@ -1394,6 +1487,11 @@ fn reset_write_admitted_after_ledger(
   under_ruling: StandingDestructiveAuthorization,
   unit_hold: UnitHoldAcquisition?,
   reset_write: RecoveryWriteRecord,
+  // AS ABOVE, FOR THE RESET: sealed tickets behind an unrostered helper are a seal any import can lift.
+  // Only the gate that checks the ruling, the hold, the destructive class and the reset type is admitted.
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+  ]
 ) -> ResetWriteAuthorization {
   match recovery_write_reset_arm(record: reset_write) {
     Absent => ResetWriteRefused {
@@ -1685,6 +1783,18 @@ fn recovery_hold_refusal_text(unit_key: UnitKey, hold: UnitHoldAcquisition?) -> 
 // the actuations needs the instant whether or not the message arrived. Dropping it from the failure arms
 // would force any ordering check to be written around the sum, and the fold that does the ordering is exactly
 // where a missing instant would quietly become "not checked".
+// THE TWO WAYS A POST-RESET READING FAILS TO PROVE ANYTHING, DECLARED. They used to be one
+// `detail: NonEmptyStr` on the inconclusive arm, which flattened a real distinction: "the body arrived and
+// named no PasswordChangeRequired message" is an observation ABOUT THE SERVICE (the reset did not do what it
+// was supposed to), while "the body never arrived, or was not JSON" is a fact about OUR CAPTURE and says
+// nothing about the service at all (§4d: do not assert as deduced what is only inferred). Carried as
+// sentences, swapping the two changed nothing a claim could see -- a mutation that reported a broken
+// capture as a failed reset was undetectable. Now the two are arms, the claims match arms, and the fold
+// that names the next action reads them apart.
+type RecoveryReadbackGap
+  = ReadbackNamedNoPasswordChangeMessage
+  | ReadbackBodyCouldNotBeRead { why: NonEmptyStr }
+
 type RecoveryFactoryCredentialReadback
   = FactoryCredentialActiveAwaitingChange {
       message_id: String
@@ -1692,7 +1802,7 @@ type RecoveryFactoryCredentialReadback
       observed_at: CapturedInstant
     }
   | CredentialNotAccepted { evidence: EvidenceRef, observed_at: CapturedInstant }
-  | ReadbackInconclusive { detail: NonEmptyStr, evidence: EvidenceRef, observed_at: CapturedInstant }
+  | ReadbackInconclusive { cause: RecoveryReadbackGap, evidence: EvidenceRef, observed_at: CapturedInstant }
 
 // THE ONLY MINT OF ProvenResetReadback, AND IT REFUSES. It used to return a Bool, which left the caller
 // still holding the unproven readback and free to decide what to believe with it -- which is exactly how
@@ -1721,7 +1831,11 @@ fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -
         Absent
       }
     CredentialNotAccepted { evidence: _, observed_at: _ } => Absent
-    ReadbackInconclusive { detail: _, evidence: _, observed_at: _ } => Absent
+    // the cause is not consulted here, and that is deliberate: NEITHER failure arm proves a reset, so a
+    // mutation that swapped one for the other leaves this fold untouched and the hand-off still
+    // unwritable. The discriminating input for that pair lives where the difference is READ (see
+    // recovery_route_unavailability), not here.
+    ReadbackInconclusive { cause: _, evidence: _, observed_at: _ } => Absent
   }
 }
 
@@ -1764,7 +1878,7 @@ fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: Captur
     // Read, and it does not name the message.
     RedfishPasswordChangeNotIndicated =>
       ReadbackInconclusive {
-        detail: "the post-reset response named no PasswordChangeRequired message",
+        cause: ReadbackNamedNoPasswordChangeMessage,
         evidence: evidence,
         observed_at: observed_at,
       }
@@ -1773,7 +1887,9 @@ fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: Captur
     // inference about a controller drawn from the state of our own capture (§4d).
     RedfishResponseBodyUnreadable { cause: cause } =>
       ReadbackInconclusive {
-        detail: join(["the post-reset response could not be read as a Redfish body: ", cause as String], "") as NonEmptyStr,
+        cause: ReadbackBodyCouldNotBeRead {
+          why: join(["the post-reset response could not be read as a Redfish body: ", cause as String], "") as NonEmptyStr,
+        },
         evidence: evidence,
         observed_at: observed_at,
       }
@@ -1924,7 +2040,7 @@ fn recovery_readback_evidence(readback: RecoveryFactoryCredentialReadback) -> Op
     FactoryCredentialActiveAwaitingChange { message_id: _, evidence: evidence, observed_at: _ } =>
       Present { value: evidence }
     CredentialNotAccepted { evidence: evidence, observed_at: _ } => Present { value: evidence }
-    ReadbackInconclusive { detail: _, evidence: evidence, observed_at: _ } => Present { value: evidence }
+    ReadbackInconclusive { cause: _, evidence: evidence, observed_at: _ } => Present { value: evidence }
   }
 }
 
@@ -1961,7 +2077,7 @@ type InBandRecoveryOutcome
       writes: List<RecoveryWriteRecord>
     }
   | RecoveryHostUnreachable { cause: RecoveryRequiresReachableHostOS }
-  | RecoveryChannelUnobserved { detail: NonEmptyStr }
+  | RecoveryChannelUnobserved { refusal: RecoveryChannelAbsence }
   // What the catalog said about the controller under foot, kept in its own arms: the reset's warrant is a
   // measurement, and a reader has to be able to tell "nobody measured this controller" from "our filing
   // is self-contradictory". Neither is a Bool, and neither is reachable by a caller supplying a policy --
@@ -2088,12 +2204,22 @@ fn converge_in_band_recovery(
     Present { value: c } =>
       InBandRecoveryStanding { subject: route.subject, route: route, outcome: RecoveryHostUnreachable { cause: c } }
     Absent =>
-      if in_band_channel_admits(observation: route.in_band, reachability: route.rescue_host) == false {
+      // ONE CALL TO THE MATCH, AND WHAT IT COMPUTED IS WHAT THE STANDING CARRIES. No sentence is composed
+      // here, so a standing cannot describe an absence the fold did not find (§5: "no plausible output is
+      // fabricated"), and the next action a reader is given derives from the arm in
+      // recovery_route_unavailability rather than being guessed at print time.
+      if match in_band_channel_admission(observation: route.in_band, reachability: route.rescue_host) {
+        ChannelAdmits => false
+        ChannelRefused { reason: _ } => true
+      } {
         InBandRecoveryStanding {
           subject: route.subject,
           route: route,
           outcome: RecoveryChannelUnobserved {
-            detail: "the in-band channel was not read from the rescue host declared reachable, was not passwordless, or read no ADMINISTRATOR account",
+            refusal: match in_band_channel_admission(observation: route.in_band, reachability: route.rescue_host) {
+              ChannelAdmits => AbsenceNoRescueHost
+              ChannelRefused { reason: reason } => reason
+            },
           },
         }
       } else if match recovery_policy_sighted_on_controller(route: route) {
@@ -2230,6 +2356,13 @@ fn converge_after_admissions(
   in_band_write: RecoveryWriteRecord,
   reset_write: RecoveryWriteRecord,
   readback: RecoveryFactoryCredentialReadback,
+  // THE STANDING AND ITS HAND-OFF ARE PRODUCED IN ONE PLACE. A helper that could assemble a completed
+  // standing from any arguments would let a caller skip reachability, the channel, the per-release policy
+  // and the hold -- so the fold that checked all of them is its only caller, and a standing for a unit
+  // nobody held has no value to put in the hand-off arm.
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "converge_in_band_recovery"),
+  ]
 ) -> InBandRecoveryStanding {
   if recovery_write_was_attempted(record: in_band_write, kind: InBandTemporaryAdministratorPassword) == false {
         InBandRecoveryStanding {
@@ -2351,14 +2484,16 @@ type RecoveryRouteUnavailable
       row: PublishedFactoryPasswordWritePolicy
       observed: IpmiDeviceIdentity
     }
-  | RecoveryReadbackInconclusive { detail: NonEmptyStr }
+  // THE GAP TRAVELS AS THE SUM, not as a sentence about it: the two gaps send different people to
+  // different work, and a reader downstream has to be able to branch on which one this is.
+  | RecoveryReadbackInconclusive { gap: RecoveryReadbackGap }
   // THE FOUR WAYS THIS ROUTE IS BLOCKED, KEPT APART WHERE THEY WERE KEPT APART UPSTREAM. These three arms
   // exist because the projection used to flatten them into RecoveryReadbackInconclusive above, which was a
   // loss twice over. It told a person monitoring a half-populated ledger to re-read a controller, and it
   // erased the distinction the outcome sum had gone to the trouble of drawing -- §5's "every degradation is
   // typed, located and countable" is worthless if the counting layer collapses the types on the way out.
   // Each one names its own repair, and none of the three is "re-read the controller".
-  | RecoveryChannelNeverObserved { detail: NonEmptyStr }
+  | RecoveryChannelNeverObserved { refusal: RecoveryChannelAbsence }
   | RecoveryWriteNeverAttempted { kind: RecoveryActuationKind }
   | RecoveryWriteWithheldByAdmission { kind: RecoveryActuationKind, cause: NonEmptyStr }
   // The readback arrived and did NOT name the password-change refusal: the reset's effect is unconfirmed,
@@ -2422,12 +2557,21 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
     // new measurement of a board that has been measured.
     RecoveryRowFiledUnderTheWrongReading { row: _, observed: _ } =>
       "this board's catalog files a refusal whose release does not match the Get Device ID answer recorded with it: correct the row, or measure the controller again under the release it now claims -- re-measuring alone leaves the bad row filed" as NonEmptyStr
-    RecoveryReadbackInconclusive { detail: _ } =>
-      "re-read the controller after the reset: the route is only believed once the login answers with the password-change refusal" as NonEmptyStr
+    // TWO GAPS, TWO SENTENCES, BECAUSE THEY ARE NOT TWO WAYS OF SAYING THE SAME THING (review 82692).
+    // A body that arrived and named no password-change message is an ANSWER FROM THE CONTROLLER: the
+    // reset did not do what it was asked, so the work is the reset and the controller. A body that
+    // never arrived is a hole in OUR notebook, and telling someone to re-check a BMC they may have reset
+    // correctly is the wrong instruction to print from a broken capture -- the work is to take the
+    // reading again. Flattened into one string, a mutation that printed "take the reading again" for a
+    // controller that never asked for a password change was invisible to every claim here.
+    RecoveryReadbackInconclusive { gap: ReadbackNamedNoPasswordChangeMessage } =>
+      "the controller answered the post-reset login without naming a password change: the reset did not put the user table back, so re-run it under the same ruling and read the login again" as NonEmptyStr
+    RecoveryReadbackInconclusive { gap: ReadbackBodyCouldNotBeRead { why: _ } } =>
+      "the post-reset login response was never readable as a Redfish body, so nothing about the controller is known yet: re-take the reading before touching the reset again" as NonEmptyStr
     // The channel was never looked at. No module is loaded and no node is bound for want of a reading that
     // nobody took, so the repair is the observation itself -- not the module-loading sentence above, which
     // presumes a reading that already reported missing modules.
-    RecoveryChannelNeverObserved { detail: _ } =>
+    RecoveryChannelNeverObserved { refusal: _ } =>
       "take the in-band channel observation this route has never had: read the device node and the ipmi module set on the rescue host before any privileged write is admitted" as NonEmptyStr
     // An un-attempted write is not a failed write. Re-reading the controller answers nothing, because the
     // chassis was never touched; the missing actuation is named with its own kind so the operator knows
@@ -2477,7 +2621,7 @@ fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRo
     // the sentence rendered from that arm sent someone to re-read a controller nobody had written to (§5:
     // "every degradation is typed, located and countable" -- which the counting layer voids if it collapses
     // the types on the way out).
-    RecoveryChannelUnobserved { detail: d } => Present { value: RecoveryChannelNeverObserved { detail: d } }
+    RecoveryChannelUnobserved { refusal: r } => Present { value: RecoveryChannelNeverObserved { refusal: r } }
     RecoveryControllerPolicyUnavailable { sighting: sighting } =>
       match sighting {
         RefusalMeasuredOnThisController { refusal: _, observed: _ } => none
@@ -2735,7 +2879,8 @@ test fn a_channel_that_passed_a_credential_on_the_command_line_is_not_passwordle
     // invisible to the credential scan. A credential write over an authenticating remote transport is the
     // failure extdeps/bmc/ipmi.dag was built to make unconstructible.
     && (match in_band_channel_from_argv(argv_words: ["-I", "lanplus", "-f", "/tmp/pw", "-H", "10.0.0.5", "user", "set", "password", "1", "0penBmc"]) {
-      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "out of band")
+      InBandChannelNotObserved { refusal: RefusalTransportOutOfBand { wire: w, why_not_in_band: why } } =>
+        w == "lanplus" && string_contains(s: why, pattern: "credential") == false
       _ => false
     })
     // the argv the capture actually used: no credential option, so the credential-free arm
@@ -2746,57 +2891,58 @@ test fn a_channel_that_passed_a_credential_on_the_command_line_is_not_passwordle
     // a name ipmitool does not implement is refused at the parse and reaches no arm. The name travels in
     // the WORDS now, not beside them: there is nothing left for a caller to get wrong.
     && (match in_band_channel_from_argv(argv_words: ["-I", "ssif", "user", "list", "1"]) {
-      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "ssif")
+      InBandChannelNotObserved { refusal: RefusalTransportUnrecognized { wire: w, why: _ } } => w == "ssif"
       _ => false
     })
     // and an out-of-band name cannot produce a channel at all: no value exists for the gate to be fooled by
     && (match in_band_channel_from_argv(argv_words: ["-I", "lanplus", "user", "list", "1"]) {
-      InBandChannelNotObserved { detail: d } => string_length(d) > 0
+      InBandChannelNotObserved { refusal: RefusalTransportOutOfBand { wire: w, why_not_in_band: why } } =>
+        w == "lanplus" && string_length(why) > 0
       _ => false
     })
     // LAST -I WINS, which only an authority that pairs -I with its argument can see (case 'I' in
     // lib/ipmi_main.c assigns intfname on every hit; ipmi_intf_load runs after the loop). An earlier -I
     // open does not launder a later -I lanplus.
     && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-I", "lanplus", "user", "list", "1"]) {
-      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "out of band")
+      InBandChannelNotObserved { refusal: RefusalTransportOutOfBand { wire: w, why_not_in_band: _ } } => w == "lanplus"
       _ => false
     })
     // THE WORD AFTER -I IS AN ARGUMENT, NEVER A CREDENTIAL AND NEVER A VERB. "-U" sitting where a transport
     // name belongs is consumed as the transport name (and refused as one), not counted as a user option --
     // the distinction the whole-line scan could not draw.
     && (match in_band_channel_from_argv(argv_words: ["-I", "-U", "user", "list", "1"]) {
-      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "-U")
+      InBandChannelNotObserved { refusal: RefusalTransportUnrecognized { wire: w, why: _ } } => w == "-U"
       _ => false
     })
     // AN OPTION THAT NEEDS A VALUE AND GETS THE END OF THE WORDS IS UPSTREAM'S ERROR, not a pass: "P:"
     // carries a colon in OPTION_STRING (lib/ipmi_main.c:82), so the missing argument is refused with the
     // option named, rather than defaulting to the credential-free arm.
     && (match in_band_channel_from_argv(argv_words: ["-I", "open", "user", "set", "password", "1", "-P"]) {
-      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "-P")
+      InBandChannelNotObserved { refusal: RefusalOptionNeedsValue { option: o, why: _ } } => o == "-P"
       _ => false
     })
     // getopt's attached-value spelling is NOT guessed at: "-P0penBmc" is one word this table does not
     // name, and upstream's getopt would have aborted on it too. Refusing beats guessing where it divides.
     && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-P0penBmc", "user", "set", "password", "1"]) {
-      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "-P0penBmc")
+      InBandChannelNotObserved { refusal: RefusalUnmodelledOption { option: o, why: _ } } => o == "-P0penBmc"
       _ => false
     })
     // a long option is not an option at all in this build -- there is no getopt_long (lib/ipmi_main.c:371
     // calls plain getopt), so "--password" is an unknown word, refused rather than read as -P.
     && (match in_band_channel_from_argv(argv_words: ["-I", "open", "--password", "user", "set", "password", "1"]) {
-      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "--password")
+      InBandChannelNotObserved { refusal: RefusalUnmodelledOption { option: o, why: _ } } => o == "--password"
       _ => false
     })
     // an option that changes how a write is AUTHENTICATED is refused by name, not passed through: -k is the
     // IPMIv2 Kg key. Passing it through would let a keyed session be read as the passwordless channel.
     && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-k", "0x01", "user", "list", "1"]) {
-      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "-k")
+      InBandChannelNotObserved { refusal: RefusalUnmodelledOption { option: o, why: _ } } => o == "-k"
       _ => false
     })
     // -H beside an in-band name is a contradiction, and the contradiction is refused rather than resolved
     // in favour of the arm that lets the write through.
     && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-H", "10.0.0.5", "user", "list", "1"]) {
-      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "-H")
+      InBandChannelNotObserved { refusal: RefusalRemoteHostWithInBandName { host: _, wire: w, why: _ } } => w == "open"
       _ => false
     })
 }
@@ -2854,7 +3000,7 @@ test fn the_transport_sums_place_every_wire_name_on_exactly_one_side() -> Bool {
     // fact about the installed binary and not about this capture: 00_README.txt records only that -I
     // lanplus was ABSENT. The name has to travel in the words or the channel is not observed.
     && (match in_band_channel_from_argv(argv_words: ["user", "list", "1"]) {
-      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "DEFAULT_INTF")
+      InBandChannelNotObserved { refusal: RefusalTransportAbsent { why: _ } } => true
       _ => false
     })
     && (match in_band_command_from_argv(argv_words: ["user", "list", "1"]) {
@@ -3013,7 +3159,8 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
       evidence: recovery_post_reset_readback_capture_ref,
       observed_at: recovery_post_reset_instant(),
     ) {
-      ReadbackInconclusive { detail: _ } => true
+      ReadbackInconclusive { cause: ReadbackBodyCouldNotBeRead { why: _ } } => true
+      ReadbackInconclusive { cause: ReadbackNamedNoPasswordChangeMessage } => false
       FactoryCredentialActiveAwaitingChange { message_id: _, evidence: _, observed_at: _ } => false
       // no mint: this fold reads a body, it does not report a rejected credential
       CredentialNotAccepted { evidence: _, observed_at: _ } => false
@@ -3187,7 +3334,7 @@ test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
     in_band_write: recovery_in_band_write_record(),
     reset_write: recovery_reset_write_record(),
     readback: ReadbackInconclusive {
-      detail: "no body was saved",
+      cause: ReadbackBodyCouldNotBeRead { why: "no body was saved" as NonEmptyStr },
       evidence: recovery_post_reset_readback_capture_ref,
       observed_at: recovery_post_reset_instant(),
     },
@@ -3236,9 +3383,11 @@ test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
              Present { value: _ } => false
            })
              && (match rb {
-               ReadbackInconclusive { detail: d, evidence: e, observed_at: _ } =>
-                 string_contains(s: d as String, pattern: "no body was saved")
-                   && e == recovery_post_reset_readback_capture_ref
+               // THE ARM IS THE ASSERTION. The earlier form matched the arm and then grepped its prose
+               // for "no body was saved", so rewording the sentence voided the control and any other
+               // inconclusive answer with the right words passed.
+               ReadbackInconclusive { cause: ReadbackBodyCouldNotBeRead { why: _ }, evidence: e, observed_at: _ } =>
+                 e == recovery_post_reset_readback_capture_ref
                FactoryCredentialActiveAwaitingChange { message_id: _, evidence: _, observed_at: _ } => false
                CredentialNotAccepted { evidence: _, observed_at: _ } => false
              })
@@ -3271,7 +3420,7 @@ test fn an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recov
          none => false
        })
       && (match recovery_route_unavailability(standing: standing) {
-           Present { value: RecoveryReadbackInconclusive { detail: _ } } => false
+           Present { value: RecoveryReadbackInconclusive { gap: _ } } => false
            Present { value: _ } => true
            none => false
          })
