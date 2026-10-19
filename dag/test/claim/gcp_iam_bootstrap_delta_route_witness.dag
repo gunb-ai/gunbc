@@ -9,10 +9,12 @@ import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, 
 import gunbc.auth.gcp_iam_bootstrap_model { BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding, IamBootstrapResource }
 import gunbc.auth.gcp_iam_bootstrap_delta { SubjectNotBootstrapped, SubjectUnbound, SubjectAbsentOrUnboundCannotTell }
 import gunbc.auth.gcp_iam_trust_roots { ceremony_trust_root_secrets }
+import gunbc.auth.gcp_iam_bootstrap { PoolPublication, PoolPublicationSettled, PoolPublicationRefused, pool_publication_refused }
 import gunbc.auth.gcp_iam_bootstrap_delta_route {
   BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, RootCeremonyCellsMissing, bootstrap_delta_requestable,
   BootstrapCellsWrite, WriteBootstrapCells, BootstrapCellsAlreadyPresent, BootstrapCellsRefused, bootstrap_cells_write,
   approved_subjects, bootstrap_delta_preimage, root_cell_repair_ceremony,
+  SubjectStep, SubjectStepDone, SubjectStepRefused, step_refused, ApprovedSubjectsOutcome, AllApprovedSubjectsApplied, ApprovedSubjectRefused, approved_subjects_refusal_text,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -114,4 +116,14 @@ test fn the_preimage_binds_every_cell() -> Bool {
   let fewer = BootstrapDeltaRequestBody { subjects: [subject_of(s: BootstrapSecret { secret: secret }, cells: [converge_cell])] }
   bootstrap_delta_preimage(b: body) != bootstrap_delta_preimage(b: fewer)
     && string_contains(s: bootstrap_delta_preimage(b: body), pattern: secret as String)
+}
+
+// THE PRIVILEGED WRITE PATH CANNOT READ SUCCESS FROM AN EMPTY MESSAGE (review 82849): a step or a pool
+// publication refused with no text is still a refusal, and success is only ever a named constructor.
+test fn an_empty_refusal_text_is_still_a_refusal() -> Bool {
+  (match step_refused(reason: "") { SubjectStepRefused { reason: r } => (r as String) != ""  SubjectStepDone => false })
+    && (match step_refused(reason: "x") { SubjectStepRefused { reason: r } => (r as String) == "x"  SubjectStepDone => false })
+    && (match pool_publication_refused(reason: "") { PoolPublicationRefused { reason: r } => (r as String) != ""  PoolPublicationSettled => false })
+    && (match approved_subjects_refusal_text(o: ApprovedSubjectRefused { key: "k", reason: "r" as NonEmptyStr }) { Present { value: t } => t == "k: r"  Absent => false })
+    && (match approved_subjects_refusal_text(o: AllApprovedSubjectsApplied) { Present { value: _ } => false  Absent => true })
 }

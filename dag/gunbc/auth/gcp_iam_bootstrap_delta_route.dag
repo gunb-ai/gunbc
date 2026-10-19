@@ -16,7 +16,7 @@ import extdeps.cloud.gcp.iam {
 import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_admin
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
-import gunbc.auth.gcp_operation_wait { wif_create_operation_wait }
+import gunbc.auth.gcp_operation_wait { OperationWaitOutcome, OperationWaitDone, operation_wait_refusal, wif_create_operation_outcome }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, rest_refusal_text, outcome_is_not_found }
 import gunbc.secret_provision_actuator { create_secret_container, SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown }
@@ -30,7 +30,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_identity_federations, iam_bootstrap_cell_owner, BootstrapCellOwner, RootCeremonyOwned, DeltaOwned,
 }
-import gunbc.auth.gcp_iam_bootstrap { iam_bootstrap_read_policy, iam_bootstrap_write_policy, BootstrapPolicyWritten, BootstrapPolicyWriteRefused, iam_bootstrap_publish_initial_pool_policy, PoolInitApprovedDelta }
+import gunbc.auth.gcp_iam_bootstrap { iam_bootstrap_read_policy, iam_bootstrap_write_policy, BootstrapPolicyWritten, BootstrapPolicyWriteRefused, iam_bootstrap_publish_initial_pool_policy, PoolInitApprovedDelta, PoolPublication, PoolPublicationSettled, PoolPublicationRefused }
 import gunbc.auth.gcp_iam_bootstrap_delta {
   SubjectNotBootstrapped, BootstrapSubjectStanding, SubjectUnbound, SubjectUnpublished, SubjectAbsent, SubjectAbsentOrUnboundCannotTell, subject_not_bootstrapped_text,
 }
@@ -255,36 +255,65 @@ fn needs_existence_settled(s: BootstrapSubjectStanding) -> Bool {
   }
 }
 
-fn created_or_present(o: RestRefusal, what: String) -> String {
-  if match o { RestStatusRefused { status, body: _ } => (status as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { "" }
-  else { join([what, ": create refused: ", rest_refusal_text(o: o)], "") }
+// ── THE PRIVILEGED WRITE PATH ANSWERS IN CLOSED SUMS (review 82849) ──────────────────────────
+// Success is a constructor, never an empty string: each step is SubjectStepDone or a refusal with its
+// reason, and a subject is SubjectApplied only when every step and the readback said so. A refusal
+// whose text came back empty is still a refusal, so no future arm can fall through to success.
+type SubjectStep = SubjectStepDone | SubjectStepRefused { reason: NonEmptyStr }
+
+fn step_refused(reason: String) -> SubjectStep {
+  let stated = if reason == "" { "refused with no stated cause" } else { reason }
+  SubjectStepRefused { reason: stated as NonEmptyStr }
+}
+
+type SubjectApplyOutcome = SubjectApplied | SubjectApplyRefused { key: String, reason: NonEmptyStr }
+
+type ApprovedSubjectsOutcome = AllApprovedSubjectsApplied | ApprovedSubjectRefused { key: String, reason: NonEmptyStr }
+
+fn approved_subjects_refusal_text(o: ApprovedSubjectsOutcome) -> String? {
+  match o {
+    AllApprovedSubjectsApplied => none
+    ApprovedSubjectRefused { key, reason } => Present { value: join([key, ": ", reason as String], "") }
+  }
+}
+
+fn created_or_present(o: RestRefusal, what: String) -> SubjectStep {
+  if match o { RestStatusRefused { status, body: _ } => (status as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { SubjectStepDone }
+  else { step_refused(reason: join([what, ": create refused: ", rest_refusal_text(o: o)], "")) }
+}
+
+fn operation_step(o: OperationWaitOutcome) -> SubjectStep {
+  match o {
+    OperationWaitDone => SubjectStepDone
+    _ => step_refused(reason: operation_wait_refusal(outcome: o, render_refusal: r => rest_refusal_text(o: r)))
+  }
 }
 
 // iam-bootstrap reads its parent, so here a NOT_FOUND IS absence (google.aip.dev/211); a subject
 // still absent is created bare -- a secret with no version, an account with no key, a pool with no
 // provider -- and anything else stops before a policy is written.
-fn settle_existence(s: IamBootstrapResource, token: Secret) -> String {
+fn settle_existence(s: IamBootstrapResource, token: Secret) -> SubjectStep {
   match iam_bootstrap_read_policy(resource: s, token: token) {
-    PolicyObserved { policy: _ } => ""
-    PolicyUnreadable { cause } => concat(iam_bootstrap_resource_key(resource: s), concat(": unreadable to iam-bootstrap: ", cause))
+    PolicyObserved { policy: _ } => SubjectStepDone
+    PolicyUnreadable { cause } => step_refused(reason: concat("unreadable to iam-bootstrap: ", cause))
     PolicyResourceAbsent => match s {
-      BootstrapProject => "the project is absent"
+      BootstrapProject => step_refused(reason: "the project is absent")
       BootstrapSecret { secret } => match create_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token) {
-        SecretContainerCreated { container: _ } => ""
-        SecretContainerCreationRefused { cause } => concat(secret as String, concat(": bare create refused: ", cause as String))
-        SecretContainerCreationOutcomeUnknown { cause } => concat(secret as String, concat(": bare create outcome unknown; nothing bound: ", cause as String))
+        SecretContainerCreated { container: _ } => SubjectStepDone
+        SecretContainerCreationRefused { cause } => step_refused(reason: concat("bare create refused: ", cause as String))
+        SecretContainerCreationOutcomeUnknown { cause } => step_refused(reason: concat("bare create outcome unknown; nothing bound: ", cause as String))
       }
       BootstrapAccount { account: _ } => match federation_for(s: s) {
-        Absent => "the account is not one the roster declares"
+        Absent => step_refused(reason: "the account is not one the roster declares")
         Present { value: f } => match gcp.IamAdmin.CreateServiceAccount(access_token: token, project_id: fleet_secrets_project_id, account_id: f.service_account_id, display_name: f.service_account_display_name) {
-          RestAnswered { answer: _ } => ""
+          RestAnswered { answer: _ } => SubjectStepDone
           RestRefused { refusal } => created_or_present(o: refusal, what: f.service_account as String)
         }
       }
       BootstrapPool { pool: _ } => match federation_for(s: s) {
-        Absent => "the pool is not one the roster declares"
+        Absent => step_refused(reason: "the pool is not one the roster declares")
         Present { value: f } => match gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, display_name: f.pool_display_name) {
-          RestAnswered { answer: a } => wif_create_operation_wait(token: token, subject: WifPoolOperation { pool_id: f.pool_id as String }, operation_name: a.operation_name, done: a.done, error: a.error, render_refusal: o => rest_refusal_text(o: o))
+          RestAnswered { answer: a } => operation_step(o: wif_create_operation_outcome(token: token, subject: WifPoolOperation { pool_id: f.pool_id as String }, operation_name: a.operation_name, done: a.done, error: a.error))
           RestRefused { refusal } => created_or_present(o: refusal, what: f.pool_id as String)
         }
       }
@@ -292,44 +321,60 @@ fn settle_existence(s: IamBootstrapResource, token: Secret) -> String {
   }
 }
 
-fn first_publication(s: SubjectNotBootstrapped, approved: List<GcpIamBindingCell>, digest: String, token: Secret) -> String {
+fn first_publication(s: SubjectNotBootstrapped, approved: List<GcpIamBindingCell>, digest: String, token: Secret) -> SubjectStep {
   match subject_write_route(s: s) {
-    FencedAdditionOnly => ""
+    FencedAdditionOnly => SubjectStepDone
     FirstPublicationAdmitted => match s.subject {
-      BootstrapPool { pool } => {
-        let r = iam_bootstrap_publish_initial_pool_policy(pool: pool, cells: approved, admission: PoolInitApprovedDelta { digest: digest }, token: token)
-        if r == "" { "" } else { join([iam_bootstrap_resource_key(resource: s.subject), ": POOL FIRST PUBLICATION REFUSED (no retry; an unresolved publication is an operator recovery): ", r], "") }
+      BootstrapPool { pool } => match iam_bootstrap_publish_initial_pool_policy(pool: pool, cells: approved, admission: PoolInitApprovedDelta { digest: digest }, token: token) {
+        PoolPublicationSettled => SubjectStepDone
+        PoolPublicationRefused { reason } => step_refused(reason: concat("POOL FIRST PUBLICATION REFUSED (no retry; an unresolved publication is an operator recovery): ", reason as String))
       }
-      BootstrapProject => ""
-      BootstrapAccount { account: _ } => ""
-      BootstrapSecret { secret: _ } => ""
+      BootstrapProject => SubjectStepDone
+      BootstrapAccount { account: _ } => SubjectStepDone
+      BootstrapSecret { secret: _ } => SubjectStepDone
     }
   }
 }
 
-fn apply_subject(s: SubjectNotBootstrapped, digest: String, token: Secret) -> String {
+fn fenced_cells_step(s: SubjectNotBootstrapped, approved: List<GcpIamBindingCell>, token: Secret) -> SubjectStep {
+  match bootstrap_cells_write(approved: approved, reading: iam_bootstrap_read_policy(resource: s.subject, token: token)) {
+    BootstrapCellsRefused { reason } => step_refused(reason: reason)
+    BootstrapCellsAlreadyPresent => SubjectStepDone
+    WriteBootstrapCells { policy, added: _ } => match iam_bootstrap_write_policy(resource: s.subject, policy: policy, token: token) {
+      BootstrapPolicyWriteRefused { refusal } => step_refused(reason: concat("the fenced write was refused: ", rest_refusal_text(o: refusal)))
+      BootstrapPolicyWritten => match iam_bootstrap_read_policy(resource: s.subject, token: token) {
+        PolicyObserved { policy: checked } => if all(approved, c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: checked))) { SubjectStepDone }
+          else { step_refused(reason: "the write answered but the readback lacks an approved cell") }
+        PolicyResourceAbsent => step_refused(reason: "the write answered but the subject reads absent")
+        PolicyUnreadable { cause } => step_refused(reason: concat("the write answered but the readback is unreadable: ", cause))
+      }
+    }
+  }
+}
+
+fn apply_subject(s: SubjectNotBootstrapped, digest: String, token: Secret) -> SubjectApplyOutcome {
   let key = iam_bootstrap_resource_key(resource: s.subject)
   let approved = map(s.missing, b => b.cell)
-  let settled = if needs_existence_settled(s: s.standing) { settle_existence(s: s.subject, token: token) } else { "" }
-  let published = if settled != "" { settled } else { first_publication(s: s, approved: approved, digest: digest, token: token) }
-  if published != "" { published } else {
-    match bootstrap_cells_write(approved: approved, reading: iam_bootstrap_read_policy(resource: s.subject, token: token)) {
-      BootstrapCellsRefused { reason } => join([key, ": ", reason], "")
-      BootstrapCellsAlreadyPresent => ""
-      WriteBootstrapCells { policy, added: _ } => match iam_bootstrap_write_policy(resource: s.subject, policy: policy, token: token) {
-        BootstrapPolicyWriteRefused { refusal } => join([key, ": the fenced write was refused: ", rest_refusal_text(o: refusal)], "")
-        BootstrapPolicyWritten => match iam_bootstrap_read_policy(resource: s.subject, token: token) {
-          PolicyObserved { policy: checked } => if all(approved, c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: checked))) { "" }
-            else { concat(key, ": the write answered but the readback lacks an approved cell") }
-          PolicyResourceAbsent => concat(key, ": the write answered but the subject reads absent")
-          PolicyUnreadable { cause } => join([key, ": the write answered but the readback is unreadable: ", cause], "")
-        }
+  let settled = if needs_existence_settled(s: s.standing) { settle_existence(s: s.subject, token: token) } else { SubjectStepDone }
+  match settled {
+    SubjectStepRefused { reason } => SubjectApplyRefused { key: key, reason: reason }
+    SubjectStepDone => match first_publication(s: s, approved: approved, digest: digest, token: token) {
+      SubjectStepRefused { reason } => SubjectApplyRefused { key: key, reason: reason }
+      SubjectStepDone => match fenced_cells_step(s: s, approved: approved, token: token) {
+        SubjectStepRefused { reason } => SubjectApplyRefused { key: key, reason: reason }
+        SubjectStepDone => SubjectApplied
       }
     }
   }
 }
 
 // THE APPROVED SUBJECTS, in the approved order; the first refusal stops the rest.
-fn apply_approved_subjects(subjects: List<SubjectNotBootstrapped>, digest: String, token: Secret) -> String {
-  fold(subjects, init: "", f: (acc, s) => if acc != "" { acc } else { apply_subject(s: s, digest: digest, token: token) })
+fn apply_approved_subjects(subjects: List<SubjectNotBootstrapped>, digest: String, token: Secret) -> ApprovedSubjectsOutcome {
+  fold(subjects, init: AllApprovedSubjectsApplied, f: (acc, s) => match acc {
+    ApprovedSubjectRefused { key: _, reason: _ } => acc
+    AllApprovedSubjectsApplied => match apply_subject(s: s, digest: digest, token: token) {
+      SubjectApplied => AllApprovedSubjectsApplied
+      SubjectApplyRefused { key, reason } => ApprovedSubjectRefused { key: key, reason: reason }
+    }
+  })
 }

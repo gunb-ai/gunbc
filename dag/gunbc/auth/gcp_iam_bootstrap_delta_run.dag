@@ -11,7 +11,7 @@ import gunbc.auth.gcp_iam_bootstrap_delta {
   BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, observe_bootstrap_delta, subject_not_bootstrapped_text,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route {
-  BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, RootCeremonyCellsMissing, root_cell_missing_text, bootstrap_delta_digest_hex, bootstrap_delta_requestable,
+  BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, RootCeremonyCellsMissing, root_cell_missing_text, bootstrap_delta_digest_hex, ApprovedSubjectsOutcome, AllApprovedSubjectsApplied, ApprovedSubjectRefused, bootstrap_delta_requestable,
   BootstrapDeltaRequest, BootstrapDeltaRequested, BootstrapDeltaRequestRefused, bootstrap_delta_request, apply_approved_subjects,
 }
 
@@ -85,9 +85,10 @@ fn gcp_iam_bootstrap_delta_apply_wet() -> ProcessExit
       BootstrapStepRequest { request } => match approved_gcp_access_for_request(request: request, token_variable: iam_bootstrap_token_env) {
         ApprovedGcpAccessRefused { reason } => exit_failure(reason: join([bootstrap_label, ": nothing applied: ", reason], ""))
         ApprovedGcpAccessReady { authorization: _, token } => {
-          let refused = apply_approved_subjects(subjects: request.subject.subjects, digest: bootstrap_delta_digest_hex(b: request.subject), token: token)
-          if refused != "" { exit_failure(reason: join([bootstrap_label, ": an approved subject refused; nothing after it was applied: ", refused], "")) }
-          else { ExitSuccess }
+          match apply_approved_subjects(subjects: request.subject.subjects, digest: bootstrap_delta_digest_hex(b: request.subject), token: token) {
+            ApprovedSubjectRefused { key, reason } => exit_failure(reason: join([bootstrap_label, ": an approved subject refused; nothing after it was applied: ", key, ": ", reason as String], ""))
+            AllApprovedSubjectsApplied => ExitSuccess
+          }
         }
       }
     }

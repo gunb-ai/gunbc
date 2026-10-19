@@ -972,12 +972,21 @@ fn iam_bootstrap_deny_creation_readback(policy: IamBootstrapDenyPolicy, token: S
 }
 
 
-fn iam_bootstrap_operator_readback(token: Secret) -> String {
+type OperatorReadbackStanding = OperatorReadbackAdmitted | OperatorReadbackRefused { reason: String }
+
+fn iam_bootstrap_operator_readback_standing(token: Secret) -> OperatorReadbackStanding {
   match google.OidcUserInfo.Get(access_token: token) {
-    RestRefused { refusal } => concat("bootstrap operator identity unreadable: ", rest_refusal_text(o: refusal))
+    RestRefused { refusal } => OperatorReadbackRefused { reason: concat("bootstrap operator identity unreadable: ", rest_refusal_text(o: refusal)) }
     RestAnswered { answer: actor } =>
-      if bootstrap_operator_matches(subject: actor.subject, claims: OidcStandardClaims { email: actor.email, email_verified: actor.email_verified, name: none }) { "" }
-      else { "bootstrap credential is not the admitted Google subject with its pinned verified IAM email; no grant" }
+      if bootstrap_operator_matches(subject: actor.subject, claims: OidcStandardClaims { email: actor.email, email_verified: actor.email_verified, name: none }) { OperatorReadbackAdmitted }
+      else { OperatorReadbackRefused { reason: "bootstrap credential is not the admitted Google subject with its pinned verified IAM email; no grant" } }
+  }
+}
+
+fn iam_bootstrap_operator_readback(token: Secret) -> String {
+  match iam_bootstrap_operator_readback_standing(token: token) {
+    OperatorReadbackAdmitted => ""
+    OperatorReadbackRefused { reason } => reason
   }
 }
 
@@ -1053,57 +1062,77 @@ fn pool_initialization_readback(reading: PolicyReading, cells: List<GcpIamBindin
   }
 }
 
-fn pool_init_admission_refusal(admission: PoolInitAdmission, token: Secret) -> String {
+type PoolInitAdmissionStanding = PoolInitAdmitted | PoolInitAdmissionRefused { reason: String }
+
+fn pool_init_admission(admission: PoolInitAdmission, token: Secret) -> PoolInitAdmissionStanding {
   match admission {
     PoolInitOperatorWindow => if actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_POOL_WINDOW") != iam_bootstrap_pool_window {
-      "empty pool initialization requires the operator-confirmed exclusive maintenance window"
-    } else { iam_bootstrap_operator_readback(token: token) }
-    PoolInitApprovedDelta { digest: _ } => ""
+      PoolInitAdmissionRefused { reason: "empty pool initialization requires the operator-confirmed exclusive maintenance window" }
+    } else { match iam_bootstrap_operator_readback_standing(token: token) {
+      OperatorReadbackAdmitted => PoolInitAdmitted
+      OperatorReadbackRefused { reason } => PoolInitAdmissionRefused { reason: reason }
+    } }
+    PoolInitApprovedDelta { digest: _ } => PoolInitAdmitted
   }
 }
 
-// THE CEREMONY'S CALL: its own pools, its own cells, the operator window.
-fn iam_bootstrap_initialize_pool_policy(pool: NonEmptyStr, token: Secret) -> String {
-  iam_bootstrap_publish_initial_pool_policy(pool: pool, cells: iam_bootstrap_pool_initial_cells(pool: pool), admission: PoolInitOperatorWindow, token: token)
+// WHAT THE ONE PUBLICATION ROUTE ANSWERS, as a closed sum: settled (published and read back exactly, or
+// already published) is constructed explicitly, and every other path is a refusal with its reason, so
+// no empty message can read as success (review 82849). A refusal whose text came back empty is still
+// a refusal.
+type PoolPublication = PoolPublicationSettled | PoolPublicationRefused { reason: NonEmptyStr }
+
+fn pool_publication_refused(reason: String) -> PoolPublication {
+  let stated = if reason == "" { "pool first publication refused with no stated cause" } else { reason }
+  PoolPublicationRefused { reason: stated as NonEmptyStr }
 }
 
-fn iam_bootstrap_publish_initial_pool_policy(pool: NonEmptyStr, cells: List<GcpIamBindingCell>, admission: PoolInitAdmission, token: Secret) -> String {
+// THE CEREMONY'S CALL: its own pools, its own cells, the operator window. The ceremony's stages speak
+// the stage-text convention ("" = stage done), so this is where the typed answer is rendered for them.
+fn iam_bootstrap_initialize_pool_policy(pool: NonEmptyStr, token: Secret) -> String {
+  match iam_bootstrap_publish_initial_pool_policy(pool: pool, cells: iam_bootstrap_pool_initial_cells(pool: pool), admission: PoolInitOperatorWindow, token: token) {
+    PoolPublicationSettled => ""
+    PoolPublicationRefused { reason } => reason as String
+  }
+}
+
+fn iam_bootstrap_publish_initial_pool_policy(pool: NonEmptyStr, cells: List<GcpIamBindingCell>, admission: PoolInitAdmission, token: Secret) -> PoolPublication {
   let name = concat("gcp-iam-pool-initialization-", pool as String)
   let wire = concat(pool_init_admission_wire(a: admission), "\n", iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), "\n", join(map(cells, cell => cell_preimage(c: cell)), "\n"))
   let elected = iam_authority_record(name: concat(name, "-elected.txt"))
   let closed = iam_authority_record(name: concat(name, "-closed.txt"))
-  if !path_segment_is_safe(raw: pool as String) { "pool id is not a safe journal segment" }
+  if !path_segment_is_safe(raw: pool as String) { pool_publication_refused(reason: "pool id is not a safe journal segment") }
   else if !iam_authority_record_matches(record: elected, wire: wire) || !iam_authority_record_matches(record: closed, wire: wire) {
-    "pool initialization journal is unreadable or differs; retain the recovery obligation"
+    pool_publication_refused(reason: "pool initialization journal is unreadable or differs; retain the recovery obligation")
   } else {
     match gcp.IamAdmin.GetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool) {
-    RestRefused { refusal } => rest_refusal_text(o: refusal)
+    RestRefused { refusal } => pool_publication_refused(reason: rest_refusal_text(o: refusal))
     RestAnswered { answer: read } =>
     if (match read.audit_configs { Absent => false Present { value: rows } => count(rows) != 0 }) {
-      "pool policy audit configuration is outside bootstrap representation; no replacement"
+      pool_publication_refused(reason: "pool policy audit configuration is outside bootstrap representation; no replacement")
     } else { match pool_initialization_decision(elected: iam_authority_record_present(record: elected), closed: iam_authority_record_present(record: closed),
         observed: iam_bootstrap_observed_policy(reading: iam_bootstrap_pool_policy_reading(bindings: read.bindings, etag: read.etag, version: read.version)),
         seedable: iam_bootstrap_pool_seedable(audit_configured: false, bindings: read.bindings, etag: read.etag, version: read.version), cells: cells) {
-      PoolInitNothing => ""
-      PoolInitRefused { reason } => reason
-      PoolInitCloseJournal => if iam_authority_pin(name: concat(name, "-closed.txt"), wire: wire) { "" } else { "pool initialized but completion journal failed; recover before continuing" }
-      PoolInitPublish => {
-        let admitted = pool_init_admission_refusal(admission: admission, token: token)
-        if admitted != "" { admitted } else {
+      PoolInitNothing => PoolPublicationSettled
+      PoolInitRefused { reason } => pool_publication_refused(reason: reason)
+      PoolInitCloseJournal => if iam_authority_pin(name: concat(name, "-closed.txt"), wire: wire) { PoolPublicationSettled } else { pool_publication_refused(reason: "pool initialized but completion journal failed; recover before continuing") }
+      PoolInitPublish => match pool_init_admission(admission: admission, token: token) {
+        PoolInitAdmissionRefused { reason } => pool_publication_refused(reason: reason)
+        PoolInitAdmitted => {
           let election = Filesystem.WriteCreateNew(path: concat("target/", name, "-elected.txt"), content: wire)
-          if !election.success { "pool initialization election lost or unreadable; recover without another write" }
+          if !election.success { pool_publication_refused(reason: "pool initialization election lost or unreadable; recover without another write") }
           else {
             match gcp.IamAdmin.SetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool,
               policy: GcpPolicy { bindings: gcp_cells_bindings(cs: cells), etag: "", version: 3 }) {
-            RestRefused { refusal: changed } => concat("initial pool publication requires readback recovery; no unconditional retry: ", rest_refusal_text(o: changed))
+            RestRefused { refusal: changed } => pool_publication_refused(reason: concat("initial pool publication requires readback recovery; no unconditional retry: ", rest_refusal_text(o: changed)))
             RestAnswered { answer: _ } => {
               let reread = match gcp.IamAdmin.GetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool) {
                 RestAnswered { answer: checked } => iam_bootstrap_pool_policy_reading(bindings: checked.bindings, etag: checked.etag, version: checked.version)
                 RestRefused { refusal } => iam_bootstrap_policy_refused(refusal: refusal)
               }
               match pool_initialization_readback(reading: reread, cells: cells) {
-                PoolInitReadbackExact => if iam_authority_pin(name: concat(name, "-closed.txt"), wire: wire) { "" } else { "pool initialized but completion journal failed" }
-                PoolInitReadbackRefused { reason } => reason
+                PoolInitReadbackExact => if iam_authority_pin(name: concat(name, "-closed.txt"), wire: wire) { PoolPublicationSettled } else { pool_publication_refused(reason: "pool initialized but completion journal failed") }
+                PoolInitReadbackRefused { reason } => pool_publication_refused(reason: reason)
               }
             }
             }
