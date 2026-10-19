@@ -4,7 +4,7 @@ import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import std.types { Int, String, Bool, HttpStatus }
+import std.types { Int, String, Bool, HttpStatus, NonEmptyStr }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { Second, second, second_count }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -34,7 +34,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.ietf.http_semantics.extdeps_external_authority_anchor,
-  further_citations: [rfc5789_patch_authority, rfc9110_status_codes_authority, rfc9110_retry_after_authority]
+  further_citations: [rfc5789_patch_authority, rfc9110_status_codes_authority, rfc9110_retry_after_authority, rfc9110_field_names_authority, iana_http_field_names_authority]
 }
 
 // PATCH is not an RFC 9110 method: it is defined by RFC 5789, which is why it is cited separately.
@@ -59,6 +59,37 @@ type HttpMethod
   | OPTIONS
   | TRACE
   | PATCH
+
+// RFC 9110 section 5.1 FIELD NAMES: a field name is a case-insensitive token, and the registered
+// names are the IANA Hypertext Transfer Protocol (HTTP) Field Name Registry
+// (www.iana.org/assignments/http-fields/http-fields.xhtml). The registry is open, so this is a
+// carrier of the registered spelling and not a closed enum; each field a consumer names is one data
+// row citing its defining section. Only Content-Type (RFC 9110 section 8.3) is declared here; a
+// consumer needing another field adds its row beside it.
+data rfc9110_field_names_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110#section-5.1"
+  }
+}
+
+data iana_http_field_names_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/http-fields/http-fields.xhtml"
+  }
+}
+
+type HttpFieldName {
+  registered_spelling: NonEmptyStr
+}
+
+// RFC 9110 section 8.3: the Content-Type header field indicates the media type of the content.
+data http_field_content_type: HttpFieldName = HttpFieldName { registered_spelling: "Content-Type" as NonEmptyStr }
+
+fn http_field_name_wire(f: HttpFieldName) -> String {
+  f.registered_spelling as String
+}
 
 // RFC 9110 section 15 STATUS CODE CLASSES: "The first digit of the status code defines the class of
 // response." Five classes, in the RFC's order. A status code itself is std.types HttpStatus (the

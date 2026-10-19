@@ -115,6 +115,8 @@ fn media_type_wire_label(m: MediaType) -> String {
 
 data text_html_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "html", parameters: [charset_utf8] }
 data text_plain_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "plain", parameters: [charset_utf8] }
+// application/json (IANA media-types registry; RFC 8259 section 11): the registration defines NO charset parameter, so the request form carries none.
+data application_json: MediaType = MediaType { top_level: TopLevelApplication, subtype: "json", parameters: [] }
 data application_json_utf8: MediaType = MediaType { top_level: TopLevelApplication, subtype: "json", parameters: [charset_utf8] }
 data text_javascript_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "javascript", parameters: [charset_utf8] }
 data application_octet_stream: MediaType = MediaType { top_level: TopLevelApplication, subtype: "octet-stream", parameters: [] }

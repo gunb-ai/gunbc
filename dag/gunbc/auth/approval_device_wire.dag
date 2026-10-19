@@ -10,6 +10,9 @@ import extdeps.apple.apns { ApnsCustomKey, ApnsEnvironment, ApnsDevelopment, Apn
 import extdeps.apple.app_attest { AttestKeyId }
 import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
+import extdeps.ietf.http_semantics { HttpMethod, POST }
+import extdeps.http.server { MediaType, application_json }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, UInt8 }
@@ -932,6 +935,40 @@ data approval_device_enrollment_path_prefix: NonEmptyStr = "/approve/device/enro
 // beside the registration the client data framed.
 data approval_device_push_path: NonEmptyStr = "/approve/device/push" as NonEmptyStr
 data approval_device_push_protocol: NonEmptyStr = "gunbc.approval-device-push.v1" as NonEmptyStr
+
+// ── The route table ─────────────────────────────────────────────────────────────────
+// POLICY, ONE ROW PER ROUTE: route X uses method M with request body type B in media type T. The
+// method token, the Content-Type field name and the media type are IETF/IANA facts owned by
+// extdeps.ietf.http_semantics and extdeps.http.server; a row only SELECTS among them. Authentication
+// rides in the body (never a header), so every device operation is a POST of JSON.
+// A prefix route (path_is_prefix) names the fixed part of a path whose last segment is an
+// encoded identity (path_segment).
+type ApprovalDeviceRoute {
+  path: NonEmptyStr
+  path_is_prefix: Bool
+  method: HttpMethod
+  request_body: DeclarationRef
+  request_media_type: MediaType
+}
+
+fn approval_device_body_type(decl_name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef { module_path: "gunbc.auth.approval_device_wire", decl_name: decl_name, field: WholeDeclaration }
+}
+
+data approval_device_routes: List<ApprovalDeviceRoute> = [
+  ApprovalDeviceRoute { path: approval_device_enrol_path, path_is_prefix: false, method: POST, request_body: approval_device_body_type(decl_name: "EnrolmentRequest"), request_media_type: application_json },
+  ApprovalDeviceRoute { path: approval_device_pending_path, path_is_prefix: false, method: POST, request_body: approval_device_body_type(decl_name: "ReadAuthentication"), request_media_type: application_json },
+  ApprovalDeviceRoute { path: approval_device_request_path_prefix, path_is_prefix: true, method: POST, request_body: approval_device_body_type(decl_name: "ReadAuthentication"), request_media_type: application_json },
+  ApprovalDeviceRoute { path: approval_device_redeem_path, path_is_prefix: false, method: POST, request_body: approval_device_body_type(decl_name: "SignedRedemption"), request_media_type: application_json },
+  ApprovalDeviceRoute { path: approval_device_enrollment_path_prefix, path_is_prefix: true, method: POST, request_body: approval_device_body_type(decl_name: "ReadAuthentication"), request_media_type: application_json },
+  ApprovalDeviceRoute { path: approval_device_push_path, path_is_prefix: false, method: POST, request_body: approval_device_body_type(decl_name: "PushUpdateRequest"), request_media_type: application_json },
+]
+
+// The route constants the table must cover, as an identity join target.
+data approval_device_route_paths: List<NonEmptyStr> = [
+  approval_device_enrol_path, approval_device_pending_path, approval_device_request_path_prefix,
+  approval_device_redeem_path, approval_device_enrollment_path_prefix, approval_device_push_path,
+]
 
 fn device_push_update_client_data(enrollment_id: NonEmptyStr, requested_at: Timestamp, push: PushRegistration) -> NonEmptyStr {
   framed(fields: [approval_device_push_protocol as String, approval_device_push_path as String, enrollment_id as String, requested_at, push_update_json(p: push)])
