@@ -75,6 +75,16 @@ import product.electrical.bench_session {
   NoDamageSeen,
   NodeVoltageObservation,
   ResistanceObservation,
+  StatementCertainty,
+  MeterRange,
+  ResistanceDisplay,
+  RangeFullScale,
+  RangeUnrecorded,
+  DisplayValue,
+  DisplayAtProbeBaseline,
+  DisplayOverRange,
+  HeldSteady,
+  is_at_baseline,
   ReadAbout,
   ReadBelow,
   StatedPlainly,
@@ -82,6 +92,7 @@ import product.electrical.bench_session {
   AfterIncidents,
   OrderUnrecorded,
   StabilityUnrecorded,
+  BeforeIncidents,
   value_ceiling,
   is_read_value,
   is_hedged,
@@ -816,6 +827,7 @@ type EnableGap
   | NoEnablePin
   | EnableUnread
   | BoundNotBelowMinimum { bound: Millivolt, minimum: Millivolt }
+  | AccessPointUnseparated { points: List<ElectricalTerminalRef>, neighbours: List<ElectricalTerminalRef> }
   | ReadWithinWindow
 
 type ControllerEnableStanding
@@ -974,13 +986,166 @@ fn enable_from(c: InstalledComponent, ctl: HotSwapControllerSpecification, readi
   }
 }
 
+fn resistances_of(layout: CarrierLayoutObservation) -> List<ResistanceObservation> {
+  match layout.measured {
+    Absent => []
+    Present { value: b } => b.bench.resistances
+  }
+}
+
+fn other_end(o: ResistanceObservation, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef> {
+  if terminal_ref_equal(a: o.first, b: t) { [o.second] } else { if terminal_ref_equal(a: o.second, b: t) { [o.first] } else { [] } }
+}
+
+// WHERE A PIN MAY BE READ: the pin itself, and a point a resistance reading joins to it at the
+// shorted-probe baseline AND readings separate from each neighbouring pin on the same side of the
+// package -- a value or over range, not the baseline. A pad joined to "the seventh lead" is the
+// eighth's as easily, so until its neighbours are excluded it is a candidate, not an access point. A
+// point joined only by a kilohm reading is another node, whatever its place.
+fn joined_at_baseline(layout: CarrierLayoutObservation, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef> {
+  flat_map(filter(resistances_of(layout: layout), o => is_at_baseline(o: o)), o => other_end(o: o, t: t))
+}
+
+fn separated(layout: CarrierLayoutObservation, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
+  any(resistances_of(layout: layout), o => !is_at_baseline(o: o) && any(other_end(o: o, t: a), x => terminal_ref_equal(a: x, b: b)))
+}
+
+fn same_side(n: Nat, m: Nat, half: Nat) -> Bool {
+  (n <= half && m <= half) || (n > half && m > half)
+}
+
+fn neighbour_terminals(c: InstalledComponent, ctl: HotSwapControllerSpecification, pin: ControllerPin) -> List<ElectricalTerminalRef> {
+  let half = count(ctl.pins) / 2
+  map(filter(ctl.pins, q => same_side(n: q.number, m: pin.number, half: half) && (q.number + 1 == pin.number || pin.number + 1 == q.number)), q => controller_pin_terminal(c: c, p: q))
+}
+
+fn is_access_point(layout: CarrierLayoutObservation, x: ElectricalTerminalRef, neighbours: List<ElectricalTerminalRef>) -> Bool {
+  all(neighbours, n => separated(layout: layout, a: x, b: n))
+}
+
+fn enable_pin_of(ctl: HotSwapControllerSpecification) -> ControllerPin? {
+  (filter(ctl.pins, p => is_enable_role(p: p))).first()
+}
+
+fn enable_readings(layout: CarrierLayoutObservation, c: InstalledComponent, ctl: HotSwapControllerSpecification) -> List<NodeVoltageObservation> {
+  match enable_pin_of(ctl: ctl) {
+    Absent => []
+    Present { value: pin } => {
+      let t = controller_pin_terminal(c: c, p: pin)
+      let neighbours = neighbour_terminals(c: c, ctl: ctl, pin: pin)
+      readings_at(vs: bench_of(layout: layout), ts: concat([t], filter(joined_at_baseline(layout: layout, t: t), x => is_access_point(layout: layout, x: x, neighbours: neighbours))))
+    }
+  }
+}
+
 fn controller_enable_standing(layout: CarrierLayoutObservation, c: InstalledComponent) -> ControllerEnableStanding {
   match controller_of(c: c) {
     Absent => EnableUnestablished { component: c.component, readings: [], gap: ControllerNotIdentified }
-    Present { value: ctl } => match (filter(ctl.pins, p => is_enable_role(p: p))).first() {
+    Present { value: ctl } => match enable_pin_of(ctl: ctl) {
       Absent => EnableUnestablished { component: c.component, readings: [], gap: NoEnablePin }
-      Present { value: pin } => enable_from(c: c, ctl: ctl, readings: readings_at(vs: bench_of(layout: layout), ts: [controller_pin_terminal(c: c, p: pin)]))
+      Present { value: pin } => match (enable_readings(layout: layout, c: c, ctl: ctl)).first() {
+        Present { value: _ } => enable_from(c: c, ctl: ctl, readings: enable_readings(layout: layout, c: c, ctl: ctl))
+        Absent => {
+          let t = controller_pin_terminal(c: c, p: pin)
+          let neighbours = neighbour_terminals(c: c, ctl: ctl, pin: pin)
+          let candidates = filter(joined_at_baseline(layout: layout, t: t), x => !is_access_point(layout: layout, x: x, neighbours: neighbours))
+          let at_candidates = readings_at(vs: bench_of(layout: layout), ts: candidates)
+          match at_candidates.first() {
+            Absent => enable_from(c: c, ctl: ctl, readings: [])
+            Present { value: _ } => EnableUnestablished { component: c.component, readings: at_candidates, gap: AccessPointUnseparated { points: candidates, neighbours: neighbours } }
+          }
+        }
+      }
     }
+  }
+}
+
+// WHETHER THE INPUT ALONE CAN EVER ENABLE THE CONTROLLER. Two read values of the enable pin under two
+// source settings, in the same proportion to their sources within a twentieth, say the pin tracks the
+// input; the input at which it would reach the threshold's minimum is then the source scaled by the
+// threshold over the reading. Above the input's established upper bound, no input the board is rated
+// for enables it on its own.
+type ProjectionGap
+  = ProjectionControllerNotIdentified
+  | FewerThanTwoSourceSettings
+  | NotProportionalToSource
+  | NoInputBound
+
+type EnableProjection
+  = EnableUnreachableWithinInputBound { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, turn_on_millivolts: Nat, bound: Volt }
+  | EnableReachableWithinInputBound { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, turn_on_millivolts: Nat, bound: Volt }
+  | EnableProjectionUnestablished { component: ComponentInstanceIdentity, gap: ProjectionGap }
+
+fn source_millivolts(o: NodeVoltageObservation) -> Nat {
+  volt_count(v: o.source) * 1000
+}
+
+fn proportional(a: NodeVoltageObservation, b: NodeVoltageObservation) -> Bool {
+  let p = value_ceiling(v: a.value) * source_millivolts(o: b)
+  let q = value_ceiling(v: b.value) * source_millivolts(o: a)
+  let d = if p >= q { p - q } else { q - p }
+  d * 20 <= p
+}
+
+fn bound_volt(layout: CarrierLayoutObservation) -> Volt? {
+  match input_bound(layout: layout) {
+    BoundEstablished { bound, equally_limiting: _, observed: _ } => Present { value: bound.rated.maximum }
+    BoundContradicted { contradicted: _, observed: _ } => Absent
+    BoundUnestablished { observed: _ } => Absent
+  }
+}
+
+fn projection_from(layout: CarrierLayoutObservation, c: InstalledComponent, ctl: HotSwapControllerSpecification, a: NodeVoltageObservation, b: NodeVoltageObservation) -> EnableProjection {
+  if !proportional(a: a, b: b) {
+    EnableProjectionUnestablished { component: c.component, gap: NotProportionalToSource }
+  } else {
+    match bound_volt(layout: layout) {
+      Absent => EnableProjectionUnestablished { component: c.component, gap: NoInputBound }
+      Present { value: bound } => {
+        let turn_on = millivolt_count(v: ctl.enable_threshold.minimum) * source_millivolts(o: a) / value_ceiling(v: a.value)
+        if turn_on > volt_count(v: bound) * 1000 {
+          EnableUnreachableWithinInputBound { component: c.component, readings: [a, b], turn_on_millivolts: turn_on, bound: bound }
+        } else {
+          EnableReachableWithinInputBound { component: c.component, readings: [a, b], turn_on_millivolts: turn_on, bound: bound }
+        }
+      }
+    }
+  }
+}
+
+fn enable_projection(layout: CarrierLayoutObservation, c: InstalledComponent) -> EnableProjection {
+  match controller_of(c: c) {
+    Absent => EnableProjectionUnestablished { component: c.component, gap: ProjectionControllerNotIdentified }
+    Present { value: ctl } => {
+      let values = filter(enable_readings(layout: layout, c: c, ctl: ctl), o => is_read_value(v: o.value) && value_ceiling(v: o.value) > 0)
+      match values.first() {
+        Absent => EnableProjectionUnestablished { component: c.component, gap: FewerThanTwoSourceSettings }
+        Present { value: a } => match (filter(values, o => volt_count(v: o.source) != volt_count(v: a.source))).first() {
+          Absent => EnableProjectionUnestablished { component: c.component, gap: FewerThanTwoSourceSettings }
+          Present { value: b } => projection_from(layout: layout, c: c, ctl: ctl, a: a, b: b)
+        }
+      }
+    }
+  }
+}
+
+fn projection_text(p: EnableProjection) -> String {
+  match p {
+    EnableUnreachableWithinInputBound { component, readings, turn_on_millivolts, bound } => join([
+      component_text(c: component), "'s enable tracks the input and would reach its threshold minimum only near ", millivolt_text(n: turn_on_millivolts),
+      ", above the input's ", to_string(volt_count(v: bound)), " V bound (a rated working limit, not a clamp level): the input alone does not enable it within its rating (", join(map(readings, o => node_voltage_text(o: o)), "; "), readings_caveat(vs: readings), ")",
+    ], "")
+    EnableReachableWithinInputBound { component, readings, turn_on_millivolts, bound } => join([
+      component_text(c: component), "'s enable tracks the input and reaches its threshold minimum near ", millivolt_text(n: turn_on_millivolts),
+      ", within the input's ", to_string(volt_count(v: bound)), " V bound (", join(map(readings, o => node_voltage_text(o: o)), "; "), readings_caveat(vs: readings), ")",
+    ], "")
+    EnableProjectionUnestablished { component, gap } => join([component_text(c: component), "'s enable is not projected onto the input (",
+      match gap {
+        ProjectionControllerNotIdentified => "not identified as a hot-swap controller"
+        FewerThanTwoSourceSettings => "no two values read under different source settings"
+        NotProportionalToSource => "its readings do not scale with the source"
+        NoInputBound => "the input has no established upper bound"
+      }, ")"], "")
   }
 }
 
@@ -1024,6 +1189,10 @@ fn enable_text(s: ControllerEnableStanding) -> String {
         EnableUnread => "its enable pin is unread"
         BoundNotBelowMinimum { bound, minimum } => join(["the reading is a stated bound of ", millivolt_text(n: millivolt_count(v: bound)), ", not below the threshold minimum of ", millivolt_text(n: millivolt_count(v: minimum)), ": read the pin's value"], "")
         ReadWithinWindow => "the value read lies within the threshold window"
+        AccessPointUnseparated { points, neighbours } => join([
+          "the readings are at ", join(map(points, x => terminal_text(t: x)), ", "), ", joined to the enable pin at the shorted-probe baseline but not separated from its neighbouring ",
+          join(map(neighbours, x => terminal_text(t: x)), " and "), ", so they may be a neighbour's: read the point's resistance to each neighbour",
+        ], "")
       },
       match readings.first() {
         Absent => ""
@@ -1077,16 +1246,28 @@ data p4261_j20_main_input_hypothesis: InvestigationHypothesis = InvestigationHyp
 // TWO COMPETING READINGS OF THE SAME SMALL DRAW. With the module removed the carrier's own load is small
 // whether or not its hot-swap stage conducts: the module carries its own regulators, so a low draw does
 // not say the main path is off. Neither reading is established; one live measurement decides between them.
-data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
-  claim: "U1_P5 holds Q21_P5 and Q22_P5 off because its UVLO/EN pin (pin 7) is pulled below threshold by a local enable network -- candidates Q5_P5 and D5_P5 on the back side (D5_P5 is not the input TVS D5), or Q300 / Q301 -- standing in for a remote shutdown, chassis-presence or module-presence signal the original system would release; a fault latch is the alternative",
+data p4261_pad_is_ovlo_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "the back-side pad read on 2026-10-19 (1.8 V at 48 V, 1.35 V at 36 V, 3.5 kohm to ground) is on U1_P5's OVLO (pin 8) divider, not UVLO/EN (pin 7); at about 1.8 V, below the 2.39 V OVLO minimum, it is permissive",
   sources: [
-    "Q21_P5 and Q22_P5 read blocking at 48 V (input_switch_standing): the input stage is held off, so the module-removed draw is not an unloaded, switched-on stage",
-    "TI SNVS950C: the load current can be remotely switched off by taking UVLO/EN below its threshold with an open-collector or open-drain device (extdeps.electronic_component.ti_lm5066i vendor statement)",
-    "Q5_P5, D5_P5, Q300 and Q301 are small back-side parts photographed 2026-10-19; Q300 / Q301's thin traces leave the area. Their placement makes them candidates, not members, of the enable network",
-    "no reading of pin 7 is recorded: the 2026-10-19 pin 7 and pin 8 readings were taken on the right column, which is not pins 7 and 8",
+    "TI SNVS950C design example, section 9.2.1.2.6, option B: R3 = 95.3 kohm from the input and R4 = 3.74 kohm to ground set a 65 V overvoltage trip for a 40-60 V input, which predicts 1.81 V at 48 V and 1.36 V at 36 V -- a reference circuit, not this board's parts",
+    "the same example sets UVLO with 150 kohm / 11.5 kohm, about 3.4 V on UVLO/EN at 48 V and a 38 V turn-on",
+    "pin 8 is pin 7's neighbour on the same side, and the pad's join to 'pin 7' was read across both faces of the board and stated with a hedge",
+    "the about 0.5 Mohm the pad read to Q21_P5's tab does not fit a 95 kohm upper resistor, so the match is a lead, not an identification",
+  ],
+  decided_by: "unpowered, on the lowest ohm range, the pad's resistance to U1_P5 pins 6, 7 and 8 counted from the pin 1 triangle: the baseline marks the pad's pin",
+}
+
+data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "if U1_P5's UVLO/EN (pin 7) proves to sit below its threshold with the input applied, something holds it there -- a local network around pin 7 (candidates D5_P5, not the input TVS D5, and Q300 / Q301) awaiting a remote-enable, chassis-presence or module-presence condition the original system supplies. Alternatives not excluded: an override by another circuit, a protection, bias or timing condition of U1_P5, or damage",
+  sources: [
+    "Q21_P5 and Q22_P5 read blocking at 48 V (input_switch_standing): the input stage is held off",
+    "TI SNVS950C: the load can be remotely switched off by taking UVLO/EN below its threshold with an open-collector or open-drain device; released, the LM5066I switches on (extdeps.electronic_component.ti_lm5066i vendor statement)",
+    "no reading is yet established at pin 7 itself: the pad read on 2026-10-19 is not separated from pin 8 (controller_enable_standing; p4261_pad_is_ovlo_hypothesis)",
+    "the K1, never energized and never bridged, reads the same 3.5 kohm from the same back-side pad to ground (operator 2026-10-19), so that reading is the design's rather than the bridge's -- on a pad located by the E1's layout",
+    "Q5_P5's single lead is on the return; its function is unread",
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
   ],
-  decided_by: "unpowered, first confirm the leg count (left column fifth lead, VIN, low-impedance to Q21_P5's tab; tenth lead, GND, to J20's return), find a pad on pin 7's net, then read that pad's voltage at 48 V as a value, and its resistance to each lead of Q5_P5, D5_P5, Q300 and Q301 with range and stability recorded",
+  decided_by: "pin 7's own access point, separated from pins 6 and 8, read at 48 V as a value; if it is below 2.41 V, the resistors and transistors that join pin 7 directly, mapped unpowered before any off-board signal is sought",
 }
 
 data p4261_q4_temperature_diode_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
@@ -1369,10 +1550,11 @@ fn e1_switch_reading(c: ComponentInstanceIdentity, terminal: NonEmptyStr, first_
     reference: e1_ground_ref,
     record: both_points_inferred(first_basis: first_basis, second_basis: e1_supply_return_basis),
     conditions: e1_live_bench,
+    source: volt(count: 48),
     value: ReadAbout { value: millivolt(count: millivolts) },
     certainty: StatedPlainly,
     order: OrderUnrecorded { relative_to: [e1_bridge_incident.key] },
-    evidence: e1_switch_said,
+    evidence: [e1_switch_said],
   }
 }
 
@@ -1380,10 +1562,66 @@ fn e1_switch_readings(c: ComponentInstanceIdentity) -> List<NodeVoltageObservati
   concat([e1_switch_reading(c: c, terminal: "tab", first_basis: e1_input_tab_basis, millivolts: 48000)], map(e1_small_leg_names, n => e1_switch_reading(c: c, terminal: n, first_basis: e1_small_legs_basis, millivolts: 1000)))
 }
 
+// U1_P5'S ENABLE (2026-10-19, all after the probe bridge). Pin 7's front-side trace ends in a covered
+// via; on the back, a via pad beside the '01B' resistor reads at the shorted-probe baseline to pin 7,
+// repeated. Unpowered, with the supply's leads unplugged, from that pad: the ground ring (itself on
+// J20's return), Q5_P5's single lead (on the return), D5_P5's nearer end, the '01B' resistor's ends
+// and Q21_P5's tab. Energized through the same leads, the pad read at two source settings.
+data e1_pin7_pad: ComponentInstanceIdentity = e1_component(local: "back-side via pad beside the 01B resistor, behind U1_P5")
+data e1_ground_ring: ComponentInstanceIdentity = e1_component(local: "copper mounting ring behind U3_P5 (back side)")
+data e1_01b: ComponentInstanceIdentity = e1_component(local: "01B resistor below D5_P5 (back side)")
+data e1_back_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "https://drive.google.com/open?id=1dENn7_kYwOHHLdflkGU4gxcwa-cmTh2r (back side behind U1_P5, the pin 7 pad arrowed)")
+data e1_u1_closeup_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "https://drive.google.com/open?id=1xNIV61IHgIy_s8mNq_z1D9KYJaciscui (U1_P5 close-up, the pin 1 triangle at the top left)")
+data e1_twenty_k_hedge: StatementCertainty = StatedHedged { verbatim: "i think 20kohm yeah" }
+data e1_return_basis: NonEmptyStr = "'ground' is J20's latch-side row; position 1 stands for it"
+
+fn e1_pad_ohms(to: ElectricalTerminalRef, display: ResistanceDisplay, range: MeterRange, certainty: StatementCertainty, said: NonEmptyStr) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_terminal(c: e1_pin7_pad, name: "pad"), second: to, record: both_points_recorded, conditions: e1_bench,
+    range: range, display: display, stability: StabilityUnrecorded, certainty: certainty, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo],
+  }
+}
+
+fn e1_to_return(from: ElectricalTerminalRef, said: NonEmptyStr) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: from, second: e1_ground_ref, record: second_point_inferred(basis: e1_return_basis), conditions: e1_bench,
+    range: RangeUnrecorded, display: DisplayAtProbeBaseline, stability: StabilityUnrecorded, certainty: StatedPlainly, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo],
+  }
+}
+
+data e1_pin7_resistances: List<ResistanceObservation> = [
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_terminal(c: e1_u1_p5, name: "pin 7"), second: e1_terminal(c: e1_pin7_pad, name: "pad"), record: both_points_recorded, conditions: e1_bench,
+    range: RangeUnrecorded, display: DisplayAtProbeBaseline, stability: HeldSteady, certainty: StatedHedged { verbatim: "as far as i can tell" }, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [
+      OperatorStatement { stated_on: "2026-10-19", verbatim: "This pad reads .05 ohm / the pad does seem to be the pin 7 leg, as far as i can tell - its hard to measure on both sides of the board but i repeated the test and it holds" },
+      e1_back_photo, e1_u1_closeup_photo,
+    ],
+  },
+  e1_pad_ohms(to: e1_terminal(c: e1_ground_ring, name: "ring"), display: DisplayValue { ohms: 3500, approximate: false }, range: RangeFullScale { ohms: 20000 }, certainty: e1_twenty_k_hedge, said: "to a ground copper ring is 3500ohm / i think 20kohm yeah"),
+  e1_to_return(from: e1_terminal(c: e1_ground_ring, name: "ring"), said: "yes the copper rings are ground"),
+  e1_to_return(from: e1_terminal(c: e1_component(local: "Q5_P5"), name: "single lead"), said: "the q5_p5 leg is ground"),
+  e1_pad_ohms(to: e1_terminal(c: e1_component(local: "D5_P5"), name: "end nearer the pin 7 pad"), display: DisplayValue { ohms: 5000, approximate: false }, range: RangeFullScale { ohms: 20000 }, certainty: e1_twenty_k_hedge, said: "5kohm to the near side of d5_p5"),
+  e1_pad_ohms(to: e1_terminal(c: e1_component(local: "Q5_P5"), name: "single lead"), display: DisplayValue { ohms: 3500, approximate: false }, range: RangeFullScale { ohms: 20000 }, certainty: e1_twenty_k_hedge, said: "3500ohm to one of the three legs (the lone one)"),
+  e1_pad_ohms(to: e1_terminal(c: e1_01b, name: "one end"), display: DisplayOverRange, range: RangeUnrecorded, certainty: StatedPlainly, said: "01b don't see anything"),
+  e1_pad_ohms(to: e1_terminal(c: e1_01b, name: "other end"), display: DisplayOverRange, range: RangeUnrecorded, certainty: StatedPlainly, said: "01b don't see anything"),
+  e1_pad_ohms(to: e1_terminal(c: e1_q21, name: "tab"), display: DisplayValue { ohms: 500000, approximate: true }, range: RangeFullScale { ohms: 2000000 }, certainty: StatedHedged { verbatim: "it showed .5 or something at 2mohm" }, said: "the q21 tab at 2mohm shows like a lot of resistance / it showed .5 or something at 2mohm"),
+]
+
+fn e1_pad_volts(source_volts: Nat, millivolts: Nat, said: NonEmptyStr) -> NodeVoltageObservation {
+  NodeVoltageObservation {
+    asset: p4261_e1_b, at: e1_terminal(c: e1_pin7_pad, name: "pad"), reference: e1_ground_ref, record: second_point_inferred(basis: e1_supply_return_basis),
+    conditions: e1_live_bench, source: volt(count: source_volts), value: ReadAbout { value: millivolt(count: millivolts) }, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] }, evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo],
+  }
+}
+
 data e1_bench_record: BenchRecord = BenchRecord {
   incidents: [e1_bridge_incident],
-  voltages: concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)),
-  resistances: [],
+  voltages: concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]),
+  resistances: e1_pin7_resistances,
 }
 
 data e1_measured: MeasuredBoard = MeasuredBoard {
@@ -1486,7 +1724,8 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_component(local: "U3_P5"), terminals: [], identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") } },
     InstalledComponent { component: e1_component(local: "U2_P1"), terminals: [], identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } },
     InstalledComponent { component: e1_component(local: "Q5_P5"), terminals: names(ns: ["single lead", "pair, first lead", "pair, second lead"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a back-side SOT-23 in the _P5 group (an enable-network candidate, see p4261_enable_network_hypothesis)" } },
-    InstalledComponent { component: e1_component(local: "D5_P5"), terminals: [], identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a small back-side part in the _P5 group, a different component from the input TVS D5" } },
+    InstalledComponent { component: e1_component(local: "D5_P5"), terminals: names(ns: ["end nearer the pin 7 pad", "other end"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a small back-side part in the _P5 group, a different component from the input TVS D5" } },
+    InstalledComponent { component: e1_01b, terminals: names(ns: ["one end", "other end"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "01B", evidence: e1_back_photo } }, discriminator: "'01B' is 1.00 kohm in the EIA-96 code (a nominal-value candidate); its maker and its place in the enable network are unread" } },
     InstalledComponent { component: e1_component(local: "Q300"), terminals: names(ns: ["single lead", "pair, first lead", "pair, second lead"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a back-side SOT-23 whose thin traces leave the area" } },
     InstalledComponent { component: e1_component(local: "Q301"), terminals: names(ns: ["single lead", "pair, first lead", "pair, second lead"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a back-side SOT-23 beside Q300" } },
   ],
@@ -1637,6 +1876,7 @@ type CarrierFinding
   | J20EnergizedDraw
   | InputSwitchState { component: ComponentInstanceIdentity }
   | ControllerEnableState { component: ComponentInstanceIdentity }
+  | EnableInputProjection { component: ComponentInstanceIdentity }
 
 type FindingStanding
   = FindingEstablished { text: String }
@@ -1715,6 +1955,13 @@ fn carrier_finding(layout: CarrierLayoutObservation, f: CarrierFinding) -> Findi
         _ => FindingEstablished { text: enable_text(s: controller_enable_standing(layout: layout, c: x)) }
       }
     }
+    EnableInputProjection { component } => match installed(layout: layout, c: component) {
+      Absent => not_a_component(c: component)
+      Present { value: x } => match enable_projection(layout: layout, c: x) {
+        EnableProjectionUnestablished { component: _, gap: _ } => FindingNotEstablished { reason: projection_text(p: enable_projection(layout: layout, c: x)) }
+        _ => FindingEstablished { text: projection_text(p: enable_projection(layout: layout, c: x)) }
+      }
+    }
     J20EnergizedDraw => match input_draw(layout: layout) {
       InputDrawBounded { bounded: _, observed: _ } => FindingEstablished { text: join(["J20 ", input_draw_text(d: input_draw(layout: layout))], "") }
       InputDrawContradicted { contradicted: _, observed: _ } => FindingNotEstablished { reason: input_draw_text(d: input_draw(layout: layout)) }
@@ -1748,7 +1995,7 @@ fn input_stage_text(layout: CarrierLayoutObservation) -> String {
     },
     match controllers.first() {
       Absent => ""
-      Present { value: _ } => join([". ", join(map(controllers, c => enable_text(s: controller_enable_standing(layout: layout, c: c))), ". ")], "")
+      Present { value: _ } => join([". ", join(map(controllers, c => join([enable_text(s: controller_enable_standing(layout: layout, c: c)), ". ", projection_text(p: enable_projection(layout: layout, c: c))], "")), ". ")], "")
     },
     if bench == "" { "" } else { join([". ", bench], "") },
   ], "")
@@ -1759,7 +2006,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     "J20 (", j20_text(layout: layout), "; ", polarity_text(p: input_polarity(layout: layout)), "): ", bound_text(b: input_bound(layout: layout)),
     ". J20 ", input_draw_text(d: input_draw(layout: layout)),
     ". ", input_stage_text(layout: layout),
-    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis),
+    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_pad_is_ovlo_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
 }

@@ -38,6 +38,13 @@ import product.electrical.source_draw {
 import product.electrical.bench_session {
   BenchRecord,
   NodeVoltageObservation,
+  ResistanceObservation,
+  ResistanceDisplay,
+  DisplayValue,
+  DisplayOverRange,
+  DisplayAtProbeBaseline,
+  RangeFullScale,
+  StabilityUnrecorded,
   VoltageValue,
   ReadAbout,
   ReadBelow,
@@ -183,9 +190,20 @@ import product.p4261_carrier_layout {
   EnableUnestablished,
   EnableUnread,
   BoundNotBelowMinimum,
+  AccessPointUnseparated,
   ReadWithinWindow,
   input_switch_standing,
   controller_enable_standing,
+  EnableInputProjection,
+  EnableProjection,
+  EnableUnreachableWithinInputBound,
+  EnableReachableWithinInputBound,
+  EnableProjectionUnestablished,
+  NotProportionalToSource,
+  FewerThanTwoSourceSettings,
+  enable_projection,
+  e1_pin7_pad,
+  e1_pin7_resistances,
   installed,
   board_graph,
 }
@@ -589,12 +607,19 @@ fn rl_draw(o: SourceDrawObservation) -> SourceDrawObservation {
 fn rl_voltage(o: NodeVoltageObservation) -> NodeVoltageObservation {
   NodeVoltageObservation {
     asset: o.asset, at: terminal_ref(component: rl_c(c: o.at.component), terminal: o.at.terminal), reference: rl_ref(r: o.reference), record: o.record,
-    conditions: o.conditions, value: o.value, certainty: o.certainty, order: o.order, evidence: o.evidence,
+    conditions: o.conditions, source: o.source, value: o.value, certainty: o.certainty, order: o.order, evidence: o.evidence,
+  }
+}
+
+fn rl_resistance(o: ResistanceObservation) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: o.asset, first: terminal_ref(component: rl_c(c: o.first.component), terminal: o.first.terminal), second: terminal_ref(component: rl_c(c: o.second.component), terminal: o.second.terminal),
+    record: o.record, conditions: o.conditions, range: o.range, display: o.display, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence,
   }
 }
 
 fn rl_bench(b: BenchRecord) -> BenchRecord {
-  BenchRecord { incidents: b.incidents, voltages: map(b.voltages, o => rl_voltage(o: o)), resistances: b.resistances }
+  BenchRecord { incidents: b.incidents, voltages: map(b.voltages, o => rl_voltage(o: o)), resistances: map(b.resistances, o => rl_resistance(o: o)) }
 }
 
 fn relabelled_e1() -> CarrierLayoutObservation {
@@ -915,15 +940,23 @@ test fn the_energized_draw_renders_and_survives_relabelling() -> Bool {
 
 // ── THE INPUT SWITCHES AND THEIR CONTROLLER ───────────────────────────────────────────────────
 
+fn e1_with_bench(vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, voltages: vs, resistances: rs } } }, input: p4261_e1_layout.input)
+}
+
 fn e1_with_voltages(vs: List<NodeVoltageObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, voltages: vs, resistances: [] } } }, input: p4261_e1_layout.input)
+  e1_with_bench(vs: vs, rs: [])
+}
+
+fn reading_under(c: ComponentInstanceIdentity, terminal: NonEmptyStr, value: VoltageValue, order: ReadingOrder, source_volts: Nat) -> NodeVoltageObservation {
+  NodeVoltageObservation {
+    asset: p4261_e1_b, at: terminal_ref(component: c, terminal: terminal as TerminalIdentity), reference: e1_ground_ref, record: both_points_recorded,
+    conditions: e1_live_bench, source: volt(count: source_volts), value: value, certainty: StatedPlainly, order: order, evidence: [OperatorStatement { stated_on: "supplied", verbatim: "supplied" }],
+  }
 }
 
 fn reading(c: ComponentInstanceIdentity, terminal: NonEmptyStr, value: VoltageValue, order: ReadingOrder) -> NodeVoltageObservation {
-  NodeVoltageObservation {
-    asset: p4261_e1_b, at: terminal_ref(component: c, terminal: terminal as TerminalIdentity), reference: e1_ground_ref, record: both_points_recorded,
-    conditions: e1_live_bench, value: value, certainty: StatedPlainly, order: order, evidence: OperatorStatement { stated_on: "supplied", verbatim: "supplied" },
-  }
+  reading_under(c: c, terminal: terminal, value: value, order: order, source_volts: 48)
 }
 
 fn about(mv: Nat) -> VoltageValue {
@@ -1023,6 +1056,7 @@ fn enable_gap(ss: List<ControllerEnableStanding>, which: Nat) -> Bool {
       EnableUnread => which == 0
       BoundNotBelowMinimum { bound: _, minimum: _ } => which == 1
       ReadWithinWindow => which == 2
+      AccessPointUnseparated { points: _, neighbours: _ } => which == 3
       _ => false
     }
     _ => false
@@ -1033,16 +1067,43 @@ fn u1_reading(terminal: NonEmptyStr, value: VoltageValue) -> List<NodeVoltageObs
   [reading(c: e1_u1_p5, terminal: terminal, value: value, order: before())]
 }
 
+fn pad_to_pin(pin: NonEmptyStr, display: ResistanceDisplay) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: terminal_ref(component: e1_pin7_pad, terminal: "pad" as TerminalIdentity), second: terminal_ref(component: e1_u1_p5, terminal: pin as TerminalIdentity),
+    record: both_points_recorded, conditions: BenchConditions { power: Unpowered, module: ModuleRemoved }, range: RangeFullScale { ohms: 200 }, display: display,
+    stability: StabilityUnrecorded, certainty: StatedPlainly, order: before(), evidence: [OperatorStatement { stated_on: "supplied", verbatim: "supplied" }],
+  }
+}
+
+// The pad separated from pin 7's neighbours: over range to pin 6, kilohms to pin 8.
+fn separated_from_neighbours() -> List<ResistanceObservation> {
+  [pad_to_pin(pin: "pin 6", display: DisplayOverRange), pad_to_pin(pin: "pin 8", display: DisplayValue { ohms: 3500, approximate: false })]
+}
+
 // AN ENABLE PIN IS HELD LOW ONLY BELOW THE DATASHEET MINIMUM. U1_P5 is the LM5066I by its marking, and
-// its enable is pin 7 by the datasheet's role. The live E1 has no pin 7 reading -- the 2026-10-19
-// readings were taken on the right column -- so nothing is established. A stated bound of 2.5 V does
+// its enable is pin 7 by the datasheet's role. The live E1's pad is joined to "pin 7" at the
+// shorted-probe baseline but not separated from pins 6 and 8, so its 1.8 V establishes nothing about
+// pin 7 -- it may be pin 8's (OVLO). With readings separating it from both neighbours the same 1.8 V
+// is held below; with the pad at the baseline to pin 8 as well, it stays a candidate. The reading with
+// the join removed, or the pad joined only by a kilohm reading, is no reading of pin 7 at all. With no
+// join, a stated bound of 2.5 V does
 // not establish a hold against a 2.41 V minimum, even hedged words aside; a bound of 2.0 V or a value of
 // 0.3 V does; a value inside the window establishes nothing; 3.0 V is above. A low reading on pin 22,
 // the right column's seventh lead from the top, is not the enable pin's.
 test fn an_enable_bound_above_the_threshold_minimum_establishes_nothing() -> Bool {
   let identified = finding_holds(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u1_p5 })
     && carrier_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u1_p5 }) == carrier_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u1_p5 })
-  let live = enable_gap(ss: enable_of(layout: p4261_e1_layout), which: 0) && !finding_holds(layout: p4261_e1_layout, f: ControllerEnableState { component: e1_u1_p5 })
+  let pad_reading = filter(e1_bench_record.voltages, o => component_identity_eq(a: o.at.component, b: e1_pin7_pad))
+  let kilohm_join = map(filter(e1_pin7_resistances, o => component_identity_eq(a: o.first.component, b: e1_u1_p5)), o => ResistanceObservation {
+    asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, range: o.range, display: DisplayValue { ohms: 3500, approximate: false },
+    stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence,
+  })
+  let live = enable_gap(ss: enable_of(layout: p4261_e1_layout), which: 3) && !finding_holds(layout: p4261_e1_layout, f: ControllerEnableState { component: e1_u1_p5 })
+    && count(pad_reading) == 2
+    && enable_is(ss: enable_of(layout: e1_with_bench(vs: pad_reading, rs: concat(e1_pin7_resistances, separated_from_neighbours()))), held: true)
+    && enable_gap(ss: enable_of(layout: e1_with_bench(vs: pad_reading, rs: concat(e1_pin7_resistances, [pad_to_pin(pin: "pin 6", display: DisplayOverRange), pad_to_pin(pin: "pin 8", display: DisplayAtProbeBaseline)]))), which: 3)
+    && enable_gap(ss: enable_of(layout: e1_with_bench(vs: pad_reading, rs: [])), which: 0)
+    && enable_gap(ss: enable_of(layout: e1_with_bench(vs: pad_reading, rs: kilohm_join)), which: 0)
   let bound_red = enable_gap(ss: enable_of(layout: e1_with_voltages(vs: u1_reading(terminal: "pin 7", value: ReadBelow { bound: millivolt(count: 2500) }))), which: 1)
   let bound_held = enable_is(ss: enable_of(layout: e1_with_voltages(vs: u1_reading(terminal: "pin 7", value: ReadBelow { bound: millivolt(count: 2000) }))), held: true)
   let value_held = enable_is(ss: enable_of(layout: e1_with_voltages(vs: u1_reading(terminal: "pin 7", value: about(mv: 300)))), held: true)
@@ -1059,8 +1120,8 @@ test fn an_enable_bound_above_the_threshold_minimum_establishes_nothing() -> Boo
 test fn a_post_incident_reading_is_never_presented_as_before() -> Bool {
   let after = [NodeVoltageObservation {
     asset: p4261_e1_b, at: terminal_ref(component: e1_u1_p5, terminal: "pin 7" as TerminalIdentity), reference: e1_ground_ref, record: both_points_recorded,
-    conditions: e1_live_bench, value: about(mv: 300), certainty: StatedHedged { verbatim: "supplied: i think" }, order: AfterIncidents { keys: [e1_bridge_incident.key] },
-    evidence: OperatorStatement { stated_on: "supplied", verbatim: "supplied" },
+    conditions: e1_live_bench, source: volt(count: 48), value: about(mv: 300), certainty: StatedHedged { verbatim: "supplied: i think" }, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "supplied", verbatim: "supplied" }],
   }]
   let after_text = carrier_input_reading(layout: e1_with_voltages(vs: after))
   let before_text = carrier_input_reading(layout: e1_with_voltages(vs: u1_reading(terminal: "pin 7", value: about(mv: 300))))
@@ -1080,4 +1141,77 @@ test fn a_reference_design_connection_is_not_a_reachability_edge() -> Bool {
   !is_reachable(s: reach(g: g, a: terminal_ref(component: e1_u1_p5, terminal: "pin 2" as TerminalIdentity), b: terminal_ref(component: e1_q21, terminal: "pin 1" as TerminalIdentity)))
     && carrier_input_reading(layout: p4261_e1_layout).contains("Q4_P5 is the diode-configured MMBT3904-class transistor")
     && carrier_input_reading(layout: p4261_e1_layout).contains("incident 2026-10-19 probe bridge")
+}
+
+fn projection_of(layout: CarrierLayoutObservation) -> List<EnableProjection> {
+  match installed(layout: layout, c: e1_u1_p5) {
+    Absent => []
+    Present { value: x } => [enable_projection(layout: layout, c: x)]
+  }
+}
+
+// The projected turn-on input of a single projection of each kind, in millivolts; any other shape
+// projects nothing and never equals a positive expectation.
+fn unreachable_turn_on(ps: List<EnableProjection>) -> Nat? {
+  match ps.first() {
+    Absent => Absent
+    Present { value: p } => match p {
+      EnableUnreachableWithinInputBound { component: _, readings: _, turn_on_millivolts: t, bound: _ } => Present { value: t }
+      EnableReachableWithinInputBound { component: _, readings: _, turn_on_millivolts: _, bound: _ } => Absent
+      EnableProjectionUnestablished { component: _, gap: _ } => Absent
+    }
+  }
+}
+
+fn reachable_turn_on(ps: List<EnableProjection>) -> Nat? {
+  match ps.first() {
+    Absent => Absent
+    Present { value: p } => match p {
+      EnableReachableWithinInputBound { component: _, readings: _, turn_on_millivolts: t, bound: _ } => Present { value: t }
+      EnableUnreachableWithinInputBound { component: _, readings: _, turn_on_millivolts: _, bound: _ } => Absent
+      EnableProjectionUnestablished { component: _, gap: _ } => Absent
+    }
+  }
+}
+
+fn turn_on_is(t: Nat?, expected: Nat) -> Bool {
+  match t {
+    Present { value: v } => v == expected
+    Absent => false
+  }
+}
+
+fn projection_gap(ps: List<EnableProjection>, proportional_gap: Bool) -> Bool {
+  count(ps) == 1 && all(ps, p => match p {
+    EnableProjectionUnestablished { component: _, gap } => match gap {
+      NotProportionalToSource => proportional_gap
+      FewerThanTwoSourceSettings => !proportional_gap
+      _ => false
+    }
+    _ => false
+  })
+}
+
+fn pin7(mv: Nat, source_volts: Nat) -> NodeVoltageObservation {
+  reading_under(c: e1_u1_p5, terminal: "pin 7", value: about(mv: mv), order: before(), source_volts: source_volts)
+}
+
+// A PROJECTION NEEDS PIN 7'S OWN READINGS. The live pad (1.8 V at 48 V, 1.35 V at 36 V) is not separated
+// from pin 8, so the live E1 projects nothing. Were it separated from both neighbours, the readings
+// track the input in proportion and would reach the 2.41 V minimum only near 64.3 V, above the 60 V
+// working bound. Two readings out of proportion, or a single source setting, project nothing; a steeper
+// divider (3.0 V at 48 V) would reach the threshold within the bound.
+test fn the_enable_cannot_reach_its_threshold_within_the_input_bound() -> Bool {
+  let pad_reading = filter(e1_bench_record.voltages, o => component_identity_eq(a: o.at.component, b: e1_pin7_pad))
+  let separated = e1_with_bench(vs: pad_reading, rs: concat(e1_pin7_resistances, separated_from_neighbours()))
+  let live = projection_gap(ps: projection_of(layout: p4261_e1_layout), proportional_gap: false)
+    && !finding_holds(layout: p4261_e1_layout, f: EnableInputProjection { component: e1_u1_p5 })
+    && turn_on_is(t: unreachable_turn_on(ps: projection_of(layout: separated)), expected: 64266)
+    && finding_holds(layout: separated, f: EnableInputProjection { component: e1_u1_p5 })
+    && carrier_input_reading(layout: separated).contains("would reach its threshold minimum only near 64.266 V, above the input's 60 V bound")
+  let skewed = projection_gap(ps: projection_of(layout: e1_with_voltages(vs: [pin7(mv: 1800, source_volts: 48), pin7(mv: 1800, source_volts: 36)])), proportional_gap: true)
+  let single = projection_gap(ps: projection_of(layout: e1_with_voltages(vs: [pin7(mv: 1800, source_volts: 48)])), proportional_gap: false)
+    && !finding_holds(layout: e1_with_voltages(vs: [pin7(mv: 1800, source_volts: 48)]), f: EnableInputProjection { component: e1_u1_p5 })
+  let steeper = turn_on_is(t: reachable_turn_on(ps: projection_of(layout: e1_with_voltages(vs: [pin7(mv: 3000, source_volts: 48), pin7(mv: 2250, source_volts: 36)]))), expected: 38560)
+  live && skewed && single && steeper
 }

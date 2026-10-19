@@ -3,7 +3,7 @@ module product.electrical.bench_session
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { Millivolt, millivolt_count }
+import std.measure { Millivolt, Volt, millivolt_count, volt_count }
 import product.placement_supply { PhysicalAssetIdentity }
 import product.electrical.connectivity { ElectricalTerminalRef }
 import product.electrical.continuity {
@@ -24,6 +24,14 @@ import product.electrical.continuity {
 // session's incidents, or that its order against them is unrecorded, and a standing derived from it
 // carries that; a reading taken after an incident, or of unrecorded order, is never presented as one
 // taken before.
+//
+// A VOLTAGE KNOWS THE SOURCE IT WAS READ UNDER. Each node reading carries the bench source's setting,
+// so two readings of one node under different settings say whether the node tracks the source.
+//
+// A RESISTANCE DISPLAY IS READ ON ITS RANGE. A range's full scale fixes the display's unit, so a value
+// is kept in ohms only with its range; a display at the shorted-probe baseline, or over range, is its
+// own reading, never a number. In-circuit resistance runs through every parallel path, so a value is
+// what the meter saw between two points, not a component's value.
 //
 // A STATED BOUND IS NOT A VALUE. "Well below 2.5 V" bounds the reading from above and says nothing
 // finer; a derivation may use the bound, never a number inside it. Whether the operator stated a
@@ -60,22 +68,30 @@ type VoltageValue
   = ReadAbout { value: Millivolt }
   | ReadBelow { bound: Millivolt }
 
-// at is the probed node, reference where the black probe sat.
+// at is the probed node, reference where the black probe sat, source the bench source's setting.
 type NodeVoltageObservation {
   asset: PhysicalAssetIdentity
   at: ElectricalTerminalRef
   reference: ElectricalTerminalRef
   record: ProbeRecord
   conditions: BenchConditions
+  source: Volt
   value: VoltageValue
   certainty: StatementCertainty
   order: ReadingOrder
-  evidence: EvidenceRef
+  evidence: List<EvidenceRef>
 }
 
-// A resistance range's full scale fixes the display's unit: on a 20 kohm range a display of 12 is
-// 12 kohm. Stability is whether the display held or kept moving, which a capacitor behind the path
-// makes it do.
+type MeterRange
+  = RangeFullScale { ohms: Nat }
+  | RangeUnrecorded
+
+type ResistanceDisplay
+  = DisplayValue { ohms: Nat, approximate: Bool }
+  | DisplayAtProbeBaseline
+  | DisplayOverRange
+
+// Stability is whether the display held or kept moving, which a capacitor behind the path makes it do.
 type ReadingStability
   = HeldSteady
   | KeptMoving
@@ -87,12 +103,21 @@ type ResistanceObservation {
   second: ElectricalTerminalRef
   record: ProbeRecord
   conditions: BenchConditions
-  range_full_scale_ohms: Nat
-  display: Nat
-  approximate: Bool
+  range: MeterRange
+  display: ResistanceDisplay
   stability: ReadingStability
+  certainty: StatementCertainty
   order: ReadingOrder
-  evidence: EvidenceRef
+  evidence: List<EvidenceRef>
+}
+
+// Whether a resistance reading joins its two points at the shorted-probe baseline.
+fn is_at_baseline(o: ResistanceObservation) -> Bool {
+  match o.display {
+    DisplayAtProbeBaseline => true
+    DisplayValue { ohms: _, approximate: _ } => false
+    DisplayOverRange => false
+  }
 }
 
 type BenchRecord {
@@ -169,7 +194,7 @@ fn order_text(o: ReadingOrder) -> String {
 
 fn node_voltage_text(o: NodeVoltageObservation) -> String {
   join([
-    terminal_text(t: o.at), " read ", value_text(v: o.value), " against ", terminal_text(t: o.reference), certainty_text(c: o.certainty),
+    terminal_text(t: o.at), " read ", value_text(v: o.value), " against ", terminal_text(t: o.reference), " with the source at ", to_string(volt_count(v: o.source)), " V", certainty_text(c: o.certainty),
     if probe_record_inferred(r: o.record) { ", on probe points inferred from the operator's words" } else { "" },
     order_text(o: o.order),
   ], "")
@@ -183,11 +208,25 @@ fn stability_text(s: ReadingStability) -> String {
   }
 }
 
+fn resistance_display_text(d: ResistanceDisplay) -> String {
+  match d {
+    DisplayValue { ohms, approximate } => join([if approximate { "about " } else { "" }, to_string(ohms), " ohm"], "")
+    DisplayAtProbeBaseline => "at the shorted-probe baseline"
+    DisplayOverRange => "over range"
+  }
+}
+
+fn range_text(r: MeterRange) -> String {
+  match r {
+    RangeFullScale { ohms } => join([" on the ", to_string(ohms), " ohm range"], "")
+    RangeUnrecorded => ", range unrecorded"
+  }
+}
+
 fn resistance_text(o: ResistanceObservation) -> String {
   join([
-    terminal_text(t: o.first), " to ", terminal_text(t: o.second), " read ", if o.approximate { "about " } else { "" }, to_string(o.display),
-    " on the ", to_string(o.range_full_scale_ohms), " ohm range", stability_text(s: o.stability),
-    order_text(o: o.order),
+    terminal_text(t: o.first), " to ", terminal_text(t: o.second), " read ", resistance_display_text(d: o.display), range_text(r: o.range), stability_text(s: o.stability),
+    certainty_text(c: o.certainty), order_text(o: o.order),
   ], "")
 }
 
