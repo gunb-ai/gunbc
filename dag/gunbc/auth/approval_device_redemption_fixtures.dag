@@ -16,6 +16,7 @@ import gunbc.auth.approval_device_wire {
   device_request_path, device_enrollment_path, enrollment_id_for_code, path_segment,
   ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json,
   EnrolmentRefusalWire, enrolment_refusal_kinds, enrolment_refusal_wire_label, enrolment_refusal_json,
+  decode_push_update, WireDecode, WireDecoded, WireRefused,
   approval_device_enrol_path, approval_device_redeem_path, approval_device_enrollment_path_prefix, approval_device_push_path,
 }
 import extdeps.crypto.signature { SignatureBytes, P1363FixedWidth }
@@ -223,6 +224,43 @@ fn envelope_vector_json(v: EnvelopeVector) -> JsonValue {
   ])
 }
 
+// ── Refused push updates ─────────────────────────────────────────────────────────────
+// BODIES THE APP'S STRICT DECODER MUST REFUSE WITH THE SERVER'S OWN LOCATION AND CAUSE. The expected
+// `at` and `cause` are read from decode_push_update, the decoder the server runs, so the app's
+// WireDecode.pushUpdate is checked against the authority and not a hand-typed message. The rows pick
+// the two places the transcription once disagreed: a kind other than apns (the cause names the
+// provider, not a generic kind) and a missing member (located under `push.`, not at the document root).
+type RefusalVector {
+  name: NonEmptyStr
+  body: String
+}
+
+data refusal_vectors: List<RefusalVector> = [
+  RefusalVector { name: "push_kind_fcm", body: "{\"kind\":\"fcm\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\"}" },
+  RefusalVector { name: "push_missing_token", body: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\"}" },
+  RefusalVector { name: "push_empty_topic", body: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"\",\"token\":\"x\"}" },
+  RefusalVector { name: "push_environment_unknown", body: "{\"kind\":\"apns\",\"environment\":\"staging\",\"topic\":\"t\",\"token\":\"x\"}" },
+  RefusalVector { name: "push_not_an_object", body: "[]" },
+]
+
+// A body the decoder ACCEPTS is rendered with at "accepted", which no decoder emits, so the app's
+// test fails on it rather than the vector silently vanishing from the contract.
+fn refusal_vector_json(v: RefusalVector) -> JsonValue {
+  match decode_push_update(text: v.body) {
+    WireRefused { at: a, cause: c } => refusal_vector_object(v: v, at: a as String, cause: c as String)
+    WireDecoded { value: _ } => refusal_vector_object(v: v, at: "accepted", cause: "")
+  }
+}
+
+fn refusal_vector_object(v: RefusalVector, at: String, cause: String) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "body", value: json_string(s: v.body)),
+    json_kv(key: "at", value: json_string(s: at)),
+    json_kv(key: "cause", value: json_string(s: cause)),
+  ])
+}
+
 // ── The HTTP surface ─────────────────────────────────────────────────────────────────────────
 // EVERY NAME THE APP SENDS OR ADDRESSES, from the wire's own rows, so Wire.swift restates none of
 // them: the one method every device operation uses (authentication rides in the body, never in a
@@ -309,6 +347,7 @@ fn approval_device_vectors_json() -> String {
       json_kv(key: "enrolment", value: json_array(elements: map(enrolment_vectors, v => enrolment_vector_json(v: v)))),
       json_kv(key: "read", value: json_array(elements: map(read_vectors, v => read_vector_json(v: v)))),
       json_kv(key: "envelope", value: json_array(elements: map(envelope_vectors, v => envelope_vector_json(v: v)))),
+      json_kv(key: "refusal", value: json_array(elements: map(refusal_vectors, v => refusal_vector_json(v: v)))),
       json_kv(key: "stored_request", value: json_array(elements: map(stored_request_specimens, r => stored_request_vector_json(r: r)))),
       json_kv(key: "surface", value: json_array(elements: map(surface_vectors, v => surface_vector_json(v: v)))),
       json_kv(key: "path_segment", value: json_array(elements: map(segment_specimens, x => segment_vector_json(input: x)))),
