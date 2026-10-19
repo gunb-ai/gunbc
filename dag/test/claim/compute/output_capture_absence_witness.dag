@@ -35,11 +35,13 @@ module test.claim.compute.output_capture_absence_witness
 //  - replacing the step's CaptureReadingFailed hash arm with `OutputsReturned` -- capture ACCEPTING
 //    an absent output -- turns the three absence rows red while every other row, including both
 //    positive controls, stays green;
-//  - forking the verdict inside the fold (compute_return_outputs_over_readings deciding its own
-//    answer instead of asking the step) turns the three inhabittance rows red;
-//  - making the executions stop on a builder-owned exit-code test instead of asking the step turns
-//    the executions row red. That row proves the executions CONSULT the step; read its body for
-//    what it cannot prove.
+//  - forking the verdict inside the continuation (compute_capture_verdict_continue deciding its own
+//    answer instead of asking the step) turns the inhabittance rows red while every behavior row
+//    stays green -- behavior-identical code that no longer flows through the tested authority is
+//    caught by inhabittance, not by output;
+//  - making the executions stop on a re-inlined predicate of their own instead of consulting
+//    capture_refused turns the shared-edge row red: the integration is what the control pins, so
+//    deleting the integration fails a control (DESIGN 3).
 
 import std.types { Bool, Int, String, List }
 import std.algebra { string_contains, length, list_map, FreeMonoid }
