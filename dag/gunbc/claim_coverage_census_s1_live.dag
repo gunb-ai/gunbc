@@ -166,7 +166,20 @@ fn file_content(contents: Map<String, String>, path: String) -> Optional<String>
 //
 // ACCUMULATED BY PREPENDING, REVERSED ONCE (review 82822, DESIGN §6): `concat(acc, [x])` inside a fold
 // copies the whole accumulator at every step, so reading N files cost O(N^2) in list copying for no
-// benefit. Consing is O(1); the order the readers expect is restored by a single reverse.
+// benefit. Prepending a SINGLETON -- `concat([x], acc)` -- charges the appended side only, per
+// `std.algebra`'s own note on `list_append`, so it is the constant-time shape; the order the readers
+// expect is restored by a single reverse. This is the corpus's own resolving shape at
+// `v2.workflow.floor_pure_producer_share` (`reverse(fold(rows, init: [], f: fn(acc, row) { concat([row.producer], acc) }))`).
+//
+// THE ARMS MUST AGREE ON ONE CARRIER, AND THAT IS NOT A DETAIL (blocker from bold-badger-676, measured on
+// BuildBuddy). This fold's accumulator was `init: []` (a List) while its mutating arms returned
+// `Cons { head: _, tail: acc }` -- the FreeMonoid constructor -- so the branches resolved to
+// `Container(List,Primitive())` vs `Coproduct(FreeMonoid)` and the WHOLE MODULE refused to resolve. No
+// witness ever saw it, because no claim imported this module: the parse sweep resolves imports only, not
+// bodies. The wrong side was the `Cons` arms -- the accumulator is a List, the fold is the corpus's own
+// prepend shape -- so the arms were changed, not the accumulator coerced. The same defect sat in
+// `name_rows`; both are fixed, and the claim `a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing`
+// in the witness now imports THIS module, so the class of defect cannot go invisible again.
 fn marked_over_files(
   env: AcquisitionEnv,
   contents: Map<String, String>,
@@ -179,29 +192,29 @@ fn marked_over_files(
       match repository_module_file_of_path(path: path) {
         Absent => MarkedFold {
           marked: acc.marked,
-          unread: Cons { head: concat(path, ": under no bound source tree"), tail: acc.unread }
+          unread: concat([concat(path, ": under no bound source tree")], acc.unread)
         }
         Present { value: file } =>
           match file_content(contents: contents, path: path) {
             Absent => MarkedFold {
               marked: acc.marked,
-              unread: Cons { head: concat(path, ": unreadable"), tail: acc.unread }
+              unread: concat([concat(path, ": unreadable")], acc.unread)
             }
             Present { value: content } =>
               match acquisition_test_markers(env: env, file: file, content: content) {
                 AcquisitionMarkersRead { declarations: declarations } => MarkedFold {
-                  marked: Cons {
-                    head: FloorMarkedSource {
-                      repo_path: path,
-                      marked: map(declarations, declaration => declaration.name)
-                    },
-                    tail: acc.marked
-                  },
+                  marked: concat(
+                    [FloorMarkedSource {
+                       repo_path: path,
+                       marked: map(declarations, declaration => declaration.name)
+                     }],
+                    acc.marked
+                  ),
                   unread: acc.unread
                 }
                 AcquisitionMarkersRefused { cause: cause } => MarkedFold {
                   marked: acc.marked,
-                  unread: Cons { head: concat(path, ": ", cause), tail: acc.unread }
+                  unread: concat([concat(path, ": ", cause)], acc.unread)
                 }
               }
           }
@@ -214,13 +227,16 @@ fn marked_over_files(
 // THE WALK AND THE FOLD, in the authority's own hands. Each governed root is walked by
 // `floor_discovery_walk_dir` -- the producer's walk, with the producer's rule for what a directory is and
 // what a module file is -- under no exclusion policy, for the reason stated at the top of this module. The
+// ROOTS ARE SUPPLIED, not hardcoded here: the census passes the governed roots and the witness's pairing
+// claim passes a subset of the same roots. A walk that picked its own roots while being handed another
+// file set would walk one thing and classify another, which is the drift §3b forbids. The
 // facts it is handed decide which declarations are tests; the walk decides nothing about a name. Any
 // located walk failure or missing-fact refusal the state carries comes back through
 // `floor_discovery_finalize_source_outcomes` as a refusal naming the file, so a failed listing is never
 // read as an empty directory and the universe cannot shrink silently.
-fn discovery_walk(marked: List<FloorMarkedSource>) -> FloorDiscoveryWalkState {
+fn discovery_walk(roots: List<String>, marked: List<FloorMarkedSource>) -> FloorDiscoveryWalkState {
   fold_list(
-    xs: witness_layer_roots,
+    xs: roots,
     empty: floor_discovery_walk_state_zero(),
     cons: fn(state, root) {
       floor_discovery_walk_dir(
@@ -247,30 +263,24 @@ fn name_rows(rows: List<FloorDiscoveryRow>, index: Map<String, String>) -> Named
           if module == "" {
             NamedClaim {
               claims: acc.claims,
-              unnamed: Cons {
-                head: concat("no declared module for discovered file: ", row.entry),
-                tail: acc.unnamed
-              }
+              unnamed: concat([concat("no declared module for discovered file: ", row.entry)], acc.unnamed)
             }
           } else {
             NamedClaim {
-              claims: Cons {
-                head: ClaimRow {
-                  identity: concat(module, concat(".", row.function)),
-                  entry: row.entry,
-                  function: row.function
-                },
-                tail: acc.claims
-              },
+              claims: concat(
+                [ClaimRow {
+                   identity: concat(module, concat(".", row.function)),
+                   entry: row.entry,
+                   function: row.function
+                 }],
+                acc.claims
+              ),
               unnamed: acc.unnamed
             }
           }
         Absent => NamedClaim {
           claims: acc.claims,
-          unnamed: Cons {
-            head: concat("no declared module for discovered file: ", row.entry),
-            tail: acc.unnamed
-          }
+          unnamed: concat([concat("no declared module for discovered file: ", row.entry)], acc.unnamed)
         }
       }
     }
@@ -343,15 +353,15 @@ fn unbound_label_findings() -> List<String> {
       if bound |> count == 1 {
         acc
       } else if bound |> count == 0 {
-        Cons {
-          head: concat("REQUIRED-JOB LABEL UNBOUND ", concat(label, " (no producer binds it: nothing it runs is attributable)")),
-          tail: acc
-        }
+        concat(
+          [concat("REQUIRED-JOB LABEL UNBOUND ", concat(label, " (no producer binds it: nothing it runs is attributable)"))],
+          acc
+        )
       } else {
-        Cons {
-          head: concat("REQUIRED-JOB LABEL AMBIGUOUS ", concat(label, " (more than one producer binds it)")),
-          tail: acc
-        }
+        concat(
+          [concat("REQUIRED-JOB LABEL AMBIGUOUS ", concat(label, " (more than one producer binds it)"))],
+          acc
+        )
       }
     }
   )
@@ -381,15 +391,17 @@ fn executed_of(rows: List<ClaimRow>, index: Map<String, String>) -> List<String>
   )
 }
 
-// THE FOLD: ingress inventory -> marker channel -> the producer's walk -> the authority's finalize ->
-// identities -> classifiers -> executed-by. Every unread input stops it with a located cause, and nothing
-// after a stop is reported.
-fn s1_compose() -> S1Composition {
-  match floor_discovery_source_inventory_live(pool_roots: witness_layer_roots) {
-    FloorDiscoverySourcesRefused { reason: reason } =>
-      S1InputsUnread { causes: [concat("source inventory refused: ", reason)] }
-    FloorDiscoverySourcesObserved { sources: sources } =>
-      match acquisition_env(layout: repository_storage_layout(), bindings: governed_bindings()) {
+// THE FOLD, IN TWO PARTS, AND WHY THAT IS NOT A FORK (DESIGN §3b: the only red is divergence with no
+// reason). `s1_over_sources` is the WHOLE composition -- marker channel, the producer's walk, the
+// authority's finalize, naming, classifiers, executed-by -- over sources it is handed. `s1_compose` is the
+// census: it supplies the governed roots. `s1_compose_scoped` supplies a SUBSET of those same roots and
+// runs the identical body. There is one enumeration, one identity join and one classification; the two
+// entries differ only in the roots they ask the ingress to inventory, which is a supplied fact rather than
+// a second rule. A scoped entry exists because a witness claim must be able to assert a fact about one
+// real file's identity without paying for the whole corpus -- the pairing obligation (DESIGN 3) binds the
+// witness to the REAL discovery, and a claim that cannot run cannot discharge it.
+fn s1_over_sources(roots: List<String>, sources: List<FloorDiscoverySource>) -> S1Composition {
+  match acquisition_env(layout: repository_storage_layout(), bindings: governed_bindings()) {
         AcquisitionEnvUnprepared { diagnostics: _ } =>
           S1InputsUnread { causes: ["the dag grammar did not prepare: the marker channel cannot answer"] }
         AcquisitionEnvReady { env: env } => {
@@ -403,7 +415,7 @@ fn s1_compose() -> S1Composition {
             S1InputsUnread { causes: map(marked.unread, cause => concat("markers unread: ", cause)) }
           } else {
             match floor_discovery_finalize_source_outcomes(
-              outcomes: [discovery_walk(marked: marked.marked)]
+              outcomes: [discovery_walk(roots: roots, marked: marked.marked)]
             ) {
               FloorDiscoveryRefused { reason: reason } =>
                 S1InputsUnread { causes: [concat("discovery refused: ", reason)] }
@@ -432,6 +444,26 @@ fn s1_compose() -> S1Composition {
           }
         }
       }
+}
+
+// THE CENSUS: the governed roots, the whole fold.
+fn s1_compose() -> S1Composition {
+  match floor_discovery_source_inventory_live(pool_roots: witness_layer_roots) {
+    FloorDiscoverySourcesRefused { reason: reason } =>
+      S1InputsUnread { causes: [concat("source inventory refused: ", reason)] }
+    FloorDiscoverySourcesObserved { sources: sources } =>
+      s1_over_sources(roots: witness_layer_roots, sources: sources)
+  }
+}
+
+// THE SCOPED FOLD: the same fold over the named roots of the governed trees. Used by the witness's
+// real-producer pairing claims, and by nothing that decides an exit.
+fn s1_compose_scoped(roots: List<String>) -> S1Composition {
+  match floor_discovery_source_inventory_live(pool_roots: roots) {
+    FloorDiscoverySourcesRefused { reason: reason } =>
+      S1InputsUnread { causes: [concat("source inventory refused: ", reason)] }
+    FloorDiscoverySourcesObserved { sources: sources } =>
+      s1_over_sources(roots: roots, sources: sources)
   }
 }
 

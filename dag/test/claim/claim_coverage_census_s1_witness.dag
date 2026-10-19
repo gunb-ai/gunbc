@@ -18,17 +18,32 @@ module test.claim.claim_coverage_census_s1_witness
 // that printed everything, or nothing, would fail one of the two halves.
 
 import std.types { String, Bool, List }
-import std.algebra { string_contains }
+import std.algebra { string_contains, empty_map, is_empty }
 import std.optional { Absent, Present }
 import gunbc.claim_coverage_census_s1 {
   ClaimRow, ClassifierRow, ClassifierRole, CoverRole, EnrollmentRole,
   IdentityMember, DeclaredMember, FileMember,
   ExactMemberMatch, SubstringMemberMatch, classifier_member_text,
-  S1Census, ClassifierStanding, S1Composed, S1InputsUnread,
+  S1Census, ClassifierStanding, GroundedCover, S1Composed, S1InputsUnread,
   classify_rows, derive_executed, s1_uncovered, s1_census_lines,
   s1_block, s1_exit_held, s1_exit_did_not_hold, s1_exit_unread
 }
 import gunbc.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
+// THE LIVE MODULE IS IMPORTED DELIBERATELY, AND THAT IS THE POINT. The rest of this corpus is pure: it
+// injects fixtures, so it tests the fold's LOGIC without touching a filesystem. Importing the live module
+// is the one place it does not, and it is here because a module no claim imports is a module no witness
+// resolves (see `a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing`). The
+// effectful entry it exposes, `s1_compose_scoped`, is used by exactly one claim and is scoped to one
+// governed root -- the census's own full-corpus entry is never run from a claim.
+import gunbc.claim_coverage_census_s1_live { producer_named_identities, s1_compose_scoped }
+import gunbc.target_binding { TargetProducer, RequiredFloorProducer }
+
+// The governed root holding the module-real-path pairing claim's file, spelled as the governed roots spell
+// it (`gunbc.ci.ci_layer_roots witness_layer_roots` uses `src/v2`). The claim names a DIRECTORY, never a
+// file it read: which files that root holds is the ingress's answer, not this corpus's.
+data real_path_pairing_root: String = "src/v2/test/claim/compiler"
+
+data rcf_carrier: String = "gunbc.module_real_path_pairing_claim.infer_record_construct_field_inhabitance_witness"
 
 // The fixture corpus: two claims of module `m` over `m.dag` and one of module `other` over `other.dag`.
 // The module is a fixture token and the identity is its exact `module.function` spelling -- the same shape
@@ -610,4 +625,41 @@ test fn a_real_rung_drop_member_arrives_under_its_own_drop_carrier() -> Bool {
          DeclaredMember { text: text } => text != "" && string_contains(s: row.carrier, pattern: "gunbc.rung_drop.")
          _ => false
        })
+}
+
+// THE LIVE MODULE MUST RESOLVE INSIDE THE WITNESS CORPUS, OR IT IS NOT EVIDENCED AT ALL
+// (blocker from bold-badger-676, warm-wolf-570's dispatch). Every claim above injects its own fixture
+// universe, so none of them ever imported `gunbc.claim_coverage_census_s1_live` — and a per-file
+// `v1_src_dag_parse` sweep resolves imports, not bodies, so the module's `if` arms returning a `List` on
+// one branch and a `Cons` (FreeMonoid) on the others were invisible until a real consumer tried to
+// resolve it on BuildBuddy. This claim's ASSERTION is trivial by design; its VALUE is that resolving this
+// entry drags the live module's every body through the resolver, which is the only way a type error in
+// that module can reach a witness instead of a fleet run. It performs no effect: `producer_named_identities`
+// is a pure match over the producer variants, and a producer that names no claim must contribute none.
+test fn a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing() -> Bool {
+  producer_named_identities(producer: RequiredFloorProducer, index: empty_map()) |> is_empty()
+}
+
+// THE PAIRING CLAIM FOR THE MODULE-REAL-PATH ROW, RUN THROUGH THE REAL DISCOVERY (warm-wolf-570's GO).
+// The row jolly-boar-495 asked for enrols the only claim over the full ingest, and until now its RED was
+// asserted in a carrier comment and guaranteed only by SHARING a code path with the three pre-fix #14373
+// rows — which is exactly what the pairing obligation forbids: an assertion resting on a sibling claim.
+// This claim joins the REAL discovery (the census's own fold, scoped to the governed root that holds the
+// file — see `s1_compose_scoped` for why scoping is a supplied fact and not a second rule) against the
+// REAL carrier, at identity grain, and fails when the fn is deleted: with the fn gone the discovery does
+// not bear the identity, so the row is StaleEnrolled instead of a grounded cover.
+test fn the_module_real_path_pairing_row_grounds_against_the_real_discovery() -> Bool {
+  let identity = "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness.rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds"
+  match s1_compose_scoped(roots: [real_path_pairing_root]) {
+    S1InputsUnread { causes: _ } => false
+    S1Composed { census: census, notes: _ } =>
+      any(census.universe, candidate => candidate == identity)
+        && any(census.stands, standing => match standing {
+             GroundedCover { row: row, covers: covers } =>
+               row.carrier == rcf_carrier
+                 && classifier_member_text(row: row) == identity
+                 && any(covers, covered => covered == identity)
+             _ => false
+           })
+  }
 }
