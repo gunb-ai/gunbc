@@ -7,6 +7,7 @@ import v2.compiler.source_root_eval {
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
   NativeInferCensusFileRefused,
+  NativeInferCensusPositionsNotBuilt,
   NativeInferCensusInferRefused,
   NativeInferCensusInferred,
   NativeInferCensusOutcome,
@@ -123,6 +124,7 @@ fn infer_fatal_at(context: NativeTestContext, entry: NativeCensusModule, outcome
         Empty => FileRefusalAtUnresolvedNode
       }
     NativeInferCensusFileRefused => FileRefusalAtUnresolvedNode
+    NativeInferCensusPositionsNotBuilt => FileRefusalAtUnresolvedNode
     NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: _ } => FileRefusalAtUnresolvedNode
     NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } => FileRefusalAtUnresolvedNode
   }

@@ -20957,6 +20957,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        groups = native_census_cause_groups_add_infer_module(groups.clone(), closure.clone(), module_paths.clone(), entry.clone(), step.clone());", "\n",
       "        let outcome_label = match &*step.outcome \{", "\n",
       "            NativeInferCensusOutcome::NativeInferCensusFileRefused => \{ file_refused += 1; \"file_refused\" \}", "\n",
+      "            NativeInferCensusOutcome::NativeInferCensusPositionsNotBuilt => \{ panic!(\"census-infer opened a fold that never built positions\") \}", "\n",
       "            NativeInferCensusOutcome::NativeInferCensusResolveRefused \{ first, rest, .. \} => \{", "\n",
       "                resolve_refused += 1;", "\n",
       "                for row in native_census_residual_rows(context.positions.clone(), entry.clone(), first.clone(), rest.clone()).iter() \{", "\n",
