@@ -7622,6 +7622,21 @@ fn call_function(
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
     zz_count_all(&fn_node.name);
+    ZZ_STACK.with(|st| st.borrow_mut().push(fn_node.name.to_string()));
+    if &*fn_node.name == "dag_literal_lex_rule"
+        || &*fn_node.name == "lex_rule_token_class_member"
+        || &*fn_node.name == "unicode_scalar_unfold"
+    {
+        ZZ_STACK.with(|st| {
+            let st = st.borrow();
+            let n = st.len();
+            let path = st[n.saturating_sub(9)..].join(">");
+            let mut g = ZZ_ALL_CALLS.lock().unwrap();
+            if let Some(m) = g.as_mut() {
+                *m.1.entry(format!("PATH:{}", path)).or_insert(0) += 1;
+            }
+        });
+    }
     let depth = CALL_DEPTH.with(|d| {
         let v = d.get() + 1;
         d.set(v);
@@ -7629,6 +7644,9 @@ fn call_function(
     });
     let result = call_function_guarded(ctx, fn_node, args, env, depth);
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
+    ZZ_STACK.with(|st| {
+        st.borrow_mut().pop();
+    });
     if depth == 1 {
         zz_dump_calls();
     }
@@ -25779,6 +25797,10 @@ fn zz_count_all(func_name: &str) {
     let st = g.get_or_insert_with(|| (0, std::collections::HashMap::new()));
     st.0 += 1;
     *st.1.entry(func_name.to_string()).or_insert(0) += 1;
+}
+
+thread_local! {
+    static ZZ_STACK: std::cell::RefCell<Vec<String>> = std::cell::RefCell::new(Vec::new());
 }
 
 fn zz_dump_calls() {
