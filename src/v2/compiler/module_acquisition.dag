@@ -12,7 +12,7 @@ import v2.compiler.module_header { ModuleHeaderReader, module_header_tail }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
-import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, ScopedReferenceSite, ScopedReferenceSiteCollection, SiteHeadBinding, collect_scoped_module_reference_sites, scoped_reference_site_collection_is_total }
+import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, HeadNotAValuePosition, ScopedReferenceSite, ScopedReferenceSiteCollection, SiteHeadBinding, collect_scoped_module_reference_sites, scoped_reference_site_collection_is_total }
 import v2.compiler.source_authority { ModuleFileAbsent, ModuleFileDerived, ModuleFilePresent, ModuleFileProbe, ModuleFileRef, ModuleFileRefused, ModuleNameUnderivable, DagSourceReadWitness, ReferenceContinue, ReferenceCrossTreeDenied, ReferenceDecided, ReferenceLookup, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, SourceRootIngest, SourceStorageLayout, module_file, module_file_key, reference_after_probe, reference_next_read, reference_prefixes, source_root_ref_label, text_set_has, text_set_of }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }

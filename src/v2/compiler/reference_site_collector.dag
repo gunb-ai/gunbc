@@ -30,10 +30,13 @@ import v2.std.qualified_name {
   qualified_name_from_node,
 }
 import v2.compiler.resolution_provenance { ReferenceSite }
-import v2.compiler.occurrence_role {
+import std.occurrence_identity {
   ValuePosition,
-  reference_position_of
+  TypeAnnotationPosition,
+  LabelPosition,
+  PatternTagPosition
 }
+import v2.compiler.occurrence_role { reference_position_of }
 import v2.compiler.lexical_scope {
   ChildSeesNoValues,
   ChildSeesParentValues,
