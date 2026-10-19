@@ -327,3 +327,18 @@ inheriting unrelated variables from the body), and I will fix the row rather tha
 asserts obsolete behaviour. If it FAILS at the REPAIR, the row is broken outright -- the AMENDMENT 8
 print says 4 distinct site-tagged ids at that exact tree, so a failure there means the assertion
 disagrees with a print I already read, and the assertion is the suspect.
+
+## AMENDMENT 10 (13:22Z): AMENDMENT 9's prediction confirmed, row for row
+
+| row | predicted | measured @repair 7feea58514 | measured @mutant 6548fe077b |
+|---|---|---|---|
+| `minted_variables_are_fresh_per_call_site` | PASS / **FAIL** | **PASS** 64s | **FAIL rc=101** 60s |
+| `fold_refuses_a_settled_rebind_of_a_declaration_form_binding` | PASS / PASS | PASS | PASS |
+| `fold_cannot_distinguish_shared_from_distinct_leaf_identity` | PASS / PASS | PASS | PASS |
+
+Exactly one row differs, at exactly the tree predicted, with `REPAIR_MARKS 2` on both trees. The
+parent-ruled permanent RED exists: a fresh-per-call-site regression turns `minted_variables_are_fresh_per_call_site`
+red, and the name-keyed mint -- the exact defect freshness prevents -- is caught. The two fold rows are
+invariant to minting as predicted, which is the expected shape (the fold never inspects leaf identity;
+the third row locks that in). The collision row stays as an accept control; the mutant passing it
+(AMENDMENT 6) is now explained rather than worrying: sharing exists, the fold simply does not look.
