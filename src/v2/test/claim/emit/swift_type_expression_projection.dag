@@ -16,6 +16,8 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Atom, Authored, Conj, Connective, Disj, Edge, Instantiation, Node, Occupancy, Positional, Symbol, TypeNode }
+import v2.std.node_query { binder_node }
+import std.optional { Absent }
 import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
 import v2.std.text { String }
 
@@ -47,8 +49,8 @@ fn swift_te_named_conj(connective: Connective, first: Symbol, second: Symbol) ->
   Node {
     kind: TypeNode { connective: connective },
     children: [
-      Edge { label: Authored { name: first }, target: swift_te_atom(id: first) },
-      Edge { label: Authored { name: second }, target: swift_te_atom(id: second) }
+      Edge { label: Authored { name: first }, target: binder_node(type_node: swift_te_atom(id: first), default: Absent) },
+      Edge { label: Authored { name: second }, target: binder_node(type_node: swift_te_atom(id: second), default: Absent) }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -155,7 +157,7 @@ test fn swift_declaration_reference_emits_the_module_scoped_spelling_holds() -> 
 fn swift_te_edge_is_projection(e: Edge) -> Bool {
   match e.label {
     Authored { name: n } => n == ^target_model_edge_type_expression_projection
-    Positional => false
+    _ => false
   }
 }
 

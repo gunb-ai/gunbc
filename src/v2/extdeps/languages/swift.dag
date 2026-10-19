@@ -86,6 +86,14 @@ import v2.std.compilers.target_model {
   StatementSequenced, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.target_model {
+  DeclarationReferenceForm,
+  ModuleScopedPath,
+  TargetAtomTypeShape,
+  TargetFunctionTypeShape,
+  TargetGenericApply,
+  TargetSumTypeShape,
+  TargetTypeExpressionProjection,
+  type_expr_projection_step_algebra,
   BlockEvaluationMode,
   ConditionalSelfDelimiting,
   IntLiteralDecimal,
@@ -731,6 +739,85 @@ fn swift_operator_realizations_catalog_node() -> Node {
   )
 }
 
+// SWIFT'S TYPE-EXPRESSION FORMS, AS ROWS, cited to The Swift Programming Language 6.x, Language
+// Reference > Types. The edge inhabits the existing TargetTypeExpressionProjection; no fold edit.
+//   atom           `type-identifier`: one identifier lexeme.
+//   conj           `tuple-type`: `(` element, ... `)` with `name: Type` elements. A tuple type with a
+//                  single labeled element is not a Swift type (swiftc refuses the label), a gap the
+//                  fold cannot see; the claims use two fields.
+//   disj           UNWIRED: Swift has no anonymous sum type; a sum is a declared `enum` (swift_decl),
+//                  never a type-position expression, so serializing one refuses typed.
+//   arrow          `function-type`: `(` T, ... `)` `->` R. Swift admits an argument label in a
+//                  function type only as `_ name: Type`, which the row shape (name, separator, type)
+//                  cannot spell, so the label separator is UNWIRED and a labeled arrow refuses typed.
+//   occupancy      `generic-argument-clause` over `Optional`: `Optional<T>`. The sugar `T?`
+//                  (`optional-type`) is deliberately not used: `Optional<Optional<T>>` spells every
+//                  layer, so optional depth is never collapsed (gunbc.design_ruling
+//                  explicit_present_is_the_authoring_policy, optional_sugar_is_declaration_bound).
+//   instantiation  `generic-argument-clause`: `Head<A, B>`.
+fn swift_type_expression_projection() -> TargetTypeExpressionProjection {
+  TargetTypeExpressionProjection {
+    atom_form: TargetAtomTypeShape {
+      surface: ^swift_surface_type_atom,
+      ident_token: ^swift_token_ident
+    },
+    conj_form: TargetGenericApply {
+      surface: ^swift_surface_type_tuple,
+      open: ^swift_token_lparen,
+      separator: ^swift_token_comma,
+      field_label_separator: optional_present(value: ^swift_token_colon),
+      close: ^swift_token_rparen
+    },
+    disj_form: TargetSumTypeShape {
+      surface: ^swift_surface_type_sum,
+      variant_separator: ^swift_token_unwired_sum
+    },
+    arrow_form: TargetFunctionTypeShape {
+      surface: ^swift_surface_type_arrow,
+      open: ^swift_token_lparen,
+      close: ^swift_token_rparen,
+      arrow: ^swift_token_arrow,
+      param_ident_token: ^swift_token_ident,
+      param_type_separator: ^swift_token_unwired_arrow_label,
+      param_list_separator: ^swift_token_comma
+    },
+    occupancy_form: TargetGenericApply {
+      surface: ^swift_surface_type_occupancy,
+      open: ^swift_token_lt,
+      separator: ^swift_token_comma,
+      field_label_separator: optional_absent(),
+      close: ^swift_token_gt
+    },
+    instantiation_form: TargetGenericApply {
+      surface: ^swift_surface_type_generic_apply,
+      open: ^swift_token_lt,
+      separator: ^swift_token_comma,
+      field_label_separator: optional_absent(),
+      close: ^swift_token_gt
+    },
+    declaration_reference_form: swift_declaration_reference_form()
+  }
+}
+
+// A CORPUS DECLARATION REFERENCE IS SPELLED `Gunbc.<module>.<name>`: Swift qualifies a member by `.`
+// member access (TSPL, Language Reference > Expressions, `explicit-member-expression`), the root
+// names the Swift module the emission lands in, and the .dag module's dotted segments are joined by
+// `_` into one namespace identifier, the layout rust.dag's crate::<module>::<name> uses.
+// DECLARED ASSUMPTION: the closure-emit route (gunbc#12239) will render each .dag module's members
+// under one namespace of that name inside a Swift module `Gunbc`; that layout is not yet emitted, so
+// the root and joiner are the single row to edit when it lands.
+fn swift_declaration_reference_form() -> DeclarationReferenceForm {
+  ModuleScopedPath {
+    root_text: "Gunbc",
+    scope_separator_text: ".",
+    module_segment_joiner: "_"
+  }
+}
+
+fn swift_type_expression_projection_bundle_node() -> Node {
+  type_expr_projection_step_algebra(projection: swift_type_expression_projection())
+}
+
 fn swift_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -750,6 +837,10 @@ fn swift_target_model_node() -> Node {
       swift_named_edge(
         name: ^target_model_edge_value_expression_projection,
         target: value_expr_projection_bundle_node(projection: swift_value_expression_projection())
+      ),
+      swift_named_edge(
+        name: ^target_model_edge_type_expression_projection,
+        target: swift_type_expression_projection_bundle_node()
       ),
       swift_named_edge(
         name: ^target_model_edge_operator_realizations,
@@ -998,7 +1089,9 @@ fn swift_emit_lex_rules() -> LexRuleSet {
         swift_lex_rule(token_class: ^swift_token_rbrace, text: " }"),
         swift_lex_rule(token_class: ^swift_token_comma, text: ", "),
         swift_lex_rule(token_class: ^swift_token_colon, text: ": "),
-        swift_lex_rule(token_class: ^swift_token_underscore, text: "_ ")
+        swift_lex_rule(token_class: ^swift_token_underscore, text: "_ "),
+        swift_lex_rule(token_class: ^swift_token_lt, text: "<"),
+        swift_lex_rule(token_class: ^swift_token_gt, text: ">")
       ],
       right: swift_lex_rules().rules
     ),
