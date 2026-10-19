@@ -6,7 +6,7 @@ import std.algebra { string_contains }
 import std.content_hash { serialize_content_hash }
 import gunbc.fleet.fleet_converge_scope { FullHost }
 import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FullyApplied, PartiallyApplied }
-import std.algebra { any, split, trim }
+import std.algebra { trim }
 import extdeps.sudo.nopasswd_decision { SudoDecisionAdmits, SudoDecisionDenied }
 import gunbc.fleet.fleet_host_grant_coverage { InstalledSudoersText }
 import gunbc.fleet.fleet_host_grant_coverage {
