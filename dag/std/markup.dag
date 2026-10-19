@@ -400,52 +400,40 @@ type MarkupHazard
 // NONE OF THEM ASKS WHETHER A GRAMMAR FIELD IS EMPTY. That question was review 82209's second finding --
 // the closed sum (HazardFree | HazardFound) had retired "" as a RETURN value while "" remained a legal
 // INPUT, so the check had to test for it at runtime. CommentGrammar.terminators is FreeSemigroup, which has
-// no empty inhabitant at all, so there is
-// no empty value to test for: the check is gone because the state is gone, and the witness that used
+// no empty inhabitant at all: the check is gone because the state is gone, and the witness that used
 // to pin that refusal went with it, rather than staying to assert a value the type no longer admits.
 
-// WHY THESE TWO TESTS AND NOT A THIRD. Both read the medium's own rows, and nothing else:
-//   1. The close must actually contain the terminator. If it does not, no body can be safe -- the
-//      emitter would open a comment that never closes, and the whole rest of the document becomes
-//      comment text. That is a defect in the MEDIUM, so it is refused as one, on every body.
-//   2. The body must not contain the terminator. If it does, the comment ends inside the body and the
-//      remainder is parsed as markup.
+// TWO TESTS, BOTH READ FROM THE MEDIUM'S OWN ROWS, and nothing else:
+//   1. MEDIUM DEFECT — if none of CommentGrammar.terminators occurs in the close the emitter writes, then
+//      NO body can be safe: the emitter would open a comment nothing closes, and every byte after it
+//      becomes comment text. That is worse than closing early, so it is refused on every body, and the
+//      refusal names both the close and the whole set it searched — a refusal that does not say which rows
+//      disagree is not located (§5).
+//   2. BODY CLOSES ITS OWN COMMENT EARLY — the body holds one of the terminators. Asked of EVERY member,
+//      because consulting one and not the others is what let "--!>" through (reviews 82474/82482): the
+//      tokenizer reaches the comment end bang state on the "!" after "--" and closes on the next ">", so a
+//      body of "x--!><script>…" with a single-"-->" grammar was serialized as a comment that had already
+//      ended. The refusal names WHICH member fired.
 //
-// NO DASH RULE. This function used to also refuse any body ending in "-" under a Bool field
-// `trailing_dash_closes`, justified as: the emitter's own close contributes a '-', so "--" + that '-'
-// reaches the tokenizer's comment end state. Review 82417 on #14351 caught that the premise is false for
-// the row it cited -- html_comment_close_sequence is " -->", which begins with a space, so a body ending
-// in "-" emits "- -->" and the only "-->" in it is the close. Checked against the comment state machine of
-// HTML §13.1.1 (the same section several comments in this module already cite): over every body up to
-// HTML §13.1.1 (the same section several comments in this module already cite), the two tests below agree
-// with the tokenizer on EVERY body, and the dash rule refused bodies the tokenizer accepts. The sweep, run
-// over all four shipped media (HTML, XML, raw-dash, JSX) x every string up to length 5 from the eight
-// characters {-, /, >, *, !, space, '}', x}: 149,796 bodies. These tests, 0 disagreements; with the
-// trailing-dash refusal added back, 18,462 disagreements, all of them over-refusals. Refusing more than the
-// evidence supports is §4d cost, paid here by any comment that ends in a dash -- an em-dash, a bullet, a
-// date. The agreement is CHECKED rather than asserted: the witness walks the same state machine.
+// NO DASH RULE. This function also used to refuse any body ending in "-" under a Bool
+// `trailing_dash_closes`, justified as: the emitter's close contributes a "-", so "--" + that "-" reaches
+// the comment end state. Review 82417: the premise is false for the row cited — html_comment_close_sequence
+// is " -->", which begins with a SPACE, so a body ending in "-" emits "- -->" and the only "-->" in it is
+// the close. HTML §13.1.1's state machine accepts it. §4d: "Do not over-generalize a prohibition"; the cost
+// here was any comment ending in a dash -- an em-dash, a bullet, a truncated date.
 //
-// WHAT WAS KEPT FROM THE REVIEW'S WORDING. It proposed "whether concat(body, close) contains terminator
-// anywhere before the real close". That formulation was measured too, and it is wrong in the other
-// direction: for the JSX medium the terminator "*/" occurs inside the close " */}" at an index before the
-// close ends, so it refuses EVERY JSX comment, including the empty body. So the occurrence is looked for
-// in the body, which is where a body can add one, and the close is asked only the question it can answer
-// about itself.
-// THE FIRST WAY A COMMENT CAN FAIL IS A MEDIUM DEFECT: if none of the grammar's terminators occurs in the
-// close the emitter writes, then no body can be safe -- the emitter would open a comment that nothing
-// closes, and every byte after it becomes comment text. That is worse than closing early, so it is refused
-// on every body, as a defect in the medium rather than in the text. A single-terminator Bool could never
-// have said this.
-//
-// THE SECOND IS THE BODY ENDING ITS OWN COMMENT EARLY: the body holds one of the terminators. Checked
-// against EVERY member of the set, because checking one and not the others is what let "--!>" through.
-// The refusal names which terminator fired, so it is located (§5), not a shrug.
-//
-// MEASURED, NOT ASSERTED. Both tests were checked against the comment state machine of HTML §13.1.1 /
-// §13.2.5 (the sections this module already cites for the doctype rule) on the sweep described above
-// (149,796 bodies over the four shipped media): zero disagreements. The single-terminator version of this
-// check, which is what the reviews caught, scores 51 disagreements there and every one of them is an
-// escape -- bodies like '--!>' that the tokenizer ends and the guard passed.
+// MEASURED, NOT ASSERTED. The rule was walked against that state machine: all four shipped media (HTML,
+// XML, raw-dash, JSX) x every string up to length 5 over the eight characters {-, /, >, *, !, space, '}', x}
+// = 149,796 bodies. This rule: 0 disagreements. With the trailing-dash refusal added back: 18,462, all of
+// them over-refusals. The single-terminator version the reviews caught: 51, all of them escapes. The
+// review's suggested wording verbatim ("whether concat(body, close) contains terminator anywhere before the
+// real close"): 35,268, because the JSX terminator "*/" occurs INSIDE the JSX close " */}" at an index
+// before that close ends -- it would refuse every JSX comment, 37,449 of 37,449, the empty body included.
+// So the occurrence is searched in the BODY, where a body can add one, and the close is asked only what it
+// can answer about itself. The walk's two outputs are in the witness as data, not as a number in a comment:
+// witness_every_swept_escape_body_is_refused carries the 17 escape bodies and
+// witness_swept_safe_bodies_serialize carries the dash-shaped bodies the tokenizer accepts.
+fn comment_body_hazard(body: String, grammar: CommentGrammar) -> MarkupHazard {
   match first_terminator_in(s: grammar.close as String, terms: grammar.terminators) {
     Absent => HazardFound { reason: join(["none of this medium's comment terminators (", terminators_csv(grammar.terminators), ") occurs in the close sequence '", grammar.close as String, "' it emits — no body could close this comment, so nothing may be emitted through it; fix the medium's rows"], "") }
     Present { value: _ } => match first_terminator_in(s: body, terms: grammar.terminators) {
