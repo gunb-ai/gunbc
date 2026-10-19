@@ -14,6 +14,7 @@ import std.optional { Optional, Absent, Present }
 import extdeps.storage.types { storage_device_serial }
 import extdeps.libxcrypt.crypt_scheme {
   Sha512CryptFormat,
+  shared_restriction_character_is_printable,
   crypt_acceptance_rules,
   sha512_crypt_figure_read_obligation,
   sha512_crypt_format,
@@ -2308,23 +2309,32 @@ test fn the_shared_scan_refuses_reserved_characters_wherever_they_sit() -> Bool 
 // exists to prevent, so a vacuous pass here is the worst possible outcome of a test written to prevent it.
 test fn every_reserved_character_the_shelf_claims_is_actually_refused_in_both_positions() -> Bool {
   let reserved = crypt_reserved_characters()
+  let digest = "8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj."
+  let spliced_digest = fold(reserved, init: 0, f: (n, r) =>
+    if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n
+    else if cause_of(crypt_digest: concat(concat("$6$saltsalt$", r as String), digest)) is Present { value: _ } then n + 1 else n)
+  let spliced_salt = fold(reserved, init: 0, f: (n, r) =>
+    if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n
+    else if cause_of(crypt_digest: concat(concat(concat("$6$salt", r as String), "salt$"), digest)) is Present { value: _ } then n + 1 else n)
   let testable = fold(reserved, init: 0, f: (n, r) =>
     if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n else n + 1)
-  let refused_in_digest = fold(reserved, init: 0, f: (n, r) =>
-    if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n
-    else if cause_of(crypt_digest: "$6$saltsalt$" + (r as String) + "8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") is Present { value: _ } then n + 1 else n)
-  let refused_in_salt = fold(reserved, init: 0, f: (n, r) =>
-    if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n
-    else if cause_of(crypt_digest: "$6$salt" + (r as String) + "salt$" + "8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") is Present { value: _ } then n + 1 else n)
-  testable > 0 && refused_in_digest == testable && refused_in_salt == testable
+  testable > 0 && spliced_digest == testable && spliced_salt == testable
 }
 
-// THE ADMITTED SIDE IS SWEPT TOO. '~' is code 126, the last byte upstream's printable range admits. Asserting it
-// ADMITTED is what makes the other half of the rule testable: a shelf that quietly narrowed the range would
-// refuse this candidate here and accept it on the board, and that direction of error strands an operator whose
-// only console is the BMC — a hash generator using '~' is perfectly legal upstream and would be refused by us.
-test fn the_upper_end_of_the_printable_range_is_admitted_in_a_salt() -> Bool {
-  accepts(crypt_digest: "$6$~~~~~~~~$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+// THE ADMITTED HALF IS CHECKED AT ITS ENDPOINTS. Asserting only refusals would let the printable range quietly
+// narrow and still pass every other row in this file, and narrowing is the direction of error that strands an
+// operator: a hash containing a byte WE reject and upstream accepts means a password someone set elsewhere stops
+// working on the board, with the BMC as the only console. So both bounds of the range are pinned from inside and
+// from outside, which is what a mutation to either bound has to survive. Deliberately NOT a digest fixture with a
+// "~" in the salt: upstream's SALT grammar is [./0-9A-Za-z], which excludes "~", so such a fixture would assert a
+// falsehood about the very document this shelf cites. The printable range belongs to upstream's scan over the
+// whole setting, so it is tested as that scan.
+test fn the_printable_range_admits_its_endpoints_and_refuses_just_outside() -> Bool {
+  shared_restriction_character_is_printable(code: 33)
+    && shared_restriction_character_is_printable(code: 126)
+    && !shared_restriction_character_is_printable(code: 32)
+    && !shared_restriction_character_is_printable(code: 127)
+    && !shared_restriction_character_is_printable(code: 0)
 }
 
 test fn permitted_punctuation_in_the_salt_is_still_accepted() -> Bool {
