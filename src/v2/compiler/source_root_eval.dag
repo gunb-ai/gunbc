@@ -418,6 +418,7 @@ import v2.compiler.inferred_tree {
   AuthoredOccurrenceCollision,
   DerivedGrounding,
   GroundingNotDerived,
+  not_derived_site_symbol,
   authored_occurrence_collisions,
 }
 import v2.std.node_query {
@@ -555,6 +556,7 @@ type NativeInferAdvisoryCount {
 
 type NativeInferAcceptedFrontier {
   grounding_not_derived: Int
+  not_derived_sites: List<NativeInferSiteCount>
   advisories: List<NativeInferAdvisoryCount>
 }
 
@@ -593,7 +595,46 @@ fn native_infer_grounding_not_derived_count(tree: InferredTree) -> Int {
         Absent => acc
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => acc + 1
+            GroundingNotDerived { node: _, site: _ } => acc + 1
+            DerivedGrounding { grounding: _ } => acc
+          }
+      }
+    }
+  )
+}
+
+// THE CENSUS OF WHICH SITE LEFT EACH NODE UNDERIVED (v2.compiler.inferred_tree NotDerivedSite). The advisory
+// is one reason, so its count says how many and never why; the site on each GroundingNotDerived fact is the
+// cause. One row per site present, in first-met order, over the same node walk native_infer_grounding_not_derived_count
+// counts, so the rows sum to that count.
+type NativeInferSiteCount {
+  site: Symbol
+  count: Int
+}
+
+fn native_infer_site_counts_add(acc: List<NativeInferSiteCount>, site: Symbol) -> List<NativeInferSiteCount> {
+  match acc {
+    Empty => [NativeInferSiteCount { site: site, count: 1 }]
+    Cons { head: row, tail: rest } =>
+      if row.site == site {
+        Cons { head: NativeInferSiteCount { site: site, count: row.count + 1 }, tail: rest }
+      } else {
+        Cons { head: row, tail: native_infer_site_counts_add(acc: rest, site: site) }
+      }
+  }
+}
+
+fn native_infer_not_derived_site_counts(tree: InferredTree) -> List<NativeInferSiteCount> {
+  fold_list(
+    xs: node_subtree_nodes(root: tree.root),
+    empty: [],
+    cons: fn(acc, n) {
+      match tree.facts.lookup(n) {
+        Absent => acc
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _, site: s } =>
+              native_infer_site_counts_add(acc: acc, site: not_derived_site_symbol(site: s))
             DerivedGrounding { grounding: _ } => acc
           }
       }
@@ -604,6 +645,7 @@ fn native_infer_grounding_not_derived_count(tree: InferredTree) -> Int {
 fn native_infer_accepted_frontier(tree: InferredTree, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
   NativeInferAcceptedFrontier {
     grounding_not_derived: native_infer_grounding_not_derived_count(tree: tree),
+    not_derived_sites: native_infer_not_derived_site_counts(tree: tree),
     advisories: native_infer_advisory_counts(d: diagnostics)
   }
 }

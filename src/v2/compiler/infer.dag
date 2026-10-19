@@ -26,7 +26,7 @@ import v2.compiler.lexical_scope { bind_binder }
 import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
 import v2.compiler.body_lowering_fold { TypeDeclModifier, TypeDeclModifierModuleUncovered, TypeDeclModifierRowAbsent, TypeDeclModifierRowPresent, type_decl_modifiers_include_sole_constructor, type_declaration_modifier_row_at }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, EqualityNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding }
 import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_field_operation_type, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, KernelStringLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
@@ -98,7 +98,7 @@ fn infer_grounding_not_derived_diagnostic(at: Locus) -> Diagnostic {
 fn inferred_facts_subject_node(facts: InferredFacts) -> Node {
   match facts.grounding {
     DerivedGrounding { grounding: g } => g.node
-    GroundingNotDerived { node: n } => n
+    GroundingNotDerived { node: n, site: _ } => n
   }
 }
 
@@ -109,21 +109,21 @@ fn inferred_facts_cover_node(facts: InferredFacts, node: Node) -> Bool {
 fn inferred_facts_grounding_derived(facts: InferredFacts) -> Bool {
   match facts.grounding {
     DerivedGrounding { grounding: _ } => true
-    GroundingNotDerived { node: _ } => false
+    GroundingNotDerived { node: _, site: _ } => false
   }
 }
 
 fn inferred_facts_canonical_admitted(facts: InferredFacts) -> Bool {
   match facts.grounding {
     DerivedGrounding { grounding: g } => canonical_grounding_admits_infer_facts(grounding: g)
-    GroundingNotDerived { node: _ } => false
+    GroundingNotDerived { node: _, site: _ } => false
   }
 }
 
 fn inferred_facts_grounding_witness(facts: InferredFacts) -> Witness<CanonicalGrounding> {
   match facts.grounding {
     DerivedGrounding { grounding: g } => Holds { value: g }
-    GroundingNotDerived { node: n } =>
+    GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
@@ -131,7 +131,7 @@ fn inferred_facts_grounding_witness(facts: InferredFacts) -> Witness<CanonicalGr
 fn inferred_facts_resolved_type(facts: InferredFacts) -> Witness<Node> {
   match facts.grounding {
     DerivedGrounding { grounding: g } => Holds { value: g.witness.structural.evidence }
-    GroundingNotDerived { node: n } =>
+    GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
@@ -140,7 +140,7 @@ fn inferred_facts_algebra_ref(facts: InferredFacts) -> Witness<AlgebraRef> {
   match facts.grounding {
     DerivedGrounding { grounding: g } =>
       Holds { value: algebra_ref_from_grounding(grounding: g) }
-    GroundingNotDerived { node: n } =>
+    GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
@@ -148,7 +148,7 @@ fn inferred_facts_algebra_ref(facts: InferredFacts) -> Witness<AlgebraRef> {
 fn inferred_facts_canonical_witness(facts: InferredFacts) -> Witness<CanonicalGroundingWitness> {
   match facts.grounding {
     DerivedGrounding { grounding: g } => Holds { value: g.witness }
-    GroundingNotDerived { node: n } =>
+    GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
@@ -446,11 +446,12 @@ fn inferred_facts_from_grounding(
 
 fn inferred_facts_not_derived(
   node: Node,
+  site: NotDerivedSite,
   descent: Witness<v2.std.cardinality.TerminationProof>,
 ) -> Outcome<InferredFacts> {
   Accepted {
     value: InferredFacts {
-      grounding: GroundingNotDerived { node: node },
+      grounding: GroundingNotDerived { node: node, site: site },
       descent: descent,
       denotation: optional_absent(),
       type_instances: []
@@ -710,10 +711,10 @@ fn infer_binder_node_facts_from_entries(
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
     Holds { value: descent_proof } =>
       match lookup_inferred_facts_in_entries(entries: entries, key: parts.type_node) {
-        Absent => inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
+        Absent => inferred_facts_not_derived(site: BinderTypeNodeUnfacted, node: node, descent: Holds { value: descent_proof })
         Present { value: type_facts } =>
           match inferred_facts_resolved_type(facts: type_facts) {
-            Violates { diagnostic: _ } => inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
+            Violates { diagnostic: _ } => inferred_facts_not_derived(site: BinderTypeUnjudged, node: node, descent: Holds { value: descent_proof })
             Holds { value: type_evidence } =>
               inferred_facts_from_derived_type(
                 node: node,
@@ -750,7 +751,7 @@ fn infer_declaration_wrapper_facts_from_entries(
             is_metadata: fn(edge) { edge_is_type_params(e: edge) }
           ) {
             Absent =>
-              bind_outcome_accepted(od: cd, inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof }))
+              bind_outcome_accepted(od: cd, inner: inferred_facts_not_derived(site: DeclarationWrapperEvidenceEdgesAbsent, node: node, descent: Holds { value: descent_proof }))
             Present { value: evidence_edges } =>
               bind_outcome_accepted(
                 od: cd,
@@ -825,6 +826,7 @@ fn infer_product_facts_from_entries(
               bind_outcome_accepted(
                 od: cd,
                 inner: inferred_facts_not_derived(
+                  site: ProductEvidenceEdgesAbsent,
                   node: node,
                   descent: Holds { value: descent_proof }
                 )
@@ -893,8 +895,8 @@ fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: Lis
                   }
                 LexicalDeclared { node: declared } =>
                   inferred_facts_from_derived_type(node: n, derived_type: infer_frame_instantiated(declared: declared, instances: instances), descent: Holds { value: descent_proof })
-                LexicalValued { node: _ } => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
-                LexicalUntyped => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+                LexicalValued { node: _ } => inferred_facts_not_derived(site: LexicalReferenceValued, node: n, descent: Holds { value: descent_proof })
+                LexicalUntyped => inferred_facts_not_derived(site: LexicalReferenceUntyped, node: n, descent: Holds { value: descent_proof })
               }
           }
         Absent =>
@@ -957,7 +959,7 @@ fn infer_term_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIn
                     descent: Holds { value: descent_proof }
                   )
                 Absent =>
-                  inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+                  inferred_facts_not_derived(site: LiteralTypeUnknown, node: n, descent: Holds { value: descent_proof })
               }
             Rejected { diagnostics: _ } =>
               match infer_node_declared_in_language_inhabitants(kinds: kinds, n: n) {
@@ -995,6 +997,7 @@ fn infer_term_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIn
                             )
                           Absent =>
                             inferred_facts_not_derived(
+                  site: RosterMemberTypeAbsent,
                               node: n,
                               descent: Holds { value: descent_proof }
                             )
@@ -1068,6 +1071,7 @@ fn infer_field_projection_facts(
               bind_outcome_accepted(
                 od: cd,
                 inner: inferred_facts_not_derived(
+                  site: ProjectionReceiverUnderived,
                   node: node,
                   descent: Holds { value: descent_proof }
                 )
@@ -1354,7 +1358,7 @@ fn infer_reference_facts_or_frontier(
   match o {
     Accepted { value: facts, diagnostics: d } => Accepted { value: facts, diagnostics: d }
     Rejected { diagnostics: _ } =>
-      inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+      inferred_facts_not_derived(site: ReferenceRejectedGrounding, node: n, descent: Holds { value: descent_proof })
   }
 }
 
@@ -1365,7 +1369,7 @@ fn infer_declaration_reference_facts(
 ) -> Outcome<InferredFacts> {
   match declaration_reference_path_optional(node: n) {
     Absent =>
-      inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+      inferred_facts_not_derived(site: DeclarationReferenceWithoutPath, node: n, descent: Holds { value: descent_proof })
     Present { value: path } =>
       match collection_roster_primitive_call_signature_at(path: qualified_name_to_dotted_string(qn: path)) {
         NotARosterPrimitiveCallRow => infer_declaration_reference_facts_indexed(n: n, resolved: resolved, path: path, descent_proof: descent_proof)
@@ -1414,7 +1418,7 @@ fn infer_declaration_reference_facts_indexed(
             MentionDeclaringUnavailable =>
               bind_outcome_accepted(
                 od: infer_closure_miss_cause(resolved: resolved, path: path),
-                inner: inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+                inner: inferred_facts_not_derived(site: ReferenceLookupMiss, node: n, descent: Holds { value: descent_proof })
               )
           }
         Present { value: declared } =>
@@ -1610,7 +1614,7 @@ fn infer_variant_arm_value_reference_facts(
     VariantArmReferenceValueBodyUnavailable =>
       outcome_rejected(infer_declaration_body_unavailable_diagnostic(at: n))
     VariantArmReferenceValueNotDerived =>
-      inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+      inferred_facts_not_derived(site: VariantArmValueNotDerived, node: n, descent: Holds { value: descent_proof })
     VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
       infer_reference_facts_or_frontier(
         o: infer_facts_denoting(
@@ -1634,7 +1638,7 @@ fn infer_declaration_callable_reference_facts(
 ) -> Outcome<InferredFacts> {
   match infer_declaration_callable_evidence(declared: declared) {
     Absent =>
-      inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+      inferred_facts_not_derived(site: CallableEvidenceAbsent, node: n, descent: Holds { value: descent_proof })
     Present { value: callable } =>
       infer_reference_facts_or_frontier(
         o: infer_facts_denoting(
@@ -1774,7 +1778,7 @@ fn canonical_grounding_from_inferred_facts(
   facts: InferredFacts,
 ) -> Outcome<CanonicalGrounding> {
   match facts.grounding {
-    GroundingNotDerived { node: n } =>
+    GroundingNotDerived { node: n, site: _ } =>
       outcome_rejected(infer_grounding_demanded_not_derived_diagnostic(at: node_locus(node: n)))
     DerivedGrounding { grounding: g } =>
       if node != g.node {
@@ -2229,7 +2233,7 @@ fn infer_let_binder_value_type_optional(
 fn inferred_facts_resolved_type_optional(facts: InferredFacts) -> Optional<Node> {
   match facts.grounding {
     DerivedGrounding { grounding: g } => optional_present(value: g.witness.structural.evidence)
-    GroundingNotDerived { node: _ } => optional_absent()
+    GroundingNotDerived { node: _, site: _ } => optional_absent()
   }
 }
 
@@ -3265,7 +3269,7 @@ fn infer_match_frontier(node: Node, cd: Diagnostics, advisories: Diagnostics) ->
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
     Holds { value: descent_proof } =>
       bind_outcome(
-        o: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof }),
+        o: inferred_facts_not_derived(site: MatchFrontier, node: node, descent: Holds { value: descent_proof }),
         f: fn(facts) {
           Accepted { value: facts, diagnostics: diagnostics_merge(outer: cd, inner: advisories) }
         }
@@ -3725,7 +3729,7 @@ fn infer_equality_not_derived(node: Node, od: Diagnostics) -> Outcome<InferredFa
   match infer_descent_witness_for_node(n: node) {
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
     Holds { value: descent_proof } =>
-      bind_outcome_accepted(od: od, inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof }))
+      bind_outcome_accepted(od: od, inner: inferred_facts_not_derived(site: EqualityNotDerived, node: node, descent: Holds { value: descent_proof }))
   }
 }
 
@@ -3800,7 +3804,7 @@ fn infer_application_callee_arrow_with_facts(
             Absent => Absent
             Present { value: facts } =>
               match facts.grounding {
-                GroundingNotDerived { node: _ } => Absent
+                GroundingNotDerived { node: _, site: _ } => Absent
                 DerivedGrounding { grounding: g } =>
                   infer_operator_arrow(operator: g.witness.structural.evidence)
               }
@@ -6086,7 +6090,7 @@ fn infer_transform_cast_optional(node: Node, entries: Map<Node, List<InferredFac
               Absent => optional_present(value: outcome_rejected(infer_facts_lookup_miss_diagnostic(key: operand)))
               Present { value: operand_facts } =>
                 match operand_facts.grounding {
-                  GroundingNotDerived { node: _ } => optional_absent()
+                  GroundingNotDerived { node: _, site: _ } => optional_absent()
                   DerivedGrounding { grounding: g } =>
                     optional_present(value: bind_outcome(
                       o: coercion_cast_crossing(
@@ -6473,7 +6477,7 @@ fn infer_literal_payload_member_facts(family: InferLiteralPayload, member: Node)
         descent: infer_descent_witness_for_node(n: member)
       )
     Absent =>
-      inferred_facts_not_derived(node: member, descent: infer_descent_witness_for_node(n: member))
+      inferred_facts_not_derived(site: LiteralPayloadMember, node: member, descent: infer_descent_witness_for_node(n: member))
   }
 }
 
@@ -7505,7 +7509,7 @@ fn infer_construct_facts_on_entries(
             RecordFieldsRefused { diagnostic: d } => outcome_rejected(d)
             RecordPayloadUnread =>
               infer_constructed_from_facts(
-                inner: bind_outcome_accepted(od: cd, inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })),
+                inner: bind_outcome_accepted(od: cd, inner: inferred_facts_not_derived(site: ConstructFieldsUnbound, node: node, descent: Holds { value: descent_proof })),
                 entries: entries
               )
             RecordFieldsBound { pairs: pairs } =>
@@ -7514,7 +7518,7 @@ fn infer_construct_facts_on_entries(
                   infer_constructed_from_facts(
                     inner: bind_outcome_accepted(
                       od: diagnostics_merge(outer: cd, inner: infer_record_fields_unresolved_diagnostics(pairs: pairs)),
-                      inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
+                      inner: inferred_facts_not_derived(site: ConstructFormalsAuthored, node: node, descent: Holds { value: descent_proof })
                     ),
                     entries: entries
                   )
@@ -7549,7 +7553,7 @@ fn infer_construct_facts_on_entries(
                                     descent: Holds { value: descent_proof }
                                   )
                                 Absent =>
-                                  inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
+                                  inferred_facts_not_derived(site: ConstructTypeAbsent, node: node, descent: Holds { value: descent_proof })
                               }
                             ),
                             entries: instantiated_entries
