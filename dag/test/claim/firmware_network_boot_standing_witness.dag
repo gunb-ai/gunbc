@@ -158,6 +158,7 @@ import gunbc.firmware_network_boot_standing {
   route_prose,
   route_is_admissible_for,
   procedure_demands_existing_option,
+  observed_bios_version_from,
   route_requires,
   ProcedureRequires,
   RequiresExistingBootOption,
@@ -1538,6 +1539,105 @@ fn gap_was_refused(gap: UnansweredAxis) -> Bool {
     BiosAxisUnanswered { absence: AxisRefused { refusal: _ } } => true
     _ => false
   }
+}
+
+// THE ONE-SHOT PREREQUISITE IS READ FROM THE ROW AND CONSULTED AGAINST EXISTENCE (HOLD 2a). Three
+// claims in one test, because the pair that shipped wrong was a pair, and a single assertion cannot
+// tell 'the prerequisite is ignored' from 'the wrong question was consulted':
+//  (a) a one-shot row on a unit with NO network option must REFUSE -- its own requirement list says an
+//      option must already exist, and arming Force-PXE there schedules a boot that cannot happen;
+//  (b) the same row on a unit where an option EXISTS (even disabled) must BIND -- consulting the
+//      usability answer instead of the existence answer would over-refuse here, which is the other
+//      half of the same defect and is invisible to a test that only checks (a);
+//  (c) a row whose requirement list does NOT include RequiresExistingBootOption must bind even with no
+//      option anywhere. Without (c), an implementation that refused every route on
+//      NoNetworkOptionExists passes (a) and (b) and is wrong in the direction that strands a unit the
+//      console route was written for.
+// (a) is the row that kills the mutation 'the prerequisite check is bypassed'; that mutation survived
+// my first suite precisely because no test reached this fold with `NoNetworkOptionExists` in hand.
+test fn a_one_shot_row_consumes_its_own_existing_option_prerequisite() -> Bool {
+  let one_shot = RedfishOneShotOverride {
+    service_root: "redfish:Systems/Self",
+    authority: witness_authority,
+  }
+  let nothing_exists = NoNetworkOptionExists { examined_count: 2 }
+  // THE PREREQUISITE MUST GENUINELY BE ON THE ROW -- otherwise (a) proves nothing about the binder.
+  procedure_demands_existing_option(route: one_shot)
+    // (a) REFUSES WHEN NOTHING NETWORK EXISTS, with the reason naming the requirement it could not meet.
+    && match bind_route_from(
+         route: one_shot,
+         redirect_to: RedirectTargetAbsent { why: "not a redirect blocker" },
+         existence: nothing_exists,
+         observed_bios_version: Absent,
+       ) {
+         BindingRefused { refusal: RouteBindingUnresolvedRoute { mechanism: m, owed_read: owed } } =>
+           m == "redfish-one-shot-override" && string_contains(s: owed, pattern: "exist")
+         RouteBound { route: _ } => false
+         BindingRefused { refusal: _ } => false
+       }
+    // (b) BINDS WHEN AN OPTION EXISTS BUT IS DISABLED: existence, not usability, is the question a
+    // one-shot asks. fixture_existence_enabled() derives from good_options(), so this arm cannot be
+    // satisfied by a hand-written standing that blesses whatever the fold now answers.
+    && match bind_route_from(
+         route: one_shot,
+         redirect_to: RedirectTargetAbsent { why: "not a redirect blocker" },
+         existence: fixture_existence_enabled(),
+         observed_bios_version: Absent,
+       ) {
+         RouteBound { route: RedfishOneShotOverride { service_root: s, authority: _ } } =>
+           s == "redfish:Systems/Self"
+         RouteBound { route: _ } => false
+         BindingRefused { refusal: _ } => false
+       }
+    // (c) A ROW WITHOUT THE REQUIREMENT IS UNBOTHERED BY THE ABSENCE. UefiShellOverSol drives the
+    // console over SOL and needs no boot option at all, so refusing it here would be the over-refusal
+    // this whole split exists to prevent.
+    && match bind_route_from(
+         route: UefiShellOverSol {
+           sol_channel: "ttyS4",
+           shell_script: "fs0:\\netboot\snponly.efi",
+           authority: witness_authority,
+         },
+         redirect_to: RedirectTargetAbsent { why: "not a redirect blocker" },
+         existence: nothing_exists,
+         observed_bios_version: Absent,
+       ) {
+         RouteBound { route: _ } => true
+         RouteBound { route: RedfishOneShotOverride { service_root: _, authority: _ } } => false
+         BindingRefused { refusal: _ } => false
+       }
+}
+
+// THE BIOS PROJECTION ANSWERS WITH THE VALUE IT WAS HANDED (HOLD 3a). This fold is the single place
+// that turns a BIOS axis into 'the version, if there is one', and it is what the Secure Boot fold now
+// calls instead of passing `Absent`. It was green under 'discard the version' in my first suite because
+// every public-entry path to it lands on a blocker whose only catalog row is an UNBOUND attribute slot
+// -- which refuses whether or not a version arrived. So the projection is witnessed at its own
+// boundary, and the fail-closed catalog is stated as the reason rather than hidden: the public entry
+// cannot discriminate this field today, and a future row with a bound name is exactly when the
+// public-entry claim has to be added back (the frontier below is the marker for it).
+test fn the_bios_projection_carries_the_version_it_read_and_invents_none() -> Bool {
+  // READ: the value survives, byte for byte -- not a non-empty placeholder.
+  match observed_bios_version_from(axis: BiosVersionObserved { version: "1.08" }) {
+    Present { value: v } => v == "1.08"
+    Absent => false
+  }
+    // NOT ASKED: Absent, because an invented "" or "unknown" would match nothing and make every
+    // transcription look stale -- the failure mode HOLD 3a's fix must not reintroduce.
+    && match observed_bios_version_from(axis: BiosVersionUnobserved { reason: "BMC did not answer" }) {
+         Absent => true
+         Present { value: _ } => false
+       }
+    // REFUSED: also Absent. A refused read is not a version, and treating one as a value would let a
+    // transport failure silently invalidate every transcription in the fleet.
+    && match observed_bios_version_from(
+         axis: BiosVersionRefused {
+           refusal: VendorCommandRejected { detail: "endpoint absent" },
+         },
+       ) {
+         Absent => true
+         Present { value: _ } => false
+       }
 }
 
 // THE ROUTE MUST BE ABLE TO FIX WHAT IT CLAIMS IS BLOCKING. A boot order full of
@@ -3061,8 +3161,14 @@ test fn an_enumeration_grounding_on_an_attribute_slot_refuses_rather_than_binds(
     observed_bios_version: present(version: "1.08"),
   ) {
     // A BootOptions enumeration enumerates boot options, not BIOS attribute keys, so a name taken from
-    // one cannot drive an attribute write.
-    RouteNotExecutable { mechanism: _, refusal: RouteBindingUnresolvedRoute { mechanism: _, owed_read: _ } } => true
+    // one cannot drive an attribute write. THE MECHANISM AND THE OWED READ ARE ASSERTED, not just the
+    // shape: this arm exists to send an operator to a BIOS attribute GET with a message that says what
+    // was confused with what, so a paste of the catalog's generic unbound text here would be a real
+    // regression (an operator would be told to go read something they had just read).
+    RouteNotExecutable { mechanism: m, refusal: RouteBindingUnresolvedRoute { mechanism: rm, owed_read: owed } } =>
+      m == "redfish-bios-network-stack" && rm == "redfish-bios-network-stack"
+        && string_contains(s: owed, pattern: "BootOptions")
+        && string_contains(s: owed, pattern: "attribute")
     RouteExecutable { route: _, requires: _ } => false
     RouteNotExecutable { mechanism: _, refusal: _ } => false
   }
