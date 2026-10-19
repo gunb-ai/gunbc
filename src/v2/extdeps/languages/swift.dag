@@ -81,6 +81,7 @@ import v2.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v2.std.compilers.target_model {
+  PrimitiveRealizationsUnwired,
   ProducedDeclWired, ProducedDeclSupport, ProducedDeclRenderRows, ProducedSignatureFixed, ProducedSignatureDeclName,
   ProducedSignatureParams, ProducedSignatureReturnType, ProducedParamName, ProducedParamFixed, ProducedParamType,
   StatementSequenced, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
@@ -125,6 +126,7 @@ import v2.std.logic { bool_boolean_algebra }
 import std.algebra { Cons, Empty, list_append, BooleanAlgebra, fold_list, list_flat_map, list_map, PointwisePower, empty_map, map_insert }
 import v2.std.algebra_structure_signature { approximate_field_type_node, boolean_algebra_type_node, commutative_semiring_type_node, free_monoid_type_node, ordered_ring_type_node }
 import v2.std.text { String }
+import std.host_text { chars }
 
 type SwiftIntWidth
   = Bits8
@@ -832,6 +834,7 @@ fn swift_produced_decl_support() -> ProducedDeclSupport {
 
 fn swift_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: swift_produced_decl_support(),
     bundle: swift_target_model_node(),
     lex: swift_emit_lex(),
@@ -845,14 +848,14 @@ fn swift_target_model() -> TargetModel {
 fn swift_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 
 fn swift_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: KeywordPattern { text: chars(s: text) }
+    pattern: KeywordPattern { text: chars(text: text) }
   }
 }
 

@@ -141,7 +141,7 @@ import v2.std.model_core {
 import v2.std.compilers.coproduct_variant_shape {
   coproduct_all_variants_nullary
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetPrimitiveRealization,
   TargetPrimitiveArgument,
   PrimitiveArgumentUnlabeled,
@@ -151,8 +151,7 @@ import v2.std.compilers.target_model {
   PrimitivePassByValue,
   TargetPrimitiveArgumentPassing,
   PrimitiveResultAsReturned,
-  target_primitive_realization_node,
-  target_realizations_catalog_node,
+  PrimitiveRealizationsWired,
   target_bind_let_separator_present,
   IntLiteralDecimal,
   TargetCapabilityKey,
@@ -374,6 +373,7 @@ import extdeps.languages.rust.emit {
   rust_struct_derives,
   rust_struct_derives_copy
 }
+import std.host_text { chars }
 
 type RustIntKind
   = Signed
@@ -1326,7 +1326,7 @@ fn rust_primitive_realization_rows() -> List<TargetPrimitiveRealization> {
 data rust_primitive_realization_seed_spelling_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the frozen v1 seed no longer reads rt_function_registry and rust_simple_method_specs (extdeps.languages.rust.emit) and no longer special-cases to_string and map in v1_compiler_emit_rust; those rows then dissolve into rust_primitive_realization_rows, and the differential witness v2.test.claim.emit.rust_primitive_seed_differential is deleted with them")
 
 fn rust_operator_realizations_catalog_node() -> Node {
-  target_realizations_catalog_node(primitive_rows: list_map(xs: rust_primitive_realization_rows(), f: fn(r) { target_primitive_realization_node(row: r) }), operator_rows: [
+  target_operator_realizations_catalog_node(rows: [
     rust_operator_realization_row(operation: canonical_operation_op_or(), token: ^rust_token_oror),
     rust_operator_realization_row(operation: canonical_operation_op_and(), token: ^rust_token_andand),
     rust_operator_realization_row(operation: canonical_operation_op_eq(), token: ^rust_token_eqeq),
@@ -2241,6 +2241,7 @@ fn rust_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_target_model_staging() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsWired { rows: rust_primitive_realization_rows() },
     produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_bundle_core(),
     lex: rust_staging_lex(),
@@ -2364,6 +2365,7 @@ fn rust_target_model_node() -> Node {
 
 fn rust_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsWired { rows: rust_primitive_realization_rows() },
     produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_node(),
     lex: rust_production_lex(),
@@ -2440,7 +2442,7 @@ fn rust_closure_crate_target_model() -> TargetModel {
 fn rust_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 
@@ -3016,6 +3018,7 @@ fn rust_semantic_decl_emission_bundle_node() -> Node {
 
 fn rust_enum_general_decl_structural_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
@@ -3089,6 +3092,7 @@ fn rust_struct_general_decl_productions_only_translation_rules() -> Node {
 
 fn rust_struct_general_decl_structural_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
@@ -4863,6 +4867,7 @@ fn rust_type_expression_projection_bundle_node() -> Node {
 
 fn rust_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_sg2_type_expr_target_model_node(),
     lex: ModeledLexRules { root: rust_sg2_lex_rules() },
@@ -4879,6 +4884,7 @@ fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
 
 fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_sg2_type_expr_projection_probe_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_lex_rules() },
@@ -4891,6 +4897,7 @@ fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
 
 fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_sg2_type_expr_target_model_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_lex_rules() },
