@@ -8,6 +8,7 @@ import gunbc.auth.gcp_iam_converge { PolicyObserved, PolicyResourceAbsent, Polic
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
 import gunbc.auth.gcp_iam_bootstrap_model { BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding, IamBootstrapResource }
 import gunbc.auth.gcp_iam_bootstrap_delta { SubjectNotBootstrapped, SubjectUnbound, SubjectAbsentOrUnboundCannotTell }
+import gunbc.auth.gcp_iam_trust_roots { ceremony_trust_root_secrets }
 import gunbc.auth.gcp_iam_bootstrap_delta_route {
   BootstrapDeltaRequestBody, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, RootCeremonyCellsMissing, bootstrap_delta_requestable,
   BootstrapCellsWrite, WriteBootstrapCells, BootstrapCellsAlreadyPresent, BootstrapCellsRefused, bootstrap_cells_write,
@@ -85,6 +86,19 @@ test fn trust_roots_and_project_cells_are_unrequestable() -> Bool {
 }
 
 fn r_secret() -> IamBootstrapResource { BootstrapSecret { secret: secret } }
+
+// EVERY TRUST-ROOT SECRET IS REFUSED BY THE ROUTE ITSELF, alone and next to an ordinary secret: this is
+// the runtime refusal that holds even if a grant set or roster edit routes a root into the delta.
+// r_secret() stays the admitted control.
+test fn trust_root_secrets_are_unrequestable() -> Bool {
+  let roots = map(ceremony_trust_root_secrets(), t => BootstrapSecret { secret: t.secret })
+  count(roots) == 4
+    && !trust_root_subject(s: r_secret())
+    && (match bootstrap_delta_requestable(subjects: [subject_of(s: r_secret(), cells: [converge_cell])]) { BootstrapDeltaRequestAdmitted { body: _ } => true  _ => false })
+    && all(roots, r => trust_root_subject(s: r)
+      && (match bootstrap_delta_requestable(subjects: [subject_of(s: r, cells: [converge_cell])]) { RootCeremonyCellsMissing { root_subjects: rs } => count(rs) == 1  _ => false })
+      && (match bootstrap_delta_requestable(subjects: [subject_of(s: r_secret(), cells: [converge_cell]), subject_of(s: r, cells: [converge_cell])]) { RootCeremonyCellsMissing { root_subjects: rs } => count(rs) == 1  _ => false }))
+}
 
 // CONSENT IS TO EXACTLY THE CELLS: one cell more or less is a different preimage.
 test fn the_preimage_binds_every_cell() -> Bool {
