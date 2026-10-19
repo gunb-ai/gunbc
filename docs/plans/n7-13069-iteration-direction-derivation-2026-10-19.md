@@ -60,31 +60,44 @@
 // shipped precedent), so shape-enforcement is honest ONLY for the mechanically-synthesized callback
 // steps. The executor-side enforcement is NOT faked or pre-empted here.
 
-// THE FIX, one authority (§3): the direction is read once by callback_realization_iteration_direction
-// (unchanged); a new shape-evidence reader in the same authority module,
-// fold_callback_step_iteration_evidence(step), derives the direction from the SYNTHESIZED step's
-// canonical shape (cons-with-acc-tail => Right, kept-member cons branch => Right, &&-join on the
-// acc => Left, unreadable => Absent); the callback encoding assembly refuses
-// (^fold_lowering_direction_contradicts_step_shape) when evidence is Present and disagrees with the
-// declared direction, and fails closed on Absent for the callback route (the shape there is
-// canonical — unreadable means a synthesis bug, never a pass). Keyed on the realization identity via
-// CallbackRealization, never string matching on step text. The assembly is parameterized on the
-// declared direction so a control can inject the contradiction (precedent: fold_recurrence_encoding
-// is directly exercised by claims over its operands; the real route's value still flows from
-// callback_realization_iteration_direction — one authority, one input).
+// THE FIX, by construction (§5: construction over proof over validation; manager no-go 2026-10-19
+// rejected the two-reader cross-check version as validation-with-two-authorities and required a
+// test-only seam-free route): ONE row per CallbackRealization keyed on the realization identity,
+// carrying the synthesized step's canonical SHAPE and its init (new closed sums, CallbackStepShape:
+// StepConsOfCallbackResult | StepKeepsMemberUnderCondition | StepAccBoolJoined{operator}, and
+// CallbackInitShape: InitEmptyCarrier | InitBoolLiteral{value}; the init joins the row for the same
+// reason -- it is the other half of what the synthesis hand-writes).
+// The direction is NOT an independent field — it is read by exactly one total match over
+// CallbackStepShape (cons-shapes => Right, joins => Left), so the contradiction "cons step paired
+// with Left" has NO CONSTRUCTOR. callback_realization_iteration_direction reads the row via that one
+// match; body_lower_callback_step_body matches the SAME row's shape (its builder match is over the
+// descriptor, not a free sibling over CallbackRealization); the free sibling arm is deleted; there
+// is no seam: no caller-supplied direction parameter exists anywhere. The row lives in
+// v2.compiler.fold_lowering (the direction authority; body_lowering_fold already imports from it —
+// direction, no cycle). If the direction were kept as a second field cross-checked by construction,
+// the wrong pair would be writable as a data literal and the row's typing could not refuse it —
+// that variant is rung 2 with a lens, not rung 4; the derived-direction shape is what makes rung 4
+// honest for the contradiction class, and it is the one deviation from the manager's illustrative
+// row ({step, direction}) sent for approval before building.
 
-// CONTROLS (joined on one leaf per §3b; each cites the mechanism it exercises):
-// - RED / discriminating: a fold-family map call lowered on the REAL route with the declared
-//   direction flipped against the cons step shape is REFUSED at lowering, with the refusal symbol
-//   above, on the acceptance path (v2.compiler.body_lowering_fold callback assembly -> emitted-binary
-//   closure). Measured red BEFORE the wall exists: with the agreement check deleted it goes red while
-//   both step_loop handlers still refuse every Loop — enforcement does not wait on, or read, an
-//   executor. Measurement recorded at implementation in claim text and PR body.
-// - Accepted positive control: unmutated map/filter/any/all lower accepted, each with
-//   fold_callback_step_iteration_evidence agreeing with callback_realization_iteration_direction, and
-//   fold_list vs fold_list_right keep their shipped ccr_told_apart control untouched.
-// - Refusal-of-default: an unreadable synthesized step shape on the callback route refuses rather
-//   than passing (no silent Absent).
+// CONTROLS (manager evidence ruling of 2026-10-19, variant B; joined on one leaf per §3b):
+// - THE CONTRADICTION CLASS IS RUNG 4 BY CONSTRUCTION: {cons-shape, Left} has no constructor (the
+//   direction is read from the shape by callback_step_shape_iteration_direction, never carried beside
+//   it), so NO RED of that class is authorable -- stated plainly in the failure-mode row.
+// - THE RESIDUAL CLASS (the one shape -> direction match being wrong) is discriminated by EXECUTION:
+//   flipping the cons arm (StepConsOfCallbackResult => IteratesLeftToRight) makes
+//   ccr_map_loop_iterates_right_to_left measure RED on the real route (the claim reads the direction
+//   back off a loop the real synthesis lowered); reverted, green. Both runs pinned to shas, reported
+//   to the manager; the mutation is never shipped. Red BEFORE the wall exists: both step_loop
+//   handlers still refuse every Loop during the flip, so the RED does not read or wait on an executor.
+// - ACCEPTED CONTROLS: map, filter, any, all lower accepted with their directions read off their own
+//   rows (ccr_map_loop_iterates_right_to_left, ccr_filter_and_any_directions,
+//   ccr_fold_and_all_iterate_left_to_right), the shipped ccr_fold_list_and_fold_list_right_are_told_apart
+//   untouched, and ccr_step_rows_cover_the_callback_roster refuses a roster/step-row population
+//   disagreement (a realization added without its row).
+// - REFUSAL OF DEFAULT: a realization with no step row is refused at the assembly
+//   (^body_lowering_reason_function_value_shape_unread) rather than defaulted, and
+//   ccr_a_non_fold_path_has_no_direction keeps the no-default direction reading.
 // CEILING claim (what green will NOT say): this closes the callback-synthesis contradiction boundary
 // only. It does NOT execute fold-realized Loops, does not enforce an authored fold's declared order
 // against user step bodies, and does not touch the executor boundary. The failure-mode row's RUNG text

@@ -2,7 +2,7 @@ module v2.test.claim.compiler.collection_callback_realization
 
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer }
-import v2.compiler.fold_lowering { FoldIterationDirection, IteratesLeftToRight, IteratesRightToLeft, fold_family_realization, fold_loop_step, fold_realization_declaration_path, fold_realized_iteration_direction, fold_realized_path_iteration_direction, fold_step_body_node }
+import v2.compiler.fold_lowering { CallbackRealization, FoldIterationDirection, IteratesLeftToRight, IteratesRightToLeft, callback_roster_realizations_covered_by_step_rows, callback_step_rows_all_named_by_roster, callback_step_row_realizations, fold_family_realization, fold_loop_step, fold_realization_declaration_path, fold_realized_iteration_direction, fold_realized_path_iteration_direction, fold_step_body_node }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer, fmi_infer_tree, fmi_no_projection_refusal, fmi_reason }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import std.types { List }
@@ -12,7 +12,7 @@ import v2.std.qualified_name { declaration_reference_path_optional, lexical_refe
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import std.algebra { Cons, Empty, list_at_optional }
+import std.algebra { Cons, Empty, length, list_at_optional }
 import v2.std.node { ComputationNode, Found, Loop, Node, Symbol, loop_realized_declaration_target, node_subtree_nodes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -295,4 +295,16 @@ test fn ccr_a_non_fold_path_has_no_direction() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+// (6) THE STEP ROWS COVER THE CALLBACK ROSTER EXACTLY (v2.compiler.fold_lowering callback_step_rows):
+// every callback the roster declares has a step row, every step row names a callback the roster declares,
+// and the step-row population is the four. The covering judgment is the authority's own
+// (callback_step_rows_cover_realization and its two siblings); this claim runs it on the acceptance path.
+// Red if a realization is added to the roster without its step row, if a step row covers nothing, or if a
+// row is added for a realization the roster no longer names.
+test fn ccr_step_rows_cover_the_callback_roster() -> Bool {
+  callback_roster_realizations_covered_by_step_rows()
+    && callback_step_rows_all_named_by_roster()
+    && (length(xs: callback_step_row_realizations()) == 4)
 }
