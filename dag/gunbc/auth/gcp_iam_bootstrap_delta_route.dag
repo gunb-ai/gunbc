@@ -118,13 +118,6 @@ fn bootstrap_delta_requestable(subjects: List<SubjectNotBootstrapped>) -> Bootst
 type SubjectWriteRoute = FencedAdditionOnly | FirstPublicationAdmitted
 
 fn subject_write_route(s: SubjectNotBootstrapped) -> SubjectWriteRoute {
-  red_stub_fenced_only(s: s)
-}
-
-// RED STUB: today the delta never publishes a pool's first policy.
-fn red_stub_fenced_only(s: SubjectNotBootstrapped) -> SubjectWriteRoute { FencedAdditionOnly }
-
-fn green_subject_write_route(s: SubjectNotBootstrapped) -> SubjectWriteRoute {
   match s.subject {
     BootstrapPool { pool: _ } => match s.standing {
       SubjectUnbound => FencedAdditionOnly

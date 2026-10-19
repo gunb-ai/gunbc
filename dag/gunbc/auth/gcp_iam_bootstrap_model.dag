@@ -113,7 +113,7 @@ fn iam_bootstrap_identity_population_over(targets: List<DedicatedFederation>) ->
 // iam_bootstrap_cell_owner. A target's pool and account are delta subjects, created only by the delta
 // apply (gunbc.auth.gcp_iam_bootstrap_delta_route settle_existence).
 fn iam_bootstrap_ceremony_identity_population_over(targets: List<DedicatedFederation>) -> List<IamBootstrapIdentity> {
-  iam_bootstrap_identity_population_over(targets: targets)
+  filter(iam_bootstrap_identity_population_over(targets: targets), i => i.own_trust)
 }
 
 fn iam_bootstrap_ceremony_identity_population() -> List<IamBootstrapIdentity> {

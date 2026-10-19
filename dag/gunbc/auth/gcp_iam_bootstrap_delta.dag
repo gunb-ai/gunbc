@@ -202,10 +202,6 @@ fn pool_policy_reading(bindings: List<GcpBinding>?, etag: String?) -> BootstrapS
 }
 
 fn unpublished_or_unreadable(bindings: List<GcpBinding>?) -> BootstrapSubjectReading {
-  SubjectUnreadable { cause: "RED STUB: today an etag-less pool read is unreadable" }
-}
-
-fn green_unpublished_or_unreadable(bindings: List<GcpBinding>?) -> BootstrapSubjectReading {
   match bindings {
     Absent => SubjectPolicyUnpublished
     Present { value: rows } => if count(rows) == 0 { SubjectPolicyUnpublished } else { SubjectUnreadable { cause: "the pool policy carries bindings but no etag; no unfenced write is admitted over them" } }
