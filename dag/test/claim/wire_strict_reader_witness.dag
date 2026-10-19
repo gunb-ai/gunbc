@@ -9,7 +9,7 @@ import gunbc.auth.approval_device_wire {
   WireDecoded, WireRefused, decode_read_authentication, decode_push_registration, apns_environment_wire, ApnsProduction, ApnsDevelopment,
 }
 import gunbc.auth.wire_strict_reader {
-  WireVerdict, WireAccepted, WireRefusedAt, WireFieldRule, WireFreeString, WireAdmittedString, WireNested, WireField, WireShape, WireRecord, WireSum, WireSumArm,
+  WireVerdict, wire_cause_text, WireAccepted, WireRefusedAt, WireFieldRule, WireFreeString, WireAdmittedString, WireNested, WireField, WireShape, WireRecord, WireSum, WireSumArm,
   BoundShape, ShapeBound, ShapeRefused, bind_record, read_shape,
 }
 
@@ -54,7 +54,7 @@ fn parsed(text: String) -> JsonValue {
 fn verdict_key(v: WireVerdict) -> String {
   match v {
     WireAccepted => "ok"
-    WireRefusedAt { at: a, cause: c } => join([a, "|", c], "")
+    WireRefusedAt { at: a, cause: c } => join([a, "|", wire_cause_text(c: c)], "")
   }
 }
 
