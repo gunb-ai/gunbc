@@ -1,0 +1,63 @@
+module gunbc.provisioning.network_boot_actuation
+
+import gunbc.provisioning.provisioning_arm {
+  ProvisioningArm,
+  AttemptBinding,
+  ArmShape,
+  ArmedPxeOrUefiHttp,
+  ArmedVirtualMedia,
+  ArmUnobserved,
+  ArmRefused,
+  FirmwarePreparation,
+}
+import extdeps.bmc.webui.nbd_proxy { NbdProxyServeInterface }
+import gunbc.os_install_mechanism { PxeHttpInstall, VirtualMediaInstall }
+import gunbc.nbd_proxy_virtual_media_install {
+  OsInstallActuatorPlan,
+  os_install_actuator_plan,
+}
+
+// THE EXECUTING CONSUMER OF AN ArmShape (the frontier gunbc.provisioning.provisioning_arm
+// `provisioning_arm_consumer_frontier` binds to this module and to `network_boot_arm_actuator_steps`).
+// It projects the arm into the EXISTING actuator vocabulary: the mechanism picks the steps through
+// os_install_actuator_plan, and no step type is declared here. It runs nothing: a plan is an ordered
+// statement of the effects, and each effect still goes through its own admission and approval.
+//
+// One arm yields one mechanism and one plan. The firmware preparation is the route the S0 standing
+// cataloged, carried unchanged from the arm, so exactly one delivery route is named per attempt and no
+// route is spelled here. Nothing in this module reads the attempt's unit: it is copied through as data.
+type NetworkBootActuation
+  = ArmActuationPxe {
+      attempt: AttemptBinding
+      firmware: FirmwarePreparation
+      plan: OsInstallActuatorPlan
+    }
+  | ArmActuationVirtualMedia {
+      attempt: AttemptBinding
+      plan: OsInstallActuatorPlan
+    }
+  | ArmActuationWithheld {
+      attempt: AttemptBinding
+      shape: ArmShape
+    }
+
+// An Unobserved or Refused arm is WITHHELD with its shape intact: there is no arm to fall back to, so a
+// blocked arm cannot become the other strategy here. The export is the virtual-media serve parameter the
+// existing step builder takes; neither strategy's mechanism consumes it.
+fn network_boot_arm_actuator_steps(arm: ProvisioningArm, export: NbdProxyServeInterface) -> NetworkBootActuation {
+  match arm.shape {
+    ArmedPxeOrUefiHttp { chainloader: _, firmware: f, origin: _, seed: _ } =>
+      ArmActuationPxe {
+        attempt: arm.attempt,
+        firmware: f,
+        plan: os_install_actuator_plan(mechanism: PxeHttpInstall, export: export),
+      }
+    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } =>
+      ArmActuationVirtualMedia {
+        attempt: arm.attempt,
+        plan: os_install_actuator_plan(mechanism: VirtualMediaInstall, export: export),
+      }
+    ArmUnobserved { missing: _ } => ArmActuationWithheld { attempt: arm.attempt, shape: arm.shape }
+    ArmRefused { cause: _ } => ArmActuationWithheld { attempt: arm.attempt, shape: arm.shape }
+  }
+}
