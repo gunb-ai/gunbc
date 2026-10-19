@@ -9,6 +9,9 @@ pub use crate::extdeps_languages_rust_capabilities::{
 };
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_count_shape, collection_join_shape, collection_map_shape,
+};
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_emit_model::SimpleMethodSpec;
@@ -220,7 +223,11 @@ pub fn fresh_rust_value_binding_name(blocked: Rc<Vec<String>>, prefix: String) -
         candidates.iter().cloned().fold(
             std::option::Option::None,
             |found: Option<String>, candidate: String| {
-                rust_value_binding_choose_unblocked(found, candidate.clone(), blocked.clone())
+                rust_value_binding_choose_unblocked(
+                    found.clone(),
+                    candidate.clone(),
+                    blocked.clone(),
+                )
             },
         )
     }
