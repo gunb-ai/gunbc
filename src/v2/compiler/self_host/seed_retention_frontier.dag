@@ -1,6 +1,6 @@
 module v2.compiler.self_host.seed_retention_frontier
 
-import std.types { List, FilePathParts }
+import std.types { List, Map, FilePathParts }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, dissolution_is_bound, unbound_dissolution }
 import std.algebra { length, list_map, collection_join_shape }
@@ -593,17 +593,26 @@ type FrontierStanding
 type SelfHostFrontier {
   standings: List<FrontierStanding>
   stale_rows: List<SeedRetentionCensusRow>
+  duplicate_paths: List<String>
 }
 
-fn emitted_row_for_path(rows: List<EmittedPopulationRow>, path: String) -> List<EmittedPopulationRow> {
-  filter(xs: rows, predicate: fn(row) { row.crate_relative_path == path })
+// ONE KEYED INDEX PER INPUT, built once and read per observed path, so classifying a crate is linear
+// in observed + emitted + roster rather than their product. A path repeated within one input is a
+// defect the index may not narrow away (DESIGN section 5): it is collected as a located duplicate,
+// the frontier then REFUSES (self_host_frontier_holds), and the index keeps the first row only so
+// the remaining paths still classify and the refusal names every duplicate at once.
+type FrontierIndexScan<V> {
+  by_path: Map<String, V>
+  duplicate_paths: List<String>
 }
 
-fn retention_row_for_path(
-  roster: List<SeedRetentionFrontierRow>,
-  path: String
-) -> List<SeedRetentionFrontierRow> {
-  filter(xs: roster, predicate: fn(row) { row.crate_relative_path == path })
+fn frontier_index_scan<V>(rows: List<V>, path_of: fn(V) -> String) -> FrontierIndexScan<V> {
+  fold(rows, init: FrontierIndexScan { by_path: empty_map(), duplicate_paths: [] }, f: fn(acc, row) {
+    match map_get(acc.by_path, path_of(row)) {
+      Present { value: _ } => FrontierIndexScan { by_path: acc.by_path, duplicate_paths: concat(acc.duplicate_paths, [path_of(row)]) }
+      Absent => FrontierIndexScan { by_path: map_insert(acc.by_path, path_of(row), row), duplicate_paths: acc.duplicate_paths }
+    }
+  })
 }
 
 fn frontier_emitted_standing(
@@ -638,14 +647,14 @@ fn frontier_emitted_standing(
 }
 
 fn frontier_path_standing(
-  roster: List<SeedRetentionFrontierRow>,
-  emitted: List<EmittedPopulationRow>,
+  emitted_by_path: Map<String, EmittedPopulationRow>,
+  roster_by_path: Map<String, SeedRetentionFrontierRow>,
   executed_closure_modules: List<String>,
   controls: FrontierControlsVerdict,
   path: String
 ) -> FrontierStanding {
-  match emitted_row_for_path(rows: emitted, path: path) {
-    Cons { head: row, tail: _ } => if path == frontier_census_manifest_path() {
+  match map_get(emitted_by_path, path) {
+    Present { value: row } => if path == frontier_census_manifest_path() {
       GeneratedCensusArtifact { crate_relative_path: path }
     } else if frontier_path_is_crate_entry(path: path) {
       EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
@@ -656,9 +665,9 @@ fn frontier_path_standing(
         controls: controls
       )
     }
-    Empty => match retention_row_for_path(roster: roster, path: path) {
-      Cons { head: row, tail: _ } => SeedRetained { row: row }
-      Empty => Unclassified { crate_relative_path: path }
+    Absent => match map_get(roster_by_path, path) {
+      Present { value: row } => SeedRetained { row: row }
+      Absent => Unclassified { crate_relative_path: path }
     }
   }
 }
@@ -675,20 +684,23 @@ fn self_host_frontier(
     observed_crate_rust_paths: observed_crate_rust_paths,
     compared_crate_rust_paths: []
   )
+  let emitted_scan = frontier_index_scan(rows: emitted, path_of: fn(row) { row.crate_relative_path })
+  let roster_scan = frontier_index_scan(rows: roster, path_of: fn(row) { row.crate_relative_path })
   SelfHostFrontier {
     standings: list_map(
       xs: observed_crate_rust_paths,
       f: fn(path) {
         frontier_path_standing(
-          roster: roster,
-          emitted: emitted,
+          emitted_by_path: emitted_scan.by_path,
+          roster_by_path: roster_scan.by_path,
           executed_closure_modules: executed_closure_modules,
           controls: controls,
           path: path
         )
       }
     ),
-    stale_rows: census.stale_rows
+    stale_rows: census.stale_rows,
+    duplicate_paths: concat(emitted_scan.duplicate_paths, roster_scan.duplicate_paths)
   }
 }
 
@@ -721,6 +733,7 @@ fn frontier_counts(frontier: SelfHostFrontier) -> FrontierCounts {
 fn self_host_frontier_holds(frontier: SelfHostFrontier) -> Bool {
   (frontier_counts(frontier: frontier).unclassified == 0)
     && (length(xs: frontier.stale_rows) == 0)
+    && (length(xs: frontier.duplicate_paths) == 0)
 }
 
 fn frontier_retained_count_where(frontier: SelfHostFrontier, predicate: fn(SeedRetentionFrontierRow) -> Bool) -> Int {
@@ -926,7 +939,9 @@ fn frontier_standing_lines(frontier: SelfHostFrontier) -> List<String> {
         }
       }
     ),
-    list_map(
+    concat(
+      list_map(xs: frontier.duplicate_paths, f: fn(path) { concat("[self-host-frontier] REFUSED duplicate path in an input: ", path) }),
+      list_map(
       xs: frontier.stale_rows,
       f: fn(row) {
         match row {
@@ -936,7 +951,7 @@ fn frontier_standing_lines(frontier: SelfHostFrontier) -> List<String> {
           RetainedUnrostered { crate_relative_path: path } => concat("[self-host-frontier] REFUSED stale row: ", path)
         }
       }
-    )
+    ))
   )
 }
 

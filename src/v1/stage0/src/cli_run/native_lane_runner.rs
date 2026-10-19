@@ -7148,7 +7148,10 @@ mod emitted_build_not_clean_cause_tests {
 /// of the crate it built), the stage0 crate's declared emitted population, and its observed `.rs`
 /// files. Every standing is decided by `v2.compiler.self_host.seed_retention_frontier`
 /// `self_host_frontier_report`; this function only observes and relays.
-pub fn run_self_host_frontier(source_roots: &[String]) -> Result<i32, String> {
+pub fn run_self_host_frontier(
+    source_roots: &[String],
+    stage0_crate_dir: &str,
+) -> Result<i32, String> {
     let prepared = prepare_emitted_compiler(source_roots)?;
     let calibration = run_runtime_calibration(&prepared);
     let door = walk_eval_driver_door(&prepared.binary_path, &super::process_workspace_root());
@@ -7191,7 +7194,7 @@ pub fn run_self_host_frontier(source_roots: &[String]) -> Result<i32, String> {
         },
         closure.join("\n")
     );
-    let crate_dir = super::process_workspace_root().join("src/v1/stage0");
+    let crate_dir = super::process_workspace_root().join(stage0_crate_dir);
     let mut observed = Vec::new();
     fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) -> Result<(), String> {
         for entry in std::fs::read_dir(dir).map_err(|e| {
