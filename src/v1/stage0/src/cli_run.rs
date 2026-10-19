@@ -146,8 +146,9 @@ pub fn source_root_ingest_module_identities_for_ci(
     Ok(identities)
 }
 pub use entry_resolve::{
-    load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_seeded_compile_closure, resolve_stage_totals, whole_tree_resolved_ctx,
+    load_sources_for_entry, process_shared_index_or_refuse, resolve_entry_graph,
+    resolve_entry_with_index, resolve_seeded_compile_closure, resolve_stage_totals,
+    whole_tree_resolved_ctx,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -8968,7 +8969,7 @@ mod closure_edge_demand_tests {
                 .is_some_and(|f| f.contains("bypassed")),
             "no producer run recorded must fail as a bypass"
         );
-        let index = process_shared_index(&bad_roots);
+        let index = process_shared_index_or_refuse(&bad_roots);
         assert!(load_sources_for_entry_with_pool(
             &index,
             &bad.0.join("clean.dag").to_string_lossy()
@@ -17674,7 +17675,7 @@ pub fn handle_serve(
         );
         std::process::exit(1);
     }
-    let index = process_shared_index(&source_roots);
+    let index = process_shared_index_or_refuse(&source_roots);
     let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
         Ok(sources) => sources,
         Err(msg) => {
@@ -26769,7 +26770,7 @@ fn schedule_witness_pairs_from_value(
 
 fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String> {
     let roots = witness_layer_roots();
-    let index = process_shared_index(&roots);
+    let index = process_shared_index_or_refuse(&roots);
     let (graph, source_indices) = resolve_entry_with_index(&index, COMMIT_WORKFLOW_ENTRY)?;
     let ctx = make_eval_context(
         &graph,

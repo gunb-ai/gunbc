@@ -853,7 +853,7 @@ pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = process_shared_index(source_roots);
+    let index = process_shared_index_or_refuse(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
@@ -888,7 +888,7 @@ pub fn load_sources_for_entry_with_pool_index(
     // (build_multi_entry_index), same canonical roots key, so sharing is a
     // cache hit, not a behavior change; primary-precedence keeps its own
     // fresh build (process_shared_index only builds strict).
-    let index = process_shared_index(source_roots);
+    let index = process_shared_index_or_refuse(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
@@ -1117,8 +1117,14 @@ pub(crate) fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<Strin
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
 #[track_caller]
-pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
-    try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
+pub fn process_shared_index_or_refuse(source_roots: &[String]) -> Rc<MultiEntryIndex> {
+    match try_process_shared_index(source_roots) {
+        Ok(index) => index,
+        Err(refusal) => {
+            eprintln!("shared index refused: {refusal}");
+            std::process::exit(1)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1477,7 +1483,7 @@ pub fn resolve_entry_graph_shared(
     // resolve_entry_with_index is proven behaviorally identical to the cold resolve_entry_graph
     // by resolve_typed_cache_equivalence_test (cached == cold across every resolve order); the
     // win is that the union of all fixed-entry closures now typechecks once per node.
-    let index = process_shared_index(source_roots);
+    let index = process_shared_index_or_refuse(source_roots);
     let resolved = resolve_entry_with_index(&index, entry_file)?;
     PROCESS_RESOLVE_STORE.with(|s| {
         s.borrow_mut().insert(key, resolved.clone());
@@ -3372,15 +3378,16 @@ mod live_pool_thread_tests {
         let (root, roots) = one_module_pool("route");
         let first = {
             let roots = roots.clone();
-            on_live_pool_thread(move || process_shared_index(&roots).generation)
+            on_live_pool_thread(move || process_shared_index_or_refuse(&roots).generation)
         };
         let second = {
             let roots = roots.clone();
-            on_live_pool_thread(move || process_shared_index(&roots).generation)
+            on_live_pool_thread(move || process_shared_index_or_refuse(&roots).generation)
         };
-        let elsewhere = std::thread::spawn(move || process_shared_index(&roots).generation)
-            .join()
-            .unwrap();
+        let elsewhere =
+            std::thread::spawn(move || process_shared_index_or_refuse(&roots).generation)
+                .join()
+                .unwrap();
         let _ = std::fs::remove_dir_all(root);
         assert_eq!(first, second, "the live-pool thread kept its index");
         assert_ne!(first, elsewhere, "a fresh thread builds its own");
@@ -3398,12 +3405,12 @@ mod live_pool_thread_tests {
         let (root, roots) = one_module_pool("release");
         let (other_root, other_roots) = one_module_pool("release-other");
         let generation = |roots: Vec<String>| {
-            on_live_pool_thread(move || process_shared_index(&roots).generation)
+            on_live_pool_thread(move || process_shared_index_or_refuse(&roots).generation)
         };
         let first = generation(roots.clone());
         let held = generation(roots.clone());
         std::thread::spawn(move || {
-            process_shared_index(&other_roots);
+            process_shared_index_or_refuse(&other_roots);
         })
         .join()
         .unwrap();
