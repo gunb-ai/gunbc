@@ -1069,4 +1069,16 @@ data wire_admission_signature_suite: WireAdmission = WireAdmission {
   admitted: [signature_suite_wire(s: EcdsaP256Sha256) as String],
 }
 
-data wire_admission_rows: List<WireAdmission> = [wire_admission_platform, wire_admission_apns_environment, wire_admission_decision, wire_admission_signature_suite]
+data wire_admission_public_key_encoding: WireAdmission = WireAdmission {
+  subject: "encoding",
+  declared: [public_key_encoding_wire(e: Sec1Uncompressed) as String],
+  admitted: [public_key_encoding_wire(e: Sec1Uncompressed) as String],
+}
+
+data wire_admission_signature_encoding: WireAdmission = WireAdmission {
+  subject: "encoding",
+  declared: [signature_encoding_wire(e: P1363FixedWidth) as String],
+  admitted: [signature_encoding_wire(e: P1363FixedWidth) as String],
+}
+
+data wire_admission_rows: List<WireAdmission> = [wire_admission_platform, wire_admission_apns_environment, wire_admission_decision, wire_admission_signature_suite, wire_admission_public_key_encoding, wire_admission_signature_encoding]

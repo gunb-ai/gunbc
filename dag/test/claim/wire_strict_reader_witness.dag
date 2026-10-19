@@ -29,7 +29,7 @@ fn read_authentication_rules() -> List<WireField> {
 
 fn apns_registration_fields() -> List<WireField> {
   [
-    WireField { name: "environment", rule: WireAdmittedString { admitted: wire_admission_apns_environment.admitted, cause: "not an APNs environment" } },
+    WireField { name: "environment", rule: WireAdmittedString { row: wire_admission_apns_environment, cause: "not an APNs environment" } },
     WireField { name: "topic", rule: WireFreeString },
     WireField { name: "token", rule: WireFreeString },
   ]

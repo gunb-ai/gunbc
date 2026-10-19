@@ -33,6 +33,7 @@ type WireRefusalCause
   | CauseMalformedMember { reason: String }
   | CausePolicy { spelling: String }
   | CausePolicyFieldsDiffer
+  | CauseAdmissionNotDeclared { subject: String, spelling: String }
 
 type WireVerdict
   = WireAccepted
@@ -40,7 +41,7 @@ type WireVerdict
 
 type WireFieldRule
   = WireFreeString
-  | WireAdmittedString { admitted: List<String>, cause: String }
+  | WireAdmittedString { row: WireAdmission, cause: String }
   | WireNested { shape: WireShape }
   | WireListNotAdmitted
 
@@ -67,13 +68,38 @@ fn wire_cause_text(c: WireRefusalCause) -> String {
     CauseMalformedMember { reason: r } => r
     CausePolicy { spelling: sp } => sp
     CausePolicyFieldsDiffer => "policy fields are not the declared fields in declaration order"
+    CauseAdmissionNotDeclared { subject: sj, spelling: sp } => join(["policy admits a spelling no declared arm has: ", sj, " ", sp], "")
   }
 }
 
 // The policy's field names must be the derived names, in the derived order.
 fn bind_record(derived: List<String>, rules: List<WireField>) -> BoundShape {
-  if map(rules, r => r.name) == derived { ShapeBound { shape: WireRecord { fields: rules } } }
-  else { ShapeRefused { cause: CausePolicyFieldsDiffer } }
+  if map(rules, r => r.name) != derived { ShapeRefused { cause: CausePolicyFieldsDiffer } }
+  else {
+    match first_unsound_admission(rules: rules) {
+      Present { value: c } => ShapeRefused { cause: c }
+      Absent => ShapeBound { shape: WireRecord { fields: rules } }
+    }
+  }
+}
+
+// A rule whose admission row admits a spelling no declared arm has refuses the whole shape.
+fn first_unsound_admission(rules: List<WireField>) -> WireRefusalCause? {
+  fold(rules, init: Absent, f: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => match r.rule {
+        WireAdmittedString { row: row, cause: _ } =>
+          match admission_verdict(row: row) {
+            AdmissionNotDeclared { subject: sj, spelling: sp } => Present { value: CauseAdmissionNotDeclared { subject: sj, spelling: sp } }
+            AdmissionSound => Absent
+          }
+        WireFreeString => Absent
+        WireNested { shape: _ } => Absent
+        WireListNotAdmitted => Absent
+      }
+    }
+  })
 }
 
 fn wire_name_listed(allowed: List<String>, k: String) -> Bool {
@@ -115,12 +141,12 @@ fn read_field(obj: JsonValue, path: String, f: WireField) -> WireVerdict {
             Absent => WireRefusedAt { at: at, cause: CauseNotString }
             Present { value: s } => if s == "" { WireRefusedAt { at: at, cause: CauseEmpty } } else { WireAccepted }
           }
-        WireAdmittedString { admitted: adm, cause: c } =>
+        WireAdmittedString { row: row, cause: c } =>
           match wire_text(v: v) {
             Absent => WireRefusedAt { at: at, cause: CauseNotString }
             Present { value: s } =>
               if s == "" { WireRefusedAt { at: at, cause: CauseEmpty } }
-              else if wire_name_listed(allowed: adm, k: s) { WireAccepted }
+              else if wire_name_listed(allowed: row.admitted, k: s) { WireAccepted }
               else { WireRefusedAt { at: at, cause: CausePolicy { spelling: c } } }
           }
         WireNested { shape: sh } => read_shape(shape: sh, v: v, path: at)
