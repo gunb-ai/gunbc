@@ -1,0 +1,96 @@
+module gunbc.approve_ios_enrolment_machine
+
+import std.types { NonEmptyStr, List }
+import std.algebra { list_append }
+import gunbc.auth.approval_device_wire {
+  EnrolmentRefusalWire, EnrolmentRefusalCodeNotIssued, EnrolmentRefusalCodeAlreadyUsed, EnrolmentRefusalCodeExpired,
+  EnrolmentRefusalStoreUnreadable, EnrolmentRefusalAttestationRefused, EnrolmentRefusalAttestationForOtherBytes,
+  EnrolmentRefusalAndroidUnrealized, enrolment_refusal_kinds,
+}
+
+// THE APP'S DURABLE ENROLMENT STATE MACHINE, as the authority apps/approve-ios/Approve/EnrolmentMachine.swift
+// is printed from (gunbc.approve_ios_swift_enrolment_machine). The Swift EnrolmentState keeps the
+// payloads (keys, ids) and the persistence; WHICH PHASE FOLLOWS WHICH ANSWER is this module's, and
+// nothing hand-written in Swift decides it.
+//
+// WHY SubmissionUnknown HAS EXACTLY ONE TYPED EXIT BESIDE GRANT. A phone that POSTed its enrolment
+// and got no decodable answer cannot tell "the server never saw it" from "the server minted it and
+// the answer was lost", and the readback route cannot resolve it for an enrolment that never
+// existed. The enrol route can answer authoritatively because the request carries the code itself:
+// gunbc.auth.approval_device_redemption enrolment_admission reports code_not_issued / code_expired
+// only for a code that minted no enrolment and now never can. Every other refusal proves nothing
+// about the enrolment the phone was waiting on (code_already_used above all: it may have been spent
+// by THIS phone's lost first attempt), and a transport failure proves less, so those leave the phase
+// where it is and readback stays the only way forward. The sibling model for the planned two-step
+// handshake is gunbc.auth.approval_enrolment_handshake; this module models the phone as built.
+//
+// States are PHASES (payload-free): Prepared carries keys and a transcript, Enrolled a grant, in the
+// Swift; here only the transitions between kinds matter.
+type EnrolmentPhase
+  = PhaseUnenrolled
+  | PhasePrepared
+  | PhaseSubmissionUnknown
+  | PhaseEnrolled
+  | PhaseKeyInvalidated
+  | PhaseRevoked
+
+// What the app learned from the enrol POST. Unanswered is a transport failure, an undecodable
+// body, an unrecognised refusal, or a failed persist of Enrolled: no answer it may act on.
+type EnrolmentAnswer
+  = AnswerGranted
+  | AnswerRefused { kind: EnrolmentRefusalWire }
+  | AnswerUnanswered
+
+fn phase_name(p: EnrolmentPhase) -> NonEmptyStr {
+  match p {
+    PhaseUnenrolled => "unenrolled" as NonEmptyStr
+    PhasePrepared => "prepared" as NonEmptyStr
+    PhaseSubmissionUnknown => "submissionUnknown" as NonEmptyStr
+    PhaseEnrolled => "enrolled" as NonEmptyStr
+    PhaseKeyInvalidated => "keyInvalidated" as NonEmptyStr
+    PhaseRevoked => "revoked" as NonEmptyStr
+  }
+}
+
+fn enrolment_phases() -> List<EnrolmentPhase> {
+  [PhaseUnenrolled, PhasePrepared, PhaseSubmissionUnknown, PhaseEnrolled, PhaseKeyInvalidated, PhaseRevoked]
+}
+
+fn enrolment_answers() -> List<EnrolmentAnswer> {
+  list_append(left: [AnswerGranted, AnswerUnanswered], right: map(enrolment_refusal_kinds(), k => AnswerRefused { kind: k }))
+}
+
+// THE TRANSITION FUNCTION, exhaustive over phase and, where a phase moves, over the answer: a new
+// phase, answer or refusal kind is a compile refusal here until someone says what it does. The
+// Swift table is printed by EVALUATING this over the closed phase x answer product
+// (gunbc.approve_ios_swift_enrolment_machine), so there is no second statement of it to drift.
+fn enrolment_next(from: EnrolmentPhase, answer: EnrolmentAnswer) -> EnrolmentPhase {
+  match from {
+    PhaseUnenrolled => PhaseUnenrolled
+    PhasePrepared => PhasePrepared
+    PhaseSubmissionUnknown => submission_unknown_next(answer: answer)
+    PhaseEnrolled => PhaseEnrolled
+    PhaseKeyInvalidated => PhaseKeyInvalidated
+    PhaseRevoked => PhaseRevoked
+  }
+}
+
+fn submission_unknown_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
+  match answer {
+    AnswerGranted => PhaseEnrolled
+    AnswerUnanswered => PhaseSubmissionUnknown
+    AnswerRefused { kind: k } => submission_unknown_after_refusal(kind: k)
+  }
+}
+
+fn submission_unknown_after_refusal(kind: EnrolmentRefusalWire) -> EnrolmentPhase {
+  match kind {
+    EnrolmentRefusalCodeNotIssued => PhaseUnenrolled
+    EnrolmentRefusalCodeExpired => PhaseUnenrolled
+    EnrolmentRefusalCodeAlreadyUsed => PhaseSubmissionUnknown
+    EnrolmentRefusalStoreUnreadable => PhaseSubmissionUnknown
+    EnrolmentRefusalAttestationRefused => PhaseSubmissionUnknown
+    EnrolmentRefusalAttestationForOtherBytes => PhaseSubmissionUnknown
+    EnrolmentRefusalAndroidUnrealized => PhaseSubmissionUnknown
+  }
+}

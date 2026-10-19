@@ -29,7 +29,7 @@ import gunbc.runner.runner_host_medium {
 }
 import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, current_service_population, CurrentServicePopulation, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentServicePopulationRefusal, CurrentPopulationWidthUnresolved, CurrentPopulationHostNotControlled, CurrentPopulationSlotRefused, CurrentPopulationEmpty }
 import gunbc.github_effect_perform {
-  ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token_with_key,
+  ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token,
   ControllerInstallationToken,
   ControllerKeyStaged, ControllerKeyNotStaged, stage_controller_app_key, remove_staged_controller_key,
 }
@@ -253,7 +253,7 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
   match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
     ControllerKeyNotStaged { cause } => exit_failure(reason: cause)
     ControllerKeyStaged { key } => {
-      let exit = match mint_controller_installation_token_with_key(installation: gunbai_ci_declared_installation_id, key: key) {
+      let exit = match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: key) {
         ControllerTokenNotMinted { performance: _ } => exit_failure(reason: "lost-boot sweep: the gunbai-ci installation token was not minted")
         ControllerTokenMinted { token } => {
           let control_plane = observe_github_app_control_plane(

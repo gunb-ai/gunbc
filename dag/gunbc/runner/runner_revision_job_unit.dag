@@ -29,12 +29,13 @@ import gunbc.runner.runner_unit_file { runner_unit_teardown_directives }
 // Changing the image is changing this row: the installed directory is named by it, so a new image
 // installs beside the old one and the unit points at exactly one.
 //
-// STANDING: the value below is a by-hand srv1 build that NO CI run produced. While it stands,
-// microvm_controller_install refuses at "revision-job rootfs digest" for any downloaded CI image,
-// which is fail-closed and correct. THE SEQUENCE that makes it a CI receipt: dispatch the
-// revision_job_image_build mode on main, re-pin this row to that run's build-receipt.txt in a PR,
-// then dispatch microvm_controller_install with workspace_image_run_id and revision_job_image_run_id.
-data revision_job_image_pinned_sha256: NonEmptyStr = "582c6a6119c6e946cdcefc44dc0bbf01e887f364e5a82b4d44c3d0eb534753db" as NonEmptyStr
+// STANDING: the value below is the build receipt (build-receipt.txt) of a revision_job_image_build run on
+// main; the by-hand srv1 build it replaced is retired. What remains is dispatching
+// microvm_controller_install with workspace_image_run_id and with revision_job_image_run_id set to the run
+// that produced this digest: any other run's artifact refuses at "revision-job rootfs digest", which is
+// fail-closed and correct. The producing run is a receipt and lives with the commit that set this value
+// (git log -S on the digest), not in this annotation.
+data revision_job_image_pinned_sha256: NonEmptyStr = "5c658ba6294668ab47319a3da20c896958e6977ab5155063ed1e8b362f24cf92" as NonEmptyStr
 
 // The image is BUILT by the revision_job_image_build workflow mode (gunbc.revision_job_image_delivery)
 // and DOWNLOADED here, relative to the deploying checkout, exactly as the workspace image is: transport

@@ -40,9 +40,13 @@ import gunbc.github_effect_perform {
 // gunbc.auth.privileged_effect_census rows this site through
 // gunbc.auth.authorization_pattern_selection select_authorization_pattern -- and the credential's
 // own capability is still checked here, against the same effect algebra the mint uses.
+// THE EXIT IS THE LISTENER'S OBSERVED TERMINATION, NOT A JOB RESULT. actions/runner exits 0 on a completed
+// job and also on session token expiry and on deprovision, so a zero status says only that the listener
+// ended cleanly; whether a job ran is a separate reading (GitHub's job record), and no arm here claims it.
+// Deregistration is required on every arm regardless.
 type JitSlotExit
-  = SlotJobCompleted
-  | SlotJobFailed { cause: NonEmptyStr }
+  = SlotListenerExitedClean
+  | SlotListenerExitedNonzero { cause: NonEmptyStr }
   | SlotNeverLaunched { cause: NonEmptyStr }
   | SlotLostBoot { superseded_by: ServiceBootId }
 
@@ -228,9 +232,13 @@ type LostBootSweepRefusal
   = SweepListingUnreadable { reason: JitListingUnreadableReason, cause: NonEmptyStr }
   | SweepRegistrationRefused { listed: String, refusal: ListedRegistrationRefusal }
 
-// CONSUMED BY fleet-converge mode service_runner_lost_boot_sweep (gunbc.runner.runner_lost_boot_sweep_run
-// lost_boot_sweep_wet), which feeds each selected subject to ensure_jit_runner_deregistered with
-// SlotLostBoot (success = absent from the listing). The population is the sealed
+// DECLARED CONSUMER FRONTIER, not yet a production route: fleet-converge mode
+// service_runner_lost_boot_sweep (gunbc.runner.runner_lost_boot_sweep_run lost_boot_sweep_wet) is the
+// named consumer, and it feeds each selected subject to ensure_jit_runner_deregistered with
+// SlotLostBoot (success = absent from the listing). TRIGGER: the capability to observe a managed
+// host's CURRENT kernel boot id (a host transport, arriving with the mtcollins1 enrolment). Until it
+// lands lost_boot_observe_current_boot answers unobserved and the mode refuses before this fold; only
+// the run witness reaches it, over supplied observations. The population is the sealed
 // current_service_population over the admitted boot: it carries the host (so there is no separate
 // host argument to disagree with it) and is refused at construction when it cannot be derived or is
 // empty, so a sweep cannot be called over "no population".
