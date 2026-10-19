@@ -1619,7 +1619,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
   } else {
 
     match rust_reference_checkpoint_spelling_at(n: n, source_indices: source_indices, env: env) {
-      Present { value: scalar } => render_rust_shared_type_if_needed(n: n, rendered: scalar, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+      Present { value: scalar } => render_rust_shared_type_if_needed(n: n, rendered: concat(if base_name == "Witness" { "/*WCK*/" } else { "" }, scalar), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
       Absent =>
     match closed_alias_peel_verdict(env: env, n: n) {
       ClosedAliasPeelZeroParam => {
@@ -1642,7 +1642,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
         render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env), type_decl_items: type_decl_items)
       }
     ) |> join(separator: ", ")
-    render_rust_shared_type_if_needed(n: n, rendered: concat(base, "<", args, ">"), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+    render_rust_shared_type_if_needed(n: n, rendered: concat(if base_name == "Witness" { "/*WHP peel=" } else { "" }, if base_name == "Witness" { if peel { "T" } else { "F" } } else { "" }, if base_name == "Witness" { "*/" } else { "" }, base, "<", args, ">"), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
       }
       ClosedAliasBindingAbsent => {
     let base = match rust_seed_host_container_base(name: base_name) {
@@ -1657,7 +1657,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
         render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env), type_decl_items: type_decl_items)
       }
     ) |> join(separator: ", ")
-    render_rust_shared_type_if_needed(n: n, rendered: concat(base, "<", args, ">"), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+    render_rust_shared_type_if_needed(n: n, rendered: concat(if base_name == "Witness" { "/*WBA peel=" } else { "" }, if base_name == "Witness" { if peel { "T" } else { "F" } } else { "" }, if base_name == "Witness" { "*/" } else { "" }, base, "<", args, ">"), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
       }
     }
     }
