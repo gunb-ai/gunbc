@@ -343,15 +343,9 @@ fn unbound_label_findings() -> List<String> {
       if bound |> count == 1 {
         acc
       } else if bound |> count == 0 {
-        Cons {
-          head: concat("REQUIRED-JOB LABEL UNBOUND ", concat(label, " (no producer binds it: nothing it runs is attributable)")),
-          tail: acc
-        }
+        concat([concat("REQUIRED-JOB LABEL UNBOUND ", concat(label, " (no producer binds it: nothing it runs is attributable)"))], acc)
       } else {
-        Cons {
-          head: concat("REQUIRED-JOB LABEL AMBIGUOUS ", concat(label, " (more than one producer binds it)")),
-          tail: acc
-        }
+        concat([concat("REQUIRED-JOB LABEL AMBIGUOUS ", concat(label, " (more than one producer binds it)"))], acc)
       }
     }
   )
