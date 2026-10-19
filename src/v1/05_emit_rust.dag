@@ -1564,6 +1564,11 @@ fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: Lis
 }
 
 fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, width_position: Bool, type_decl_items: TypeDeclIndex) -> String {
+  let spelled = render_rust_phantom_opaque_applied_decl_arg_spelled(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: width_position, type_decl_items: type_decl_items)
+  render_rust_declaration_position(n: n, spelled: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+}
+
+fn render_rust_phantom_opaque_applied_decl_arg_spelled(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, width_position: Bool, type_decl_items: TypeDeclIndex) -> String {
   match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: width_position) {
     Present { value: identity } => identity
     Absent =>
