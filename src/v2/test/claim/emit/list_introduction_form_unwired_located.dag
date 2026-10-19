@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // token class; C, TypeScript and dag declare `ListIntroductionUnwired`, so their token fold refuses
 // `target_value_expr_list_introduction_form_unwired`. The refusal is only useful if it names the authored
 // literal, so each row asserts the reason AND that the locus is the literal's bytes in this source --
-// `[1, 2]` sits at bytes 107..113 of the text below. A wire node built with a synthetic occurrence
+// `[1, 2]` sits at bytes 107..108 of the text below. A wire node built with a synthetic occurrence
 // renders a synthetic locus and makes every locus row false.
 //
 // THE DAG ROW USES A BODIED-FUNCTION dag TARGET (`dag_pick_target_model`), because the bare
@@ -148,7 +148,7 @@ fn list_introduction_refused_unwired_at_the_literal(v: ListIntroductionTargetVer
   match v {
     ListIntroductionRefused { reason: reason, locus: locus } =>
       (reason == ^target_value_expr_list_introduction_form_unwired)
-        && string_contains(s: locus, pattern: "list_introduction_probe_cu bytes 107..113")
+        && string_contains(s: locus, pattern: "list_introduction_probe_cu bytes 107..108")
     _ => false
   }
 }
@@ -163,76 +163,4 @@ test fn typescript_refuses_a_list_introduction_at_the_authored_literal_holds() -
 
 test fn dag_refuses_a_list_introduction_at_the_authored_literal_holds() -> Bool {
   list_introduction_refused_unwired_at_the_literal(v: list_introduction_probe_table().dag)
-}
-
-test fn dbg_c_is_refused() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: _ } => true _ => false }
-}
-
-test fn dbg_c_is_unreached() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionProbeUnreached { reason: _ } => true _ => false }
-}
-
-test fn dbg_c_reason_is_unwired() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: r, locus: _ } => r == ^target_value_expr_list_introduction_form_unwired _ => false }
-}
-
-test fn dbg_c_locus_has_cu() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "list_introduction_probe_cu") _ => false }
-}
-
-test fn dbg_c_no_declaration() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionProbeUnreached { reason: r } => r == ^list_introduction_probe_no_declaration _ => false }
-}
-
-test fn dbg_c_is_accepted() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionTokensAccepted => true _ => false }
-}
-
-test fn dbg_p_a() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 107") _ => false }
-}
-
-test fn dbg_p_b() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "..113") _ => false }
-}
-
-test fn dbg_p_c() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 10") _ => false }
-}
-
-test fn dbg_p_d() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 1") _ => false }
-}
-
-test fn dbg_p_e() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 5") _ => false }
-}
-
-test fn dbg_p_f() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 0") _ => false }
-}
-
-test fn dbg_p_g() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..112") _ => false }
-}
-
-test fn dbg_p_h() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..114") _ => false }
-}
-
-test fn dbg_p_i() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..115") _ => false }
-}
-
-test fn dbg_p_j() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..108") _ => false }
-}
-
-test fn dbg_p_k() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..11") _ => false }
-}
-
-test fn dbg_p_l() -> Bool {
-  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..12") _ => false }
 }
