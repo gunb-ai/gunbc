@@ -1286,6 +1286,34 @@ test fn the_mint_refuses_a_path_from_another_run() -> Bool {
 // it was read back for rule 900000001, so a caller asking to record an answer to rule 900000002 is
 // refused with both ids visible. The old model could not express this refusal at all — its ownership arm
 // emitted { claimed: 0, observed: 0 }, two constants where the model had no values.
+// WHAT THE CARRIERS BUY, MEASURED RATHER THAN ASSUMED, because the first version of this comment
+// claimed more than the checker does.
+//   CONSTRUCTION: handing an app id where an installation id belongs is REFUSED —
+//   "type mismatch: expected 'Product(GitHubAppInstallationId)', got 'Product(GitHubAppId)'". A claim
+//   with the axes swapped cannot be written.
+//   COMPARISON: NOT refused. Both carriers are one-Int records and `==` is judged memberwise, so the
+//   two axes answer EQUAL when their numbers match. A carrier therefore does not make a cross-axis
+//   comparison false, and this file reads `.value` on purpose: the check is a check, not a trick the
+//   reader is asked to assume.
+test fn the_carriers_separate_the_axes_at_construction_and_not_at_comparison() -> Bool {
+  let installation = GitHubAppInstallationId { value: 4242 }
+  let app = GitHubAppId { value: 4242 }
+  // same number, equal — if anyone later believes `==` discriminates the axes, this line says so
+  (installation == app)
+    && installation.value == 4242
+    && app.value == 4242
+    // and the only thing that does separate them: each field accepts its own carrier
+    && fx_claim_axes_are_field_typed()
+}
+
+fn fx_claim_axes_are_field_typed() -> Bool {
+  let c = GateInstallationClaim {
+    installation_id: gate_installation_id,
+    app_id: gate_app_id,
+  }
+  c.installation_id.value != c.app_id.value
+}
+
 test fn the_mint_refuses_a_rule_that_is_not_the_one_read_back() -> Bool {
   match fx_mint_probe(
     run_id: 35447067113,
@@ -1357,8 +1385,10 @@ test fn the_configured_installation_carries_both_ids_and_no_readback_can() -> Bo
   }
   configured.installation_id.value == 888800001
     && configured.app_id.value == 1900000001
-    // the two axes are DIFFERENT TYPES now, so passing one where the other belongs is a compile
-    // error rather than a value a test has to remember to check
+    // the axes are separate TYPES, so filling either field from the other axis does not typecheck —
+    // measured refusal, "expected 'Product(GitHubAppInstallationId)', got 'Product(GitHubAppId)'".
+    // The comparison below still reads .value because equality on these carriers is memberwise, not
+    // because the type makes it necessary.
     && configured.app_id.value != configured.installation_id.value
   // That the enabled-rule readback carries NO installation id — only id, enabled, and an app object with
   // id and slug — is upstream's fact and is red there
