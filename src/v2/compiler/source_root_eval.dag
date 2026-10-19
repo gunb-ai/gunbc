@@ -6108,7 +6108,8 @@ fn census_unobserved_behind(stage: NativeCensusCauseStage) -> CensusObligationOu
 // ONE MODULE'S NativeInferCensusOutcome PROJECTS TO THREE OBLIGATION ROWS. A front-end refused
 // file is FrontEnd refused; Resolve and Infer are unobserved behind FrontEnd. A resolve refusal
 // leaves FrontEnd passed and Infer unobserved behind Resolve. An inferred module passed every
-// stage. An infer refusal passed FrontEnd and Resolve.
+// stage. An infer refusal passed FrontEnd and Resolve. A context that never built positions
+// observed no stage: all three rows are refused with the cause, never attributed to the front end.
 fn census_obligation_rows_from_infer(
   module: String,
   outcome: NativeInferCensusOutcome,
@@ -6127,12 +6128,13 @@ fn census_obligation_rows_from_infer(
         infer: census_unobserved_behind(stage: NativeCensusCauseFrontEnd)
       )
     NativeInferCensusPositionsNotBuilt =>
-      census_three_stage_rows(
-        module: module,
-        front_end: census_unobserved_behind(stage: NativeCensusCauseFrontEnd),
-        resolve: census_unobserved_behind(stage: NativeCensusCauseFrontEnd),
-        infer: census_unobserved_behind(stage: NativeCensusCauseFrontEnd)
-      )
+      let not_built = CensusObligationRefused {
+        reason: ^census_positions_not_built,
+        at: FileRefusalAtUnresolvedNode,
+        evidence: CensusRefusalUnlocated,
+        occurrence: optional_absent()
+      }
+      census_three_stage_rows(module: module, front_end: not_built, resolve: not_built, infer: not_built)
     NativeInferCensusResolveRefused { first: first, rest: rest, observation: _, partial: _ } =>
       census_three_stage_rows(
         module: module,
