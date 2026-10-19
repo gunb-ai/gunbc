@@ -77,7 +77,9 @@ import gunbc.design.brand_mark {
   brand_mark_box_path, brand_mark_disc_path, BrandMarkBox, BrandMarkDisc,
 }
 import gunbc.design.gunb_ai_hues { theme_chrome_black }
-import extdeps.fonts.google_fonts { jetbrains_mono_source, noto_sans_source, jetbrains_mono_weights, noto_sans_weights }
+import extdeps.fonts.google_fonts { jetbrains_mono_source, noto_sans_source, jetbrains_mono_weights, noto_sans_weights,
+  google_fonts_api_host, google_fonts_static_host, google_fonts_css2_endpoint, google_fonts_url,
+}
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
 
@@ -126,11 +128,8 @@ data rel_icon: String = "icon"
 data rel_stylesheet: String = "stylesheet"
 data rel_preconnect: String = "preconnect"
 
-// The two origins the page preconnects to, and the css2 endpoint they serve. Hosts are upstream
-// fact about Google Fonts' serving, so they sit beside the family rows that name the faces.
-data fonts_preconnect_host: String = "https://fonts.googleapis.com"
-data fonts_static_host: String = "https://fonts.gstatic.com"
-data css2_endpoint: String = "https://fonts.googleapis.com/css2"
+// The css2 query's parameter separator. The hosts and the endpoint are upstream facts and live in
+// extdeps.fonts.google_fonts.
 data google_fonts_family_separator: String = "&"
 
 // The stylesheet and the deck script. src/href values are page facts: they name what the page
@@ -344,8 +343,8 @@ fn page_head() -> Fragment {
       meta_tag(name: meta_description_name, content: meta_description_text()),
       link_tag(attrs: [attr(name: attr_rel, value: rel_icon), attr(name: attr_type, value: icon_type), attr(name: attr_href, value: icon_href)]),
       meta_tag(name: meta_theme_color_name, content: theme_color_value()),
-      link_tag(attrs: [attr(name: attr_rel, value: rel_preconnect), attr(name: attr_href, value: fonts_preconnect_host)]),
-      link_tag(attrs: [attr(name: attr_rel, value: rel_preconnect), attr(name: attr_href, value: fonts_static_host), attr(name: crossorigin_attribute, value: "")]),
+      link_tag(attrs: [attr(name: attr_rel, value: rel_preconnect), attr(name: attr_href, value: google_fonts_url(uri: google_fonts_api_host))]),
+      link_tag(attrs: [attr(name: attr_rel, value: rel_preconnect), attr(name: attr_href, value: google_fonts_url(uri: google_fonts_static_host)), attr(name: crossorigin_attribute, value: "")]),
       link_tag(attrs: [attr(name: attr_href, value: fonts_stylesheet_url()), attr(name: attr_rel, value: rel_stylesheet)]),
       link_tag(attrs: [attr(name: attr_rel, value: rel_stylesheet), attr(name: attr_href, value: stylesheet_href)]),
       // The deck script. src goes through the URL guard; defer is a boolean attribute, spelled by
@@ -448,7 +447,7 @@ fn theme_color_value() -> String {
 // endpoint, and the URL below is what that composition produces.
 fn fonts_stylesheet_url() -> String {
   join(
-    [css2_endpoint, "?", family_request(family: jetbrains_mono_source.family, weights: jetbrains_mono_weights), google_fonts_family_separator, family_request(family: noto_sans_source.family, weights: noto_sans_weights), "&", display_request()],
+    [google_fonts_url(uri: google_fonts_css2_endpoint), "?", family_request(family: jetbrains_mono_source.family, weights: jetbrains_mono_weights), google_fonts_family_separator, family_request(family: noto_sans_source.family, weights: noto_sans_weights), "&", display_request()],
     "",
   )
 }
