@@ -24,6 +24,26 @@ LINE = re.compile(r"type mismatch: expected '(?P<exp>.*)', got '(?P<got>.*)' \((
 BIND = re.compile(r"^type variable (\w+) bound as (\w+)\(([^,(]*)")
 
 
+KERNEL = re.compile(r"<[^>]+>")
+
+
+def loc_of(loc):
+    """Cite a diagnostic site without cutting a kernel citation in half.
+
+    A `.dag` path is `path.dag:LINE-COL`, so cutting at the first colon is right. A kernel citation
+    is `<kernel:Map>:0-4`, and cutting at the first colon leaves `<kernel` -- every kernel site would
+    collapse onto one file name, silently merging refusals from different kernel types. Measured on
+    the current head: no identity changes today (there is only one kernel site), so this is not fixing
+    a wrong number -- it is removing a way for a future number to be wrong.
+    """
+    loc = loc.strip()
+    if loc.startswith("<"):
+        m = KERNEL.match(loc)
+        if m:
+            return m.group(0)
+    return loc.split(":")[0].strip()
+
+
 def parse(path):
     counts = collections.Counter()
     shapes = {}
@@ -37,7 +57,7 @@ def parse(path):
             unparsed += 1
             continue
         total += 1
-        loc = m.group("loc").split(":")[0].strip()
+        loc = loc_of(m.group("loc"))
         exp = m.group("exp")
         b = BIND.match(exp)
         if b:
