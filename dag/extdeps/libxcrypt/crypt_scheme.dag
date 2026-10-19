@@ -339,62 +339,6 @@ data crypt_acceptance_rules: List<CryptAcceptanceRule> = [
 ]
 
 
-// WHAT THE MEASUREMENTS ADD, AND WHAT THEY DO NOT LICENSE. Everything above is the document read through the two
-// source files. What was only ever established by running the shipping library is recorded here, as its own row
-// with its own standing, because it is the kind of claim a document cannot make: on the build this distro
-// actually ships, the LIBRARY ITSELF DOES NOT ENFORCE THE WIDTHS. A one-character salt, an empty salt, a
-// seventeen-character salt, an 85-character digest and an 87-character digest are all ACCEPTED — and the shorter
-// digest is silently REWRITTEN into the canonical 86-character hash of the passphrase rather than refused.
-//
-// WHY THAT IS A SEPARATE ROW AND NOT A FOOTNOTE: the widths in the row above are the SHADOW-ENTRY contract from
-// crypt.5's `.hash` line, which is the contract that matters for a seed (a digest the installer writes must be a
-// digest the installed system will verify on login). They are NOT the library's acceptance contract, and any
-// future reader who assumes they are will "simplify" this by deleting the width checks and call it upstream
-// behaviour. The distinction has to be in a type, because a comment attached to whichever function is being
-// edited at the time is not.
-//
-// WHY THIS STANDING IS TranscribedUncited RATHER THAN ObservedByReceipt. The receipt arm would be the honest one
-// — these are figures this repository observed — but observed_receipt admits only the folds named on it in
-// extdeps/external_authority.dag, and none of them is mine; that list is closed and this module must not fork it.
-// So the observation carries its read obligation as a name, and the obligation is discharged by re-running the
-// probe rather than by trusting this row. That is weaker than a receipt and says so, which is the point.
-type CryptLibraryAcceptance = LibraryAcceptanceObserved {
-  // Which build the observation is about, in the words a reader can re-check (package version and origin), not a
-  // hash of bytes nobody can re-derive.
-  observed_build: NonEmptyStr,
-  // The candidates the library refused, in the shape they were tried in.
-  refused_candidates: List<NonEmptyStr>,
-  // The candidates the library accepted, including the ones a reader would expect it to refuse.
-  accepted_candidates: List<NonEmptyStr>,
-  // What has NOT been established. "errno is 22 for both a reserved character and a malformed cost" is a fact;
-  // WHICH check fired is not, because the two refusals are indistinguishable at the ABI boundary and the source
-  // reading that separates them is the citation above, not this row.
-  owed: NonEmptyStr,
-  standing: CitedFigureStanding,
-}
-
-data crypt_library_acceptance: CryptLibraryAcceptance = LibraryAcceptanceObserved {
-  observed_build: "libcrypt1 4.4.36-4build1 (Ubuntu 24.04 arm64 pool, ports.ubuntu.com noble main; amd64 build from archive.ubuntu.com measured identically)",
-  refused_candidates: [
-    "$6$sa!tsalt$<86>", "$6$sa:ltsa$<86>", "$6$sa*tsalt$<86>",
-    "$6$saltsalt$<85>!", "$6$saltsalt$<85>:", "$6$saltsalt$<85>*",
-    "$6$sa ltx$<86>", "$6$sa<ltab>$<86>", "$6$sa<DEL>t$<86>", "$6$sa<0x80>t$<86>", "$6$sa<LF>tx$<86>",
-    "$6$rounds=999$saltsalt$<86>", "$6$rounds=1000000000$saltsalt$<86>",
-    "$6$rounds=$saltsalt$<86>", "$6$rounds=-1$saltsalt$<86>", "$6$rounds=1 000$saltsalt$<86>",
-    "$6$rounds=abc$<86>", "$6$rounds=1000rounds=garbage$saltsalt$<86>",
-  ],
-  accepted_candidates: [
-    "$6$saltsalt$<86>", "$6$rounds=1000$saltsalt$<86>", "$6$rounds=999999999$saltsalt$<86>",
-    "$6$~a.b_c-d+e$<86>", "$6$sa=ltx$<86>", "$6$ROUNDS=1000$saltsalt$<86>",
-    "$6$saltsalt$<85>_", "$6$saltsalt$<85>+",
-    "$6$s$<86>", "$6$<86>", "$6$sssssssssssssssss$<86>", "$6$saltsalt$<85>", "$6$saltsalt$<86>a",
-  ],
-  owed: "the exact accepted alphabet on the shipped build (probed at the points above, not exhaustively); which of the two checks — shared reserved-character scan or scheme parser — refused any given candidate, since both return EINVAL and only the source citations above separate them.",
-  standing: TranscribedUncited {
-    read_obligation: "re-run crypt_r over these candidates against the libcrypt1 shipped by the target distro (link the pool .so directly; LD_PRELOAD across architectures silently falls back to the host library and reports the wrong build), and re-read lib/crypt.c check_badsalt_chars and lib/crypt-sha512.c's cost parse at that tag.",
-  },
-}
-
 // THE COST FIELD'S TWO DIGIT CLASSES, from the same line, as data so the class is cited rather than inferred from
 // a regex fragment someone transcribed. Consumed by cost_field_is_well_formed; the split into two lists is what
 // keeps a leading zero and an internal zero distinguishable, which one list could not express.

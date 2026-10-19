@@ -11,7 +11,7 @@ module gunbc.provisioning.altra_autoinstall_seed
 //
 // WHO CONSUMES THIS, declared per DESIGN 3c rather than left to be inferred.
 //   * CONSUMED IN THIS CHANGE: every refusal arm, both digest functions, the render, the audit, the selection
-//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness (98 test fns at the
+//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness (101 test fns at the
 //     time of writing, run by gunbc --claim-run; if that number and this sentence ever disagree, the module has
 //     grown a rule nothing exercises). Nothing here is exercised only by its own module.
 //   * CONSUMED IN A NAMED SIBLING CUT: gunbc.provisioning.provisioning_arm (cut 6, S5, gunb-ai/gunbc#14378)
@@ -1658,6 +1658,75 @@ fn admin_digest_refusal(crypt_digest: NonEmptyStr) -> Optional<AdminPasswordRefu
       reject_digest(segments: segments, count: count),
     ],
   )
+}
+
+// WHAT THE SHIPPING LIBRARY DOES, RECORDED WHERE THE OBSERVATION BELONGS (review 82734). These rows
+// used to sit in extdeps.libxcrypt.crypt_scheme, which is the wrong layer: DESIGN §3b puts
+// "observations this repository makes" in the CONSUMING layer, and §3's decomposition line says the
+// same thing from the other end -- "observations this repository makes are receipts in the observing
+// layer, not facts of the observed upstream". libxcrypt publishes a document; it does not publish
+// what its shipped .so did when this repository called it. Every row below is therefore ours, and it
+// is consumed here rather than shelved: the two sweep witnesses run every row through the door above
+// and require this module's verdict to agree with the recorded one, so the rows are a differential
+// against the library that ships in the target image, and deleting one or flipping one reddens a
+// witness. (The width disagreements -- a one-character salt, an 85-character digest, which the
+// LIBRARY accepts and this module's shadow-entry contract refuses -- are deliberately NOT in either
+// list: they are this module's own policy, and they are pinned by their own witnesses.)
+type CryptLibraryVerdict
+  = LibraryAccepted { setting: NonEmptyStr }
+  | LibraryRefused { setting: NonEmptyStr }
+
+// THE MEASUREMENT, AS A CLOSED ROW RATHER THAN A PROSE PARAGRAPH. Three arms and no free text: the
+// build the measurement was taken against, the rows, and the single thing still owed. The build is a
+// field and not a comment because a verdict recorded without its build is unusable later -- the same
+// candidate was refused on one Debian libcrypt1 and accepted on another, so "libxcrypt refuses this"
+// means nothing until the build is named. Absence is not modeled as an empty string anywhere here:
+// `owed` is Optional, because a measurement can be complete for its own purpose, and pretending it
+// always owes something would invent an obligation nobody can discharge.
+type CryptLibraryAcceptance {
+  observed_build: NonEmptyStr,
+  observed_on: List<NonEmptyStr>,
+  verdicts: List<CryptLibraryVerdict>,
+  owed: Optional<NonEmptyStr>,
+}
+
+data crypt_library_acceptance: CryptLibraryAcceptance = CryptLibraryAcceptance {
+  observed_build: "libcrypt1 1:4.4.36-4build1 (Ubuntu Noble), libcrypt.so.1.1.0, crypt_r(password, setting)" as NonEmptyStr,
+  observed_on: [
+    "amd64 Noble, the archive build linked directly" as NonEmptyStr,
+    "arm64 Noble native (the target architecture)" as NonEmptyStr,
+    "the CI image, Debian libcrypt1 4.4.38-1" as NonEmptyStr,
+  ],
+  verdicts: [
+    LibraryAccepted { setting: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // plain salt
+    LibraryAccepted { setting: "$6$rounds=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost at the documented floor
+    LibraryAccepted { setting: "$6$rounds=999999999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost at the documented ceiling
+    LibraryAccepted { setting: "$6$~a.b_c-d+e$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // punctuation the class admits
+    LibraryAccepted { setting: "$6$sa=ltx$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // an '=' inside the salt
+    LibraryAccepted { setting: "$6$ROUNDS=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // the marker written upper-case
+    LibraryAccepted { setting: "$6$s$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // one character
+    LibraryAccepted { setting: "$6$ssssssssssssssss$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // sixteen characters
+    LibraryRefused { setting: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
+    LibraryRefused { setting: "$6$sa:ltsa$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
+    LibraryRefused { setting: "$6$sa*tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
+    LibraryRefused { setting: "$6$sa ltx$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
+    LibraryRefused { setting: "$6$sa\tltx$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
+    LibraryRefused { setting: "$6$rounds=999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=1000000000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=-1$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=1 000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=05000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=1000rounds=garbage$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+  ],
+  owed: Present { value: "*0 tells you the library refused, not WHY: reserved-character and malformed-setting both arrive as errno=22, and separating them needs the library source or a status field the probe does not read. The refusals above are established; their causes are not." as NonEmptyStr },
+}
+
+// THE ROWS, FOR A CONSUMER THAT MUST CHECK ITS OWN VERDICT AGAINST THEM. A function rather than the
+// record, so a witness folds the rows without unpacking the build twice.
+fn crypt_library_verdicts() -> List<CryptLibraryVerdict> {
+  crypt_library_acceptance.verdicts
 }
 
 // GRAMMAR ORDER IS THE ORDER OF DIAGNOSTIC USEFULNESS: "that is not a digest at all" is worth more than "and its

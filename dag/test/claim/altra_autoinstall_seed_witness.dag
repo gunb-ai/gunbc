@@ -189,6 +189,10 @@ import gunbc.provisioning.altra_autoinstall_seed {
   SaltTooLong,
   ReceiptAccepted,
   ReceiptRefused,
+  LibraryAccepted,
+  LibraryRefused,
+  crypt_library_acceptance,
+  crypt_library_verdicts,
   SchemeUnsupported,
   admin_password_hash_receipt,
   console_stanza_for,
@@ -2959,5 +2963,86 @@ test fn an_unread_selected_disk_is_recorded_as_unread_not_as_a_fabricated_serial
         // A serial in this arm is a fabrication: the probe read none, so no arm that reports a serial can be right.
         BoundDisk { serial: _, matched: _, observed: _ } => false
       }
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// THE SHIPPING LIBRARY, AS A DIFFERENTIAL RATHER THAN A REMEMBERED FACT.
+// crypt_library_acceptance is this repository's measurement of the libcrypt that ships in the target image, and
+// it lives in the observing layer (DESIGN §3b: observations belong to the consumer, not to extdeps). A measurement
+// nobody re-runs is a memory, and memories about a third-party library rot silently: the accepted set here was
+// established by calling crypt_r on Noble's 1:4.4.36-4build1 and on the CI image's 4.4.38-1, and the only way it
+// stays true is by being checked against THIS module's door on every run. These two witnesses together require
+// every recorded row to agree with the verdict this module would give: a flipped row, a deleted row, or a door
+// that has drifted from the library reddens one of them. They are separate because the two directions fail for
+// different reasons and send an operator to different shelves.
+// ---------------------------------------------------------------------------
+
+// EVERY RECORDED ACCEPTANCE MUST ALSO BE ACCEPTED HERE. The library let these through, and a door that refuses
+// one is a door that would deny a board a credential its own crypt(3) verifies — the failure mode this module has
+// been corrected for twice (the allowed-alphabet salt check refused "$6$sa!tsalt$", which libxcrypt accepts). The
+// fold keeps going after the first disagreement and counts them, because a candidate that fails four rules
+// simultaneously makes a fifth rule untestable, and a witness that stops at the first would hide the rest.
+test fn everything_the_shipping_library_accepted_is_accepted_here_too() -> Bool {
+  let disagreements = fold(
+    crypt_library_verdicts(),
+    init: 0,
+    f: (counted, verdict) =>
+      match verdict {
+        LibraryAccepted { setting: setting } =>
+          match admin_password_hash_receipt(credential: seeded_handle, crypt_digest: setting) {
+            ReceiptAccepted { receipt: _ } => counted
+            ReceiptRefused { cause: _ } => counted + 1
+          }
+        LibraryRefused { setting: _ } => counted
+      },
+  )
+  // THE DENOMINATOR IS ASSERTED, NOT ASSUMED: a fold over an empty list also reports zero disagreements, and an
+  // empty list is exactly what a deleted or mis-wired row set looks like. 0/0 is not clean here any more than it
+  // is in the mutation harness.
+  disagreements == 0
+    && list_length(items: crypt_library_verdicts()) == 21
+    && list_length(items: crypt_library_acceptance.observed_on) == 3
+    && crypt_library_acceptance.observed_build.contains("4.4.36-4build1")
+}
+
+// EVERY RECORDED REFUSAL MUST ALSO BE REFUSED HERE, AND BY THE ARM THAT FITS THE REMEDY. Refusing something the
+// library refuses is the cheap half; the half that rots is WHICH CAUSE is named, because the cause is what tells
+// an operator what to fix. Each recorded refusal must land on the shared reserved-character scan or on the cost
+// field — the two rules the library actually enforces — and never on the digest alphabet or the segment count,
+// which are this module's own contract and would let an operator chase the wrong shelf.
+test fn everything_the_shipping_library_refused_is_refused_here_by_the_matching_arm() -> Bool {
+  let disagreements = fold(
+    crypt_library_verdicts(),
+    init: 0,
+    f: (counted, verdict) =>
+      match verdict {
+        LibraryRefused { setting: setting } =>
+          match admin_password_hash_receipt(credential: seeded_handle, crypt_digest: setting) {
+            ReceiptAccepted { receipt: _ } => counted + 1
+            ReceiptRefused { cause: cause } =>
+              match cause {
+                SettingHoldsReservedCharacter { reserved: _ } => counted
+                RoundsMalformed => counted
+                // The library refused, so an acceptance-free pass is fine; a refusal by an UNRELATED arm means
+                // this module and the library disagree about WHY, which is the drift this row exists to catch.
+                _ => counted + 1
+              }
+          }
+        LibraryAccepted { setting: _ } => counted
+      },
+  )
+  disagreements == 0
+}
+
+// WHAT THE MEASUREMENT OWES, STATED RATHER THAN IMPLIED. The row's `owed` field is the honest boundary of the
+// whole shelf: *0 is libxcrypt's matches-nothing marker, so a probe can establish THAT the library refused and
+// not WHY — reserved-character and malformed-cost both arrive as the same refusal. A future reader must be able to
+// see that limit from the data, or the refusals above will be read as a specification of the library's grammar.
+test fn the_measurement_states_the_cause_it_could_not_observe() -> Bool {
+  match crypt_library_acceptance.owed {
+    Absent => false
+    Present { value: owed } => owed.contains("*0") && owed.contains("errno=22")
   }
 }
