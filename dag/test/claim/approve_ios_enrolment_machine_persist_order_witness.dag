@@ -31,9 +31,9 @@ module test.claim.approve_ios_enrolment_machine_persist_order_witness
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 
 import std.types { String, Bool, Int, List, list_length }
+import std.algebra { string_contains }
 import std.optional { Present, Absent, optional_present, optional_absent }
 import std.content_hash { content_hash_of_value }
-import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
 import std.durable_compare_and_set {
   CasAttempt,
   cas_attempt,
@@ -55,6 +55,19 @@ import std.durable_compare_and_set {
 import std.roster_frontier { frontier_subject_eq }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.guarantee_stall {
+  TriggerAdmission,
+  TriggerAdmitted,
+  TriggerCapabilityEmpty,
+  TriggerCapabilitySpellsAReferent,
+  stall_is_below_ceiling,
+  stall_report_message,
+  stall_trigger_admission,
+}
+import gunbc.guarantee_stall.enrolment_commit_evidence_remains_caller_authored_stall {
+  enrolment_commit_evidence_remains_caller_authored_stall,
+}
+import gunbc.guarantee_stall.roster { all_guarantee_stalls }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CompileDiagnosticCensusRow,
@@ -81,12 +94,6 @@ import gunbc.approve_ios_enrolment_machine {
   EnrolmentPersistVerdict,
   EnrolmentPersistRefused,
   EnrolmentPersistRefusedProposedRecordIsNotThisState,
-  PersistBeforeEffectAdmitted,
-  PersistBeforeEffectBasisMissing,
-  enrolment_persist_before_effect_standing,
-  enrolment_persist_before_effect_basis_refs,
-  enrolment_persist_before_effect_gate_ref,
-  enrolment_persist_proof_route_ref,
   approve_ios_enrolment_state_generator_frontier_rows,
 }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
@@ -157,6 +164,16 @@ fn occupied_observation(state: EnrolmentState, at: Int) -> CasSlotObservation<En
         value: state,
       },
     },
+  }
+}
+
+// A coproduct answer is asked by MATCHING it, not by comparing it to a constant, so an arm added to
+// TriggerAdmission later reddens here instead of silently failing an equality.
+fn trigger_is_admitted(admission: TriggerAdmission) -> Bool {
+  match admission {
+    TriggerAdmitted => true
+    TriggerCapabilityEmpty { subject: _ } => false
+    TriggerCapabilitySpellsAReferent { subject: _, scheme: _ } => false
   }
 }
 
@@ -536,16 +553,59 @@ test fn known_gap_a_caller_authored_commit_reaches_the_admitted_arm() -> Bool {
   }
 }
 
-// THE DECLARED FACT, AND THE ROUTE IT IS ADMITTED OVER. The standing is not a Bool, so "the rule holds"
-// cannot be answered by a constant; the basis is the sealed persist route, so an empty basis is visible
-// as the refusal arm rather than as an empty list a caller might ignore.
-test fn the_ordering_fact_is_admitted_over_its_sealed_route() -> Bool {
-  match enrolment_persist_before_effect_standing() {
-    PersistBeforeEffectAdmitted { basis: basis } =>
-      (basis as String) == declaration_ref_display_key(ref: enrolment_persist_before_effect_gate_ref)
-        && (enrolment_persist_before_effect_basis_refs() |> any(r => declaration_ref_eq(a: r, b: enrolment_persist_proof_route_ref)))
-    PersistBeforeEffectBasisMissing { missing: _ } => false
-  }
+// THE LAW IS THE MACHINE, SO THE MACHINE IS WHAT GETS ASKED — this claim replaces an
+// `EnrolmentOrderingStanding` that certified itself (see the deletion note in
+// gunbc.approve_ios_enrolment_machine: a basis of four decl_ref string literals checked against a list
+// of those same four constants, whose refusal arm no input could reach). Nothing here asks a
+// declaration whether it exists; every line below calls the fold and refuses on the answer the fold
+// did not give. A deleted or renamed `enrolment_persist` fails to COMPILE this file — the resolver is
+// the only thing that ever pinned those names — and a weakened `enrolment_persist` or
+// `enrolment_call_admitted` reddens here.
+//
+// IT ALSO COVERS THE GAP THE 17-PASS RUN LEFT OPEN: an unresolved name inside a claim body is a
+// resolve-time failure, which claim_batch reports before any PASS — but the last head had a name the
+// review could see and the run could not, because the path it sat on was never evaluated by any claim.
+// So this claim deliberately evaluates the fold-bearing paths below, including the `declaration_ref_eq`
+// comparison and the stall row's folds, rather than leaving them as declared-but-unevaluated code.
+test fn the_law_is_the_machine_and_the_machine_answers() -> Bool {
+  let honest_state = prepared_state()
+  let honest_verdict = enrolment_persist(
+    state: honest_state,
+    attempt: honest_attempt(state: honest_state),
+    observed: absent_observation(),
+  )
+  let other_state = enrolled_state()
+  let wrong_verdict = enrolment_persist(
+    state: honest_state,
+    attempt: cas_attempt(
+      key: "enrolment-state" as NonEmptyStr,
+      expected: ExpectSlotAbsent,
+      proposed: honest_state,
+      proposed_content: enrolment_record_digest(state: other_state),
+    ),
+    observed: absent_observation(),
+  )
+  let enrolled_verdict = enrolment_persist(
+    state: other_state,
+    attempt: honest_attempt(state: other_state),
+    observed: absent_observation(),
+  )
+  let stall = enrolment_commit_evidence_remains_caller_authored_stall
+  let report = stall_report_message(stall: stall)
+  // Every conjunct is a CALL whose answer could come back the other way. The three ordering ones ask
+  // the sealed machine; the last four ask gunbc.guarantee_stall's own folds about the typed row, which
+  // is where the store obligation now lives instead of in a sentence. Together they also keep
+  // declaration_ref_eq and these folds on the EVALUATED path: an unresolved name hiding in code no
+  // claim runs was exactly how the previous head carried one past a 17-PASS run.
+  enrolment_call_admitted(call: SubmitEnrolmentPost { state: honest_state }, verdict: honest_verdict)
+    && !enrolment_call_admitted(call: SubmitEnrolmentPost { state: honest_state }, verdict: wrong_verdict)
+    && enrolment_call_admitted(call: ForwardApnsToken { state: other_state }, verdict: enrolled_verdict)
+    && !enrolment_call_admitted(call: ForwardApnsToken { state: other_state }, verdict: wrong_verdict)
+    && stall_is_below_ceiling(s: stall)
+    && trigger_is_admitted(admission: stall_trigger_admission(s: stall))
+    && string_contains(s: report, pattern: stall.subject)
+    && string_contains(s: report, pattern: "STALLED")
+    && (all_guarantee_stalls |> any(x => x.subject == stall.subject))
 }
 
 // THE CONSUMER IS DECLARED, AND REACHABLE FROM THE CLOSURE THAT HOLDS EVERY LATER-CONSUMER ROW. A row

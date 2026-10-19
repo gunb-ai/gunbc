@@ -24,7 +24,7 @@ import std.durable_compare_and_set {
   ExpectSlotGeneration,
 }
 import std.durable_transfer { LocalCommitStanding, LocallyCommitted, LocalCommitFailed }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import extdeps.crypto.signature { VerifyingKey }
@@ -404,16 +404,17 @@ fn enrolment_persistence_standing<T>(
 // write carried are the bytes THIS state renders to. The refused arms are ordinary coproduct arms on
 // purpose: a refusal needs no seal, and sealing them would only force consumers to mint denials too.
 //
-// TWO REFUSAL ARMS, NOT THREE — and the missing one is the honest finding. An earlier draft of this
-// model had a "the commit attests a record other than the one you proposed" arm, which reads like the
-// strongest check available. It is unreachable, so it was deleted rather than left as evidence of a
-// guarantee nobody can exercise: std.durable_compare_and_set's `cas_decide_readable` builds the
-// committed version as `content: attempt.proposed_content`, so committed-vs-proposed agrees by
-// CONSTRUCTION rather than by verification, and a fold comparing those two fields compares one value
-// against itself. What is genuinely checkable here is the pair that comes from different sources: what
-// the caller proposed to write, against what the state being transitioned to actually renders to.
-// "The bytes the store ended up holding are the bytes you named" is the store's obligation, not a
-// fact this fold can establish, and it is named in the block above rather than dressed as a check.
+// WHY THERE IS NO "the commit attests a record other than the one you proposed" arm, which is the
+// honest finding rather than an omission — and note this says nothing about how many refusal arms the
+// coproduct has, since reading that off a comment is exactly the restatement DESIGN §4c forbids. An
+// earlier draft had that arm, and it reads like the strongest check available. It is unreachable:
+// std.durable_compare_and_set's `cas_decide_readable` builds the committed version as
+// `content: attempt.proposed_content`, so committed-vs-proposed agrees by CONSTRUCTION rather than by
+// verification, and a fold comparing those two fields compares one value against itself. What is
+// genuinely checkable is the pair whose sides come from DIFFERENT sources: what the caller proposed to
+// write, against what the state being transitioned to renders to. "The bytes the store ended up holding
+// are the bytes you named" is the store's obligation, not a fact this fold can establish; it is carried
+// as a typed row in gunbc.guarantee_stall, not dressed as a check here.
 type EnrolmentPersistVerdict
   = EnrolmentPersistedAndAdmitted {
       standing: LocalCommitStanding<EnrolmentCommitProof, EnrolmentPersistenceFailure>,
@@ -543,51 +544,29 @@ fn enrolment_call_admitted(call: EnrolmentRemoteCall, verdict: EnrolmentPersistV
 // omission. An earlier draft had a one-arm property sum and a standing fn taking it. With one arm the
 // parameter cannot be varied by any caller, so the match over it is total by accident and the
 // "property" argues nothing: it is a Bool with a longer name, and DESIGN 4b's decoration test applies.
-// gunbc.serving.caller_backlog — the precedent this block follows — has no property type at all: the
-// law is its basis declarations, and what refuses is the standing computed from them.
+// WHY NOTHING STANDS HERE, which is a deletion rather than a gap. This block held an
+// `EnrolmentOrderingStanding` computed from a basis of four `decl_ref` string literals, and its
+// admitted arm fired when those same four constants were found in the list of those same four
+// constants. The refusal arm was therefore unreachable, and `enrolment_persist` could be deleted from
+// this module while the "fact" still reported itself admitted — DESIGN §4b's check whose forbidden
+// state is expressible nowhere it runs, green by construction and then cited as coverage. A name
+// spelled as a string does not pin a declaration; only the resolver does, and this module has no
+// resolved-declaration fold to ask.
 //
-// WHAT MAKES THIS A FACT AND NOT A COMMENT: the standing names the declarations that carry the law,
-// and it refuses unless the sealed persist door is among them. A change to the order has to move the
-// basis with it or the fact stops being admitted — an ordering that lives only in a call sequence can
-// be reordered silently and nothing downstream notices.
-data enrolment_persist_before_effect_gate_ref: DeclarationRef = decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "enrolment_call_admitted")
-data enrolment_persist_proof_route_ref: DeclarationRef = decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "enrolment_persist")
-data enrolment_commit_proof_ref: DeclarationRef = decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "EnrolmentCommitProof")
-data enrolment_effect_admission_proof_ref: DeclarationRef = decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "EnrolmentEffectAdmission")
-
-data enrolment_persist_before_effect_basis: NonEmptyStr = declaration_ref_display_key(ref: enrolment_persist_before_effect_gate_ref) as NonEmptyStr
-
-fn enrolment_persist_before_effect_basis_refs() -> List<DeclarationRef> {
-  [
-    enrolment_persist_before_effect_gate_ref,
-    enrolment_persist_proof_route_ref,
-    enrolment_commit_proof_ref,
-    enrolment_effect_admission_proof_ref,
-  ]
-}
-
-// THE FACT, ADMITTED OR REFUSED. It is admitted exactly when the basis names BOTH halves of the law:
-// the sealed door that mints an admission (enrolment_persist) and the check that binds an admitted
-// effect to the record it was persisted for (enrolment_call_admitted). Drop either — reorder the flow
-// by deleting one of them, or repoint the basis at something else — and the standing is the refusal
-// arm, not a silently weakened guarantee.
-type EnrolmentOrderingStanding
-  = PersistBeforeEffectAdmitted { basis: NonEmptyStr }
-  | PersistBeforeEffectBasisMissing { missing: NonEmptyStr }
-
-fn enrolment_persist_before_effect_standing() -> EnrolmentOrderingStanding {
-  let refs = enrolment_persist_before_effect_basis_refs()
-  let has_door = refs |> any(r => declaration_ref_eq(a: r, b: enrolment_persist_proof_route_ref))
-  let has_binding = refs |> any(r => declaration_ref_eq(a: r, b: enrolment_persist_before_effect_gate_ref))
-  let has_evidence = (refs |> any(r => declaration_ref_eq(a: r, b: enrolment_commit_proof_ref)))
-    && (refs |> any(r => declaration_ref_eq(a: r, b: enrolment_effect_admission_proof_ref)))
-  if has_door && has_binding && has_evidence {
-    PersistBeforeEffectAdmitted { basis: enrolment_persist_before_effect_basis }
-  } else {
-    PersistBeforeEffectBasisMissing { missing: "the sealed persist door, the record-binding check, or the sealed commit evidence" as NonEmptyStr }
-  }
-}
-
+// WHAT ACTUALLY CARRIES THE LAW, none of it resting on a declaration being named:
+//  - `enrolment_persist` is the only declaration in the tree that mints `EnrolmentCommitProof` or
+//    `EnrolmentEffectAdmission`, both sole_constructor; a foreign literal is a compile-time
+//    SoleConstructorViolation, measured by keyed REDs in
+//    test.claim.approve_ios_enrolment_machine_persist_order_witness.
+//  - `enrolment_call_admitted` binds an admitted effect to the digest of the record it was persisted
+//    for, so a stale admission does not authorize a call; measured behaviourally there too.
+//  - The gap no consumer-side check can close — a caller-authored `CasCommitted` reaching the admitted
+//    arm, because `std.durable_compare_and_set` does not seal `CasOutcome` — is a typed row:
+//    gunbc.guarantee_stall's enrolment_commit_evidence_remains_caller_authored_stall, with a population
+//    and a re-measurable trigger, not a sentence in a comment.
+//
+// What remains from the earlier draft is the frontier row below: a consumer declared as data, which a
+// closure fold enumerates rather than a fact that certifies itself.
 // ──────────────────────────────────────────────────────────────────────────────────────────────
 // THE DECLARED FRONTIER: the consumer this model exists to serve.
 //
