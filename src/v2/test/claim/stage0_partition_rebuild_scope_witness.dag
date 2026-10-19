@@ -544,7 +544,7 @@ test fn witness_regen_round_bound_is_declared_row_holds() -> Bool {
 // The shell crate root is owned by the shell package: a lib.rs change derives a scope instead of
 // refusing MirrorHasNoOwningPackage (the measured positive-arm refusal).
 test fn witness_shell_crate_root_has_an_owner_holds() -> Bool {
-  match witness_decide(changed: ["lib.rs"]) {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: ["lib.rs"], unlocatable: [], host_shell_modules: []) {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: _, executable_assembly: _ } => count(o) == 1
     _ => false
   }
