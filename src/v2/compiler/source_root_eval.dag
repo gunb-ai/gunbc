@@ -3238,12 +3238,73 @@ fn native_decl_ref_census_over(
   )
 }
 
+// THE DECLARATION INDEX WITHOUT THE POSITION TABLE. The census resolves a name; it never locates a
+// line, so it keeps only what resolution reads (the module roots and the source-root index) and drops
+// the per-file span index, line index and advisories that native_test_context_from_ingest keeps for
+// diagnostics -- "most of the census's ingest memory" (NativeCensusPositionTable). A file the front
+// end refuses is COUNTED, never dropped: the verb prints the count.
+type NativeDeclRefCensusIndexState {
+  roots: FreeMonoid<NormalizedTree>
+  index: SourceRootIndex
+  alloc: OccurrenceIdAllocator
+  refused_files: Int
+}
+
+type NativeDeclRefCensusIndex {
+  resolution: Outcome<ResolutionContext>
+  refused_files: Int
+}
+
+fn native_decl_ref_census_index(ingest: SourceRootIngest, front: NativeTestFrontEnd) -> Outcome<NativeDeclRefCensusIndex> {
+  bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
+    let state = fold_list(
+      xs: ingest,
+      empty: NativeDeclRefCensusIndexState { roots: Empty, index: source_root_index_empty(), alloc: occurrence_id_allocator_initial(), refused_files: 0 },
+      cons: fn(st, read) {
+        let result = program_assembly_read_to_normalized_root_seeded(
+          read: read,
+          lex: front.lex,
+          prepared: front.prepared,
+          seed: st.alloc,
+          scope: scope
+        )
+        match result.produced {
+          Rejected { diagnostics: _ } =>
+            NativeDeclRefCensusIndexState { roots: st.roots, index: st.index, alloc: result.alloc, refused_files: st.refused_files + 1 }
+          Accepted { value: root, diagnostics: _ } =>
+            match qualified_name_from_module_node(root: root.root) {
+              Rejected { diagnostics: _ } =>
+                NativeDeclRefCensusIndexState { roots: st.roots, index: st.index, alloc: result.alloc, refused_files: st.refused_files + 1 }
+              Accepted { value: qn, diagnostics: _ } =>
+                NativeDeclRefCensusIndexState {
+                  roots: list_snoc_item(xs: st.roots, item: root),
+                  index: source_root_index_insert(index: st.index, module: qn, root: read.source_root),
+                  alloc: result.alloc,
+                  refused_files: st.refused_files
+                }
+            }
+        }
+      }
+    )
+    outcome_accepted(value: NativeDeclRefCensusIndex {
+      resolution: resolution_context(
+        lm: front.lm,
+        roots: state.roots,
+        index: state.index,
+        active_roots: source_root_set_from_ingest(ingest: ingest),
+        policy: v2.std.resolution_policy.default_name_resolution_policy()
+      ),
+      refused_files: state.refused_files
+    })
+  })
+}
+
 fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensusOutput {
   match native_test_front_end_prepare() {
     Rejected { diagnostics: d } =>
       NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
     Accepted { value: front, diagnostics: _ } =>
-      match native_test_context_from_ingest(ingest: ingest) {
+      match native_decl_ref_census_index(ingest: ingest, front: front) {
         Rejected { diagnostics: d } =>
           NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
         Accepted { value: context, diagnostics: _ } =>
@@ -3252,7 +3313,10 @@ fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensu
               NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
             Accepted { value: resolution, diagnostics: _ } =>
               let census = native_decl_ref_census_over(ingest: ingest, front: front, context: resolution)
-              NativeDeclRefCensusOutput { lines: decl_ref_census_lines(c: census), exit: decl_ref_census_exit(c: census) }
+              NativeDeclRefCensusOutput {
+                lines: list_append(left: [concat("[decl-ref-census] ingest_refused_files=", to_string(context.refused_files))], right: decl_ref_census_lines(c: census)),
+                exit: decl_ref_census_exit(c: census)
+              }
           }
       }
   }
