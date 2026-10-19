@@ -450,9 +450,11 @@ fn render_rust_leaf_layered(n: Node, spelled: String, shared_types: Set<String>,
 fn render_rust_leaf_declaration_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
   let named_base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: Rust), dag_name: tn)
-  if n.connective == Disj {
+  let leaf_is_disj = n.connective == Disj
+  let leaf_is_conj = n.connective == Conj
+  if leaf_is_disj {
     if n.ident_span != none { render_rust_leaf_layered(n: n, spelled: named_base, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info) } else { emit_rust_compile_error_expr(message: "Anonymous coproduct type") }
-  } else if n.connective == Conj {
+  } else if leaf_is_conj {
     if n.type_annotation != none {
       match n.children |> first {
         Present { value: base } => render_rust_type(n: base, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
