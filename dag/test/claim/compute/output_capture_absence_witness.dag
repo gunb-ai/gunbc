@@ -258,17 +258,18 @@ test fn production_reaches_the_same_capture_fold() -> Bool {
   reached_contains(entry: "compute_return_outputs", fn_name: "compute_output_capture_step")
 }
 
-// THE ROUTE ASKS THE ONE FOLD, NOT ITSELF: the capture route reaches the executions, the
-// executions reach the fold (which is the only site that asks the step), and the step is reachable
-// from the executions only through that fold. HONEST SCOPE: reachability sees calls, not extra
-// state, so this cannot prove the executions keep no private stop of their own; that half is closed
-// structurally -- the executions' accumulator is the readings plus the FOLD'S OutputsReturn, with no
-// Bool and no verdict of their own to keep -- and behaviorally, by the RED that gives the executions
-// an exit-code stop of their own (this row goes red, because the fold-call edge disappears).
-test fn the_capture_route_runs_its_executions_through_the_fold() -> Bool {
+// THE EXECUTIONS ASK THE STEP, NOT THEMSELVES: the capture route reaches the executions, the
+// executions reach the step once per output (incrementally -- DESIGN 6 forbids the re-folded
+// prefix that would make this quadratic), and the executions still ask the fold for the seed
+// verdict their first iteration runs on, so route and controls begin from one answer. HONEST
+// SCOPE: reachability sees calls, not extra state, so this cannot prove the executions keep no
+// private stop; that half is closed structurally -- the executions' accumulator IS a step verdict
+// (OutputsReturn; no Bool, no pairs list left over) -- and behaviorally, by the RED that gives the
+// executions an exit-code stop of their own (this row goes red when the step-call edge disappears).
+test fn the_capture_route_runs_its_executions_through_the_step() -> Bool {
   reached_contains(entry: "compute_spawn_and_collect", fn_name: "compute_capture_executions")
-    && reached_contains(entry: "compute_capture_executions", fn_name: "compute_return_outputs_over_readings")
     && reached_contains(entry: "compute_capture_executions", fn_name: "compute_output_capture_step")
+    && reached_contains(entry: "compute_capture_executions", fn_name: "compute_return_outputs_over_readings")
 }
 
 // THE STEP DECIDES FOR THE FOLD: the fold reaches the step -- so no fold-side copy of the verdict
