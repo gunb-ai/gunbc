@@ -212,3 +212,27 @@ test fn dbg_p_e() -> Bool {
 test fn dbg_p_f() -> Bool {
   match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 0") _ => false }
 }
+
+test fn dbg_p_g() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..112") _ => false }
+}
+
+test fn dbg_p_h() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..114") _ => false }
+}
+
+test fn dbg_p_i() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..115") _ => false }
+}
+
+test fn dbg_p_j() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..108") _ => false }
+}
+
+test fn dbg_p_k() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..11") _ => false }
+}
+
+test fn dbg_p_l() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "107..12") _ => false }
+}
