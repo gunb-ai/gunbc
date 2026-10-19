@@ -342,3 +342,28 @@ red, and the name-keyed mint -- the exact defect freshness prevents -- is caught
 invariant to minting as predicted, which is the expected shape (the fold never inspects leaf identity;
 the third row locks that in). The collision row stays as an accept control; the mutant passing it
 (AMENDMENT 6) is now explained rather than worrying: sharing exists, the fold simply does not look.
+
+## AMENDMENT 11 (14:45Z, fixed BEFORE the merged-head gate runs): predictions at 0cc1895f4d0
+
+Merged head `0cc1895f4d0` = my `507a017ad6a` + `origin/main @ ef6c4021aa27`, mirrors REGENERATED from
+the merged authorities (seeds: infer `4e6cb017b76564fa`, emit_rust `75c05cc383791a80`, .dag
+`bffbea790d8a73d7`; verified byte-identical to what the runner's emitter produced, and carrying BOTH
+main's `tco_cursor_params: Rc::new(vec![])` and my `fresh_call_variables` x2). Deleted-symbol grep over
+the merged tree: DANGLING none.
+
+Gate at this head, both closures, main compared at the SAME `ef6c4021`:
+
+| measure | prediction | if it misses |
+|---|---|---|
+| main self-host, main v2-native | 0 and 0, with the emitted marker present | the instrument no longer reproduces a known green; STOP, fix instrument, report no head numbers |
+| self-host type-mismatch | 43 +/- 3 (the merged tree adds main's commits since the previous gate ran) | a shift outside that band needs naming by identity, not explaining away |
+| v2-native-cli | 45 +/- 3 | same |
+| HARD TEST merged-vs-pre-repair (`8d8d8aac0e1`), by identity | **NEW = 0** | any new identity = my repair refuses something the Acc accepted -> revert-not-widen |
+| HARD TEST merged-vs-my-pre-merge (`507a017ad6a`), by identity | NEW = 0 | a new identity here would come from MAIN's merged commits, not from me: name it and its commit rather than accept it silently |
+| rows | 11/11 PASS; `minted_variables_are_fresh_per_call_site` included | a fold row failing at the merged tree means the regeneration changed fold behaviour -> compare the mirror against 507a017ad6a before believing anything |
+
+Two things I am explicitly NOT claiming: that the merged head passes `--required-regen` (main itself
+fails it identically at `ef6c4021`, `MAIN_DRIFT_COUNT 1` on `std_decimal.rs`, with the emitter built
+from main's own mirrors -- pre-existing, not mine, and I will say so rather than let it look like my
+red); and that the gate's `fold=` 41 measures fold presence (it counts `UnifyGenericsAcc` -- the merge
+script printed 0 for a literal `fold=` and that number means nothing).
