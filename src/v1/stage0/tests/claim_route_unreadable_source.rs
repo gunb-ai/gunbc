@@ -26,6 +26,10 @@ fn scratch_claim_root(name: &str, file: &str, body: &str) -> String {
 }
 
 fn route(scratch: String) -> Result<usize, String> {
+    // Entry resolution reads workspace-relative paths against the process cwd, which the `gunbc`
+    // binary stands at the workspace root and a cargo test stands at the crate. Every test here
+    // sets the same directory, so the shared process-global is written with one value.
+    std::env::set_current_dir(v1_compiler::cli_run::workspace_root()).expect("enter workspace");
     let mut roots = vec![scratch];
     roots.extend(v1_compiler::cli_run::witness_layer_roots());
     v1_compiler::cli_run::run_claim_route(
