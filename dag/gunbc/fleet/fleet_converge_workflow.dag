@@ -641,12 +641,23 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
   }
 }
 
+// THE MODE CHECK HAS ONE AUTHORITY, the Expression (fleet_converge_dispatch_mode_is); its step-if text
+// is that expression serialized, never a second string (review 82749).
 fn fleet_converge_mode_step_if(mode: FleetConvergeWorkflowMode) -> String {
-  join(["github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: mode), "'"], "")
+  serialize_expression(expression: fleet_converge_dispatch_mode_is(mode: mode))
+}
+
+// ANY OF THE MODES, as one left-nested disjunction. No mode is the empty string, which GitHub reads as
+// false, so an empty roster gates nothing open.
+fn fleet_converge_any_mode_expression(modes: List<FleetConvergeWorkflowMode>) -> Expression {
+  match modes.first() {
+    Absent => StringLiteral { value: "" }
+    Present { value: m } => fold(modes.skip(n: 1), init: fleet_converge_dispatch_mode_is(mode: m), f: (acc, x) => LogicalOr { left: acc, right: fleet_converge_dispatch_mode_is(mode: x) })
+  }
 }
 
 fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> String {
-  join(map(modes, m => fleet_converge_mode_step_if(mode: m)), " || ")
+  serialize_expression(expression: fleet_converge_any_mode_expression(modes: modes))
 }
 
 // THE MODES THAT ACT AS A RUN-SCOPED ACCOUNT (gunbc.auth.branch_dispatch_federation) are READ FROM
@@ -5022,7 +5033,7 @@ data fleet_converge_gcp_iam_job_gate: Expression = LogicalAnd {
       right: needs_result_is(job: fleet_converge_gcp_iam_bootstrap_job_id, result: "skipped"),
     },
   },
-  right: LogicalOr { left: fleet_converge_dispatch_mode_is(mode: GcpIamConverge), right: fleet_converge_dispatch_mode_is(mode: BranchRunGrant) },
+  right: fleet_converge_any_mode_expression(modes: [GcpIamConverge, BranchRunGrant]),
 }
 
 data fleet_converge_gcp_iam_job_if: String = serialize_expression(expression: fleet_converge_gcp_iam_job_gate)

@@ -1,8 +1,8 @@
 module test.claim.gha_expression_logical_not_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool }
-import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalAnd, LogicalNot, FunctionCall, Cancelled, serialize_expression, evaluate_expression }
+import std.types { Bool, List, String }
+import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalAnd, LogicalNot, FunctionCall, Cancelled, serialize_expression, evaluate_expression, ExpressionValue, ExpressionEvaluationRefused, GithubPathUnmodeled, GithubPathResolution }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -14,4 +14,16 @@ test fn logical_not_renders_with_upstream_precedence() -> Bool {
   serialize_expression(expression: LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }) == "!cancelled()"
     && serialize_expression(expression: LogicalNot { operand: Equals { left: ContextAccess { context: Github, path: ["sha"] }, right: StringLiteral { value: "x" } } }) == "!(github.sha == 'x')"
     && serialize_expression(expression: LogicalAnd { left: LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }, right: StringLiteral { value: "y" } }) == "!cancelled() && 'y'"
+    && serialize_expression(expression: LogicalAnd { left: LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }, right: Equals { left: ContextAccess { context: Github, path: ["sha"] }, right: StringLiteral { value: "x" } } }) == "!cancelled() && github.sha == 'x'"
+}
+
+fn none_modeled(path: List<String>) -> GithubPathResolution {
+  GithubPathUnmodeled
+}
+
+// EVALUATION: `!` negates truthiness, and an operand the evaluator refuses stays refused.
+test fn logical_not_evaluates_by_truthiness() -> Bool {
+  (match evaluate_expression(expression: LogicalNot { operand: StringLiteral { value: "" } }, github_path: none_modeled) { ExpressionValue { value: v } => v == "true"  ExpressionEvaluationRefused { cause: _ } => false })
+    && (match evaluate_expression(expression: LogicalNot { operand: StringLiteral { value: "x" } }, github_path: none_modeled) { ExpressionValue { value: v } => v == ""  ExpressionEvaluationRefused { cause: _ } => false })
+    && (match evaluate_expression(expression: LogicalNot { operand: ContextAccess { context: Github, path: ["sha"] } }, github_path: none_modeled) { ExpressionEvaluationRefused { cause: _ } => true  ExpressionValue { value: _ } => false })
 }

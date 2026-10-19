@@ -1,0 +1,55 @@
+module test.claim.fleet_converge_gcp_iam_gate_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.github.expressions { Expression, ContextAccess, Needs, StringLiteral, Equals, LogicalAnd, serialize_expression }
+import gunbc.fleet.fleet_converge_workflow {
+  GcpIamConverge, fleet_converge_dispatch_mode_is,
+  fleet_converge_gcp_iam_bootstrap_apply_job_gate, fleet_converge_gcp_iam_bootstrap_step_gate, fleet_converge_gcp_iam_job_gate,
+  fleet_converge_gcp_iam_bootstrap_job, fleet_converge_gcp_iam_bootstrap_request_job, fleet_converge_gcp_iam_converge_job_on,
+  fleet_converge_gcp_iam_bootstrap_request_job_id,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta_run { gcp_iam_bootstrap_delta_approved_output }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── THE GCP IAM JOB GATES ARE TYPED EXPRESSIONS, AND THE WORKFLOW EMITS EXACTLY THEIR SERIALIZATION ──
+// (review 82749, ruling by warm-crane-219 2026-10-19). The apply gate decides whether iam-bootstrap
+// writes IAM, so its shape is pinned: under the gcp_iam_converge mode, and only when the request job
+// reported the tap approved.
+
+fn emitted_if_is(emitted: String?, gate: Expression) -> Bool {
+  match emitted { Present { value: g } => g == serialize_expression(expression: gate)  Absent => false }
+}
+
+test fn each_gcp_iam_gate_is_what_the_workflow_emits() -> Bool {
+  emitted_if_is(emitted: fleet_converge_gcp_iam_bootstrap_job().if_condition, gate: fleet_converge_gcp_iam_bootstrap_apply_job_gate)
+    && emitted_if_is(emitted: fleet_converge_gcp_iam_bootstrap_request_job().if_condition, gate: fleet_converge_gcp_iam_bootstrap_step_gate)
+    && emitted_if_is(emitted: fleet_converge_gcp_iam_converge_job_on(host: "srv1" as NonEmptyStr).if_condition, gate: fleet_converge_gcp_iam_job_gate)
+}
+
+data approved_conjunct: Expression = Equals {
+  left: ContextAccess { context: Needs, path: [fleet_converge_gcp_iam_bootstrap_request_job_id as String, "outputs", gcp_iam_bootstrap_delta_approved_output] },
+  right: StringLiteral { value: "true" },
+}
+
+// THE LAW: the gate is exactly (mode is gcp_iam_converge) && (the request reported approved).
+fn admits_only_an_approved_delta(gate: Expression) -> Bool {
+  match gate {
+    LogicalAnd { left: l, right: r } =>
+      serialize_expression(expression: l) == serialize_expression(expression: fleet_converge_dispatch_mode_is(mode: GcpIamConverge))
+        && serialize_expression(expression: r) == serialize_expression(expression: approved_conjunct)
+    _ => false
+  }
+}
+
+test fn the_apply_gate_admits_only_an_approved_delta_under_the_converge_mode() -> Bool {
+  admits_only_an_approved_delta(gate: fleet_converge_gcp_iam_bootstrap_apply_job_gate)
+}
+
+// MUTATION CONTROL: the gate with the approved conjunct dropped, or replaced, is refused by the law.
+test fn a_gate_without_the_approved_conjunct_is_refused() -> Bool {
+  !admits_only_an_approved_delta(gate: fleet_converge_dispatch_mode_is(mode: GcpIamConverge))
+    && !admits_only_an_approved_delta(gate: LogicalAnd { left: fleet_converge_dispatch_mode_is(mode: GcpIamConverge), right: StringLiteral { value: "true" } })
+}
