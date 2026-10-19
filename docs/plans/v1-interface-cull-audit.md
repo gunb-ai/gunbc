@@ -123,6 +123,48 @@ Known blind spots before anything is deleted:
 | `04_types.dag`, `04_resolve.dag` | 3 + 3 | |
 | others | 1–2 each | `workspace_members`, `trait_derive_emit`, `stage0_crates`, `languages`, `dag_collect_support`, `04_sigs` |
 
+## 3b. Problem sections, dive 1 (code reading, not profiles)
+
+Four read-only investigations, one per phase. **None of them got a profile.** The remote image has no
+`perf`, and two of the scripts had bugs. So every attribution below comes from reading the code and
+is not measured. One remote timing of the same transaction on a 32-core runner: pre-frontend 67 s,
+frontend 36 s, peak 8.4 GB. That is about 1.5x faster than CI in both phases, so the difference is
+the host, not a different code path.
+
+### Pre-frontend (~107 s)
+- All of it falls after `emitting … (seed, in-process)`. The freshness and dep-info checks take ~30 ms.
+- The path is `cli_run.rs` `compile_emission_over` → `cli_run/entry_resolve.rs` `try_build_module_index_primary_precedence` (walks and reads **every** `.dag` under `dag/` and `src/v2/`: 8,847 files, ~115 MB) → `load_sources_for_entry_with_pool` → `extend_sources_to_both_closure_fixpoint`. That builds pool-wide name tables through `pool_parse` / `reference_pool_names`, which lex and heads-parse the whole pool to find one entry's closure.
+- Its cost scales with the tree, not the closure: `gunbc.recurring_failure_mode` `gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation`. `gunbc run` already avoids it by acquiring only what the entry demands. Each required step pays it again in a separate process.
+- **An instrument already exists and is never printed on this path:** `cli_run/pre_entry_phase.rs` records `[pre-entry] phase=… ms=… scale=tree|closure`, but `compile_emission_over` never calls `take_lines()`. Printing it gives the split. It is the cheapest next measurement.
+
+### Frontend (56 s)
+- `v1.compiler.compile` `front_end_sources` covers tokenize and newline index per module, `pre_intern_tokens`, a parse fold of `parse_with_table_in_occurrence_scope` and `bind_annotations`, `merge_occurrence_transports`, then **resolve** (`resolve_modules_with_occurrence_transport`). So frontend is not only parsing.
+- Likely redundant demand: the pre-frontend index already parsed every file, and frontend re-tokenizes and re-parses the 247-module closure from text. That is one parse fact produced twice (§2). Medium confidence.
+- A proven cost-shape defect: the parse fold accumulates with `std.source_annotation` `source_annotation_graph_concat(acc.annotations, bound)`, which copies the accumulated list every step, O(modules × annotations). Its size is unknown.
+
+### Reconcile (~90 s)
+- `v1.compiler.infer` `reconcile` → `typecheck`: build the census once, then fold `realize_module` in dependency order. This CI path runs the pure generated `reconcile`, not the host's cached `reconcile_with_typed_cache`.
+- Cost-shape defects, each per-module work over corpus-wide data:
+  1. `build_module_context` `census_scope` rebuilds an `OpEntry` (`qualify_borrowed_inferred`, `inferred_to_outputs`) for **every service in the corpus, per module**. None of it depends on the module, so it should be built once beside `symbol_index`.
+  2. `merge_global_bare_variant_locals` calls `map_merge(global_variant_base, locals)`. `v1_rt::map_merge` takes owned maps, so the whole corpus variant base is cloned per module.
+  3. `realize_module` passes `dep_state.module_index.clone()` (and `variant_surfaces`, `item_registry`, `diags_by_name`) to `rc_map_insert`/`rc_map_merge` while `dep_state` still holds a reference, so `Rc::make_mut` copies four whole maps per module. **This is in the emitter's ownership lowering**, so the same pattern probably occurs across the generated compiler. Repair it at the emitter (§6b root generalization).
+
+### Emit (~303 s)
+- Prior art: `docs/plans/emit-type-surface-traversal-cost.md` (2026-08-29, 108 files). There, `v1.compiler.emit_rust` `reference_derived_use_line_plan` was 88% of emit, almost all of it `type_surface_names`.
+- The cause is still in place: `v1.compiler.infer_emit_info` `collect_type_node_import_surface_occurrences` walks a shared type graph as a tree (into `children` and into `inferred`) with no visited set. The specimen counted 7.46M visits over 23,647 distinct nodes, a 315x amplification, half of it on `OccurrenceSynthetic` nodes.
+- **A memo here is refused:** `gunbc.recurring_failure_mode` `identity_absent_graph_traversal`. Synthetic occurrences have no identity, so a visited-set key could silently skip a distinct node. The repair is upstream: give synthesised occurrences an identity in the occurrence-identity algebra.
+- Already ruled out: list-concat string building (215 sites, no change), the scrutinee clone, per-module candidate rescans (#9666).
+- Not yet known: whether its share still holds at 247 files.
+
+### The measurement gap shared by all four
+No instrument in the tree breaks these phases down, and `perf` is not on the remote image. Before any
+repair, choose one of:
+- a sub-phase `trace_mark` layer as a `gunbc test` row,
+- printing `pre_entry_phase`,
+- a `perf`-capable profiling run.
+
+Each repair must also state beforehand which multiplicity collapses (§6b).
+
 ## 4. Next passes
 
 - [ ] Rerun the pass 1 census with string-reachable names (rosters, `--function` entries) subtracted, and confirm with a build that deletes the batch.
