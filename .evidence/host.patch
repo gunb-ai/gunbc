@@ -1,8 +1,8 @@
 diff --git a/src/v1/stage0/src/cli_run.rs b/src/v1/stage0/src/cli_run.rs
-index 17a7e0e1fd31..09dfbddb3d23 100644
+index 17a7e0e1fd31..ee6d9622a33a 100644
 --- a/src/v1/stage0/src/cli_run.rs
 +++ b/src/v1/stage0/src/cli_run.rs
-@@ -15267,16 +15267,27 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
+@@ -15267,16 +15267,33 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                      let mut lock = errors.lock().expect("parse error lock");
                      for d in fill.diagnostics.iter() {
                          let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
@@ -26,7 +26,13 @@ index 17a7e0e1fd31..09dfbddb3d23 100644
 +                        // The index is keyed by the span's OWN file, not by the path being swept:
 +                        // a diagnostic may point at the file it was parsed from, and pinning the
 +                        // key here would silently locate it against the wrong text.
-+                        let mut source_indices = std::collections::HashMap::new();
++                        // The map is the SEED'S map type (`im::HashMap`), which is what the
++                        // generated signature takes -- see cli_run/pool_acquire.rs for the same
++                        // hand-off elsewhere in the host.
++                        let mut source_indices: im::HashMap<
++                            String,
++                            std::rc::Rc<crate::v1_std_core::NewlineIndex>,
++                        > = im::HashMap::new();
 +                        source_indices.insert(span.file.clone(), index.clone());
                          lock.push(format!(
                              "{}: {}",
@@ -79,10 +85,10 @@ index 6531c5e4de83..1b150b6a2000 100644
              .iter()
              .next()
 diff --git a/src/v1/stage0/src/declaration_index.rs b/src/v1/stage0/src/declaration_index.rs
-index 51a2fb4e7aad..4fdb7f747abe 100644
+index 51a2fb4e7aad..0e9734323bc7 100644
 --- a/src/v1/stage0/src/declaration_index.rs
 +++ b/src/v1/stage0/src/declaration_index.rs
-@@ -3213,10 +3213,28 @@ pub fn render_finding(
+@@ -3213,10 +3213,33 @@ pub fn render_finding(
      let located = match finding.offset {
          Some(offset) => match std::fs::read_to_string(workspace.join(&finding.rel_path)) {
              Ok(content) => {
@@ -94,10 +100,15 @@ index 51a2fb4e7aad..4fdb7f747abe 100644
                      crate::v1_std_core::build_newline_index(finding.rel_path.clone(), content);
 -                let lc = crate::v1_std_core::byte_to_line_col(index, offset);
 -                format!("{}:{}:{}", finding.rel_path, lc.line, lc.col)
-+                let mut source_indices: std::collections::HashMap<
++                // THE AUTHORITY TAKES THE SEED'S OWN MAP TYPE: the generated
++                // `render_span_location` signature is `Rc<HashMap<..>>` where `HashMap` is
++                // `im::HashMap` (v1_std_core.rs `use im::{... HashMap ...}`), not
++                // `std::collections::HashMap` -- the host precedent for handing an index map to a
++                // seed function is `im::HashMap::new()` (cli_run/pool_acquire.rs).
++                let mut source_indices: im::HashMap<
 +                    String,
 +                    std::rc::Rc<crate::v1_std_core::NewlineIndex>,
-+                > = std::collections::HashMap::new();
++                > = im::HashMap::new();
 +                // `build_newline_index` already RETURNS `Rc<NewlineIndex>` -- the map's value type
 +                // is `Rc<NewlineIndex>`, so the index goes in as built. Wrapping it again is a
 +                // second pointer to the same fact, and the compiler says so.
@@ -114,7 +125,7 @@ index 51a2fb4e7aad..4fdb7f747abe 100644
              Err(_) => finding.rel_path.clone(),
          },
 diff --git a/src/v1/stage0/src/module_path_index/index.rs b/src/v1/stage0/src/module_path_index/index.rs
-index 346123186921..0c91df611de9 100644
+index 346123186921..f9942308be0f 100644
 --- a/src/v1/stage0/src/module_path_index/index.rs
 +++ b/src/v1/stage0/src/module_path_index/index.rs
 @@ -36,6 +36,10 @@ pub struct ModuleBindingRefusal {
@@ -128,7 +139,7 @@ index 346123186921..0c91df611de9 100644
  }
  
  impl ModuleBindingRefusal {
-@@ -43,14 +47,34 @@ impl ModuleBindingRefusal {
+@@ -43,14 +47,35 @@ impl ModuleBindingRefusal {
          diagnostic_to_span(self.diagnostic.clone())
      }
  
@@ -148,10 +159,11 @@ index 346123186921..0c91df611de9 100644
          let span = self.span();
 +        let index =
 +            crate::v1_std_core::build_newline_index(self.source_path.clone(), self.source.clone());
-+        let mut source_indices: std::collections::HashMap<
-+            String,
-+            std::rc::Rc<crate::v1_std_core::NewlineIndex>,
-+        > = std::collections::HashMap::new();
++        // THE AUTHORITY TAKES THE SEED'S OWN MAP TYPE: the generated signature says
++        // `Rc<HashMap<..>>` with `HashMap` = `im::HashMap`, the same map the rest of the host hands
++        // to seed functions (cli_run/pool_acquire.rs `im::HashMap::new()`).
++        let mut source_indices: im::HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>> =
++            im::HashMap::new();
 +        // `build_newline_index` already RETURNS `Rc<NewlineIndex>`; the map's value type is
 +        // `Rc<NewlineIndex>`, so the index goes in exactly as built.
 +        source_indices.insert(self.source_path.clone(), index);
@@ -168,7 +180,7 @@ index 346123186921..0c91df611de9 100644
              diagnostic_to_message(self.diagnostic.clone())
          )
      }
-@@ -149,6 +173,7 @@ pub fn parse_module_binding(
+@@ -149,6 +174,7 @@ pub fn parse_module_binding(
              return Err(ModuleBindingRefusal {
                  source_path: key,
                  diagnostic: err.diagnostic.clone(),
