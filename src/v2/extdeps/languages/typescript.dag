@@ -96,6 +96,7 @@ import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
   target_bind_let_separator_present,
   IntLiteralUnwired,
+  ListIntroductionUnwired,
   ProducedDeclParamSegment,
   ProducedDeclRenderRows,
   ProducedDeclSupport,
@@ -682,6 +683,7 @@ fn ts_value_expression_projection_full(
       false_token: ^ts_token_kw_false
     },
     int_literal_form: IntLiteralUnwired,
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: block_evaluation_mode
   }
 }
