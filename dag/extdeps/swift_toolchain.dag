@@ -63,7 +63,7 @@ import extdeps.version { VersionIdentity }
 // remember to call.
 //
 // DECLARED IS NOT PINNED, AND THE TYPES SAY SO. An archive nobody has fetched is recorded as
-// SwiftToolchainUnverifiedRow, which has NO size field and NO digest field -- so it cannot be read as a
+// SwiftToolchainUnverifiedArchive, which has NO size field and NO digest field -- so it cannot be read as a
 // pin, and there is no empty string standing in for a number. A row for a release nobody fetched is
 // therefore a statement about a future fetch, never something that can travel as a verified one.
 //
@@ -81,7 +81,7 @@ import extdeps.version { VersionIdentity }
 // gunbc.guarantee_stall.approve_ios_linux_swift_receipt_not_dispatchable_stall, which carries it), and a
 // row a claim only echoes is a second place to keep a list nobody reads.
 
-// THE MODULE'S ANCHOR, per the per-module convention every extdeps module carries (1,059 of them on main).
+// THE MODULE'S ANCHOR, per the per-module convention every extdeps module carries.
 // It is the upstream release index this artifact was located through, and it is what gunbc-side readers
 // expect to find under this name -- gunbc.extdeps_scope_frontier, gunbc.design.catalog, gunbc.citation.*,
 // and the read-grained fork census, whose ground is that per-module conventions like this one are not
@@ -207,8 +207,8 @@ fn swift_toolchain_archive_subject(archive: SwiftToolchainArchive) -> SwiftToolc
 // confirms upstream signed. The cited observation was authored, not read, and the citation's wording was
 // designed to end an enquiry rather than invite one. The standing below therefore points at an authority
 // a reader can re-run (fetch the .sig, import the published keys, `gpg --verify`), not at a receipt
-// whose text I would have to be trusted. The refused-value row below keeps the fabricated digest as a
-// fixture so the refusal is demonstrated rather than asserted.
+// whose text I would have to be trusted. The fabricated digest survives only inside the claim that refuses it,
+// so the refusal is demonstrated rather than asserted.
 // WHICH ARTIFACT, SPOKE ONCE. The pinned subject lives here and nowhere else: the pin's own subject field
 // and the URL of the .sig its standing cites are both projections of this row. Spelling the version and
 // distribution a second time beside the pin is what let a bumped pin go on citing the signature of the
@@ -378,6 +378,12 @@ fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVeri
   }
 }
 
+// The one answer to "which .sig must this row cite": the row's OWN subject's. The citation check and the
+// refusal that explains it both read this, so they cannot name different signatures.
+fn swift_toolchain_expected_signature(archive: SwiftToolchainVerifiedArchive) -> ExternalAuthority {
+  swift_toolchain_signature_authority_for(subject: archive.subject)
+}
+
 // Does THIS ROW cite the signature of THIS ROW's subject? The row is the argument, not just its standing,
 // and that is the whole content of the question. Comparing a row's standing against the .sig of whatever
 // happens to be pinned instead admits a row for Ubuntu 24.04 that copies the Debian 13 citation: right
@@ -386,7 +392,7 @@ fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVeri
 // a coproduct, and comparing coproduct values field-by-field at a call site is how one arm's payload gets
 // compared while another's is silently ignored.
 fn swift_toolchain_standing_cites_signature(archive: SwiftToolchainVerifiedArchive) -> Bool {
-  let expected = swift_toolchain_signature_authority_for(subject: archive.subject)
+  let expected = swift_toolchain_expected_signature(archive: archive)
   match archive.standing {
     CitedToAuthority { authority: a } =>
       a.uri.locator == expected.uri.locator && a.uri.scheme == expected.uri.scheme
@@ -411,7 +417,6 @@ fn swift_toolchain_pinned_archive() -> SwiftToolchainVerifiedArchive? {
 // only has to explain a "no" the classifier already reached -- it cannot disagree about whether, only
 // spell out why.
 fn swift_toolchain_pin_absence_refusal(archive: SwiftToolchainArchive) -> SwiftToolchainRefusal {
-  let expected = swift_toolchain_signature_authority
   match archive {
     Unverified { declared: _ } => PinCarriesNoVerifiedArchive
     Verified { archive: a } => match a.standing {
@@ -419,15 +424,15 @@ fn swift_toolchain_pin_absence_refusal(archive: SwiftToolchainArchive) -> SwiftT
       // cites some authority that is not this subject's .sig -- an index, a keyring, a page that says the
       // release exists without saying these bytes are its.
       CitedToAuthority { authority: _ } => PinStandingDoesNotCiteSignature {
-        expected: expected
+        expected: swift_toolchain_expected_signature(archive: a)
         detail: "cites an authority other than the .sig of this very subject"
       }
       TranscribedUncited { read_obligation: _ } => PinStandingDoesNotCiteSignature {
-        expected: expected
+        expected: swift_toolchain_expected_signature(archive: a)
         detail: "standing is a transcription: a figure cited to fetches, agreed or not, is not a citation to upstream"
       }
       ObservedByReceipt { observed: _ } => PinStandingDoesNotCiteSignature {
-        expected: expected
+        expected: swift_toolchain_expected_signature(archive: a)
         detail: "standing is an observation receipt from inside this repository, which cannot make bytes upstream's"
       }
     }

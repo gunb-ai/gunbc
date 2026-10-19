@@ -38,6 +38,7 @@ import extdeps.swift_toolchain {
   extdeps_external_authority_anchor,
   swift_toolchain_verify,
   swift_toolchain_standing_cites_signature,
+  swift_toolchain_pin_absence_refusal,
 }
 
 // WHAT THIS WITNESS HOLDS.
@@ -463,4 +464,23 @@ test fn a_row_cannot_wear_another_releases_signature() -> Bool {
     && swift_toolchain_standing_cites_signature(archive: row_for(subject: debian, cited: CitedToAuthority {
          authority: debian_sig
        }))
+}
+
+// The refusal EXPLAINS the refusal above, so it must name the same signature the check compared against:
+// the Ubuntu row's own .sig, never the pinned Debian one. RED before the fix: it named the Debian .sig.
+test fn the_refusal_names_the_rows_own_signature_as_expected() -> Bool {
+  let debian = swift_toolchain_pinned_subject
+  let ubuntu = SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2404
+    version: "6.4.1" as VersionIdentity
+  }
+  let wearing = row_for(subject: ubuntu, cited: CitedToAuthority {
+    authority: swift_toolchain_signature_authority_for(subject: debian)
+  })
+  match swift_toolchain_pin_absence_refusal(archive: Verified { archive: wearing }) {
+    PinStandingDoesNotCiteSignature { expected: e, detail: _ } =>
+      e.uri.locator == swift_toolchain_signature_url(subject: ubuntu).locator
+        && e.uri.locator != swift_toolchain_signature_url(subject: debian).locator
+    _ => false
+  }
 }
