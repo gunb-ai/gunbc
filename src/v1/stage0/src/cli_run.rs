@@ -3730,6 +3730,7 @@ fn for_each_parsed_module_binding(
     mut visit: impl FnMut(usize, &Path, ParsedModuleBinding),
 ) {
     let mut refusals: Vec<ModuleBindingRefusal> = Vec::new();
+    let mut headerless_claim_sources: Vec<String> = Vec::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
         let root_path = Path::new(&anchored_root);
@@ -3745,7 +3746,16 @@ fn for_each_parsed_module_binding(
             });
             let binding = match parse_module_binding(path, &content) {
                 Ok(ModuleBindingOutcome::Bound(binding)) => binding,
-                Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => continue,
+                // A fragment elsewhere stays unclassified. Under the claim root a file that
+                // declares no module can never be named by a claim label (paths follow names),
+                // so every consumer of this walk -- floor, claim_batch, census, `gunbc test` --
+                // refuses it instead of dropping it.
+                Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => {
+                    if path.starts_with(claim_root_of(&anchored_root)) {
+                        headerless_claim_sources.push(claim_source_location(path));
+                    }
+                    continue;
+                }
                 // Fail-closed, but the line stops with a TYPED, LOCATED refusal
                 // rather than an untyped panic that discarded the span. Siblings
                 // continue so the report is COUNTED and complete: one run names
@@ -3759,7 +3769,7 @@ fn for_each_parsed_module_binding(
             visit(root_idx, path, binding);
         }
     }
-    refuse_unparseable_module_sources(&refusals);
+    refuse_unparseable_module_sources(&refusals, &headerless_claim_sources);
 }
 
 /// The refusal arm of the module-index walk: typed (each carries the parser's own
@@ -3771,8 +3781,11 @@ fn for_each_parsed_module_binding(
 /// structurally until rendering; the OPERATION-LEVEL outcome is still a process exit, NOT a
 /// typed result returned to a caller. So an in-process observer cannot witness this arm; a run
 /// receipt must come from an EXTERNAL observer until the exit moves to the command boundary.
-fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
-    if refusals.is_empty() {
+fn refuse_unparseable_module_sources(
+    refusals: &[ModuleBindingRefusal],
+    headerless_claim_sources: &[String],
+) {
+    if refusals.is_empty() && headerless_claim_sources.is_empty() {
         return;
     }
     eprintln!(
@@ -3781,6 +3794,15 @@ fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
     );
     for refusal in refusals {
         eprintln!("  {}", refusal.rendered());
+    }
+    if !headerless_claim_sources.is_empty() {
+        eprintln!(
+            "module index refused: {} claim-root .dag source(s) declare no module",
+            headerless_claim_sources.len()
+        );
+        for path in headerless_claim_sources {
+            eprintln!("  {}", claim_source_refusal_rendered(path, None));
+        }
     }
     std::process::exit(1);
 }
@@ -20896,6 +20918,20 @@ pub struct ClaimRouteMember {
     pub cpu_ms: u128,
 }
 
+/// `<root>/test/claim`: the claim route's universe, where module `test.claim.x` is stored.
+fn claim_root_of(anchored_root: &str) -> PathBuf {
+    Path::new(anchored_root).join("test").join("claim")
+}
+
+/// Repo-relative where the path sits under the workspace root, so the refusal is located and
+/// host-independent (the module index keys sources the same way).
+fn claim_source_location(path: &Path) -> String {
+    path.strip_prefix(workspace_root())
+        .unwrap_or(path)
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// `gunbc.target_invocation` `claim_source_refusal_rendered`, mirrored for both
 /// `ClaimSourceRefusalCause` arms. Hand-written beside the carrier like `target_invocation_host`.
 fn claim_source_refusal_rendered(path: &str, unparseable_diagnostic: Option<&str>) -> String {
@@ -20924,7 +20960,7 @@ pub(crate) fn claim_source_refusals(source_roots: &[String]) -> Vec<String> {
     let mut out = Vec::new();
     for root in source_roots {
         let anchored = anchor_source_root(root);
-        let claim_root = Path::new(&anchored).join("test").join("claim");
+        let claim_root = claim_root_of(&anchored);
         let mut files = Vec::new();
         if let Err(e) = collect_dag_files_result(Path::new(&anchored), &mut files) {
             out.push(format!(
@@ -20949,7 +20985,7 @@ pub(crate) fn claim_source_refusals(source_roots: &[String]) -> Vec<String> {
                 Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => {
                     if path.starts_with(&claim_root) {
                         out.push(claim_source_refusal_rendered(
-                            &path.display().to_string(),
+                            &claim_source_location(path),
                             None,
                         ));
                     }
