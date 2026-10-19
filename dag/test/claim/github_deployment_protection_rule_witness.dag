@@ -287,7 +287,7 @@ test fn the_built_route_is_the_pinned_template_with_its_values_substituted() -> 
           == "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule")
         // the template it was checked against really is the citation's route, braces and all
         && ((review_endpoint_path as String)
-          == "/repos/{owner}/{repo}/actions/runs/{run_id}/deployment_protection_rule")
+          == "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/deployment_protection_rule")
     BuiltReviewPathRefused { hostile_segment: _ } => false
   }
     // A DIFFERENT RUN MOVES ONLY THE RUN-ID POSITION. Two routes differing somewhere else — a suffix

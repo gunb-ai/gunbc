@@ -244,6 +244,64 @@ fn fx_observation_probe(
 // installation, and a read that did not answer are three different problems; collapsing them (an earlier
 // revision sent every non-200 to NoInstallationForThisRepository, so a GitHub 500 told the operator to
 // re-install a working App) is what these tests keep apart.
+// THE OTHER AXIS, WHICH NEEDS ITS OWN CASE. The refusal above varies the INSTALLATION and leaves the
+// app matching, so a model that lost the app check entirely (replace `identity.app_id.value !=
+// claim.app_id.value` with `false`) stays green here — and it is not green here by accident of the
+// fixture: fx_wire and fx_claim agree on the app id, so this file never fed the route a disagreeing app
+// until now. An App id that is wrong is not a smaller mistake than an installation id that is wrong: the
+// token would be minted for a DIFFERENT GitHub App, one that may hold permissions this gate never
+// granted. Both ids come back, because "which of my two numbers is stale" is the operator's question.
+test fn a_readback_whose_app_is_not_the_claimed_app_is_refused_on_the_app_axis() -> Bool {
+  // installation id MATCHES the claim; only the App id disagrees.
+  (match fx_observation_probe(
+         status: installation_readback_success_status,
+         wire: InstallationWireFields {
+           id: Present { value: 888800001 },
+           app_id: Present { value: 7777777 },
+           app_slug: Present { value: "gunbc-deployment-gate" },
+         },
+         claim: fx_claim,
+       ) {
+         InstallationObservationRefused {
+           because: ClaimDisagreesOnApp { claimed_app_id: claimed_app, observed_app_id: seen_app },
+         } => claimed_app.value == 1900000001 && seen_app.value == 7777777
+         InstallationObservationRefused { because: _ } => false
+         InstallationObserved { observed: _ } => false
+       })
+    // AND IT IS NOT REPORTED AS THE INSTALLATION REFUSAL. Two arms, two axes: a model that answers the
+    // app disagreement with the installation variant has thrown away which axis disagreed, which is the
+    // defect this pair of cases exists to keep visible.
+    && (match fx_observation_probe(
+          status: installation_readback_success_status,
+          wire: InstallationWireFields {
+            id: Present { value: 888800001 },
+            app_id: Present { value: 7777777 },
+            app_slug: Present { value: "gunbc-deployment-gate" },
+          },
+          claim: fx_claim,
+        ) {
+          InstallationObservationRefused {
+            because: ClaimDisagreesOnInstallation {
+              claimed_installation_id: _,
+              observed_installation_id: _,
+            },
+          } => false
+          InstallationObservationRefused { because: _ } => true
+          InstallationObserved { observed: _ } => false
+        })
+    // THE CONTROL: the same read with both axes agreeing is observed. Without it the two refusals above
+    // could be a route that refuses everything.
+    && (match fx_observation_probe(
+          status: installation_readback_success_status,
+          wire: fx_wire(),
+          claim: fx_claim,
+        ) {
+          InstallationObserved { observed: o } => o.installation_id.value == 888800001
+            && o.app_id.value == 1900000001
+          InstallationObservationRefused { because: _ } => false
+        })
+}
+
 test fn the_identity_readback_refuses_by_name_and_by_status() -> Bool {
   // 1. A 200 whose body is missing app_slug refuses with the FIELD NAME — no default is filled in for a
   // required upstream field (§5, loud typed refusal), and the pin makes it required.
