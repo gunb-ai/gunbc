@@ -2,11 +2,11 @@ module gunbc.machine_intake.chassis_fan_establishment
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.measure { rpm_count }
+import std.measure { rpm_count, sdr_undecoded_line_count_value }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
-import extdeps.bmc.ipmi_sdr { SdrTypeLine, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
+import extdeps.bmc.ipmi_sdr { SdrTemperaturePublication, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows, SdrTypeLine, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
-import gunbc.machine_intake.bmc_fan_observation { FanSensorObservation, FanSensorsRead, FanSensorsUnreadable }
+import gunbc.machine_intake.bmc_fan_observation { ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorObservation, FanSensorsRead, FanSensorsUnreadable }
 
 // WHETHER THE CHASSIS FANS SPIN, JUDGED OVER THE FANS THE UNIT IS FITTED WITH AND NO OTHER.
 //
@@ -33,7 +33,7 @@ type FittedFanSet
 // hidden inside Established.
 //
 // THE CLOSED REFUSAL SET. The first refusal in this order is the cause (the observation receipt keeps every row):
-// fitted set, chassis, fan read, undecoded rows, then each fitted header in set order. The chassis arms carry a
+// fitted set, chassis, thermal, fan read, undecoded rows, then each fitted header in set order. The chassis arms carry a
 // PostPower prefix because extdeps.bmc.ipmi_chassis_control already declares ChassisUnreadable and
 // ChassisStatusUndecodable: a homonym variant resolves to the wrong declaration
 // (gunbc.recurring_failure_mode a_local_variant_resolves_to_another_modules_homonym_type).
@@ -42,6 +42,9 @@ type PostPowerFanRefusal
   | PostPowerChassisNotOn
   | PostPowerChassisUnreadable
   | PostPowerChassisUndecodable { cause: NonEmptyStr }
+  | PostPowerThermalUnreadable
+  | PostPowerThermalNotPublished { publication: SdrTemperaturePublication }
+  | PostPowerThermalRowsUndecoded { undecoded_line_count: Int }
   | FanReadUnreadable
   | FanRowsUndecoded { texts: List<String> }
   | FittedHeaderMissing { header: NonEmptyStr }
@@ -132,6 +135,24 @@ fn chassis_refusal(chassis: ChassisPowerObservation) -> PostPowerFanRefusal? {
   }
 }
 
+// THE THERMAL STANDING IS CONSUMED, NOT DISCARDED (side-chat hold 2026-10-19). Thermal is established only by a read that
+// published at least one decoded temperature AND left no undecoded row. A silent pre-POST sensor list
+// (TemperatureSensorsSilent), an undecodable or empty one, an unreadable read, and any undecoded row refuse: none acquires a
+// healthy reading by omission, and a published temperature does not excuse an undecoded row beside it (ThermalRead folds both).
+fn thermal_refusal(thermal: ThermalObservation) -> PostPowerFanRefusal? {
+  match thermal {
+    ThermalUnreadable => Present { value: PostPowerThermalUnreadable }
+    ThermalRead { publication: p, undecoded_line_count: u } => match p {
+      TemperaturePublished => if (sdr_undecoded_line_count_value(c: u) as Int) > 0 {
+        Present { value: PostPowerThermalRowsUndecoded { undecoded_line_count: sdr_undecoded_line_count_value(c: u) as Int } }
+      } else { Absent }
+      TemperatureSensorsSilent => Present { value: PostPowerThermalNotPublished { publication: p } }
+      TemperatureUndecodable => Present { value: PostPowerThermalNotPublished { publication: p } }
+      TemperatureNoSensorRows => Present { value: PostPowerThermalNotPublished { publication: p } }
+    }
+  }
+}
+
 fn fan_read_refusal(fans: FanSensorObservation, fitted: FittedFanSet) -> PostPowerFanRefusal? {
   match fans {
     FanSensorsUnreadable => Present { value: FanReadUnreadable }
@@ -144,14 +165,17 @@ fn fan_read_refusal(fans: FanSensorObservation, fitted: FittedFanSet) -> PostPow
   }
 }
 
-fn post_power_fan_verdict(fitted: FittedFanSet, chassis: ChassisPowerObservation, fans: FanSensorObservation) -> PostPowerFanVerdict {
+fn post_power_fan_verdict(fitted: FittedFanSet, chassis: ChassisPowerObservation, thermal: ThermalObservation, fans: FanSensorObservation) -> PostPowerFanVerdict {
   match fitted_set_refusal(fitted: fitted) {
     Present { value: r } => PostPowerFanVerdictRefused { cause: r }
     Absent => match chassis_refusal(chassis: chassis) {
       Present { value: r } => PostPowerFanVerdictRefused { cause: r }
-      Absent => match fan_read_refusal(fans: fans, fitted: fitted) {
+      Absent => match thermal_refusal(thermal: thermal) {
         Present { value: r } => PostPowerFanVerdictRefused { cause: r }
-        Absent => PostPowerFanVerdictEstablished
+        Absent => match fan_read_refusal(fans: fans, fitted: fitted) {
+          Present { value: r } => PostPowerFanVerdictRefused { cause: r }
+          Absent => PostPowerFanVerdictEstablished
+        }
       }
     }
   }

@@ -4,8 +4,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import extdeps.external_authority { cited_figure_read_obligation }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text, chassis_observation_is_off }
-import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetNotEstablished, FittedFanSetEstablished, FittedFanSetOperatorAssumed, PostPowerFanRefusal, FittedSetUnestablished, PostPowerChassisNotOn, PostPowerChassisUnreadable, PostPowerChassisUndecodable, FanReadUnreadable, FanRowsUndecoded, FittedHeaderMissing, FittedHeaderDuplicated, FittedHeaderStatusRefused, FittedHeaderZeroRpm, FittedHeaderNoReading, FittedHeaderDutyOnly, FittedHeaderReadingUnrecognised }
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, render_round_block }
+import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetNotEstablished, FittedFanSetEstablished, FittedFanSetOperatorAssumed, PostPowerFanRefusal, FittedSetUnestablished, PostPowerChassisNotOn, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerChassisUnreadable, PostPowerChassisUndecodable, FanReadUnreadable, FanRowsUndecoded, FittedHeaderMissing, FittedHeaderDuplicated, FittedHeaderStatusRefused, FittedHeaderZeroRpm, FittedHeaderNoReading, FittedHeaderDutyOnly, FittedHeaderReadingUnrecognised }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, render_round_block, render_thermal_publication }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 // THE TYPED RESULT OF THE POST-POWER-ON CHASSIS-FAN GATE, and everything the stop was decided on. It is a leaf
@@ -94,6 +94,9 @@ fn post_power_fan_refusal_text(cause: PostPowerFanRefusal) -> String {
     PostPowerChassisNotOn => "the chassis did not read on after the settle window"
     PostPowerChassisUnreadable => "the chassis status was unreadable after the settle window"
     PostPowerChassisUndecodable { cause: c } => concat("the chassis status was undecodable after the settle window: ", c as String)
+    PostPowerThermalUnreadable => "the chassis temperature sensors were unreadable after the settle window"
+    PostPowerThermalNotPublished { publication: p } => concat("the chassis temperature sensors published no decoded temperature after the settle window: ", render_thermal_publication(publication: p))
+    PostPowerThermalRowsUndecoded { undecoded_line_count: n } => join(["the chassis temperature read left ", to_string(n), " undecoded row(s)"], "")
     FanReadUnreadable => "the chassis fan sensors were unreadable after the settle window"
     FanRowsUndecoded { texts: t } => join(["the fan sensor read left ", to_string(t.length()), " undecoded row(s), each refused unread: ", join(t, " || ")], "")
     FittedHeaderMissing { header: h } => concat(h as String, " (fitted) has no sensor row")

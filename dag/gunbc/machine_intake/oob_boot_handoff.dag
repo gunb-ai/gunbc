@@ -456,6 +456,8 @@ fn oob_power_actuate_and_read_back(
     username: username,
     password_file: password_file,
     action: oob_power_action_verb(action: action),
+    deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
   )
   if control.success == false {
     return PowerCommandRefused { selected: device, action: action }
