@@ -1,0 +1,35 @@
+module v2.test.claim.parse.call_suffix_line_break
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A `(` THAT OPENS THE NEXT LINE IS NOT A CALL (v2.extdeps.languages.dag
+// dag_grammar_postfix_call_suffix_expr), the rule the index suffix states for `[`. Read across the
+// break, `let mx = m0 * x` followed by `(x * 2) % 7` parsed the callee `x` as a local Int applied to
+// `(x * 2)`, left the let with no body, and the module was refused as wrapper-retained
+// (std.bignat montgomery_newton).
+//
+// THE DISCRIMINATING CONTROL IS THE SAME CALL ON ONE LINE: a local Int applied to arguments is still
+// a call with no producer and is still refused at normalization, so the guard moved the reading of the
+// break and did not widen what normalization admits.
+fn normalized_ok(tag: String, text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data next_line_paren_source: String = "module probe.call\n\nfn f(m0: Int, x: Int) -> Int {\n  let mx = m0 * x\n  (x * 2) % 7\n}\n"
+data same_line_local_call_source: String = "module probe.call\n\nfn f(m0: Int, x: Int) -> Int {\n  let mx = m0 * x\n  x(x * 2) % 7\n}\n"
+
+test fn a_paren_on_the_next_line_is_a_body_not_a_call_holds() -> Bool {
+  normalized_ok(tag: "next_line", text: next_line_paren_source)
+}
+
+test fn a_same_line_call_on_a_local_int_still_refuses_at_normalization_holds() -> Bool {
+  normalized_ok(tag: "same_line", text: same_line_local_call_source) == false
+}

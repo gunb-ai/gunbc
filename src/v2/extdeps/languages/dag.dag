@@ -1851,12 +1851,20 @@ fn dag_grammar_untyped_params_helper() -> GrammarExpr {
   dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name())
 }
 
+// THE `(` IS ON THE CALLEE'S LINE, the same rule the index suffix below states for `[`: a line break
+// ends a postfix chain. `let mx = m0 * x` followed on the next line by `(x * 2) % 7` is a binding
+// and the block's value; without this predicate the suffix read across the break and parsed it as
+// the call `x(x * 2)` on a local Int, a shell body lowering has no producer for, so the module
+// was refused as wrapper-retained (std.bignat montgomery_newton).
 fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+    left: grammar_expr_not_predicate(element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_lparen))),
     right: dag_grammar_sequence(
-      left: dag_grammar_arg_list_helper(),
-      right: dag_grammar_terminal(token_class: ^dag_token_rparen)
+      left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+      right: dag_grammar_sequence(
+        left: dag_grammar_arg_list_helper(),
+        right: dag_grammar_terminal(token_class: ^dag_token_rparen)
+      )
     )
   )
 }
