@@ -33,6 +33,7 @@ import extdeps.bmc.types {
   BootTargetNone,
   BootTargetPxe,
   BootTargetHdd,
+  RedfishBootSourceOverrideTarget,
   BootTargetCd,
   BootTargetUsb,
   BootTargetBiosSetup,
@@ -106,6 +107,7 @@ import gunbc.firmware_network_boot_standing {
   AdmittedReadyConclusion,
   AdmittedPreparation,
   ReferenceReading,
+  OrderedReferenceReadings,
   ConflictingReferenceReadings,
   BootOptionReferencesConflict,
   option_with_reference,
@@ -3271,6 +3273,103 @@ test fn one_reference_read_two_ways_refuses_whichever_way_the_bmc_lists_it() -> 
   // happened to notice only when the network row came first -- which is the defect renamed.
   refused_by_reference_conflict(observation: head_names_it)
     && refused_by_reference_conflict(observation: head_names_it_flipped)
+    // WHICH READING PRINTS FIRST IS PART OF THE CLAIM, not an accident of BMC ordering. Asserted for
+    // both orderings: the network reading leads (the operator's question is always 'where is the
+    // network path'), and the receipt is identical whichever way the enumeration came. Without these
+    // two arms the both-orders test proves only that a refusal happens, and a fold that reported the
+    // pair backwards -- or backwards only in one ordering -- would pass it.
+    && match standing_of(observation: head_names_it) {
+         Refused { cause: BootOptionReferencesConflict { conflict: c }, gaps: _ } =>
+           match pair_of(conflict: c) {
+             OrderedReferenceReadings { first: f, second: s } =>
+               same_reading(a: f, target: BootTargetPxe, enabled: true)
+                 && same_reading(a: s, target: BootTargetHdd, enabled: true)
+           }
+         _ => false
+       }
+    && match standing_of(observation: head_names_it_flipped) {
+         Refused { cause: BootOptionReferencesConflict { conflict: c }, gaps: _ } =>
+           match pair_of(conflict: c) {
+             OrderedReferenceReadings { first: f, second: s } =>
+               same_reading(a: f, target: BootTargetPxe, enabled: true)
+                 && same_reading(a: s, target: BootTargetHdd, enabled: true)
+           }
+         _ => false
+       }
+}
+
+// THE PAIR IS THE PAYLOAD, so it is read through one accessor rather than by assuming the arm's field
+// names at every call site.
+fn pair_of(conflict: ConflictingReferenceReadings) -> OrderedReferenceReadings {
+  OrderedReferenceReadings { first: conflict.first, second: conflict.second }
+}
+
+// A READING COMPARED BY ITS DECISION-BEARING FIELDS. Deliberately NOT a structural == on
+// ReferenceReading at the call sites: this pins 'which target, which flag' as the two things the
+// receipt is allowed to say.
+fn same_reading(a: ReferenceReading, target: RedfishBootSourceOverrideTarget, enabled: Bool) -> Bool {
+  a.target == target && a.enabled == enabled
+}
+
+// ONE REFERENCE READ THE SAME KIND TWICE, ONCE ENABLED AND ONCE NOT (merry-fox-82 round 2, closing my
+// own GREEN mutant). The ENABLED FLAG is decision-bearing: an entry the firmware will consider and one
+// it will not are different answers about the same slot, and a BMC that reports both is reporting a
+// firmware it has not actually settled. My first pair of conflict fixtures differed only in KIND
+// (PXE vs HDD), so deleting the enabled comparison from the conflict test was invisible -- a coverage
+// hole of exactly the kind I keep being made to report on, caught this time by running the row.
+// Both readings here are the same kind and the same reference, so the enabled flag is the ONLY arm
+// that can fire.
+test fn one_reference_enabled_and_disabled_is_a_conflict_even_when_the_kind_agrees() -> Bool {
+  let same_kind_disagreeing_on_flag = [
+    boot_option(reference: ref_http(), kind: BootTargetHdd, label: "NVMe0", enabled: true),
+    boot_option(reference: ref_http(), kind: BootTargetHdd, label: "NVMe0", enabled: false),
+  ]
+  match standing_of(
+    firmware_boot_observation(
+      boot_order: BootOrderObserved { devices: [entry(reference: ref_http(), label: "Head")] },
+      boot_options: BootOptionsObserved { options: same_kind_disagreeing_on_flag },
+      nics: NicsObserved { nics: ["eth0"] },
+      secure_boot: SecureBootDisabled,
+      bios_version: BiosVersionObserved { version: "1.08" },
+    ),
+  ) {
+    Refused { cause: BootOptionReferencesConflict { conflict: c }, gaps: _ } =>
+      c.option_reference == ref_http()
+        // AND THE ENABLED READING LEADS: the flag is what made this a conflict, so the receipt must
+        // show which side said 'the firmware will consider it'.
+        && match pair_of(conflict: c) {
+             OrderedReferenceReadings { first: f, second: s } =>
+               same_reading(a: f, target: BootTargetHdd, enabled: true)
+                 && same_reading(a: s, target: BootTargetHdd, enabled: false)
+           }
+    Refused { cause: _, gaps: _ } => false
+    NeedsPreparation { admitted: _ } => false
+    Ready { conclusion: _ } => false
+    Unobserved { unanswered: _ } => false
+  }
+    // THE CONTROL ON THE OTHER SIDE OF THE SAME FLAG: one reference read twice with IDENTICAL readings
+    // is not a conflict (some BMCs emit duplicates), so this is the only thing separating the two rows
+    // above from a duplicate list -- and it is why the flag has to be compared at all.
+    && match standing_of(
+      firmware_boot_observation(
+        boot_order: BootOrderObserved { devices: [entry(reference: ref_http(), label: "Head")] },
+        boot_options: BootOptionsObserved {
+          options: [
+            boot_option(reference: ref_http(), kind: BootTargetHdd, label: "NVMe0", enabled: true),
+            boot_option(reference: ref_http(), kind: BootTargetHdd, label: "NVMe0", enabled: true),
+          ],
+        },
+        nics: NicsObserved { nics: ["eth0"] },
+        secure_boot: SecureBootDisabled,
+        bios_version: BiosVersionObserved { version: "1.08" },
+      ),
+    ) {
+      Refused { cause: BootOptionReferencesConflict { conflict: _ }, gaps: _ } => false
+      Refused { cause: _, gaps: _ } => false
+      NeedsPreparation { admitted: _ } => true
+      Ready { conclusion: _ } => false
+      Unobserved { unanswered: _ } => false
+    }
 }
 
 // THE CONFLICT IS ASSERTED BY CAUSE AND BY PAYLOAD, not as 'any refusal': reusing the
