@@ -2095,7 +2095,7 @@ jobs:
   mtcollins1-boot:
     runs-on: [self-hosted, linux, arm64, srv1]
     environment: mtcollins1-boot
-    timeout-minutes: 184
+    timeout-minutes: 199
     if: github.event.inputs.mode == 'mtcollins1_boot'
     permissions:
       contents: read
@@ -2326,7 +2326,7 @@ jobs:
           GUNBC_BOOT_ATTEMPT_RECEIPT: ${{ github.event.inputs.attempt_receipt }}
           GUNBC_BOOT_ATTEMPT_NONCE: ${{ github.event.inputs.transaction_nonce }}
         if: github.event.inputs.mode == 'mtcollins1_boot' && steps.fan_policy_phase.outputs.fan_outcome == 'observed'
-        timeout-minutes: 134
+        timeout-minutes: 149
       - name: Upload fan-policy-phase observation series
         id: fan_policy_phase_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
