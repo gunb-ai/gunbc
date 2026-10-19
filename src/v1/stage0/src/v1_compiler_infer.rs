@@ -4373,11 +4373,14 @@ pub fn arm_is_bare_declaration_of_sibling(
     ((t.connective.clone() == Connective::Disj) && {
         let mut __found = false;
         for s in siblings.iter().cloned() {
-            if ((((s.clone() != t.clone())
+            if (((((s.clone() != t.clone())
                 && (t.declaration.clone() != std::option::Option::None))
                 && (s.declaration.clone() == t.declaration.clone()))
                 || (crate::v1_std_core::type_is_optional(s.clone())
                     && node_is_std_optional(t.clone(), scope.clone())))
+                || ((t.declaration.clone() != std::option::Option::None)
+                    && (structured_formal_carrier_declaration(s.clone(), scope.clone())
+                        == t.declaration.clone())))
             {
                 __found = true;
                 break;
