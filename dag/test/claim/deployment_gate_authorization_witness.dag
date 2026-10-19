@@ -41,6 +41,16 @@ import extdeps.github.deployment_protection_rule {
   UserReviewer,
   EnabledDeploymentProtectionRule,
   RuleOwningApp,
+  InstallationWireFields,
+  InstallationIdentity,
+  InstallationParsed,
+  InstallationRefused,
+  installation_identity_from_wire,
+  installation_field_id,
+  installation_field_app_id,
+  installation_field_app_slug,
+  installation_readback_success_status,
+  ReviewState,
   review_call,
   human_review_call,
   pending_deployments_poll_call,
@@ -64,7 +74,6 @@ import gunbc.auth.approval_capability {
 import extdeps.crypto.mac { MacKeyId }
 import gunbc.auth.deployment_gate_authorization {
   GateRequestClaim,
-  GateInstallation,
   WebhookRelayFallback,
   StandingRefuted,
   rule_delivery_independence,
@@ -92,15 +101,34 @@ import gunbc.auth.deployment_gate_authorization {
   gate_ceiling_in_seconds,
   documented_timer_maximum_in_seconds,
   gate_ceilings_agree,
-  observed_review_from_readback,
-  ownership_from_readback,
   EnvironmentRuleOwnership,
   OwnedByGateApp,
   NotOwnedByGateApp,
-  OwnershipRefusalReason,
   ReadbackCarriedNoRules,
   NoEnabledRule,
   NoRuleBelongsToThisApp,
+  ObservedRuleOwnership,
+  observe_gate_installation,
+  observe_rule_ownership,
+  InstallationObservation,
+  InstallationObservationRefused,
+  InstallationObserved,
+  WireIncomplete,
+  NoInstallationForThisRepository,
+  ClaimDisagreesWithObservation,
+  GateInstallationClaim,
+  mint_accepted_rule_review,
+  AcceptedRuleReviewReceipt,
+  AcceptedReviewOutcome,
+  Accepted,
+  AcceptedReviewRefused,
+  AcceptedReviewRefusal,
+  NotAcceptedStatus,
+  BodyNamesAnotherEnvironment,
+  PathNotForThisRun,
+  GateRunOutcomeCorroboration,
+  corroborate_matches_receipt,
+  mintable_installation_id,
   RemovalAdmitted,
   RemovalRefused,
   NoRejectingReview,
@@ -112,7 +140,7 @@ data gated_env: NonEmptyStr = srv1_production_environment_name
 data ungated_env: NonEmptyStr = "gcp-iam-converge"
 data other_env: NonEmptyStr = "mtcollins1-boot"
 data gate_run_id: Int = 35447067113
-data gate_app_id: Int = 1234567
+data gate_app_id: Int = 1900000001
 
 // ---------------------------------------------------------------------------
 // Fixtures: the three sources, kept genuinely separate
@@ -147,9 +175,59 @@ fn gate_capability(decision: ProposedDecision) -> ApprovalCapability {
   }
 }
 
+// THE OPERATOR'S CLAIM — a configuration value, deliberately ordinary so it can be typed here. It is
+// the thing the readbacks are asked to corroborate, never the authority for anything: `mintable_installation_id`
+// reads the token's source off the JOINED ownership, not off this record.
+data fx_claim: GateInstallationClaim = GateInstallationClaim {
+  installation_id: 888800001,
+  app_id: gate_app_id,
+}
+
+// A RESPONSE BODY as the wire reports it: every field present, so the parse succeeds. The refusals
+// below hand it a body with one field missing and require the refusal to name that field.
+fn fx_wire() -> InstallationWireFields {
+  InstallationWireFields {
+    id: Present { value: 888800001 },
+    app_id: Present { value: gate_app_id },
+    app_slug: Present { value: "gunbc-deployment-gate" },
+  }
+}
+
+// THE OBSERVED IDENTITY, minted by the only producer — the installation readback route. It is admitted
+// to this witness because the witness carries a real response; a FOREIGN module is refused the call
+// entirely, which is the red the probe enrols.
+fn fx_observed_installation() -> ObservedGateInstallation? {
+  match observe_gate_installation(
+    owner: "gunb-ai",
+    repo: "gunbc",
+    status: installation_readback_success_status,
+    wire: fx_wire(),
+    claim: fx_claim,
+  ) {
+    InstallationObserved { observed: o } => Present { value: o }
+    InstallationObservationRefused { because: _ } => none
+  }
+}
+
+// THE RULE READBACK, passed straight to the join so the tests can vary the rows. This is the ONLY way
+// any test here obtains an ownership: there is no literal for the owned arm, because its payload is a
+// sealed record that only this fold produces.
+fn observe_rule_ownership_for(
+  rules: List<EnabledDeploymentProtectionRule>,
+  environment_name: NonEmptyStr
+) -> EnvironmentRuleOwnership {
+  match fx_observed_installation() {
+    Present { value: observed } =>
+      observe_rule_ownership(
+        rules: rules, environment_name: environment_name, observed: observed
+      )
+    none => NotOwnedByGateApp { because: ReadbackCarriedNoRules }
+  }
+}
+
 // What a READBACK minted: an enabled rule on the gated environment, attributed to the gate App.
 fn minted_ownership() -> EnvironmentRuleOwnership {
-  ownership_from_readback(
+  observe_rule_ownership_for(
     rules: [
       EnabledDeploymentProtectionRule {
         id: 900000001,
@@ -159,12 +237,37 @@ fn minted_ownership() -> EnvironmentRuleOwnership {
       }
     ],
     environment_name: gated_env,
-    gate_app_id: gate_app_id,
   )
 }
 
 fn unattributed_ownership() -> EnvironmentRuleOwnership {
   NotOwnedByGateApp { because: NoRuleBelongsToThisApp }
+}
+
+// AN ACCEPTED REVIEW CALL, minted by the only producer. Every argument is what the answer route would
+// actually hold at the moment GitHub answers: the path built from the run, the body it posted, the
+// status it returned, and the sealed ownership that authorised the call.
+fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt? {
+  match mint_accepted_rule_review(
+    run_id: run_id,
+    environment_name: gated_env,
+    claimed: state,
+    path: "/repos/gunb-ai/gunbc/actions/runs/{run_id}/deployment_protection_rule",
+    review: DeploymentProtectionRuleReview {
+      environment_name: gated_env,
+      state: state,
+      comment: Present { value: "ntfy tap srv1-gate" },
+    },
+    status: 204,
+    ownership: minted_ownership(),
+  ) {
+    Accepted { receipt: receipt } => Present { value: receipt }
+    AcceptedReviewRefused { because: _ } => none
+  }
+}
+
+fn fx_accepted_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt? {
+  fx_receipt(run_id: run_id, state: state)
 }
 
 // The wait, as the poll reports it: the environment as an OBJECT, a short configured timer, and the
@@ -403,7 +506,6 @@ fn sanctioned_review() -> DeploymentProtectionRuleReview {
 //     record claiming to have learned an installation id from it had invented one.
 //   the missing CONDITION — a rule row is ownership only if it is ENABLED and attributed to this App.
 test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -> Bool {
-  let gate_app_id = 1900000001
   let enabled_rule = EnabledDeploymentProtectionRule {
     id: 900000001,
     node_id: "DPPR_1",
@@ -422,46 +524,58 @@ test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -
     enabled: true,
     app: RuleOwningApp { id: 2222222222, slug: "some-other-integration" },
   }
-  // THE SUM IS THE ANSWER. There is no Bool wrapper beside `ownership_from_readback`: an earlier round
-  // had `rule_ownership_is_established` answering "is it the owned arm" next to the fold that already
-  // returned the arm, which was one fact with two authorities -- and the Bool discarded the typed
-  // OwnershipRefusalReason. Each arm is therefore matched HERE, and the refusal arms assert WHICH
-  // reason they carry -- a fold that refused an enabled foreign rule with ReadbackCarriedNoRules would
-  // now be wrong rather than merely different.
-  match ownership_from_readback(
-    rules: [enabled_rule], environment_name: gated_env, gate_app_id: gate_app_id
-  ) {
-    OwnedByGateApp { rule_id: r, app_id: a, app_slug: _, environment_name: e } =>
-      r == 900000001 && a == gate_app_id && e == gated_env
+  // THE SUM IS THE ANSWER, and it is JOINED: a rule counts as ours only when it is enabled AND
+  // attributed to the App whose identity was OBSERVED, id and slug both. There is no Bool wrapper and
+  // no literal for the owned arm -- the payload is a sealed record this fold alone produces, and the
+  // installation id it carries is the observed one, which is what the token is minted from. Each
+  // refusal arm asserts WHICH reason it carries, so a fold that reported the wrong blocker is caught
+  // rather than merely being different.
+  match observe_rule_ownership_for(rules: [enabled_rule], environment_name: gated_env) {
+    OwnedByGateApp { observation: o } =>
+      o.rule_id == 900000001
+        && o.app_id == gate_app_id
+        && (o.app_slug as String) == "gunbc-deployment-gate"
+        && o.environment_name == gated_env
+        && o.installation_id == 888800001
     NotOwnedByGateApp { because: _ } => false
   }
-    && (match ownership_from_readback(
-          rules: [disabled_rule], environment_name: gated_env, gate_app_id: gate_app_id
-        ) {
+    && (match observe_rule_ownership_for(rules: [disabled_rule], environment_name: gated_env) {
           NotOwnedByGateApp { because: NoEnabledRule } => true
           _ => false
         })
-    && (match ownership_from_readback(
-          rules: [foreign_rule], environment_name: gated_env, gate_app_id: gate_app_id
-        ) {
+    && (match observe_rule_ownership_for(rules: [foreign_rule], environment_name: gated_env) {
           NotOwnedByGateApp { because: NoRuleBelongsToThisApp } => true
           _ => false
         })
-    && (match ownership_from_readback(
+    && (match observe_rule_ownership_for(
           rules: [] as List<EnabledDeploymentProtectionRule>,
           environment_name: gated_env,
-          gate_app_id: gate_app_id,
         ) {
           NotOwnedByGateApp { because: ReadbackCarriedNoRules } => true
           _ => false
         })
-    // A readback that attributes nothing to this App id is a refusal even when rules came back: the
-    // environment in the ownership can never be one that was not read.
-    && (match ownership_from_readback(
-          rules: [enabled_rule], environment_name: gated_env, gate_app_id: 7
+    // SAME APP ID, DIFFERENT SLUG -- the case the reviewer's blocker 2 asked for. The readback carries
+    // a slug precisely so the name can be checked against the observed identity instead of inferred
+    // from a number; an id alone would have accepted this row.
+    && (match observe_rule_ownership_for(
+          rules: [
+            EnabledDeploymentProtectionRule {
+              id: 900000004,
+              node_id: "DPPR_4",
+              enabled: true,
+              app: RuleOwningApp { id: gate_app_id, slug: "a-different-app" },
+            }
+          ],
+          environment_name: gated_env,
         ) {
           NotOwnedByGateApp { because: NoRuleBelongsToThisApp } => true
           _ => false
+        })
+    && (match observe_rule_ownership_for(
+          rules: [enabled_rule], environment_name: other_env
+        ) {
+          OwnedByGateApp { observation: o } => o.environment_name == other_env
+          NotOwnedByGateApp { because: _ } => false
         })
 }
 
@@ -470,13 +584,14 @@ test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -
 // to expect a refusal and never a reason to skip the check.
 test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
   (match minted_ownership() {
-    OwnedByGateApp { rule_id: _, app_id: _, app_slug: _, environment_name: e } =>
-      e == srv1_production_environment_name
+    OwnedByGateApp { observation: o } =>
+      o.environment_name == srv1_production_environment_name
+        && o.installation_id == 888800001
     NotOwnedByGateApp { because: _ } => false
   })
     && (match unattributed_ownership() {
           NotOwnedByGateApp { because: _ } => true
-          OwnedByGateApp { rule_id: _, app_id: _, app_slug: _, environment_name: _ } => false
+          OwnedByGateApp { observation: _ } => false
         })
     && !broker_may_answer(
          wait: an_answerable_wait(),
@@ -490,7 +605,7 @@ test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
          run: an_in_flight_run(),
          claim: gate_claim,
          capability: gate_capability(decision: ProposeApprove),
-         ownership: ownership_from_readback(
+         ownership: observe_rule_ownership_for(
            rules: [
              EnabledDeploymentProtectionRule {
                id: 900000001,
@@ -500,7 +615,6 @@ test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
              }
            ],
            environment_name: gated_env,
-           gate_app_id: gate_app_id,
          )
        )
     && ownership_names_environment(
@@ -634,82 +748,173 @@ test fn the_documented_example_is_not_our_gate() -> Bool {
 // DeploymentGateTrialEvidence to build by hand: the type is sole_constructor, so a literal outside the
 // minting module is refused by the compiler, which the probe below enrolls and asserts.
 test fn an_admission_comes_only_from_the_mint_and_the_mint_refuses_shortcuts() -> Bool {
-  let good_approve = observed_review_from_readback(
-    run: run_record(run_id: 35447067113, settled: false, failed: false),
-    environment_still_waiting: false,
-    claimed: Approved,
-    environment_name: gated_env
-  )
-  let good_reject = observed_review_from_readback(
-    run: run_record(run_id: 35447067114, settled: true, failed: true),
-    environment_still_waiting: false,
-    claimed: Rejected,
-    environment_name: gated_env
-  )
-  // The honest pair admits.
-  match admit_reviewer_removal(approved: good_approve, rejected: good_reject) {
-    RemovalAdmitted { evidence: e } =>
-      e.run_id_approved == 35447067113
-        && e.run_id_rejected == 35447067114
-        && e.environment_name == gated_env
-    RemovalRefused { missing: _ } => false
+  // Both arms are ACCEPTED CALL RECEIPTS, minted by the only producer, on two different runs. An
+  // earlier revision of this test minted them from run + pending readbacks — which was the wrong
+  // evidence, not merely a weaker one: during the staged swap a HUMAN reviewer can still release the
+  // deployment, and an admin can bypass protection rules, so "the job stopped waiting" is a state a
+  // person caused. The readbacks are corroborators now; they mint nothing.
+  match fx_receipt(run_id: 35447067113, state: Approved) {
+    Present { value: good_approve } => match fx_receipt(run_id: 35447067114, state: Rejected) {
+      Present { value: good_reject } =>
+        // The honest pair admits, and the evidence carries the receipts it was built from.
+        (match admit_reviewer_removal(
+               approved: Present { value: good_approve },
+               rejected: Present { value: good_reject },
+               environment_name: gated_env,
+             ) {
+               RemovalAdmitted { evidence: e } =>
+                 e.approved.run_id == 35447067113
+                   && e.rejected.run_id == 35447067114
+                   && e.environment_name == gated_env
+                   && e.approved.state == Approved
+                   && e.rejected.state == Rejected
+               RemovalRefused { missing: _ } => false
+             })
+          // Nothing witnessed: refused, and the frontier row is exactly that refusal.
+          && (match admit_reviewer_removal(
+                approved: none,
+                rejected: none,
+                environment_name: gated_env,
+              ) {
+                RemovalRefused { missing: NoApprovingReview } => true
+                RemovalRefused { missing: _ } => false
+                RemovalAdmitted { evidence: _ } => false
+              })
+          // One arm missing, named. An earlier version asked the reason to CONTAIN the word
+          // "rejecting", which passed for a sentence and broke on a rewording; the reason is a closed
+          // sum, so a fold that mixed two blockers up is caught and a rewording is not.
+          && (match admit_reviewer_removal(
+                approved: Present { value: good_approve },
+                rejected: none,
+                environment_name: gated_env,
+              ) {
+                RemovalRefused { missing: NoRejectingReview } => true
+                RemovalRefused { missing: _ } => false
+                RemovalAdmitted { evidence: _ } => false
+              })
+          // AN ARM THAT IS NOT WHAT IT CLAIMS: a second approval cannot stand in for the rejection.
+          // Without this the "both arms witnessed" claim would be satisfied by two approvals, which is
+          // precisely the run that shows nothing about refusing.
+          && (match admit_reviewer_removal(
+                approved: Present { value: good_approve },
+                rejected: Present { value: good_approve },
+                environment_name: gated_env,
+              ) {
+                RemovalRefused { missing: RejectingArmWasNotARejection } => true
+                RemovalRefused { missing: _ } => false
+                RemovalAdmitted { evidence: _ } => false
+              })
+          // BOTH ARMS ON ONE DISPATCH: one fortunate run dressed as two trials. Both receipts are
+          // genuine and carry the rule and installation identity, so nothing but the run-id comparison
+          // refuses it — which is why it is checked at the mint.
+          && (match admit_reviewer_removal(
+                approved: Present { value: good_approve },
+                rejected: fx_receipt(run_id: 35447067113, state: Rejected),
+                environment_name: gated_env,
+              ) {
+                RemovalRefused { missing: BothArmsOneDispatch } => true
+                RemovalRefused { missing: _ } => false
+                RemovalAdmitted { evidence: _ } => false
+              })
+          // EVIDENCE FROM ANOTHER ENVIRONMENT. The environment the removal is FOR is an argument, not a
+          // constant, because two environments are on this route (srv1-production and the sibling lane's
+          // gcp-iam-bootstrap). A pair witnessed elsewhere must not unlock this one's reviewer.
+          && (match admit_reviewer_removal(
+                approved: Present { value: good_approve },
+                rejected: Present { value: good_reject },
+                environment_name: other_env,
+              ) {
+                RemovalRefused { missing: EvidenceFromAnotherEnvironment } => true
+                RemovalRefused { missing: _ } => false
+                RemovalAdmitted { evidence: _ } => false
+              })
+      none => false
+    }
+    none => false
   }
-    // Nothing witnessed: refused, and the frontier row is exactly that refusal.
-    && (match admit_reviewer_removal(approved: none, rejected: none) {
-          RemovalRefused { missing: _ } => true
-          RemovalAdmitted { evidence: _ } => false
-        })
-    // One arm missing. The reason is matched BY NAME: an earlier version of this test asked the
-    // reason to contain the word "rejecting", which passed for a sentence and broke when the sentence
-    // was rephrased -- the reason is a closed sum now, so a fold that mixed two blockers up is caught
-    // and a rewording is not.
-    && (match admit_reviewer_removal(approved: good_approve, rejected: none) {
-          RemovalRefused { missing: NoRejectingReview } => true
-          RemovalRefused { missing: _ } => false
-          RemovalAdmitted { evidence: _ } => false
-        })
-    // AN ARM THAT IS NOT WHAT IT CLAIMS. Both arms have to be what they say: an "approval" the
-    // readback never corroborated, or a "rejection" that is really an approval, mints nothing.
-    && (match admit_reviewer_removal(approved: good_approve, rejected: good_approve) {
-          RemovalRefused { missing: RejectingArmWasNotARejection } => true
-          RemovalRefused { missing: _ } => false
-          RemovalAdmitted { evidence: _ } => false
-        })
-    // BOTH ARMS ON ONE DISPATCH: the shortcut that a single lucky run would allow. Two VALID arms --
-    // an approval and a rejection -- read off the SAME run id, which is how one fortunate dispatch
-    // would be dressed up as two trials.
-    && (match admit_reviewer_removal(
-          approved: good_approve,
-          rejected: observed_review_from_readback(
-            run: run_record(run_id: 35447067113, settled: true, failed: true),
-            environment_still_waiting: false,
-            claimed: Rejected,
+    // A 204 for a body that releases a DIFFERENT environment mints no receipt: GitHub answers 204 just
+    // as happily for the wrong environment, so the refusal has to happen at the mint.
+    && mint_accepted_rule_review(
+         run_id: 35447067113,
+         environment_name: gated_env,
+         claimed: Approved,
+         path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
+         review: DeploymentProtectionRuleReview {
+           environment_name: other_env,
+           state: Approved,
+           comment: Present { value: "wrong environment" },
+         },
+         status: 204,
+         ownership: minted_ownership(),
+       )
+         == AcceptedReviewRefused {
+           because: BodyNamesAnotherEnvironment {
+             body_environment: other_env,
+             claimed: gated_env,
+           },
+         }
+    // A 200 is not an accepted review, even though the poll and the human reviewer answer 200.
+    && (match mint_accepted_rule_review(
+          run_id: 35447067113,
+          environment_name: gated_env,
+          claimed: Approved,
+          path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
+          review: DeploymentProtectionRuleReview {
             environment_name: gated_env,
-          ),
+            state: Approved,
+            comment: Present { value: "ok" },
+          },
+          status: 200,
+          ownership: minted_ownership(),
         ) {
-          RemovalRefused { missing: BothArmsOneDispatch } => true
-          RemovalRefused { missing: _ } => false
-          RemovalAdmitted { evidence: _ } => false
+          AcceptedReviewRefused { because: NotAcceptedStatus { status: s } } => s == 200
+          _ => false
         })
-    // An approve claim the readback never corroborated mints nothing, so the pair cannot be built.
-    && observed_review_from_readback(
-         run: run_record(run_id: 35447067113, settled: true, failed: true),
-         environment_still_waiting: false,
-         claimed: Approved,
-         environment_name: gated_env
-       ) == none
-    && observed_review_from_readback(
-         run: run_record(run_id: 35447067113, settled: false, failed: false),
-         environment_still_waiting: true,
-         claimed: Approved,
-         environment_name: gated_env
-       ) == none
+    // A path that is not this run's. The endpoint template carries {run_id}; a caller that pasted a
+    // different run's path would be reviewing a deployment nobody tapped.
+    && (match mint_accepted_rule_review(
+          run_id: 35447067113,
+          environment_name: gated_env,
+          claimed: Approved,
+          path: "/repos/gunb-ai/gunbc/actions/runs/999/deployment_protection_rule",
+          review: DeploymentProtectionRuleReview {
+            environment_name: gated_env,
+            state: Approved,
+            comment: Present { value: "ok" },
+          },
+          status: 204,
+          ownership: minted_ownership(),
+        ) {
+          AcceptedReviewRefused { because: PathNotForThisRun { run_id: r } } => r == 35447067113
+          _ => false
+        })
+    // NO OWNERSHIP, NO RECEIPT — the unattributed readback cannot authorise a review.
+    && (match mint_accepted_rule_review(
+          run_id: 35447067113,
+          environment_name: gated_env,
+          claimed: Approved,
+          path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
+          review: DeploymentProtectionRuleReview {
+            environment_name: gated_env,
+            state: Approved,
+            comment: Present { value: "ok" },
+          },
+          status: 204,
+          ownership: unattributed_ownership(),
+        ) {
+          AcceptedReviewRefused { because: _ } => true
+          Accepted { receipt: _ } => false
+        })
+    // THE TOKEN'S SOURCE IS THE OBSERVATION, never the claim.
+    && mintable_installation_id(ownership: minted_ownership())
+      == Present { value: 888800001 }
+    && mintable_installation_id(ownership: unattributed_ownership()) == none
 }
 
 // The configured installation is a fact the operator recorded, never something a readback handed over:
 // the enabled-rules response carries an App id and slug and no installation id at all.
 test fn the_configured_installation_carries_both_ids_and_no_readback_can() -> Bool {
-  let configured = GateInstallation { installation_id: 1900000001, app_id: gate_app_id }
+  let configured = GateInstallationClaim { installation_id: 1900000001, app_id: gate_app_id }
   configured.installation_id == 1900000001
     && configured.app_id == gate_app_id
     && configured.app_id != configured.installation_id

@@ -136,6 +136,16 @@ fn spec_pin_is_a_commit_revision() -> Bool {
 }
 
 // The REST reference page carrying both review endpoints and the pending-deployments poll.
+// The App-management page, which is where the installation readback is documented. A separate
+// authority rather than reusing rest_authority or environment_authority, because those pages do not
+// describe this operation and citing them for it would be a citation that does not cite.
+data installation_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/apps/installations"
+  }
+}
+
 data rest_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -596,6 +606,89 @@ fn review_api_version_header_is_pinned(header: ReviewApiVersionHeader) -> Bool {
     && header.value == review_documented_api_version_header.value
 }
 
+// ---------------------------------------------------------------------------
+// THE INSTALLATION READBACK: WHAT THE TOKEN IDENTITY IS ESTABLISHED FROM
+// ---------------------------------------------------------------------------
+//
+// WHY THIS ENDPOINT EXISTS IN THIS MODEL AT ALL. A review call is made with an installation access
+// token, so the caller must know WHICH installation to mint for. That id used to be a configured
+// record — two Ints somebody typed — and a configuration claim cannot bind a repository to an
+// installation: a stale or mistyped value would mint a token for some other installation of the same
+// App and the review would still be accepted, because GitHub checks the token, not our notes. The
+// endpoint below is the one that answers, so the identity becomes an OBSERVATION and the configured
+// value becomes a CLAIM to be corroborated rather than the authority itself.
+
+data installation_readback_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/installation"
+data installation_readback_endpoint_method: HttpMethod = GET
+data installation_readback_success_status: HttpStatus = 200
+
+// THE CREDENTIAL THIS READBACK ACCEPTS — stated because it is NOT the same as the review call's. The
+// pinned operation's description says it verbatim: "You must use a JWT to access this endpoint", and
+// its `security` is null, where the review endpoint's security is the App installation token. Reading
+// the installation with an installation token is a bootstrap loop (the token needs the installation id
+// the token would reveal), and it is the kind of mistake that only surfaces as a 401 in production.
+data installation_readback_credential: NonEmptyStr = "GitHub App JWT"
+
+// THE RESPONSE, as the pin types it. components/schemas/installation lists id, app_id, app_slug (and
+// eleven more) as REQUIRED, so a response missing any of the three this model consumes is not a
+// partial installation — it is a response this route cannot use, and it refuses by name. app_slug is
+// here because the enabled-rule readback carries a slug and nothing else attributing, so id-and-slug
+// together are what join the two readbacks. `account` is deliberately absent: at the pin it is
+// nullable anyOf simple-user|enterprise, and this route consumes neither arm.
+data installation_field_id: NonEmptyStr = "id"
+data installation_field_app_id: NonEmptyStr = "app_id"
+data installation_field_app_slug: NonEmptyStr = "app_slug"
+
+type InstallationIdentity {
+  installation_id: Int,
+  app_id: Int,
+  app_slug: NonEmptyStr,
+}
+
+// THE RAW READ, before any claim of completeness. A body read off the wire may lack any field, and
+// three fields that arrived as JSON null are not three zeros: 0 is a valid-looking installation id,
+// and minting a token for installation 0 is a failure no response code would ever report.
+type InstallationWireFields {
+  id: Int?,
+  app_id: Int?,
+  app_slug: NonEmptyStr?,
+}
+
+type InstallationParseFailure {
+  missing_field: NonEmptyStr,
+}
+
+type InstallationParse
+  = InstallationParsed { identity: InstallationIdentity }
+  | InstallationRefused { failure: InstallationParseFailure }
+
+// THE ONLY WAY AN InstallationIdentity COMES FROM A RESPONSE. Membership in the required set is
+// checked against the field rows, so a rename reddens this fold and the parse together rather than
+// letting a silently-renamed field become an absent one.
+fn installation_identity_from_wire(wire: InstallationWireFields) -> InstallationParse {
+  match wire.id {
+    Present { value: i } => match wire.app_id {
+      Present { value: a } => match wire.app_slug {
+        Present { value: sl } =>
+          InstallationParsed {
+            identity: InstallationIdentity {
+              installation_id: i,
+              app_id: a,
+              app_slug: sl,
+            },
+          }
+        Absent =>
+          InstallationRefused {
+            failure: InstallationParseFailure { missing_field: installation_field_app_slug },
+          }
+      }
+      Absent =>
+        InstallationRefused { failure: InstallationParseFailure { missing_field: installation_field_app_id } }
+    }
+    Absent => InstallationRefused { failure: InstallationParseFailure { missing_field: installation_field_id } }
+  }
+}
+
 // THE POLL THAT SHOWS WHAT IS WAITING, and the record a caller verifies against before it acts.
 // Read access to the repository is enough; no permission grant is needed to SEE the gate. The field
 // rows are not decoration: PendingDeploymentWait is built from them, and the pre-answer
@@ -914,6 +1007,12 @@ data pending_deployments_poll_call: RestCall = RestCall {
   success_status: poll_success_status,
 }
 
+data installation_readback_call: RestCall = RestCall {
+  path: installation_readback_endpoint_path,
+  method: installation_readback_endpoint_method,
+  success_status: installation_readback_success_status,
+}
+
 data human_review_call: RestCall = RestCall {
   path: human_review_endpoint_path,
   method: human_review_endpoint_method,
@@ -988,6 +1087,7 @@ data deployment_protection_rule_fact_citations: List<FactCitation> = [
   FactCitation { fact: wait_timer_field_ref, authority: environment_authority },
   FactCitation { fact: reviewer_types_ref, authority: openapi_authority },
   FactCitation { fact: spec_pin_ref, authority: spec_authority },
+  FactCitation { fact: installation_endpoint_ref, authority: installation_authority },
 ]
 
 fn deployment_protection_rule_citation_count() -> Int {
@@ -1011,6 +1111,7 @@ data deployment_protection_rule_live_fact_names: List<NonEmptyStr> = [
   "wait_timer_maximum",
   "pending_deployment_reviewer_type_wire",
   "spec_pinned_commit",
+  "installation_readback_endpoint_path",
 ]
 
 fn every_citation_names_a_live_declaration() -> Bool {
@@ -1048,6 +1149,7 @@ data gate_ceiling_ref: DeclarationRef = gate_ref(decl_name: "rule_gate_approval_
 data wait_timer_field_ref: DeclarationRef = gate_ref(decl_name: "wait_timer_maximum")
 data reviewer_types_ref: DeclarationRef = gate_ref(decl_name: "pending_deployment_reviewer_type_wire")
 data spec_pin_ref: DeclarationRef = gate_ref(decl_name: "spec_pinned_commit")
+data installation_endpoint_ref: DeclarationRef = gate_ref(decl_name: "installation_readback_endpoint_path")
 
 data extdeps_external_authority_anchor: ExternalAuthority = rule_authority
 
@@ -1064,6 +1166,7 @@ data extdeps_published_authorities: List<ExternalAuthority> = [
   enablement_authority,
   limits_authority,
   spec_authority,
+  installation_authority,
 ]
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -1078,6 +1181,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     extdeps.github.deployment_protection_rule.openapi_authority,
     extdeps.github.deployment_protection_rule.enablement_authority,
     extdeps.github.deployment_protection_rule.limits_authority,
-    extdeps.github.deployment_protection_rule.spec_authority
+    extdeps.github.deployment_protection_rule.spec_authority,
+    extdeps.github.deployment_protection_rule.installation_authority
   ]
 }

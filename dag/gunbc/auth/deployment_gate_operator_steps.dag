@@ -39,10 +39,19 @@ import std.human_intervention {
   HumanInterventionIdentity,
   FleetOnce,
   NoDischargeSiteModeled,
+  DischargedAt,
   human_intervention_frequency_eq,
 }
 import extdeps.github.app { GitHubAppPermission }
-import gunbc.auth.deployment_gate_authorization { gate_app_permissions }
+import gunbc.auth.deployment_gate_authorization {
+  gate_app_permissions,
+  ReviewerRemovalAdmission,
+  RemovalAdmitted,
+  RemovalRefused,
+  RemovalRefusalReason,
+  DeploymentGateTrialEvidence,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 
 // The repository the App is installed on. Named once, in one row, so the installation subject and
@@ -109,14 +118,59 @@ data rule_enablement_step: HumanIntervention = HumanIntervention {
   completion_evidence: NoDischargeSiteModeled
 }
 
-// 5. Remove the human required-reviewer — the only row here that WEAKENS a gate, so it is gated on
-// the rule having been seen doing both of its jobs on a real dispatch.
+// 5. Remove the human required-reviewer — the only row here that WEAKENS a gate.
+//
+// THE ADMISSION IS A PARAMETER, NOT A SENTENCE. An earlier revision of this row said in its
+// `instruction` that the act requires an admitted ReviewerRemovalAdmission, and left it there: the
+// row was a constant, the check was prose, and prose is what a reviewer correctly called an
+// unenforced guard twice before. The act is now a FUNCTION of the admission
+// (reviewer_removal_act_for), and the only arm that yields a renderable intervention is the admitted
+// one. What is left in `instruction` is what an operator reads while doing it — not the check.
 data reviewer_removal_step: HumanIntervention = HumanIntervention {
   identity: "github.deployment-rule.reviewer-removal.srv1-production" as HumanInterventionIdentity,
   frequency: FleetOnce,
   subject: "required reviewer removed from srv1-production",
-  instruction: "Perform this ONLY with an admitted gunbc.auth.deployment_gate_authorization.ReviewerRemovalAdmission — RemovalAdmitted carrying DeploymentGateTrialEvidence whose approved_run and rejected_run are two DIFFERENT real fleet-converge dispatches, both on deployment_gate_environment, read back from GitHub. RemovalRefused means the act is not performable; do not perform it to close a ticket, and do not treat this instruction's wording as the check. Then re-read the environment and its deployment-branch-policies and confirm the main-only branch rule is the protection that remains.",
-  completion_evidence: NoDischargeSiteModeled
+  instruction: "Re-read the environment and its deployment-branch-policies after the removal and confirm the main-only branch rule is the protection that remains: GET /repos/gunb-ai/gunbc/environments/srv1-production must still report deployment_branch_policy \{protected_branches:false, custom_branch_policies:true\} with exactly one branch rule named main. If that readback comes back without the branch rule, the boundary has been weakened twice — restore it before anything else runs.",
+  completion_evidence: DischargedAt {
+    evidence: DeclarationRef {
+      module_path: "gunbc.auth.deployment_gate_authorization",
+      decl_name: "admit_reviewer_removal",
+      field: WholeDeclaration,
+    },
+  }
+}
+
+// THE ACT, AS A FUNCTION OF WHAT WAS WITNESSED. RemovalAdmitted carries the sealed receipt pair — two
+// ACCEPTED CALL receipts, one approve one reject, different runs, both on the environment named by the
+// admission — so the evidence that unlocks the act is the evidence that the rule actually answered,
+// minted only by the call route. RemovalRefused yields a Blocked value: no intervention, no renderable
+// row, and the reason says which arm is missing. The stage-1 frontier therefore yields Blocked, and
+// there is no path from a Bool or a string to the Ready arm.
+type ReviewerRemovalStepDecision
+  = ReviewerRemovalReady {
+    intervention: HumanIntervention,
+    evidence: DeploymentGateTrialEvidence,
+  }
+  | ReviewerRemovalBlocked { missing: RemovalRefusalReason }
+
+fn reviewer_removal_act_for(admission: ReviewerRemovalAdmission) -> ReviewerRemovalStepDecision {
+  match admission {
+    RemovalAdmitted { evidence: evidence } =>
+      ReviewerRemovalReady {
+        intervention: reviewer_removal_step,
+        evidence: evidence,
+      }
+    RemovalRefused { missing: missing } => ReviewerRemovalBlocked { missing: missing }
+  }
+}
+
+// Whether the act has a renderable row at all. Kept as the single place that asks, so a caller cannot
+// pattern-match only the Ready arm and forget the other.
+fn reviewer_removal_is_renderable(decision: ReviewerRemovalStepDecision) -> Bool {
+  match decision {
+    ReviewerRemovalReady { intervention: _, evidence: _ } => true
+    ReviewerRemovalBlocked { missing: _ } => false
+  }
 }
 
 data deployment_gate_operator_steps: List<HumanIntervention> = [

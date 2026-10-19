@@ -140,6 +140,7 @@ import extdeps.github.deployment_protection_rule {
   enablement_authority,
   limits_authority,
   spec_authority,
+  installation_authority,
   spec_pinned_commit,
   spec_pinned_path,
   spec_pin_is_a_commit_revision,
@@ -828,7 +829,13 @@ test fn the_openapi_is_pinned_to_a_commit_and_not_to_a_branch() -> Bool {
 // Every authority this module cites is one it publishes, and every one is an https URI. A fact cited to
 // an authority that is not in the anchor is a fact nobody is accountable for.
 test fn every_cited_authority_is_published_by_this_module() -> Bool {
-  (extdeps_published_authorities |> count) == 8
+  // nine, counting the one the installation readback added: a fact cited to an authority the module
+  // does not publish is a fact nobody is accountable for, so the roster and the citations have to move
+  // together and this count is where they are pinned to each other.
+  (extdeps_published_authorities |> count) == 9
+    && (extdeps_published_authorities
+        |> any(a => a.uri.locator == installation_authority.uri.locator))
+    && (installation_authority.uri.locator |> contains("rest/apps/installations"))
     && extdeps_model_scope.first_citation == extdeps_external_authority_anchor
     && (rule_authority.uri.scheme == Https)
     && (rest_authority.uri.locator |> contains("rest/actions/workflow-runs"))
@@ -842,7 +849,7 @@ test fn every_cited_authority_is_published_by_this_module() -> Bool {
 // The scope rows, and the rule that extdeps models no product surface. This is the boundary the module
 // has to keep to be in extdeps at all.
 test fn the_model_scope_cites_the_published_authorities() -> Bool {
-  (external_model_scope_citations(scope: extdeps_model_scope) |> count) == 8
+  (external_model_scope_citations(scope: extdeps_model_scope) |> count) == 9
     && extdeps_model_scope.first_citation == extdeps_external_authority_anchor
     && (external_model_scope_citations(scope: extdeps_model_scope)
         |> any(a => a.uri.locator == limits_authority.uri.locator))

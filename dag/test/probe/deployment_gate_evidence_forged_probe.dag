@@ -2,89 +2,168 @@ module test.probe.deployment_gate_evidence_forged_probe
 
 // THIS MODULE MUST NOT RESOLVE. gunbc.auth.deployment_gate_authorization's claim is that removing a
 // required reviewer from srv1-production requires BOTH arms of the gate to have been WITNESSED on real
-// dispatches -- one released by the rule, one refused by it. The previous round of this file's history
-// modelled that as a Bool read from prose in the operator step, which is the weakest rung: a Bool is
-// true whenever someone writes true. Sealing the value is only worth anything if the seal bites where
-// the value is MADE, so the two types the removal admission is built from are sole_constructor and the
-// only door is admit_reviewer_removal, which takes two Optional<ObservedRuleReview> readbacks.
+// dispatches -- one released by the rule, one refused by it. A seal is worth exactly what the compiler
+// refuses, so this module attempts the REAL forgery rather than a caricature of it: a foreign module
+// handing FABRICATED INPUTS to the producers, which is the route an actual caller would take.
 //
-// THE TWO FORGERIES BELOW ARE THE TWO ROUTES A CALLER WOULD TAKE.
+// THE THREE FORGERIES BELOW ARE THE THREE ROUTES THAT WOULD WORK IF THE SEAL WERE ONLY A COMMENT.
 //
-// (a) THE EVIDENCE ITSELF. A hand-written DeploymentGateTrialEvidence over two convenient run ids is a
-// receipt for trials that never happened, and reviewer_removal_is_admitted would read it as admitted.
-// DeploymentGateTrialEvidence and ObservedRuleReview are sole_constructor, so each literal refuses at
-// the record as SoleConstructorViolation.
+// (a) THE ACCEPTED REVIEW. A receipt is the primary evidence that GitHub accepted a rule review for a
+// run, on an environment, under an installation. Its producer, mint_accepted_rule_review, is the only
+// door; a foreign call refuses as ConstructorCallAdmissionRefused keyed by that callee. The inputs are
+// deliberately WELL-FORMED -- the 204, the path built from the run, the body naming the environment --
+// because a refusal that only fired on malformed inputs would not be a seal, it would be a parse error.
 //
-// (b) THE MINT, FED AN AUTHORED READBACK. ObservedRuleReview is the type a readback is supposed to
-// produce by reading GitHub's record of the run and the pending_deployments readback. The strongest
-// thing an outside caller can still write is an Optional built from ... something. It cannot build the
-// carrier at all, so this call refuses at the two argument expressions rather than at the mint: the mint
-// is reachable, and nothing can be handed to it that has not been read.
+// (b) THE OBSERVED INSTALLATION. GateInstallationClaim is a configuration claim by design; what makes an
+// installation an IDENTITY is observe_gate_installation, which reads GitHub's answer for that repository
+// and joins it with the claim. Called from here it refuses the same way, so no module outside the
+// admitted two can mint the identity that the token is later minted from.
+//
+// (c) THE OWNERSHIP. observe_rule_ownership takes an ObservedGateInstallation, which this module cannot
+// construct (sole_constructor) and cannot obtain (its producer is sealed above) -- so it refuses twice
+// over, at the literal and at the call. Passing it a plain Int for the App id, which is what the model
+// used to accept, is the mutation this forgery would have enabled.
+//
+// (d) THE RECEIPT LITERAL ITSELF, written rather than minted, refuses at the record as
+// SoleConstructorViolation -- the check that still bites if someone ever widens an admit_callers list.
 //
 // The witness test.claim.deployment_gate_evidence_forged_probe_witness enrolls this probe and asserts
 // each refusal class at its subject by name, against a control that only names the module. dag/test/probe/
 // sits under the whole-tree strict-resolve exclusion, so this source reaches the compiler only through
 // that witness.
 
-import std.types { String, Int, Bool, List }
+import std.types { Int, Bool, NonEmptyStr }
 import std.optional { Present }
 import gunbc.auth.deployment_gate_authorization {
-  ObservedRuleReview,
+  AcceptedRuleReviewReceipt,
+  AcceptedReviewOutcome,
+  GateInstallationClaim,
+  InstallationObservation,
+  ObservedGateInstallation,
+  EnvironmentRuleOwnership,
   DeploymentGateTrialEvidence,
   ReviewerRemovalAdmission,
+  mint_accepted_rule_review,
+  observe_gate_installation,
+  observe_rule_ownership,
   admit_reviewer_removal,
   reviewer_removal_obstacle,
 }
-import extdeps.github.actions_runs { WorkflowRunRecord }
-import extdeps.github.deployment_protection_rule { Approved, Rejected }
-
-// (a) THE FORGED RECEIPT. Two run ids, the gated environment name, and a review state each -- fields
-// chosen to satisfy every check the fold performs, which is exactly why the type must not be writable.
-data forged_evidence: DeploymentGateTrialEvidence = DeploymentGateTrialEvidence {
-  run_id_approved: 35447067113,
-  run_id_rejected: 35447067114,
-  environment_name: "srv1-production",
+import extdeps.github.deployment_protection_rule {
+  Approved,
+  Rejected,
+  DeploymentProtectionRuleReview,
+  EnabledDeploymentProtectionRule,
+  RuleOwningApp,
+  InstallationWireFields,
 }
 
-// (a') THE FORGED READBACK. The carrier the mint reads its two arms out of, written instead of read.
-data forged_approved_review: ObservedRuleReview = ObservedRuleReview {
-  run_id: 35447067113,
-  environment_name: "srv1-production",
-  state: Approved,
-}
+data forged_run_id: Int = 35447067113
+data forged_environment: NonEmptyStr = "srv1-production"
 
-// (b) THE ROUTE: THE MINT, CALLED WITH AUTHORED ARMS. If this resolved, `is_admitted` would be a Bool
-// a fixture could set.
-data forged_admission: ReviewerRemovalAdmission = admit_reviewer_removal(
-  approved: Present { value: forged_approved_review },
-  rejected: Present {
-    value: ObservedRuleReview {
-      run_id: 35447067114,
-      environment_name: "srv1-production",
-      state: Rejected,
+// (a) THE FORGED ACCEPTED REVIEW. Every input is one the caller wrote down: the run id, the environment,
+// the state it wants on the record, the path it hopes GitHub was called with, the 204 it hopes GitHub
+// sent, and an ownership it asserts. If this resolved, the removal admission downstream would be a
+// formality -- which is precisely the defect this probe keeps closed.
+fn forge_an_accepted_review() -> AcceptedReviewOutcome {
+  mint_accepted_rule_review(
+    run_id: forged_run_id,
+    environment_name: forged_environment,
+    claimed: Approved,
+    path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
+    review: DeploymentProtectionRuleReview {
+      environment_name: forged_environment,
+      state: Approved,
+      comment: Present { value: "wanted it to look like a tap" },
     },
-  },
-)
+    status: 204,
+    ownership: forge_ownership(),
+  )
+}
 
-// Whether the forged admission would read as admitted. The obstacle carries the missing trial by name,
-// so a forgery that made it through would report NO obstacle -- that is what this returns true for.
+// (b) THE FORGED IDENTITY. A claim plus a body the caller wrote, handed to the observation route from
+// outside. The claim is the operator's own configuration and the body is GitHub-shaped; nothing here is
+// malformed, and it is still refused, because the observation is a READ and this module has not read.
+fn forge_an_observed_installation() -> InstallationObservation {
+  observe_gate_installation(
+    owner: "gunb-ai",
+    repo: "gunbc",
+    status: 200,
+    wire: InstallationWireFields {
+      id: Present { value: 888800001 },
+      app_id: Present { value: 1900000001 },
+      app_slug: Present { value: "gunbc-deployment-gate" },
+    },
+    claim: GateInstallationClaim { installation_id: 888800001, app_id: 1900000001 },
+  )
+}
+
+// (c) THE FORGED OWNERSHIP. Requires the identity from (b), which this module cannot get; the literal
+// below is a second, independent refusal.
+fn forge_ownership() -> EnvironmentRuleOwnership {
+  observe_rule_ownership(
+    rules: [
+      EnabledDeploymentProtectionRule {
+        id: 900000001,
+        node_id: "DPPR_1",
+        enabled: true,
+        app: RuleOwningApp { id: 1900000001, slug: "gunbc-deployment-gate" },
+      }
+    ],
+    environment_name: forged_environment,
+    observed: ObservedGateInstallation {
+      installation_id: 888800001,
+      app_id: 1900000001,
+      app_slug: "gunbc-deployment-gate",
+      owner: "gunb-ai",
+      repo: "gunbc",
+    },
+  )
+}
+
+// (d) THE RECEIPT LITERAL, written instead of minted. Kept separate from (a) on purpose: (a) refuses at
+// the CALL, this refuses at the RECORD, and the two checks live in different places in the compiler.
+data forged_receipt: AcceptedRuleReviewReceipt = AcceptedRuleReviewReceipt {
+  run_id: forged_run_id,
+  environment_name: forged_environment,
+  state: Approved,
+  rule_id: 900000001,
+  installation_id: 888800001,
+}
+
+// (d') THE TRIAL PAIR, written instead of witnessed. Two receipts chosen to satisfy every check the
+// removal mint performs, which is exactly why the type must not be writable.
+data forged_evidence: DeploymentGateTrialEvidence = DeploymentGateTrialEvidence {
+  approved: forged_receipt,
+  rejected: AcceptedRuleReviewReceipt {
+    run_id: 35447067114,
+    environment_name: forged_environment,
+    state: Rejected,
+    rule_id: 900000001,
+    installation_id: 888800001,
+  },
+  environment_name: forged_environment,
+}
+
+// Whether the forged pair would read as admitted. The obstacle names the missing trial, so a forgery
+// that made it through would report NO obstacle -- that is what this returns true for.
 fn forged_removal_looks_admitted() -> Bool {
-  match reviewer_removal_obstacle(admission: forged_admission) {
+  match reviewer_removal_obstacle(
+    admission: admit_reviewer_removal(
+      approved: Present { value: forged_receipt },
+      rejected: Present {
+        value: AcceptedRuleReviewReceipt {
+          run_id: 35447067114,
+          environment_name: forged_environment,
+          state: Rejected,
+          rule_id: 900000001,
+          installation_id: 888800001,
+        },
+      },
+      environment_name: forged_environment,
+    )
+  ) {
     none => true
     Present { value: _ } => false
-  }
-}
-
-// A run record written here, so the forgery above does not depend on a helper it could not obtain.
-fn an_unread_run() -> WorkflowRunRecord {
-  WorkflowRunRecord {
-    run_id: 35447067113,
-    event: "workflow_dispatch",
-    head_branch: "main",
-    status: "completed",
-    conclusion: "success",
-    created_at_epoch_s: 1792000000,
-    run_started_at_epoch_s: 1792000060,
-    updated_at_epoch_s: 1792000120,
   }
 }
