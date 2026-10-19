@@ -296,7 +296,7 @@ fn known_red_roster_subjects() -> List<KnownRedSubject> {
     q =>
       KnownRedSubject {
         identity: known_red_identity_of(q),
-        entry: known_red_entry_of(q),
+        entry: known_red_roster_entry(module_path: known_red_parts(q).module_path),
         function: known_red_function_of(q),
         origin: RequiredFloor
       }
@@ -348,6 +348,46 @@ fn known_red_identity_of(q: String) -> WitnessIdentity {
 
 fn known_red_slashed(module_path: String) -> String {
   join(map(split(s: module_path, delimiter: "."), p => concat(p, "/")), "")
+}
+
+// THE ENTRY A ROSTER ROW POINTS AT, ASKED OF THE FILESYSTEM OVER THE WITNESS ROOTS. The roster records a
+// QUALIFIED NAME and nothing else — it carries no path, and this instrument does not invent one. The tree
+// already knows where a module lives: `test.claim.…` modules sit under dag/ and `v2.workflow.…`,
+// `std.…` and friends under src/, so guessing a single root would be a fabricated default that silently
+// mis-attributes most of the roster (measured: 61 of the 80 rows resolve under dag/, 19 under src/). The
+// entry is therefore the first candidate `<root>/<module_path>.dag` that the filesystem confirms, using
+// the same roots the children are told to resolve against. When no root holds it, the subject is left with
+// a path that does not exist and is carried as `WetEntryFileAbsent` — a stale enrolment is REPORTED, never
+// papered over with a plausible-looking path.
+fn known_red_roster_entry(module_path: String) -> String {
+  known_red_roster_entry_step(roots: witness_layer_roots(), module_path: module_path)
+}
+
+fn known_red_roster_entry_step(roots: List<String>, module_path: String) -> String {
+  match roots {
+    Empty => known_red_module_file(root: "", module_path: module_path)
+    Cons { head: r, tail: t } =>
+      if known_red_entry_exists(entry: known_red_module_file(root: r, module_path: module_path)) {
+        known_red_module_file(root: r, module_path: module_path)
+      } else {
+        known_red_roster_entry_step(roots: t, module_path: module_path)
+      }
+  }
+}
+
+fn known_red_module_file(root: String, module_path: String) -> String {
+  let relative = known_red_module_file_name(module_path: module_path)
+  if root == "" {
+    relative
+  } else {
+    concat(root, concat("/", relative))
+  }
+}
+
+// `a.b.c` -> `a/b/c.dag`: the module path IS the address, and the tree's own module index resolves it the
+// same way — split on the dot, rejoin on the separator, append the source extension.
+fn known_red_module_file_name(module_path: String) -> String {
+  concat(join(split(s: module_path, delimiter: "."), "/"), ".dag")
 }
 
 fn known_red_entry_of(q: String) -> String {
@@ -406,60 +446,113 @@ fn known_red_expectation_of(s: KnownRedSubject) -> ClaimExpectation {
 
 // ─────────────────────────── the executed children (the only arm that spawns) ───────────────────────────
 
-// ONE CHILD'S OUTCOME, CARRIED NOT ASSERTED. `invoked` records that the spawn happened AT ALL; the
-// reconciliation refuses when no child was invoked. `stdout` is kept verbatim because the parse below is
-// a function of it — a parse that could not be pointed at what the child printed would be a transcription
-// with extra steps.
-type KnownRedChildRun {
-  claims: List<ClaimRun>
-  invoked: Bool
-  exit_code: Int
-  stdout: String
-  stderr: String
-}
+// ONE CHILD'S OUTCOME, CARRIED NOT ASSERTED. This is a COPRODUCT, not a record with a flag: a child that
+// never started cannot spell `exit_code`, `stdout` or `stderr` at all, so the fabricated success value a
+// boolean-tagged record would have to carry (exit 0 for a process that never existed) is unwritable here
+// rather than merely unrecommended — DESIGN 5's correctness by construction. `stdout` is kept verbatim
+// because the verdict parse is a function of it; a parse that could not be pointed at what the child
+// printed would be a transcription with extra steps. `exit_code` is read, not decoration: a child that
+// exited non-zero and printed no verdict lines is its own refusal (see `ChildExitedNonzeroWithoutVerdicts`).
+type KnownRedChildRun
+  = Invoked {
+      claims: List<ClaimRun>,
+      exit_code: Int,
+      stdout: String,
+      stderr: String
+    }
+  | NotStarted {
+      claims: List<ClaimRun>,
+      cause: String
+    }
 
-fn known_red_child_invoked(c: KnownRedChildRun) -> Bool {
-  c.invoked
-}
-
-// THE CHUNKING WALL IN CODE. Cut at the cap so no child carries more claims than the receipt above can
-// pay for, and never one unbounded union whose closure grows with the corpus. Children run serially:
-// each is a cold process that re-derives the module index, and per-child cost is the line item that
-// killed the pooled run.
+// THE CHUNKING WALL IN CODE, CUT ON ENTRY BOUNDARIES. Two constraints, and the second is why this is not
+// a `take(cap)` over the subject list: (a) no child carries more claims than the envelope above can pay
+// for, so the run never becomes one unbounded union whose closure grows with the corpus; and (b) an
+// ENTRY IS NEVER SPLIT ACROSS CHILDREN, because claim_batch re-derives a whole module closure for every
+// --entry it is handed — a split entry pays that resolve once per child that carries it. The positional
+// cut this replaces split 8 of the 132 entries the schedule owes, re-paying eight full resolves per run
+// for no reason but the shape of the loop. Children still run serially: each is a cold process, and
+// per-child cost is the line item that killed the pooled run.
+//
+// The cap is a packing wall, NOT a truncation: a single entry owning more claims than the cap gets its own
+// child rather than being cut (cutting it would re-pay exactly the resolve the grouping exists to avoid).
+// No entry in the schedule owes that many at this commit, and the run prints its largest child so the
+// number is observed, never transcribed.
 fn known_red_chunks(subjects: List<KnownRedSubject>) -> List<List<ClaimRun>> {
-  known_red_chunk_step(rest: subjects, current: [], out: [])
+  known_red_pack_groups(groups: known_red_entry_groups(subjects: subjects), current: [], out: [])
 }
 
-fn known_red_chunk_step(
-  rest: List<KnownRedSubject>,
+// ALL OF ONE ENTRY'S CLAIMS, TOGETHER, in the order the schedule owes them. The entry is the unit of
+// resolution, so it is the unit of packing.
+type KnownRedEntryGroup {
+  entry: String
+  claims: List<ClaimRun>
+}
+
+fn known_red_entry_groups(subjects: List<KnownRedSubject>) -> List<KnownRedEntryGroup> {
+  fold(xs: subjects, init: [], f: (acc, s) => known_red_group_add(groups: acc, s: s))
+}
+
+fn known_red_group_add(groups: List<KnownRedEntryGroup>, s: KnownRedSubject) -> List<KnownRedEntryGroup> {
+  let claim = ClaimRun { entry: s.entry, function: s.function }
+  if known_red_has_entry(groups: groups, entry: s.entry) {
+    map(
+      groups,
+      g =>
+        if g.entry == s.entry {
+          KnownRedEntryGroup { entry: g.entry, claims: list_snoc_item(xs: g.claims, item: claim) }
+        } else {
+          g
+        }
+    )
+  } else {
+    list_snoc_item(xs: groups, item: KnownRedEntryGroup { entry: s.entry, claims: [claim] })
+  }
+}
+
+fn known_red_has_entry(groups: List<KnownRedEntryGroup>, entry: String) -> Bool {
+  any(xs: groups, predicate: fn(g) { g.entry == entry })
+}
+
+fn known_red_pack_groups(
+  groups: List<KnownRedEntryGroup>,
   current: List<ClaimRun>,
   out: List<List<ClaimRun>>
 ) -> List<List<ClaimRun>> {
-  match rest {
+  match groups {
     Empty =>
       if length(xs: current) > 0 {
         list_snoc_item(xs: out, item: current)
       } else {
         out
       }
-    Cons { head: s, tail: t } =>
-      if length(xs: current) >= known_red_max_claims_per_child {
-        known_red_chunk_step(
-          rest: rest,
-          current: [],
+    Cons { head: g, tail: t } =>
+      if length(xs: current) > 0
+        && length(xs: current) + length(xs: g.claims) > known_red_max_claims_per_child {
+        known_red_pack_groups(
+          groups: t,
+          current: g.claims,
           out: list_snoc_item(xs: out, item: current)
         )
       } else {
-        known_red_chunk_step(
-          rest: t,
-          current: list_snoc_item(
-            xs: current,
-            item: ClaimRun { entry: s.entry, function: s.function }
-          ),
-          out: out
-        )
+        known_red_pack_groups(groups: t, current: concat(current, g.claims), out: out)
       }
   }
+}
+
+// THE COST SHAPE THE RUN OBSERVES OF ITSELF, printed so the envelope claim above can be checked against a
+// receipt instead of a promise: how many children, and how large the largest one got. Both are read off
+// the chunks, never written down.
+fn known_red_largest_child_claims(subjects: List<KnownRedSubject>) -> Int {
+  fold(
+    xs: known_red_chunks(subjects: subjects),
+    init: 0,
+    f: (acc, c) => if length(xs: c) > acc { length(xs: c) } else { acc }
+  )
+}
+
+fn known_red_entries_owed(subjects: List<KnownRedSubject>) -> Int {
+  length(xs: known_red_entry_groups(subjects: subjects))
 }
 
 // THE SPAWN, THROUGH THE READINESS GATE. `gunbc_claims_readiness` is the host prelude's own gate: a
@@ -474,25 +567,19 @@ fn known_red_run_child(root: String, claims: List<ClaimRun>) -> KnownRedChildRun
     args: claim_batch_claims_argv(source_roots: witness_layer_roots(), claims: claims),
     stderr_capture: Complete
   )
-  KnownRedChildRun {
+  Invoked {
     claims: claims,
-    invoked: true,
     exit_code: result.exit_code,
     stdout: result.stdout,
     stderr: result.stderr
   }
 }
 
-// A CHILD THAT COULD NOT BE STARTED IS CARRIED AS ONE, with `invoked: false` and its refusal text, so the
-// absence reaches the reconciliation instead of becoming an empty list that reads as a clean run.
+// A CHILD THAT COULD NOT BE STARTED IS CARRIED AS ONE, with its refusal text and nothing else, so the
+// absence reaches the reconciliation instead of becoming an empty list that reads as a clean run. It has
+// no exit code to report, and the type is what makes that say-so impossible.
 fn known_red_uninvoked_child(claims: List<ClaimRun>, cause: String) -> KnownRedChildRun {
-  KnownRedChildRun {
-    claims: claims,
-    invoked: false,
-    exit_code: 0,
-    stdout: "",
-    stderr: cause
-  }
+  NotStarted { claims: claims, cause: cause }
 }
 
 // THE EXECUTED POPULATION: one serial child per chunk. The gate is asked ONCE and its refusal applied to
@@ -603,15 +690,93 @@ fn known_red_observation_of(lines: List<String>, function: String) -> Optional<C
 // A POPULATION WITH NO VERDICT ANYWHERE is the shape of a deleted spawn, or of a child killed before it
 // reached the verdicts. Neither is a clean empty run.
 fn known_red_any_verdict(children: List<KnownRedChildRun>) -> Bool {
-  any(
-    xs: children,
-    predicate: fn(c) { c.invoked && length(xs: known_red_verdict_lines(stdout: c.stdout)) > 0 }
-  )
+  any(xs: children, predicate: fn(c) { length(xs: known_red_child_verdict_lines(child: c)) > 0 })
+}
+
+// WHAT THE CHILD PRINTED, BY MATCHING — a child that never started printed nothing, and there is no
+// empty-string field to mistake for an honest empty stdout.
+fn known_red_child_verdict_lines(child: KnownRedChildRun) -> List<String> {
+  match child {
+    Invoked { claims: _, exit_code: _, stdout: o, stderr: _ } => known_red_verdict_lines(stdout: o)
+    NotStarted { claims: _, cause: _ } => []
+  }
+}
+
+fn known_red_child_claims(child: KnownRedChildRun) -> List<ClaimRun> {
+  match child {
+    Invoked { claims: c, exit_code: _, stdout: _, stderr: _ } => c
+    NotStarted { claims: c, cause: _ } => c
+  }
 }
 
 fn known_red_all_verdict_lines(children: List<KnownRedChildRun>) -> List<String> {
   children
-    |> fold(init: [], f: (acc, c) => concat(acc, known_red_verdict_lines(stdout: c.stdout)))
+    |> fold(init: [], f: (acc, c) => concat(acc, known_red_child_verdict_lines(child: c)))
+}
+
+// THE HARNESSED CHILDREN ONLY: those that actually ran. `exit_code` is consumed here, and this is the
+// consumer that keeps it honest — a child that exited non-zero while printing no verdict line is the
+// shape of a harness that died before it could adjudicate (its own OOM, its own argv refusal), which is
+// NOT the same as a child whose claims were adjudicated and some of them failed.
+fn known_red_invoked_children(children: List<KnownRedChildRun>) -> List<KnownRedChildRun> {
+  filter(xs: children, predicate: fn(c) { known_red_is_invoked(child: c) })
+}
+
+fn known_red_is_invoked(child: KnownRedChildRun) -> Bool {
+  match child {
+    Invoked { claims: _, exit_code: _, stdout: _, stderr: _ } => true
+    NotStarted { claims: _, cause: _ } => false
+  }
+}
+
+fn known_red_child_exit_code(child: KnownRedChildRun) -> Int {
+  match child {
+    Invoked { claims: _, exit_code: e, stdout: _, stderr: _ } => e
+    NotStarted { claims: _, cause: _ } => 0
+  }
+}
+
+// CHILDREN THAT DIED WITHOUT ADJUDICATING ANYTHING: non-zero exit, no verdict line. Carried with the
+// child's own claim count and stderr tail so a printed receipt can be traced to a cause.
+fn known_red_children_died_without_verdicts(
+  children: List<KnownRedChildRun>
+) -> List<ChildDiedWithoutVerdicts> {
+  filter(
+    xs: known_red_invoked_children(children: children),
+    predicate: fn(c) { known_red_child_exit_code(child: c) != 0 && length(xs: known_red_child_verdict_lines(child: c)) == 0 }
+  )
+    |> map(c =>
+      ChildDiedWithoutVerdicts {
+        exit_code: known_red_child_exit_code(child: c),
+        claims_asked: length(xs: known_red_child_claims(child: c)),
+        stderr_tail: known_red_child_stderr_tail(child: c)
+      }
+    )
+}
+
+fn known_red_child_stderr_tail(child: KnownRedChildRun) -> String {
+  match child {
+    Invoked { claims: _, exit_code: _, stdout: _, stderr: e } => e
+    NotStarted { claims: _, cause: e } => e
+  }
+}
+
+type ChildDiedWithoutVerdicts {
+  exit_code: Int
+  claims_asked: Int
+  stderr_tail: String
+}
+
+fn known_red_died_text(d: ChildDiedWithoutVerdicts) -> String {
+  concat(
+    "exit ",
+    concat(
+      known_red_int_text(n: d.exit_code),
+      concat(" after ",
+        concat(known_red_int_text(n: d.claims_asked),
+          concat(" claims asked and 0 verdict lines; stderr: ", d.stderr_tail)))
+    )
+  )
 }
 
 // ─────────────────────────── the fold (pure — the REDs are authored here) ───────────────────────────
@@ -623,6 +788,7 @@ fn known_red_all_verdict_lines(children: List<KnownRedChildRun>) -> List<String>
 type KnownRedDerivation {
   head: String
   children: Int
+  subjects_owed: List<KnownRedSubject>
   dispatched: List<KnownRedSubject>
   rows: List<KnownRedDerivationRow>
   coverage: List<KnownRedPopulationCoverage>
@@ -669,7 +835,7 @@ fn known_red_asked_claims(children: List<KnownRedChildRun>) -> List<ClaimRun> {
   fold(
     xs: children,
     init: [],
-    f: (acc, c) => concat(acc, c.claims)
+    f: (acc, c) => concat(acc, known_red_child_claims(child: c))
   )
 }
 
@@ -726,6 +892,7 @@ fn known_red_fold(
   KnownRedDerivation {
     head: head,
     children: length(xs: children),
+    subjects_owed: subjects,
     dispatched: dispatched,
     rows: rows,
     coverage: known_red_coverage(subjects: subjects, rows: rows),
@@ -854,9 +1021,14 @@ fn known_red_reconciliation(
   rows: List<KnownRedDerivationRow>
 ) -> LedgerReconciliation {
   LedgerReconciliation {
+    // OWED BUT NEVER VERDICTED. Asking 'is there a row for it' would be vacuous here — rows are built by
+    // mapping over the very subjects being reconciled, so a row always exists and the join would be
+    // decorative, a completeness check that can never fail. What is asked instead is whether any row for
+    // that identity actually CARRIES an observation: a child that printed nothing leaves the identity owed
+    // with nothing to show for it, and that is what this leg must catch.
     planned_without_terminal: filter(
       xs: subjects,
-      predicate: fn(s) { !known_red_row_present(rows: rows, s: s) }
+      predicate: fn(s) { !known_red_subject_was_observed(rows: rows, s: s) }
     )
       |> map(s => s.identity),
     terminal_without_planned: filter(
@@ -866,14 +1038,6 @@ fn known_red_reconciliation(
       |> map(r => r.identity),
     terminal_duplicated: known_red_duplicated_identities(rows: rows)
   }
-}
-
-fn known_red_row_present(rows: List<KnownRedDerivationRow>, s: KnownRedSubject) -> Bool {
-  contains(
-    xs: map(rows, r => r.identity),
-    item: s.identity,
-    eq: fn(a, b) { known_red_same_identity(a: a, b: b) }
-  )
 }
 
 fn known_red_subject_owed(subjects: List<KnownRedSubject>, r: KnownRedDerivationRow) -> Bool {
@@ -1011,6 +1175,15 @@ fn known_red_row_counts_as_executed(row: KnownRedDerivationRow, population: Know
   row.origin == population && known_red_row_was_observed(row: row)
 }
 
+fn known_red_subject_was_observed(rows: List<KnownRedDerivationRow>, s: KnownRedSubject) -> Bool {
+  any(
+    xs: rows,
+    predicate: fn(r) {
+      known_red_same_identity(a: r.identity, b: s.identity) && known_red_row_was_observed(row: r)
+    }
+  )
+}
+
 fn known_red_row_was_observed(row: KnownRedDerivationRow) -> Bool {
   match row.observation {
     Present { value: _ } => true
@@ -1031,6 +1204,7 @@ type KnownRedDerivationRefusal
   | UnaccountedRedWithoutEnrolment { identities: List<String> }
   | SubjectDefectsCarried { defects: List<String> }
   | DispatchedPopulationNotComplete { missing: List<String> }
+  | ChildExitedNonzeroWithoutVerdicts { children: List<String> }
 
 fn known_red_refusal_name(r: KnownRedDerivationRefusal) -> String {
   match r {
@@ -1042,6 +1216,7 @@ fn known_red_refusal_name(r: KnownRedDerivationRefusal) -> String {
     UnaccountedRedWithoutEnrolment { identities: _ } => "UnaccountedRedWithoutEnrolment"
     SubjectDefectsCarried { defects: _ } => "SubjectDefectsCarried"
     DispatchedPopulationNotComplete { missing: _ } => "DispatchedPopulationNotComplete"
+    ChildExitedNonzeroWithoutVerdicts { children: _ } => "ChildExitedNonzeroWithoutVerdicts"
   }
 }
 
@@ -1069,12 +1244,17 @@ fn known_red_refusals(
       xs: children,
       init: [],
       f: (acc, c) =>
-        if !c.invoked && length(xs: acc) == 0 {
-          [WitnessBinRefusedToBuild { cause: c.stderr }]
-        } else {
-          acc
+        match c {
+          NotStarted { claims: _, cause: e } =>
+            if length(xs: acc) == 0 {
+              [WitnessBinRefusedToBuild { cause: e }]
+            } else {
+              acc
+            }
+          Invoked { claims: _, exit_code: _, stdout: _, stderr: _ } => acc
         }
     )
+  let died = known_red_children_died_without_verdicts(children: children)
   let head_unreadable =
     if known_red_head_of(rows: rows) == "" {
       [HeadCommitUnreadable]
@@ -1102,6 +1282,12 @@ fn known_red_refusals(
     } else {
       []
     }
+  let died_without_verdicts =
+    if length(xs: died) > 0 {
+      [ChildExitedNonzeroWithoutVerdicts { children: map(died, d => known_red_died_text(d: d)) }]
+    } else {
+      []
+    }
   concat(
     concat(concat(no_spawn, bin_refused), concat(head_unreadable, incomplete)),
     concat(
@@ -1116,7 +1302,7 @@ fn known_red_refusals(
         } else {
           []
         },
-        concat(under_dispatched, carried)
+        concat(under_dispatched, concat(died_without_verdicts, carried))
       )
     )
   )
@@ -1166,13 +1352,37 @@ fn known_red_report(d: KnownRedDerivation) -> String {
   let title = "known-red derivation (gunbc.instruments.known_red_derivation)"
   let head_line = concat("head: ", d.head)
   let cost_line = concat(
-    "children (serial, capped at ",
+    "children (serial, entry-packed, cap ",
     concat(
       known_red_int_text(n: known_red_max_claims_per_child),
-      concat(" claims each): ",
-        concat(known_red_int_text(n: d.children),
-          concat(" — owed ", concat(known_red_int_text(n: length(xs: d.rows)),
-            concat(" dispatched ", known_red_int_text(n: length(xs: d.dispatched)))))))
+      concat(
+        " claims/child): ",
+        concat(
+          known_red_int_text(n: d.children),
+          concat(
+            " for owed ",
+            concat(
+              known_red_int_text(n: length(xs: d.rows)),
+              concat(
+                " witnesses over ",
+                concat(
+                  known_red_int_text(n: known_red_entries_owed(subjects: d.subjects_owed)),
+                  concat(
+                    " entries, dispatched ",
+                    concat(
+                      known_red_int_text(n: length(xs: d.dispatched)),
+                      concat(
+                        " largest child ",
+                        known_red_int_text(n: known_red_largest_child_claims(subjects: d.subjects_owed))
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
     )
   )
   let held = known_red_held_rows(rows: d.rows)
@@ -1313,6 +1523,8 @@ fn known_red_refusal_detail(r: KnownRedDerivationRefusal) -> String {
     SubjectDefectsCarried { defects: ds } => concat(": ", join(ds, ", "))
     DispatchedPopulationNotComplete { missing: ms } =>
       concat(": owed and well-formed but handed to no child: ", join(ms, ", "))
+    ChildExitedNonzeroWithoutVerdicts { children: ds } =>
+      concat(": ", join(ds, " | "))
   }
 }
 
