@@ -144,3 +144,10 @@ test fn a_hostile_exponent_refuses_in_bounded_time() -> Bool {
     && !body_decodes(body: offer_body_with_min_bid(min_bid: "1e-999999999"))
     && body_decodes(body: offer_body_with_min_bid(min_bid: "2.69e-1"))
 }
+
+// A SMALL PRICE KEEPS ITS SCALE. A live offer answered inet_down_cost 0.00026041666666666666: 17 significant
+// digits that fit Int units, at 20 fraction digits. A decode that capped the scale at 19 refused it, and with
+// it the whole offer page (fleet-converge run 39222150650).
+test fn a_small_price_with_a_deep_scale_decodes_exactly() -> Bool {
+  body_decodes(body: offer_body_with_min_bid(min_bid: "0.00026041666666666666"))
+}
