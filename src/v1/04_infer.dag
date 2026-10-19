@@ -173,7 +173,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, node_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
   is_user_generic_use_site, substitute_type_slots_scoped,
   NodeResolveResult, ItemResolveResult
@@ -826,14 +826,25 @@ fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expe
 // already the optional. The owner is identified by declaration (declaration_is_optional), never by
 // the arm's shape: a user coproduct's no-payload arm keeps the refusal.
 fn expected_decided_variant_type(name: String, decided: Node, decided_name: String, expected: Node?, scope: InferScope) -> Node {
+  let owner = decided_owner_with_declaration(decided: decided, owner: Present { value: decided }, scope: scope)
   match expected {
     Present { value: exp } =>
       if node_is_std_optional(n: exp, scope: scope) && optional_nullary_arm_of(owner: decided, name: name, scope: scope) {
         exp
       } else {
-        variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided)
+        variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: owner)
       }
-    Absent => variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided)
+    Absent => variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: owner)
+  }
+}
+
+// THE NULLARY ARM'S FALLBACK TYPE IS THE OWNER DECLARATION'S BODY, WHICH CARRIES NO DeclarationRef. The
+// producer stamps the identity the arm's owner was elected under, so a join reads it and never settles
+// a bare type by its authored name; an owner with no declaration identity stays unstamped.
+fn decided_owner_with_declaration(decided: Node, owner: Node?, scope: InferScope) -> Node {
+  match variant_parent_identity_of(owner: owner, scope: scope) {
+    VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } => node_with_declaration(n: decided, declaration: d)
+    _ => decided
   }
 }
 
@@ -3159,16 +3170,8 @@ fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, scope: Infe
   t.connective == Disj && (siblings |> any(s =>
     (s != t && t.declaration != none && s.declaration == t.declaration)
       || (type_is_optional(n: s) && node_is_std_optional(n: t, scope: scope))
-      || (bare_declaration_of_type(t: t, scope: scope) != none && structured_formal_carrier_declaration(formal_peeled: s, scope: scope) == bare_declaration_of_type(t: t, scope: scope))
+      || (t.declaration != none && structured_formal_carrier_declaration(formal_peeled: s, scope: scope) == t.declaration)
   ))
-}
-
-// The declaration a bare (Disj) type denotes: the one it carries, else the one its authored name settles to.
-fn bare_declaration_of_type(t: Node, scope: InferScope) -> DeclarationRef? {
-  match t.declaration {
-    Present { value: d } => Present { value: d }
-    Absent => structured_formal_carrier_declaration(formal_peeled: t, scope: scope)
-  }
 }
 
 // THE ARM-JOIN AND THE BRANCH-JOIN SHARE ONE RULE: a bare declaration arm yields to a sibling that
@@ -8692,7 +8695,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   name: name,
                   expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum, parent_identity: variant_parent_identity_of(owner: variant_owner_node(scope: scope, name: name), scope: scope) } } },
                   children: [],
-                  inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: binding.resolved) } },
+                  inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: decided_owner_with_declaration(decided: binding.resolved, owner: variant_owner_node(scope: scope, name: name), scope: scope)) } },
                   span: span,
                   name_span: span
                 ),
@@ -8760,7 +8763,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           name: name,
                           expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum, parent_identity: variant_parent_identity_of(owner: variant_owner_node(scope: scope, name: name), scope: scope) } } },
                           children: [],
-                          inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: gbinding.resolved) } },
+                          inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: decided_owner_with_declaration(decided: gbinding.resolved, owner: variant_owner_node(scope: scope, name: name), scope: scope)) } },
                           span: span,
                           name_span: span
                         ),

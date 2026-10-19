@@ -211,9 +211,9 @@ pub use crate::v1_compiler_infer_patterns::{
 };
 pub use crate::v1_compiler_infer_resolve::{
     expand_nominal_alias_rhs, fn_type_param_names, generic_declaration_application,
-    is_user_generic_use_site, preserve_nominal_brand_on_resolve, reference_with_declaration,
-    resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
-    substitute_type_slots_scoped, ItemResolveResult, NodeResolveResult,
+    is_user_generic_use_site, node_with_declaration, preserve_nominal_brand_on_resolve,
+    reference_with_declaration, resolve_generic_use_decl, resolve_item_types, resolve_node,
+    resolve_node_bounded, substitute_type_slots_scoped, ItemResolveResult, NodeResolveResult,
 };
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
     ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
@@ -1260,29 +1260,55 @@ pub fn expected_decided_variant_type(
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
 ) -> Rc<Node> {
-    match expected.clone() {
-        Some(exp) => {
-            if (node_is_std_optional(exp.clone(), scope.clone())
-                && optional_nullary_arm_of(decided.clone(), name.clone(), scope.clone()))
-            {
-                exp.clone()
-            } else {
-                variant_reference_inferred_node(
-                    expected.clone(),
-                    name.clone(),
-                    decided_name.clone(),
-                    scope.clone(),
-                    decided.clone(),
-                )
+    {
+        let owner =
+            decided_owner_with_declaration(decided.clone(), Some(decided.clone()), scope.clone());
+        match expected.clone() {
+            Some(exp) => {
+                if (node_is_std_optional(exp.clone(), scope.clone())
+                    && optional_nullary_arm_of(decided.clone(), name.clone(), scope.clone()))
+                {
+                    exp.clone()
+                } else {
+                    variant_reference_inferred_node(
+                        expected.clone(),
+                        name.clone(),
+                        decided_name.clone(),
+                        scope.clone(),
+                        owner.clone(),
+                    )
+                }
             }
+            std::option::Option::None => variant_reference_inferred_node(
+                expected.clone(),
+                name.clone(),
+                decided_name.clone(),
+                scope.clone(),
+                owner.clone(),
+            ),
         }
-        std::option::Option::None => variant_reference_inferred_node(
-            expected.clone(),
-            name.clone(),
-            decided_name.clone(),
-            scope.clone(),
-            decided.clone(),
-        ),
+    }
+}
+
+pub fn decided_owner_with_declaration(
+    decided: Rc<Node>,
+    owner: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Rc<Node> {
+    match (*variant_parent_identity_of(owner.clone(), scope.clone())).clone() {
+        VariantParentIdentity::VariantParentIdentified { ref key, .. }
+            if matches!(
+                key.as_ref(),
+                VariantParentKey::VariantParentDeclaration { declaration: _, .. }
+            ) =>
+        {
+            let VariantParentKey::VariantParentDeclaration { declaration: d, .. } = key.as_ref()
+            else {
+                unreachable!()
+            };
+            crate::v1_compiler_infer_resolve::node_with_declaration(decided.clone(), d.clone())
+        }
+        _ => decided.clone(),
     }
 }
 
@@ -4378,10 +4404,9 @@ pub fn arm_is_bare_declaration_of_sibling(
                 && (s.declaration.clone() == t.declaration.clone()))
                 || (crate::v1_std_core::type_is_optional(s.clone())
                     && node_is_std_optional(t.clone(), scope.clone())))
-                || ((bare_declaration_of_type(t.clone(), scope.clone())
-                    != std::option::Option::None)
+                || ((t.declaration.clone() != std::option::Option::None)
                     && (structured_formal_carrier_declaration(s.clone(), scope.clone())
-                        == bare_declaration_of_type(t.clone(), scope.clone()))))
+                        == t.declaration.clone())))
             {
                 __found = true;
                 break;
@@ -4389,15 +4414,6 @@ pub fn arm_is_bare_declaration_of_sibling(
         }
         __found
     })
-}
-
-pub fn bare_declaration_of_type(t: Rc<Node>, scope: Rc<InferScope>) -> Option<Rc<DeclarationRef>> {
-    match t.declaration.clone() {
-        Some(d) => Some(d.clone()),
-        std::option::Option::None => {
-            structured_formal_carrier_declaration(t.clone(), scope.clone())
-        }
-    }
 }
 
 pub fn inhabited_join_types(types: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
@@ -13275,7 +13291,7 @@ match scope_parent.clone() {
     parent_identity: variant_parent_identity_of(variant_owner_node(scope.clone(), name.clone()), scope.clone()),
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
-    node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), binding.resolved.clone()),
+    node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), decided_owner_with_declaration(binding.resolved.clone(), variant_owner_node(scope.clone(), name.clone()), scope.clone())),
 })), span.clone(), span.clone()),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
@@ -13331,7 +13347,7 @@ match scope_parent.clone() {
     parent_identity: variant_parent_identity_of(variant_owner_node(scope.clone(), name.clone()), scope.clone()),
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
-    node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), gbinding.resolved.clone()),
+    node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), decided_owner_with_declaration(gbinding.resolved.clone(), variant_owner_node(scope.clone(), name.clone()), scope.clone())),
 })), span.clone(), span.clone()),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
