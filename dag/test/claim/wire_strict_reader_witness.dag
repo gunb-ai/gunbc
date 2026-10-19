@@ -130,7 +130,7 @@ test fn a_policy_that_is_the_declared_fields_binds() -> Bool {
   }
 }
 
-// The three declared consumers carry a reason and a bound-or-described dissolution trigger.
+// The four declared consumers carry a reason and a bound-or-described dissolution trigger.
 test fn the_declared_frontier_rows_are_well_formed() -> Bool {
-  frontier_rows_well_formed(rows: wire_strict_reader_frontier_rows) && count(wire_strict_reader_frontier_rows) == 3
+  frontier_rows_well_formed(rows: wire_strict_reader_frontier_rows) && count(wire_strict_reader_frontier_rows) == 4
 }

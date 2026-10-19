@@ -192,4 +192,9 @@ data wire_strict_reader_frontier_rows: List<FrontierRow> = [
     reason: "a sum arm's wire spelling is a literal on the arm, not a row of one per-arm spelling table in VariantNaming (ruling B2, L6 absorbs EnrolmentRefusalKind and OutcomeName.all)",
     dissolution: unbound_dissolution(description: "feature:variant-naming-spelling-table -- std.serialization VariantNaming carries a total, injective per-arm spelling table and WireSumArm.wire_tag is read from it"),
   ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "v2.std.node_query", decl_name: "field_default_reading"),
+    reason: "FieldDefault (literal vs source-text vs malformed) is read only by test.claim.decl_facts_field_binder_witness; no production reader distinguishes a literal default from a source-text default yet",
+    dissolution: unbound_dissolution(description: "feature:wire-swift-generator-switch -- the Wire.swift generator emits a field's default from the declared field list, which needs a literal default as a value and refuses a source-text default; that generator is the first production reader of field_default_reading"),
+  ),
 ]
