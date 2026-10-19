@@ -3,6 +3,7 @@ module gunbc.fleet.fleet_converge_workflow
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
+  RunScopedMode, RunScopedMainRoute, MainUsesGrantedAccount, MainUsesFleetIdentity, run_scoped_account_id, run_scoped_modes_with_route, run_scoped_federation_named, run_scoped_modes,
   branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
   BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
   RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
@@ -10,7 +11,9 @@ import gunbc.auth.branch_dispatch_federation {
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
-import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke }
+import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke }
+import gunbc.revision_job_image_delivery { revision_job_image_artifact_name, revision_job_image_artifact_paths }
+import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
 import gunbc.workspace_image_delivery { workspace_image_artifact_name, workspace_image_staging_root, workspace_image_artifact_paths }
 
 import gunbc.fleet.fleet_printer_access {printer_access_code_loci}
@@ -207,7 +210,7 @@ import gunbc.auth.github_deployment_environment { srv1_production_environment_na
 import gunbc.fleet.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
-import gunbc.runner.runner_slot_allocation { runner_host_label }
+import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
 import gunbc.host.host_reset_return {
   DispatchAssignment,
   DispatchAssignmentRefused,
@@ -284,6 +287,7 @@ type FleetConvergeWorkflowMode
   | WorkspaceCommissioningPlan
   | WorkspaceAllocationPlan
   | WorkspaceImageBuild
+  | RevisionJobImageBuild
   | FleetApply
   | OrgActionsObserve
   | AppControlPlaneObserve
@@ -356,6 +360,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     WorkspaceCommissioningPlan => "workspace_commissioning_plan"
     WorkspaceAllocationPlan => "workspace_allocation_plan"
     WorkspaceImageBuild => "workspace_image_build"
+    RevisionJobImageBuild => "revision_job_image_build"
     FleetApply => "apply"
     OrgActionsObserve => "org_actions_observe"
     AppControlPlaneObserve => "app_control_plane_observe"
@@ -443,7 +448,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, BranchRunGrant]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, BranchRunGrant]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -460,6 +465,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     WorkspaceCommissioningPlan => SixteenBinaryPack
     WorkspaceAllocationPlan => CompilerPairOnly
     WorkspaceImageBuild => CompilerPairOnly
+    RevisionJobImageBuild => CompilerPairOnly
     FleetApply => SixteenBinaryPack
     OrgActionsObserve => SixteenBinaryPack
     AppControlPlaneObserve => SixteenBinaryPack
@@ -564,6 +570,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     WorkspaceCommissioningPlan => Present { value: WorkspaceSlotCommissioningOnly }
     WorkspaceAllocationPlan => Present { value: WorkspaceAllocationOnly }
     WorkspaceImageBuild => none
+    RevisionJobImageBuild => none
     FleetApply => none
     OrgActionsObserve => none
     AppControlPlaneObserve => none
@@ -638,15 +645,32 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
   join(map(modes, m => fleet_converge_mode_step_if(mode: m)), " || ")
 }
 
-// THE MODES THAT ACT AS A RUN-SCOPED ACCOUNT (gunbc.auth.branch_dispatch_federation) instead of the
-// main-only fleet-cloud-convergence account, so they run from any branch after the operator approves
-// that run. They never mint the fleet identity: on a branch its provider would refuse them, and at
-// main they would hold the fleet's secrets for no reason.
-data fleet_converge_run_scoped_modes: List<FleetConvergeWorkflowMode> = [HetznerCloudServerRead]
+// THE MODES THAT ACT AS A RUN-SCOPED ACCOUNT (gunbc.auth.branch_dispatch_federation) are READ FROM
+// run_scoped_modes(), the one relation over modes; this module holds no list of its own, so a mode
+// outside the relation keeps the main-only fleet sign-in and nothing here can widen it. A row's
+// main_route says what the same mode does at main: MainUsesGrantedAccount modes never mint the fleet
+// identity (on a branch its provider would refuse them, and at main they would hold the fleet's
+// secrets for no reason); MainUsesFleetIdentity modes sign in through the main pool at main and wait
+// for a per-attempt grant, then sign in through the branch pool, anywhere else.
+fn fleet_converge_modes_of_rows(rows: List<RunScopedMode>) -> List<FleetConvergeWorkflowMode> {
+  filter(fleet_converge_workflow_modes, w => any(rows, r => (r.mode as String) == fleet_converge_workflow_mode_wire(mode: w)))
+}
 
-data fleet_converge_run_scoped_step_if: String = fleet_converge_any_mode_step_if(modes: fleet_converge_run_scoped_modes)
+data fleet_converge_granted_account_modes: List<FleetConvergeWorkflowMode> = fleet_converge_modes_of_rows(rows: run_scoped_modes_with_route(route: MainUsesGrantedAccount))
 
-data fleet_converge_fleet_identity_step_if: String = concat(concat("!(", fleet_converge_run_scoped_step_if), ")")
+data fleet_converge_branch_granted_fleet_modes: List<FleetConvergeWorkflowMode> = fleet_converge_modes_of_rows(rows: run_scoped_modes_with_route(route: MainUsesFleetIdentity))
+
+data fleet_converge_on_branch_step_if: String = join(["github.ref != 'refs/heads/", gunbc_default_branch_name, "'"], "")
+
+data fleet_converge_granted_account_step_if: String = fleet_converge_any_mode_step_if(modes: fleet_converge_granted_account_modes)
+
+data fleet_converge_branch_fleet_step_if: String = join(["(", fleet_converge_any_mode_step_if(modes: fleet_converge_branch_granted_fleet_modes), ") && ", fleet_converge_on_branch_step_if], "")
+
+// THE RUNS THAT WAIT FOR A GRANT AND SIGN IN THROUGH THE BRANCH POOL: granted-account modes at any
+// ref, fleet-identity modes off main.
+data fleet_converge_run_scoped_step_if: String = join(["(", fleet_converge_granted_account_step_if, ") || (", fleet_converge_branch_fleet_step_if, ")"], "")
+
+data fleet_converge_fleet_identity_step_if: String = concat(concat("!(", fleet_converge_granted_account_step_if), ")")
 
 // WHICH MODES CONSUME HOST SSH AUTHORITY is declared per mode, exhaustively, so a new mode cannot
 // inherit the fleet key by omission. The fleet-converge job materializes the fleet key only for a
@@ -733,6 +757,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     WorkspaceCommissioningPlan => FleetSshKeyConsumed
     WorkspaceAllocationPlan => FleetSshKeyNotConsumed
     WorkspaceImageBuild => FleetSshKeyNotConsumed
+    RevisionJobImageBuild => FleetSshKeyNotConsumed
     FleetApply => FleetSshKeyConsumed
     AppControlPlaneObserve => FleetSshKeyConsumed
     MicrovmHostConverge => FleetSshKeyConsumed
@@ -1486,16 +1511,20 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // produce/materialize/launch/load modes keyed on Group A were deleted with the group (decommissioned and
 // sold, 2026-10-07). The pair-serving apply keeps the srv1 control-plane key it shared with them.
 //
-// A READ-ONLY OBSERVE SITS IN NO QUEUE AT ALL. GitHub keeps one pending run per group and a newer
-// pending CANCELS the older, so an observe that shared the srv1 key was cancelled by an unrelated
-// dispatch queueing behind it -- which lost the readback of Group A's release (run 37100651736):
-// the absorbing kind of loss, a reading that silently never happens. It mutates nothing, so it takes
-// a group keyed by its own run and is never serialized or superseded.
+// A MODE WHOSE EFFECTS ARE CONFINED TO ITS OWN RUN SITS IN NO QUEUE AT ALL. The invariant is that
+// everything the mode writes lives in the run itself -- the runner's own workspace and the run's own
+// artifacts -- so nothing shared needs it serialized. Two kinds inhabit it: a read-only observe (it writes
+// no host state) and a guest-image build (it writes an artifact, but only into its own run). GitHub keeps
+// one pending run per group and a newer pending CANCELS the older, so such a mode that shared the srv1
+// key was cancelled by an unrelated dispatch queueing behind it: the absorbing kind of loss, a result that
+// silently never happens (the classes pending_run_cancelled_by_a_later_dispatch_with_no_signal and
+// an_own_run_mode_is_serialized_in_a_shared_host_mutation_group hold the runs). It takes a group keyed by its own run and is never serialized or superseded. The domain says
+// "confined", not "read-only": a build writes, so the name must not claim otherwise.
 type FleetMutationDomain
   = SubjectDomain { group: String }
   | ExecutorDomain
   | TargetHostDomain
-  | ReadOnlyOwnRun
+  | OwnRunConfined
 
 fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> FleetMutationDomain {
   match mode {
@@ -1504,7 +1533,8 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     AllocationStorePlan => ExecutorDomain
     WorkspaceCommissioningPlan => ExecutorDomain
     WorkspaceAllocationPlan => ExecutorDomain
-    WorkspaceImageBuild => ExecutorDomain
+    WorkspaceImageBuild => OwnRunConfined
+    RevisionJobImageBuild => OwnRunConfined
     FleetApply => ExecutorDomain
     OrgActionsObserve => ExecutorDomain
     AppControlPlaneObserve => ExecutorDomain
@@ -1526,7 +1556,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     RlmLaunchDeploymentReceipt => ExecutorDomain
     HostResetReturn => ExecutorDomain
     RunnerHostFileObserve => ExecutorDomain
-    HostMemoryObserve => ReadOnlyOwnRun
+    HostMemoryObserve => OwnRunConfined
     ApprovalBrokerDarkInstall => ExecutorDomain
     MicrovmControllerInstall => ExecutorDomain
     MicrovmSlotReserve => ExecutorDomain
@@ -1571,7 +1601,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
   }
 }
 
-data fleet_read_only_group_prefix: String = "gunbc-read-only-"
+data fleet_own_run_group_prefix: String = "gunbc-own-run-"
 
 // The group a dispatch lands in, for a mode, the executor it named, the target it named and its run.
 fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: String, target: String, run_id: String) -> String {
@@ -1579,7 +1609,7 @@ fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: Stri
     SubjectDomain { group: g } => g
     ExecutorDomain => join([fleet_host_mutation_group_prefix, host], "")
     TargetHostDomain => join([fleet_host_mutation_group_prefix, target], "")
-    ReadOnlyOwnRun => join([fleet_read_only_group_prefix, run_id], "")
+    OwnRunConfined => join([fleet_own_run_group_prefix, run_id], "")
   }
 }
 
@@ -1589,7 +1619,7 @@ fn fleet_converge_arm_domain_clause(mode: FleetConvergeWorkflowMode) -> String {
     SubjectDomain { group: g } => join([when, "'", g, "' || "], "")
     ExecutorDomain => ""
     TargetHostDomain => join([when, "format('", fleet_host_mutation_group_prefix, "{0}', github.event.inputs.target) || "], "")
-    ReadOnlyOwnRun => join([when, "format('", fleet_read_only_group_prefix, "{0}', github.run_id) || "], "")
+    OwnRunConfined => join([when, "format('", fleet_own_run_group_prefix, "{0}', github.run_id) || "], "")
   }
 }
 
@@ -3657,6 +3687,16 @@ fn fleet_converge_microvm_controller_install_step() -> Step {
   }
 }
 
+// The revision-job image is downloaded exactly when the controller install installs it: the same
+// authority, revision_job_slots, gates both (gunbc.host.host_effect_realize microvm_controller_revision_job_steps).
+fn fleet_converge_revision_job_image_download_steps() -> List<Step> {
+  if count(revision_job_slots) == 0 { [] } else {
+    [fleet_converge_receipt_download_step(id: "revision_job_image_download", name: "Download the revision-job image selected for installation",
+      artifact: revision_job_image_artifact_name, path: revision_job_image_staging_root,
+      run_id_expression: "${{ inputs.revision_job_image_run_id }}")]
+  }
+}
+
 fn fleet_converge_microvm_controller_install_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall) as String,
@@ -3671,6 +3711,9 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
         fleet_converge_receipt_download_step(id: "workspace_image_download", name: "Download the workspace image selected for installation",
           artifact: workspace_image_artifact_name, path: workspace_image_staging_root,
           run_id_expression: "${{ inputs.workspace_image_run_id }}"),
+      ],
+      fleet_converge_revision_job_image_download_steps(),
+      [
         fleet_converge_microvm_controller_install_step(),
       ]
     ),
@@ -4355,14 +4398,18 @@ fn fleet_converge_mtcollins1_boot_job() -> Job {
 // reads -- admission before any credential is minted -- and reading it here costs these five steps
 // rather than the whole job's.
 fn fleet_converge_credential_prelude_steps() -> List<Step> {
-  [
-    ci_release_bins_download_step(),
-    ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
-    ci_fleet_wif_auth_step_when(if_condition: Present { value: concat(concat(fleet_converge_fleet_identity_step_if, " && !("), concat(fleet_converge_any_mode_step_if(modes: [WorkspaceImageBuild, WorkspaceAllocationPlan]), ")")) }),
-    fleet_converge_branch_run_grant_await_step(),
-    fleet_converge_hetzner_cloud_control_auth_step(),
-    ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if }),
-  ]
+  concat(
+    [
+      ci_release_bins_download_step(),
+      ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
+      fleet_converge_branch_run_grant_await_step(),
+      fleet_converge_fleet_identity_auth_step(if_condition: concat(concat(fleet_converge_fleet_identity_step_if, " && !("), concat(fleet_converge_any_mode_step_if(modes: [WorkspaceImageBuild, RevisionJobImageBuild, WorkspaceAllocationPlan]), ")"))),
+    ],
+    concat(
+      fleet_converge_granted_account_auth_steps(),
+      [ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if })],
+    ),
+  )
 }
 
 fn fleet_converge_job() -> Job {
@@ -4379,6 +4426,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_workspace_operation_step(mode: WorkspaceAllocationPlan, run: gunbc_ci_workspace_allocation_plan_invoke()),
         fleet_converge_workspace_operation_step(mode: WorkspaceImageBuild, run: gunbc_ci_workspace_image_build_invoke()),
         fleet_converge_workspace_image_upload_step(),
+        fleet_converge_workspace_operation_step(mode: RevisionJobImageBuild, run: gunbc_ci_revision_job_image_build_invoke()),
+        fleet_converge_revision_job_image_upload_step(),
         fleet_converge_plan_upload_step(),
         fleet_converge_plan_download_step(),
         fleet_converge_checkout_verify_step(if_condition: Present { value: fleet_converge_apply_step_if }),
@@ -4632,6 +4681,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     WorkspaceCommissioningPlan => fleet_converge_shared_job_id
     WorkspaceAllocationPlan => fleet_converge_shared_job_id
     WorkspaceImageBuild => fleet_converge_shared_job_id
+    RevisionJobImageBuild => fleet_converge_shared_job_id
     FleetApply => fleet_converge_shared_job_id
     OrgActionsObserve => fleet_converge_shared_job_id
     AppControlPlaneObserve => fleet_converge_shared_job_id
@@ -4794,6 +4844,10 @@ fn fleet_converge_jobs() -> List<Job> {
 // (gunbc.auth.branch_run_grant_await), then federates through the branch-dispatch pool as the
 // account the grant named. Without the grant the auth step's exchange is refused by IAM itself.
 fn fleet_converge_branch_run_grant_await_step() -> Step {
+  fleet_converge_branch_run_grant_await_step_when(if_condition: fleet_converge_run_scoped_step_if)
+}
+
+fn fleet_converge_branch_run_grant_await_step_when(if_condition: String) -> Step {
   RunStep {
     name: Present { value: "Run-scoped grant: wait for the grant run main's broker dispatched for this run attempt" },
     id: Present { value: "branch_run_grant_await" },
@@ -4803,19 +4857,72 @@ fn fleet_converge_branch_run_grant_await_step() -> Step {
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
     ] },
     working_directory: none,
-    if_condition: Present { value: fleet_converge_run_scoped_step_if },
+    if_condition: Present { value: if_condition },
     continue_on_error: none,
     timeout_minutes: Present { value: 50 }
   }
 }
 
-fn fleet_converge_hetzner_cloud_control_auth_step() -> Step {
+// ONE SIGN-IN STEP PER GRANTED-ACCOUNT ROW, its id the account's: wif_auth_<account id, dashes as
+// underscores>, which the mode's consumers read.
+fn fleet_converge_granted_account_auth_step(row: RunScopedMode, email: String) -> Step {
   ci_wif_auth_step_with_condition(
-    name: "WIF auth (OIDC -> branch-dispatch pool -> hetzner-cloud-control SA; only after this run's grant)",
-    id: "wif_auth_hetzner_cloud_control",
+    name: join(["WIF auth (OIDC -> branch-dispatch pool -> ", fleet_converge_row_account_text(row: row), " SA; only after this run's grant)"], ""),
+    id: concat("wif_auth_", fleet_converge_row_account_text(row: row).replace(from: "-", to: "_")),
     provider_resource: branch_dispatch_provider_resource(),
-    service_account: hetzner_cloud_control_service_account as String,
-    if_condition: Present { value: fleet_converge_run_scoped_step_if },
+    service_account: email,
+    if_condition: Present { value: fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: [row])) },
+  )
+}
+
+// A row whose account names no federation yields no step here and no arm below; it is never given an
+// empty service account. fleet_converge_unfederated_run_scoped_refusal refuses generation first, so the
+// omission is unreachable in an emitted workflow.
+fn fleet_converge_granted_account_auth_steps() -> List<Step> {
+  flat_map(run_scoped_modes_with_route(route: MainUsesGrantedAccount), r =>
+    map(fleet_converge_row_service_accounts(row: r), email => fleet_converge_granted_account_auth_step(row: r, email: email)))
+}
+
+fn fleet_converge_row_account_text(row: RunScopedMode) -> String {
+  run_scoped_account_id(m: row) as String
+}
+
+fn fleet_converge_row_service_accounts(row: RunScopedMode) -> List<String> {
+  match run_scoped_federation_named(account_id: run_scoped_account_id(m: row) as String) { Present { value: f } => [f.service_account as String]  Absent => [] }
+}
+
+// A row's account must name a federation; otherwise its sign-in would carry no service account.
+fn fleet_converge_row_owes_account_without_one(row: RunScopedMode) -> Bool {
+  fleet_converge_row_service_accounts(row: row).length() == 0
+}
+
+fn fleet_converge_unfederated_run_scoped_refusal_of(rows: List<RunScopedMode>) -> String? {
+  let bad = filter(rows, r => fleet_converge_row_owes_account_without_one(row: r))
+  if bad.length() == 0 { Absent } else {
+    Present { value: join(["REFUSED gunbc.fleet.fleet_converge_workflow: run_scoped_modes row(s) name an account with no federation (gunbc.auth.branch_dispatch_federation run_scoped_federation_named), so the sign-in would carry no service account or a second credential path: ",
+      join(map(bad, r => join(["mode ", r.mode as String, " account_id ", fleet_converge_row_account_text(row: r)], "")), "; "), ". No workflow yaml was emitted."], "") }
+  }
+}
+
+fn fleet_converge_unfederated_run_scoped_refusal() -> String? {
+  fleet_converge_unfederated_run_scoped_refusal_of(rows: run_scoped_modes())
+}
+
+// THE FLEET IDENTITY STEP (id wif_auth, which every fleet consumer reads): the main-only provider and
+// account, except that a fleet-identity row's mode off main reads the branch pool and that row's
+// account, derived from the relation. Everything outside the relation reads the main pair.
+fn fleet_converge_branch_account_expression() -> String {
+  fold(run_scoped_modes_with_route(route: MainUsesFleetIdentity), init: "", f: (acc, r) =>
+    join([acc, fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: [r])), "", join(map(fleet_converge_row_service_accounts(row: r), e => join([" && '", e, "' || "], "")), "")], ""))
+}
+
+fn fleet_converge_fleet_identity_auth_step(if_condition: String) -> Step {
+  ci_wif_auth_step_with_condition(
+    name: "WIF auth (OIDC -> fleet-cloud-convergence SA at main; run-scoped account after this run's grant on a branch)",
+    id: "wif_auth",
+    provider_resource: join(["${{ ", fleet_converge_branch_fleet_step_if, " && '", branch_dispatch_provider_resource(), "' || '", probe_identity_secret_access_requirement.wif_provider_resource, "' }}"], ""),
+    service_account: join(["${{ ", fleet_converge_branch_fleet_step_if, " && (", fleet_converge_branch_account_expression(), "'", probe_identity_secret_access_requirement.service_account, "') || '", probe_identity_secret_access_requirement.service_account, "' }}"], ""),
+    if_condition: Present { value: if_condition },
   )
 }
 
@@ -5130,6 +5237,7 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
 // misattribution: a 25-input file with the long description dispatched. Per-mode contracts stay
 // on this module; keep the input description short anyway.
 data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
+  DispatchInput { name: "revision_job_image_run_id", description: Present { value: "Revision-job image build run to download for controller install; installed bytes must match the reviewed image pin" }, required: false, default: none, type: InputString },
   DispatchInput { name: "workspace_image_run_id", description: Present { value: "Image build run to download for controller install; installed bytes must match the reviewed image pin" }, required: false, default: none, type: InputString },
 
   DispatchInput {
@@ -5312,6 +5420,13 @@ type FleetConvergeYamlGenerationOutcome
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
+  match fleet_converge_unfederated_run_scoped_refusal() {
+    Present { value: r } => FleetConvergeYamlGenerationRefused { reason: r }
+    Absent => fleet_converge_yml_after_run_scoped_admission()
+  }
+}
+
+fn fleet_converge_yml_after_run_scoped_admission() -> FleetConvergeYamlGenerationOutcome {
   if count(fleet_converge_empty_choice_input_names()) > 0 {
     FleetConvergeYamlGenerationRefused {
       reason: join([
@@ -5588,17 +5703,27 @@ fn fleet_converge_workspace_operation_step(mode: FleetConvergeWorkflowMode, run:
   }
 }
 
-fn fleet_converge_workspace_image_upload_step() -> Step {
+fn fleet_converge_guest_image_upload_step(label: String, id: String, name: String, paths: String, mode: FleetConvergeWorkflowMode) -> Step {
   UsesStep {
-    name: Present { value: "Archive the exact workspace image build and digest receipt" },
-    id: Present { value: "workspace_image_upload" }, uses: upload_artifact_action,
+    name: Present { value: concat(concat("Archive the exact ", label), " image build and digest receipt") },
+    id: Present { value: id }, uses: upload_artifact_action,
     with: Present { value: [
-      kv(key: "name", value: yaml_string(s: workspace_image_artifact_name)),
-      kv(key: "path", value: yaml_string(s: workspace_image_artifact_paths())),
+      kv(key: "name", value: yaml_string(s: name)),
+      kv(key: "path", value: yaml_string(s: paths)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 90)),
       kv(key: "compression-level", value: yaml_int(n: 6)),
-    ] }, env: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: WorkspaceImageBuild) },
+    ] }, env: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: mode) },
     continue_on_error: none, timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
+}
+
+fn fleet_converge_workspace_image_upload_step() -> Step {
+  fleet_converge_guest_image_upload_step(label: "workspace", id: "workspace_image_upload", name: workspace_image_artifact_name,
+    paths: workspace_image_artifact_paths(), mode: WorkspaceImageBuild)
+}
+
+fn fleet_converge_revision_job_image_upload_step() -> Step {
+  fleet_converge_guest_image_upload_step(label: "revision-job", id: "revision_job_image_upload", name: revision_job_image_artifact_name,
+    paths: revision_job_image_artifact_paths(), mode: RevisionJobImageBuild)
 }

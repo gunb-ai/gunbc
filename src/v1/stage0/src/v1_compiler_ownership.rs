@@ -331,7 +331,7 @@ pub fn walk_expr(
                         EdgeKind::Consumed,
                         "return".to_string(),
                         bk.clone(),
-                        texpr.span.clone().start.clone(),
+                        texpr.span.start.clone(),
                     )
                 } else {
                     record_use(
@@ -340,7 +340,7 @@ pub fn walk_expr(
                         EdgeKind::Read,
                         "read".to_string(),
                         bk.clone(),
-                        texpr.span.clone().start.clone(),
+                        texpr.span.start.clone(),
                     )
                 }
             }
@@ -362,7 +362,7 @@ pub fn walk_expr(
                             EdgeKind::Projected,
                             v1_rt::concat(".".to_string(), f.clone()),
                             bk.clone(),
-                            texpr.span.clone().start.clone(),
+                            texpr.span.start.clone(),
                         )
                     }
                     _ => walk_expr(accum.clone(), base_node.clone(), false, si.clone()),
@@ -402,7 +402,7 @@ pub fn walk_expr(
                                             EdgeKind::Threaded,
                                             "fold_init".to_string(),
                                             bk.clone(),
-                                            ia_val.span.clone().start.clone(),
+                                            ia_val.span.start.clone(),
                                         )
                                     }
                                     _ => {
@@ -486,7 +486,7 @@ pub fn walk_expr(
                                             EdgeKind::Threaded,
                                             "fold_init".to_string(),
                                             bk.clone(),
-                                            ia_val.span.clone().start.clone(),
+                                            ia_val.span.start.clone(),
                                         )
                                     }
                                     _ => walk_expr(
@@ -1336,7 +1336,7 @@ pub fn analyze_single_fold(
             && ((cond_struct.clone() && cond_safe.clone()) || cond_whole_acc.clone()));
         Rc::new(FoldAccUnwrapProof {
             site_key: crate::v1_compiler_emit_core_support::to_string(
-                method_call.span.clone().start.clone(),
+                method_call.span.start.clone(),
             ),
             acc_param_name: acc_param_name.clone(),
             acc_type_name: acc_type_name.clone(),

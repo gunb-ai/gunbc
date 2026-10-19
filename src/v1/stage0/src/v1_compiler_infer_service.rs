@@ -373,7 +373,7 @@ pub fn item_callees_for(
         let item_identity = Rc::new(DeclaredCallableIdentity {
             owner_module_path: module_name.clone(),
             decl_name: crate::v1_std_core::authored_name_at(
-                m.type_env.clone().source_indices.clone(),
+                m.type_env.source_indices.clone(),
                 item.clone(),
             ),
         });
@@ -390,7 +390,7 @@ pub fn item_callees_for(
                 has_body: true,
                 called: collect_callee_edges(
                     item.body.clone().clone().unwrap(),
-                    m.type_env.clone().source_indices.clone(),
+                    m.type_env.source_indices.clone(),
                 ),
             })
         }
@@ -403,7 +403,7 @@ pub fn build_module_callees(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Vec<Rc<Modu
         for m in modules.iter().cloned() {
             __result.push({
                 let module_name = crate::v1_std_core::authored_name_at(
-                    m.type_env.clone().source_indices.clone(),
+                    m.type_env.source_indices.clone(),
                     m.module.clone(),
                 );
                 Rc::new(ModuleCallees {

@@ -84,6 +84,7 @@ import v1.compiler.artifact { RenderTarget, Rust, RustModuleRenderSelection, Ren
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
   rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates,
+  rust_machine_word_lowering,
   rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
   HigherOrderMethodSpec, rust_higher_order_methods,
   rust_value_binding_candidate, fresh_rust_value_binding_name,
@@ -3639,6 +3640,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: typed.modules, data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
+    fn_decl_identity_items: base_info.fn_decl_identity_items,
     fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: closure_source_indices),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
@@ -3658,7 +3660,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none,
     expected_type: none,
-    tco_cursor_param: "",
+    tco_cursor_params: [],
     tco_cursor_tails: empty_map()
   }
   let registry = typed.item_registry
@@ -4343,6 +4345,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: [typed_module], data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
+    fn_decl_identity_items: base_info.fn_decl_identity_items,
     fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: merged_module_source_indices(modules: [typed_module])),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
@@ -4362,7 +4365,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none,
     expected_type: none,
-    tco_cursor_param: "",
+    tco_cursor_params: [],
     tco_cursor_tails: empty_map()
   }
   let shared_types = emit_info.shared_types
@@ -5804,6 +5807,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
@@ -5823,7 +5827,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     fn_type_env: scope.type_env,
     fn_return_type: emit_info.fn_return_type,
     expected_type: emit_info.expected_type,
-    tco_cursor_param: emit_info.tco_cursor_param,
+    tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails
   }
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -7872,6 +7876,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             type_decl_items: emit_info.type_decl_items,
             data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
             fn_decl_items: emit_info.fn_decl_items,
+            fn_decl_identity_items: emit_info.fn_decl_identity_items,
             fn_map_key_bounds: emit_info.fn_map_key_bounds,
             recursive_type_set: emit_info.recursive_type_set,
             fielded_variants: emit_info.fielded_variants,
@@ -7891,7 +7896,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             fn_type_env: emit_info.fn_type_env,
             fn_return_type: emit_info.fn_return_type,
             expected_type: emit_info.expected_type,
-            tco_cursor_param: emit_info.tco_cursor_param,
+            tco_cursor_params: emit_info.tco_cursor_params,
             tco_cursor_tails: emit_info.tco_cursor_tails
           }
 
@@ -10109,7 +10114,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   if use_tco {
     let tco_params_str = emit_tco_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
     let cursor_plan = tco_cursor_plan(body: body, fn_name: name, params: value_params, emit_info: body_emit_info, si: si)
-    let cursor_emit_info = with(body_emit_info, { tco_cursor_param: cursor_plan.param, tco_cursor_tails: cursor_plan.tails })
+    let cursor_emit_info = with(body_emit_info, { tco_cursor_params: cursor_plan.params, tco_cursor_tails: cursor_plan.tails })
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: value_params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: cursor_emit_info)
     let kw = rust_items().func_keyword
     concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", tco_params_str, ")", ret_str, " {\n",
@@ -11979,8 +11984,30 @@ fn item_forbids_deserialize(item: Node, emit_info: EmitGraphInfo, source_indices
 // coproduct already carries an EnumAccessor arm rendering exactly `base.field()`, so the
 // seal does not introduce a second way to render a read -- it selects the existing one
 // for a product base. One producer for one fact.
+// A FIELD READ IS A PLACE WHEN IT IS THE RECEIVER OF ANOTHER FIELD READ. `r.window.w0` selects one
+// field out of `r.window`; cloning `r.window` first copied the whole record to read one field and
+// dropped the copy (`gunbc.recurring_failure_mode`
+// `emitter_clones_a_whole_record_to_read_one_field`). `as_receiver` asks the plain stored-field arm
+// for the place expression, so only the outermost read clones. Every other arm (tuple, optional,
+// enum accessor, sealed accessor, boxed deref, anonymous record) already yields a value and ignores it.
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  emit_typed_field_access_as(base: base, field: field, summary: summary, as_receiver: false, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+}
+
+fn emit_typed_field_access_as(base: Node, field: String, summary: FieldSummary?, as_receiver: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let base_str = match base.expr_data {
+    ExprFieldAccess { summary: inner_summary } =>
+      let inner_is_optional = resolved_type(n: base).return_cardinality == CardOptional || (match inner_summary {
+        Present { value: fs } => match fs.value_shape { OptionalValue => true, _ => false }
+        Absent => true
+      })
+      if inner_is_optional || is_typed_service_call_receiver(receiver: base, source_indices: scope.type_env.source_indices) {
+        emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      } else {
+        emit_typed_field_access_as(base: field_access_base(texpr: base), field: field_access_field_at(texpr: base, source_indices: scope.type_env.source_indices), summary: inner_summary, as_receiver: true, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      }
+    _ => emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  }
   let base_is_anon_record = match base.inferred {
     Present { value: Resolved { node: bt } } =>
       let is_product = is_product_type(n: bt)
@@ -12026,7 +12053,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
               concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
             } else if field_is_boxed {
               apply_type_template1(template: sharing.deref_clone, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
-            } else if base_is_owned {
+            } else if base_is_owned || as_receiver {
               concat(base_str, ".", emit_ident(name: field, target: Rust))
             } else {
               apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
@@ -13247,11 +13274,150 @@ fn rust_emit_length_on_host_string(call_target: CallTargetIdentity, func: String
   }
 }
 
+// The source spelling of a bare constructor argument, or "" for anything else (an expression, a call,
+// a variable that is not a variant constructor), so only a literal can select a lowering row.
+fn declared_param_position(params: List<Node>, name: String) -> Int {
+  match params |> enumerate |> filter(pair => pair.second.name == name) |> first {
+    Present { value: pair } => pair.first
+    Absent => 0 - 1
+  }
+}
+
+fn constructor_literal_parent(n: Node) -> String {
+  match n.expr_data {
+    ExprVar { binding_kind: bk } =>
+      match variant_parent_from_binding_kind(binding_kind: bk) {
+        Present { value: parent } => parent
+        Absent => ""
+      }
+    _ => ""
+  }
+}
+
+fn constructor_literal_leaf(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.expr_data {
+    ExprVar { binding_kind: bk } =>
+      if variant_parent_from_binding_kind(binding_kind: bk) != none {
+        value_ref_qualified_leaf(name: expr_var_name_at(texpr: n, source_indices: source_indices))
+      } else { "" }
+    _ => ""
+  }
+}
+
+// THE LITERAL RESULT OF A DECLARED fn AT A CONSTRUCTOR LITERAL, READ FROM ITS DECLARATION. Folds only a fn
+// whose body is ONE match over its sole value parameter with nullary-constructor arms and literal
+// results (machine_word_operator_label, word_width_bits); anything else answers none and takes the
+// normal path. Exhaustiveness is the type checker's, so the named arm exists. No partial evaluator.
+fn arm_names_constructor(arm: Node, parent: String, constructor: String) -> Bool {
+  match arm_pattern(n: arm) {
+    VariantPattern { name: arm_name, parent_enum: arm_parent, field_bindings: _, parent_identity: _ } => (match arm_parent {
+      Present { value: arm_parent_name } => arm_parent_name == parent
+      Absent => false
+    }) && value_ref_qualified_leaf(name: arm_name) == constructor
+    _ => false
+  }
+}
+
+fn literal_text_of(result: Node) -> String? {
+  match expr_literal_string_optional(expr: result) {
+    Present { value: text } => Present { value: text }
+    Absent =>
+      match expr_literal_int_optional(expr: result) {
+        Present { value: number } => Present { value: to_string(value: number) }
+        Absent => none
+      }
+  }
+}
+
+fn arm_is_nullary_variant(arm: Node) -> Bool {
+  match arm_pattern(n: arm) {
+    VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } => (bindings |> count) == 0
+    _ => false
+  }
+}
+
+fn declared_literal_match_result(owner_module: String, fn_name: String, parent: String, constructor: String, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  match map_get(emit_info.fn_decl_identity_items, type_decl_identity(owner_module: owner_module, decl_name: fn_name)) {
+    Absent => none
+    Present { value: item } =>
+      match item.body {
+        Absent => none
+        Present { value: body } =>
+          match body.expr_data {
+            ExprMatch =>
+              let value_params = function_value_params(params: item.params)
+              let arms = match_arm_nodes(texpr: body)
+              let sole_param_scrutinee = (value_params |> count) == 1 && match value_params |> first {
+                Present { value: p } => p.name == expr_var_name_at(texpr: match_scrutinee(texpr: body), source_indices: source_indices)
+                Absent => false
+              }
+              if sole_param_scrutinee && (arms |> all(arm => arm_is_nullary_variant(arm: arm))) {
+                match arms |> filter(arm => arm_names_constructor(arm: arm, parent: parent, constructor: constructor)) |> first {
+                  Present { value: arm } => literal_text_of(result: arm_body(n: arm))
+                  Absent => none
+                }
+              } else { none }
+            _ => none
+          }
+      }
+  }
+}
+
+// A CALL TO std.machine_word machine_word_apply WHOSE OPERATOR AND WIDTH ARE CONSTRUCTOR LITERALS IS
+// THE HOST'S OWN OPERATOR, NOT A SEAM CALL. The call's target is the declaration (resolution already
+// decided it). The operator's label and the width's bit count are folded out of
+// the declarations that own them (`rust_machine_word_lowering` names which; they are read by module-qualified identity from `fn_decl_identity_items`, never by bare leaf), and the row's template
+// selects the runtime's operator row by that label at build time. No general inliner: a call with a
+// non-literal operator or width, or a declaration that does not fold, keeps the declared call.
+fn emit_machine_word_lowered_call(call_target: CallTargetIdentity, func: String, args: List<Node>, call_semantics: CallSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
+  let owner = match call_target {
+    SourceDeclarationCall { owner_module_path: owner_path, decl_name: decl } => if decl == rust_machine_word_lowering.apply_fn { owner_path } else { "" }
+    _ => ""
+  }
+  if owner != rust_machine_word_lowering.owner_module { none } else {
+    let ordered = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
+    let apply_params = match map_get(emit_info.fn_decl_identity_items, type_decl_identity(owner_module: owner, decl_name: rust_machine_word_lowering.apply_fn)) {
+      Present { value: apply_item } => function_value_params(params: apply_item.params)
+      Absent => []
+    }
+    let op_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.operator_param)
+    let width_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.width_param)
+    let a_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.a_param)
+    let b_at = declared_param_position(params: apply_params, name: rust_machine_word_lowering.b_param)
+    if (ordered |> count) != (apply_params |> count) || op_at < 0 || width_at < 0 || a_at < 0 || b_at < 0 { none } else {
+      let si = scope.type_env.source_indices
+      let op_arg = arg_value(n: (ordered |> skip(op_at) |> first).value)
+      let width_arg = arg_value(n: (ordered |> skip(width_at) |> first).value)
+      let op_leaf = constructor_literal_leaf(n: op_arg, source_indices: si)
+      let width_leaf = constructor_literal_leaf(n: width_arg, source_indices: si)
+      let op_parent = constructor_literal_parent(n: op_arg)
+      let width_parent = constructor_literal_parent(n: width_arg)
+      let label = if op_leaf == "" { none } else { declared_literal_match_result(owner_module: owner, fn_name: rust_machine_word_lowering.operator_label_fn, parent: op_parent, constructor: op_leaf, emit_info: emit_info, source_indices: si) }
+      let bits = if width_leaf == "" { none } else { declared_literal_match_result(owner_module: owner, fn_name: rust_machine_word_lowering.width_bits_fn, parent: width_parent, constructor: width_leaf, emit_info: emit_info, source_indices: si) }
+      match label {
+        Present { value: label_text } =>
+          match bits {
+            Present { value: bits_text } =>
+              let a_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(a_at) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+              let b_str = emit_typed_expr(texpr: arg_value(n: (ordered |> skip(b_at) |> first).value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+              Present { value: apply_named_template(template: rust_machine_word_lowering.template, bindings: seed_bindings(key: "a", value: a_str) |> map_insert("b", b_str) |> map_insert("label", label_text) |> map_insert("bits", bits_text)) }
+            Absent => none
+          }
+        Absent => none
+      }
+    }
+  }
+}
+
 fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call_semantics: CallSemantics?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
   let target_is_runtime = call_target_is_runtime_primitive(target: call_target)
+  match emit_machine_word_lowered_call(call_target: call_target, func: func, args: args, call_semantics: call_semantics, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
+    Present { value: word_call } => return word_call
+    Absent => {}
+  }
   if target_is_runtime && func == "get" {
     let get_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
     let get_list = get_args |> first
@@ -13825,6 +13991,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               type_decl_items: emit_info.type_decl_items,
               data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
               fn_decl_items: emit_info.fn_decl_items,
+              fn_decl_identity_items: emit_info.fn_decl_identity_items,
               fn_map_key_bounds: emit_info.fn_map_key_bounds,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
@@ -13844,7 +14011,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type,
               expected_type: emit_info.expected_type,
-              tco_cursor_param: emit_info.tco_cursor_param,
+              tco_cursor_params: emit_info.tco_cursor_params,
               tco_cursor_tails: emit_info.tco_cursor_tails
             }
           Absent => emit_info
@@ -13863,6 +14030,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               type_decl_items: emit_info.type_decl_items,
               data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
               fn_decl_items: emit_info.fn_decl_items,
+              fn_decl_identity_items: emit_info.fn_decl_identity_items,
               fn_map_key_bounds: emit_info.fn_map_key_bounds,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
@@ -13882,7 +14050,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type,
               expected_type: emit_info.expected_type,
-              tco_cursor_param: emit_info.tco_cursor_param,
+              tco_cursor_params: emit_info.tco_cursor_params,
               tco_cursor_tails: emit_info.tco_cursor_tails
             }
           Absent => emit_info
@@ -16563,8 +16731,8 @@ fn emit_tco_init_stmt(stmt: Node, params: List<Node>, registry: Map<String, Item
 fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let inner = emit_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
   let si = scope.type_env.source_indices
-  let cursor_param = emit_info.tco_cursor_param
-  if cursor_param == "" {
+  let cursor_params = emit_info.tco_cursor_params
+  if (cursor_params |> count) == 0 {
     concat(
       "loop {\n",
       tco_loop_iteration_lets(params: params, source_indices: si, depth: depth + 1),
@@ -16573,15 +16741,16 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registr
       "\n}"
     )
   } else {
-    // The cursor param's slot keeps the base list for the whole loop, so each iteration reads a
+    // Each cursor param's slot keeps its base list for the whole loop, so each iteration reads a
     // fresh handle on it rather than moving it out of the slot.
-    let slot = emit_ident(name: tco_loop_slot_name(param_name: cursor_param), target: Rust)
-    let cursor_let = concat(make_indent(level: depth + 1), "#[allow(unused_mut)]\n", make_indent(level: depth + 1), "let mut ", emit_ident(name: cursor_param, target: Rust), " = ", slot, ".clone();\n")
+    let cursor_decls = cursor_params |> map(cp => concat("let mut ", tco_cursor_name(param: cp), ": usize = 0; ")) |> join(separator: "")
+    let cursor_lets = cursor_params |> map(cp =>
+      concat(make_indent(level: depth + 1), "#[allow(unused_mut)]\n", make_indent(level: depth + 1), "let mut ", emit_ident(name: cp, target: Rust), " = ", emit_ident(name: tco_loop_slot_name(param_name: cp), target: Rust), ".clone();\n")) |> join(separator: "")
     concat(
-      "{ let mut ", tco_cursor_name(), ": usize = 0;\n",
+      "{ ", cursor_decls, "\n",
       make_indent(level: depth + 1), "loop {\n",
-      tco_loop_iteration_lets(params: params |> filter(p => param_node_name_at(n: p, source_indices: si) != cursor_param), source_indices: si, depth: depth + 1),
-      cursor_let,
+      tco_loop_iteration_lets(params: params |> filter(p => !cursor_name_in(names: cursor_params, name: param_node_name_at(n: p, source_indices: si))), source_indices: si, depth: depth + 1),
+      cursor_lets,
       make_indent(level: depth + 1),
       inner,
       "\n}\n}"
@@ -16660,16 +16829,33 @@ type CursorWalk {
 }
 
 type TcoCursorPlan {
-  param: String
+  params: List<String>
   tails: Map<String, Int>
 }
 
-fn tco_cursor_name() -> String {
-  "__tco_cursor"
+// One index per cursor param, named by the param it advances.
+fn tco_cursor_name(param: String) -> String {
+  concat("__tco_cursor_", emit_ident(name: param, target: Rust))
+}
+
+// A tail binder's depth is a fact of the param whose match binds it, so the key carries both: the
+// same spelling under two params must not read as one tail.
+fn cursor_tail_key(param: String, tail: String) -> String {
+  concat(param, ".", tail)
 }
 
 fn no_tco_cursor_plan() -> TcoCursorPlan {
-  TcoCursorPlan { param: "", tails: empty_map() }
+  TcoCursorPlan { params: [], tails: empty_map() }
+}
+
+// The cursor param a match scrutinee names, "" when it names none.
+fn cursor_scrutinee_param(scrutinee: Node, params: List<String>, si: Map<String, NewlineIndex>) -> String {
+  match scrutinee.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let scrutinee_name = expr_var_name_at(texpr: scrutinee, source_indices: si)
+      if cursor_name_in(names: params, name: scrutinee_name) { scrutinee_name } else { "" }
+    _ => ""
+  }
 }
 
 fn cursor_walk_fail() -> CursorWalk {
@@ -16849,23 +17035,22 @@ fn cursor_tails_consistent(tails: List<CursorTail>) -> Bool {
   tails |> all(a => tails |> all(b => a.name != b.name || a.depth == b.depth))
 }
 
-fn cursor_tails_map(tails: List<CursorTail>) -> Map<String, Int> {
-  tails |> fold(init: empty_map(), f: (m, t) => map_insert(m, t.name, t.depth))
-}
-
-// The plan for one self-tail-recursive fn: the FIRST parameter that is a cursor, or none.
+// The plan for one self-tail-recursive fn: EVERY parameter that is a cursor. Each param is judged
+// alone, by the same four conditions, so a second list walked in lockstep is no different from the
+// first; the one cross-param condition is that two cursor params never bind the same tail spelling,
+// so a tail binder names one cursor.
 fn tco_cursor_plan(body: Node, fn_name: String, params: List<Node>, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> TcoCursorPlan {
   let param_names = params |> map(p => param_node_name_at(n: p, source_indices: si))
-  param_names |> fold(init: no_tco_cursor_plan(), f: (best, p) =>
-    if best.param != "" {
-      best
-    } else {
-      let walked = cursor_walk(n: body, p: p, in_tails: [], fn_name: fn_name, param_names: param_names, emit_info: emit_info, si: si)
-      if walked.ok && (walked.tails |> count) > 0 && cursor_tails_consistent(tails: walked.tails) {
-        TcoCursorPlan { param: p, tails: cursor_tails_map(tails: walked.tails) }
-      } else {
-        best
+  param_names |> fold(init: no_tco_cursor_plan(), f: (plan, p) =>
+    let walked = cursor_walk(n: body, p: p, in_tails: [], fn_name: fn_name, param_names: param_names, emit_info: emit_info, si: si)
+    let shares_spelling = plan.params |> any(q => walked.tails |> any(t => map_contains_key(plan.tails, cursor_tail_key(param: q, tail: t.name))))
+    if walked.ok && (walked.tails |> count) > 0 && cursor_tails_consistent(tails: walked.tails) && !shares_spelling {
+      TcoCursorPlan {
+        params: concat(plan.params, [p]),
+        tails: walked.tails |> fold(init: plan.tails, f: (m, t) => map_insert(m, cursor_tail_key(param: p, tail: t.name), t.depth))
       }
+    } else {
+      plan
     })
 }
 
@@ -16902,15 +17087,16 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       let s = match_scrutinee(texpr: frame.expr)
       let arm_list = match_arm_nodes(texpr: frame.expr)
       let tco_si = frame.scope.type_env.source_indices
-      let on_cursor = emit_info.tco_cursor_param != "" && cursor_scrutinee_is(scrutinee: s, param: emit_info.tco_cursor_param, si: tco_si)
+      let cursor_of_scrutinee = cursor_scrutinee_param(scrutinee: s, params: emit_info.tco_cursor_params, si: tco_si)
+      let on_cursor = cursor_of_scrutinee != ""
       let scrut_str = if on_cursor {
-        concat(emit_ident(name: emit_info.tco_cursor_param, target: Rust), ".clone()")
+        concat(emit_ident(name: cursor_of_scrutinee, target: Rust), ".clone()")
       } else {
         emit_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }
       let tco_scrut_type = tco_match_scrut_type_name(scrutinee: s, si: tco_si)
       if arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
-        emit_native_freemonoid_tco_match(scrut_str: scrut_str, cursor: if on_cursor { tco_cursor_name() } else { "" }, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
+        emit_native_freemonoid_tco_match(scrut_str: scrut_str, cursor: if on_cursor { tco_cursor_name(param: cursor_of_scrutinee) } else { "" }, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       } else {
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: frame.scope.type_env.source_indices)
       let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arm_list)
@@ -17043,6 +17229,11 @@ fn expr_references_var(node: Node, var_name: String, source_indices: Map<String,
   }
 }
 
+type TcoAssign {
+  target: String
+  value: String
+}
+
 fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   let arg_values = args |> map(a => arg_value(n: a))
@@ -17057,34 +17248,28 @@ fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<S
     let av = match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
     emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: tco_emit_info, fuel: 1024)
   )
-  let param_names = pairs |> map(pair => emit_ident(name: tco_loop_slot_name(param_name: param_node_name_at(n: pair.second, source_indices: si)), target: Rust))
-  let cursor_param = emit_info.tco_cursor_param
-  let cursor_pos = pairs |> filter(pair => cursor_param != "" && param_node_name_at(n: pair.second, source_indices: si) == cursor_param) |> first
-  let cursor_advance = match cursor_pos {
-    Absent => none
-    Present { value: pair } =>
-      let av = match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
-      match av.expr_data {
-        ExprVar { binding_kind: _ } => map_get(emit_info.tco_cursor_tails, expr_var_name_at(texpr: av, source_indices: si))
+  let cursor_params = emit_info.tco_cursor_params
+  // One entry per assigned slot. A cursor param whose argument is its own tail advances only its
+  // index and leaves the base list untouched; any other value at a cursor's position is a different
+  // list: a new base and the index back to 0.
+  let entries = pairs |> flat_map(pair =>
+    let assigned_name = param_node_name_at(n: pair.second, source_indices: si)
+    let slot = emit_ident(name: tco_loop_slot_name(param_name: assigned_name), target: Rust)
+    let arg_str = match ordered_args |> skip(pair.first) |> first { Present { value: given_str } => given_str  Absent => "" }
+    if cursor_name_in(names: cursor_params, name: assigned_name) {
+      let assigned_av = match arg_values |> skip(pair.first) |> first { Present { value: given_av } => given_av  Absent => pair.second }
+      let advance = match assigned_av.expr_data {
+        ExprVar { binding_kind: _ } => map_get(emit_info.tco_cursor_tails, cursor_tail_key(param: assigned_name, tail: expr_var_name_at(texpr: assigned_av, source_indices: si)))
         _ => none
       }
-  }
-  let inner = match cursor_pos {
-    Absent => shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: language_spec(target: Rust))
-    Present { value: cpair } =>
-      match cursor_advance {
-        // A tail handed back at the cursor's position advances the index; the base list is untouched.
-        Present { value: depth_of_tail } =>
-          let kept = pairs |> filter(pair => pair.first != cpair.first)
-          shared_tco_reassign(
-            ordered_args: concat(kept |> map(pair => match ordered_args |> skip(pair.first) |> first { Present { value: a } => a  Absent => "" }), [concat(tco_cursor_name(), " + ", to_string(value: depth_of_tail))]),
-            param_names: concat(kept |> map(pair => match param_names |> skip(pair.first) |> first { Present { value: a } => a  Absent => "" }), [tco_cursor_name()]),
-            spec: language_spec(target: Rust))
-        // Any other value at the cursor's position is a different list: new base, cursor back to 0.
-        Absent =>
-          shared_tco_reassign(ordered_args: concat(ordered_args, ["0"]), param_names: concat(param_names, [tco_cursor_name()]), spec: language_spec(target: Rust))
+      match advance {
+        Present { value: depth_of_tail } => [TcoAssign { target: tco_cursor_name(param: assigned_name), value: concat(tco_cursor_name(param: assigned_name), " + ", to_string(value: depth_of_tail)) }]
+        Absent => [TcoAssign { target: slot, value: arg_str }, TcoAssign { target: tco_cursor_name(param: assigned_name), value: "0" }]
       }
-  }
+    } else {
+      [TcoAssign { target: slot, value: arg_str }]
+    })
+  let inner = shared_tco_reassign(ordered_args: entries |> map(e => e.value), param_names: entries |> map(e => e.target), spec: language_spec(target: Rust))
   concat("{\n", make_indent(level: depth + 1), inner, "\n}")
 }
 
@@ -19281,6 +19466,15 @@ fn native_entry_function_name(modules: List<TypedModule>) -> String? {
 }
 
 data native_serve_entry_function: String = "native_serve_handle"
+// The optional startup fold's name is gunbc.native_serve native_serve_startup_entry_function's; like the
+// handler's, the emitter spells it where the rendered main imports it. The main runs it only when the
+// entry's own module declares it, so a driver that declares none renders exactly what it did.
+data native_serve_startup_function: String = "native_serve_startup"
+
+fn native_serve_declares_startup(modules: List<TypedModule>, pipeline_module: String) -> Bool {
+  count(native_effect_decl_sites(modules: modules, kind: ModuleItemFunction, name: native_serve_startup_function)
+    |> filter(site => site.module_name == pipeline_module)) > 0
+}
 data native_cli_entry_function: String = "v2_cli_main"
 data native_claim_entry_function: String = "native_claim_report"
 
@@ -19439,7 +19633,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module))
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -19764,12 +19958,33 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // transport error): at startup the main refuses before announcing, so /livez is never answered by a
 // process that cannot serve; a failed replacement ends the process with
 // native_serve_worker_replacement_exit_code once the request in hand is answered.
-fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>) -> TextFile {
+fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let effectful = (bindings |> count) > 0
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
   let handler_effect_args = bindings |> map(b => concat(", ", b.argument)) |> join(separator: "")
   let effect_failed_import = if effectful { " native_serve_effect_failed," } else { "" }
+  let startup_import = if startup {
+    concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup;", "\n",
+      "use ", crate_name, "::gunbc_native_serve::\{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};", "\n")
+  } else { "" }
+  let startup_run = if startup {
+    concat(
+      "    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
+      "    match std::fs::read(\"/proc/self/exe\") \{", "\n",
+      "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
+      "            NativeServeStartup::NativeServeStartupPassed \{ note \} => println!(\"\{\}\", native_serve_startup_passed_line(note.clone())),", "\n",
+      "            NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
+      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "            \}", "\n",
+      "        \},", "\n",
+      "        Err(cause) => \{", "\n",
+      "            eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
+      "            std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "        \}", "\n",
+      "    \}", "\n")
+  } else { "" }
   let worker_realize = if effectful {
     concat(
       "        let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() \{", "\n",
@@ -19807,6 +20022,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    NativeServeRoute, NativeServeStart,", "\n",
       "\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::native_serve_handle;", "\n",
+      startup_import,
       "\n",
       "// What a worker hands back across the thread boundary: owned plain values, because the compiled", "\n",
       "// handler's values are reference-counted and stay on the worker's thread.", "\n",
@@ -19985,6 +20201,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
+      startup_run,
       "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
       "        Ok(listener) => listener,", "\n",
       "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",

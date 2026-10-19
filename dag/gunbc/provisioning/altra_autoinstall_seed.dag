@@ -9,32 +9,72 @@ module gunbc.provisioning.altra_autoinstall_seed
 // machine nobody is watching. A question in a seed is therefore not a delay, it is a hung install until
 // a timeout fires — which makes "PROVEN ANSWERLESS" the property, not "written carefully".
 //
-// WHY gunbc.* AND NOT extdeps.*. Nothing below is a fact about Ubuntu. The package set, the
-// disk-selection rule, the credential posture and the binding are decisions this repository makes about
-// its own fleet; Canonical authors none of them, so they are not evidence about an external thing and do
-// not belong in the extdeps layer. The external shapes (extdeps.os.ubuntu_autoinstall,
-// extdeps.storage.types, extdeps.ssh.keys, extdeps.bmc.endpoint) are IMPORTED and projected into, never
-// restated — if a future edit re-declares what upstream already defines, that is the boundary being
-// crossed, and the fix is an import, not a copy.
+// WHO CONSUMES THIS, declared per DESIGN 3c rather than left to be inferred.
+//   * CONSUMED IN THIS CHANGE: every refusal arm, both digest functions, the render, the audit, the selection
+//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness (49 test fns, run by
+//     gunbc --claim-run). Nothing here is exercised only by its own module.
+//   * DECLARED FRONTIER, NAMED: AltraAutoinstallSeedBinding is consumed by cut 6 step 3 (the install-attempt
+//     record), which needs the digest of the seed a board booted and nothing else from this module. The
+//     projection into extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload is consumed by cut 6 step 4, where
+//     a seed becomes bytes an installer can fetch; until that step lands, project_autoinstall_identity and
+//     project_storage_policy have a witness but no production caller, which is why they are the frontier and not
+//     the product. If step 4 arrives and does not use them, they are scaffold and must be deleted rather than
+//     left imported-by-nobody.
+//   * NOT A FRONTIER: nothing else. A module that later wants a seed must import this one rather than copy it —
+//     the review already caught one duplicated spelling of these names, and a fork is that defect with more
+//     files.
+//
+// WHY gunbc.* AND NOT extdeps.*. Nothing below is a fact about UBUNTU. The package set, the disk-selection
+// rule, the credential posture and the binding are decisions this repository makes about its own fleet;
+// Canonical authors none of them, so they are not evidence about an external thing and do not belong in the
+// extdeps layer. The external shapes (extdeps.os.ubuntu_autoinstall, extdeps.storage.types,
+// extdeps.ssh.keys, extdeps.bmc.endpoint) are IMPORTED and projected into, never restated — if a future edit
+// re-declares what upstream already defines, that is the boundary being crossed, and the fix is an import,
+// not a copy.
+//
+// ONE THING BELOW *IS* AN EXTERNAL FACT, AND SAYS SO (review 81975). The sha512-crypt storage format — the
+// scheme token, the salt's width and forbidden characters, the digest's alphabet and its exact 86-character
+// width, and the cost field's class and range — belongs to libxcrypt, not to this repository or to Canonical.
+// It is therefore NOT stated here: it is one row in extdeps.libxcrypt.crypt_scheme, cited to the crypt(5)
+// mdoc source at the release this distro ships (libcrypt1 1:4.4.38-1), and consumed below by name. What stays
+// in this module is only what is ours: the segment grammar we walk, the order the refusals are reported in,
+// and which credential we will accept for a headless board. If a future edit re-types 86 or 16 here instead
+// of reading them from that row, the figures and their citation have come apart, which is the §4d failure the
+// standing field exists to make visible.
 //
 // NO MACHINE IS NAMED AND NO DELIVERY IS CHOSEN HERE, and both refusals are structural rather than
-// stylistic, each witnessed. There is no field anywhere in this module that can carry a host name: a
-// hostname in a seed is a per-unit special case wearing a config field, which is the class of
-// undeclared rule this whole program exists to retire. Delivery arrives as DATA (the S0 seam's decision,
-// or a caller's strategy record) and its only consequence here is the console stanza, which is DERIVED
-// from the strategy rather than stored beside it — so a strategy name cannot quietly change what the
-// seed promises.
+// stylistic, each witnessed. What is absent, precisely: NO FIELD CARRIES THE TARGET UNIT'S OWN LABEL, and
+// no decision in this module reads a string. A hostname in a seed is a per-unit special case wearing a
+// config field, which is the class of undeclared rule this whole program exists to retire; two units of
+// the same model must reach the same digest. Two host-bearing fields exist and are NOT that thing:
+// `ArchiveMirror::NamedMirror { host }` names the ARCHIVE we fetch from (shared by every unit, and its
+// absence is a refusal, not a default), and `project_autoinstall_identity`'s `binding_hostname` is a
+// PARAMETER the binding layer supplies into a field upstream's payload demands — this module never
+// invents it, never branches on it, and does not store it in the seed, so it cannot reach the digest.
+// Delivery arrives as DATA (the S0 seam's decision, or a caller's strategy record) and its only
+// consequence here is the console stanza, which is DERIVED from the strategy rather than stored beside it
+// — so a strategy name cannot quietly change what the seed promises.
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.measure { ByteSize, byte_size_count, measure_le }
+import std.measure { ByteSize, CharacterCount, byte_size_count, character_count, measure_le }
 import std.optional { Optional, Absent, Present }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
   content_hash_combine_structural,
+  content_hash_eq_structural,
   content_hash_tagged_structural,
 }
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.libxcrypt.crypt_scheme {
+  CryptSchemeFormat,
+  Sha512CryptFormat,
+  cost_field_is_well_formed,
+  digest_characters_are_admitted,
+  salt_holds_only_admitted_characters,
+  sha512_crypt_figure_read_obligation,
+  sha512_crypt_format,
+}
 import extdeps.uri { Uri, Https }
 import extdeps.os.ubuntu_autoinstall {
   AutoinstallIdentity,
@@ -73,6 +113,7 @@ import gunbc.machine_intake.subject {
   UnitKey,
   UnitKeyBound,
   UnitKeyRefusalCause,
+  UnitKeyRefused,
   UnitKeyStanding,
 }
 
@@ -127,8 +168,11 @@ type AltraAutoinstallTargetStanding sole_constructor {
 // transport, role, and hardware — never the label"). Only the Altra provisioning target may be rendered
 // a seed for. The other roles are named so a caller holding a runner or a serving host is refused rather
 // than quietly formatted: the failure this axis prevents is a seed aimed at a board that is holding
-// somebody else's data.
-type AltraAutoinstallTargetRole = AltraProvisioningTarget | RunnerBacked { host: NonEmptyStr }
+// somebody else's data. The refused role carries NO payload — the refusal reads participation alone, and
+// a host string here would be a field with no consumer whose only effect would be to make two refusals of
+// the same kind digest differently. A future requirement (serving hosts allowed to seed themselves) adds a
+// constructor here and a row in the door below; it does not add a host payload to a refusal.
+type AltraAutoinstallTargetRole = AltraProvisioningTarget | RunnerBacked
 
 // RENDERED OR REFUSED, WITH REFUSAL AS A VALUE. Refusal is an arm, not an error, because the program's
 // rule is "no route from absent evidence to a green claim": a seed that was never admitted is not an
@@ -178,7 +222,7 @@ fn admit_altra_autoinstall_target(
                       kernel_flavour: kernel_flavour,
                     },
                   }
-                RunnerBacked { host: _ } => TargetRefused {
+                RunnerBacked => TargetRefused {
                   reason: NotAnAltraProvisioningTarget { role: role },
                 }
               }
@@ -189,17 +233,6 @@ fn admit_altra_autoinstall_target(
         }
       }
     UnitKeyRefused { cause: c } => TargetRefused { reason: UnitKeyUnbound { cause: c } }
-  }
-}
-
-fn refused_target(cause: TargetRefusalCause) -> AltraAutoinstallTarget {
-  TargetRefused { reason: cause }
-}
-
-fn target_standing(target: AltraAutoinstallTarget) -> Optional<AltraAutoinstallTargetStanding> {
-  match target {
-    TargetAdmitted { standing: s } => Present { value: s }
-    TargetRefused { reason: _ } => Absent
   }
 }
 
@@ -325,8 +358,10 @@ fn altra_loadable_module(driver: AltraLoadableModule) -> NonEmptyStr {
 }
 
 // WHICH KCONFIG SYMBOL DECLARES THE MODULE, AND IN WHICH FILE IT WAS READ. Derived pairs, so a row cannot
-// carry a stem that its own symbol's Makefile line does not produce. The paths are the citation: a reviewer
-// checking one row opens one file.
+// carry a stem that its own symbol's Makefile line does not produce. BOTH are rendered into the seed token: the
+// citation is part of what the seed CLAIMS (this module asserts that this symbol, in this file, was read as
+// `tristate`), so it belongs in the digest — and a provenance the digest cannot see is a provenance that can be
+// changed without any witness noticing.
 fn loadable_module_kconfig_symbol(driver: AltraLoadableModule) -> NonEmptyStr {
   match driver {
     NvmeBlockModule => "BLK_DEV_NVME"
@@ -527,13 +562,6 @@ fn known_prompting_packages() -> List<KnownPromptingPackage> {
 // that could be empty.
 type ArchiveMirror = NamedMirror { host: NonEmptyStr } | MirrorAbsent
 
-fn archive_mirror_host(mirror: ArchiveMirror) -> Optional<NonEmptyStr> {
-  match mirror {
-    NamedMirror { host: h } => Present { value: h }
-    MirrorAbsent => Absent
-  }
-}
-
 // THE LOCALE AXIS IS CLOSED TO THE TWO SPELLINGS THE INSTALLER ACCEPTS WITHOUT A FOLLOW-UP QUESTION. A
 // future requirement (a French-language install, a non-UTF-8 console) adds a constructor HERE, which
 // forces this module's interactive audit to be re-read; it does not let a caller paste a locale string
@@ -571,29 +599,15 @@ fn admin_password_handle(secret_locator: NonEmptyStr, secret_version: NonEmptySt
 // WHY "NO PASSWORD" IS AN AFFIRMATIVE ARM AND NOT AN ABSENCE. On a headless board, declining a password
 // is a decision someone made (keys are the only way in, or the console is open), and recording it as
 // `none` would make a policy and an oversight indistinguishable — the exact confusion that lets a seed
-// ship with no way in. The wire spelling is derived from the posture by autoinstall_password_auth, never
+// ship with no way in. The wire spelling is derived from the posture by credential_diagnostic, never
 // stored next to it.
 type AdminCredentialPosture = PasswordHandle { handle: AdminPasswordHandle } | PasswordUnset
-
-fn autoinstall_password_auth(posture: AdminCredentialPosture) -> Bool {
-  match posture {
-    PasswordHandle { handle: _ } => true
-    PasswordUnset => false
-  }
-}
 
 // THE SECRET NEVER TRAVELS WITH THE SEED, AND THE TYPE SAYS SO. The payload projection upstream demands
 // a NonEmptyStr hashed_password; rather than fork that shape or fabricate a string, this module's
 // projection REFUSES when the posture is PasswordUnset and password authentication is being asked for.
 // The refusal is the honest rendering of "upstream's record cannot express our posture" (reported
 // upstream, not patched around here).
-fn password_handle_digest(handle: AdminPasswordHandle) -> Fnv1a64Structural {
-  content_hash_combine_structural(
-    left: content_hash_atom(value: handle.secret_locator),
-    right: content_hash_atom(value: handle.secret_version),
-  )
-}
-
 // A HEADLESS UNIT THAT IS NETWORK-REACHABLE MUST BE ENTERABLE, AND BOTH-WAYS-MISSING MUST BE
 // UNNAMEABLE. There is no expression that builds an AdminAccessAuthorisation with zero authorized keys
 // AND a locked console: the guard lives in the only constructor, so "the install succeeded and now nobody
@@ -816,26 +830,21 @@ fn candidate_identity_label(device: StorageDevice) -> NonEmptyStr {
 // matches": the fix is different (re-probe) and the blame is different (the observation, not the rule).
 // This is checked BEFORE the count, because a board whose only candidate has no readable serial must not
 // be reported as "zero matches" — that would tell the operator to change the rule when the rule is fine.
+// ONE PASS, ONE VERDICT PER DEVICE. Recursive over the list so `unexamined_candidate` is asked exactly once
+// per device and the first refusal found is what comes back. It used to filter through a Bool predicate and
+// then call unexamined_candidate again on the winner: the same verdict computed twice, with room for the two
+// to disagree, and every device paid for the question twice.
 fn first_unexamined_candidate(
   selector: TargetDiskSelector,
   observed: List<StorageDevice>,
 ) -> Optional<DiskSelectionRefusalCause> {
-  match observed
-    .filter(device => candidate_identity_is_unexamined(selector: selector, device: device))
-    .first() {
-    Present { value: device } => unexamined_candidate(selector: selector, device: device)
-    Absent => Absent
-  }
-}
-
-// THE FILTER PREDICATE FOR THE ABOVE, a total match over the classifier's own result rather than a Bool
-// stored anywhere: it exists because the search has to say "keep this device", and a new StorageDevice or
-// TargetDiskSelector member has to land on one side of it. The decision itself stays in unexamined_candidate;
-// this function reports only whether that decision is a refusal worth surfacing.
-fn candidate_identity_is_unexamined(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
-  match unexamined_candidate(selector: selector, device: device) {
-    Present { value: _ } => true
-    Absent => false
+  match observed {
+    Empty => Absent
+    Cons { head: device, tail: rest } =>
+      match unexamined_candidate(selector: selector, device: device) {
+        Present { value: cause } => Present { value: cause }
+        Absent => first_unexamined_candidate(selector: selector, observed: rest)
+      }
   }
 }
 
@@ -896,7 +905,12 @@ type SeedInteractiveCause
   | PackagePromptingUnclassified { name: NonEmptyStr }
   | AddressingIsInstallerManaged
   | ArchiveMirrorAbsent
-  | NoEntrypointAtAll { keys: Int, console_entry: ConsoleEntryAuthorisation }
+  // NO PAYLOAD, DELIBERATELY. This arm is built only where the key list is empty AND the console is locked,
+  // so a `keys: Int` could hold only 0 and a `console_entry` only ConsoleEntryLocked: two fields restating the
+  // arm's name, each a second copy of a fact the constructor already guarantees. A future requirement that
+  // distinguishes WHY there is no entrypoint (say, an unlocked-but-unclaimed console) adds a NEW arm, not a
+  // field here.
+  | NoEntrypointAtAll
 
 // THE PROOF, AS DATA. The audit's green arm is neither unit nor Bool: it carries WHY it is green, in the
 // same parts the refusal names, so an auditor reading a rendered seed later can re-check the claim without
@@ -911,31 +925,31 @@ type NonInteractiveProof {
 // change about the seed, and its being derived is the point: a stored "no console" flag beside a strategy
 // field is two facts that can disagree, and when they disagree the seed promises something about a console
 // the transport cannot honour.
-type NonInteractiveConsoleStanza = ConsoleSuppressed | ConsoleAnsweredByUnattended { reason: NonEmptyStr }
+// ConsoleAnsweredByUnattended carries NO payload: what the arm means is a property of the transport, not a
+// per-instance fact, and a String there would be commentary stored as data — copied by hand into every arm
+// that builds it, and discarded by the render that consumes it. The rationale belongs in this comment.
+type NonInteractiveConsoleStanza = ConsoleSuppressed | ConsoleAnsweredByUnattended
 
 // THE STANZA IS DERIVED BY MATCHING THE TRANSPORT, NEVER BY RE-READING A BOOL THAT ALREADY FLATTENED IT.
 // The two arms are the two things the seed says on the kernel command line: either a console exists and is
 // answered by the unattended answer file, or there is no console to answer at all.
 fn console_stanza_for(strategy: SeedDeliveryStrategy) -> NonInteractiveConsoleStanza {
   match strategy {
-    PxeStrategy { boot_mode: UefiPxe { tftp_root: _ } } =>
-      ConsoleAnsweredByUnattended {
-        reason: "a reachable SOL console is still nobody at the panel; prompts stay suppressed" as NonEmptyStr,
-      }
-    PxeStrategy { boot_mode: UefiHttpBoot } =>
-      ConsoleAnsweredByUnattended {
-        reason: "a reachable SOL console is still nobody at the panel; prompts stay suppressed" as NonEmptyStr,
-      }
+    // UEFI reaches a console the installer will print to, so the seed must ANSWER rather than suppress: a
+    // reachable SOL console is still nobody at the panel.
+    PxeStrategy { boot_mode: UefiPxe { tftp_root: _ } } => ConsoleAnsweredByUnattended
+    PxeStrategy { boot_mode: UefiHttpBoot } => ConsoleAnsweredByUnattended
     PxeStrategy { boot_mode: LegacyBiosPxe { tftp_root: _ } } => ConsoleSuppressed
     VirtualMediaStrategy { media_stem: _ } => ConsoleSuppressed
   }
 }
 
-// THE AUDIT, IN THE ORDER THE FAILURES MATTER. The entrypoint check runs FIRST because a seed nobody can use
-// after install is worse than a seed that asks a question: a prompt can sometimes be answered by someone
-// watching SOL, a locked-out owner cannot. It runs LAST as a guarantee rather than a check, because the
-// constructor already made the both-empty case unnameable — reaching this arm requires a caller that
-// bypassed the constructor, which is the value of having both guards.
+// THE AUDIT, IN THE ORDER THE FAILURES MATTER. The entrypoint check is evaluated BEFORE the package questions
+// because a seed nobody can use after install is worse than a seed that asks a question: a prompt can
+// sometimes be answered by someone watching SOL, a locked-out owner cannot. It is also the arm that can
+// barely be reached at all — admit_admin_access_authorisation already made "no keys and locked console"
+// unnameable — so it is a second line of defence against a caller that bypassed that constructor, not the
+// primary guard. That redundancy is intentional: this is the failure the module exists to make impossible.
 fn audit_altra_autoinstall_seed(
   network: SeedNetworkPosture,
   install_packages: List<PackageIntent>,
@@ -949,7 +963,7 @@ fn audit_altra_autoinstall_seed(
       match list_length(items: entry.authorised_keys) {
         0 =>
           SeedRefused {
-            cause: NoEntrypointAtAll { keys: 0, console_entry: entry.console_entry },
+            cause: NoEntrypointAtAll,
           }
         n => audit_seed_interactivity(
           network: network,
@@ -1031,19 +1045,19 @@ fn prompt_over_locale(locale: SeedLocale) -> Optional<NonEmptyStr> {
 // problem, and there is no `_` arm for an unknown package to fall through into. Removing the string-keyed
 // lookup is the actual fix: it could only answer "is this in the table", and its fail-open `_ => Absent` was
 // read by the audit as "nothing to answer", so an unclassified package earned the green arm.
+// ONE PASS, ONE VERDICT PER INTENT. This walks the list and asks `blocking_refusal` exactly once per
+// intent, stopping at the first cause. It used to filter through a Bool predicate that recomputed the same
+// answer `blocking_refusal` was about to give, so the two could drift and every intent paid for the
+// question twice. A cause is never dropped: the recursion returns the FIRST Present, and Absent only when
+// every intent answered its own question.
 fn first_blocking_refusal(intents: List<PackageIntent>) -> Optional<SeedInteractiveCause> {
-  match intents.filter(intent => intent_leaves_a_question(intent: intent)).first() {
-    Present { value: intent } => blocking_refusal(intent: intent)
-    Absent => Absent
-  }
-}
-
-// THE FILTER PREDICATE FOR THE ABOVE, total over PackageIntent so a new arm must state whether it leaves a
-// question open; the refusal itself is produced only by blocking_refusal, so the two can never disagree.
-fn intent_leaves_a_question(intent: PackageIntent) -> Bool {
-  match blocking_refusal(intent: intent) {
-    Present { value: _ } => true
-    Absent => false
+  match intents {
+    Empty => Absent
+    Cons { head: head, tail: rest } =>
+      match blocking_refusal(intent: head) {
+        Present { value: cause } => Present { value: cause }
+        Absent => first_blocking_refusal(intents: rest)
+      }
   }
 }
 
@@ -1188,28 +1202,267 @@ fn build_altra_autoinstall_seed(
   }
 }
 
-// THE RECEIPT IS A HASH, AND THE ONLY CONSTRUCTOR REFUSES ANYTHING THAT IS NOT ONE. Upstream's
-// AutoinstallIdentity carries a hashed_password string and subiquity writes that value into the image's
-// shadow entry. A crypt digest is not the secret — it is what the secret's verifier looks like once
-// published — but a caller who could put any string there could put a plaintext password there, and that is
-// the incident this shape prevents. So the sole door admits a SHA-512 crypt digest ("$6$", salt and digest)
-// and refuses anything unprefixed or too short to be one. The seed never holds this value: it is taken at the
-// projection edge by whoever writes the file and dropped immediately.
+// THE RECEIPT IS A SHA-512 CRYPT DIGEST, AND ITS ONLY CONSTRUCTOR PARSES ONE RATHER THAN CHECKING FOR THE
+// SHAPE OF ONE. Upstream's AutoinstallIdentity carries a hashed_password string and subiquity writes that value
+// into the image's shadow entry. A crypt digest is not the secret — it is what the secret's verifier looks like
+// once published — but a caller who could put any string there could put a plaintext password there, and that is
+// the incident this shape prevents. So the door takes the format apart: the scheme token, an optional cost, a
+// salt over the crypt alphabet within the width the scheme defines, and a digest of exactly the width the scheme
+// emits. A receipt therefore cannot be built from "$6$hunter2hunter2hunter2", nor from anything that merely
+// BEGINS like a digest. The previous door tested a "$6$" prefix plus a length floor of 20, which accepted exactly
+// that string — a sole_constructor guarded by a heuristic is a brand, against DESIGN §5 ("correctness by
+// construction, not validation") and §4b ("a brand is cosmetic until construction enforces it"). The seed never
+// holds this value: it is taken at the projection edge by whoever writes the file and dropped immediately.
 type AdminPasswordHashReceipt sole_constructor { crypt_digest: NonEmptyStr }
 
-fn admin_password_hash_receipt(crypt_digest: NonEmptyStr) -> Optional<AdminPasswordHashReceipt> {
-  match looks_like_sha512_crypt_digest(candidate: crypt_digest) {
-    True => Present { value: AdminPasswordHashReceipt { crypt_digest: crypt_digest } }
-    False => Absent
+// ONE SUM, SO AN ATTEMPT ANSWERS "WHICH PART FAILED" WITHOUT A SECOND FUNCTION RECOMPUTING THE VERDICT (DESIGN
+// §5: every path succeeds fully or fails with a typed, located diagnostic; §2: the same answer computed twice is
+// redundant work, and copies drift). A truncated digest and a non-alphabet salt are different operator problems
+// with different remedies — one is a paste error at the keyboard, the other is a secret store that never held a
+// crypt digest — and collapsing them into a bare `Absent` would send whoever holds the credential to the wrong
+// shelf. NO ARM CARRIES ANY TEXT FROM THE CANDIDATE: a refusal is the one thing this door returns that a caller
+// may log, and the candidate may BE a plaintext password, so the arms name the failed part and nothing else.
+// Admitting another scheme (yescrypt's "$y$", whose digest width differs) adds a ROW to
+// extdeps.libxcrypt.crypt_scheme, read from that scheme's own .hash line; it does not relax a refusal, and the
+// witnesses over this door force that to be a deliberate edit rather than a widened constant.
+type AdminPasswordReceiptResult = ReceiptAccepted { receipt: AdminPasswordHashReceipt } | ReceiptRefused { cause: AdminPasswordRefusalCause }
+
+type AdminPasswordRefusalCause
+  = NotACryptDigest
+  | SchemeUnsupported
+  | RoundsMalformed
+  | SaltAbsent
+  | SaltTooLong { length: CharacterCount, ceiling: CharacterCount }
+  | SaltHoldsForbiddenCharacter
+  | DigestAbsent
+  | DigestWrongLength { length: CharacterCount, expected: CharacterCount }
+  | DigestNotInCryptAlphabet
+
+// THE FIGURES COME FROM UPSTREAM, NOT FROM THIS FILE (review 81975). Scheme token, salt bounds, digest
+// alphabet, digest width and the cost class are one cited row in extdeps.libxcrypt.crypt_scheme; reading them
+// through that row is what keeps the numbers and their citation from drifting apart, and the witness over the
+// standing fails if the row's figures are ever changed to suit a fixture. What is ours, and therefore lives
+// here, is the decision about which credential form a headless seed will accept — not how a digest is spelled.
+//
+// WHY THE SALT AND THE DIGEST ARE CHECKED DIFFERENTLY, AND WHY THAT IS NOT AN INCONSISTENCY. The upstream salt
+// class is a FORBIDDEN set (any character but '$', ':', CR, LF) while the digest class is an allowed alphabet
+// (the 64-character base64-crypt set). Checking the salt against an allowed alphabet — which is what this
+// module did until the spec was read — refuses "$6$sa!tsalt$…", a string libxcrypt accepts and shadow stores,
+// so it can deny a legitimate administrator access to a board whose only console is the BMC. Checking the
+// digest against a forbidden set would admit punctuation that is not a digest character at all. Each check is
+// as wide as its class and no wider; collapsing the two is the defect, not the asymmetry.
+//
+// THE COST FIELD. "rounds=" must be followed by `[1-9][0-9]+` within the documented 1000..999,999,999, which
+// the cited row makes decidable from the text's width and characters alone. A leading zero ("rounds=05000") and
+// a single digit ("rounds=5") are therefore MALFORMED rather than silently parsed into a number that a range
+// check would then accept — a cost nobody intended, on a credential that looks valid until login fails.
+//
+// THE DOOR. split(sep: "$") on a sha512-crypt digest yields an EMPTY FIRST SEGMENT (from the leading '$'), the
+// scheme token, the salt, and the digest — or five segments with "rounds=N" between the token and the salt when
+// the cost is spelled out. Both spellings are admitted because real generators emit both and shadow accepts
+// both. Every part is checked and the FIRST failure in grammar order is the one reported: the checks are pure and
+// bounded over fixed-width strings, so evaluating all of them costs nothing that a short-circuit would save, and
+// it keeps this function one flat list instead of a six-deep nest in which an arm can be forgotten.
+fn admin_password_hash_receipt(
+  crypt_digest: NonEmptyStr,
+) -> AdminPasswordReceiptResult {
+  let segments = (crypt_digest as String).split(sep: "$")
+  let count = list_length(items: segments)
+  let verdict = first_refusal(
+    causes: [
+      reject_shape(segments: segments, count: count),
+      reject_scheme(segments: segments, count: count),
+      reject_cost(segments: segments, count: count),
+      reject_salt(segments: segments, count: count),
+      reject_digest(segments: segments, count: count),
+    ],
+  )
+  match verdict {
+    Present { value: cause } => ReceiptRefused { cause: cause }
+    Absent => ReceiptAccepted { receipt: AdminPasswordHashReceipt { crypt_digest: crypt_digest } }
   }
 }
 
-// THE PREFIX AND THE LENGTH FLOOR ARE BOTH CHECKED BECAUSE EITHER ALONE IS SATISFIABLE BY TEXT A CALLER
-// MIGHT PASTE. A future requirement to accept another crypt scheme (yescrypt's "$y$") adds a prefix row here
-// with its own length floor; it does not relax the refusal, and the witness over this function is what forces
-// that decision to be taken deliberately.
-fn looks_like_sha512_crypt_digest(candidate: NonEmptyStr) -> Bool {
-  candidate.starts_with(prefix: "$6$") && candidate.length() >= 20
+// GRAMMAR ORDER IS THE ORDER OF DIAGNOSTIC USEFULNESS: "that is not a digest at all" is worth more than "and its
+// salt is 20 characters", because the second is only reachable once the first has been ruled out.
+fn first_refusal(
+  causes: List<Optional<AdminPasswordRefusalCause>>,
+) -> Optional<AdminPasswordRefusalCause> {
+  match causes {
+    Empty => Absent
+    Cons { head: head, tail: rest } =>
+      match head {
+        Present { value: cause } => Present { value: cause }
+        Absent => first_refusal(causes: rest)
+      }
+  }
+}
+
+// FOUR SEGMENTS WITHOUT A COST, FIVE WITH ONE — and nothing else. The count is asserted rather than assumed, so a
+// candidate with an extra '$' inside the salt region is refused for the shape it actually has instead of being
+// truncated into something that looks well-formed.
+fn reject_shape(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  match count == 4 || count == 5 {
+    False => Present { value: NotACryptDigest }
+    True =>
+      match piece_at(pieces: segments, index: 0) {
+        Present { value: leading } =>
+          match leading == "" {
+            True => Absent
+            False => Present { value: NotACryptDigest }
+          }
+        Absent => Present { value: NotACryptDigest }
+      }
+  }
+}
+
+// THE SCHEME TOKEN IS READ FROM THE CITED ROW, never re-typed here. This is the check that makes the row
+// load-bearing in this module: retyping "6" locally, or pointing at a different row, is what would let the
+// figures and their citation drift apart while every witness still passed.
+fn reject_scheme(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  match sha512_crypt_format {
+    Sha512CryptFormat {
+      scheme_token: token, cost_marker: _, salt_forbidden_characters: _, salt_least_characters: _,
+      salt_greatest_characters: _, digest_alphabet: _, digest_exact_characters: _, cost_least_digits: _,
+      cost_greatest_digits: _, figure_standing: _,
+    } =>
+      match piece_at(pieces: segments, index: 1) {
+        Present { value: found } =>
+          match found == (token as String) {
+            True => Absent
+            False => Present { value: SchemeUnsupported }
+          }
+        Absent => Present { value: SchemeUnsupported }
+      }
+  }
+}
+
+// THE COST EXISTS ONLY IN THE FIVE-SEGMENT SPELLING, and where it is spelled at all it must satisfy the
+// upstream class and range, which the cited row decides from the text alone. A salt can never be mistaken for
+// this slot: '=' is in no digest character and appears in no legal salt, so no valid salt begins with "rounds=".
+fn reject_cost(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  match count == 5 {
+    False => Absent
+    True =>
+      match sha512_crypt_format {
+        Sha512CryptFormat {
+          scheme_token: _, cost_marker: marker, salt_forbidden_characters: _, salt_least_characters: _,
+          salt_greatest_characters: _, digest_alphabet: _, digest_exact_characters: _, cost_least_digits: _,
+          cost_greatest_digits: _, figure_standing: _,
+        } =>
+          match piece_at(pieces: segments, index: 2) {
+            Absent => Present { value: RoundsMalformed }
+            Present { value: cost } =>
+              match cost.starts_with(prefix: marker as String) {
+                False => Present { value: RoundsMalformed }
+                True =>
+                  match piece_at(pieces: cost.split(sep: marker as String), index: 1) {
+                    Absent => Present { value: RoundsMalformed }
+                    Present { value: digits } =>
+                      match cost_field_is_well_formed(digits: digits) {
+                        True => Absent
+                        False => Present { value: RoundsMalformed }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE SALT SITS ONE FROM THE END IN BOTH SPELLINGS, so the index follows the count instead of being two
+// hard-coded positions that have to agree with each other. Width is read from the cited row and the character
+// test is the upstream FORBIDDEN-set scan, not an allowed-alphabet strip (see the note above for why the
+// difference is a safety property and not a style choice).
+fn reject_salt(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  let measured_salt = character_count(count: salt_length_of(segments: segments, count: count))
+  match sha512_crypt_format {
+    Sha512CryptFormat {
+      scheme_token: _, cost_marker: _, salt_forbidden_characters: _, salt_least_characters: least,
+      salt_greatest_characters: greatest, digest_alphabet: _, digest_exact_characters: _, cost_least_digits: _,
+      cost_greatest_digits: _, figure_standing: _,
+    } =>
+      match piece_at(pieces: segments, index: count - 2) {
+        Absent => Present { value: SaltAbsent }
+        Present { value: salt } =>
+          // Compared ON THE COUNT AXIS rather than against a bare Int. `a < b` is `not (b <= a)` because
+          // std.measure offers the weak order, not the strict one; writing `salt.length() < least` would have
+          // meant comparing a host integer to a measure, which is exactly the mix the carrier exists to stop.
+          match measure_le(a: least, b: measured_salt) {
+            False => Present { value: SaltAbsent }
+            True =>
+              match measure_le(a: measured_salt, b: greatest) {
+                False => Present { value: SaltTooLong { length: measured_salt, ceiling: greatest } }
+                True =>
+                  match salt_holds_only_admitted_characters(salt: salt) {
+                    True => Absent
+                    False => Present { value: SaltHoldsForbiddenCharacter }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE WIDTH IS EXACT, NOT A FLOOR, and the width is the cited row's. A floor is precisely how a TRUNCATED digest
+// gets in — the likeliest corruption when a hash is copied out of a terminal or a log line — to sit in a shadow
+// entry where it can never authenticate, leaving a board that looks like it has no password set. The character
+// test is the allowed-alphabet strip, because the digest's class IS an enumeration upstream.
+fn reject_digest(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  let measured_digest = character_count(count: digest_length_of(segments: segments, count: count))
+  match sha512_crypt_format {
+    Sha512CryptFormat {
+      scheme_token: _, cost_marker: _, salt_forbidden_characters: _, salt_least_characters: _,
+      salt_greatest_characters: _, digest_alphabet: _, digest_exact_characters: width, cost_least_digits: _,
+      cost_greatest_digits: _, figure_standing: _,
+    } =>
+      match piece_at(pieces: segments, index: count - 1) {
+        Absent => Present { value: DigestAbsent }
+        Present { value: digest } =>
+          match digest.length() == 0 {
+            True => Present { value: DigestAbsent }
+            False =>
+              match measured_digest == width {
+                False => Present { value: DigestWrongLength { length: measured_digest, expected: width } }
+                True =>
+                  match digest_characters_are_admitted(digest: digest) {
+                    True => Absent
+                    False => Present { value: DigestNotInCryptAlphabet }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE WIDTHS, READ THE SAME WAY THE CHECKS READ THEM. If the segment is missing the check that refuses for it
+// fires first, so zero is not a lie about a real salt — it is simply never compared. Keeping these beside
+// piece_at rather than calling .length() at two call sites is what stops the measured value and the refused value
+// from ever being read out of different segments.
+fn salt_length_of(segments: List<String>, count: Int) -> Int {
+  match piece_at(pieces: segments, index: count - 2) {
+    Absent => 0
+    Present { value: salt } => salt.length()
+  }
+}
+
+fn digest_length_of(segments: List<String>, count: Int) -> Int {
+  match piece_at(pieces: segments, index: count - 1) {
+    Absent => 0
+    Present { value: digest } => digest.length()
+  }
+}
+
+// INDEXING THAT SAYS ABSENT. The builtin index/last helpers yield a null value when the list is too short, which
+// is indistinguishable from an empty segment; this walks the structure so a missing piece is REFUSED rather than
+// silently read as the empty string — which, for a digest, would mean a length of zero and a wrong-length
+// refusal that blamed the wrong part.
+fn piece_at(pieces: List<String>, index: Int) -> Optional<String> {
+  match pieces {
+    Empty => Absent
+    Cons { head: first, tail: rest } =>
+      if index == 0 { Present { value: first } } else { piece_at(pieces: rest, index: index - 1) }
+  }
 }
 
 // THE ONLY ROUTE FROM OUR SEED INTO UPSTREAM'S PAYLOAD, AND WHERE IT REFUSES. AutoinstallIdentity demands a
@@ -1357,7 +1610,7 @@ fn rtl8125_device_id() -> PciDeviceId {
 fn console_stanza_diagnostic(stanza: NonInteractiveConsoleStanza) -> NonEmptyStr {
   match stanza {
     ConsoleSuppressed => "suppressed"
-    ConsoleAnsweredByUnattended { reason: _ } => "unattended-answer"
+    ConsoleAnsweredByUnattended => "unattended-answer"
   }
 }
 
@@ -1406,14 +1659,25 @@ fn int_diagnostic(count: Int) -> NonEmptyStr {
 // THE CONSOLE TOKEN IS DERIVED FROM THE CONSUMER'S OWN SUM TYPE, not from a Bool beside it. The key count is
 // rendered in every case — including 0 — because "keys=0,console=unlocked" and "keys=1,console=unlocked" are
 // different postures and a digest that flattened them would hide a dropped authorized key.
+// TWO ROWS, BECAUSE THE TYPE CAN ONLY INHABIT TWO STATES. A first version carried a third row
+// ("keys=0,console=locked") that no seed could ever render: admit_admin_access_authorisation refuses that
+// combination outright, so the row was a phantom in the token table — a spelling for a state the constructor
+// makes unnameable, which is the kind of decoration a reader later mistakes for reachability. The key count is
+// rendered in BOTH rows, so dropping an authorized key still moves the digest, and the console story is stated
+// by matching the consumer's own sum type rather than by a Bool beside it.
 fn entrypoint_diagnostic(entry: AdminAccessAuthorisation) -> NonEmptyStr {
-  match authorised_key_count(authorisation: entry) {
-    0 =>
-      match entry.console_entry {
-        ConsoleEntryUnlocked { reason: _ } => "keys=0,console=unlocked"
-        ConsoleEntryLocked => "keys=0,console=locked"
-      }
-    n => concat(concat("keys=", to_string(n) as NonEmptyStr), ",console=irrelevant") as NonEmptyStr
+  let keys = to_string(authorised_key_count(authorisation: entry)) as NonEmptyStr
+  match entry.console_entry {
+    // THE UNLOCK REASON IS RENDERED, NOT DISCARDED. "Unlocked" alone cannot be acted on: a serial getty open
+    // at the panel and a BMC SOL console open over the network are different exposures with different fixes,
+    // and on this fleet only one of them is reachable at all. Deriving the spelling from the closed reason
+    // (rather than storing a string beside it) means a new unlock kind must be stated in the type before it
+    // can appear in a seed, and it moves the digest.
+    ConsoleEntryUnlocked { reason: SerialConsoleGettyUnlocked } =>
+      concat("console=unlocked-serial-getty,keys=", keys) as NonEmptyStr
+    ConsoleEntryUnlocked { reason: BmcSolConsoleUnlocked } =>
+      concat("console=unlocked-bmc-sol,keys=", keys) as NonEmptyStr
+    ConsoleEntryLocked => concat("console=locked,keys=", keys) as NonEmptyStr
   }
 }
 
@@ -1452,10 +1716,13 @@ fn install_driver_list_diagnostic(drivers: List<AltraInstallDriver>) -> NonEmpty
 fn loadable_module_list_diagnostic(modules: List<AltraLoadableModule>) -> NonEmptyStr {
   render_sorted_names(
     names: modules
-      .map(module =>
+      .map(loaded =>
         concat(
-          concat("mod:", altra_loadable_module(driver: module)),
-          concat("=", loadable_module_kconfig_symbol(driver: module)),
+          concat(
+            concat("mod:", altra_loadable_module(driver: loaded)),
+            concat("=", loadable_module_kconfig_symbol(driver: loaded)),
+          ),
+          concat("@", loadable_module_kconfig_path(driver: loaded)),
         ) as String),
   )
 }
@@ -1538,11 +1805,23 @@ type AltraAutoinstallSeedBinding sole_constructor {
 // post-incident question ("what did that install write to?") is answerable from this record alone; a
 // binding that stored only the selector would require re-running the probe to reconstruct an event that
 // already happened.
-type BoundDiskEvidence = BoundDisk { serial: NonEmptyStr } | BoundDiskUnread { note: NonEmptyStr }
+// The unread arm carries NO payload: what it asserts is that the probe gave us no serial for the disk we
+// bound, and that is a property of the probe's answer, not a per-instance fact needing a sentence. A note
+// field here would be commentary stored as data — written in one place, read in none.
+type BoundDiskEvidence = BoundDisk { serial: NonEmptyStr } | BoundDiskUnread
 
+// WHY THE REFUSAL IS A UNION AND NOT A BARE Absent. A caller who is handed nothing cannot tell whether the
+// board was never admissible or whether eight disks matched the rule — and those are different pages of the
+// runbook (go re-admit the unit vs tighten the selector). The refusal that produces no record must still
+// produce the diagnosis, exactly as SeedAudit and TargetDiskSelection do; an unlabelled Absent is the failure
+// mode this module has now removed in three other places.
 type BindingBlocker
-  = TargetNotAdmitted
+  = TargetNotAdmitted { cause: TargetRefusalCause }
   | DiskSelectionRefused { cause: DiskSelectionRefusalCause }
+
+// THE TWO OUTCOMES OF A BINDING ATTEMPT, as arms rather than Optional, for the reason above: the green arm
+// carries the record, the red arm carries why there is no record.
+type BindingResult = Bound { binding: AltraAutoinstallSeedBinding } | BindRefused { blocker: BindingBlocker }
 
 // THE ONLY DOOR INTO A BINDING. It takes the SEED (so the digest is computed now, from this record), the
 // unit key and attempt (so the identity is bound, not assumed), and the live disk SELECTION (so a binding
@@ -1555,15 +1834,16 @@ fn bind_altra_autoinstall_seed(
   unit_key: UnitKey,
   attempt: IntakeAttemptId,
   selection: TargetDiskSelection,
-) -> Optional<AltraAutoinstallSeedBinding> {
+) -> BindingResult {
   match target {
-    TargetRefused { reason: _ } => Absent
+    TargetRefused { reason: cause } => BindRefused { blocker: TargetNotAdmitted { cause: cause } }
     TargetAdmitted { standing: _ } =>
       match selection {
-        SelectionRefused { cause: _ } => Absent
+        SelectionRefused { cause: cause } =>
+          BindRefused { blocker: DiskSelectionRefused { cause: cause } }
         DiskSelected { device: chosen } =>
-          Present {
-            value: AltraAutoinstallSeedBinding {
+          Bound {
+            binding: AltraAutoinstallSeedBinding {
               unit_key: unit_key,
               attempt: attempt,
               seed_digest: altra_autoinstall_seed_digest(seed: seed),
@@ -1580,7 +1860,7 @@ fn bind_altra_autoinstall_seed(
 fn bound_disk_evidence(device: StorageDevice) -> BoundDiskEvidence {
   match storage_device_serial(d: device) {
     Present { value: serial } => BoundDisk { serial: serial }
-    Absent => BoundDiskUnread { note: "probe observed no serial for the selected disk" as NonEmptyStr }
+    Absent => BoundDiskUnread
   }
 }
 
@@ -1591,7 +1871,11 @@ fn bound_disk_evidence(device: StorageDevice) -> BoundDiskEvidence {
 type BindingVerdict
   = BootedThisSeed
   | BootedADifferentSeed
-  | BindingIsForeign { note: NonEmptyStr }
+  // NO PAYLOAD: the arm asserts that the binding does not name the unit and attempt being asked about, which
+  // is fully determined by the two comparisons below. A note there would be prose stored as data, constructed
+  // once and read by nobody. A future need to distinguish WHICH identity mismatched adds a field with a real
+  // consumer, or a new arm.
+  | BindingIsForeign
 
 fn check_binding_against_seed(
   binding: AltraAutoinstallSeedBinding,
@@ -1600,9 +1884,7 @@ fn check_binding_against_seed(
   attempt: IntakeAttemptId,
 ) -> BindingVerdict {
   match binding.unit_key == unit_key && binding.attempt == attempt {
-    False => BindingIsForeign {
-      note: "binding names a different unit or attempt than the question asked" as NonEmptyStr,
-    }
+    False => BindingIsForeign
     True =>
       match content_hash_eq_structural(
         left: binding.seed_digest,
