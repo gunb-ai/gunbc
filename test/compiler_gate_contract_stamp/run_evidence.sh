@@ -185,15 +185,15 @@ fail_marker="${GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER:-${evidence_dir:-$tmpdi
 cleanup() { rm -f "$guard_template"; [ -n "$tmpdir" ] && rm -rf "$tmpdir"; }
 trap 'cleanup' EXIT
 
-// THE FORGER'S OWN TOOL, in the harness. It receives a FORM NAME from the model and the RESOLVED running
-// stamp, and writes the tree itself -- the same shape rewrite_stamp/demote_stamp already have. A byte
-// string from the model would be worse: two of these forms contain a single quote, and the shell
-// serializer single-quotes literal words, so the bytes would be re-parsed rather than quoted.
-// DERIVED, NOT RE-COPIED. The harness holds no second copy of the reader's rule (DESIGN §6, parallel
-// authority): the supported form is defined ONCE, in the model, by a content hash of fixed length. Here
-// the question is only "did the forger actually forge?" -- so the reference is the RUNNING value, which
-// the model guarantees is the supported form. Same length as that, and all lowercase hex, is the same
-// rule with no constant duplicated.
+# THE FORGER'S OWN TOOL, in the harness. It receives a FORM NAME from the model and the RESOLVED running
+# stamp, and writes the tree itself -- the same shape rewrite_stamp/demote_stamp already have. A byte
+# string from the model would be worse: two of these forms contain a single quote, and the shell
+# serializer single-quotes literal words, so the bytes would be re-parsed rather than quoted.
+# DERIVED, NOT RE-COPIED. The harness holds no second copy of the reader's rule (DESIGN §6, parallel
+# authority): the supported form is defined ONCE, in the model, by a content hash of fixed length. Here
+# the question is only "did the forger actually forge?" -- so the reference is the RUNNING value, which
+# the model guarantees is the supported form. Same length as that, and all lowercase hex, is the same
+# rule with no constant duplicated.
 stamp_literal_is_supported_form() {
   local v="$1" ref="$2"
   [ "${#v}" -eq "${#ref}" ] || return 1
