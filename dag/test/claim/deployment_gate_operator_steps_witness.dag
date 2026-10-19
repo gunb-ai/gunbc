@@ -356,8 +356,8 @@ test fn the_ready_act_is_discharged_at_the_mint() -> Bool {
 // record is exactly what this file is no longer allowed to do.
 test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused() -> Bool {
   let approve = approved_trial(run_id: 35447067113)
-    // ONE DISPATCH DRESSED AS TWO TRIALS.
-    && (match admit_reviewer_removal(
+  // ONE DISPATCH DRESSED AS TWO TRIALS.
+  (match admit_reviewer_removal(
           approved: approve,
           rejected: rejected_trial(run_id: 35447067113),
           environment_name: gate_env,

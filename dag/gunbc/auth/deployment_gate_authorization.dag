@@ -379,8 +379,13 @@ fn broker_may_answer(
     // authority over it (§3), and the Bool version threw the typed `because:` away. One match, and the
     // environment it names is the one that has to agree.
     && (match ownership {
-          OwnedByGateApp { rule_id: _, app_id: _, app_slug: _, environment_name: owned } =>
-            owned == pending_wait_environment_name(wait: wait)
+          OwnedByGateApp { observation: o } =>
+            // The environment the RULE was read for, not merely the one the caller claims. And the
+            // installation this arm authorises a token from is the one in the observation, which only
+            // the join in observe_rule_ownership can produce — a stale configured claim never reaches
+            // this arm because the fold refused to attribute the rule to it.
+            o.environment_name == pending_wait_environment_name(wait: wait)
+              && o.installation_id > 0
           NotOwnedByGateApp { because: _ } => false
         })
     && !pending_wait_carries_a_human_reviewer(wait: wait)
@@ -395,7 +400,7 @@ fn ownership_names_environment(
   environment: NonEmptyStr
 ) -> Bool {
   match ownership {
-    OwnedByGateApp { rule_id: _, app_id: _, app_slug: _, environment_name: e } => e == environment
+    OwnedByGateApp { observation: o } => o.environment_name == environment
     NotOwnedByGateApp { because: _ } => false
   }
 }
@@ -740,7 +745,7 @@ fn mint_accepted_rule_review(
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_authorization_witness",
-      decl_name: "fx_accepted_receipt"
+      decl_name: "fx_mint_probe"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_authorization_witness",

@@ -164,15 +164,6 @@ fn reviewer_removal_act_for(admission: ReviewerRemovalAdmission) -> ReviewerRemo
   }
 }
 
-// Whether the act has a renderable row at all. Kept as the single place that asks, so a caller cannot
-// pattern-match only the Ready arm and forget the other.
-fn reviewer_removal_is_renderable(decision: ReviewerRemovalStepDecision) -> Bool {
-  match decision {
-    ReviewerRemovalReady { intervention: _, evidence: _ } => true
-    ReviewerRemovalBlocked { missing: _ } => false
-  }
-}
-
 data deployment_gate_operator_steps: List<HumanIntervention> = [
   app_registration_step,
   app_installation_step,

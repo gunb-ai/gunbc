@@ -266,8 +266,29 @@ fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt? {
   }
 }
 
-fn fx_accepted_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt? {
-  fx_receipt(run_id: run_id, state: state)
+// THE MINT PROBE: the one place in this file, besides fx_receipt, that is admitted to call the mint.
+// Every argument is passed through UNTOUCHED, so a test can hand the mint a body naming another
+// environment, a status GitHub does not accept, a path from another run, or an ownership that
+// attributes nothing, and read the mint's OWN refusal back rather than a fixture's opinion about it.
+// A foreign module is refused the identical call -- that is the fact the forged-evidence probe enrols.
+fn fx_mint_probe(
+  run_id: Int,
+  environment_name: NonEmptyStr,
+  claimed: ReviewState,
+  path: NonEmptyStr,
+  review: DeploymentProtectionRuleReview,
+  status: HttpStatus,
+  ownership: EnvironmentRuleOwnership
+) -> AcceptedReviewOutcome {
+  mint_accepted_rule_review(
+    run_id: run_id,
+    environment_name: environment_name,
+    claimed: claimed,
+    path: path,
+    review: review,
+    status: status,
+    ownership: ownership,
+  )
 }
 
 // The wait, as the poll reports it: the environment as an OBJECT, a short configured timer, and the
@@ -834,7 +855,7 @@ test fn an_admission_comes_only_from_the_mint_and_the_mint_refuses_shortcuts() -
   }
     // A 204 for a body that releases a DIFFERENT environment mints no receipt: GitHub answers 204 just
     // as happily for the wrong environment, so the refusal has to happen at the mint.
-    && mint_accepted_rule_review(
+    && fx_mint_probe(
          run_id: 35447067113,
          environment_name: gated_env,
          claimed: Approved,
@@ -854,7 +875,7 @@ test fn an_admission_comes_only_from_the_mint_and_the_mint_refuses_shortcuts() -
            },
          }
     // A 200 is not an accepted review, even though the poll and the human reviewer answer 200.
-    && (match mint_accepted_rule_review(
+    && (match fx_mint_probe(
           run_id: 35447067113,
           environment_name: gated_env,
           claimed: Approved,
@@ -872,7 +893,7 @@ test fn an_admission_comes_only_from_the_mint_and_the_mint_refuses_shortcuts() -
         })
     // A path that is not this run's. The endpoint template carries {run_id}; a caller that pasted a
     // different run's path would be reviewing a deployment nobody tapped.
-    && (match mint_accepted_rule_review(
+    && (match fx_mint_probe(
           run_id: 35447067113,
           environment_name: gated_env,
           claimed: Approved,
@@ -889,7 +910,7 @@ test fn an_admission_comes_only_from_the_mint_and_the_mint_refuses_shortcuts() -
           _ => false
         })
     // NO OWNERSHIP, NO RECEIPT — the unattributed readback cannot authorise a review.
-    && (match mint_accepted_rule_review(
+    && (match fx_mint_probe(
           run_id: 35447067113,
           environment_name: gated_env,
           claimed: Approved,

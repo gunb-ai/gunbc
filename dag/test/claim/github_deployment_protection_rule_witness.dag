@@ -802,7 +802,7 @@ test fn the_api_version_header_is_the_pinned_one() -> Bool {
 // looking complete while covering nothing.
 test fn the_citation_table_names_only_live_declarations() -> Bool {
   every_citation_names_a_live_declaration()
-    && deployment_protection_rule_citation_count() == 11
+    && deployment_protection_rule_citation_count() == 12
     && (deployment_protection_rule_fact_citations |> count) == (
          deployment_protection_rule_live_fact_names |> count
        )
