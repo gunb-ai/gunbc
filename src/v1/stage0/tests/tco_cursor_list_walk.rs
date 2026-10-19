@@ -89,6 +89,10 @@ impl Drop for Scratch {
     }
 }
 
+// Cargo leaves one rlib per build of the crate in deps/, and nothing names which one this test
+// executable was linked against, so more than one is a refusal and not a pick: a guess could link the
+// specimen against a build with other features and still compile. Remedy: remove the stale rlibs
+// (`cargo clean -p v1-compiler`) or run this test without a separate `cargo build` of the crate.
 fn unique_rlib(deps: &Path, name: &str) -> PathBuf {
     let prefix = format!("lib{name}-");
     let matches: Vec<_> = std::fs::read_dir(deps)
@@ -102,7 +106,7 @@ fn unique_rlib(deps: &Path, name: &str) -> PathBuf {
     assert_eq!(
         matches.len(),
         1,
-        "ambiguous or absent {name} artifact: {matches:?}"
+        "ambiguous or absent {name} artifact: {matches:?}; remove the stale rlibs (cargo clean -p v1-compiler) and rerun"
     );
     matches[0].clone()
 }
