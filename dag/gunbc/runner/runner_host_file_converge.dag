@@ -2068,11 +2068,18 @@ fn runner_host_cap_files_state(subject: RunnerHostFileSubject, context: FleetSsh
 // A UNIT-FILE CHANGE IS PENDING when any observed instance owes a reload, read from its own reload status
 // (never from the lifecycle standing, which a fabric or retirement classification replaces); an instance
 // that could not be read is unknown and counts as pending (an unread unit proves nothing about what a reload would load).
-// systemd reports an instance's NeedDaemonReload for the template's drop-ins too.
-fn runner_host_cap_pending_reload(population: RunnerSlotPopulation) -> Bool {
+// systemd reports an instance's NeedDaemonReload for the template's drop-ins too. The answer is LOCATED: one
+// line per unit naming it and which of the two it is, so an operator can act on the unit rather than on a bare flag.
+// An empty list is nothing pending.
+fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation) -> List<String> {
   match population {
-    SlotPopulationUnobservable { reason: _ } => true
-    SlotPopulationObserved { units: us } => any(us, r => match r.reload { SlotReloadNotPending => false SlotReloadOwed => true SlotReloadUnobserved => true })
+    SlotPopulationUnobservable { reason: r } => [concat("the slot population was not observed: ", r)]
+    SlotPopulationObserved { units: us } =>
+      filter(map(us, r => match r.reload {
+        SlotReloadNotPending => ""
+        SlotReloadOwed => join([r.unit as String, " reload=owed (NeedDaemonReload is not no; standing=", runner_slot_unit_standing_wire(standing: r.standing), ")"], "")
+        SlotReloadUnobserved => join([r.unit as String, " reload=unobserved (systemctl show returned no complete block for it; standing=", runner_slot_unit_standing_wire(standing: r.standing), ")"], "")
+      }), l => l != "")
   }
 }
 
@@ -2121,7 +2128,7 @@ fn run_runner_host_cap_phase(
             gate: gate,
             files: runner_host_cap_files_state(subject: subject, context: context, privilege: privilege),
             extras: extras,
-            pending_reload: runner_host_cap_pending_reload(population: population),
+            pending_reloads: runner_host_cap_pending_reloads(population: population),
             retirement_cause: runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: subject.retired_units, population: population)),
           ) {
             HostCapsWithheld { cause: c } => CapPhaseWithheld { cause: c }

@@ -44,7 +44,7 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_cap_retirement_gate,
   runner_host_cap_gate_cause,
   runner_host_cap_phase_bars_reload,
-  runner_host_cap_pending_reload,
+  runner_host_cap_pending_reloads,
   CapPhaseRan,
   SlotUnitUnread,
   SlotReloadPending,
@@ -126,7 +126,7 @@ test fn a_differing_cap_row_on_an_idle_host_drains_writes_and_restarts() -> Bool
   plan_drains(p: host_cap_plan(
     standings: [standing_of(u: unit(n: "01"), live: old_shape_live()), standing_of(u: unit(n: "02"), live: old_shape_live())],
     gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), idle_of(u: unit(n: "02"))]),
-    files: CapFilesSettled, pending_reload: false, retirement_cause: none,
+    files: CapFilesSettled, pending_reloads: [], retirement_cause: none,
     extras: [],
   ))
 }
@@ -136,9 +136,9 @@ test fn a_differing_cap_row_on_an_idle_host_drains_writes_and_restarts() -> Bool
 // an unproven-idle slot is the same refusal.
 test fn one_busy_slot_means_no_write_and_no_reload_for_the_host() -> Bool {
   let standings = [standing_of(u: unit(n: "01"), live: old_shape_live()), standing_of(u: unit(n: "02"), live: old_shape_live())]
-  plan_withheld_naming(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), busy_of(u: unit(n: "02"))]), files: CapFilesSettled, pending_reload: false, retirement_cause: none, extras: []), needle: "actions-runner@srv3-02.service")
-    && !plan_drains(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), busy_of(u: unit(n: "02"))]), files: CapFilesSettled, pending_reload: false, retirement_cause: none, extras: []))
-    && plan_withheld_naming(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), SlotIdleReading { unit: unit(n: "02"), activity: SlotActivityUnobserved { cause: "no attribution" as NonEmptyStr } }]), files: CapFilesSettled, pending_reload: false, retirement_cause: none, extras: []), needle: "actions-runner@srv3-02.service")
+  plan_withheld_naming(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), busy_of(u: unit(n: "02"))]), files: CapFilesSettled, pending_reloads: [], retirement_cause: none, extras: []), needle: "actions-runner@srv3-02.service")
+    && !plan_drains(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), busy_of(u: unit(n: "02"))]), files: CapFilesSettled, pending_reloads: [], retirement_cause: none, extras: []))
+    && plan_withheld_naming(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), SlotIdleReading { unit: unit(n: "02"), activity: SlotActivityUnobserved { cause: "no attribution" as NonEmptyStr } }]), files: CapFilesSettled, pending_reloads: [], retirement_cause: none, extras: []), needle: "actions-runner@srv3-02.service")
 }
 
 // Positive: identical caps are left in place whatever the activity, so nothing is drained, written,
@@ -147,7 +147,7 @@ test fn identical_caps_are_left_in_place() -> Bool {
   plan_leaves(p: host_cap_plan(
     standings: [standing_of(u: unit(n: "01"), live: at_desired_live()), standing_of(u: unit(n: "02"), live: at_desired_live())],
     gate: host_cap_idle_gate(readings: [busy_of(u: unit(n: "01")), idle_of(u: unit(n: "02"))]),
-    files: CapFilesSettled, pending_reload: false, retirement_cause: none,
+    files: CapFilesSettled, pending_reloads: [], retirement_cause: none,
     extras: [],
   ))
     && slot_cap_outcome_settled(o: SlotCapsLeftInPlace { unit: unit(n: "01") })
@@ -165,7 +165,7 @@ test fn a_readback_mismatch_refuses() -> Bool {
     cgroup_memory_max: Present { value: concat(to_string(byte_size_count(b: desired().memory_max)), "\n") },
     cgroup_swap_max: Present { value: "0\n" },
   }
-  plan_withheld_naming(p: host_cap_plan(standings: [standing_of(u: unit(n: "01"), live: disagree)], gate: HostCapsAllIdle, files: CapFilesSettled, pending_reload: false, retirement_cause: none, extras: []), needle: "disagree")
+  plan_withheld_naming(p: host_cap_plan(standings: [standing_of(u: unit(n: "01"), live: disagree)], gate: HostCapsAllIdle, files: CapFilesSettled, pending_reloads: [], retirement_cause: none, extras: []), needle: "disagree")
     && !slot_cap_outcome_settled(o: SlotCapsRefused { unit: unit(n: "01"), step: "live-readback", reason: "x" })
 }
 
@@ -211,8 +211,8 @@ fn one_at() -> List<SlotCapUnitStanding> { [standing_of(u: unit(n: "01"), live: 
 // RED (review 5566883083, 1): an extra loaded instance outside the declared sets gets the template
 // reload too, and this route never drains or activates it, so a needed bracket withholds, naming it.
 test fn an_extra_loaded_instance_withholds_the_host() -> Bool {
-  plan_withheld_naming(p: host_cap_plan(standings: one_old(), gate: all_idle(), files: CapFilesSettled, pending_reload: false, retirement_cause: none, extras: [unit(n: "99")]), needle: "actions-runner@srv3-99.service")
-    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesDiffer, pending_reload: false, retirement_cause: none, extras: [unit(n: "99")]), needle: "actions-runner@srv3-99.service")
+  plan_withheld_naming(p: host_cap_plan(standings: one_old(), gate: all_idle(), files: CapFilesSettled, pending_reloads: [], retirement_cause: none, extras: [unit(n: "99")]), needle: "actions-runner@srv3-99.service")
+    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesDiffer, pending_reloads: [], retirement_cause: none, extras: [unit(n: "99")]), needle: "actions-runner@srv3-99.service")
 }
 
 // RED (review, 1): a withheld cap phase is what bars the later reload sites.
@@ -222,8 +222,8 @@ test fn a_withheld_cap_phase_bars_the_reload() -> Bool {
 
 // RED (review, 3): live caps matching does not settle a missing, stale or wrong-mode cap file.
 test fn matching_live_caps_do_not_settle_a_differing_cap_file() -> Bool {
-  plan_drains(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesDiffer, pending_reload: false, retirement_cause: none, extras: []))
-    && plan_leaves(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reload: false, retirement_cause: none, extras: []))
+  plan_drains(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesDiffer, pending_reloads: [], retirement_cause: none, extras: []))
+    && plan_leaves(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reloads: [], retirement_cause: none, extras: []))
 }
 
 fn live_with(cg: String, mm: String?, sw: String?) -> SlotCapLive {
@@ -278,7 +278,7 @@ fn ran_with(rl: RunnerHostManagerReload, slots: List<SlotCapOutcome>) -> RunnerH
 // RED (review 5567170735, 1a): a cap-file plan that could not be made is Unreadable, never a difference:
 // it withholds (no drain, no write) and says so, where it used to reduce to `true` and drain and write.
 test fn an_unreadable_cap_file_plan_withholds_instead_of_draining() -> Bool {
-  plan_withheld_naming(p: host_cap_plan(standings: one_old(), gate: all_idle(), files: CapFilesUnreadable { cause: "20-fleet-width.conf: privilege unproven" }, pending_reload: false, retirement_cause: none, extras: []), needle: "could not be observed")
+  plan_withheld_naming(p: host_cap_plan(standings: one_old(), gate: all_idle(), files: CapFilesUnreadable { cause: "20-fleet-width.conf: privilege unproven" }, pending_reloads: [], retirement_cause: none, extras: []), needle: "20-fleet-width.conf: privilege unproven")
 }
 
 // RED (1b): a phase that RAN but did not settle (a failed write, reload or readback) still bars the later
@@ -320,24 +320,36 @@ test fn the_typed_steps_render_the_actuators_argv() -> Bool {
 // the four managed files, so "nothing differs" cannot vouch for it: the ordinary reload would load it
 // onto a busy slot with no drain.
 test fn a_pending_unit_file_change_always_withholds() -> Bool {
-  plan_withheld_naming(p: host_cap_plan(standings: one_old(), gate: all_idle(), files: CapFilesDiffer, pending_reload: true, retirement_cause: none, extras: []), needle: "pending reload")
-    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesDiffer, pending_reload: true, retirement_cause: none, extras: []), needle: "pending reload")
-    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reload: true, retirement_cause: none, extras: []), needle: "pending reload")
+  plan_withheld_naming(p: host_cap_plan(standings: one_old(), gate: all_idle(), files: CapFilesDiffer, pending_reloads: ["actions-runner@srv3-01.service reload=owed"], retirement_cause: none, extras: []), needle: "pending reload")
+    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesDiffer, pending_reloads: ["actions-runner@srv3-01.service reload=owed"], retirement_cause: none, extras: []), needle: "pending reload")
+    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reloads: ["actions-runner@srv3-01.service reload=owed"], retirement_cause: none, extras: []), needle: "pending reload")
 }
 
 // RED: the instance-drop-in counterexample exactly -- managed files settled, live caps at desired, a
 // pending reload, and a BUSY slot. It must withhold (and so bar the ordinary reload), not leave in place.
 test fn a_hand_placed_instance_dropin_pending_on_a_busy_slot_bars_the_reload() -> Bool {
   let busy = host_cap_idle_gate(readings: [busy_of(u: unit(n: "01"))])
-  let plan = host_cap_plan(standings: one_at(), gate: busy, files: CapFilesSettled, pending_reload: true, retirement_cause: none, extras: [])
+  let plan = host_cap_plan(standings: one_at(), gate: busy, files: CapFilesSettled, pending_reloads: ["actions-runner@srv3-01.service reload=owed"], retirement_cause: none, extras: [])
   plan_withheld_naming(p: plan, needle: "pending reload") && !plan_leaves(p: plan)
 }
 
-test fn the_pending_reload_reading_counts_an_unread_instance_as_pending() -> Bool {
-  runner_host_cap_pending_reload(population: obs_with_reload(st: SlotTeardownEffective, rl: SlotReloadOwed))
-    && runner_host_cap_pending_reload(population: obs_with_reload(st: SlotUnitUnread, rl: SlotReloadUnobserved))
-    && runner_host_cap_pending_reload(population: SlotPopulationUnobservable { reason: "x" })
-    && !runner_host_cap_pending_reload(population: obs_of(st: SlotTeardownEffective))
+fn pending_text(population: RunnerSlotPopulation) -> String { join(runner_host_cap_pending_reloads(population: population), "\n") }
+
+// RED: the pending-reload reading is LOCATED. Each case names the unit and which status it is (owed vs
+// unobserved); the unobserved one says the show block was missing, and a nothing-pending population is empty.
+test fn the_pending_reload_reading_names_each_unit_and_its_status() -> Bool {
+  let owed = pending_text(population: obs_with_reload(st: SlotTeardownEffective, rl: SlotReloadOwed))
+  let unobserved = pending_text(population: obs_with_reload(st: SlotUnitUnread, rl: SlotReloadUnobserved))
+  string_contains(s: owed, pattern: "actions-runner@srv3-01.service") && string_contains(s: owed, pattern: "reload=owed")
+    && string_contains(s: unobserved, pattern: "actions-runner@srv3-01.service") && string_contains(s: unobserved, pattern: "reload=unobserved") && string_contains(s: unobserved, pattern: "no complete block")
+    && string_contains(s: pending_text(population: SlotPopulationUnobservable { reason: "x" }), pattern: "not observed: x")
+    && length(runner_host_cap_pending_reloads(population: obs_of(st: SlotTeardownEffective))) == 0
+}
+
+// RED: the rendered Withheld refusal carries the located lines end to end, from a population.
+test fn the_pending_reload_refusal_renders_the_unit_and_status() -> Bool {
+  let plan = host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: obs_with_reload(st: SlotTeardownEffective, rl: SlotReloadOwed)), retirement_cause: none, extras: [])
+  plan_withheld_naming(p: plan, needle: "pending: actions-runner@srv3-01.service reload=owed")
 }
 
 // THE REAL OBSERVATION, END TO END. A loaded FABRIC member (srv3-06) running a job, with a hand-placed
@@ -353,26 +365,27 @@ fn fabric_population_of(show: String) -> RunnerSlotPopulation {
   SlotPopulationObserved { units: classify_runner_slot_population_with_fabric(units: [u], fabric: [u], retirements: [], show_stdout: show, expect: runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: false, residue_absent: false)) }
 }
 fn fabric_plan_for(show: String) -> HostCapPlan {
-  host_cap_plan(standings: one_at(), gate: host_cap_idle_gate(readings: [busy_of(u: unit(n: "01"))]), files: CapFilesSettled, pending_reload: runner_host_cap_pending_reload(population: fabric_population_of(show: show)), retirement_cause: none, extras: [])
+  host_cap_plan(standings: one_at(), gate: host_cap_idle_gate(readings: [busy_of(u: unit(n: "01"))]), files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: fabric_population_of(show: show)), retirement_cause: none, extras: [])
 }
 test fn a_pending_reload_on_a_loaded_fabric_member_survives_classification_and_withholds() -> Bool {
   let pop = fabric_population_of(show: fabric_show(reload: "yes"))
   let lifecycle_is_fabric = match pop { SlotPopulationObserved { units: us } => any(us, r => match r.standing { SlotFabricMemberRunsARunner => true _ => false }) SlotPopulationUnobservable { reason: _ } => false }
   lifecycle_is_fabric
-    && runner_host_cap_pending_reload(population: pop)
+    && length(runner_host_cap_pending_reloads(population: pop)) > 0
+    && plan_withheld_naming(p: fabric_plan_for(show: fabric_show(reload: "yes")), needle: "actions-runner@srv3-06.service reload=owed")
     && plan_withheld_naming(p: fabric_plan_for(show: fabric_show(reload: "yes")), needle: "pending reload")
     && runner_host_cap_phase_bars_reload(phase: CapPhaseWithheld { cause: "pending reload" })
 }
 
 // Positive: the same fabric member with nothing pending is not pending, and leaves the settled caps in place.
 test fn a_loaded_fabric_member_with_no_pending_reload_leaves_settled_caps_in_place() -> Bool {
-  !runner_host_cap_pending_reload(population: fabric_population_of(show: fabric_show(reload: "no")))
+  length(runner_host_cap_pending_reloads(population: fabric_population_of(show: fabric_show(reload: "no")))) == 0
     && plan_leaves(p: fabric_plan_for(show: fabric_show(reload: "no")))
 }
 
 // RED: a fabric member with no show block is unobserved, which counts as pending.
 test fn an_unread_fabric_member_counts_as_pending() -> Bool {
-  runner_host_cap_pending_reload(population: fabric_population_of(show: ""))
+  plan_withheld_naming(p: fabric_plan_for(show: ""), needle: "actions-runner@srv3-06.service reload=unobserved")
 }
 
 // RED (3): a STOPPED unit whose loaded caps are stale is NeedRestart (its next start would run them), not
@@ -391,8 +404,8 @@ test fn a_stopped_unit_with_stale_loaded_caps_needs_a_restart() -> Bool {
 // RED (4, narrowed): an incomplete retiree withholds a DIFFERING cap (the host is not quiescent) -- typed,
 // not a cycle, because a withheld phase on a host whose caps are all settled does not arise.
 test fn an_incomplete_retiree_withholds_a_differing_cap_and_not_a_settled_one() -> Bool {
-  plan_withheld_naming(p: host_cap_plan(standings: one_old(), gate: all_idle(), files: CapFilesSettled, pending_reload: false, retirement_cause: Present { value: "surplus slots have not retired: 05" }, extras: []), needle: "has not retired")
-    && plan_leaves(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reload: false, retirement_cause: Present { value: "surplus slots have not retired: 05" }, extras: []))
+  plan_withheld_naming(p: host_cap_plan(standings: one_old(), gate: all_idle(), files: CapFilesSettled, pending_reloads: [], retirement_cause: Present { value: "surplus slots have not retired: 05" }, extras: []), needle: "surplus slots have not retired: 05")
+    && plan_leaves(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reloads: [], retirement_cause: Present { value: "surplus slots have not retired: 05" }, extras: []))
 }
 
 fn obs_of(st: RunnerSlotUnitStanding) -> RunnerSlotPopulation { obs_with_reload(st: st, rl: SlotReloadNotPending) }
