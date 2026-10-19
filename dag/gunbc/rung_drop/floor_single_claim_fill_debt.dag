@@ -29,6 +29,15 @@ import v2.workflow.floor_pure_producer_share { SingleClaimFillDebtModule, fill_d
 // members. Each claim's subject IS a rehearsal run (a front end plus resolves), so supplying the run's
 // output would leave the claim asserting nothing. They leave the drop only when the native evaluator runs
 // that rehearsal under the per-claim budget, or the operator rules a rehearsal-grain budget.
+// THE ENFORCEMENT PATH IS BELOW THE TEMPORARY RUNG, STATED PLAINLY (operator-delegated ruling, warm-wolf-570,
+// 2026-10-19). The over-budget refusal -- a claim over its per-claim budget with no active debt row -- is
+// executed by NO job today: it was the floor's per-claim cost enrolment, and the floor lane is withdrawn
+// (gunbc.rung_drop v1_required_lanes_withdrawn, member 1). The debt list is therefore UNENFORCED: removing an
+// over-budget member refuses nowhere. That loss is held by member 1 of that row, and enforcement returns when the
+// native binary judges floor claims (the V3 leaf of the charter 4 climb). `temporary: Mitigatable` below is the
+// nearest representable rung, because gunbc.guarantee_rung has no arm beneath it and OutsideTheLadder means
+// external reality, which this is not; it must not be read as a claim that the enforcement path is mitigated.
+// What does execute is the population derivation: v2.test.claim.floor.fill_debt_rung_drop_population.
 data floor_single_claim_fill_debt_population: List<String> = fill_debt_drop_population(debt: floor_single_claim_fill_debt)
 
 // One population row per ACTIVE member, led by the claim identity so the join is a prefix match at
@@ -55,6 +64,6 @@ data floor_single_claim_fill_debt_drop: RungDrop = RungDrop {
       replacement: "each member module supplies its claims' judged subject at the interface the claim inspects and keeps one inhabitance claim on the real path (DESIGN section 3), so the claim fits its per-claim budget unaided"
     },
     population: floor_single_claim_fill_debt_population,
-    restoration_trigger: "THE CAPABILITY: the required floor judges every member's claim within the per-claim new-witness budget with no fill netted, because the claim's subject is supplied at its interface and exactly one claim per boundary executes the real front-end or assemble-and-infer path. Member by member a claim leaves the population by RestructuredPerWitnessRule, BecameSharedByDemand or ClaimDeleted on its debt row, never by deleting the row while the claim is over budget. WHAT THAT MUST BE SUFFICIENT FOR: no member can exceed its budget with the floor green. THE NAMED IRREDUCIBLE is the namespace_xl2_rehearsal_census members, whose subject is the rehearsal run itself; their trigger is the native evaluator running that rehearsal under the per-claim budget. WHAT DOES NOT RETIRE THIS ROW: raising the budget, a portable served value that nets the fill more cheaply while the duplication stands, a count of members standing where the identity join belongs."
+    restoration_trigger: "THE CAPABILITY: the required floor judges every member's claim within the per-claim new-witness budget with no fill netted, because the claim's subject is supplied at its interface and exactly one claim per boundary executes the real front-end or assemble-and-infer path. Member by member a claim leaves the population by RestructuredPerWitnessRule, BecameSharedByDemand or ClaimDeleted on its debt row, never by deleting the row while the claim is over budget. WHAT THAT MUST BE SUFFICIENT FOR: no member can exceed its budget with the floor green. THE NAMED IRREDUCIBLE is the namespace_xl2_rehearsal_census members, whose subject is the rehearsal run itself; their trigger is the native evaluator running that rehearsal under the per-claim budget. THE ENFORCEMENT RETURNS WHEN the native binary built from an emission of v2 judges floor claims on the required path (member 1 of v1_required_lanes_withdrawn); until then the over-budget refusal is executed by no job and the debt list is unenforced. WHAT DOES NOT RETIRE THIS ROW: raising the budget, a portable served value that nets the fill more cheaply while the duplication stands, a count of members standing where the identity join belongs."
   }
 }
