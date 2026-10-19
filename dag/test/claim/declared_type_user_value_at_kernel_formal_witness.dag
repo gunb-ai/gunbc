@@ -1,0 +1,57 @@
+module test.claim.declared_type_user_value_at_kernel_formal_witness
+
+// A user-declared coproduct (Nat, Opt<T>, any Disj) or a Unit VALUE AT A KERNEL FORMAL IS REFUSED.
+// The actual-side exit `is_kernel_type(actual) == false || actual == Unit` of
+// `v1.compiler.infer` `kernel_value_declared_type_mismatch_bounded` admitted all of them; the
+// judgment now reads the FORMAL's declaration (a kernel scalar inhabited only by name, declared
+// cast, grounded identity row or refinement). Each RED is paired with an accepted positive
+// control at the same position (gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel).
+
+fn ut_nat_source() -> String {
+  "module ut.probe\n\ntype Nat\n  = Zero\n  | Succ { predecessor: Nat }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Nat) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_opt_source() -> String {
+  "module ut.probe\n\ntype Opt<T>\n  = Some { value: T }\n  | Nada\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Opt<Int>) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_coproduct_source() -> String {
+  "module ut.probe\n\ntype Pair\n  = P\n  | Q\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Pair) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_unit_source() -> String {
+  "module ut.probe\n\ntype Pad = Pd\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Unit) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_control_source() -> String {
+  "module ut.probe\n\ntype Nat\n  = Zero\n  | Succ { predecessor: Nat }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Int) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_nat_to_nat_source() -> String {
+  "module ut.probe\n\ntype Nat\n  = Zero\n  | Succ { predecessor: Nat }\n\nfn takes_nat(x: Nat) -> Nat {\n  x\n}\n\nfn probe(q: Nat) -> Nat {\n  takes_nat(x: q)\n}\n"
+}
+
+test fn ut_nat_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_nat_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_opt_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_opt_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_coproduct_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_coproduct_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_unit_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_unit_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_int_at_int_formal_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_control_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_user_value_at_its_own_declared_type_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_nat_to_nat_source(), "src/ut_probe.rs", [], [])
+}
