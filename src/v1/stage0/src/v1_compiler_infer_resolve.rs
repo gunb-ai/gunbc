@@ -50,22 +50,22 @@ use crate::v1_std_core::MatchPattern::Wildcard;
 use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemFunction, ModuleItemTypeDeclaration};
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
-    expr_call_func_at, expr_literal_int_optional, expr_method_name_at,
-    field_from_key_property_name, field_init_node_name_at, field_init_node_value,
-    field_node_default_value, field_node_from_key, field_node_name_at, field_node_type_expr,
-    find_property, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
-    is_local_transport, kernel_span, let_binding_name_at, local_transport_node, make_arg_node,
-    make_arm_node, make_error_node, make_expr_error_node, make_expr_node, make_field_init_node,
-    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
-    make_resolved_param_node, make_resource_use_node, make_text_part_node, make_transport_node,
-    map_children, no_span, node_name_span, optional_of, optional_payload, param_node_default_value,
-    param_node_name_at, param_node_type_expr, preserve_outer_optional, qualified_last_segment,
-    resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    string_type, transport_request_body, type_is_optional, type_param_kind_property_name,
-    unit_type, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
-    ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node, ParsedModuleItemKind,
-    StringPart,
+    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at,
+    declaration_is_optional, default_ident_span, expr_call_func_at, expr_literal_int_optional,
+    expr_method_name_at, field_from_key_property_name, field_init_node_name_at,
+    field_init_node_value, field_node_default_value, field_node_from_key, field_node_name_at,
+    field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern,
+    is_compiler_error, is_local_transport, kernel_span, let_binding_name_at, local_transport_node,
+    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
+    make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_resolved_param_node, make_resource_use_node, make_text_part_node,
+    make_transport_node, map_children, no_span, node_name_span, optional_of, optional_payload,
+    param_node_default_value, param_node_name_at, param_node_type_expr, preserve_outer_optional,
+    qualified_last_segment, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
+    resource_use_resource, string_type, transport_request_body, type_is_optional,
+    type_param_kind_property_name, unit_type, CompilerDiagnostic, Connective, DeclarationMarker,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node,
+    ParsedModuleItemKind, StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2480,6 +2480,19 @@ pub fn stamp_kernel_collection(n: Rc<Node>) -> Rc<Node> {
     })
 }
 
+pub fn resolved_optional_declaration(resolved: Rc<Node>) -> Option<Rc<DeclarationRef>> {
+    match resolved.declaration.clone() {
+        Some(d) => {
+            if crate::v1_std_core::declaration_is_optional(d.clone()) {
+                Some(d.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node> {
     if ((authored.children.clone().len() as i64) > 0) {
         Rc::new(Node {
@@ -2505,7 +2518,7 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
             declaration_marker: authored.declaration_marker.clone(),
             declaration: match authored.declaration.clone() {
                 Some(d) => Some(d.clone()),
-                std::option::Option::None => resolved.declaration.clone(),
+                std::option::Option::None => resolved_optional_declaration(resolved.clone()),
             },
             expr_data: authored.expr_data.clone(),
             ident: None,

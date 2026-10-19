@@ -4378,9 +4378,10 @@ pub fn arm_is_bare_declaration_of_sibling(
                 && (s.declaration.clone() == t.declaration.clone()))
                 || (crate::v1_std_core::type_is_optional(s.clone())
                     && node_is_std_optional(t.clone(), scope.clone())))
-                || ((t.declaration.clone() != std::option::Option::None)
+                || ((bare_declaration_of_type(t.clone(), scope.clone())
+                    != std::option::Option::None)
                     && (structured_formal_carrier_declaration(s.clone(), scope.clone())
-                        == t.declaration.clone())))
+                        == bare_declaration_of_type(t.clone(), scope.clone()))))
             {
                 __found = true;
                 break;
@@ -4388,6 +4389,15 @@ pub fn arm_is_bare_declaration_of_sibling(
         }
         __found
     })
+}
+
+pub fn bare_declaration_of_type(t: Rc<Node>, scope: Rc<InferScope>) -> Option<Rc<DeclarationRef>> {
+    match t.declaration.clone() {
+        Some(d) => Some(d.clone()),
+        std::option::Option::None => {
+            structured_formal_carrier_declaration(t.clone(), scope.clone())
+        }
+    }
 }
 
 pub fn inhabited_join_types(types: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {

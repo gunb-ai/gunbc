@@ -3159,8 +3159,16 @@ fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, scope: Infe
   t.connective == Disj && (siblings |> any(s =>
     (s != t && t.declaration != none && s.declaration == t.declaration)
       || (type_is_optional(n: s) && node_is_std_optional(n: t, scope: scope))
-      || (t.declaration != none && structured_formal_carrier_declaration(formal_peeled: s, scope: scope) == t.declaration)
+      || (bare_declaration_of_type(t: t, scope: scope) != none && structured_formal_carrier_declaration(formal_peeled: s, scope: scope) == bare_declaration_of_type(t: t, scope: scope))
   ))
+}
+
+// The declaration a bare (Disj) type denotes: the one it carries, else the one its authored name settles to.
+fn bare_declaration_of_type(t: Node, scope: InferScope) -> DeclarationRef? {
+  match t.declaration {
+    Present { value: d } => Present { value: d }
+    Absent => structured_formal_carrier_declaration(formal_peeled: t, scope: scope)
+  }
 }
 
 // THE ARM-JOIN AND THE BRANCH-JOIN SHARE ONE RULE: a bare declaration arm yields to a sibling that
