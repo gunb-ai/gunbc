@@ -1,8 +1,6 @@
 set -e
 cd /root/workspace/repo-root
-BASE=65b25985167c5abbaf5a6df2b26218fe618a13f3
 echo "HEAD-START=$(git rev-parse HEAD)"
-[ "$(git rev-parse HEAD)" = "$BASE" ] || { echo "HEAD-MISMATCH -- refusing"; exit 0; }
 for pf in .evidence/seed.patch .evidence/host.patch; do
   [ -s "$pf" ] || { echo "ABORT-EMPTY-PATCH $pf"; exit 0; }
 done
@@ -10,7 +8,11 @@ done
 git checkout -- . 2>/dev/null || true
 git apply -R .evidence/host.patch
 git apply -R .evidence/seed.patch
-echo "PRE-EDIT seed-authority=$(grep -c 'fn render_span_location' src/v1/00_core.dag || true) eof-fix=$(grep -c last_code_token_end src/v1/01_tokenize.dag || true)"
+SA=$(grep -c 'fn render_span_location' src/v1/00_core.dag || true)
+EF=$(grep -c last_code_token_end src/v1/01_tokenize.dag || true)
+HC=$(grep -c 'crate::v1_std_core::render_span_location' src/v1/stage0/src/module_path_index/index.rs || true)
+echo "PRE-EDIT seed-authority=$SA eof-fix=$EF host-authority-call=$HC"
+[ "$SA" = "0" ] && [ "$EF" = "0" ] && [ "$HC" = "0" ] || { echo "ABORT-PRE-EDIT-STATE (reverse-apply did not land)"; exit 0; }
 set +e
 cargo build --release -p v1-compiler --bin claim_executor --bin gunbc > /tmp/ro.log 2>&1
 echo "REGENERATOR-BUILD-EXIT=$?"
@@ -26,7 +28,7 @@ grep -aE "required-regen: elapsed|declared_divergent|refusal" /tmp/regen.out | t
 MIRRORS="src/v1/stage0/src/v1_std_core.rs src/v1/stage0/src/v1_compiler_tokenize.rs src/v1/stage0/src/v1_compiler_parse.rs src/v1/stage0/src/v1_compiler_compile.rs src/v1/stage0/src/v1_compiler_emit_rust.rs"
 echo "ZZ-MIRROR-DIFFSTAT"; git diff --stat $MIRRORS | tail -8
 echo "ZZ-MIRROR-SHA256"; sha256sum $MIRRORS
-git diff $BASE -- $MIRRORS > /tmp/mirrors.diff
+git diff -- $MIRRORS > /tmp/mirrors.diff
 echo "ZZ-DIFF-BYTES=$(wc -c < /tmp/mirrors.diff) DIFF-SHA=$(sha256sum /tmp/mirrors.diff | cut -c1-64)"
 gzip -9 -c /tmp/mirrors.diff > /tmp/mirrors.diff.gz
 base64 -w0 /tmp/mirrors.diff.gz > /tmp/mirrors.b64
