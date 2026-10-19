@@ -3169,7 +3169,7 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
     // and the hand-off refuses such a carrier too, whether the parse produced it or a caller did
     && (match recovery_readback_proves_reset(
       readback: ReadbackInconclusive {
-        detail: "response body was truncated before the message",
+        cause: ReadbackBodyCouldNotBeRead { why: "response body was truncated before the message" as NonEmptyStr },
         evidence: recovery_post_reset_readback_capture_ref,
         observed_at: recovery_post_reset_instant(),
       },
