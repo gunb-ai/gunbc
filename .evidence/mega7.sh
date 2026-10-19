@@ -10,10 +10,13 @@ for pf in .evidence/seed.patch .evidence/host.patch; do
 done
 md5sum .evidence/seed.patch .evidence/host.patch dag/test/claim/diagnostic_span_location_rendering_witness.dag
 # 1. BACK TO THE PRE-EDIT STATE so the regenerator itself builds from committed bytes.
+#    ORDER MATTERS: `git checkout -- .` FIRST (it restores everything to HEAD, which CARRIES the
+#    edits), and only THEN the reverse-applies. Running checkout after them silently undoes the
+#    revert -- measured: 8 x E0425 with the seed authority present and the mirrors still stale.
+git checkout -- . 2>/dev/null || true
 git apply -R .evidence/host.patch
 git apply -R .evidence/seed.patch
-echo "PRE-EDIT-VERIFY authority-in-seed=$(grep -c render_span_location src/v1/00_core.dag || true) authority-in-host=$(grep -c crate::v1_std_core::render_span_location src/v1/stage0/src/module_path_index/index.rs || true) located-name=$(grep -c interpreter_blocking_diagnostic_messages_with_source_indices src/v1/stage0/src/cli_run/emit_host.rs || true)"
-git checkout -- . 2>/dev/null || true
+echo "PRE-EDIT-VERIFY seed-authority=$(grep -c 'fn render_span_location' src/v1/00_core.dag || true) host-authority-call=$(grep -c 'crate::v1_std_core::render_span_location' src/v1/stage0/src/module_path_index/index.rs || true) host-located-name=$(grep -c interpreter_blocking_diagnostic_messages_with_source_indices src/v1/stage0/src/cli_run/emit_host.rs || true) eof-fix=$(grep -c last_code_token_end src/v1/01_tokenize.dag || true)"
 echo "CLEAN-STATUS:[$(git status --porcelain | grep -v '^?? \.evidence' | tr '\n' '|')]"
 # 2. CLEAN TREE: build the REGENERATOR from the committed (pre-edit) bytes -- heal.yml:84-94 route.
 set +e
