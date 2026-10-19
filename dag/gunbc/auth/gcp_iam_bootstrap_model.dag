@@ -332,6 +332,7 @@ fn iam_bootstrap_deny_policies() -> List<IamBootstrapDenyPolicy> {
   [
     IamBootstrapDenyPolicy { policy_id: iam_bootstrap_deny_policy_id, rules: iam_bootstrap_deny_rules() },
     IamBootstrapDenyPolicy { policy_id: iam_bootstrap_delta_deny_policy_id, rules: iam_bootstrap_delta_deny_rules() },
+    IamBootstrapDenyPolicy { policy_id: iam_bootstrap_trust_root_wall_policy_id, rules: [iam_bootstrap_trust_root_wall_rule()] },
   ]
 }
 
@@ -447,6 +448,10 @@ fn iam_bootstrap_delta_principal() -> String {
 // resource.matchTag takes the namespaced key `<project id>/<short name>` (conditions attribute
 // reference); every permission below is on the deny-supported list (deny-permissions-support, read
 // 2026-10-19). The pools stay walled in code alone (gunbc.rung_drop gcp_iam_bootstrap_trust_pool_untaggable).
+// ITS OWN DENY POLICY, so the boundary policies already live keep matching their declarations (the deny
+// stage creates a policy only when it is absent and refuses one that differs).
+data iam_bootstrap_trust_root_wall_policy_id: NonEmptyStr = "gunbc-iam-bootstrap-trust-root-wall"
+
 data iam_bootstrap_trust_root_tag_key_short: NonEmptyStr = "gunbc-trust-root"
 data iam_bootstrap_trust_root_tag_value_short: NonEmptyStr = "root"
 
@@ -494,8 +499,7 @@ fn iam_bootstrap_trust_root_wall_rule() -> GcpDenyPolicyRule {
 
 fn iam_bootstrap_delta_deny_rules() -> List<GcpDenyPolicyRule> {
   [GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule { denied_principals: [iam_bootstrap_delta_principal()],
-    denied_permissions: iam_bootstrap_denied_permissions, exception_principals: none, exception_permissions: none, denial_condition: none } } },
-   iam_bootstrap_trust_root_wall_rule()]
+    denied_permissions: iam_bootstrap_denied_permissions, exception_principals: none, exception_permissions: none, denial_condition: none } } }]
 }
 
 // ── WHO OWNS A DECLARED SECRET'S IAM: exactly two arms ───────────────────────────────────────
