@@ -996,7 +996,7 @@ fn mint_accepted_rule_review(
         // rather than minting a receipt for an endpoint nobody called.
         if !built_path_carries_every_pinned_anchor(path: built) {
           AcceptedReviewRefused { because: BuiltRouteDoesNotMatchThePinnedTemplate { route: built } }
-        } else
+        } else {
     match ownership {
       NotOwnedByGateApp { because: b } =>
         // The refusal the READBACK gave, carried rather than renamed: "no rule is enabled" and "the
@@ -1053,6 +1053,7 @@ fn mint_accepted_rule_review(
           }
         }
     }
+        }
     }
   }
 }
