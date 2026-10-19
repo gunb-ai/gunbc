@@ -254,3 +254,56 @@ identity, so the fold CANNOT distinguish shared from distinct. If so, the perman
 "shared vs distinct" through `unify_generics` at all, and I will record that as the limit exactly as
 parent instructed rather than shipping a row that asserts a distinction the fold does not make. If
 instead one of F1/F2 refuses, the fold does have a leaf-identity path, and the permanent RED goes there.
+
+## AMENDMENT 8 (13:05Z): the probe ran, and it settles the question -- in a different shape than asked
+
+Same dispatch, fresh clones at printed SHAs, release profile, `REPAIR_MARKS 2` on both trees, so both
+compilers really carried the seed. The probe walked `fn collide()` in the RESOLVED tree and printed the
+variable ids the COMPILER minted.
+
+| | shipped repair `c2d582ee7b` | name-keyed mutant `9c949cabe5` |
+|---|---|---|
+| ids printed | `K@test.dag:735-744`, `V@test.dag:735-744`, `K@test.dag:784-793`, `V@test.dag:784-793` | `K`, `V` |
+| positions / distinct | 24 / **4** | 24 / **2** |
+| site-tagged / bare | **24 / 0** | **0 / 24** |
+
+Three things follow, and one of them retires a worry I raised:
+1. **The repair mints per-call-site variables.** Two calls, two spans, four distinct ids. msg_78d4eb21
+   is satisfied by measurement, not only by construction.
+2. **The mutant really does share.** AMENDMENT 6 flagged the possibility that the mutant had silently
+   no-opped, which would have made "the fixture cannot expose sharing" a broken comparison rather than a
+   limit. It is a limit: sharing was produced and still no row noticed.
+3. `items_visited=280`, `ids_found=24`, and the walk found `collide` -- so the print is a real traversal
+   and not an empty-tree artifact.
+
+## The fold capture says the fold CANNOT distinguish shared from distinct -- parent's stated spec is measured false in one leg
+
+`unify_generics` called directly, T bound to the unbound `Map(K,V)` form, then `Map(Int,Int)`, then
+`Map(String,Int)`; run twice, once with bare `K`/`V` (shared) and once with `K@…`/`V@…` (distinct):
+
+    shared_diag=1   distinct_diag=1
+    message: "type mismatch: expected 'type variable T bound as Map(Primitive(Int),Primitive(Int))
+              (first argument)', got 'Map(Primitive(String),Primitive(Int)) (later argument)'"
+    subst keys: ["T"] in both
+
+So, answering parent's "must refuse, or must not cross-bind; state which is correct": **both refuse**, and
+they refuse for the SAME reason -- the acc is keyed by the FORMAL name `T`, and the leaf variable ids are
+never compared to each other. Which means:
+- the shared leg refusing is correct and is what I will land as the RED-adjacent control;
+- the distinct leg **also** refusing contradicts the spec's "must accept", so I will not build that row as
+  specified -- a row asserting acceptance there would be red on a correct tree;
+- and because the fold never inspects leaf identity, a hand-built fold-level row is INVARIANT to the
+  mutant by construction. It cannot be the thing that fails under name-keying.
+
+## What I will land instead, and why it is stronger
+
+The RED that works is at the compiler, on the ids it mints -- exactly the artefact the two tables above
+differ on. `minted_variables_are_fresh_per_call_site`: compile COLLISION_SOURCE, walk the resolved tree,
+and assert that the variables the two calls carry are site-tagged and that no id is the bare declared
+parameter name. Predicted and already measured in this same run: **4 distinct / 24 tagged** at the repair
+(PASS) and **2 distinct / 0 tagged** at the mutant (FAIL). It tests the property freshness exists to
+prevent -- two unrelated call sites sharing one variable -- rather than a proxy for it.
+
+Plus two fold-level rows for what the fold does decide: the settled-rebind refusal above (naming the
+binding in the diagnostic), and a row that LOCKS the measured limit -- shared and distinct leaf identity
+produce identical diagnostics -- so the limit is recorded in the test suite rather than only in this file.
