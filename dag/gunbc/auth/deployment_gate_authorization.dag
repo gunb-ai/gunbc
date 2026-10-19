@@ -62,7 +62,6 @@ import extdeps.github.deployment_protection_rule {
   wait_timer_maximum,
   rule_delivery_documented_guarantee,
   review_endpoint_path_built_for,
-  review_decision,
   ReviewPathBuildRefusal,
   BuiltReviewPath,
   BuiltReviewPathOk,
@@ -97,6 +96,8 @@ import extdeps.github.actions_runs {
   WorkflowRunRecord,
   workflow_run_settlement,
 }
+import extdeps.github.github { Repository }
+import gunbc.repository { gunbc_repository }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 import gunbc.auth.approval_capability {
   ApprovalCapability,
@@ -1120,6 +1121,52 @@ fn corroborate_matches_receipt(
         })
 }
 
+// THE BOUNDARY AS ONE VALUE, not as an environment string that travels alone. THE DEFECT THIS CLOSES
+// (side chat, blocker 2): the removal act was admitted from an environment name ALONE, so a pair of
+// genuine accepted-call receipts witnessed on gcp-iam-bootstrap — or on a fork's srv1-production —
+// unlocked the removal of srv1-production's required reviewer in gunb-ai/gunbc. An environment name is
+// not a boundary: environments are per-repository objects, and the same name exists in more than one
+// repository. A subject that can be carried by one string can be carried to the wrong place.
+//
+// WHY A RECORD OF TWO EXISTING CARRIERS RATHER THAN THREE FRESH STRINGS. `Repository` is what the
+// GitHub API returns (extdeps.github.github), and `gunbc_repository` is the one row this project already
+// owns for which repository it lives in — minting an `owner`/`repo`/`environment` triple of bare
+// strings here would have been a sixth nickname for the repository (§2, §3). The environment stays a
+// NonEmptyStr because that is the carrier the environment module already uses; there is no
+// DeploymentEnvironmentName brand to reuse, and inventing one for a parameter would be re-invention in
+// the other direction.
+//
+// THE PAIR IS TRAVELLING PURPOSE: the boundary reaches the admission, the sealed evidence and the act
+// together, so there is no call in which they can be spelled differently from each other.
+type DeploymentGateBoundary {
+  repository: Repository,
+  environment_name: NonEmptyStr,
+}
+
+// THE BOUNDARY THIS DESIGN GATES. Built from the two rows that already own those facts: the repository
+// this project lives in, and the environment whose protection IS the srv1 root-mutation boundary. A
+// second gated environment (the sibling lane's gcp-iam-bootstrap) gets its OWN value of this type, and
+// the admissions below refuse to let one unlock the other's reviewer.
+data srv1_deployment_gate_boundary: DeploymentGateBoundary = DeploymentGateBoundary {
+  repository: gunbc_repository,
+  environment_name: srv1_production_environment_name,
+}
+
+// THE REPOSITORY LABEL, ASSEMBLED FROM THE PARTS RATHER THAN READ FROM `full_name`. full_name is what
+// GitHub prints; owner + name is what the route is built from and what the receipts carry. A boundary
+// row whose full_name disagrees with its own parts is a corrupted row, and
+// the witness asserts the two agree rather than trusting the field that happens to be convenient.
+fn boundary_repository_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
+  concat(boundary.repository.owner, concat("/", boundary.repository.name)) as NonEmptyStr
+}
+
+// THE WHOLE SUBJECT, FOR REPORTS. Both halves, so a refusal that says "another boundary" can be acted
+// on without guessing which half moved.
+fn boundary_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
+  concat(boundary_repository_label(boundary: boundary),
+    concat(" (environment ", concat(boundary.environment_name as String, ")"))) as NonEmptyStr
+}
+
 // THE TRIALS THAT COUNT: two ACCEPTED CALLS — one approve, one reject — both on the environment whose
 // reviewer is about to be removed, on DIFFERENT runs. One dispatch cannot show that the broker refuses
 // when it should, which is the half of the gate that stops being tested the moment the human reviewer
@@ -1134,18 +1181,42 @@ fn corroborate_matches_receipt(
 type DeploymentGateTrialEvidence sole_constructor {
   approved: AcceptedRuleReviewReceipt,
   rejected: AcceptedRuleReviewReceipt,
-  environment_name: NonEmptyStr,
+  // THE SUBJECT THE TRIAL WAS A TRIAL OF, as one value. It was an `environment_name: NonEmptyStr`, and
+  // that is precisely what let a pair witnessed on gcp-iam-bootstrap (or on a fork that named its
+  // environment srv1-production) unlock this repository's reviewer removal: the environment half of the
+  // subject was carried, the repository half was not, and nothing connected them. Sealed here, the
+  // boundary travels with the receipts into the act, so the act cannot be reached with an evidence pair
+  // about some other subject.
+  boundary: DeploymentGateBoundary,
 }
 
 // WHY the removal is not yet performable, as a closed sum. A paragraph here would be read by nobody but
 // a test comparing sentences; a refusal an operator can act on is a name.
+// WHICH ARM OF THE TRIAL DID THE WRONG THING. A closed set of two, so it is a sum: the refusals below
+// used to carry `arm: NonEmptyStr` labels ("approving"/"rejecting") which an author could write as any
+// string, and a typo'd label is a refusal that points at nothing (§5, correctness by construction). It
+// deliberately has no `trial_arm_label` accessor: every reader matches on the arm rather than comparing a
+// rendering of it, so a label function would be a declaration with no consumer (§3c).
+type TrialArm = ApprovingArm | RejectingArm
+
 type RemovalRefusalReason
   = NoApprovingReview
   | NoRejectingReview
   | ApprovingArmWasNotAnApproval
   | RejectingArmWasNotARejection
   | BothArmsOneDispatch
-  | EvidenceFromAnotherEnvironment
+  // THE ARM ADDRESSED ANOTHER SUBJECT. Carrying which arm, what it said, and what was expected: the
+  // whole boundary is in the message because both halves of it are the thing that can drift.
+  | TrialArmIsOnAnotherEnvironment {
+      arm: TrialArm,
+      arm_environment: NonEmptyStr,
+      expected_environment: NonEmptyStr,
+    }
+  | TrialArmIsOnAnotherRepository {
+      arm: TrialArm,
+      arm_repository: NonEmptyStr,
+      expected_repository: NonEmptyStr,
+    }
   // THE SAME RULE, THE SAME INSTALLATION, THE SAME REPOSITORY. Without these, "approve on the gate's
   // rule A, reject on the gate's rule B" counted as a witnessed trial: more than one rule CAN be
   // enabled on one environment, and answering one is no evidence the other answers at all. Each of the
@@ -1155,10 +1226,23 @@ type RemovalRefusalReason
       approved_installation_id: GitHubAppInstallationId,
       rejected_installation_id: GitHubAppInstallationId,
     }
-  | TrialArmsAddressDifferentRepositories {
-      approved_repository: NonEmptyStr,
-      rejected_repository: NonEmptyStr,
+  // THE ACT WAS ASKED FOR AGAINST ANOTHER SUBJECT. The admission sealed a boundary into its evidence,
+  // so the pair can no longer be re-pointed; what CAN still go wrong is a caller asking reviewer_removal_act_for
+  // for one boundary's removal while handing it another boundary's admitted pair — two calls that each
+  // passed their own check. These arms refuse that, and carry both sides so the report says what moved.
+  | ActAddressedAnotherEnvironment {
+      expected_environment: NonEmptyStr,
+      witnessed_environment: NonEmptyStr,
     }
+  | ActAddressedAnotherRepository {
+      expected_repository: NonEmptyStr,
+      witnessed_repository: NonEmptyStr,
+    }
+  // THERE IS NO "ARMS ADDRESS DIFFERENT REPOSITORIES" ARM ANY MORE, and that is deliberate rather than
+  // an oversight: with each arm compared against the boundary's repository, two arms that both match it
+  // cannot differ from each other. Keeping the pairwise arm would have been a second check of a state
+  // already forbidden upstream — DESIGN §4b, a check whose forbidden state is expressible nowhere it
+  // runs is green by construction and then gets cited as coverage.
 
 type ReviewerRemovalAdmission
   = RemovalAdmitted { evidence: DeploymentGateTrialEvidence }
@@ -1193,7 +1277,9 @@ data accepted_review_mint_frontier: NonEmptyStr = "gunbc.fleet.deployment_gate_a
 fn admit_reviewer_removal(
   approved: AcceptedRuleReviewReceipt?,
   rejected: AcceptedRuleReviewReceipt?,
-  environment_name: NonEmptyStr
+  // THE SUBJECT, AS ONE VALUE. It used to be `environment_name: NonEmptyStr` alone, which is the whole
+  // of blocker 2: the repository half of the subject was never an argument, so it was never compared.
+  boundary: DeploymentGateBoundary
 ) -> ReviewerRemovalAdmission {
   match approved {
     Present { value: a } => match rejected {
@@ -1202,9 +1288,43 @@ fn admit_reviewer_removal(
           RemovalRefused { missing: ApprovingArmWasNotAnApproval }
         } else if r.state != Rejected {
           RemovalRefused { missing: RejectingArmWasNotARejection }
-        } else if a.environment_name != environment_name
-          || r.environment_name != environment_name {
-          RemovalRefused { missing: EvidenceFromAnotherEnvironment }
+        } else if a.environment_name != boundary.environment_name {
+          RemovalRefused {
+            missing: TrialArmIsOnAnotherEnvironment {
+              arm: ApprovingArm,
+              arm_environment: a.environment_name,
+              expected_environment: boundary.environment_name,
+            },
+          }
+        } else if r.environment_name != boundary.environment_name {
+          RemovalRefused {
+            missing: TrialArmIsOnAnotherEnvironment {
+              arm: RejectingArm,
+              arm_environment: r.environment_name,
+              expected_environment: boundary.environment_name,
+            },
+          }
+        } else if (a.owner as String) != boundary.repository.owner
+          || (a.repo as String) != boundary.repository.name {
+          // THE REPOSITORY HALF, WHICH USED TO BE UNCHECKED ENTIRELY. The review route is
+          // owner/repo-scoped, so this is not a cosmetic pairing: a genuine pair from another
+          // repository is two genuine calls about something that is not this boundary.
+          RemovalRefused {
+            missing: TrialArmIsOnAnotherRepository {
+              arm: ApprovingArm,
+              arm_repository: accepted_receipt_repository_label(receipt: a),
+              expected_repository: boundary_repository_label(boundary: boundary),
+            },
+          }
+        } else if (r.owner as String) != boundary.repository.owner
+          || (r.repo as String) != boundary.repository.name {
+          RemovalRefused {
+            missing: TrialArmIsOnAnotherRepository {
+              arm: RejectingArm,
+              arm_repository: accepted_receipt_repository_label(receipt: r),
+              expected_repository: boundary_repository_label(boundary: boundary),
+            },
+          }
         } else if a.run_id == r.run_id {
           RemovalRefused { missing: BothArmsOneDispatch }
         } else if a.rule_id != r.rule_id {
@@ -1225,23 +1345,16 @@ fn admit_reviewer_removal(
               rejected_installation_id: r.installation_id,
             },
           }
-        } else if (a.owner as String) != (r.owner as String) || (a.repo as String) != (r.repo as String) {
-          // The same run NUMBER on two repositories: the route is owner/repo-scoped, so these are two
-          // unrelated calls wearing one trial's clothes.
-          RemovalRefused {
-            missing: TrialArmsAddressDifferentRepositories {
-              approved_repository: accepted_receipt_repository_label(receipt: a),
-              rejected_repository: accepted_receipt_repository_label(receipt: r),
-            },
-          }
         } else {
           // The sealed pair. Built HERE, inside the mint, from two receipts that passed — a caller
           // cannot supply one, and cannot supply the receipts either.
+          // The boundary the receipts were checked against is SEALED INTO the evidence, so the act
+          // downstream can demand the same one and there is no argument left for a caller to swap.
           RemovalAdmitted {
             evidence: DeploymentGateTrialEvidence {
               approved: a,
               rejected: r,
-              environment_name: environment_name,
+              boundary: boundary,
             },
           }
         }
@@ -1269,15 +1382,8 @@ fn reviewer_removal_obstacle(admission: ReviewerRemovalAdmission) -> Optional<Re
 data reviewer_removal_admission: ReviewerRemovalAdmission = admit_reviewer_removal(
   approved: none,
   rejected: none,
-  environment_name: srv1_production_environment_name,
+  boundary: srv1_deployment_gate_boundary,
 )
-
-fn reviewer_removal_is_performable() -> Bool {
-  match reviewer_removal_obstacle(admission: reviewer_removal_admission) {
-    none => true
-    Present { value: _ } => false
-  }
-}
 
 // ---------------------------------------------------------------------------
 // 8. OBSERVATIONS THIS REPOSITORY MAKES ABOUT AN UPSTREAM ARTEFACT

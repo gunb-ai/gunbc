@@ -64,6 +64,8 @@ import extdeps.github.actions_runs {
   RunSuccess,
 }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
+import extdeps.github.github { Repository }
+import gunbc.repository { gunbc_repository }
 import gunbc.auth.approval_capability {
   ApprovalCapability,
   ApprovalCapabilityClaims,
@@ -81,6 +83,12 @@ import gunbc.auth.deployment_gate_authorization {
   gate_route_for,
   operator_webhook_receiver,
   admit_reviewer_removal,
+  DeploymentGateBoundary,
+  srv1_deployment_gate_boundary,
+  boundary_label,
+  boundary_repository_label,
+  ApprovingArm,
+  RejectingArm,
   DeploymentGateTrialEvidence,
   broker_answer_decision,
   BrokerAnswerVerdict,
@@ -149,6 +157,33 @@ import gunbc.auth.deployment_gate_authorization {
 data gated_env: NonEmptyStr = srv1_production_environment_name
 data ungated_env: NonEmptyStr = "gcp-iam-converge"
 data other_env: NonEmptyStr = "mtcollins1-boot"
+
+// THE OTHER BOUNDARIES, AS WHOLE SUBJECTS (side chat, blocker 2). The forgery this design had to close
+// was not "an environment name that differs"; it was a GENUINE pair of receipts, witnessed honestly on a
+// different subject, unlocking THIS subject's reviewer removal. So the fixtures have to be whole
+// boundaries rather than strings: the sibling lane's environment in this repository, and a fork that
+// happens to have named its environment srv1-production. Both carry a real Repository, because a
+// repository-less name is exactly the shape that let the forgery through.
+data sibling_env: NonEmptyStr = "gcp-iam-bootstrap"
+
+data sibling_boundary: DeploymentGateBoundary = DeploymentGateBoundary {
+  repository: gunbc_repository,
+  environment_name: sibling_env,
+}
+
+// SAME ENVIRONMENT NAME, DIFFERENT REPOSITORY. An environment is a per-repository object, so "it says
+// srv1-production" is not evidence about THIS repository's srv1-production. This is the half the old
+// signature could not even express, let alone refuse.
+data fork_boundary: DeploymentGateBoundary = DeploymentGateBoundary {
+  repository: Repository {
+    owner: "gunb-ai",
+    name: "someone-elses-fork",
+    full_name: "gunb-ai/someone-elses-fork",
+    private: false,
+    default_branch: "main",
+  },
+  environment_name: srv1_production_environment_name,
+}
 data gate_run_id: Int = 35447067113
 // THE CARRIERS, imported rather than invented: an installation id and an app id are typed upstream,
 // so the fixtures build the same types the model produces.
@@ -1187,12 +1222,16 @@ test fn the_honest_pair_is_admitted_and_carries_the_receipts_it_was_built_from()
         match admit_reviewer_removal(
           approved: Present { value: good_approve },
           rejected: Present { value: good_reject },
-          environment_name: gated_env,
+          boundary: srv1_deployment_gate_boundary,
         ) {
           RemovalAdmitted { evidence: e } =>
             e.approved.run_id == 35447067113
               && e.rejected.run_id == 35447067114
-              && e.environment_name == gated_env
+              && e.boundary.environment_name == gated_env
+              // THE SEALED PAIR CARRIES THE WHOLE SUBJECT, not just the environment half of it: this is
+              // the field the act is later compared against, so it has to be checkable here.
+              && boundary_repository_label(boundary: e.boundary) == "gunb-ai/gunbc"
+              && (boundary_label(boundary: e.boundary) as String).contains("gunb-ai/gunbc")
               && e.approved.state == Approved
               && e.rejected.state == Rejected
           RemovalRefused { missing: _ } => false
@@ -1210,7 +1249,7 @@ test fn nothing_witnessed_is_admitted_neither_nor_left_unnamed() -> Bool {
   (match admit_reviewer_removal(
         approved: none,
         rejected: none,
-        environment_name: gated_env,
+        boundary: srv1_deployment_gate_boundary,
       ) {
         RemovalRefused { missing: NoApprovingReview } => true
         RemovalRefused { missing: _ } => false
@@ -1220,7 +1259,7 @@ test fn nothing_witnessed_is_admitted_neither_nor_left_unnamed() -> Bool {
     && (match admit_reviewer_removal(
           approved: fx_receipt(run_id: 35447067113, state: Approved),
           rejected: none,
-          environment_name: gated_env,
+          boundary: srv1_deployment_gate_boundary,
         ) {
           RemovalRefused { missing: NoRejectingReview } => true
           RemovalRefused { missing: _ } => false
@@ -1237,7 +1276,7 @@ test fn an_approving_arm_dressed_as_the_rejecting_arm_is_refused() -> Bool {
       match admit_reviewer_removal(
         approved: Present { value: good_approve },
         rejected: Present { value: good_approve },
-        environment_name: gated_env,
+        boundary: srv1_deployment_gate_boundary,
       ) {
         RemovalRefused { missing: RejectingArmWasNotARejection } => true
         RemovalRefused { missing: _ } => false
@@ -1253,7 +1292,7 @@ test fn one_dispatch_dressed_as_two_trials_is_refused() -> Bool {
   match admit_reviewer_removal(
     approved: fx_receipt(run_id: 35447067113, state: Approved),
     rejected: fx_receipt(run_id: 35447067113, state: Rejected),
-    environment_name: gated_env,
+    boundary: srv1_deployment_gate_boundary,
   ) {
     RemovalRefused { missing: BothArmsOneDispatch } => true
     RemovalRefused { missing: _ } => false
@@ -1272,12 +1311,38 @@ test fn a_pair_witnessed_on_another_environment_unlocks_nothing_here() -> Bool {
         match admit_reviewer_removal(
           approved: Present { value: good_approve },
           rejected: Present { value: good_reject },
-          environment_name: other_env,
+          boundary: sibling_boundary,
         ) {
-          RemovalRefused { missing: EvidenceFromAnotherEnvironment } => true
+          // WHICH HALF MOVED IS REPORTED, not just "no": the arm, what it said, what was expected.
+          RemovalRefused {
+            missing: TrialArmIsOnAnotherEnvironment {
+              arm: ApprovingArm,
+              arm_environment: seen,
+              expected_environment: wanted,
+            },
+          } => (seen as String) == (gated_env as String) && (wanted as String) == (sibling_env as String)
           RemovalRefused { missing: _ } => false
           RemovalAdmitted { evidence: _ } => false
         }
+      // THE FORK, WHICH IS THE HALF THAT MATTERS MOST: identical environment name, different repository.
+      // A pair witnessed in someone else's repository is evidence about that repository, and the old
+      // signature had no argument in which the difference could even be stated.
+      && (match admit_reviewer_removal(
+             approved: Present { value: good_approve },
+             rejected: Present { value: good_reject },
+             boundary: fork_boundary,
+           ) {
+             RemovalRefused {
+               missing: TrialArmIsOnAnotherRepository {
+                 arm: ApprovingArm,
+                 arm_repository: seen_repo,
+                 expected_repository: wanted_repo,
+               },
+             } => (seen_repo as String) == "gunb-ai/gunbc"
+               && (wanted_repo as String) == "gunb-ai/someone-elses-fork"
+             RemovalRefused { missing: _ } => false
+             RemovalAdmitted { evidence: _ } => false
+           })
       none => false
     }
     none => false
@@ -1393,11 +1458,19 @@ test fn the_mint_refuses_a_repository_it_cannot_put_in_a_route() -> Bool {
     ownership: minted_ownership(),
     requested_rule_id: 900000001,
   ) {
-    AcceptedReviewRefused { because: RouteSegmentsAreNotRouteSafe { hostile_segment: seg } } =>
-      match seg {
-        RepoSegment { value: v } => (v as String) == "gunbc/../other"
-        OwnerSegment { value: _ } => false
-      }
+    AcceptedReviewRefused {
+      because: RouteSegmentsAreNotRouteSafe { refusal: axis, hostile_segment: seg },
+    } =>
+      // the builder's own axis comes through untouched, and the value blamed is the repo, not the owner
+      (match axis {
+         HostileSegment {  } => true
+         RunIdIsNotPositive {  } => false
+       })
+        && (match seg {
+             RepoSegment { value: v } => (v as String) == "gunbc/../other"
+             OwnerSegment { value: _ } => false
+             RunIdSegment { value: _ } => false
+           })
     AcceptedReviewRefused { because: _ } => false
     Accepted { receipt: _ } => false
   }
@@ -1556,7 +1629,7 @@ test fn the_receipt_state_is_the_bodys_and_never_the_callers() -> Bool {
     // twice with two intentions: here is the two-approvals forgery the side chat named, run through the
     // admission it would otherwise have unlocked.
     && (match admit_reviewer_removal(
-           boundary: srv1_boundary,
+           boundary: srv1_deployment_gate_boundary,
            approved: fx_receipt(run_id: 35447067113, state: Approved),
            rejected: fx_receipt(run_id: 35447067114, state: Approved),
          ) {

@@ -31,6 +31,7 @@ import std.types {
   String,
   List,
   Bool,
+  NonEmptyStr,
 }
 
 import std.human_intervention {
@@ -50,6 +51,10 @@ import gunbc.auth.deployment_gate_authorization {
   RemovalRefused,
   RemovalRefusalReason,
   DeploymentGateTrialEvidence,
+  DeploymentGateBoundary,
+  srv1_deployment_gate_boundary,
+  boundary_repository_label,
+  reviewer_removal_admission,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
@@ -118,34 +123,30 @@ data rule_enablement_step: HumanIntervention = HumanIntervention {
   completion_evidence: NoDischargeSiteModeled
 }
 
-// 5. Remove the human required-reviewer — the only row here that WEAKENS a gate.
+// 5. Remove the human required-reviewer -- the only row here that WEAKENS a gate, and the only one
+// that is not a plain row.
 //
-// THE ADMISSION IS A PARAMETER, NOT A SENTENCE. An earlier revision of this row said in its
-// `instruction` that the act requires an admitted ReviewerRemovalAdmission, and left it there: the
-// row was a constant, the check was prose, and prose is what a reviewer correctly called an
-// unenforced guard twice before. The act is now a FUNCTION of the admission
-// (reviewer_removal_act_for), and the only arm that yields a renderable intervention is the admitted
-// one. What is left in `instruction` is what an operator reads while doing it — not the check.
-data reviewer_removal_step: HumanIntervention = HumanIntervention {
-  identity: "github.deployment-rule.reviewer-removal.srv1-production" as HumanInterventionIdentity,
-  frequency: FleetOnce,
-  subject: "required reviewer removed from srv1-production",
-  instruction: "Re-read the environment and its deployment-branch-policies after the removal and confirm the main-only branch rule is the protection that remains: GET /repos/gunb-ai/gunbc/environments/srv1-production must still report deployment_branch_policy \{protected_branches:false, custom_branch_policies:true\} with exactly one branch rule named main. If that readback comes back without the branch rule, the boundary has been weakened twice — restore it before anything else runs.",
-  completion_evidence: DischargedAt {
-    evidence: DeclarationRef {
-      module_path: "gunbc.auth.deployment_gate_authorization",
-      decl_name: "admit_reviewer_removal",
-      field: WholeDeclaration,
-    },
-  }
-}
-
-// THE ACT, AS A FUNCTION OF WHAT WAS WITNESSED. RemovalAdmitted carries the sealed receipt pair — two
-// ACCEPTED CALL receipts, one approve one reject, different runs, both on the environment named by the
-// admission — so the evidence that unlocks the act is the evidence that the rule actually answered,
-// minted only by the call route. RemovalRefused yields a Blocked value: no intervention, no renderable
-// row, and the reason says which arm is missing. The stage-1 frontier therefore yields Blocked, and
-// there is no path from a Bool or a string to the Ready arm.
+// WHY THIS ONE IS NOT A `data` ROW ANY MORE (side chat, blocker 3). It used to be
+// `data reviewer_removal_step: HumanIntervention = HumanIntervention { ... }`, exported, sitting in
+// `deployment_gate_operator_steps.reviewer_removal`. Any consumer could read the act -- the thing an
+// operator performs in the GitHub UI to take srv1's human reviewer out -- without ever calling
+// reviewer_removal_act_for. The `DischargedAt` annotation named the mint that ought to have run; naming
+// it confined nothing (§4b rung honesty: an annotation establishes nothing). A guard that lives beside
+// the act as prose is a guard that can be walked past, and this design has already been caught doing
+// that twice.
+//
+// NOW: the four acts that only TELL the operator to do something safe are ordinary rows, because nothing
+// is gained by sealing an instruction. The act that WEAKENS a boundary is constructed inside the
+// admitted branch of reviewer_removal_act_for, by a helper this module confines to that one caller. A
+// foreign module cannot obtain the removal HumanIntervention except by reading it out of
+// ReviewerRemovalReady, and Ready is reachable only from a RemovalAdmitted admission, which only
+// gunbc.auth.deployment_gate_authorization's sealed mint produces.
+//
+// THE ACT NAMES THE BOUNDARY IT CHANGES, in all three of its reader-facing fields. Before this, `subject`
+// and `instruction` said "srv1-production" as a literal while the admission carried an environment
+// string that was never compared to anything -- so the act a consumer read could describe a boundary
+// that the evidence behind it had nothing to do with. Identity, subject and instruction are now assembled
+// FROM the boundary the pair was admitted against, which is the same value the sealed evidence carries.
 type ReviewerRemovalStepDecision
   = ReviewerRemovalReady {
     intervention: HumanIntervention,
@@ -153,12 +154,106 @@ type ReviewerRemovalStepDecision
   }
   | ReviewerRemovalBlocked { missing: RemovalRefusalReason }
 
-fn reviewer_removal_act_for(admission: ReviewerRemovalAdmission) -> ReviewerRemovalStepDecision {
+fn reviewer_removal_act_identity(boundary: DeploymentGateBoundary) -> HumanInterventionIdentity {
+  // ONE CAST PER LINE, in `let`s. The chained form `(<expr>\n as NonEmptyStr) as HumanInterventionIdentity`
+  // was measured to fail the parser ("expected RParen, found Ident") when the cast wrapped onto the next
+  // line: the dialect does not continue a parenthesised expression across a line break before `as`.
+  let stem = "github.deployment-rule.reviewer-removal."
+  let text = concat(stem, boundary.environment_name as String)
+  let branded = (text as NonEmptyStr)
+  branded as HumanInterventionIdentity
+}
+
+// THE CONSTRUCTION, CONFINED. `admit_callers` names exactly one caller: reviewer_removal_act_for below.
+// Not the witnesses, not the frontier, not any module in the tree -- and there is no same-module
+// exemption in the compiler (v2.compiler.infer infer_admission_judge_entries matches the caller's
+// (module, name) against the roster and refuses when nothing matches; the seed has no test-module or
+// same-module carve-out), so naming the caller from inside this module is what makes it a fact rather
+// than a wish. A literal `HumanIntervention { ... }` here is legal precisely because the CONSTRUCTOR is
+// not the secret: the secret is who is allowed to produce this act.
+// NO EVIDENCE ARGUMENT. The act's words are a function of the SUBJECT alone; the receipts are carried by
+// the Ready arm beside it, so taking them here would advertise a binding the body does not make — the same
+// defect this design calls out elsewhere ("refuses to answer for a binding it was not given").
+fn build_reviewer_removal_act(boundary: DeploymentGateBoundary) -> HumanIntervention
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.auth.deployment_gate_operator_steps",
+      decl_name: "reviewer_removal_act_for"
+    ),
+  ]
+{
+  // EVERY CAST SITS ON THE LINE OF ITS OWN EXPRESSION. A cast that begins a line
+  // ("expr\n  as NonEmptyStr") was measured to fail the parser with "expected RParen, found Ident": the
+  // dialect does not continue an expression across a line break into `as`, so the whole module failed to
+  // resolve and every witness that imports it ran zero tests. The lets below are the shape that parses.
+  let env_text = boundary.environment_name as String
+  let repo_text = boundary_repository_label(boundary: boundary) as String
+  let subject_text = concat("required reviewer removed from ",
+    concat(env_text, concat(" in ", repo_text)))
+  let subject = (subject_text as NonEmptyStr)
+  // THE READBACK, AS PART OF THE ACT'S OWN WORDS: the operator is told to prove the branch rule survived,
+  // with the real route spelled out. Built as its own let so the URL reads in one piece.
+  let readback = concat("/environments/",
+    concat(env_text,
+      concat(" must still report deployment_branch_policy \{protected_branches:false, custom_branch_policies:true\} with exactly one branch rule named main. If that readback comes back without the branch rule, the boundary has been weakened twice -- restore it before anything else runs.")))
+  let instruction_text = concat("On the environment ",
+    concat(env_text,
+      concat(" of ",
+        concat(repo_text,
+          concat(" -- the subject the admitted trial pair was witnessed on, which is the ONLY subject this act may be performed against. Re-read the environment and its deployment-branch-policies after the removal and confirm the main-only branch rule is the protection that remains: GET /repos/",
+            concat(repo_text, concat("/", readback)))))))
+  let instruction = (instruction_text as NonEmptyStr)
+  HumanIntervention {
+    identity: reviewer_removal_act_identity(boundary: boundary),
+    frequency: FleetOnce,
+    subject: subject,
+    instruction: instruction,
+    completion_evidence: DischargedAt {
+      evidence: DeclarationRef {
+        module_path: "gunbc.auth.deployment_gate_authorization",
+        decl_name: "admit_reviewer_removal",
+        field: WholeDeclaration,
+      },
+    }
+  }
+}
+
+// THE ACT, AS A FUNCTION OF WHAT WAS WITNESSED *AND OF THE BOUNDARY BEING ASKED ABOUT*.
+//
+// TWO ARGUMENTS NOW, AND THE SECOND ONE IS THE POINT (side chat, blocker 2). The admission seals a
+// boundary into its evidence, so a pair cannot be re-pointed; what a caller can still do is ask for ONE
+// boundary's removal while holding another boundary's admitted pair -- two calls that each passed their
+// own local check. A pair genuinely witnessed on gcp-iam-bootstrap, or on a fork's srv1-production, used
+// to yield THIS repository's srv1-production removal act, because the old function ignored its evidence
+// and returned a constant row. Now the sealed boundary and the asked-for boundary are compared before any
+// act exists, and a mismatch is a typed Blocked with both sides named -- not a Bool, not a silent
+// fallback to the constant.
+fn reviewer_removal_act_for(
+  boundary: DeploymentGateBoundary,
+  admission: ReviewerRemovalAdmission
+) -> ReviewerRemovalStepDecision {
   match admission {
     RemovalAdmitted { evidence: evidence } =>
-      ReviewerRemovalReady {
-        intervention: reviewer_removal_step,
-        evidence: evidence,
+      if evidence.boundary.environment_name != boundary.environment_name {
+        ReviewerRemovalBlocked {
+          missing: ActAddressedAnotherEnvironment {
+            expected_environment: boundary.environment_name,
+            witnessed_environment: evidence.boundary.environment_name,
+          },
+        }
+      } else if boundary_repository_label(boundary: evidence.boundary)
+        != boundary_repository_label(boundary: boundary) {
+        ReviewerRemovalBlocked {
+          missing: ActAddressedAnotherRepository {
+            expected_repository: boundary_repository_label(boundary: boundary),
+            witnessed_repository: boundary_repository_label(boundary: evidence.boundary),
+          },
+        }
+      } else {
+        ReviewerRemovalReady {
+          intervention: build_reviewer_removal_act(boundary: boundary),
+          evidence: evidence,
+        }
       }
     RemovalRefused { missing: missing } => ReviewerRemovalBlocked { missing: missing }
   }
@@ -181,7 +276,13 @@ type DeploymentGateOperatorSequence {
   app_installation: HumanIntervention,
   webhook_configuration: HumanIntervention,
   rule_enablement: HumanIntervention,
-  reviewer_removal: HumanIntervention,
+  // THE DECISION, NOT THE ACT (side chat, blocker 3). This field used to be a `HumanIntervention`, which
+  // is how the raw removal row stayed reachable from outside: a consumer rendering the sequence read the
+  // act that weakens srv1's boundary straight out of a public row, with nothing between it and the
+  // frontier. It is now the TYPED decision, so at the stage-1 frontier the sequence carries a
+  // ReviewerRemovalBlocked with the reason the mint gave — a typed "not yet", not a ready act whose
+  // prose says blocked.
+  reviewer_removal: ReviewerRemovalStepDecision,
 }
 
 data deployment_gate_operator_steps: DeploymentGateOperatorSequence = DeploymentGateOperatorSequence {
@@ -189,7 +290,12 @@ data deployment_gate_operator_steps: DeploymentGateOperatorSequence = Deployment
   app_installation: app_installation_step,
   webhook_configuration: webhook_configuration_step,
   rule_enablement: rule_enablement_step,
-  reviewer_removal: reviewer_removal_step,
+  // The frontier's honest value: nothing has been witnessed, so the act that weakens the boundary is
+  // Blocked by the mint's own reason, on the boundary this design gates.
+  reviewer_removal: reviewer_removal_act_for(
+    boundary: srv1_deployment_gate_boundary,
+    admission: reviewer_removal_admission,
+  ),
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +312,19 @@ fn all_steps_are_fleet_once(steps: DeploymentGateOperatorSequence) -> Bool {
     && human_intervention_frequency_eq(a: steps.app_installation.frequency, b: FleetOnce)
     && human_intervention_frequency_eq(a: steps.webhook_configuration.frequency, b: FleetOnce)
     && human_intervention_frequency_eq(a: steps.rule_enablement.frequency, b: FleetOnce)
-    && human_intervention_frequency_eq(a: steps.reviewer_removal.frequency, b: FleetOnce)
+    && removal_act_frequency_is_fleet_once(decision: steps.reviewer_removal)
+}
+
+// THE FIFTH ACT'S FREQUENCY, READ OFF THE DECISION RATHER THAN OFF A ROW THAT NO LONGER EXISTS.
+// Blocked is not a silent pass: it is the ABSENCE of an act, and there is no frequency to overstate. The
+// claim that bites — the one the witness exercises, because the frontier value is Blocked — is the Ready
+// arm, where an act really does exist and must be once-per-fleet.
+fn removal_act_frequency_is_fleet_once(decision: ReviewerRemovalStepDecision) -> Bool {
+  match decision {
+    ReviewerRemovalReady { intervention: i, evidence: _ } =>
+      human_intervention_frequency_eq(a: i.frequency, b: FleetOnce)
+    ReviewerRemovalBlocked { missing: _ } => true
+  }
 }
 
 // THE ORDERING IS THE RECORD, NOT A WALKER OVER IT (review 82535). The reviewer removal is the only act

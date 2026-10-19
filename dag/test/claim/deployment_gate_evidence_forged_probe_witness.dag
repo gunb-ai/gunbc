@@ -60,7 +60,7 @@ fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
 // THE CONTROL: names the sealed records and the sealed mints, calls nothing, writes no literal. If
 // THIS reads a violation, everything the probe reports would be about importing the module rather
 // than about forging.
-data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, admit_reviewer_removal }\nfn label() -> String { \"control names the sealed records and the sealed mints, and forges nothing\" }\n"
+data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { build_reviewer_removal_act }\nfn label() -> String { \"control names the sealed records and the sealed mints, and forges nothing\" }\n"
 
 test fn a_source_that_only_names_the_gate_types_forges_no_evidence() -> Bool {
   refusals(c: control_census(), class: "SoleConstructorViolation", subject: "AcceptedRuleReviewReceipt") == 0
@@ -101,6 +101,30 @@ test fn a_foreign_call_to_the_ownership_observation_is_refused() -> Bool {
     class: "ConstructorCallAdmissionRefused",
     subject: "observe_rule_ownership",
   ) >= 1
+}
+
+// (e) THE ACT, OBTAINED FROM A FOREIGN MODULE (side chat, blocker 3). This is the compile-time control
+// that says the removal act cannot be had except out of ReviewerRemovalReady: the builder is confined to
+// one caller inside its own module, and this probe is not that caller. It is a RED IN THE SAME SENSE as
+// (a)-(c) — a refusal class counted at a subject — and it is the one that did not exist before blocker 3,
+// because there was nothing to call: the act was a public row. A probe that only reads a row cannot
+// produce this refusal, which is exactly why the row had to go.
+test fn a_foreign_call_to_the_removal_act_builder_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "build_reviewer_removal_act",
+  ) >= 1
+}
+
+// THE CONTROL FOR (e): naming the builder must not itself read a refusal. Without this pair, (e) would be
+// a statement about importing the steps module at all.
+test fn naming_the_removal_act_builder_forges_nothing() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "build_reviewer_removal_act",
+  ) == 0
 }
 
 // (d) AND THE LITERALS, still refused at the records. Kept as separate reds from (a)-(c) on purpose:

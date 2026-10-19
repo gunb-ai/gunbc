@@ -48,7 +48,14 @@ import gunbc.auth.deployment_gate_authorization {
   observe_rule_ownership,
   admit_reviewer_removal,
   reviewer_removal_obstacle,
+  srv1_deployment_gate_boundary,
+  RemovalAdmitted,
+  RemovalRefused,
 }
+// THE ACT BUILDER LIVES IN THE STEPS MODULE, which is the point: the confined producer is the module
+// that owns the act, and this probe is foreign to it.
+import gunbc.auth.deployment_gate_operator_steps { build_reviewer_removal_act }
+import std.human_intervention { HumanIntervention }
 import extdeps.github.deployment_protection_rule {
   Approved,
   Rejected,
@@ -104,7 +111,9 @@ data forged_rejected_receipt: AcceptedRuleReviewReceipt = AcceptedRuleReviewRece
 data forged_pair: DeploymentGateTrialEvidence = DeploymentGateTrialEvidence {
   approved: forged_approved_receipt,
   rejected: forged_rejected_receipt,
-  environment_name: forged_environment,
+  // THE SUBJECT IS ALSO FORGED, and that is the point of the seal: with the boundary as a field, a
+  // caller could previously have paired receipts witnessed on one subject with a claim about another.
+  boundary: srv1_deployment_gate_boundary,
 }
 
 // (e) THE FORGED OWNERSHIP, assembled from the forged identity. OwnedByGateApp's payload is the sealed
@@ -181,10 +190,35 @@ fn forged_removal_looks_admitted() -> Bool {
     admission: admit_reviewer_removal(
       approved: Present { value: forged_approved_receipt },
       rejected: Present { value: forged_rejected_receipt },
-      environment_name: forged_environment,
+      // THE SUBJECT IS THE HONEST ONE, on purpose. The forged receipts claim this repository and this
+      // environment, so a boundary mismatch could not be what refuses them; the only thing that can refuse
+      // them is HOW they were obtained. If this were the sibling boundary the test would pass for the
+      // wrong reason.
+      boundary: srv1_deployment_gate_boundary,
     )
   ) {
     none => true
     Present { value: _ } => false
+  }
+}
+
+// (e) THE REMOVAL ACT ITSELF, OBTAINED FROM OUTSIDE (side chat, blocker 3). `HumanIntervention` is an
+// ordinary record and is deliberately NOT sealed — the four instruction rows are harmless. What must not be
+// obtainable is THIS one act, the one an operator performs in the GitHub UI to take srv1's human reviewer
+// out. It is built only by build_reviewer_removal_act, which this module confines to
+// reviewer_removal_act_for. So the forgery is a direct call to the builder: well-formed arguments, foreign
+// caller. Before blocker 3 there was no call to make — the act was a public `data` row, readable by
+// importing the module, which is why no probe of this shape existed.
+fn forge_the_removal_act() -> HumanIntervention? {
+  // the arguments are the honest ones on purpose: a refusal here is about WHO is asking, not about what
+  // was passed. A forged boundary would refuse for the wrong reason and the red would be decor.
+  match admit_reviewer_removal(
+    approved: Present { value: forged_approved_receipt },
+    rejected: Present { value: forged_rejected_receipt },
+    boundary: srv1_deployment_gate_boundary,
+  ) {
+    RemovalAdmitted { evidence: e } =>
+      Present { value: build_reviewer_removal_act(boundary: srv1_deployment_gate_boundary) }
+    RemovalRefused { missing: _ } => none
   }
 }

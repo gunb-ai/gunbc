@@ -501,9 +501,12 @@ fn review_path_build_refusal_name(refusal: ReviewPathBuildRefusal) -> NonEmptySt
 type BuiltReviewPath =
   BuiltReviewPathOk { path: NonEmptyStr }
   | BuiltReviewPathRefused {
-    // DEFAULTED so the ordinary hostile-segment case reads as it did: a refusal that does not name an
-    // axis explicitly is blaming the segment it carries.
-    refusal: ReviewPathBuildRefusal = HostileSegment {  },
+    // NOT DEFAULTED, on purpose. A default here looked like a convenience ("the ordinary hostile-segment
+    // case reads as it did") and was measured to be a landmine: an omitted field arrives at runtime as
+    // null, and the consumer's match over the axis then dies with "non-exhaustive pattern match on:
+    // null" — a defect the type system could not see and the red did not catch until a witness matched
+    // on it. Every refusal names its axis.
+    refusal: ReviewPathBuildRefusal,
     hostile_segment: ReviewPathSegment,
   }
 
@@ -515,9 +518,15 @@ fn review_endpoint_path_built_for(
   let owner_text = owner as String
   let repo_text = repo as String
   if !path_segment_is_safe(raw: owner_text) {
-    BuiltReviewPathRefused { hostile_segment: OwnerSegment { value: owner } }
+    BuiltReviewPathRefused {
+      refusal: HostileSegment,
+      hostile_segment: OwnerSegment { value: owner },
+    }
   } else if !path_segment_is_safe(raw: repo_text) {
-    BuiltReviewPathRefused { hostile_segment: RepoSegment { value: repo } }
+    BuiltReviewPathRefused {
+      refusal: HostileSegment,
+      hostile_segment: RepoSegment { value: repo },
+    }
   } else if run_id <= 0 {
     // The run id blames ITSELF: the axis is RunIdIsNotPositive and the value is the run id, not the
     // owner that was fine.
