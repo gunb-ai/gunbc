@@ -45,6 +45,23 @@ cp "$MIRROR" "$LOGS/mirror.before"
 
 say "apply the producer patch (fresh call-site-keyed variables)"
 python3 "$D/instr/patch_producer_instantiate.py" "$D/repo" || { echo "FATAL patch"; exit 1; }
+
+say "LOCAL SYNTAX + DIAGNOSTIC-NEUTRALITY GATE (abort here, not after a 45-minute build)"
+# parsecheck.py runs a locally runnable gunbc over the single patched file; parse diagnostics
+# come before import resolution, so the missing corpus is noise. A malformed patch cost one
+# full dispatch (a `let` inside `match sig { ... }` -> expected FatArrow, found Ident), and an
+# in-body `//` comment turned out to add 15 HARD diagnostics -- both are caught here for free.
+cp "$INFER_DAG" "$LOGS/infer.patched"
+python3 "$D/instr/parsecheck.py" "$INFER_DAG" || { echo "FATAL parsecheck -- the patch does not parse"; exit 5; }
+# Diagnostic neutrality: the repair must not add hard diagnostics to this file.
+hard_of(){ rm -rf /tmp/hardchk; mkdir -p /tmp/hardchk; cp "$1" /tmp/hardchk/04_infer.dag
+  timeout 300 gunbc compile --source-dir /tmp/hardchk --output-dir /tmp/hardout --target rust 2>&1 \
+    | grep -aoE "produced [0-9]+ hard" | grep -oE "[0-9]+" | head -1; }
+export PATH="/home/briansrls/gunbc/target-main/release:$PATH"
+H_BEFORE=$(hard_of "$LOGS/$(basename "$INFER_DAG")")
+git show HEAD:"$INFER_DAG" > "$LOGS/pristine_infer.dag" 2>/dev/null || true
+H_AFTER=$(hard_of "$INFER_DAG")
+echo "HARD_DIAG pristine=${H_BEFORE:-?} patched=${H_AFTER:-?}   (must be equal)"
 sha256sum "$INFER_DAG" | sed 's/^/SEED_AFTER_DAGPATCH /'
 if [ "$(seed "$MIRROR")" = "$(seed "$LOGS/mirror.before")" ]; then
   echo "MIRROR_UNMOVED_OK (expected: the .dag alone cannot change the mirror; this is the"
