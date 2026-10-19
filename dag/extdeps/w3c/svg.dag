@@ -1,6 +1,7 @@
 module extdeps.w3c.svg
 
 import std.types { String, List, Int, NonEmptyStr }
+import std.algebra { Empty, FreeSemigroup }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.markup {
   Fragment,
@@ -81,7 +82,14 @@ data svg_xml_brackets: MarkupBracket = MarkupBracket {
 // XML 1.0 §2.5 for comments, §2.8 for the document type declaration.
 data xml_comment_open_sequence: NonEmptyStr = "<!-- " as NonEmptyStr
 data xml_comment_close_sequence: NonEmptyStr = " -->" as NonEmptyStr
-data xml_comment_terminator: NonEmptyStr = "-->" as NonEmptyStr
+// ONE MEMBER, and that is XML's grammar rather than an omission. XML has no comment-end-bang state: a
+// comment ends at "-->" and XML 1.0 §2.5 forbids "--" inside a comment at all, so "--!>" cannot appear
+// in well-formed XML. Contrast html_comment_terminators, where the tokenizer does have the second exit.
+// Same carrier in both, so std.markup asks one question of every medium.
+data xml_comment_terminators: FreeSemigroup<NonEmptyStr> = FreeSemigroup {
+  head: "-->" as NonEmptyStr,
+  tail: Empty,
+}
 data xml_doctype_open_sequence: NonEmptyStr = "<!DOCTYPE " as NonEmptyStr
 
 // XML's own copy of the boundary character (XML 1.0 §2.8's ExternalID production is terminated by
@@ -104,7 +112,7 @@ fn svg_markup_medium() -> MarkupMedium {
     comment_grammar: CommentGrammar {
       open: xml_comment_open_sequence,
       close: xml_comment_close_sequence,
-      terminator: xml_comment_terminator,
+      terminators: xml_comment_terminators,
     },
     // XML documents carry a document type declaration (XML 1.0 §2.8), so a Document node is meaningful
     // through this medium even though nothing builds one for SVG today.

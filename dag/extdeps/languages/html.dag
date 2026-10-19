@@ -1,6 +1,7 @@
 module extdeps.languages.html
 
 import std.algebra { trim }
+import std.algebra { Cons, Empty, FreeSemigroup }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -45,16 +46,25 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //
 data html_comment_open_sequence: NonEmptyStr = "<!-- " as NonEmptyStr
 data html_comment_close_sequence: NonEmptyStr = " -->" as NonEmptyStr
-// The sequence the TOKENIZER ends a comment at has no leading space. The delimiter we EMIT does, for
-// readability. They are deliberately two rows: a body must not contain the former, and what we write
-// is the latter. Collapsing them would let a body ending in "--" close the comment while a guard
-// looking only for " -->" found nothing.
-// The tokenizer's "comment end state" is reached from "--" and requires no space (HTML §13.1.1),
-// so this is NOT html_comment_close_sequence with the space dropped: a body of "a-->b" contains the
-// terminator but not the close delimiter, and closing on one while checking for the other is how a
-// comment escapes into the document. Feeds BOTH the guard and CommentGrammar.terminator, so the
-// emitter and the checker read the same grammar and cannot disagree about what ends a comment.
-data html_comment_terminator: NonEmptyStr = "-->" as NonEmptyStr
+// THE SEQUENCES THE TOKENIZER ENDS A COMMENT AT. Neither has a leading space; the delimiter we EMIT does,
+// for readability. They are deliberately separate rows: a body must not contain a terminator, and what we
+// write is the close delimiter. Collapsing them would let a body ending in "--" close the comment while a
+// guard looking only for " -->" found nothing.
+//
+// THERE ARE TWO, NOT ONE (HTML §13.1.1, §13.2.5.52). The "comment end state" is reached from "--" and
+// needs no space, giving "-->". And from that state a "!" moves to the "comment end bang state", where a
+// ">" ALSO closes the comment -- giving "--!>". A grammar carrying only "-->" reports a body like
+// "x--!><script>…" as safe; the serializer emits "<!-- x--!><script>… -->" and a conforming parser ends
+// the comment at "--!>" and reads the script as markup (reviews 82474 and 82482 on #14351, found
+// independently and confirmed against the state machine). So the row is a NON-EMPTY SET: FreeSemigroup has
+// no empty inhabitant, and the guard consults every member.
+//
+// Feeds BOTH the guard and CommentGrammar.terminators, so the emitter and the checker read the same
+// grammar and cannot disagree about what ends a comment.
+data html_comment_terminators: FreeSemigroup<NonEmptyStr> = FreeSemigroup {
+  head: "-->" as NonEmptyStr,
+  tail: Cons { head: "--!>" as NonEmptyStr, tail: Empty },
+}
 // "<!DOCTYPE " with the trailing space the tokenizer requires between keyword and name.
 data html_doctype_open_sequence: NonEmptyStr = "<!DOCTYPE " as NonEmptyStr
 // The document type every HTML page in this repo declares. "html" is the only name a conforming
@@ -331,7 +341,7 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
     comment_grammar: CommentGrammar {
       open: html_comment_open_sequence,
       close: html_comment_close_sequence,
-      terminator: html_comment_terminator,
+      terminators: html_comment_terminators,
     },
     document_grammar: DeclaresDocument {
       open: html_doctype_open_sequence,

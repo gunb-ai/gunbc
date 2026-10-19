@@ -10,7 +10,7 @@ import extdeps.languages.html {
   html_comment_open_sequence,
   html_comment_close_sequence,
   html_doctype_open_sequence,
-  html_comment_terminator,
+  html_comment_terminators,
   html_doctype_name_end_whitespace,
 }
 import extdeps.languages.html_fragment { serialize_fragment }
@@ -168,7 +168,7 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
     comment_grammar: CommentGrammar {
       open: html_comment_open_sequence,
       close: html_comment_close_sequence,
-      terminator: html_comment_terminator,
+      terminators: html_comment_terminators,
     },
     document_grammar: DeclaresDocument {
       open: html_doctype_open_sequence,

@@ -38,6 +38,7 @@ import extdeps.languages.html {
 }
 import std.markup { CommentGrammar, DeclaresDocument, NoDocumentGrammar }
 import std.types { NonEmptyStr }
+import std.algebra { Empty, FreeSemigroup }
 import std.languages { html_format, markdown_format }
 import std.optional { Present, Absent }
 import std.markdown {
@@ -77,7 +78,7 @@ fn md_medium_underscore() -> MarkupMedium {
     comment_grammar: CommentGrammar {
       open: "<!-- ",
       close: " -->",
-      terminator: "-->",
+      terminators: FreeSemigroup { head: "-->", tail: Empty },
     },
     document_grammar: DeclaresDocument {
     open: "<!DOCTYPE ",
@@ -118,7 +119,7 @@ fn single_quote_medium() -> MarkupMedium {
     comment_grammar: CommentGrammar {
       open: "<!-- ",
       close: " -->",
-      terminator: "-->",
+      terminators: FreeSemigroup { head: "-->", tail: Empty },
     },
     document_grammar: DeclaresDocument {
     open: "<!DOCTYPE ",
@@ -236,7 +237,7 @@ test fn witness_markdown_comment_delimiters_are_the_html_ones() -> Bool {
   let md = md_medium_c()
   md.comment_grammar.open == html_medium().comment_grammar.open
     && md.comment_grammar.close == html_medium().comment_grammar.close
-    && md.comment_grammar.terminator == html_medium().comment_grammar.terminator
+    && md.comment_grammar.terminators == html_medium().comment_grammar.terminators
     && md.document_grammar == html_medium().document_grammar
 }
 

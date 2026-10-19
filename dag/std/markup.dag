@@ -2,6 +2,8 @@ module std.markup
 
 import std.layout { DocLine, LayoutProtocol, render }
 import std.types { NonEmptyStr }
+import std.optional { Absent, Optional, Present }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
 
 
 type EscapeContext = TextContext | AttributeContext | UrlContext
@@ -101,7 +103,14 @@ type VoidTagRendering = OmitClose | SelfClose
 type CommentGrammar {
   open: NonEmptyStr
   close: NonEmptyStr
-  terminator: NonEmptyStr
+  // A NON-EMPTY SET, because a tokenizer can end a comment more than one way. HTML ends on "-->" AND on
+  // "--!>" (the comment end bang state, HTML §13.2.5.52); a single row could not say both, and a guard
+  // built from one row passes bodies the tokenizer ends -- review 82474/82482 on #14351, where a body of
+  // "x--!><script>…" contained no "-->" and was serialized as "<!-- x--!><script>… -->", which a browser
+  // then parses as markup. FreeSemigroup is the carrier whose EMPTY inhabitant has no representation
+  // (std.algebra: "the head field is the construction wall"), so a medium cannot declare a comment grammar
+  // with nothing that ends it -- that state was previously nameable as terminator: "".
+  terminators: FreeSemigroup<NonEmptyStr>
 }
 
 type DocumentGrammar
@@ -378,7 +387,7 @@ type MarkupHazard
 //
 // THREE HAZARDS, THREE CALL SITES, ALL IN THE EMITTER:
 //   1. comment_body_hazard — on the MarkupComment arm, before open + body + close is written; both of
-//      its tests read CommentGrammar.close and .terminator, so there is no per-language flag to set
+//      its tests read CommentGrammar.close and .terminators, so there is no per-language flag to set
 //      correctly and no rule to keep in sync with the rows the emitter already uses;
 //   2. doctype_name_hazard — in serialize_document_with, the only place a doctype is spelled;
 //   3. the raw-text close check — on the arm that writes an element's raw children, built from the
@@ -390,8 +399,9 @@ type MarkupHazard
 //
 // NONE OF THEM ASKS WHETHER A GRAMMAR FIELD IS EMPTY. That question was review 82209's second finding --
 // the closed sum (HazardFree | HazardFound) had retired "" as a RETURN value while "" remained a legal
-// INPUT, so the check had to test for it at runtime. CommentGrammar.terminator is NonEmptyStr, so there is
-// no empty inhabitant to test for: the check is gone because the state is gone, and the witness that used
+// INPUT, so the check had to test for it at runtime. CommentGrammar.terminators is FreeSemigroup, which has
+// no empty inhabitant at all, so there is
+// no empty value to test for: the check is gone because the state is gone, and the witness that used
 // to pin that refusal went with it, rather than staying to assert a value the type no longer admits.
 
 // WHY THESE TWO TESTS AND NOT A THIRD. Both read the medium's own rows, and nothing else:
@@ -407,10 +417,13 @@ type MarkupHazard
 // the row it cited -- html_comment_close_sequence is " -->", which begins with a space, so a body ending
 // in "-" emits "- -->" and the only "-->" in it is the close. Checked against the comment state machine of
 // HTML §13.1.1 (the same section several comments in this module already cite): over every body up to
-// length 5 from the alphabet { -, /, >, *, space, }, x } in the four shipped media (HTML, XML, JSX, raw),
-// these two tests agree with the tokenizer on all 18,144 bodies, and the dash rule refused 1,944 bodies
-// the tokenizer accepts. Refusing more than the evidence supports is §4d's cost, paid here by any comment
-// that ends in a dash -- an em-dash, a bullet, a date.
+// HTML §13.1.1 (the same section several comments in this module already cite), the two tests below agree
+// with the tokenizer on EVERY body, and the dash rule refused bodies the tokenizer accepts. The sweep, run
+// over all four shipped media (HTML, XML, raw-dash, JSX) x every string up to length 5 from the eight
+// characters {-, /, >, *, !, space, '}', x}: 149,796 bodies. These tests, 0 disagreements; with the
+// trailing-dash refusal added back, 18,462 disagreements, all of them over-refusals. Refusing more than the
+// evidence supports is §4d cost, paid here by any comment that ends in a dash -- an em-dash, a bullet, a
+// date. The agreement is CHECKED rather than asserted: the witness walks the same state machine.
 //
 // WHAT WAS KEPT FROM THE REVIEW'S WORDING. It proposed "whether concat(body, close) contains terminator
 // anywhere before the real close". That formulation was measured too, and it is wrong in the other
@@ -418,13 +431,60 @@ type MarkupHazard
 // close ends, so it refuses EVERY JSX comment, including the empty body. So the occurrence is looked for
 // in the body, which is where a body can add one, and the close is asked only the question it can answer
 // about itself.
-fn comment_body_hazard(body: String, grammar: CommentGrammar) -> MarkupHazard {
-  if !string_contains(s: grammar.close as String, pattern: grammar.terminator as String) {
-    HazardFound { reason: join(["the comment close sequence '", grammar.close as String, "' of this medium does not contain its terminator '", grammar.terminator as String, "' — no body could close this comment, so nothing may be emitted through it; fix the medium's rows"], "") }
-  } else if string_contains(s: body, pattern: grammar.terminator as String) {
-    HazardFound { reason: join(["markup comment body contains the comment terminator '", grammar.terminator as String, "' — refusing to serialize (the remainder would be parsed as markup); restructure the comment"], "") }
+// THE FIRST WAY A COMMENT CAN FAIL IS A MEDIUM DEFECT: if none of the grammar's terminators occurs in the
+// close the emitter writes, then no body can be safe -- the emitter would open a comment that nothing
+// closes, and every byte after it becomes comment text. That is worse than closing early, so it is refused
+// on every body, as a defect in the medium rather than in the text. A single-terminator Bool could never
+// have said this.
+//
+// THE SECOND IS THE BODY ENDING ITS OWN COMMENT EARLY: the body holds one of the terminators. Checked
+// against EVERY member of the set, because checking one and not the others is what let "--!>" through.
+// The refusal names which terminator fired, so it is located (§5), not a shrug.
+//
+// MEASURED, NOT ASSERTED. Both tests were checked against the comment state machine of HTML §13.1.1 /
+// §13.2.5 (the sections this module already cites for the doctype rule) on the sweep described above
+// (149,796 bodies over the four shipped media): zero disagreements. The single-terminator version of this
+// check, which is what the reviews caught, scores 51 disagreements there and every one of them is an
+// escape -- bodies like '--!>' that the tokenizer ends and the guard passed.
+  match first_terminator_in(s: grammar.close as String, terms: grammar.terminators) {
+    Absent => HazardFound { reason: join(["none of this medium's comment terminators (", terminators_csv(grammar.terminators), ") occurs in the close sequence '", grammar.close as String, "' it emits — no body could close this comment, so nothing may be emitted through it; fix the medium's rows"], "") }
+    Present { value: _ } => match first_terminator_in(s: body, terms: grammar.terminators) {
+      Present { value: t } => HazardFound { reason: join(["markup comment body contains the comment terminator '", t as String, "' — refusing to serialize (the remainder would be parsed as markup); restructure the comment"], "") }
+      Absent => HazardFree
+    }
+  }
+}
+
+// THE ONE MEMBERSHIP QUESTION, asked of the whole set. Recursive over the tail because the set has no
+// upper bound and the check must not stop early: a grammar that gains a third terminator gains it in the
+// tail and is covered without this function changing, which is the point of the carrier.
+fn first_terminator_in_monoid(s: String, xs: FreeMonoid<NonEmptyStr>) -> Optional<NonEmptyStr> {
+  match xs {
+    Empty => Absent
+    Cons { head: h, tail: t } =>
+      if string_contains(s: s, pattern: h as String) { Present { value: h } } else { first_terminator_in_monoid(s: s, xs: t) }
+  }
+}
+
+// Every terminator, for a diagnostic that has to be LOCATED (§5): the medium-defect refusal above names
+// the close it emitted but not the set it searched, and without the set a reader cannot tell which row is
+// wrong. Materialized here rather than re-derived at each call site so the set has one rendering.
+fn terminators_csv(terms: FreeSemigroup<NonEmptyStr>) -> String {
+  join([terms.head as String], terminator_tail_csv(xs: terms.tail))
+}
+
+fn terminator_tail_csv(xs: FreeMonoid<NonEmptyStr>) -> String {
+  match xs {
+    Empty => ""
+    Cons { head: h, tail: t } => join([", ", h as String], terminator_tail_csv(xs: t))
+  }
+}
+
+fn first_terminator_in(s: String, terms: FreeSemigroup<NonEmptyStr>) -> Optional<NonEmptyStr> {
+  if string_contains(s: s, pattern: terms.head as String) {
+    Present { value: terms.head }
   } else {
-    HazardFree
+    first_terminator_in_monoid(s: s, xs: terms.tail)
   }
 }
 

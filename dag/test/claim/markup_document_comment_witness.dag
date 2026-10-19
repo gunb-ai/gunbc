@@ -44,7 +44,9 @@ import test.fixture.markup_render { render_html, render_markup, render_jsx }
 //       reading the medium -- which these two claims then catch.
 //   C9  std.markup CommentGrammar's fields: drop NonEmptyStr for String on `terminator`. The empty
 //       value becomes expressible again, and the DELETED claim above would be needed once more; the
-//       checker refusing `terminator: ""` is the measurement that the construction holds. Verified by
+//       checker refusing an empty `terminators` set is the measurement that the construction holds -- and
+//       it is now unconstructible twice over, since the field is FreeSemigroup (no empty inhabitant at all).
+//       Verified by
 //       attempting the mutation and reading the compile refusal, not by a claim that can only pass.
 //   C8  std.markup serialize_fragment_with's MarkupComment arm: emit open+body+close without consulting
 //       comment_body_hazard (the pre-review-82279 shape, when the check lived only in a walk a route could
@@ -60,9 +62,16 @@ import test.fixture.markup_render { render_html, render_markup, render_jsx }
 //   C4  std.markup serialize_document_with's DeclaresDocument branch: drop the keyword, emitting only
 //       the name.
 //       witness_document_declares_its_type_before_the_root goes red.
-//   C5  extdeps.languages.html html_comment_terminator: change "-->" to " -->".
-//       witness_comment_terminator_is_refused goes red for the trailing-dash body. The emitter's
-//       delimiter and the tokenizer's terminator are two rows on purpose.
+//   C5  extdeps.languages.html html_comment_terminators: change the head "-->" to " -->".
+//       witness_comment_terminator_is_refused goes red. The emitter's delimiter and the tokenizer's
+//       terminator are two rows on purpose: one is what we write, the other is what ends a comment.
+//   C5b extdeps.languages.html html_comment_terminators: delete the "--!>" member (tail: Empty).
+//       witness_bang_terminator_is_refused, witness_bang_terminator_refusal_names_the_bang and
+//       witness_bang_terminator_refused_by_the_document_route all go red while
+//       witness_comment_terminator_is_refused STAYS green -- which is the whole point of the set. A single
+//       terminator row made this escape invisible; the three claims above are what keep the second member
+//       from being silently dropped again. Note they hold a body containing no "-->" at all, so no
+//       mutation of the first member can substitute for the second.
 
 import std.markup {
   Fragment, Element, FragmentText, MarkupComment, MarkupDocument, MarkupMedium, MarkupBracket,
@@ -71,7 +80,7 @@ import std.markup {
 import extdeps.languages.html {
   try_serialize_html_source, try_serialize_html_document, EmitOk, EmitRejected,
   html_markup_medium, html_comment_open_sequence, html_comment_close_sequence,
-  html_comment_terminator, html_doctype_open_sequence, html_doctype_name, canonical_html_spellings,
+  html_comment_terminators, html_doctype_open_sequence, html_doctype_name, canonical_html_spellings,
 }
 import std.markup {
   HazardFree, HazardFound,
@@ -80,13 +89,14 @@ import std.markup {
 }
 import extdeps.uri_validation { find_first_rejected_url }
 import extdeps.languages.react_jsx {
-  try_serialize_jsx_component, JsxOk, JsxRejected, jsx_markup_medium, jsx_comment_terminator,
+  try_serialize_jsx_component, JsxOk, JsxRejected, jsx_markup_medium, jsx_comment_terminators,
 }
 import std.optional { Absent, Present }
 import gunbc.auth.approval_broker_marker {
   approval_broker_marker_comment, BrokerMarkerComment, MarkerCommentRendered, MarkerCommentRefused,
 }
 import std.types { List, Bool, String, NonEmptyStr }
+import std.algebra { Empty, FreeSemigroup }
 
 // A medium that spells comments the way JSX does, so the HTML delimiters cannot be hiding in the
 // serializer. Declared here rather than imported from extdeps.languages.react_jsx so the two media
@@ -115,7 +125,7 @@ data jsx_like_medium: MarkupMedium = MarkupMedium {
   comment_grammar: CommentGrammar {
     open: "{/* ",
     close: " */}",
-    terminator: "*/",
+    terminators: FreeSemigroup { head: "*/", tail: Empty },
   },
   // Declares a doctype ON PURPOSE, unlike the real JSX medium: a claim serializes a Document through this
   // medium to show the keyword comes from the medium too. The real jsx_markup_medium says NoDocumentGrammar.
@@ -166,7 +176,7 @@ test fn witness_html_delimiter_rows_match_the_medium() -> Bool {
 // The emitter's delimiter and the tokenizer's terminator are deliberately different rows: a body must
 // not hold the TERMINATOR, and what we write carries an extra space for readability.
 test fn witness_emitter_delimiter_is_not_the_terminator() -> Bool {
-  html_comment_close_sequence == " -->" && html_comment_terminator == "-->"
+  html_comment_close_sequence == " -->" && html_comment_terminators.head == "-->"
 }
 
 // The serializer's contract for a comment: the body appears verbatim, unescaped. HTML decodes nothing
@@ -196,6 +206,45 @@ test fn witness_comment_terminator_is_refused() -> Bool {
     })
 }
 
+// THE BANG TERMINATOR, and the reason the grammar row is a SET. "-->" is not the only way HTML ends a
+// comment: from the comment end state a "!" enters the comment end bang state, where ">" ALSO closes it
+// (HTML §13.2.5.52). So this body contains no "-->" at all, and a guard built from one terminator row
+// reports it HazardFree -- then the serializer emits "<!-- x--!><script>alert(1)</script> -->", a
+// conforming parser ends the comment at "--!>", and the script runs. That is not a wrong answer in a
+// corner; it is a served page executing markup a comment was supposed to contain (reviews 82474 and
+// 82482 on #14351, found independently, confirmed by walking the state machine).
+//
+// Deliberately NOT the shapes above: none of these strings contains "-->", so every one of them is
+// HazardFree under a single-terminator guard. That is what makes this claim discriminating rather than a
+// second copy of the previous one -- it stays red if only the "-->" member is consulted.
+test fn witness_bang_terminator_is_refused() -> Bool {
+  all(["x--!><script>alert(1)</script>", "--!>", "before --!> after", "ends abruptly --!>", "a--!>b"],
+    b => match comment_body_hazard(body: b, grammar: html_markup_medium().comment_grammar) {
+      HazardFound { reason: _ } => true
+      HazardFree => false
+    })
+}
+
+// ...and the refusal is LOCATED (§5: "a typed, located diagnostic"): it names WHICH terminator fired, so
+// "--!>" cannot be refused with a reason that only mentions "-->".
+test fn witness_bang_terminator_refusal_names_the_bang() -> Bool {
+  match comment_body_hazard(body: "x--!>y", grammar: html_markup_medium().comment_grammar) {
+    HazardFound { reason: r } => string_contains(s: r, pattern: "--!>")
+    HazardFree => false
+  }
+}
+
+// THROUGH THE ROUTE THAT ACTUALLY SERVES PAGES, not just the helper. try_serialize_html_document is what
+// gunbc/site serves, so the escape had to be closed there: the same body must come back EmitRejected,
+// never EmitOk holding the page with a live <script> in it.
+test fn witness_bang_terminator_refused_by_the_document_route() -> Bool {
+  match try_serialize_html_document(doc: document_with_root(
+    root: comment_in_html(body: "x--!><script>alert(1)</script>"))) {
+    EmitRejected { reason: r } => string_contains(s: r, pattern: "--!>")
+    EmitOk { html: _ } => false
+  }
+}
+
 // A TRAILING DASH IS NOT A HAZARD. This claim used to assert the opposite -- it demanded a refusal of
 // "trailing dash-" -- and it was green, because the check consulted a Bool that said HTML closes on a
 // trailing dash. Review 82417 on #14351: the Bool's stated premise was that the emitter's own close
@@ -216,7 +265,7 @@ test fn witness_comment_trailing_dash_is_accepted() -> Bool {
 }
 
 // THE GRAMMAR'S OWN ROWS DECIDE, with no per-language flag to set correctly. Two media, two questions,
-// both answered from CommentGrammar.close and .terminator:
+// both answered from CommentGrammar.close and .terminators:
 //   - a well-formed medium accepts a body its tokenizer survives (HTML accepts "trailing dash-");
 //   - a medium whose close sequence cannot contain its terminator is refused on EVERY body, because that
 //     emitter would open a comment nothing closes -- the rest of the document becomes comment text. That
@@ -231,7 +280,7 @@ test fn witness_medium_grammar_decides_the_comment_check() -> Bool {
   let broken = CommentGrammar {
     open: "<!-- ",
     close: " ~~ ",
-    terminator: "-->",
+    terminators: FreeSemigroup { head: "-->", tail: Empty },
   }
   let refused_everywhere = all(["", "harmless", "-"], b =>
     match comment_body_hazard(body: b, grammar: broken) {
@@ -247,11 +296,11 @@ test fn witness_broken_close_names_both_rows() -> Bool {
   let broken = CommentGrammar {
     open: "<!-- ",
     close: " ~~ ",
-    terminator: "-->",
+    terminators: FreeSemigroup { head: "-->", tail: Empty },
   }
   match comment_body_hazard(body: "x", grammar: broken) {
     HazardFound { reason: r } =>
-      string_contains(s: r, pattern: "~~") && string_contains(s: r, pattern: html_comment_terminator as String)
+      string_contains(s: r, pattern: "~~") && string_contains(s: r, pattern: html_comment_terminators.head as String)
     HazardFree => false
   }
 }
@@ -259,7 +308,7 @@ test fn witness_broken_close_names_both_rows() -> Bool {
 // A refusal that says only "bad" is not located (§5): the terminator must be named in the diagnostic.
 test fn witness_comment_hazard_names_the_terminator() -> Bool {
   match comment_body_hazard(body: "x --> y", grammar: html_markup_medium().comment_grammar) {
-    HazardFound { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminator as String)
+    HazardFound { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminators.head as String)
     HazardFree => false
   }
 }
@@ -268,7 +317,7 @@ test fn witness_comment_hazard_names_the_terminator() -> Bool {
 // between a typed refusal and a comment that silently becomes markup in a served page.
 test fn witness_guarded_route_refuses_a_self_terminating_comment() -> Bool {
   match try_serialize_html_source(node: comment_in_html(body: "a --> <script>alert(1)</script>")) {
-    EmitRejected { reason: r } => string_contains(s: r, pattern: html_comment_terminator as String)
+    EmitRejected { reason: r } => string_contains(s: r, pattern: html_comment_terminators.head as String)
     EmitOk { html: _ } => false
   }
 }
@@ -417,7 +466,7 @@ test fn witness_doctype_name_rejects_non_token_names() -> Bool {
 // first claim red.
 test fn witness_marker_refusal_carries_no_joinable_text() -> Bool {
   match approval_broker_marker_comment(body: "token --> <script>alert(1)</script>") {
-    MarkerCommentRefused { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminator as String)
+    MarkerCommentRefused { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminators.head as String)
     MarkerCommentRendered { text: _ } => false
   }
 }
@@ -479,7 +528,7 @@ fn jsx_root_with_comment(body: String) -> Fragment {
 
 test fn witness_jsx_guarded_route_refuses_a_comment_that_closes_early() -> Bool {
   match try_serialize_jsx_component(fn_name: "C", node: jsx_root_with_comment(body: "x */ <b>code</b>")) {
-    JsxRejected { reason: r } => string_contains(s: r, pattern: jsx_comment_terminator as String)
+    JsxRejected { reason: r } => string_contains(s: r, pattern: jsx_comment_terminators.head as String)
     JsxOk { tsx: _ } => false
   }
 }

@@ -3,6 +3,7 @@ module extdeps.languages.react_jsx
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { NonEmptyStr }
+import std.algebra { Empty, FreeSemigroup }
 import std.markup {
   Fragment, MarkupMedium, CommentGrammar, DocumentGrammar, NoDocumentGrammar, EscapeHtml, SelfClose,
   serialize_fragment_with,
@@ -60,7 +61,14 @@ data jsx_comment_close_sequence: NonEmptyStr = " */}" as NonEmptyStr
 // That distinction is why the medium carries the terminator separately from comment_close: the emitter
 // writes " */}", the checker must look for "*/". Both rows sit here, in JSX's own module, because both
 // are facts about JSX.
-data jsx_comment_terminator: NonEmptyStr = "*/" as NonEmptyStr
+// One member, and that is JSX's grammar rather than an omission: a JSX comment is a block comment, which
+// ends at the first "*/" and has no bang alternative. The carrier is the same non-empty set the HTML
+// medium uses, so the guard asks one question of every medium -- see html_comment_terminators for why a
+// single row is not enough where a language has two ways out.
+data jsx_comment_terminators: FreeSemigroup<NonEmptyStr> = FreeSemigroup {
+  head: "*/" as NonEmptyStr,
+  tail: Empty,
+}
 
 fn jsx_markup_medium() -> MarkupMedium {
   MarkupMedium {
@@ -76,7 +84,7 @@ fn jsx_markup_medium() -> MarkupMedium {
     comment_grammar: CommentGrammar {
       open: jsx_comment_open_sequence,
       close: jsx_comment_close_sequence,
-      terminator: jsx_comment_terminator,
+      terminators: jsx_comment_terminators,
     },
     // NO doctype field exists to fill. The previous shape had `doctype_open: html_doctype_open_sequence`
     // beside `document_declaration_allowed: false`, i.e. the medium was forced to carry a spelling its own
