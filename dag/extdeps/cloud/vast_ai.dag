@@ -6,6 +6,7 @@ import std.nat { Nat }
 import std.algebra { trim, list_head }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { ExactDecimal }
+import std.integer { int_to_decimal_string }
 import std.measure {
   MoneyAmountMicro,
   money_amount_micro,
@@ -31,9 +32,11 @@ import extdeps.uri { Uri, Https }
 // closed enum here would assert a set the upstream does not state; the supplier layer therefore matches
 // only the one word it can ground ("nvidia" yields Cuda) and refuses every other or absent value by name.
 //
-// is_bid marks an interruptible (bid-priced) offer: search-offers `type` is ondemand | bid | reserved and
-// bid "may be interrupted if outbid", so an interruptible offer is a different availability fact from an
-// on-demand one. Absence is an unread fact.
+// is_bid IS NOT READ AS INTERRUPTIBILITY. search-offers `type` is ondemand | bid | reserved and bid "may be
+// interrupted if outbid", so interruptibility is a fact of the SEARCH an offer was returned for. A live
+// read-only search on 2026-10-18 (type bid, from srv1) answered 63 offers all with is_bid false, and a running
+// interruptible instance also read is_bid false, so the field's meaning is unread here. Absence is an
+// unread fact too.
 //
 // MONEY WIRE FIELDS ARE ExactDecimal, NEVER Float: search-offers min_bid, dph_total, storage_cost,
 // inet_up_cost and inet_down_cost arrive as JSON numbers. min_bid and dph_total convert with
@@ -116,6 +119,8 @@ type VastAiOffer {
   inet_down_cost: ExactDecimal
   gpu_ram: Int
   driver_version: String?
+  cuda_max_good: ExactDecimal?
+  inet_down: ExactDecimal?
 }
 
 // THE HOST-RESOURCE FIELDS OF THE SAME search-offers OFFER OBJECT, read 2026-10-17 from
@@ -200,6 +205,22 @@ fn vast_ai_dph_total_money_per_hour(offer: VastAiOffer) -> DecimalMoneyPerHourCo
   exact_decimal_to_money_per_hour_ceil(d: offer.dph_total, currency: vast_ai_quote_currency)
 }
 
+// THE SEARCH QUERY: search-offers takes each filter as a field-keyed operator object in the POST body
+// ({"gpu_ram": {"gte": N}}, docs.vast.ai search-offers). Observed accepted on 2026-10-18 by a live
+// read-only search from srv1 under the operator's account, which answered 63 offers for these six
+// filters with type bid. gpu_ram and cpu_ram are MB, inet_down is Mb/s, cuda_max_good is the highest CUDA
+// major the host driver supports. rentable is always asked true: a non-rentable offer is never a
+// candidate. Which values to ask is policy, never this module's.
+type VastAiOfferQuery {
+  search_type: String
+  limit: Int
+  gpu_ram_min_mb: Int
+  cuda_max_good_min: Int
+  cpu_ram_min_mb: Int
+  inet_down_min: Int
+  verified: Bool
+}
+
 type VastAiOffers {
   offers: List<VastAiOffer>
 }
@@ -217,15 +238,30 @@ service vast_ai.SearchOffers {
       api_key: Secret
       search_type: String
       limit: Int
+      gpu_ram_min_mb: Int
+      cuda_max_good_min: Int
+      cpu_ram_min_mb: Int
+      inet_down_min: Int
+      verified: Bool
     }
     output {
       offers: List<VastAiOffer> from "offers"
+      hosts: List<VastAiOfferHostResources> from "offers"
     }
     readonly
     transport rest {
       method: POST,
       path: "/bundles/",
-      body: { type: search_type, limit: limit }
+      body: {
+        type: search_type,
+        limit: limit,
+        gpu_ram: { gte: gpu_ram_min_mb },
+        cuda_max_good: { gte: cuda_max_good_min },
+        cpu_ram: { gte: cpu_ram_min_mb },
+        inet_down: { gte: inet_down_min },
+        verified: { eq: verified },
+        rentable: { eq: true }
+      }
     }
     response {
       200 => VastAiOffers
@@ -310,7 +346,8 @@ service vast_ai.Instances {
   }
 }
 
-// ONE CONTRACT CHARGE from GET /api/v0/charges. amount is ExactDecimal (the document's float).
+// ONE CONTRACT CHARGE from GET /api/v0/charges/ (the trailing slash is the served path: a live GET of
+// /api/v0/charges on 2026-10-18 answered 301 to /api/v0/charges/). amount is ExactDecimal (the document's float).
 // select_filters is the documented JSON string; day.gte and day.lte are required by the vendor.
 type VastAiChargeItem {
   start: Int
@@ -320,6 +357,16 @@ type VastAiChargeItem {
   description: String
 }
 
+// metadata is documented on the same page (template_id, label, endpoint_id, workergroup_id); only the two
+// an instance contract carries are read. Observed 2026-10-18 by a live read-only GET from srv1: an
+// instance row answered metadata {"template_id": <Int>, "label": "<the instance label>"}. label is the
+// label the instance carried, so a charge is attributable to an owner label without the instance still
+// existing. Absent metadata or label is an unread fact, never an owner.
+type VastAiChargeMetadata {
+  template_id: Int?
+  label: String?
+}
+
 type VastAiCharge {
   start: Int
   end: Int
@@ -327,6 +374,7 @@ type VastAiCharge {
   source: String
   description: String
   amount: ExactDecimal
+  metadata: VastAiChargeMetadata?
   items: List<VastAiChargeItem>
 }
 
@@ -384,6 +432,15 @@ type VastAiChargesDayRange {
   lte: Int
 }
 
+// The day range as the select_filters JSON the endpoint takes (observed accepted live 2026-10-18 from srv1).
+fn vast_ai_charges_day_filter(range: VastAiChargesDayRange) -> String {
+  join(["{\"day\":{\"gte\":", int_to_decimal_string(value: range.gte), ",\"lte\":", int_to_decimal_string(value: range.lte), "}}"], "")
+}
+
+// An empty select_filters object: GET /instances answers every instance on the account (observed live
+// 2026-10-18 from srv1: total_instances counted instances under every label).
+data vast_ai_instances_unfiltered: String = "{}"
+
 type VastAiChargesRefusal
   = VastAiChargesMissingDateRange
   | VastAiChargesRefusedStatus { status: Int }
@@ -425,7 +482,7 @@ service vast_ai.Charges {
     readonly
     transport rest {
       method: GET,
-      path: "/charges",
+      path: "/charges/",
       query: { select_filters: select_filters, limit: limit, after_token: after_token }
     }
     response {
