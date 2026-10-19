@@ -70,6 +70,7 @@ test fn the_live_unit_argv_adds_the_runtime_directory_only_when_named() -> Bool 
     }
     _ => false
   }
+}
 
 test fn the_accepted_verdict_line_names_systemd_and_both_memory_bounds() -> Bool {
   fci1_verdict_line(verdict: Fci1BoundedControlsAccepted { systemd: "systemd 255", memory_max: 7, memory_high: 5 })
