@@ -120,17 +120,28 @@ def main():
     # Which names are real rows. Before repair_tests_14152.sh shifted past its positional
     # args, the SHA and the label were themselves passed as --exact filters and dutifully
     # reported MISSING_FATAL; those entries are harness noise, not rows, and would read in the
-    # PR body as failing tests. Only names defined by the crate count.
+    # PR body as failing tests. The authoritative list is the script's own ROWS literal -- the
+    # same list the dispatch defaults to -- parsed line by line. (Scanning the test file in this
+    # worktree is wrong: the instruments line does not carry the row definitions, so the scan
+    # finds none of them and silently excludes every real row.)
     here = os.path.dirname(os.path.abspath(__file__))
-    crate = os.path.join(here, "src/v1/tests/src/cross_coproduct_generic_locate_test.rs")
-    real = set()
-    for line in open(crate, errors="replace"):
-        s = line.strip()
-        if s.startswith("fn ") and ("_refuses" in s or "_accepts" in s or "_replaces" in s
-                                    or "_keeps" in s or "collision" in s):
-            real.add(s[3:].split("(")[0].strip())
+    script = os.path.join(here, "repair_tests_14152.sh")
+    if not os.path.isfile(script):
+        script = os.path.join(here, "instruments", "repair_tests_14152.sh")
+    need(script, "row-defining script")
+    real, inside = set(), False
+    for line in open(script, errors="replace"):
+        s_ = line.strip()
+        if not inside:
+            inside = s_.startswith("ROWS='")
+            if not inside:
+                continue
+            s_ = s_[len("ROWS='"):]        # the first row is on the opening line itself
+        if s_.startswith("'"):
+            break
+        real.add(s_.strip().strip("'").strip())
     if not real:
-        print("FATAL: no row names found in " + crate + " -- refusing to filter verdicts")
+        print("FATAL: no ROWS literal parsed from " + script + " -- refusing to filter verdicts")
         sys.exit(1)
     skipped = sorted({n for (l, n) in rows if n not in real})
     by_row = {}
