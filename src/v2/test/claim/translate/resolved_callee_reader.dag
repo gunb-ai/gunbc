@@ -12,7 +12,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Atom, Node, TypeNode, node_synthetic }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String }
+import std.types { Bool, List, String }
 import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -31,8 +31,12 @@ fn rcr_locus() -> Node {
 }
 
 fn rcr_json(source: String, id: Symbol, file: String, entry: String) -> String {
+  rcr_json_with(ingest: [nds_read(source: source, id: id, file: file)], entry: entry)
+}
+
+fn rcr_json_with(ingest: List<DagSourceReadWitness>, entry: String) -> String {
   match emit_closure_from_ingest_located(
-    ingest: [nds_read(source: source, id: id, file: file)],
+    ingest: ingest,
     entry: qualified_name_from_dotted_string(dotted: entry),
     entry_locus: rcr_locus(),
     target: rust_target_model()

@@ -176,7 +176,7 @@ fn produced_decl_support_type_as_itself(type_node: Node) -> Outcome<Symbol> {
 // reset to Unwired refuses target_primitive_realizations_unwired and this goes red.
 fn pdp_string_length_call() -> TargetValueExpression {
   target_value_expression_callable_apply(
-    callee: ^string_length,
+    callee: ^string_length_contract,
     kind: PrimitiveRowCallee,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   )
