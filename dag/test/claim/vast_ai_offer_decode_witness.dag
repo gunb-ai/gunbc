@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ExactDecimal?) is 13.0. Served through the REST replay seam, so the interpreter's own response decode
 // produces the values judged. On the old decode every one of these arrived as a Float, and reading
 // `units` off it refused the whole pass on srv1 (fleet-converge run 39202648251).
-data live_offer_body: String = "{\"offers\":[{\"id\":44111199,\"machine_id\":7001,\"gpu_name\":\"RTX PRO 6000 WS\",\"num_gpus\":1,\"compute_cap\":1200,\"gpu_arch\":\"nvidia\",\"verification\":\"verified\",\"geolocation\":\"US\",\"rentable\":true,\"rented\":false,\"is_bid\":false,\"min_bid\":0.269,\"dph_total\":0.27122222222222225,\"storage_cost\":0.19999999999999998,\"inet_up_cost\":0.002,\"inet_down_cost\":0.002,\"gpu_ram\":97887,\"driver_version\":\"580.159.03\",\"cuda_max_good\":13.0,\"inet_down\":1203.4}]}"
+data live_offer_body: String = "{\"offers\":[{\"id\":44111199,\"machine_id\":7001,\"gpu_name\":\"RTX PRO 6000 WS\",\"num_gpus\":1,\"compute_cap\":1200,\"gpu_arch\":\"nvidia\",\"verification\":\"verified\",\"geolocation\":\"US\",\"rentable\":true,\"rented\":false,\"is_bid\":false,\"min_bid\":0.269,\"dph_total\":0.27122222222222225,\"storage_cost\":0.19999999999999998,\"inet_up_cost\":0.0020,\"inet_down_cost\":0.002,\"gpu_ram\":97887,\"driver_version\":\"580.159.03\",\"cuda_max_good\":13.0,\"inet_down\":1203.4}]}"
 
 type OfferReading
   = OfferDecoded { offer: VastAiOffer }
@@ -78,3 +78,36 @@ test fn an_optional_exact_decimal_decodes_through_its_optional_layer() -> Bool {
   }
 }
 
+
+// THE WIRE'S SCALE IS KEPT AND A NUMBER BEYOND INT UNITS REFUSES. inet_up_cost arrives as 0.0020 and must
+// decode to (20, 4), not the shortest-f64 (2, 3); a decode routed through f64 loses that trailing zero. A
+// price spelled with 20 significant digits has no Int units, so the decode refuses the page rather than
+// rounding it to the nearest double.
+data overlong_offer_body: String = "{\"offers\":[{\"id\":1,\"machine_id\":1,\"gpu_name\":\"RTX PRO 6000 WS\",\"num_gpus\":1,\"compute_cap\":1200,\"verification\":\"verified\",\"geolocation\":\"US\",\"rentable\":true,\"rented\":false,\"min_bid\":0.12345678901234567891,\"dph_total\":0.3,\"storage_cost\":0.2,\"inet_up_cost\":0.002,\"inet_down_cost\":0.002,\"gpu_ram\":97887}]}"
+
+fn overlong_decoded() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "VastOffersPage",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: overlong_offer_body } }
+    )]),
+    subject: fn(_scope) {
+      match test.RestReplay.VastOffersPage() {
+        RestAnswered { answer: _ } => true
+        RestRefused { refusal: _ } => false
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic: _ } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}
+
+test fn the_wire_scale_is_kept_and_an_overlong_number_refuses() -> Bool {
+  (match decoded_offer() {
+    OfferNotDecoded => false
+    OfferDecoded { offer: o } => decimal_is(d: o.inet_up_cost, units: 20, fraction_digits: 4)
+  }) && !overlong_decoded()
+}

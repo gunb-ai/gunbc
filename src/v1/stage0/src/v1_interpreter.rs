@@ -21571,9 +21571,9 @@ fn decode_json_by_declared_type(
         };
     }
     // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
-    // as a JSON number (extdeps.cloud.vast_ai money fields). It is decoded EXACTLY from the number's
-    // own decimal text, never through f64 arithmetic; a number that is not a finite decimal whose
-    // digits fit Int units refuses. Without this arm the number fell through to `json_to_value` and
+    // as a JSON number (extdeps.cloud.vast_ai money fields). serde_json's arbitrary_precision keeps the
+    // number's wire text, so it is decoded from the wire's own digits and scale; a number that is not a
+    // finite decimal whose digits fit Int units refuses. Without this arm the number fell through to `json_to_value` and
     // the declared ExactDecimal arrived as a Float (gunbc.recurring_failure_mode
     // rest_response_declared_exact_decimal_decoded_as_float).
     // `T?` on the wire is T or null; null returned above, so a present value decodes as the declared T
