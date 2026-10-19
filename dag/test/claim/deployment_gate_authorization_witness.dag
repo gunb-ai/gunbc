@@ -51,6 +51,10 @@ import extdeps.github.deployment_protection_rule {
   installation_field_app_slug,
   installation_readback_success_status,
   ReviewState,
+  // A ROUTE SEGMENT IS EXTDEPS' BUSINESS, not a policy type: it describes which part of GitHub's URL an
+  // argument fills, so the refusal that names it is imported from where the route is modelled.
+  OwnerSegment,
+  RepoSegment,
 }
 import extdeps.github.actions_runs {
   WorkflowRunRecord,
@@ -122,8 +126,6 @@ import gunbc.auth.deployment_gate_authorization {
   RuleIsNotTheOneRequested,
   RequestedRepositoryIsNotTheObservedRepository,
   RouteSegmentsAreNotRouteSafe,
-  OwnerSegment,
-  RepoSegment,
   ClaimDisagreesOnApp,
   GateInstallationClaim,
   mint_accepted_rule_review,
