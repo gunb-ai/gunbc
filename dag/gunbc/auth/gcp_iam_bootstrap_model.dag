@@ -108,6 +108,18 @@ fn iam_bootstrap_identity_population_over(targets: List<DedicatedFederation>) ->
     + map(targets, f => IamBootstrapIdentity { federation: f, own_trust: false })
 }
 
+// THE ROOT CEREMONY CREATES ONLY ROOT IDENTITIES: the three own-trust identities (iam-observe,
+// iam-converge, iam-bootstrap), whose pools and accounts are root subjects under
+// iam_bootstrap_cell_owner. A target's pool and account are delta subjects, created only by the delta
+// apply (gunbc.auth.gcp_iam_bootstrap_delta_route settle_existence).
+fn iam_bootstrap_ceremony_identity_population_over(targets: List<DedicatedFederation>) -> List<IamBootstrapIdentity> {
+  iam_bootstrap_identity_population_over(targets: targets)
+}
+
+fn iam_bootstrap_ceremony_identity_population() -> List<IamBootstrapIdentity> {
+  iam_bootstrap_ceremony_identity_population_over(targets: gcp_iam_converge_targets)
+}
+
 fn iam_bootstrap_identity_federations() -> List<DedicatedFederation> {
   map(iam_bootstrap_identity_population(), i => i.federation)
 }

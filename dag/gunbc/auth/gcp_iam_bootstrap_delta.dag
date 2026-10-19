@@ -3,7 +3,7 @@ module gunbc.auth.gcp_iam_bootstrap_delta
 import std.types { String, NonEmptyStr, List, Bool, Secret }
 import std.list { distinct_by_key }
 import std.optional { Present, Absent }
-import extdeps.cloud.gcp.iam { GcpPolicy, GcpIamBindingCell, gcp_cell_in, gcp_policy_cells, gcp_policy_from_wire }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell, gcp_cell_in, gcp_policy_cells, gcp_policy_from_wire }
 import extdeps.cloud.gcp.errors {
   GcpParentReadStanding, GcpCallerReadsParentChildren, GcpCallerCannotReadParent,
   GcpAbsentResourceAnswer, GcpAbsentAnswersPermissionDenied, GcpAbsentAnswersNotFound, gcp_absent_resource_answer,
@@ -70,6 +70,7 @@ fn observer_project_standing() -> GcpParentReadStanding {
 // ONE SUBJECT AS THE OBSERVER READ IT.
 type BootstrapSubjectReading
   = SubjectPolicyRead { policy: GcpPolicy }
+  | SubjectPolicyUnpublished
   | SubjectAnswered
   | SubjectPermissionDenied { cause: String }
   | SubjectNotFound
@@ -83,6 +84,7 @@ type BootstrapSubjectObservation {
 
 type BootstrapSubjectStanding
   = SubjectUnbound
+  | SubjectUnpublished
   | SubjectAbsent
   | SubjectAbsentOrUnboundCannotTell { cause: String }
 
@@ -140,6 +142,7 @@ fn classify_bootstrap_subject(roster: List<IamBootstrapBinding>, o: BootstrapSub
       ObserverReadsSubjectOnly => SubjectRefused { reason: concat(key, ": not observed, though the observer is bound on it") }
       ObserverReadsPolicy => SubjectRefused { reason: concat(key, ": not observed, though the observer is bound on it") }
     }
+    SubjectPolicyUnpublished => SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectUnpublished, missing: cells } }
     SubjectNotFound => SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectAbsent, missing: cells } }
     SubjectPermissionDenied { cause } => match gcp_absent_resource_answer(parent: observer_project_standing()) {
       GcpAbsentAnswersNotFound => SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectUnbound, missing: cells } }
@@ -175,6 +178,7 @@ fn bootstrap_delta(observations: List<BootstrapSubjectObservation>) -> Bootstrap
 fn subject_standing_text(s: BootstrapSubjectStanding) -> String {
   match s {
     SubjectUnbound => "present, cells absent from its policy"
+    SubjectUnpublished => "present, its policy never published (no etag)"
     SubjectAbsent => "absent"
     SubjectAbsentOrUnboundCannotTell { cause: _ } => "absent or unbound (PERMISSION_DENIED to a caller that cannot read the project; google.aip.dev/211)"
   }
@@ -183,6 +187,29 @@ fn subject_standing_text(s: BootstrapSubjectStanding) -> String {
 fn subject_not_bootstrapped_text(s: SubjectNotBootstrapped) -> String {
   join(["SubjectNotBootstrapped ", iam_bootstrap_resource_key(resource: s.subject), " (", subject_standing_text(s: s.standing), "): ",
     to_string(count(s.missing)), " missing cell(s): ", join(map(s.missing, b => concat(b.cell.role, concat(" to ", b.cell.member))), "; ")], "")
+}
+
+// A POOL'S POLICY AS READ: a revisioned policy is read in place; a pool whose policy was never published
+// answers with no etag and no bindings (its first write is the journaled first publication,
+// gunbc.auth.gcp_iam_bootstrap iam_bootstrap_publish_initial_pool_policy); no etag beside bindings is
+// outside the representation and refuses.
+fn pool_policy_reading(bindings: List<GcpBinding>?, etag: String?) -> BootstrapSubjectReading {
+  match etag {
+    Present { value: e } => if e != "" { SubjectPolicyRead { policy: gcp_policy_from_wire(bindings: bindings, etag: e, version: none) } }
+      else { unpublished_or_unreadable(bindings: bindings) }
+    Absent => unpublished_or_unreadable(bindings: bindings)
+  }
+}
+
+fn unpublished_or_unreadable(bindings: List<GcpBinding>?) -> BootstrapSubjectReading {
+  SubjectUnreadable { cause: "RED STUB: today an etag-less pool read is unreadable" }
+}
+
+fn green_unpublished_or_unreadable(bindings: List<GcpBinding>?) -> BootstrapSubjectReading {
+  match bindings {
+    Absent => SubjectPolicyUnpublished
+    Present { value: rows } => if count(rows) == 0 { SubjectPolicyUnpublished } else { SubjectUnreadable { cause: "the pool policy carries bindings but no etag; no unfenced write is admitted over them" } }
+  }
 }
 
 // ── Observation (effectful; the delta above is the pure half) ────────────────────────────────
@@ -197,10 +224,7 @@ fn observe_bootstrap_subject(subject: IamBootstrapResource, token: Secret) -> Bo
     BootstrapProject => SubjectUnobservable
     BootstrapPool { pool } =>
       match gcp.IamAdmin.GetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool) {
-        RestAnswered { answer: r } => match r.etag {
-          Present { value: e } => SubjectPolicyRead { policy: gcp_policy_from_wire(bindings: r.bindings, etag: e, version: r.version) }
-          Absent => SubjectUnreadable { cause: "the pool policy read carries no etag" }
-        }
+        RestAnswered { answer: r } => pool_policy_reading(bindings: r.bindings, etag: r.etag)
         RestRefused { refusal } => subject_reading_of_refusal(refusal: refusal)
       }
     BootstrapAccount { account } =>

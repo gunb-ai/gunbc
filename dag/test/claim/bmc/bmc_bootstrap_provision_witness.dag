@@ -1,5 +1,7 @@
 module test.claim.bmc.bmc_bootstrap_provision_witness
 
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -30,9 +30,9 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_identity_federations, iam_bootstrap_cell_owner, BootstrapCellOwner, RootCeremonyOwned, DeltaOwned,
 }
-import gunbc.auth.gcp_iam_bootstrap { iam_bootstrap_read_policy, iam_bootstrap_write_policy, BootstrapPolicyWritten, BootstrapPolicyWriteRefused }
+import gunbc.auth.gcp_iam_bootstrap { iam_bootstrap_read_policy, iam_bootstrap_write_policy, BootstrapPolicyWritten, BootstrapPolicyWriteRefused, iam_bootstrap_publish_initial_pool_policy, PoolInitApprovedDelta }
 import gunbc.auth.gcp_iam_bootstrap_delta {
-  SubjectNotBootstrapped, BootstrapSubjectStanding, SubjectUnbound, SubjectAbsent, SubjectAbsentOrUnboundCannotTell, subject_not_bootstrapped_text,
+  SubjectNotBootstrapped, BootstrapSubjectStanding, SubjectUnbound, SubjectUnpublished, SubjectAbsent, SubjectAbsentOrUnboundCannotTell, subject_not_bootstrapped_text,
 }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface, WorkloadIdentityUnbindable, MintsNoCredential, ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
@@ -108,9 +108,44 @@ fn bootstrap_delta_requestable(subjects: List<SubjectNotBootstrapped>) -> Bootst
 }
 
 // ── The consent preimage, the digest and the request ─────────────────────────────────────────
+// HOW A SUBJECT'S CELLS ARE WRITTEN, consented to by name. A pool the observer read with a revision is
+// only ever written fenced. A pool whose policy reads unpublished, or that the observer could not read
+// (absent or a cannot-tell 403, as a fresh target pool is to iam-observe before its read cell exists),
+// may take the ONE journaled first publication (gunbc.auth.gcp_iam_bootstrap
+// iam_bootstrap_publish_initial_pool_policy), which itself publishes only over a declared-empty,
+// etag-less policy and otherwise does nothing; the apply re-derives this, so a pool that gained an etag
+// between the tap and the apply is a different digest and refuses.
+type SubjectWriteRoute = FencedAdditionOnly | FirstPublicationAdmitted
+
+fn subject_write_route(s: SubjectNotBootstrapped) -> SubjectWriteRoute {
+  red_stub_fenced_only(s: s)
+}
+
+// RED STUB: today the delta never publishes a pool's first policy.
+fn red_stub_fenced_only(s: SubjectNotBootstrapped) -> SubjectWriteRoute { FencedAdditionOnly }
+
+fn green_subject_write_route(s: SubjectNotBootstrapped) -> SubjectWriteRoute {
+  match s.subject {
+    BootstrapPool { pool: _ } => match s.standing {
+      SubjectUnbound => FencedAdditionOnly
+      SubjectUnpublished => FirstPublicationAdmitted
+      SubjectAbsent => FirstPublicationAdmitted
+      SubjectAbsentOrUnboundCannotTell { cause: _ } => FirstPublicationAdmitted
+    }
+    BootstrapProject => FencedAdditionOnly
+    BootstrapAccount { account: _ } => FencedAdditionOnly
+    BootstrapSecret { secret: _ } => FencedAdditionOnly
+  }
+}
+
+fn subject_write_route_wire(r: SubjectWriteRoute) -> String {
+  match r { FencedAdditionOnly => "fenced"  FirstPublicationAdmitted => "first-publication-if-unpublished" }
+}
+
 fn standing_preimage(s: BootstrapSubjectStanding) -> String {
   match s {
     SubjectUnbound => consent_field(tag: "standing", value: "unbound")
+    SubjectUnpublished => consent_field(tag: "standing", value: "unpublished")
     SubjectAbsent => consent_field(tag: "standing", value: "absent")
     SubjectAbsentOrUnboundCannotTell { cause: _ } => consent_field(tag: "standing", value: "absent-or-unbound")
   }
@@ -120,13 +155,14 @@ fn subject_preimage(s: SubjectNotBootstrapped) -> String {
   join([
     consent_field(tag: "subject", value: iam_bootstrap_resource_key(resource: s.subject)),
     standing_preimage(s: s.standing),
+    consent_field(tag: "write", value: subject_write_route_wire(r: subject_write_route(s: s))),
     consent_list_field(tag: "cell", values: map(s.missing, b => cell_preimage(c: b.cell))),
   ], "")
 }
 
 fn bootstrap_delta_preimage(b: BootstrapDeltaRequestBody) -> String {
   join([
-    consent_field(tag: "encoding", value: "gunbc-gcp-iam-bootstrap-delta/1"),
+    consent_field(tag: "encoding", value: "gunbc-gcp-iam-bootstrap-delta/2"),
     consent_field(tag: "project", value: fleet_secrets_project_id as String),
     consent_field(tag: "actor", value: iam_bootstrap_service_account as String),
     consent_list_field(tag: "subject", values: map(b.subjects, s => subject_preimage(s: s))),
@@ -159,6 +195,11 @@ fn bootstrap_delta_request_over(b: BootstrapDeltaRequestBody, g: Sha256Digest, a
     intent_hash: as_content_hash_cryptographic(digest: g),
     destructive: false,
   }
+}
+
+// THE DIGEST'S HEX, named in the first-publication journal so the publication is tied to the consent.
+fn bootstrap_delta_digest_hex(b: BootstrapDeltaRequestBody) -> String {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: bootstrap_delta_preimage(b: b))))
 }
 
 type BootstrapDeltaRequest
@@ -215,6 +256,7 @@ fn federation_for(s: IamBootstrapResource) -> DedicatedFederation? {
 fn needs_existence_settled(s: BootstrapSubjectStanding) -> Bool {
   match s {
     SubjectUnbound => false
+    SubjectUnpublished => false
     SubjectAbsent => true
     SubjectAbsentOrUnboundCannotTell { cause: _ } => true
   }
@@ -257,11 +299,27 @@ fn settle_existence(s: IamBootstrapResource, token: Secret) -> String {
   }
 }
 
-fn apply_subject(s: SubjectNotBootstrapped, token: Secret) -> String {
+fn first_publication(s: SubjectNotBootstrapped, approved: List<GcpIamBindingCell>, digest: String, token: Secret) -> String {
+  match subject_write_route(s: s) {
+    FencedAdditionOnly => ""
+    FirstPublicationAdmitted => match s.subject {
+      BootstrapPool { pool } => {
+        let r = iam_bootstrap_publish_initial_pool_policy(pool: pool, cells: approved, admission: PoolInitApprovedDelta { digest: digest }, token: token)
+        if r == "" { "" } else { join([iam_bootstrap_resource_key(resource: s.subject), ": POOL FIRST PUBLICATION REFUSED (no retry; an unresolved publication is an operator recovery): ", r], "") }
+      }
+      BootstrapProject => ""
+      BootstrapAccount { account: _ } => ""
+      BootstrapSecret { secret: _ } => ""
+    }
+  }
+}
+
+fn apply_subject(s: SubjectNotBootstrapped, digest: String, token: Secret) -> String {
   let key = iam_bootstrap_resource_key(resource: s.subject)
   let approved = map(s.missing, b => b.cell)
   let settled = if needs_existence_settled(s: s.standing) { settle_existence(s: s.subject, token: token) } else { "" }
-  if settled != "" { settled } else {
+  let published = if settled != "" { settled } else { first_publication(s: s, approved: approved, digest: digest, token: token) }
+  if published != "" { published } else {
     match bootstrap_cells_write(approved: approved, reading: iam_bootstrap_read_policy(resource: s.subject, token: token)) {
       BootstrapCellsRefused { reason } => join([key, ": ", reason], "")
       BootstrapCellsAlreadyPresent => ""
@@ -279,6 +337,6 @@ fn apply_subject(s: SubjectNotBootstrapped, token: Secret) -> String {
 }
 
 // THE APPROVED SUBJECTS, in the approved order; the first refusal stops the rest.
-fn apply_approved_subjects(subjects: List<SubjectNotBootstrapped>, token: Secret) -> String {
-  fold(subjects, init: "", f: (acc, s) => if acc != "" { acc } else { apply_subject(s: s, token: token) })
+fn apply_approved_subjects(subjects: List<SubjectNotBootstrapped>, digest: String, token: Secret) -> String {
+  fold(subjects, init: "", f: (acc, s) => if acc != "" { acc } else { apply_subject(s: s, digest: digest, token: token) })
 }
