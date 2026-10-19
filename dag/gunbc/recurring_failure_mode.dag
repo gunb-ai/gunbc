@@ -195,6 +195,11 @@ type RungStanding
   = AtCeiling { rung: GuaranteeRung, ceiling_reason: NonEmptyStr }
   | BelowCeiling { current: RungPosition, ceiling: GuaranteeRung, blocker: ClimbBlocker, trigger: NextRungTrigger }
 
+// RELATION TO gunbc.rung_drop OffLadderJudgment.NotJudgeableFromProse: the same honest refusal (a
+// rung cannot be read from authored prose), but that arm is one undifferentiated answer about a
+// drop's on/off-ladder status, whereas the ledger needs the reason countable, so UnreadCause refines
+// it rather than parallels it; RungRead's FoundOnRung reuses GuaranteeRung exactly as OnLadderAt does.
+//
 // WHY A ROW'S RUNG IS NOT READ. Each arm is a real class of prose the migration met, so the census
 // counts them by arm and a guess has no home. There is deliberately no "not yet migrated" arm: this
 // cut reads every row, and an arm for unmigrated rows would let a later row be authored unread.
