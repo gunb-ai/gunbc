@@ -368,11 +368,12 @@ test fn a_drop_member_that_is_neither_path_nor_identity_is_an_ungrounded_refusal
     && all(ungroundable, member => ungrounded_stands(stands: census.stands, member: member))
 }
 
-// GRAIN IS THE DECLARED FIELD, AND THE SHAPE CHECK ONLY REFUSES A DISAGREEMENT. The SAME member text under
-// two declared grains: `m.dag` declared FileGrain covers the file's claims; declared IdentityGrain is a
-// typed refusal, because a path is not an identity spelling. The grain is never inferred from the string --
-// it is read from the row -- and a mismatch is never coerced into whichever grain would pass.
-test fn the_same_member_covers_at_its_declared_grain_and_refuses_at_the_other() -> Bool {
+// GRAIN IS THE DECLARED FIELD AND GROUNDING IS THE JOIN, NEVER A SPELLING TEST (review 82792). The SAME
+// member text under two declared grains, grounded by the population each grain joins against: `m.dag`
+// declared FileGrain grounds through the file's discovered claims; declared IdentityGrain it is not a
+// claim discovery holds, so it is `StaleEnrolled` -- a verdict from the universe, not from the member
+// containing `.dag`. Nothing here asks the member what it looks like.
+test fn each_grain_is_grounded_by_the_population_it_joins_and_never_by_spelling() -> Bool {
   let rows = fixture_rows()
   let as_file = classify_rows(
     universe: fixture_universe(),
@@ -385,7 +386,35 @@ test fn the_same_member_covers_at_its_declared_grain_and_refuses_at_the_other() 
     classifier_rows: [cover_identity(carrier: "t.drop", member: "m.dag")]
   )
   (covers_of(stands: as_file, member: "m.dag") == ["m.a", "m.b"])
-    && ungrounded_stands(stands: as_identity, member: "m.dag")
+    && stale_stands(stands: as_identity, member: "m.dag")
+    && !ungrounded_stands(stands: as_identity, member: "m.dag")
+}
+
+// REGRESSION FOR THE `.dag`-IN-A-MODULE-NAME CASE THE REVIEW FOUND (review 82792, DESIGN §4 "a heuristic is
+// never necessary"). Real modules are named `extdeps.languages.dag.emit` and `gunbc.dag_grammar_fork_census`,
+// so a legal identity contains the substring `.dag`. An identity-grain cover row over such a claim must be a
+// GROUNDED COVER, not an invented `UngroundedDropMember`: the claims it covers would otherwise fall into
+// UNCOVERED and the census would exit 1 for a defect that does not exist. The file-grain half of the same
+// assertion keeps the refusal honest -- the identical text, declared over a file, grounds in no discovered
+// file and IS refused.
+test fn an_identity_whose_module_name_contains_dag_is_grounded_not_refused() -> Bool {
+  let identity = "extdeps.languages.dag.emit.emit_a_module"
+  let rows = [ClaimRow { identity: identity, entry: "dag/extdeps/languages/dag/emit.dag", function: "emit_a_module" }]
+  let universe = [identity]
+  let grounded = classify_rows(
+    universe: universe,
+    rows: rows,
+    classifier_rows: [cover_identity(carrier: "t.drop", member: identity)]
+  )
+  let misdeclared = classify_rows(
+    universe: universe,
+    rows: rows,
+    classifier_rows: [cover_file(carrier: "t.drop", member: identity)]
+  )
+  grounded_cover(stands: grounded, member: identity)
+    && (covers_of(stands: grounded, member: identity) == universe)
+    && !ungrounded_stands(stands: grounded, member: identity)
+    && ungrounded_stands(stands: misdeclared, member: identity)
 }
 
 // AN EXACT FILE MEMBER SELECTING NO DISCOVERED CLAIM IS REFUSED. A real-looking path whose file discovery

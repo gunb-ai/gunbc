@@ -107,13 +107,6 @@ type S1Census {
   stands: List<ClassifierStanding>
 }
 
-// An identity is dotted-path-free and a repo path ENDS in `.dag`: the one shape fact separating the
-// two spellings. This is the SHAPE CHECK that turns a declared grain into a typed refusal — the
-// grain itself is always the declared field, never re-derived from the string.
-fn member_is_repo_path(member: String) -> Bool {
-  string_contains(s: member, pattern: ".dag")
-}
-
 // Universe membership is the join everywhere; one map build so no call site scans.
 fn universe_index(universe: List<String>) -> Map<String, Bool> {
   fold(
@@ -158,58 +151,46 @@ fn matches_member(row: ClassifierRow, path: String) -> Bool {
   }
 }
 
-// Classify one row against S1. A File-grain row expands through the SAME discovery that built S1,
-// via its declared match relation; an Identity-grain row joins its spelling directly. No path
-// compares a member across grains, and a member whose DECLARED GRAIN AND SPELLING DISAGREE is
-// refused as ungroundable — the typed refusal the ruling demands for the 41 values whose strings
-// parse as neither path nor identity.
+// Classify one row against S1, GROUNDED BY THE JOIN AND BY NOTHING ELSE. A File-grain row is grounded
+// by its expansion through the SAME discovery that built S1, applied with its declared match relation:
+// a member selecting no discovered file is `UngroundedDropMember`. An Identity-grain row is grounded by
+// the universe lookup: an identity discovery does not hold is `StaleEnrolled`. Nothing in either branch
+// inspects the member's SPELLING, which is what makes the two grains honest -- the grain is the declared
+// field and the answer comes from the population, so a member text that is legal in both spellings
+// cannot be misjudged. (The repo does contain modules whose names contain `.dag` -- `extdeps.languages.dag.emit`,
+// `gunbc.dag_grammar_fork_census` -- so a spelling test would refuse correctly grounded rows and invent
+// findings; DESIGN §4: in a closed system a heuristic is never necessary, and the richer source -- the
+// discovered rows and the universe -- is right here.)
 //
-// The shape check runs only for an EXACT member: an exact File-grain member must spell a path (the
-// `.dag` terminal) and an exact Identity-grain member must not. A SUBSTRING member is a stem or a
-// directory prefix by nature ("impossible_bug", "test/claim/long/"), so no path spelling is
-// required of it — but it must select at least one discovered file, or it is UngroundedDropMember
-// too: a pattern that matches nothing covers nothing, and printing that as grounded would be the
-// stale-present-tense lie DESIGN 3 names, in census form.
+// THE 41 STILL REFUSE, through the join: a drop-population value that is neither a file discovery holds
+// nor anything else reaches an empty expansion and is typed `UngroundedDropMember`, printed with its drop
+// and its declared text. A SUBSTRING member (the frontier's own form) is refused the same way when it
+// selects no discovered file: a pattern that matches nothing covers nothing, and printing that as grounded
+// would be the stale-present-tense lie DESIGN 3 names, in census form.
 fn classify_row(universe: List<String>, rows: List<ClaimRow>, row: ClassifierRow) -> ClassifierStanding {
-  if declares_exact(row: row) && member_is_repo_path(member: row.member) != declares_file(row: row) {
-    UngroundedDropMember { row: row }
-  } else {
-    match row.grain {
-      FileGrain =>
-        if is_empty(xs: expand_file(rows: rows, row: row)) {
-          UngroundedDropMember { row: row }
-        } else {
-          if row.cover {
-            GroundedCover { row: row, covers: expand_file(rows: rows, row: row) }
-          } else {
-            GroundedEnrollment { row: row, covers: expand_file(rows: rows, row: row) }
-          }
-        }
-      IdentityGrain =>
-        match map_lookup(m: universe_index(universe: universe), key: row.member) {
-          Absent => StaleEnrolled { row: row }
-          Present { value: _ } =>
-            if row.cover {
-              GroundedCover { row: row, covers: [row.member] }
-            } else {
-              GroundedEnrollment { row: row, covers: [row.member] }
-            }
-        }
-    }
-  }
-}
-
-fn declares_exact(row: ClassifierRow) -> Bool {
-  match row.match_ {
-    ExactMemberMatch => true
-    SubstringMemberMatch => false
-  }
-}
-
-fn declares_file(row: ClassifierRow) -> Bool {
   match row.grain {
-    FileGrain => true
-    IdentityGrain => false
+    FileGrain => {
+      let covers = expand_file(rows: rows, row: row)
+      if is_empty(xs: covers) {
+        UngroundedDropMember { row: row }
+      } else {
+        if row.cover {
+          GroundedCover { row: row, covers: covers }
+        } else {
+          GroundedEnrollment { row: row, covers: covers }
+        }
+      }
+    }
+    IdentityGrain =>
+      match map_lookup(m: universe_index(universe: universe), key: row.member) {
+        Absent => StaleEnrolled { row: row }
+        Present { value: _ } =>
+          if row.cover {
+            GroundedCover { row: row, covers: [row.member] }
+          } else {
+            GroundedEnrollment { row: row, covers: [row.member] }
+          }
+      }
   }
 }
 
