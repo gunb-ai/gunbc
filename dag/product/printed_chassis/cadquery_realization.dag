@@ -245,9 +245,9 @@ fn emit_line(substitutions: List<SourceSubstitution>, tail: String) -> LineEmiss
 // | RealizeThroughHoleV0 {...}` and asserted in a comment that it closed the bare-geometry route.
 // It did not. A foreign module writing `RealizePlateV0 { plate: plate }` compiles CLEAN: the witness
 // went red on its first run, and the repository's own enrolled audit probe for this exact form --
-// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses -- is red
-// too, so the gap is general and not a mistake in this declaration. The marker on a coproduct is
-// currently decoration.
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses -- was red
+// too, so the gap was general and not a mistake in this declaration. The marker on a coproduct was
+// decoration then; v1 now refuses arm construction and the probe is green.
 //
 // What IS sealed by execution is the RECORD form, which is what AdmittedRealizationV0's enrolled
 // red/green/differential establishes. So the subject stays an ordinary coproduct that anyone may

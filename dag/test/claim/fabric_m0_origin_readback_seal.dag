@@ -31,10 +31,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // here attributable to the wrong subject. The keyed form is the one that module names as exact,
 // and the receipt it points at is test.claim.machine_intake.no_fallback_plan_ineligibility_wall.
 //
-// WHY THE SEAL IS ON A RECORD. sole_constructor on a COPRODUCT does not refuse cross-module variant
-// construction: the declared hole measured by
-// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which is
-// red. Sealing ManifestReadbackObservation or OriginReadback directly would have been permanently
+// WHY THE SEAL IS ON A RECORD. sole_constructor on a COPRODUCT did not refuse cross-module variant
+// construction when this was written: the hole measured by
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which was
+// red and is now green (a regression control). Sealing ManifestReadbackObservation or OriginReadback directly would have been permanently
 // green by construction. The record OriginReading, carried by both confirming variants, is the form
 // the wall does refuse -- and the probes below are what say so by execution.
 fn census_of(source: String) -> CompileDiagnosticCensus {

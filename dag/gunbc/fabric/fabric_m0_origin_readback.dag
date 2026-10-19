@@ -107,9 +107,9 @@ import extdeps.crypto.hash
 // in gunbc.product.fabric.work records applies here unchanged rather than being re-derived.
 //
 // WHY A RECORD AND NOT A SEALED COPRODUCT, and this is measured, not stylistic: sole_constructor on
-// a COPRODUCT does not refuse cross-module variant construction -- the declared hole measured by
-// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which is
-// red. Sealing ManifestReadbackObservation or OriginReadback directly would therefore have been a
+// a COPRODUCT did not refuse cross-module variant construction -- the hole measured by
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which was
+// red and is now green (a regression control). Sealing ManifestReadbackObservation or OriginReadback directly would therefore have been a
 // permanently green wall carrying no information, which DESIGN 4b calls worse than absent. Sealing
 // the RECORD the confirming variants CARRY puts the forbidden literal back on the form the wall
 // does refuse.
