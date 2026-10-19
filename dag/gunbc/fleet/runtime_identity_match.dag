@@ -1,6 +1,8 @@
 module gunbc.fleet.runtime_identity_match
 
-// WHO IS ON THE NETWORK (cut 6, S10 dry half, of gunbc.plans.physical_machine_boot_program).
+// WHO IS ON THE NETWORK (cut 6 of gunbc.plans.physical_machine_boot_program; step S10 of the cut-6
+// network-boot program, which is a dashboard label -- the carrier records the cut-6 decision and carries no
+// S-numbered rows, so S10 is cited to the program and `cut 6` is what resolves in the carrier).
 //
 // A unit has been network-booted. Something now has to bind "the machine that answered on the network" to
 // "the unit the attempt was made for", because every later step -- enrolling it, installing on it, letting

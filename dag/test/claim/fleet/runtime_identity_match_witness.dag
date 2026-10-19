@@ -1,6 +1,7 @@
 module test.claim.fleet.runtime_identity_match_witness
 
-// WHAT THIS WITNESS LOCKS (cut 6, S10 dry half, gunbc.fleet.runtime_identity_match).
+// WHAT THIS WITNESS LOCKS (cut 6 of gunbc.plans.physical_machine_boot_program, step S10 of the cut-6
+// program label; module gunbc.fleet.runtime_identity_match).
 //
 // The cut's claim is that a boot answer can be BOUND to the unit the attempt was made for, and that the
 // three possible outcomes mean three different things. The witnesses below are what makes each of those
