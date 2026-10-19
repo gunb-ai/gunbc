@@ -21,7 +21,9 @@ import std.types { String, Bool, List }
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
 import gunbc.claim_coverage_census_s1 {
-  ClaimRow, ClassifierRow, S1Census, ClassifierStanding, S1Composed, S1InputsUnread,
+  ClaimRow, ClassifierRow, IdentityMember, DeclaredMember, FileMember,
+  ExactMemberMatch, SubstringMemberMatch, classifier_member_text,
+  S1Census, ClassifierStanding, S1Composed, S1InputsUnread,
   classify_rows, derive_executed, s1_uncovered, s1_census_lines,
   s1_block, s1_exit_held, s1_exit_did_not_hold, s1_exit_unread
 }
@@ -41,40 +43,43 @@ fn fixture_universe() -> List<String> {
   ["m.a", "m.b", "other.c"]
 }
 
-// A cover row naming one identity, as the drop populations and the fill-debt list spell them.
+// A cover row naming one identity, as the fill-debt list and floor_expected_red spell them. The arm IS
+// the grain: an identity member carries the claim spelling and no relation, because an identity joins by
+// exact spelling and nothing else (review 82804 dissolved the old grain-plus-dummy-fields record).
 fn cover_identity(carrier: String, member: String) -> ClassifierRow {
   ClassifierRow {
     carrier: carrier,
-    member: member,
-    grain: IdentityGrain,
-    match_: ExactMemberMatch,
-    function: Absent,
+    member: IdentityMember { identity: member },
     cover: true
   }
 }
 
-// A cover row over a whole FILE: the grain the rung drops and the frozen deferrals declare. The member must
-// be a repo path, and the fold grounds it through the one expansion -- never by string surgery.
+// An ENROLLMENT row (floor_expected_red's shape): same arm, cover false, because an expectation excuses
+// nothing.
+fn expectation_identity(member: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: "v2.workflow.floor_route_authority.floor_expected_red",
+    member: IdentityMember { identity: member },
+    cover: false
+  }
+}
+
+// A cover row over a whole FILE: the grain the frozen deferrals and the bin wet entries declare. The fold
+// grounds it through the one expansion -- never by string surgery.
 fn cover_file(carrier: String, member: String) -> ClassifierRow {
   ClassifierRow {
     carrier: carrier,
-    member: member,
-    grain: FileGrain,
-    match_: ExactMemberMatch,
-    function: Absent,
+    member: FileMember { path: member, match_: ExactMemberMatch, function: Absent },
     cover: true
   }
 }
 
-// A file cover narrowed to one function: the shape a drop population reaches when it names one claim of a
-// file. `function` is a declared field, never parsed out of the member.
+// A file cover narrowed to one function: the shape a carrier reaches when it names one claim of a file.
+// The function is a declared field of the arm, never parsed out of the member.
 fn cover_file_fn(carrier: String, member: String, function: String) -> ClassifierRow {
   ClassifierRow {
     carrier: carrier,
-    member: member,
-    grain: FileGrain,
-    match_: ExactMemberMatch,
-    function: Present { value: function },
+    member: FileMember { path: member, match_: ExactMemberMatch, function: Present { value: function } },
     cover: true
   }
 }
@@ -84,24 +89,19 @@ fn cover_file_fn(carrier: String, member: String, function: String) -> Classifie
 fn frontier_pattern(pattern: String) -> ClassifierRow {
   ClassifierRow {
     carrier: "gunbc.ci.ci_layer_roots.witness_exclusion_frontier",
-    member: pattern,
-    grain: FileGrain,
-    match_: SubstringMemberMatch,
-    function: Absent,
+    member: FileMember { path: pattern, match_: SubstringMemberMatch, function: Absent },
     cover: true
   }
 }
 
-// An EXPECTATION row: floor_expected_red's shape. An expectation excuses nothing, so a covered-by-nothing
-// claim stays uncovered however many expectation rows name it.
-fn expectation_identity(member: String) -> ClassifierRow {
+// A member the carrier declared at NO grain -- a rung_drop population is List<String>, so the declaration
+// carries a text and no grain. The fold joins it against the discovered identities and then the discovered
+// file paths and refuses it only when neither bears it; no spelling test is involved.
+fn declared_member(carrier: String, text: String) -> ClassifierRow {
   ClassifierRow {
-    carrier: "v2.workflow.floor_route_authority.floor_expected_red",
-    member: member,
-    grain: IdentityGrain,
-    match_: ExactMemberMatch,
-    function: Absent,
-    cover: false
+    carrier: carrier,
+    member: DeclaredMember { text: text },
+    cover: true
   }
 }
 
@@ -129,21 +129,21 @@ fn line_names(lines: List<String>, needle: String) -> Bool {
 // asks the same question a reader of the receipt asks: which row, and how did it stand.
 fn stale_stands(stands: List<ClassifierStanding>, member: String) -> Bool {
   any(stands, standing => match standing {
-    StaleEnrolled { row: row } => row.member == member
+    StaleEnrolled { row: row } => classifier_member_text(row: row) == member
     _ => false
   })
 }
 
 fn ungrounded_stands(stands: List<ClassifierStanding>, member: String) -> Bool {
   any(stands, standing => match standing {
-    UngroundedDropMember { row: row } => row.member == member
+    UngroundedDropMember { row: row } => classifier_member_text(row: row) == member
     _ => false
   })
 }
 
 fn grounded_cover(stands: List<ClassifierStanding>, member: String) -> Bool {
   any(stands, standing => match standing {
-    GroundedCover { row: row, covers: _ } => row.member == member
+    GroundedCover { row: row, covers: _ } => classifier_member_text(row: row) == member
     _ => false
   })
 }
@@ -154,7 +154,8 @@ fn covers_of(stands: List<ClassifierStanding>, member: String) -> List<String> {
     init: [],
     f: fn(acc, standing) {
       match standing {
-        GroundedCover { row: row, covers: covers } => if row.member == member { covers } else { acc }
+        GroundedCover { row: row, covers: covers } =>
+          if classifier_member_text(row: row) == member { covers } else { acc }
         _ => acc
       }
     }
@@ -359,7 +360,7 @@ test fn a_drop_member_that_is_neither_path_nor_identity_is_an_ungrounded_refusal
   let census = census_over(
     rows: rows,
     universe: fixture_universe(),
-    covers: map(ungroundable, member => cover_file(carrier: "gunbc.rung_drop.t.drop", member: member)),
+    covers: map(ungroundable, member => declared_member(carrier: "gunbc.rung_drop.t.drop", text: member)),
     produced: []
   )
   let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
@@ -368,11 +369,11 @@ test fn a_drop_member_that_is_neither_path_nor_identity_is_an_ungrounded_refusal
     && all(ungroundable, member => ungrounded_stands(stands: census.stands, member: member))
 }
 
-// GRAIN IS THE DECLARED FIELD AND GROUNDING IS THE JOIN, NEVER A SPELLING TEST (review 82792). The SAME
-// member text under two declared grains, grounded by the population each grain joins against: `m.dag`
-// declared FileGrain grounds through the file's discovered claims; declared IdentityGrain it is not a
-// claim discovery holds, so it is `StaleEnrolled` -- a verdict from the universe, not from the member
-// containing `.dag`. Nothing here asks the member what it looks like.
+// GRAIN IS THE ARM AND GROUNDING IS THE JOIN, NEVER A SPELLING TEST (review 82792, then 82804). The SAME
+// member text under the two arms, grounded by the population each arm joins against: as a file member
+// `m.dag` grounds through the file's discovered claims; as an identity member it is not a claim discovery
+// holds, so it is `StaleEnrolled` -- a verdict from the universe, not from the member containing `.dag`.
+// Nothing here asks the member what it looks like, and no arm can carry a relation its grain cannot answer.
 test fn each_grain_is_grounded_by_the_population_it_joins_and_never_by_spelling() -> Bool {
   let rows = fixture_rows()
   let as_file = classify_rows(
@@ -415,6 +416,33 @@ test fn an_identity_whose_module_name_contains_dag_is_grounded_not_refused() -> 
     && (covers_of(stands: grounded, member: identity) == universe)
     && !ungrounded_stands(stands: grounded, member: identity)
     && ungrounded_stands(stands: misdeclared, member: identity)
+}
+
+// A DROP POPULATION MEMBER IS JOINED AGAINST BOTH POPULATIONS, NEVER JUDGED BY ITS LOOKS (review 82804).
+// A rung_drop population is `List<String>`: the declaration carries a text and no grain, and its members
+// are mixed in practice -- some name a discovered file, some name a discovered claim. Each is tried against
+// the identities and then the file paths, both by equality; the value is refused only when neither bears it.
+// Three members, one carrier: the claim spelling grounds and covers exactly itself, the path grounds and
+// covers the file's claims, and the prose names nothing and is the finding.
+test fn an_untyped_drop_member_grounds_in_either_population_and_neither_by_spelling() -> Bool {
+  let rows = fixture_rows()
+  let carrier = "gunbc.rung_drop.t.drop"
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [
+      declared_member(carrier: carrier, text: "other.c"),
+      declared_member(carrier: carrier, text: "m.dag"),
+      declared_member(carrier: carrier, text: "the whole long-lane class is excused")
+    ],
+    produced: []
+  )
+  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  (covers_of(stands: census.stands, member: "other.c") == ["other.c"])
+    && (covers_of(stands: census.stands, member: "m.dag") == ["m.a", "m.b"])
+    && ungrounded_stands(stands: census.stands, member: "the whole long-lane class is excused")
+    && (count(s1_uncovered(census: census)) == 0)
+    && block.exit_code == s1_exit_did_not_hold
 }
 
 // AN EXACT FILE MEMBER SELECTING NO DISCOVERED CLAIM IS REFUSED. A real-looking path whose file discovery
