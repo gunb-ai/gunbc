@@ -5299,34 +5299,41 @@ fn target_value_expression_list_introduction_elements_from_wire(wire: Node) -> O
   }
 }
 
+// Right fold: each element prepends [separator] ++ its tokens onto the tokens already built to its
+// right, so every token is copied once (list_append is linear in its left operand). The separator
+// before the first element is the one extra token, dropped by the match on the result.
 fn target_value_expression_list_introduction_element_tokens(
   elements: List<TargetValueExpression>,
   separator: Symbol,
   projection: TargetValueExpressionProjection,
   catalog: Node
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  fold(
-    elements,
-    init: Accepted { value: Empty, diagnostics: None },
-    f: fn(acc, element) {
-      match acc {
-        Rejected { diagnostics: r } => acc
-        Accepted { value: prior_tokens, diagnostics: d } =>
-          bind_outcome(
-            o: target_value_expression_to_concrete_tokens(expr: element, projection: projection, catalog: catalog),
-            f: fn(element_tokens) {
-              if is_empty(xs: prior_tokens) {
-                outcome_accepted(element_tokens)
-              } else {
+  bind_outcome(
+    o: fold_list_right(
+      xs: elements,
+      empty: Accepted { value: Empty, diagnostics: None },
+      snoc: fn(acc, element) {
+        match acc {
+          Rejected { diagnostics: r } => acc
+          Accepted { value: rest, diagnostics: d } =>
+            bind_outcome(
+              o: target_value_expression_to_concrete_tokens(expr: element, projection: projection, catalog: catalog),
+              f: fn(element_tokens) {
                 outcome_accepted(
                   list_append(
-                    left: list_append(left: prior_tokens, right: Cons { head: FixedToken { token_class: separator }, tail: Empty }),
-                    right: element_tokens
+                    left: Cons { head: FixedToken { token_class: separator }, tail: element_tokens },
+                    right: rest
                   )
                 )
               }
-            }
-          )
+            )
+        }
+      }
+    ),
+    f: fn(separated) {
+      match separated {
+        Cons { head: _, tail: element_tokens } => outcome_accepted(element_tokens)
+        Empty => outcome_accepted(Empty)
       }
     }
   )
