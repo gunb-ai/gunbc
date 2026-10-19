@@ -113,3 +113,11 @@ test fn affected_set_non_dag_changes_ledger_empty() -> Bool {
 fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
+
+// THE TWO CAUSES THE FRONT-END CENSUS (gunbc test //gunbc/instruments:v2-native-census) FILED UNDER NO ROW:
+// each is a refusal the emitted native compiler produces on real corpus modules, so each owes an
+// ownership row (the same attribution the pinned causes above hold). RED before the rows exist.
+test fn the_census_filed_but_unowned_causes_are_attributed() -> Bool {
+  lane_ok_shared(cause: ^fold_lowering_operand_absent)
+    && lane_ok_shared(cause: ^service_realization_status_pattern_not_of_transport)
+}

@@ -115,6 +115,16 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "TRIGGER FIRED (gunbc#13833): ServiceSetAside and this reason's producer are deleted. A service whose members lower admits on both normalize grades. Residue fatals are owned under their own causes: empty argv is service_realization_argv_refused; a service-level transport is body_lowering_reason_service_member_unread; a resource capability that authored realization facts is body_lowering_reason_resource_capability_realization_unconsumed. This row stays so a leftover producer would still be counted; it flips off the table when a door-ledger census reads this cause at zero and the symbol has no producer"
   },
   CauseOwnership {
+    cause: ^fold_lowering_operand_absent,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "OWNER v2.compiler.fold_lowering (fold_lowering_operand_absent_diagnostic). A fold call whose collection or init is not in a declared slot, and that carries no pipe receiver, refuses here rather than lowering to a Loop with a dropped operand. The census-observed shape is a piped fold with named arguments (`l |> fold(init: 0, f: fn(acc, x) { acc + x })`, test.claim.algebra_receiver_annotated_witness). Flips when fold_lowering reads the collection and init of a piped, named-argument fold from their declared slots, so that call lowers to its Loop; the refusal stays for a call carrying neither"
+  },
+  CauseOwnership {
+    cause: ^service_realization_status_pattern_not_of_transport,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "OWNER v2.compiler.service_realization (realization_arms_walk_refused). A status-arm pattern that does not decode as a status of the entry's transport refuses at the pattern. Wall over authored input: flips only if a status shape that decodes under no transport becomes unwritable. The one corpus module observed refusing here (extdeps.linux.procfs, by the front-end census) has NOT been read for which pattern fires, so whether it is a transport-model gap or an authoring error is an open read obligation, not a claim"
+  },
+  CauseOwnership {
     cause: ^service_realization_argv_refused,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a shell argv that is empty, not a list, whose executable is not a literal, or that binds an undeclared input refuses at the argv node (v2.compiler.service_realization shell_argv_refusal). Wall over authored input; flips only if that shape becomes unwritable"
