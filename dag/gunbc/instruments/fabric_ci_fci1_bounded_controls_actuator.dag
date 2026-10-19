@@ -245,7 +245,7 @@ fn fci1_rows(context: Fci1BoundedExecutionContext, checkout_root: String) -> Lis
   [
     Fci1ControlRow { name: "driver-positive", unit: context.driver_unit, working_directory: checkout_root, bound: bounded,
       function: "fci1_bounded_envelope_child", arguments: positive_args, expectation: ExpectSuccess },
-    Fci1ControlRow { name: "driver-wrong-cwd", unit: context.driver_unit, working_directory: "/tmp", bound: bounded,
+    Fci1ControlRow { name: "driver-wrong-cwd", unit: "fci1-driver-wrong-cwd-control.service" as NonEmptyStr, working_directory: "/tmp", bound: bounded,
       function: "fci1_bounded_envelope_child", arguments: positive_args,
       expectation: ExpectRefusalNamed { needles: fci1_wrong_cwd_needles, cause: "the workspace-root refusal" } },
     Fci1ControlRow { name: "driver-unbounded", unit: "fci1-driver-unbounded-control.service" as NonEmptyStr, working_directory: checkout_root, bound: Fci1UnitUnbounded,
@@ -259,7 +259,7 @@ fn fci1_rows(context: Fci1BoundedExecutionContext, checkout_root: String) -> Lis
     Fci1ControlRow { name: "submitter-unbounded", unit: "fci1-submitter-unbounded-control.service" as NonEmptyStr, working_directory: checkout_root, bound: Fci1UnitUnbounded,
       function: "fci1_bounded_envelope_child", arguments: positive_args,
       expectation: ExpectRefusalNamed { needles: fci1_unbounded_needles, cause: "UncappedSystemSlice" } },
-    Fci1ControlRow { name: "exact-status-86", unit: context.driver_unit, working_directory: checkout_root, bound: bounded,
+    Fci1ControlRow { name: "exact-status-86", unit: "fci1-exact-status-control.service" as NonEmptyStr, working_directory: checkout_root, bound: bounded,
       function: "fci1_bounded_exact_status_child", arguments: [], expectation: ExpectExactStatus { code: fci1_exact_status_code } },
   ]
 }
@@ -408,7 +408,41 @@ fn fci1_refused(reason: String) -> ProcessExit {
   ExitFailure { code: 2, reason: reason }
 }
 
-fn fci1_bounded_controls_after(gunbc_bin: String, checkout_root: String, context: Fci1BoundedExecutionContext) -> ProcessExit {
+// THE TYPED VERDICT. Acceptance is a value, not an exit status: it is written (create-new, so a stale
+// file refuses) to FCI1_VERDICT_PATH only after every row passed and the store, runtime population and
+// Work-process scan are unchanged. A failed row leaves no verdict file, so absence is the red.
+type Fci1BoundedControlsVerdict
+  = Fci1BoundedControlsAccepted { systemd: String, memory_max: Int, memory_high: Int }
+
+fn fci1_verdict_line(verdict: Fci1BoundedControlsVerdict) -> String {
+  match verdict {
+    Fci1BoundedControlsAccepted { systemd, memory_max, memory_high } =>
+      join(["FCI1BoundedExecutionControlsAccepted|systemd=", systemd, "|memory_max=", to_string(memory_max), "|memory_high=", to_string(memory_high)], "")
+  }
+}
+
+fn fci1_verdict_emit(verdict_path: String, context: Fci1BoundedExecutionContext) -> ProcessExit {
+  let version = fci1_run_command(command: systemctl_version_command())
+  if version.exit_code != 0 {
+    exit_failure(reason: concat("ControlRefused: systemctl --version failed: ", fci1_diagnostics(observed: version)))
+  } else {
+    let high = match context.memory_high {
+      Present { value: h } => h
+      Absent => context.memory_max
+    }
+    let line = fci1_verdict_line(verdict: Fci1BoundedControlsAccepted {
+      systemd: match first(split(s: trim(s: version.stdout), delimiter: "\n")) { Present { value: v } => v, Absent => "" },
+      memory_max: finite_byte_size_count(size: context.memory_max),
+      memory_high: finite_byte_size_count(size: high),
+    })
+    let created = Filesystem.WriteCreateNew(path: verdict_path, content: concat(line, "\n"))
+    if created.success { ExitSuccess } else {
+      exit_failure(reason: concat("ControlRefused: verdict not written: ", created.error))
+    }
+  }
+}
+
+fn fci1_bounded_controls_after(gunbc_bin: String, checkout_root: String, verdict_path: String, context: Fci1BoundedExecutionContext) -> ProcessExit {
   let before_store = fci1_store_state()
   let before_runtime = fci1_runtime_state()
   match fci1_work_processes() {
@@ -427,7 +461,7 @@ fn fci1_bounded_controls_after(gunbc_bin: String, checkout_root: String, context
                 exit_failure(reason: "ControlRefused: disposable FCI-1 root population changed")
               } else {
                 match fci1_work_processes() {
-                  Fci1WorkProcessesAbsent => ExitSuccess
+                  Fci1WorkProcessesAbsent => fci1_verdict_emit(verdict_path: verdict_path, context: context)
                   _ => exit_failure(reason: "ControlRefused: fabric-cell Work process exists after controls")
                 }
               }
@@ -436,7 +470,7 @@ fn fci1_bounded_controls_after(gunbc_bin: String, checkout_root: String, context
   }
 }
 
-fn fci1_bounded_controls_on_srv3(gunbc_bin: String, checkout_root: String) -> ProcessExit {
+fn fci1_bounded_controls_on_srv3(gunbc_bin: String, checkout_root: String, verdict_path: String) -> ProcessExit {
   let executable = fci1_run_words(words: shell_test_is_executable_argv(path: gunbc_bin as FilePath))
   if executable.exit_code != 0 {
     fci1_refused(reason: "ControlRefused: exact-tree gunbc absent")
@@ -446,12 +480,12 @@ fn fci1_bounded_controls_on_srv3(gunbc_bin: String, checkout_root: String) -> Pr
       Fci1MemoryHighNonPositive { observed } => exit_failure(reason: concat("ControlRefused: MemoryHigh not finite-positive: ", to_string(observed)))
       Fci1MemoryHighExceedsMax { high: _, max: _ } => exit_failure(reason: "ControlRefused: MemoryHigh exceeds MemoryMax")
       Fci1BoundedExecutionContextBuilt { context } =>
-        fci1_bounded_controls_after(gunbc_bin: gunbc_bin, checkout_root: checkout_root, context: context)
+        fci1_bounded_controls_after(gunbc_bin: gunbc_bin, checkout_root: checkout_root, verdict_path: verdict_path, context: context)
     }
   }
 }
 
-fn fci1_bounded_controls_on_host(gunbc_bin: String, checkout_root: String) -> ProcessExit {
+fn fci1_bounded_controls_on_host(gunbc_bin: String, checkout_root: String, verdict_path: String) -> ProcessExit {
   let uid = fci1_run_words(words: id_uid_argv())
   if uid.exit_code != 0 || trim(s: uid.stdout) != "0" {
     fci1_refused(reason: "ControlRefused: must run as root on srv3")
@@ -460,7 +494,7 @@ fn fci1_bounded_controls_on_host(gunbc_bin: String, checkout_root: String) -> Pr
     if host.exit_code != 0 || trim(s: host.stdout) != "srv3" {
       fci1_refused(reason: "ControlRefused: host is not srv3")
     } else {
-      fci1_bounded_controls_on_srv3(gunbc_bin: gunbc_bin, checkout_root: checkout_root)
+      fci1_bounded_controls_on_srv3(gunbc_bin: gunbc_bin, checkout_root: checkout_root, verdict_path: verdict_path)
     }
   }
 }
@@ -471,7 +505,11 @@ fn fci1_bounded_controls_run() -> ProcessExit {
     Present { value: gunbc_bin } =>
       match fabric_ci_env_required(name: "FCI1_CHECKOUT_ROOT") {
         Absent => fci1_refused(reason: "ControlRefused: FCI1_CHECKOUT_ROOT unset")
-        Present { value: checkout_root } => fci1_bounded_controls_on_host(gunbc_bin: gunbc_bin, checkout_root: checkout_root)
+        Present { value: checkout_root } =>
+          match fabric_ci_env_required(name: "FCI1_VERDICT_PATH") {
+            Absent => fci1_refused(reason: "ControlRefused: FCI1_VERDICT_PATH unset")
+            Present { value: verdict_path } => fci1_bounded_controls_on_host(gunbc_bin: gunbc_bin, checkout_root: checkout_root, verdict_path: verdict_path)
+          }
       }
   }
 }
