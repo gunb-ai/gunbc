@@ -130,19 +130,11 @@ data parse_verdict_restore_ancestors_basename: String = "gunbc-parse-ancestor"
 // and exited 0). These rows are what the invocation-contract stamp hashes, so the shape is written down
 // as a premise instead of being inferred from whatever the binary happened to print.
 //
-// THE LABELS ARE FIELD NAMES, NOT THE PRINTED SPACING: v2.cli.parse_verdict_reuse prints each after a
-// separator, so a label is asserted to OCCUR in the printed line.
-// src/v2/test/claim/cli/population_verbs.dag binds these rows to the verb's actual output byte-wise, so
-// the stamp cannot silently stop covering a field the verb prints (§3: one spelling, and where two must
-// meet, a witness that fails loudly rather than a comment that says "keep in sync").
+// THE PREFIX ONLY. The seven field LABELS used to be declared here as well, which made them a second
+// spelling of what v2.cli.parse_verdict_reuse prints -- and the contract stamp hashed THAT copy, so the
+// verb could rename or drop a field while the stamp kept certifying the old shape. They now live with the
+// renderer that prints them (v2.cli.parse_verdict_reuse.parse_verdict_reuse_counts_fields), which is the
+// only place that can say what the line contains (§3: one spelling; where two must meet, a witness that
+// fails loudly, not a comment that says "keep in sync"). The prefix stays here because the guard's
+// readers and the verb both address the line by it, and it is not derived from anything.
 data parse_verdict_reuse_counts_prefix: String = "parse-verdict reuse:"
-
-data parse_verdict_reuse_counts_field_labels: List<String> = [
-  "ancestor",
-  "reused",
-  "miss_identity_absent",
-  "miss_identity_mismatch",
-  "miss_entry_absent",
-  "miss_digest_unseen",
-  "miss_declared_refused"
-]

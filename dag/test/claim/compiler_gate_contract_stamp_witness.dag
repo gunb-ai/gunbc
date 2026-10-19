@@ -9,13 +9,11 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { dissolution_description }
 import gunbc.witness.compiler_gate_contract_stamp {
-  CompilerGateContractStampReading,
   StampAbsent,
   StampMismatch,
   StampPresent,
   StampUnreadable,
   compiler_gate_contract_stamp,
-  compiler_gate_contract_stamp_awk_program,
   compiler_gate_contract_stamp_compare,
   compiler_gate_contract_stamp_env_key,
   compiler_gate_contract_stamp_evidence_case_proceeds,
@@ -24,7 +22,6 @@ import gunbc.witness.compiler_gate_contract_stamp {
   compiler_gate_contract_stamp_evidence_fail_marker_name,
   compiler_gate_contract_stamp_evidence_fail_marker_var,
   compiler_gate_contract_stamp_evidence_dir_var,
-  compiler_gate_contract_stamp_evidence_transcript_name,
   compiler_gate_contract_stamp_evidence_transcript_var,
   compiler_gate_contract_stamp_evidence_harness_path,
   compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger,
@@ -34,20 +31,27 @@ import gunbc.witness.compiler_gate_contract_stamp {
   compiler_gate_contract_stamp_evidence_subject_is_fixture,
   compiler_gate_contract_stamp_evidence_table_discriminates,
   compiler_gate_contract_stamp_guard_script,
-  compiler_gate_contract_stamp_is_derived,
   compiler_gate_contract_stamp_read_from,
   compiler_gate_contract_stamp_refusal_line,
   compiler_gate_contract_stamp_step_name,
   compiler_gate_contract_stamp_literal_shape_holds,
   compiler_gate_contract_stamp_output_population_is_exact,
   compiler_gate_contract_stamp_preimage_discriminator_holds,
-  compiler_gate_contract_stamp_value_from_rows, compiler_gate_contract_stamp_yaml_value,
-  compiler_gate_invocation_contract_canonical_rows
+  compiler_gate_invocation_contract_canonical_rows,
+  compiler_gate_contract_stamp_after_env_marker,
+  compiler_gate_contract_stamp_evidence_transcript_marker,
+  compiler_gate_contract_stamp_fixture_other_stamp,
+  compiler_gate_contract_stamp_fixture_stamp,
+  compiler_gate_contract_stamp_stamped_env,
+  compiler_gate_contract_stamp_workflow_with_env,
+
+}
 }
 import gunbc.parse_verdict_schema {
-  parse_verdict_reuse_counts_field_labels,
   parse_verdict_restore_ancestor_ordinals
 }
+
+import v2.cli.parse_verdict_reuse { parse_verdict_reuse_counts_field_names }
 
 // THE FIXTURES ARE WORKFLOW-SHAPED, not minimal mappings, for the same reason
 // test.claim.contract_identity.required_ci_epoch_observation gives: the fold runs over a document that
@@ -55,31 +59,40 @@ import gunbc.parse_verdict_schema {
 // real workflow failed. THE SHAPE IS THE ONE THE EMITTER WRITES -- top-level env at column zero, member
 // at two-space indent, single-quoted -- so a fold that only works on some other shape is caught here.
 
-data stamp: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-data stamp_other: String = "9999999999999999999999999999999999999999999999999999999999999999"
+// THE FIXTURE WIDTH IS DERIVED, NOT TYPED. These were hand-written 64-character strings while the
+// contract's stamp is 16 (compiler_gate_contract_stamp_literal_length, an Fnv1a64 rendered by
+// serialize_content_hash). Under the strict reader -- lower_hex_16 on the model side, a width test on the
+// emitted awk side -- EVERY fixture containing them read as StampUnreadable, so the three claims built on
+// them ("a head carrying the current stamp proceeds", "a PR changing the contract itself proceeds", "a
+// head older than the instruction is refused") were asserting a PROCEED on documents the gate refuses.
+// They stayed green because nothing on a PR run evaluates a claim; the reviewer ran the reader and found
+// it. Deriving the width means a future change to the digest length moves the fixtures with it instead of
+// leaving a fixture that quietly stops resembling the thing it claims to be.
+//
+// THE TWO MUST STILL BE DISTINCT, which is what makes the mismatch cases mismatch cases: 'a' and '9' are
+// different characters, so no derivation can collapse them into one value.
+// THE FIXTURES ARE THE MODEL'S, not a second copy of them. They were once spelled here -- their own
+// env-block builder plus two hand-written 64-character stamps -- while the contract's stamp is 16
+// characters (compiler_gate_contract_stamp_literal_length, Fnv1a64 rendered by serialize_content_hash).
+// Under the strict reader every fixture containing them read as StampUnreadable, so the three claims that
+// assert a head PROCEEDS were asserting it about documents the guard refuses, and they stayed green
+// because no lane on a pull_request run evaluates a claim; the reviewer ran the reader and found it.
+// Shape and values now come from gunbc.witness.compiler_gate_contract_stamp, so there is ONE authority
+// over what "a workflow that pairs" means, and a change to the digest length moves the fixtures with it
+// instead of leaving fixtures that quietly stop resembling the thing they claim to be.
+data stamp: String = compiler_gate_contract_stamp_fixture_stamp()
+data stamp_other: String = compiler_gate_contract_stamp_fixture_other_stamp()
 
 fn workflow_with_env(extra: String, after_env: String) -> String {
-  join(
-    [
-      "name: witnesses\n",
-      "on:\n  pull_request:\n    branches: [main]\n",
-      "permissions:\n  contents: read\n",
-      "env:\n  CARGO_TERM_COLOR: always\n",
-      extra,
-      after_env,
-      "jobs:\n  v2-bootstrap:\n    runs-on: [self-hosted, linux, arm64]\n",
-      "    steps:\n      - name: Build the compiler\n        run: cargo build\n"
-    ],
-    ""
-  )
+  compiler_gate_contract_stamp_workflow_with_env(extra: extra, after_env: after_env)
 }
 
 fn stamped_env() -> String {
-  join(["  ", compiler_gate_contract_stamp_env_key, ": '", stamp, "'\n"], "")
+  compiler_gate_contract_stamp_stamped_env(stamp: stamp)
 }
 
 fn after_env_marker() -> String {
-  "PATHS: not-an-env-block\n"
+  compiler_gate_contract_stamp_after_env_marker()
 }
 
 // ----------------------------------------------------------------------------------- THE SILENT GREEN, REPRODUCED
@@ -331,51 +344,33 @@ test fn the_generated_step_has_no_warning_arm_and_no_override_input_holds() -> B
     && !string_contains(s: script, pattern: "env.GUNBC_ALLOW")
 }
 
-// THE AWK PROGRAM AND THE MODELLED FOLD DECIDE THE SAME DOCUMENT. They are two readers of one fact --
-// the runner's, and this module's -- and if they could disagree, a tree could be judged paired by one and
-// stale by the other. The program is therefore checked against the same fixtures the fold is judged on.
-test fn the_shell_fold_and_the_modelled_fold_agree_holds() -> Bool {
-  let program = compiler_gate_contract_stamp_awk_program()
-  // The program is carried in SINGLE QUOTES by the shell, so a single quote anywhere in it would close
-  // the quoting and let the rest of the line be re-parsed. That is not a style preference: an
-  // attacker-influenced tree file cannot reach the program, but an author editing the prose of a refusal
-  // can reach this string, and the failure would be silent until a runner mis-parsed it.
-  !string_contains(s: program, pattern: "'")
-    && string_contains(s: program, pattern: "in_env")
-    && string_contains(s: program, pattern: "exit 3")
-    // THE COUNTER IS INITIALISED IN A BEGIN BLOCK. A bare `in_env = 0` is a PATTERNLESS RULE, which awk
-    // executes for every line, so the flag is reset on every line and the stamp is never found -- a file
-    // that should have matched exits 3. That is the wrong-reason refusal this assertion exists to keep
-    // out: the gate would fire and blame the branch for a fault in the gate.
-    && string_contains(s: program, pattern: "BEGIN { in_env = 0 }")
-    && !string_contains(s: program, pattern: "\nin_env = 0\n")
-    // RULES ARE NEWLINE-SEPARATED, because mawk (the fleet's /usr/bin/awk) rejects several
-    // semicolon-separated if-rules on one line.
-    && string_contains(s: program, pattern: "\n")
-    && compiler_gate_contract_stamp_awk_matches_stamped_document()
-}
-
-// THE TWO READERS, ON THE SAME BYTES. The fold is checked here over the same documents the shell fold
-// will meet, so the claim that they agree is executed and not asserted in a comment.
-fn compiler_gate_contract_stamp_awk_matches_stamped_document() -> Bool {
-  let paired = workflow_with_env(extra: stamped_env(), after_env: after_env_marker())
-  let stale = workflow_with_env(
-    extra: join(["  ", compiler_gate_contract_stamp_env_key, ": '", stamp_other, "'\n"], ""),
-    after_env: after_env_marker()
-  )
-  match compiler_gate_contract_stamp_read_from(src: paired) {
-    StampPresent { stamp: s } =>
-      if s != stamp {
-        false
-      } else {
-        match compiler_gate_contract_stamp_read_from(src: stale) {
-          StampPresent { stamp: o } => o == stamp_other
-          _ => false
-        }
-      }
-    _ => false
-  }
-}
+// ------------------------------------------------------------------------------------------ PARITY, NOT CLAIMED
+//
+// A test fn named the_shell_fold_and_the_modelled_fold_agree_holds stood here and is DELETED rather than
+// repaired. Its name promised a comparison of two readers over the same bytes; it performed neither. It
+// asserted facts about the awk PROGRAM AS A STRING and then called the typed model reader, so the shell
+// was never run and nothing was compared -- and its BEGIN-block assertion went false the moment the
+// reader grew quote handling, which is what a reviewer caught.
+//
+// It could never have done what its name says: there is no host-exec primitive at generation time, so no
+// claim can spawn awk and read a document with the emitted bytes. A claim that cannot fail is not a
+// witness, and one named "agree" while it checks substrings is worse than none, because it reads like
+// coverage. So the two halves went where each can actually be decided:
+//
+//   THE HALF DECIDABLE AT GENERATION moved into the emission gate.
+//   compiler_gate_contract_stamp_guard_script_is_renderable now demands the reader's shape -- BEGIN-block
+//   initialisation, no single quote in the program, spelling-blind member recognition, both refusal
+//   sentinels -- and that the model classifies the model's own fixtures the way it says it does. A false
+//   predicate there stops witnesses.yml being generated, which is enforcement; a false claim here was a
+//   red test that nothing on a pull_request run evaluates.
+//
+//   THE HALF THAT NEEDS A SHELL is executed, not claimed, by the enrolled evidence cases: every case
+//   asserts the exit code and finding the MODEL says its document deserves, against the emitted bytes, so
+//   a shell that disagrees with the model turns the required step red rather than leaving a green claim.
+//
+// The fixtures the deleted claim built by hand are also gone; both readers now take
+// compiler_gate_contract_stamp_paired_fixture / _stale_fixture from the model, so there is one authority
+// over what "a workflow that pairs" means.
 
 // THE STAMP IS DERIVED, NEVER AUTHORED: no author can pin a value that flatters a stale tree, and the
 // refusal to produce one is typed. And the preimage is the INVOCATION CONTRACT ONLY -- never workflow
@@ -411,7 +406,7 @@ test fn the_locator_window_is_in_the_preimage_holds() -> Bool {
       row => string_contains(s: row, pattern: "locator:first-parent-ordinal:")
     )
   ) == length(parse_verdict_restore_ancestor_ordinals)
-    && length(compiler_gate_invocation_contract_canonical_rows()) > length(parse_verdict_reuse_counts_field_labels)
+    && length(compiler_gate_invocation_contract_canonical_rows()) > length(parse_verdict_reuse_counts_field_names())
 }
 
 // ---------------------------------------------------------------------------------- THE STEP IS WHERE IT MUST BE

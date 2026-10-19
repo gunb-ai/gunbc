@@ -206,6 +206,10 @@ stamp_literal_is_supported_form() {
 forge_stamp() {
   form="$1"; base="$2"; src="$3"; dst="$4"
   [ "${#base}" -gt 0 ] || bail "cannot forge a form from an empty running stamp"
+  # THE KEY IS THE MODEL'S (compiler_gate_contract_stamp_env_key), named once here so a form cannot
+  # forge against a key the guard does not read. `extra` is the line the declare-twice forms append.
+  stamp_key="GUNBC_COMPILER_GATE_CONTRACT_STAMP"
+  extra=""
   case "$form" in
     wrapped)    val="XYZ${base}XYZ" ;;
     expression) val="\${{ '${base}' }}" ;;
@@ -213,14 +217,26 @@ forge_stamp() {
     truncated)  val="${base%?}" ;;
     extended)   val="${base}0" ;;
     uppercased) val="$(printf '%s' "$base" | tr '0123456789abcdef' '0123456789ABCDEF')" ;;
-    duplicate)  val="$base" ;;
-    *) bail "unknown forged form '$form' (modelled: wrapped, expression, quoted, truncated, extended, uppercased, duplicate)" ;;
+    # THE THREE FORMS THAT FORGE BY DECLARING TWICE, through `extra`, rather than by writing a bad
+    # value. The last two are the spellings the PREVIOUS emitted recogniser could not see at all: it
+    # matched the literal prefix `  KEY: ` -- colon then SPACE -- so a member with nothing after the
+    # colon, or a member whose KEY is quoted, never reached its duplicate counter. Both were executed
+    # against that program and exited 0 as PAIRED, which is the whole reason a duplicate is refused:
+    # a check that fires only when the duplicate is already well spelled is a check on nothing. The
+    # MODEL owns which spellings exist (CompilerGateContractStampForgedForm); an unknown form here
+    # bails rather than being skipped, so a modelled case can never arrive at nothing.
+    duplicate)         val="$base"; extra="  $stamp_key: $base" ;;
+    second-empty)      val="$base"; extra="  $stamp_key:" ;;
+    second-quoted-key) val="$base"; extra="  \"$stamp_key\": deadbeefcafe0123" ;;
+    *) bail "unknown forged form '$form' (modelled: wrapped, expression, quoted, truncated, extended, uppercased, duplicate, second-empty, second-quoted-key)" ;;
   esac
   case "$form" in
     # THE FORGERY MUST ACTUALLY BE A FORGERY. If the written value happened to be the one supported
     # form, the case would assert a refusal against a tree that legitimately pairs -- a tautology that
-    # reads as a passing test. `duplicate` is exempt: it forges by declaring twice, not by the value.
-    duplicate) : ;;
+    # reads as a passing test. The declare-twice forms are exempt: they forge by DECLARING TWICE, and
+    # a well-formed competing member is exactly the input that case needs -- refusing it would be
+    # refusing the case's own premise.
+    duplicate|second-empty|second-quoted-key) : ;;
     *)
       if stamp_literal_is_supported_form "$val" "$base"; then
         bail "forged form '$form' produced '$val', which is the supported form -- the case would prove nothing"
@@ -230,7 +246,7 @@ forge_stamp() {
   # as a FILE NAME: the first version of this bound new and form but left key= after the program, and awk
   # then tried to open "-v" and "key=..." as inputs -- the same fused-`-v` shape this module already
   # documents as a shipped defect, reintroduced by editing the invocation instead of reading it.
-  awk -v new="$val" -v form="$form" -v key="GUNBC_COMPILER_GATE_CONTRACT_STAMP" '
+  awk -v new="$val" -v extra="$extra" -v form="$form" -v key="$stamp_key" '
     function die(m) { printf "FAIL: %s\n", m > "/dev/stderr"; exit 1 }
     /^[ \t]*GUNBC_COMPILER_GATE_CONTRACT_STAMP:[ \t]*[0-9a-f]+[ \t]*$/ {
       # BOTH BRANCHES MUST PRINT EXPLICITLY. The first version modified the line with sub() and relied
@@ -242,12 +258,16 @@ forge_stamp() {
       # module is about a check that reports the wrong reason and looks like a pass.
       # (No apostrophes in this block: it lives inside a single-quoted program, where one closes the
       # quoting -- the same rule that keeps the emitted awk program quote-free.)
-      if (form == "duplicate") { print; print "  " key ": " new; placed += 2 }
+      if (form == "duplicate" || form == "second-empty" || form == "second-quoted-key") {
+        print; print extra; placed += 2
+      }
       else { sub(/:.*/, ": " new); print; placed += 1 }
       next
     }
     { print }
-    END { if (placed != (form == "duplicate" ? 2 : 1)) die("expected exactly one workflow-level stamp member, wrote " placed " for form " form) }
+    END {
+      declares = (form == "duplicate" || form == "second-empty" || form == "second-quoted-key")
+      if (placed != (declares ? 2 : 1)) die("expected exactly one workflow-level stamp member, wrote " placed " for form " form) }
   ' "$src" > "$dst" || return 1
 }
 

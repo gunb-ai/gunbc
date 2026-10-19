@@ -1,12 +1,14 @@
 module gunbc.witness.compiler_gate_contract_stamp
 
-import std.types { Bool, FilePath, List, String }
+import std.types { Bool, Char, FilePath, List, String }
 import std.optional { Absent, Optional, Present }
-import std.algebra { length, list_append, list_map, string_contains, trim }
+import std.algebra {
+  Empty, FreeSemigroup, length, list_append, list_map, string_contains, trim
+}
 import std.content_hash { ContentHash, content_hash_of_value, lower_hex_16, serialize_content_hash }
+import v2.std.text { string_split }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
 import gunbc.parse_verdict_schema {
-  parse_verdict_reuse_counts_field_labels,
   parse_verdict_reuse_counts_prefix,
   parse_verdict_restore_ancestor_ordinals
 }
@@ -15,8 +17,17 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_label_text
 }
 import v2.cli.population_verb_names { cli_verb_parse_population }
+import gunbc.parse_verdict_restore { parse_verdict_reuse_args }
+import gunbc.parse_verdict_publish { parse_verdict_publish_args }
 import v2.cli.parse_verdict_invocation {
-  parse_verdict_reuse_invocation_options, parse_verdict_publish_invocation_options
+  ParseVerdictInvocationArg, cli_option_reuse_from,
+  parse_verdict_invocation_contract_row
+}
+// THE FIELD NAMES THE VERB PRINTS, read from the verb's own renderer rather than from a list beside it.
+import v2.cli.parse_verdict_reuse {
+  parse_verdict_reuse_counts_field_names,
+  parse_verdict_reuse_counts_probe_text,
+  parse_verdict_reuse_counts_probe_field_texts
 }
 import extdeps.github.actions { Step, RunStep }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlMapping, YamlString }
@@ -125,17 +136,40 @@ data compiler_gate_contract_stamp_provenance: String = "gunbc.witness.compiler_g
 // still accepted the command. That is what a stamp over the invocation is for, and it only works if the
 // stamp's own copy of the invocation is not a fourth hand copy.
 fn compiler_gate_invocation_argv_rows() -> List<String> {
+  // THE PRODUCERS, CALLED AS THINGS ARE. The rows below are produced from what the real walk builders
+  // return RIGHT NOW, not from a description of them written here.
+  compiler_gate_invocation_argv_rows_from(
+    reuse_args: parse_verdict_reuse_args(),
+    publish_args: parse_verdict_publish_args()
+  )
+}
+
+// THE SAME ROWS, OVER ARGUMENTS SUPPLIED BY THE CALLER. This parameterisation exists for one reason: the
+// discriminator has to prove that MUTATING A PRODUCER moves the stamp, and in a pure model "mutate" means
+// handing the real row builder a producer's list with one thing changed. Doing that through this function
+// means the mutated case travels the SAME production path as the real one -- same renderer, same row
+// shape, same hash -- so the proof cannot be faked by appending a row that only the hash ever sees.
+fn compiler_gate_invocation_argv_rows_from(
+  reuse_args: List<ParseVerdictInvocationArg>,
+  publish_args: List<ParseVerdictInvocationArg>
+) -> List<String> {
   list_append(
-    left: [
-      join(
-        concat(["argv:", cli_verb_parse_population], parse_verdict_reuse_invocation_options),
-        " "
-      ),
-      join(
-        concat(["argv:", cli_verb_parse_population], parse_verdict_publish_invocation_options),
-        " "
-      )
-    ],
+    left: list_map(
+      // EACH ROW IS THE PRODUCER'S OWN ARGUMENT LIST, rendered by the renderer that builds the command.
+      // This used to hash a pair of option lists declared in v2.cli.parse_verdict_invocation, while the
+      // command was rendered from the producers' lists -- so the two agreed by attention, and the
+      // attention went elsewhere: deleting cli_option_reuse_from from parse_verdict_reuse_args changed the
+      // emitted walk and left the stamp unmoved, which defeats the guard entirely. There is one list now,
+      // read twice: once to build the command, once to certify it. Mutating a producer therefore moves
+      // the stamp, which is what the discriminator asserts.
+      xs: [parse_verdict_reuse_args(), parse_verdict_publish_args()],
+      f: fn(args) {
+        join(
+          ["argv:", parse_verdict_invocation_contract_row(verb: cli_verb_parse_population, args: args)],
+          ""
+        )
+      }
+    ),
     right: list_map(
       xs: emitted_subject_build_rows(),
       f: fn(row) { join(["argv:test ", emitted_subject_build_label_text(row: row)], "") }
@@ -144,10 +178,34 @@ fn compiler_gate_invocation_argv_rows() -> List<String> {
 }
 
 // THE OUTPUT SHAPE A STEP READS BACK. The reuse walk accepts whatever the verb prints provided it exits
-// 0, so the field set IS the contract -- and it is the field set the four silent runs proved unenforced.
-// The labels are the rows the verb prints and its claim asserts, so there is no second spelling that
-// could drift and quietly un-stamp a real contract change.
-data compiler_gate_invocation_output_rows: List<String> = list_append( left: list_map( xs: parse_verdict_reuse_counts_field_labels, f: fn(label) { concat("stdout:", parse_verdict_reuse_counts_prefix, " ", label) } ), right: ["stdout:ancestor-attribution-required"] )
+// 0, so the field set IS the contract -- and it is the field set the four silent runs in
+// gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions proved
+// unenforced: they printed an OLD counts shape (no ancestor=) and exited green.
+//
+// THE ROWS COME OUT OF THE FORMATTER, not from a list maintained beside it. These used to be built from a
+// label list in gunbc.parse_verdict_schema, which meant the stamp hashed a TRANSCRIPTION of the print:
+// renaming or dropping a field in v2.cli.parse_verdict_reuse_counts_fields left this row set intact and
+// the stamp unmoved, so the guard went on certifying a contract the verb no longer has. Both the printed
+// line and these rows are now produced from the one declaration
+// (v2.cli.parse_verdict_reuse.parse_verdict_reuse_counts_fields), so a field the verb prints is stamped
+// and a field it stops printing is not. That is the binding the review asked for, made by shared
+// production rather than by a comment asking the two to stay in sync.
+data compiler_gate_invocation_output_rows: List<String> = compiler_gate_invocation_output_rows_from(
+  field_names: parse_verdict_reuse_counts_field_names()
+)
+
+// THE SAME ROWS, OVER FIELD NAMES SUPPLIED BY THE CALLER, for the discriminator's renamed-field case.
+// Callers pass what the formatter says it prints; the parameter exists so a change to the FORMATTER is
+// what moves the stamp, rather than an edit to this file.
+fn compiler_gate_invocation_output_rows_from(field_names: List<String>) -> List<String> {
+  list_append(
+    left: list_map(
+      xs: field_names,
+      f: fn(label) { concat("stdout:", parse_verdict_reuse_counts_prefix, " ", label) }
+    ),
+    right: ["stdout:ancestor-attribution-required"]
+  )
+}
 
 // THE LOCATOR'S BOUND. The restore chain walks a declared first-parent window and records the ancestor
 // it restored from; the counts line then names it. The window's width is contract, because a head that
@@ -162,8 +220,24 @@ fn compiler_gate_invocation_locator_rows() -> List<String> {
 }
 
 fn compiler_gate_invocation_contract_rows() -> List<String> {
+  compiler_gate_invocation_contract_rows_from(
+    argv_rows: compiler_gate_invocation_argv_rows(),
+    output_rows: compiler_gate_invocation_output_rows
+  )
+}
+
+// THE CONTRACT'S WHOLE PREIMAGE, ASSEMBLED FROM WHATEVER THE PRODUCERS AND THE FORMATTER SAY. Every
+// caller that wants "the contract as it actually is" calls compiler_gate_invocation_contract_rows; the
+// parameterised form exists so a DISCRIMINATOR can push a mutated producer through the same assembly and
+// the same fold. Two halves come from producers, one from the locator's own declared window -- never from
+// a row typed here, which is how the previous version's "plain walk" row came to describe a walk that no
+// generated step performs.
+fn compiler_gate_invocation_contract_rows_from(
+  argv_rows: List<String>,
+  output_rows: List<String>
+) -> List<String> {
   list_append(
-    left: list_append(left: compiler_gate_invocation_argv_rows(), right: compiler_gate_invocation_output_rows),
+    left: list_append(left: argv_rows, right: output_rows),
     right: compiler_gate_invocation_locator_rows()
   )
 }
@@ -172,7 +246,17 @@ fn compiler_gate_invocation_contract_rows() -> List<String> {
 // not a changed contract, and a stamp that moved on reordering would be a stamp that lies about being
 // moved by a real change.
 fn compiler_gate_invocation_contract_canonical_rows() -> List<String> {
-  sort_by(compiler_gate_invocation_contract_rows(), f => f)
+  compiler_gate_invocation_contract_canonical_rows_from(
+    argv_rows: compiler_gate_invocation_argv_rows(),
+    output_rows: compiler_gate_invocation_output_rows
+  )
+}
+
+fn compiler_gate_invocation_contract_canonical_rows_from(
+  argv_rows: List<String>,
+  output_rows: List<String>
+) -> List<String> {
+  sort_by(compiler_gate_invocation_contract_rows_from(argv_rows: argv_rows, output_rows: output_rows), f => f)
 }
 
 fn compiler_gate_invocation_contract_material() -> String {
@@ -267,22 +351,88 @@ fn compiler_gate_contract_stamp_literal_shape_holds() -> Bool {
 //     asserted; a hash that moved on a reorder would fire on every unrelated edit.
 //   - A row carrying a GitHub expression is REFUSED, not hashed, so an unresolvable value can never be
 //     certified.
+// THE DISCRIMINATOR: DOES THE STAMP ACTUALLY FOLLOW THE THING IT CERTIFIES?
+//
+// WHY IT EXISTS AND WHY IT MUTATES PRODUCERS. A stamp is only worth having if the contract can be shown
+// to move it, and the previous version of this predicate proved the wrong thing: it appended a row that
+// nothing but the hash ever read ("stdout:the-field-nobody-prints-anymore"), so it demonstrated that the
+// FOLD is sensitive to its input -- which is what content_hash_of_value is for -- without ever showing
+// that the input is the INVOCATION. Deleting an option from the real producer left that test green. Each
+// case below therefore changes what a PRODUCER or the FORMATTER returns and pushes it through the same
+// row builders, the same assembly and the same fold the artifact uses.
+//
+// THE CASES, AND WHAT EACH ONE WOULD MISS:
+//   - drop an option from the reuse walk's own argument list: the walk would lose --reuse-from and start
+//     recompiling everything, and the guard would still certify the run. This is the review's own
+//     counterexample, executed.
+//   - rename a field in the counts print: the guard reads `reused=` and the verb would print something
+//     else, while the contract still named the old field.
+//   - CONTROL -- reorder the rows: canonicalisation sorts before folding, so ordering is deliberately NOT
+//     contract. Without this case, a "the stamp moved!" assertion is meaningless: any change to anything
+//     moves a hash, so only the pair (moves when contract changes, does NOT move when it does not) says
+//     the preimage is the contract.
+//   - expression -- a GitHub expression in a row: refused, so a stamp can never be built over text whose
+//     value is decided at run time.
 fn compiler_gate_contract_stamp_preimage_discriminator_holds() -> Bool {
   let before = compiler_gate_contract_stamp_yaml_value()
-  let rows = compiler_gate_invocation_contract_canonical_rows()
-  let added = compiler_gate_contract_stamp_value_from_rows(
-    rows: list_append(left: rows, right: ["stdout:the-field-nobody-prints-anymore"])
+  let real_argv = compiler_gate_invocation_argv_rows()
+  let real_output = compiler_gate_invocation_output_rows
+
+  // ### Dropping an option from the REUSE PRODUCER, as if the producer had lost cli_option_reuse_from.
+  // Built by filtering the producer's own list, so what changes is a real argument list rather than a row
+  // typed here -- and the walk built from it would genuinely no longer pass --reuse-from.
+  let reuse_without_reuse_from = filter(
+    parse_verdict_reuse_args(),
+    arg => arg.option != cli_option_reuse_from
   )
+  let dropped_option = compiler_gate_contract_stamp_value_from_rows(
+    rows: compiler_gate_invocation_contract_canonical_rows_from(
+      argv_rows: compiler_gate_invocation_argv_rows_from(
+        reuse_args: reuse_without_reuse_from,
+        publish_args: parse_verdict_publish_args()
+      ),
+      output_rows: real_output
+    )
+  )
+
+  // ### Renaming a field the FORMATTER prints, leaving the rest of the shape alone.
+  let renamed_field = compiler_gate_contract_stamp_value_from_rows(
+    rows: compiler_gate_invocation_contract_canonical_rows_from(
+      argv_rows: real_argv,
+      output_rows: compiler_gate_invocation_output_rows_from(
+        field_names: compiler_gate_contract_stamp_field_names_with_renamed_reused()
+      )
+    )
+  )
+
+  // ### Control: the SAME rows, assembled in a different order.
   let reordered = compiler_gate_contract_stamp_value_from_rows(
     rows: sort_by(compiler_gate_invocation_contract_rows(), f => f)
   )
+
+  // ### A GitHub expression must never enter a stamped row.
   let polluted = compiler_gate_contract_stamp_value_from_rows(
-    rows: list_append(left: rows, right: ["argv:${{ secrets.X }}"])
+    rows: list_append(left: compiler_gate_invocation_contract_canonical_rows(), right: ["argv:${{ secrets.X }}"])
   )
-  before != "refused"
-    && before != added
-    && before == reordered
+
+  return before != "refused"
+    && string_length(s: before) == compiler_gate_contract_stamp_literal_length
+    && dropped_option != before
+    && renamed_field != before
+    && reordered == before
     && polluted == "refused"
+}
+
+// THE FORMATTER'S FIELD NAMES WITH `reused` RENAMED. Derived from the formatter's own list rather than
+// spelled, so the case says "if the verb renamed THIS field" and follows the verb, instead of pinning a
+// name that could drift into a case that no longer describes a rename.
+fn compiler_gate_contract_stamp_field_names_with_renamed_reused() -> List<String> {
+  list_map(
+    xs: parse_verdict_reuse_counts_field_names(),
+    f: fn(name) {
+      if name == "reused" { "reused_count" } else { name }
+    }
+  )
 }
 
 // THE OUTPUT CONTRACT IS A POPULATION, NOT A SUBSET: one stdout row per declared counts field, exactly,
@@ -291,7 +441,7 @@ fn compiler_gate_contract_stamp_preimage_discriminator_holds() -> Bool {
 // field nobody specified. A subset check passes when rows quietly drop out, so this is a bijection.
 fn compiler_gate_contract_stamp_output_population_is_exact() -> Bool {
   let declared = list_map(
-    xs: parse_verdict_reuse_counts_field_labels,
+    xs: parse_verdict_reuse_counts_field_names(),
     f: fn(label) { join(["stdout:", parse_verdict_reuse_counts_prefix, " ", label], "") }
   )
   let expected = list_append(left: declared, right: ["stdout:ancestor-attribution-required"])
@@ -398,8 +548,42 @@ fn compiler_gate_stamp_env_entries(entries: List<YamlKeyValue>) -> List<YamlKeyV
   )
 }
 
+// WHETHER THIS ENTRY IS THE STAMP MEMBER, decided WITHOUT REGARD TO SPELLING.
+//
+// WHY IT IS NOT A BARE COMPARISON. The previous arm was `kv.key == compiler_gate_contract_stamp_env_key`,
+// which compared the RAW text the ingest handed over -- and the ingest preserves the quotes it was given,
+// so a member written `"GUNBC_COMPILER_GATE_CONTRACT_STAMP": deadbeefcafe0123` carries the key
+// `"GUNBC_COMPILER_GATE_CONTRACT_STAMP"` with two quote characters IN IT and did not equal the key. The
+// second member was therefore invisible not only to the emitted awk but to THIS model too, and a
+// workflow whose first member is well spelled was read as declaring the stamp exactly once.
+//
+// That is the general shape of this module's own defect class: a refusal that is conditional on its own
+// trigger being spelled the way the recogniser expects. `KEY: <valid>` plus `KEY:` with an empty value
+// was missed the same way, for the same reason (the awk requires `": "`, which an empty member does not
+// have). So recognition strips one layer of surrounding quotes -- matching, or nothing is stripped --
+// and the CLASSIFICATION of what it found stays strict: an empty value, an expression, or anything that
+// is not the one supported scalar form is Unreadable, never a member to be skipped. Over-recognising is
+// the safe direction, because every extra member recognised is a refusal, and a false refusal is loud.
+fn compiler_gate_contract_stamp_key_is_the_member(key: String) -> Bool {
+  compiler_gate_contract_stamp_bare_key(key: trim(s: key)) == compiler_gate_contract_stamp_env_key
+}
+
+// ONE LAYER, BOTH QUOTE STYLES, AND ONLY A PAIR. An unbalanced quote is left alone: it is not a quoted
+// key, and mangling it here would be the same decoder-invents-data move this module refuses on the value
+// side. No loop -- a doubled quote is not a quoted key either, it is malformed.
+fn compiler_gate_contract_stamp_bare_key(key: String) -> String {
+  let n = string_length(s: key)
+  let open = substring(s: key, start: 0, end: 1)
+  let close = substring(s: key, start: n - 1, end: n)
+  if n >= 2 && ((open == "\"" && close == "\"") || (open == "'" && close == "'")) {
+    substring(s: key, start: 1, end: n - 1)
+  } else {
+    key
+  }
+}
+
 fn compiler_gate_stamp_matching_entries(entries: List<YamlKeyValue>) -> List<YamlKeyValue> {
-  filter(entries, kv => kv.key == compiler_gate_contract_stamp_env_key)
+  filter(entries, kv => compiler_gate_contract_stamp_key_is_the_member(key: kv.key))
 }
 
 // THE ONE SUPPORTED SCALAR FORM, and it is NOT DEFINED HERE. `lower_hex_16` is the predicate that
@@ -440,8 +624,8 @@ fn compiler_gate_stamp_from_entry(kvs: List<YamlKeyValue>) -> CompilerGateContra
                 StampUnreadable { detail: "the stamp member is the empty string" }
               } else if string_contains(s: s, pattern: "${{") {
                 StampUnreadable { detail: "the stamp member is a GitHub expression, not a literal" }
-              } else if compiler_gate_contract_stamp_is_valid_literal(s: trim(s)) {
-                StampPresent { stamp: trim(s) }
+              } else if compiler_gate_contract_stamp_is_valid_literal(s: trim(s: s)) {
+                StampPresent { stamp: trim(s: s) }
               } else {
                 StampUnreadable { detail: "the stamp member is not the one supported scalar form: sixteen lowercase hex digits" }
               }
@@ -602,6 +786,23 @@ fn compiler_gate_contract_stamp_awk_program() -> String {
   // can trust the next time it fires. The fold is therefore exercised against the real interpreter in
   // test.claim.witness.compiler_gate_contract_stamp, not only modelled.
   //
+  // A MEMBER IS RECOGNISED WITHOUT REGARD TO SPELLING. The rule was once
+  // `index($0, "  " key ": ") == 1` -- an exact two-space, bare-key, colon-space prefix -- which made the
+  // duplicate refusal CONDITIONAL ON THE DUPLICATE BEING WELL SPELLED: a second member written `KEY:` with
+  // nothing after the colon (no colon-space) or `"KEY": deadbeefcafe0123` (a quoted key) was invisible to
+  // the counter, so a workflow carrying one valid member and one competing one exited 0 as paired. Both
+  // counterexamples were executed against this program and passed it. Recognition is therefore positional
+  // and spelling-blind -- leading whitespace is stripped, then the key with an optional single layer of
+  // either quote style must start the line and be followed by a colon -- and it is built from the SAME key
+  // the model compares against. Quote characters come from character codes rather than literals because a
+  // literal single quote would close the shell's single quoting around this program.
+  //
+  // THE COUNTER IS INCREMENTED BEFORE THE VALUE IS EXAMINED, so an ill-spelled or malformed second member
+  // still registers as a second member. Reversing those two statements puts the defect straight back.
+  //
+  // OVER-RECOGNITION IS THE SAFE DIRECTION: an extra line that merely looks like the key becomes a refusal,
+  // and a false refusal is loud and typed, whereas a false acceptance is this module's silent arm.
+  //
   // IT CARRIES NO SINGLE QUOTE, because the shell assigns it in single quotes; a quote inside would
   // close the quoting and let the remainder of the line be re-parsed.
   //
@@ -620,17 +821,36 @@ fn compiler_gate_contract_stamp_awk_program() -> String {
   // non-hex letters, so the strict rule above can never accept it as one.
   join(
     [
-      "\nBEGIN { in_env = 0; seen = 0; bad = \"\" }\n",
+      "\nBEGIN { in_env = 0; seen = 0; bad = \"\"; dq = sprintf(\"%c\", 34); sq = sprintf(\"%c\", 39) }\n",
+      "function lstrip(s) { gsub(/^[ \\t]+/, \"\", s); return s }\n",
+      "function is_member(l,  t) {\n",
+      "  t = lstrip(l)\n",
+      "  if (index(t, key \":\") == 1) { return 1 }\n",
+      "  if (index(t, dq key \":\") == 1) { return 1 }\n",
+      "  if (index(t, sq key \":\") == 1) { return 1 }\n",
+      "  return 0\n",
+      "}\n",
       "$0 ~ /^env:[[:space:]]*$/ { if (in_env) { bad = \"duplicate\" }; in_env = 1; next }\n",
       "in_env && $0 ~ /^[^[:space:]]/ { in_env = 0 }\n",
-      "in_env && index($0, \"  \" key \": \") == 1 {\n",
+      "in_env && is_member($0) {\n",
       "  if (seen) { bad = \"duplicate\" }\n",
-      "  v = substr($0, index($0, \": \") + 2)\n",
+      "  v = substr($0, index($0, \":\") + 1)\n",
+      "  gsub(/^[ \\t]+/, \"\", v)\n",
+      "  gsub(/[ \\t]+$/, \"\", v)\n",
       "  if (v !~ /^[0-9a-f]+$/ || length(v) != " + to_string(compiler_gate_contract_stamp_literal_length) + ") { bad = \"form\" }\n",
       "  seen = 1\n",
       "}\n",
+      // TWO SENTINELS, BECAUSE THE TWO REFUSALS BLAME DIFFERENT THINGS. The model already separates them
+      // (compiler_gate_stamp_from_entry: a length other than one says "declares the contract stamp member
+      // more than once", a bad value says "is not the one supported scalar form"). Collapsing a duplicate
+      // into "malformed" would make the emitted reader refuse with a reason the model does not give -- the
+      // wrong-reason failure this module refuses everywhere else, and one a reader cannot act on: the
+      // remedy for a malformed value is to regenerate the workflow, the remedy for a duplicate is to
+      // delete a member. Neither sentinel can collide with a real stamp: both contain letters outside the
+      // hex alphabet and neither is compiler_gate_contract_stamp_literal_length long.
       "END {\n",
-      "  if (bad != \"\") { print \"UNREADABLE\"; exit 4 }\n",
+      "  if (bad == \"duplicate\") { print \"" + compiler_gate_contract_stamp_duplicate_sentinel + "\"; exit 4 }\n",
+      "  if (bad != \"\") { print \"" + compiler_gate_contract_stamp_unreadable_sentinel + "\"; exit 4 }\n",
       "  if (!seen) { exit 3 }\n",
       "  print v\n",
       "}\n"
@@ -755,6 +975,19 @@ fn compiler_gate_contract_stamp_guard_statements() -> List<Node> {
       cond: bash_build_test_bracket(
         words: [
           bash_build_word_var(name: "STAMP_TREE"),
+          bash_build_word_lit(text: "=="),
+          bash_build_word_lit(text: compiler_gate_contract_stamp_duplicate_sentinel)
+        ]
+      ),
+      then_stmts: [
+        compiler_gate_contract_stamp_print_line(compiler_gate_contract_stamp_refusal_parts_duplicate_tree()),
+        bash_build_exit(code: "1")
+      ]
+    ),
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(
+        words: [
+          bash_build_word_var(name: "STAMP_TREE"),
           bash_build_word_lit(text: "!="),
           bash_build_word_var(name: "STAMP_RUNNING")
         ]
@@ -830,6 +1063,24 @@ fn compiler_gate_contract_stamp_refusal_parts_absent() -> List<Node> {
 // one: to make the guard skip this arm you would have to write a member that IS sixteen lowercase hex
 // digits, which is the thing the arm is there to distinguish from.
 data compiler_gate_contract_stamp_unreadable_sentinel: String = "UNREADABLE"
+
+// WHY IT IS NOT FOLDED INTO THE SENTINEL ABOVE. See the END-block comment in
+// compiler_gate_contract_stamp_awk_program: the two refusals name different defects and carry different
+// remedies, and the model already keeps them apart. A reader that merges them is a reader whose refusal
+// text cannot be trusted to say what it found.
+data compiler_gate_contract_stamp_duplicate_sentinel: String = "DUPLICATE"
+
+fn compiler_gate_contract_stamp_refusal_parts_duplicate_tree() -> List<Node> {
+  [
+    bash_build_word_lit(text: "REFUSED gunbc contract stamp: StampUnreadable \{the subject declares the member more than once}. The checked-out subject declares "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_env_key),
+    bash_build_word_lit(text: " at "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_tree_file()),
+    bash_build_word_lit(text: " more than once, in any spelling: a second member with an empty value or a quoted key counts, because a competing member is a competing member whether or not it is well spelled. One workflow cannot make two claims about the contract it was generated under. "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_provenance),
+    bash_build_word_lit(text: ". Remedy: leave exactly one, and regenerate through gunbc.witness.compiler_gate_workflow.")
+  ]
+}
 
 fn compiler_gate_contract_stamp_refusal_parts_unreadable_tree() -> List<Node> {
   [
@@ -949,7 +1200,137 @@ fn compiler_gate_contract_stamp_guard_script_is_renderable() -> Bool {
       !string_contains(s: script, pattern: compiler_gate_contract_stamp_emit_refused_poison)
         && string_contains(s: script, pattern: "dissolve-on: ")
         && string_contains(s: script, pattern: "exit 1")
+        // THE READER'S OWN SHAPE, CHECKED WHERE IT CAN STOP THE ARTIFACT. These facts used to live in a
+        // test fn named the_shell_fold_and_the_modelled_fold_agree_holds, which is deleted: with no host
+        // exec at generation time it could never run the emitted reader, so it compared nothing and its
+        // name promised a comparison it did not perform. Each check that was load-bearing in it is here
+        // instead, because this predicate gates EMISSION -- a false one means witnesses.yml cannot be
+        // generated, which is enforcement rather than a red test nobody evaluates on a PR run.
+        && compiler_gate_contract_stamp_reader_program_is_well_formed()
+        && compiler_gate_contract_stamp_model_reads_its_own_fixtures()
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE EMITTED READER, CHECKED AS A PROGRAM RATHER THAN AS A STRING SOMEONE READS. Each conjunct below
+// closes a defect that was actually observed in this reader during review, and each is checked against
+// the string that gets carried into the committed step.
+fn compiler_gate_contract_stamp_reader_program_is_well_formed() -> Bool {
+  let program = compiler_gate_contract_stamp_awk_program()
+  // THE PROGRAM IS CARRIED IN SINGLE QUOTES by the shell, so a single quote anywhere in it closes the
+  // quoting and lets the rest of the line be re-parsed. An author editing the prose of a refusal can
+  // reach this string, and the failure would be silent until a runner mis-parsed it. Quote characters in
+  // the recogniser are therefore built with sprintf("%c", 34/39), never written.
+  !string_contains(s: program, pattern: "'")
+    // THE ENVIRONMENT FLAG IS INITIALISED IN A BEGIN BLOCK. A bare `in_env = 0` is a PATTERNLESS RULE,
+    // which awk runs for EVERY line, so the flag is cleared on each line, no member is ever inside the
+    // block, and a workflow that legitimately pairs exits 3 -- a refusal blaming the branch for a fault
+    // in the gate. That exact bug was shipped once and is the wrong-reason refusal this module refuses.
+    && string_contains(s: program, pattern: "BEGIN { in_env = 0")
+    && !string_contains(s: program, pattern: "\nin_env = 0\n")
+    // A MEMBER IS RECOGNISED THROUGH A FUNCTION, NOT AN EXACT PREFIX. The prefix form is what let a
+    // second member hide: `index($0, "  " key ": ")` cannot see `KEY:` (no colon-space) or `"KEY": …`
+    // (quoted key), so the duplicate refusal only fired when the duplicate was already well spelled.
+    && string_contains(s: program, pattern: "function is_member(")
+    && string_contains(s: program, pattern: "is_member($0)")
+    // BOTH SENTINELS ARE EMITTED, so a duplicate refuses as a duplicate and a malformed value refuses
+    // as malformed; one sentinel for both would make the emitted reader give a reason the model does not.
+    && string_contains(s: program, pattern: compiler_gate_contract_stamp_duplicate_sentinel)
+    && string_contains(s: program, pattern: compiler_gate_contract_stamp_unreadable_sentinel)
+    // RULES ARE NEWLINE-SEPARATED: mawk (the fleet's /usr/bin/awk) rejects several semicolon-separated
+    // if-rules written on one line.
+    && string_contains(s: program, pattern: "\n")
+}
+
+// --------------------------------------------------------------------------------------- THE FIXTURES, ONCE
+//
+// THE WORKFLOW SHAPE LIVES HERE AND NOWHERE ELSE. It used to be spelled inside the witness module, which
+// left two authorities over what "a workflow that pairs" looks like: the model's own reader was checked
+// against one shape and the claims against another, and the two could drift with nothing to notice. The
+// witness now imports these. THE SHAPE IS THE ONE THE EMITTER WRITES -- top-level env at column zero,
+// member at two-space indent, single-quoted -- because a fold that only works on some other shape has to
+// be caught here rather than on a runner. The surrounding name/on/permissions/jobs are not decoration:
+// the fold walks the document, so a fixture carrying nothing but an env block would pass while a real
+// workflow failed.
+fn compiler_gate_contract_stamp_workflow_with_env(extra: String, after_env: String) -> String {
+  join(
+    [
+      "name: witnesses\n",
+      "on:\n  pull_request:\n    branches: [main]\n",
+      "permissions:\n  contents: read\n",
+      "env:\n  CARGO_TERM_COLOR: always\n",
+      extra,
+      after_env,
+      "jobs:\n  v2-bootstrap:\n    runs-on: [self-hosted, linux, arm64]\n",
+      "    steps:\n      - name: Build the compiler\n        run: cargo build\n"
+    ],
+    ""
+  )
+}
+
+fn compiler_gate_contract_stamp_after_env_marker() -> String {
+  "PATHS: not-an-env-block\n"
+}
+
+fn compiler_gate_contract_stamp_stamped_env(stamp: String) -> String {
+  join(["  ", compiler_gate_contract_stamp_env_key, ": '", stamp, "'\n"], "")
+}
+
+// THE STAMP A FIXTURE CARRIES IS THE CONTRACT'S OWN VALUE, not a typed constant. Both witness fixtures
+// were hand-written 64-character strings while the stamp is 16 characters (Fnv1a64 via
+// serialize_content_hash), so under the strict reader every one of them read as StampUnreadable -- and
+// the claims that asserted a head "proceeds" were asserting it about documents the gate refuses. They
+// stayed green because no lane on a PR run evaluates a claim; a reviewer running the reader found it. A
+// value taken from the derivation cannot go stale the way a typed literal does.
+fn compiler_gate_contract_stamp_fixture_stamp() -> String {
+  compiler_gate_contract_stamp_yaml_value()
+}
+
+// A SECOND VALID STAMP, derived rather than typed, for the mismatch and contract-changing cases. It comes
+// from a DIFFERENT preimage row, so it is a different digest while remaining the one supported scalar
+// form. If a future digest function ever made the two equal, the predicates that require them to differ
+// go false and generation refuses -- which is loud, not silent.
+fn compiler_gate_contract_stamp_fixture_other_stamp() -> String {
+  compiler_gate_contract_stamp_value_from_rows(rows: [compiler_gate_contract_stamp_fixture_preimage_marker_row()])
+}
+
+fn compiler_gate_contract_stamp_fixture_preimage_marker_row() -> String {
+  "gunbc-fixture-other-stamp"
+}
+
+// A WORKFLOW THAT LEGITIMATELY PAIRS with the instruction that is running it.
+fn compiler_gate_contract_stamp_paired_fixture() -> String {
+  compiler_gate_contract_stamp_workflow_with_env(
+    extra: compiler_gate_contract_stamp_stamped_env(stamp: compiler_gate_contract_stamp_fixture_stamp()),
+    after_env: compiler_gate_contract_stamp_after_env_marker()
+  )
+}
+
+// THE SAME WORKFLOW, CLAIMING A DIFFERENT CONTRACT -- which is what a PR head that has not merged main
+// does, and the shape the guard exists to refuse.
+fn compiler_gate_contract_stamp_stale_fixture() -> String {
+  compiler_gate_contract_stamp_workflow_with_env(
+    extra: compiler_gate_contract_stamp_stamped_env(stamp: compiler_gate_contract_stamp_fixture_other_stamp()),
+    after_env: compiler_gate_contract_stamp_after_env_marker()
+  )
+}
+
+// THE MODEL CLASSIFIES ITS OWN FIXTURES THE WAY IT CLAIMS TO. This is the half of the deleted parity
+// claim that COULD be executed: the model's reader is model code, so its verdict on a document the model
+// builds is decidable here. What it cannot establish is that the shell agrees -- that half is executed
+// only by the enrolled evidence cases, which run the emitted bytes.
+fn compiler_gate_contract_stamp_model_reads_its_own_fixtures() -> Bool {
+  match compiler_gate_contract_stamp_read_from(src: compiler_gate_contract_stamp_paired_fixture()) {
+    StampPresent { stamp: read } =>
+      if read != compiler_gate_contract_stamp_yaml_value() {
+        false
+      } else {
+        match compiler_gate_contract_stamp_read_from(src: compiler_gate_contract_stamp_stale_fixture()) {
+          StampPresent { stamp: other } => other != read
+          _ => false
+        }
+      }
+    _ => false
   }
 }
 
@@ -1010,6 +1391,14 @@ type CompilerGateContractStampForgedForm
   | ForgedExtended            // the valid stamp with one extra digit (17)
   | ForgedUppercased          // the valid stamp uppercased -- hex, but not the renderer's output
   | ForgedDuplicate           // the member declared twice with the same value
+  // THE TWO SPELLINGS OF A SECOND MEMBER THAT A PREFIX-MATCHING RECOGNISER LET THROUGH, and which were
+  // executed against the previous program to show it exited 0 as paired. They are the same kind of defect
+  // as the seven above, one level earlier: those proved the reader must not INVENT a value, these prove it
+  // must not MISS a member. A duplicate check that only fires when the duplicate is spelled exactly as the
+  // check expects is a check on nothing -- the well-spelled case is the one that would have been caught by
+  // any counter at all.
+  | ForgedSecondEmpty         // a second member with NOTHING after the colon (no ": " to match)
+  | ForgedSecondQuotedKey     // a second member whose KEY is quoted ("KEY": <valid>)
 
 type CompilerGateContractStampEvidenceSubject
   = SubjectFixture            // the committed silent-green head's own witnesses.yml
@@ -1125,6 +1514,26 @@ fn compiler_gate_contract_stamp_evidence_cases() -> List<CompilerGateContractSta
     CompilerGateContractStampEvidenceCase {
       label: "RED forged duplicate member (declared twice)",
       subject: SubjectForged { form: ForgedDuplicate },
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampUnreadable"
+    },
+    // THE SECOND MEMBER, IN SPELLINGS THE OLD RECOGNISER COULD NOT SEE. Executed against the previous
+    // emitted program, both exited 0 reporting a pair: the counter required the literal prefix
+    // `  KEY: `, and neither of these lines has it. So the guard certified a workflow that declared the
+    // contract stamp twice with two different claims about it -- which is the whole reason a duplicate is
+    // refused. They are here rather than only as unit cases because they must be proven against the bytes
+    // that ship, the same reason the seven forms above are.
+    CompilerGateContractStampEvidenceCase {
+      label: "RED forged second member, empty value",
+      subject: SubjectForged { form: ForgedSecondEmpty },
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampUnreadable"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "RED forged second member, quoted key",
+      subject: SubjectForged { form: ForgedSecondQuotedKey },
       running: compiler_gate_contract_stamp_running_probe,
       expected_exit: "1",
       expected_finding: "StampUnreadable"
@@ -1520,6 +1929,8 @@ fn compiler_gate_contract_stamp_forged_form_text(f: CompilerGateContractStampFor
     ForgedExtended => "extended"
     ForgedUppercased => "uppercased"
     ForgedDuplicate => "duplicate"
+    ForgedSecondEmpty => "second-empty"
+    ForgedSecondQuotedKey => "second-quoted-key"
   }
 }
 
