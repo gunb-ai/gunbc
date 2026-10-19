@@ -199,11 +199,17 @@ undetected by every row I have, and the honest conclusion is the one AMENDMENT 5
 only, at all three trees (pre-repair, shipped repair, mutant) -- it proves the repair does not break
 a program that must type, and nothing more.
 
-Why, mechanically: the row asserts zero HARD diagnostics, and the fold's unsettled arms REPLACE a
-binding rather than fixing it. With name-keyed ids both calls do share `K`/`V`, but when the second
-call's settled `Map(String,Int)` meets the first call's `Map(Int,Int)`-constrained binding the arm
-replaces instead of conflicting, so no hard diagnostic is produced to observe. Sharing is real in the
-mutant and invisible in the harness.
+Why, mechanically -- THIS PARAGRAPH IS A READING, NOT A MEASUREMENT. The row asserts zero HARD
+diagnostics, and the unsettled arms replace a binding rather than fixing it, so a shared variable
+would not necessarily surface as a diagnostic. Two candidate explanations fit the PASS and I have not
+separated them: (a) the two calls' variable identities are shared and the arm replaces rather than
+conflicts; or (b) the row never brings the two call types together at all -- each call is checked
+against its own formal, and the second actual never meets the first binding -- in which case the
+fixture could not expose sharing even with a compiler that conflicted. Distinguishing them needs the
+two calls' variable ids printed, or a fold call built with deliberately shared ids. That is
+instrumentation, so I am offering it to my manager as a decision rather than building it unasked. What
+is measured is only: the mutant differs from the shipped repair in exactly one expression, and no row
+changes verdict between them.
 
 Consequences I will carry into the PR body and to stern-bat-401:
 1. The freshness requirement from msg_78d4eb21 is SATISFIED BY CONSTRUCTION (per-call-site ids
