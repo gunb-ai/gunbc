@@ -195,8 +195,8 @@ fn receipt_for(
       comment: Present { value: "witness" },
     },
     status: expected,
-    ownership: ownership_for(environment: owned_environment),,
-    requested_rule_id: 900000001
+    ownership: ownership_for(environment: owned_environment),
+    requested_rule_id: 900000001,
   ) {
     Accepted { receipt: r } => Present { value: r }
     AcceptedReviewRefused { because: _ } => Absent

@@ -401,7 +401,7 @@ test fn the_enabled_rule_row_carries_exactly_the_four_fields_the_pin_requires() 
   }
   row.id == 900000001
     && row.enabled
-    && row.app.id == 1900000001
+    && row.app.id.value == 1900000001
     && (row.app.slug as String) == "gunbc-deployment-gate"
     // `enabled` is a Bool the row must be able to carry as false: a guard that could not represent a
     // DISABLED rule would be unable to refuse one.
@@ -650,7 +650,9 @@ fn wire_without_callback() -> RuleWebhookWireFields {
 // construction: adding a third required field makes these literals stop compiling.
 test fn the_installation_object_carries_only_the_two_fields_the_pin_has() -> Bool {
   let identity = RuleWebhookInstallation { id: GitHubAppInstallationId { value: 1900000001 }, node_id: "I_1900000001" }
-  identity.id == 1900000001 && (identity.node_id as String) == "I_1900000001"
+  // a branded id answers about its own number, and nothing else: comparing it to a bare Int is
+  // exactly the mix the carrier exists to forbid
+  identity.id.value == 1900000001 && (identity.node_id as String) == "I_1900000001"
 }
 
 // THE CALLBACK PAIR IS CHECKABLE. On the webhook route a review posted where the payload points cannot
