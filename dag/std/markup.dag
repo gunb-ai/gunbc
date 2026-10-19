@@ -265,21 +265,32 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> MarkupSerial
         } else {
           medium
         }
-        if tag_in_set(tag: t, tags: medium.raw_text_tags) && string_contains(s: raw_text_children_text(children: kids), pattern: concat(medium.bracket.end_tag_open, t)) {
-          // Read from the MEDIUM, so a medium that spells end tags differently is guarded against the
-          // spelling it will actually write: bracket.end_tag_open is the same field three lines below
-          // emits (review 82268) -- one home, checker and emitter cannot disagree.
-          Rejected { reason: join(["raw-text element <", t, "> content contains its own close sequence '", medium.bracket.end_tag_open, t, "' — refusing to serialize (the remainder would be parsed as markup); restructure the content"], "") }
-        } else {
-          match serialize_children(children: kids, medium: child_medium) {
-            Rejected { reason: why } => Rejected { reason: why }
-            Serialized { html: inner } => match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
+        // THE RAW-TEXT GUARD CHECKS THE BYTES THE EMITTER WRITES, not a re-derived summary of the children.
+        // Children are serialized FIRST; what comes back is exactly what would sit between the tags, so the
+        // close-sequence test is run over the real output. Review 82504 on #14351 is why the previous shape
+        // was not enough: it called raw_text_children_text, a hand-written fold over the child shapes it
+        // thought carry bytes, and that fold dropped MarkupComment bodies (`MarkupComment { body: _ } => acc`)
+        // and nested Elements (`Element { ... } => acc`). So
+        //   Element { tag: "script", children: [MarkupComment { body: "</script><img src=x onerror=alert(1)>"}] }
+        // passed the raw-text check, then passed the comment check (its body holds no comment terminator),
+        // and serialized as <script><!-- </script><img ...> --></script> -- inside <script> the tokenizer is
+        // in raw-text state, "<!--" starts nothing, "</script" ends the element, and the <img> is live.
+        // A guard that re-implements "which children carry bytes" is a second authority over the emitter and
+        // drifts the way this one did (§3), and every new Fragment arm would silently widen it.
+        //
+        // The close sequence is still read from the MEDIUM (bracket.end_tag_open -- the same field the line
+        // below emits, review 82268), so checker and emitter cannot disagree about the SPELLING either.
+        match serialize_children(children: kids, medium: child_medium) {
+          Rejected { reason: why } => Rejected { reason: why }
+          Serialized { html: inner } =>
+            if tag_in_set(tag: t, tags: medium.raw_text_tags) && string_contains(s: inner, pattern: concat(medium.bracket.end_tag_open, t)) {
+              Rejected { reason: join(["raw-text element <", t, "> content contains its own close sequence '", medium.bracket.end_tag_open, t, "' — refusing to serialize (the remainder would be parsed as markup); restructure the content"], "") }
+            } else { match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
               FoundTag { delim: d } =>
                 Serialized { html: join([d.open, inner, d.close], "") }
               NoTag =>
                 Serialized { html: join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close, inner, medium.bracket.end_tag_open, t, medium.bracket.tag_close], "") }
-            }
-          }
+            } }
         }
       }
     }
@@ -508,15 +519,4 @@ fn doctype_name_hazard(keyword: NonEmptyStr, name_end_whitespace: NonEmptyStr, b
   }
 }
 
-
-fn raw_text_children_text(children: List<Fragment>) -> String {
-  fold(children, init: "", f: (acc, c) => match c {
-    FragmentText { content: t } => concat(acc, t)
-    RawNode { content: t } => concat(acc, t)
-    // A comment is not character data of the raw-text element, so it contributes no text to the
-    // close-sequence check, which is about what the raw-text element's own content would terminate early.
-    MarkupComment { body: _ } => acc
-    Element { tag: _, attributes: _, children: _ } => acc
-  })
-}
 

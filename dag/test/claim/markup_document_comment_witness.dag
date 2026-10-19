@@ -8,9 +8,13 @@ import test.fixture.markup_render { render_html, render_markup, render_jsx }
 //  1. The delimiters come from the MEDIUM, not from a module that happens to emit a comment. Checked
 //     by rendering the same MarkupComment through two media that spell comments differently (HTML and
 //     JSX-shaped): if either delimiter were hardcoded in std.markup, the two renderings would agree.
-//  2. A comment body cannot terminate its own comment. comment_body_hazard refuses a body containing the
-//     medium's terminator or ending in "-" (where that closes), and every guarded route refuses it — so a
-//     page cannot ship a comment whose remainder is parsed as markup.
+//  2. A comment body cannot terminate its own comment. comment_body_hazard refuses a body holding ANY of
+//     the medium's comment terminators, and the medium is refused if its own close sequence holds none of
+//     them; the checks live in the serializer's arms, so a route cannot skip them — a page cannot ship a
+//     comment whose remainder is parsed as markup. A body ending in "-" is ACCEPTED: that rule was an
+//     over-refusal and review 82417 removed it (see witness_comment_trailing_dash_is_accepted).
+//  4. A raw-text element's content cannot contain its own close sequence -- checked over the bytes the
+//     emitter writes, so no child shape can hide from it (see the two raw-text claims).
 //  3. A document puts the doctype OUTSIDE <html>, on its own line, spelled by the medium; and it is only
 //     writable through serialize_document_with, whose refusal is a typed result. The two guards walk into
 //     the document's root rather than certifying it unread.
@@ -36,6 +40,11 @@ import test.fixture.markup_render { render_html, render_markup, render_jsx }
 //       declaring, e.g. reuse the DeclaresDocument keyword branch unconditionally).
 //       witness_a_document_medium_refuses_to_write_a_document goes red. The pair claim
 //       witness_a_declaring_medium_writes_the_document stays green, which is why both exist.
+//   C12 std.markup serialize_fragment_with Element arm: test the children through raw_text_children_text
+//       again (or any fold that skips MarkupComment / Element). witness_comment_body_cannot_close_a_raw_text_element
+//       and witness_nested_element_cannot_close_a_raw_text_element go red -- one per skipped arm.
+//   C13 std.markup serialize_fragment_with Element arm: move the raw-text test BEFORE serialize_children
+//       (i.e. test the raw child list rather than the emitted bytes). Same two claims go red.
 //   C7  std.markup comment_body_hazard: drop the first test (the one that asks whether the close sequence
 //       contains its own terminator), so an unsatisfiable medium is serialized anyway.
 //       witness_medium_grammar_decides_the_comment_check and witness_broken_close_names_both_rows go red.
@@ -255,6 +264,57 @@ test fn witness_every_swept_escape_body_is_refused() -> Bool {
 // (One shape I first put here and removed after checking it against the state machine: "/-->". It looks
 // dash-adjacent but it contains "-->", so it is one of the 17 escapes above, not a safe body. Guessing at a
 // roster is how a witness starts asserting the defect instead of the behaviour.)
+// ── RAW TEXT + COMMENTS (review 82504 on #14351). Inside <script>/<style> the tokenizer is in RAW-TEXT
+// state: "<!--" starts NO comment, so a MarkupComment child is not a comment there -- its body is emitted
+// as script text, and a "</script" inside it ends the element while the rest becomes live markup. The
+// serializer used to check raw-text content with raw_text_children_text, a fold that only gathered
+// FragmentText and RawNode and answered `acc` for MarkupComment AND for Element; the body below was
+// invisible to it, passed the comment check too (it holds no comment terminator), and shipped:
+//   <script><!-- </script><img src=x onerror=alert(1)> --></script>
+// The guard now tests the SERIALIZED children, so it sees what would actually sit between the tags.
+
+// THE REVIEW'S CASE, verbatim, through the route that serves pages. RED under C12.
+test fn witness_comment_body_cannot_close_a_raw_text_element() -> Bool {
+  match try_serialize_html_document(doc: document_with_root(root:
+    Element { tag: "script", attributes: [], children: [
+      MarkupComment { body: "</script><img src=x onerror=alert(1)>" },
+    ] })) {
+    EmitRejected { reason: r } =>
+      string_contains(s: r, pattern: "</script") && string_contains(s: r, pattern: "script")
+    EmitOk { html: h } => false
+  }
+}
+
+// THE SIBLING HOLE the same fold had: `Element { ... } => acc` meant a NESTED element carrying the close
+// sequence was skipped too. Same fix, separate claim -- a mutation that re-adds only one of the two `acc`
+// arms must go red somewhere.
+test fn witness_nested_element_cannot_close_a_raw_text_element() -> Bool {
+  match try_serialize_html_document(doc: document_with_root(root:
+    Element { tag: "style", attributes: [], children: [
+      Element { tag: "span", attributes: [], children: [FragmentText { content: "</style><img src=x onerror=alert(1)>" }] },
+    ] })) {
+    EmitRejected { reason: r } => string_contains(s: r, pattern: "</style")
+    EmitOk { html: _ } => false
+  }
+}
+
+// THE COUNTERPART: ordinary raw-text content that does NOT contain its close sequence still serializes,
+// and comments outside raw text are untouched. Without these two, the claims above are satisfied by a
+// serializer that refuses everything.
+test fn witness_legitimate_raw_text_and_ordinary_comments_still_serialize() -> Bool {
+  let css_ok = match try_serialize_html_document(doc: document_with_root(root:
+    Element { tag: "style", attributes: [], children: [FragmentText { content: "a { color: red }" }] })) {
+    EmitOk { html: h } => string_contains(s: h, pattern: "a { color: red }")
+    EmitRejected { reason: _ } => false
+  }
+  let comment_ok = match try_serialize_html_document(doc: document_with_root(
+    root: comment_in_html(body: "an ordinary note"))) {
+    EmitOk { html: h } => string_contains(s: h, pattern: "<!-- an ordinary note -->")
+    EmitRejected { reason: _ } => false
+  }
+  css_ok && comment_ok
+}
+
 test fn witness_swept_safe_bodies_serialize() -> Bool {
   all(["-", "--", "---", "x-", "x--", "--!", "--!x", "--}", "}--", "a-", "a--", "note--", "!--", "}", "x/"],
     b => match try_serialize_html_document(doc: document_with_root(root: comment_in_html(body: b))) {
