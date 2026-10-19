@@ -63,11 +63,7 @@ import gunbc.runner.runner_host_deploy { runner_index_seq }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.runner.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner.runner_unit { runner_unit_name_of_registration }
-import gunbc.runner.runner_slot_retirement {
-  transition_required_retiring, RetireesKnown, RetireesUnresolved,
-  interruption_authorization_for_host, interruption_authorization_covers,
-  HostInterruptionAuthorizationPresent, HostInterruptionAuthorizationAbsent,
-}
+import gunbc.runner.runner_slot_retirement { host_maskable_units }
 import gunbc.host.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
 import gunbc.host.host_boot_attempt_admission { boot_attempt_slot_root }
 
@@ -397,28 +393,18 @@ fn revision_job_start_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivi
     SystemdStartUnit { unit: revision_job_runner_unit_instance_name(slot_instance: instance) })
 }
 
-// THE MASK GRANT IS DERIVED FROM THE AUTHORITY THE APPLY MASKS FROM, so the grant set and the mask set are
-// one fact. The apply (gunbc.runner.runner_slot_provision retirement_mask_line) masks a unit only when the
-// host's transition REQUIRES it retired (transition_required_retiring: the width cuts and the fabric
-// reassignment) AND the operator's interruption authorization names it
-// (gunbc.runner.runner_slot_retirement interruption_authorization_for_host). This is that conjunction,
-// one exact `systemctl mask --now <unit>` line per unit and never a pattern: a unit the transition does not
-// require, or the operator did not authorize, has no grant and sudo refuses it. An unresolved obligation or
-// an absent authorization grants nothing. Which pattern authorizes the effect is a section 3d selection,
-// recorded at the census row for gunbc.runner.runner_slot_provision retirement_mask_line.
+// THE MASK GRANT IS THE STATIC "MAY BE MASKED" SET, AND THE APPLY DRAWS FROM THE SAME SET. The sudoers is
+// rendered before any observation and the apply's mask set depends on observed membership and standings,
+// so the grants cannot equal a runtime set; they render the superset every runtime set is drawn from,
+// gunbc.runner.runner_slot_retirement host_maskable_units (the units the operator's interruption
+// authorization names for this host), one exact `systemctl mask --now <unit>` line each and never a
+// pattern. gunbc.runner.runner_slot_provision retirement_actuation_units masks only a candidate inside that
+// same set and withholds every other candidate in a typed line, so sudo is never asked for a line it
+// refuses under set -e. Which pattern authorizes the effect is a section 3d selection, recorded at the
+// census row for retirement_mask_line.
 fn runner_slot_retirement_mask_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  let host = deploy.host_label as HostIdentity
-  match transition_required_retiring(host: host) {
-    RetireesUnresolved { host: _, cause: _ } => []
-    RetireesKnown { units: required } =>
-      match interruption_authorization_for_host(host: host) {
-        HostInterruptionAuthorizationAbsent { host: _, cause: _ } => []
-        HostInterruptionAuthorizationPresent { authorization: auth } =>
-          required
-            |> filter(u => interruption_authorization_covers(auth: auth, unit: u as String))
-            |> map(u => SystemdMaskNowUnit { unit: u as NonEmptyStr })
-      }
-  }
+  host_maskable_units(host: deploy.host_label as HostIdentity)
+    |> map(u => SystemdMaskNowUnit { unit: u })
 }
 
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
