@@ -145,7 +145,7 @@ type ApprovalBrokerHandler
 // spelled once per reader agrees until one of them moves.
 // A device route's method and path are read from its ApprovalDeviceRoute row
 // (gunbc.auth.approval_device_wire), the one place that states them; this file binds only the
-// handler, and binds it to the ROW itself, so a bound route cannot be missing from the table.
+// handler, and binds it to the ROW itself, so a binding cannot name a route outside the table. The converse (every row bound) is checked, not constructed: bound_routes_cover_table in the broker witness.
 type DeviceRouteHandlerBinding {
   route: ApprovalDeviceRoute
   handler: ApprovalBrokerHandler

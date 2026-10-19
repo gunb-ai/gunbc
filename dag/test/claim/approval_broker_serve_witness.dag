@@ -18,7 +18,7 @@ import gunbc.auth.approval_broker_marker {
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler,
   ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
-  approval_broker_route_specs,
+  approval_broker_route_specs, device_route_specs_over, approval_broker_route_table_build,
   device_route_specs,
   device_route_specs_over,
   device_route_handlers,
@@ -33,7 +33,7 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
   approval_write_admission_under, approval_writer_authority, approval_writer_process,
 }
-import extdeps.http.server { ServeHttpResponse, ServedRouteSpec, http_method_label }
+import extdeps.http.server { ServeHttpResponse, ServedRouteSpec, http_method_label, serve_build_route_table }
 import gunbc.site.brand { site_favicon_path }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_template,
@@ -502,9 +502,10 @@ test fn device_served_method_follows_a_changed_table_row() -> Bool {
     |> filter(s => s.method == PUT)) == count(approval_device_routes)
 }
 
-// A BOUND ROUTE IS A TABLE ROW, AND EVERY ROW IS BOUND: the binding holds the row itself, so absence
-// is unrepresentable; this identity join (path grain) is the inhabitance check, and the RED drops a
-// binding and the join refuses.
+// A BOUND ROUTE IS A TABLE ROW, AND EVERY ROW IS BOUND: the binding holds the row itself, so a binding
+// cannot name a route outside the table (construction); a row left without a binding is caught only
+// by this identity join (path grain), which is mechanically preventive, not structural. REDs: a
+// dropped and a duplicated binding both refuse.
 fn bound_routes_cover_table(bindings: List<DeviceRouteHandlerBinding>) -> Bool {
   all(approval_device_routes, r => count(bindings |> filter(b => approval_device_route_path(r: b.route) == approval_device_route_path(r: r))) == 1)
     && all(bindings, b => count(approval_device_routes |> filter(r => approval_device_route_path(r: r) == approval_device_route_path(r: b.route))) == 1)
@@ -520,4 +521,21 @@ test fn device_binding_dropped_is_refused() -> Bool {
 
 test fn device_binding_duplicated_is_refused() -> Bool {
   !bound_routes_cover_table(bindings: concat(device_route_handlers, device_route_handlers |> filter(b => approval_device_route_path(r: b.route) == (approval_device_push_path as String))))
+}
+
+// THROUGH THE PRODUCTION BUILDER (serve_build_route_table), not a witness-side join: a second binding
+// for the same (method, path) refuses with the path named; the full broker table builds clean.
+test fn duplicated_device_binding_is_refused_by_the_route_table_builder() -> Bool {
+  let dup = concat(device_route_handlers, device_route_handlers |> filter(b => approval_device_route_path(r: b.route) == (approval_device_push_path as String)))
+  match serve_build_route_table(specs: device_route_specs_over(bindings: dup)) {
+    ServedRouteTableBuildRefused { raw: r, segment: s, reason: _ } => r == approval_device_route_template(r: approval_device_push_route) && s == "POST"
+    ServedRouteTableBuilt { table: _ } => false
+  }
+}
+
+test fn full_broker_table_builds_clean() -> Bool {
+  match approval_broker_route_table_build() {
+    ServedRouteTableBuilt { table: _ } => true
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
+  }
 }
