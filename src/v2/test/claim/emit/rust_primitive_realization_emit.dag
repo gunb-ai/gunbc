@@ -7,7 +7,7 @@ import v2.extdeps.languages.rust {
   rust_value_expression_projection
 }
 import v2.extdeps.languages.rust_fixtures { rust_target_model_with_operators_and_lex }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { TargetRealizationCatalog, PrimitiveRealizationsUnwired,
   TargetModel,
   TargetValueExpression,
   canonical_operation_op_add,
@@ -62,7 +62,7 @@ fn rust_primitive_emit(expr: TargetValueExpression, catalog: Node) -> Outcome<St
     o: target_value_expression_to_concrete_tokens(
       expr: expr,
       projection: rust_value_expression_projection(),
-      catalog: catalog
+      catalog: TargetRealizationCatalog { operators: catalog, primitives: PrimitiveRealizationsUnwired }
     ),
     f: fn(tokens) {
       bind_outcome(

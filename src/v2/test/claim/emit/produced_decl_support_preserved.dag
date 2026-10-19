@@ -3,7 +3,7 @@ module v2.test.claim.emit.produced_decl_support_preserved
 import std.types { List }
 import v2.test.claim.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
 import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   FixedToken,
   OwnershipAtFunctionReturn,
   ProducedDeclRenderRows,
@@ -67,6 +67,7 @@ fn pdp_wired_support() -> ProducedDeclSupport {
 
 fn pdp_target_with(support: ProducedDeclSupport) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: support,
     bundle: rust_target_model().bundle,
     lex: rust_target_model().lex,

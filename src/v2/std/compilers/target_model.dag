@@ -181,6 +181,19 @@ fn fixed_tokens_of(classes: List<Symbol>) -> List<ConcreteSyntaxToken> {
   )
 }
 
+// Whether the target realizes primitive calls through typed rows. A target without rows says
+// Unwired, so a primitive call on it refuses typed rather than looking up an empty list.
+type TargetPrimitiveRealizations
+  = PrimitiveRealizationsUnwired
+  | PrimitiveRealizationsWired { rows: List<TargetPrimitiveRealization> }
+
+// The target's realization catalogs a value expression is tokenized against: the operator rows
+// (a Node wire) and the typed primitive rows.
+type TargetRealizationCatalog {
+  operators: Node
+  primitives: TargetPrimitiveRealizations
+}
+
 type ProducedDeclSupport
   = ProducedDeclUnwired
   | ProducedDeclWired {
@@ -912,6 +925,7 @@ type TargetModel {
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
   produced_decl_support: ProducedDeclSupport
+  primitive_realizations: TargetPrimitiveRealizations
 }
 
 fn target_model_declared_inhabitants(target: TargetModel) -> Outcome<Node> {
@@ -939,6 +953,7 @@ fn target_model_make_with_emit_transforms(
   runtime_row: TargetEmitHostRuntimeRow
 ) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: bundle,
     lex: lex,
@@ -7083,7 +7098,7 @@ fn target_operator_shape_emit_primitive_apply_tokens(
 fn target_value_expression_primitive_apply_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_primitive_apply_wire_schema_valid(wire: expr.node),
@@ -7096,7 +7111,7 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
             f: fn(bindings) {
               bind_outcome(
                 o: target_operator_realization_catalog_lookup(
-                  catalog: catalog,
+                  catalog: catalog.operators,
                   canonical_op: canonical_op
                 ),
                 f: fn(operator_row) {
@@ -7552,7 +7567,7 @@ fn bind_let_statement_sequenced_tokens(
 fn target_value_expression_bind_let_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_bind_let_wire_schema_valid(wire: expr.node),
@@ -7697,7 +7712,7 @@ fn statement_sequenced_block_construct_guard(
 fn target_value_expression_loop_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -7717,7 +7732,7 @@ fn target_value_expression_loop_to_concrete_tokens(
 fn target_value_expression_loop_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_loop_wire_schema_valid(wire: expr.node),
@@ -7884,7 +7899,7 @@ fn target_value_expr_record_construct_field_slots_from_wire(
 fn target_value_expr_record_construct_field_tokens(
   slots: List<TargetValueExprFieldInitSlot>,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     slots,
@@ -7949,7 +7964,7 @@ fn target_value_expr_record_construct_field_tokens(
 fn target_value_expression_record_construct_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_record_construct_wire_schema_valid(wire: expr.node),
@@ -8435,7 +8450,7 @@ fn target_value_expr_field_access_field_from_wire(wire: Node) -> Outcome<Symbol>
 fn target_value_expression_field_access_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_field_access_wire_schema_valid(wire: expr.node),
@@ -8682,7 +8697,7 @@ fn concrete_syntax_tokens_snoc_fixed(
 fn target_value_expr_match_arm_tokens(
   arms: List<TargetValueExprMatchArmSlot>,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     arms,
@@ -8871,7 +8886,7 @@ fn target_value_expr_is_source_bool_literal_atom(
 fn target_value_expression_match_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -8891,7 +8906,7 @@ fn target_value_expression_match_to_concrete_tokens(
 fn target_value_expression_match_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_match_wire_schema_valid(wire: expr.node),
@@ -9094,7 +9109,7 @@ fn conditional_delimited_tokens(
 fn target_value_expression_conditional_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_conditional_wire_schema_valid(wire: expr.node),
@@ -9245,7 +9260,7 @@ fn target_value_expr_callable_apply_args_from_wire(
 fn target_value_expr_tokenize_intersperse(
   exprs: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
-  catalog: Node,
+  catalog: TargetRealizationCatalog,
   separator: Symbol
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   fold(
@@ -9314,7 +9329,7 @@ fn target_primitive_arguments_to_tokens(
   args: List<TargetValueExpression>,
   row: TargetPrimitiveRealization,
   projection: TargetValueExpressionProjection,
-  catalog: Node,
+  catalog: TargetRealizationCatalog,
   separator: Symbol,
   at: Node
 ) -> Outcome<List<ConcreteSyntaxToken>> {
@@ -9376,7 +9391,7 @@ fn target_primitive_call_to_concrete_tokens(
   row: TargetPrimitiveRealization,
   args: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
-  catalog: Node,
+  catalog: TargetRealizationCatalog,
   at: Node
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match row.form {
@@ -9479,12 +9494,12 @@ fn target_value_expression_primitive_row_call_to_concrete_tokens(
   callee: Symbol,
   args: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
-  catalog: Node,
+  catalog: TargetRealizationCatalog,
   at: Node
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_primitive_realization_catalog_lookup(
-      catalog: catalog,
+      catalog: catalog.operators,
       primitive: primitive_contract_declaration_ref(head: callee),
       at: at
     ),
@@ -9517,7 +9532,7 @@ fn target_value_expression_primitive_row_call_to_concrete_tokens(
 fn target_value_expression_callable_apply_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_callable_apply_callee_from_wire(wire: expr.node),
@@ -9659,7 +9674,7 @@ fn target_value_expr_closure_param_tokens(
 fn target_value_expression_closure_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -9679,7 +9694,7 @@ fn target_value_expression_closure_to_concrete_tokens(
 fn target_value_expression_closure_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_closure_tokens_from_wire(wire: expr.node, field: ^target_value_expr_field_closure_value_open),
@@ -9702,7 +9717,7 @@ fn target_value_expression_closure_to_concrete_tokens_inner(
 fn target_value_expression_closure_plain_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_closure_params_from_wire(wire: expr.node),
@@ -9772,7 +9787,7 @@ fn target_value_expression_closure_plain_tokens(
 fn target_value_expression_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match expr.kind {
     TargetValueExprBindingRef =>
@@ -14570,6 +14585,7 @@ fn target_model_with_produced_scaffold(
   scaffold: TargetBodiedArrowStatementScaffold
 ) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: target.produced_decl_support,
     bundle: target_model_bundle_replace_edge_target(
       bundle: target.bundle,
@@ -14623,6 +14639,7 @@ fn target_model_augment_use_site_ownership_catalog(
           Present { value: catalog } =>
             outcome_accepted(
               TargetModel {
+                primitive_realizations: PrimitiveRealizationsUnwired,
                 produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
@@ -14679,6 +14696,7 @@ fn target_model_augment_value_semantics_carriers(
           Present { value: carriers_node } =>
             outcome_accepted(
               TargetModel {
+                primitive_realizations: PrimitiveRealizationsUnwired,
                 produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
@@ -17188,11 +17206,14 @@ fn target_value_expression_tokens_from_target(
       bundle: target.bundle,
       name: ^target_model_edge_operator_realizations
     ),
-    f: fn(catalog) {
+    f: fn(operators) {
       target_value_expression_to_concrete_tokens(
         expr: expr,
         projection: projection,
-        catalog: catalog
+        catalog: TargetRealizationCatalog {
+          operators: operators,
+          primitives: target.primitive_realizations
+        }
       )
     }
   )

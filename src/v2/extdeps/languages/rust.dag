@@ -141,7 +141,7 @@ import v2.std.model_core {
 import v2.std.compilers.coproduct_variant_shape {
   coproduct_all_variants_nullary
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetPrimitiveRealization,
   TargetPrimitiveArgument,
   PrimitiveArgumentUnlabeled,
@@ -2240,6 +2240,7 @@ fn rust_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_target_model_staging() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_bundle_core(),
     lex: rust_staging_lex(),
@@ -2363,6 +2364,7 @@ fn rust_target_model_node() -> Node {
 
 fn rust_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_node(),
     lex: rust_production_lex(),
@@ -2957,6 +2959,7 @@ fn rust_semantic_decl_emission_bundle_node() -> Node {
 
 fn rust_enum_general_decl_structural_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
@@ -3030,6 +3033,7 @@ fn rust_struct_general_decl_productions_only_translation_rules() -> Node {
 
 fn rust_struct_general_decl_structural_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
@@ -4804,6 +4808,7 @@ fn rust_type_expression_projection_bundle_node() -> Node {
 
 fn rust_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_sg2_type_expr_target_model_node(),
     lex: ModeledLexRules { root: rust_sg2_lex_rules() },
@@ -4820,6 +4825,7 @@ fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
 
 fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_sg2_type_expr_projection_probe_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_lex_rules() },
@@ -4832,6 +4838,7 @@ fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
 
 fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_sg2_type_expr_target_model_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_lex_rules() },
