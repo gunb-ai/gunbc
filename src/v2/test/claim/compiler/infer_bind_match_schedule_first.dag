@@ -1,0 +1,206 @@
+module v2.test.claim.compiler.infer_bind_match_schedule_first
+
+// WHAT THIS CLAIMS (gunbc.plans.demand_engine_program 2.4, specimen "Inference's own sibling dependencies").
+// Inference gathers a tree's facts through one child walk, v2.std.node fold_node_dependent, whose schedule
+// visits the edges its `first` selects before the rest, each group in stored order. Until now that predicate
+// (v2.compiler.infer infer_gather_schedules_first) stated two groups only -- a Loop's domain, and an
+// application's arguments ahead of its callbacks -- so "a Bind's value is inferred before its body" and "a
+// Match's scrutinee is inferred before its arms" held only because those children happen to be STORED first.
+// Textual/child position establishes no dependency (operator ruling 2026-10-18); both are now stated, and
+// this file is what they mean.
+//
+// WHAT THE CHILDREN READ FROM THE PARENT'S ACCUMULATOR (the justification; both are `child_context` callbacks
+// of v2.compiler.infer infer_entries_for_tree):
+// - a Bind BODY child, through infer_let_body_frame: an unannotated binder's type is
+//   infer_settled_type_at(acc.entries, value.target); an annotated one is read off the Bind's own
+//   <type-annotation> edge (type_annotation_optional). Nothing else -- it reads no sibling beyond the value.
+//   The KEY edge is not an operand at all: infer_gather_fold_step merges it through unchanged (bind_key_edge),
+//   and v2.compiler.eval sites the binder and the value at positional slots 0 and 1 (eval_bind_key,
+//   eval_bind_value_edge) -- the same two slots these predicates take their edges from.
+// - a Match ARM child, through infer_match_arm_child_frame: the arm's pattern binders are typed from the
+//   SCRUTINEE's settled facts (lookup_inferred_facts_in_entries(acc.entries, scrutinee), then
+//   infer_match_coproduct_of_type), or, with none present, from the arm's own declared coproduct through
+//   infer_match_arm_unpaid_frame. Arms read each other not at all.
+// So the facts a body or an arm consumes come only from the key, the value and the scrutinee. Their position
+// in the schedule is a dependency; everything else stays in the rest group, in stored order.
+//
+// BEHAVIOUR-PRESERVING, and measured: for both shapes the new schedule EQUALS the stored order, because the
+// first group is taken by SLOT INDEX and the stored order already puts key before value before body, and the
+// scrutinee before the arms (v2.std.compilers.body_lowering lower_bind and lower_match write exactly that).
+// So no inference result moves -- which is why the floor's existing infer claims, including
+// v2.test.claim.compiler.infer_fold_member_instance's "the entries are a fold over children", stay green.
+// Deleting either predicate moves a real edge out of the first group: the schedule row below goes red while
+// the compiler's verdicts would not change, which is the point -- it says the ordering was carried by
+// position rather than stated.
+
+import std.types { Int, List }
+import std.algebra { Cons, Empty, list_append, list_snoc_item }
+import v2.std.node {
+  Atom,
+  Bind,
+  ComputationNode,
+  CoreEdgeLabel,
+  Edge,
+  Match,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  Node,
+  NodeFoldDependent,
+  Positional,
+  TypeAnnotationEdge,
+  TypeNode,
+  core_edge,
+  node_fold_dependent_schedule,
+  node_synthetic,
+}
+import v2.compiler.infer {
+  infer_bind_schedules_key_and_value_first,
+  infer_gather_schedules_first,
+  infer_match_schedules_scrutinee_first,
+}
+
+fn bms_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn bms_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+// A `let`: the three positional slots in the order v2.std.compilers.body_lowering lower_bind writes them.
+// The annotated form adds the <type-annotation> edge after them, the way the lowering does; a named marker
+// edge is never one of the positional slots either predicate reads.
+fn bms_bind_children(annotated: Bool) -> List<Edge> {
+  let prefix = [
+    bms_positional(target: bms_atom(identity: ^bms_key)),
+    bms_positional(target: bms_atom(identity: ^bms_value)),
+    bms_positional(target: bms_atom(identity: ^bms_body)),
+  ]
+  if annotated {
+    list_append(left: prefix, right: [core_edge(marker: TypeAnnotationEdge, target: bms_atom(identity: ^bms_annotation))])
+  } else {
+    prefix
+  }
+}
+
+fn bms_bind(annotated: Bool) -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Bind }, children: bms_bind_children(annotated: annotated))
+}
+
+// A Match: the scrutinee positional first, then each arm, each arm carrying its pattern and its body under
+// the two core labels arms are read by (the shape v2.test.claim.match_binder.match_binder_typing mb_arm is).
+fn bms_match(arm_count: Int) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Match },
+    children: list_append(
+      left: [bms_positional(target: bms_atom(identity: ^bms_scrutinee))],
+      right: bms_arm_edges(arm_count: arm_count, index: 0)
+    )
+  )
+}
+
+fn bms_arm_edges(arm_count: Int, index: Int) -> List<Edge> {
+  if index >= arm_count {
+    []
+  } else {
+    list_append(
+      left: [
+        core_edge(marker: MatchArmPatternEdge, target: bms_atom(identity: ^bms_pattern)),
+        core_edge(marker: MatchArmBodyEdge, target: bms_atom(identity: ^bms_arm_body)),
+      ],
+      right: bms_arm_edges(arm_count: arm_count, index: index + 1)
+    )
+  }
+}
+
+// The schedule inference's walk would use for a parent under `pred`, read through the very function the walk
+// uses (v2.std.node node_fold_dependent_schedule) with an algebra whose other callbacks are inert, so the row
+// measures the partition and nothing else.
+fn bms_schedule(n: Node, pred: fn(Node, Edge) -> Bool) -> List<Edge> {
+  node_fold_dependent_schedule(
+    n: n,
+    algebra: NodeFoldDependent {
+      init: fn(_node, ctx) { ctx },
+      first: fn(node, e) { pred(node, e) },
+      child_context: fn(_node, ctx, _acc, _e) { ctx },
+      step: fn(acc, _e, _child) { acc },
+    }
+  )
+}
+
+// (1) A BIND SCHEDULES ITS KEY AND ITS VALUE FIRST, and not its body -- read through the disjunction the walk
+// actually uses, so the row cannot be satisfied by a predicate inference never calls. The first group is
+// exactly the two edges infer_let_body_frame reads; the body is what must wait for them.
+test fn bms_bind_key_and_value_are_scheduled_first_and_body_is_not() -> Bool {
+  let bind = bms_bind(annotated: false)
+  match bms_bind_children(annotated: false) {
+    Cons { head: key, tail: Cons { head: value, tail: Cons { head: body, tail: Empty } } } =>
+      infer_gather_schedules_first(parent: bind, edge: key)
+        && infer_gather_schedules_first(parent: bind, edge: value)
+        && !infer_gather_schedules_first(parent: bind, edge: body)
+        && infer_bind_schedules_key_and_value_first(parent: bind, edge: key)
+        && infer_bind_schedules_key_and_value_first(parent: bind, edge: value)
+        && !infer_bind_schedules_key_and_value_first(parent: bind, edge: body)
+        && bms_schedule(n: bind, pred: infer_bind_schedules_key_and_value_first) == [key, value, body]
+    _ => false
+  }
+}
+
+// (2) THE ANNOTATION IS NOT AN OPERAND: the <type-annotation> edge stays in the rest group beside the body,
+// so a typed `let` cannot move a fact's schedule.
+test fn bms_bind_annotation_is_not_scheduled_first() -> Bool {
+  let bind = bms_bind(annotated: true)
+  match bind.children {
+    Cons { head: _, tail: Cons { head: _, tail: Cons { head: _, tail: Cons { head: annotation, tail: Empty } } } } =>
+      !infer_gather_schedules_first(parent: bind, edge: annotation)
+        && bms_schedule(n: bind, pred: infer_bind_schedules_key_and_value_first) == bind.children
+    _ => false
+  }
+}
+
+// (3) A MATCH SCHEDULES ITS SCRUTINEE FIRST, and no arm edge is in that group -- neither an arm's pattern nor
+// an arm's body, the two edges through which arms exchange facts.
+test fn bms_match_scrutinee_is_scheduled_first_and_arms_are_not() -> Bool {
+  let match_node = bms_match(arm_count: 2)
+  match match_node.children {
+    Cons { head: scrutinee, tail: Cons { head: arm_pattern, tail: Cons { head: arm_body, tail: _ } } } =>
+      infer_gather_schedules_first(parent: match_node, edge: scrutinee)
+        && !infer_gather_schedules_first(parent: match_node, edge: arm_pattern)
+        && !infer_gather_schedules_first(parent: match_node, edge: arm_body)
+        && infer_match_schedules_scrutinee_first(parent: match_node, edge: scrutinee)
+        && !infer_match_schedules_scrutinee_first(parent: match_node, edge: arm_pattern)
+        && !infer_match_schedules_scrutinee_first(parent: match_node, edge: arm_body)
+        && bms_schedule(n: match_node, pred: infer_match_schedules_scrutinee_first) == match_node.children
+    _ => false
+  }
+}
+
+// (4) THE GROUP IS THE PARENT'S BEHAVIOUR, NOT AN EDGE'S LOOK: a key-shaped edge under a Match, and a
+// scrutinee-shaped edge under a Bind, both answer false, and so does either predicate on a parent that is
+// neither. Neither can be satisfied by an edge that merely sits in the right slot of the wrong behaviour.
+test fn bms_the_group_is_gated_on_the_parents_behaviour() -> Bool {
+  let key = bms_positional(target: bms_atom(identity: ^bms_key))
+  let scrutinee = bms_positional(target: bms_atom(identity: ^bms_scrutinee))
+  let scrutinee_parent = bms_match(arm_count: 1)
+  let bind_parent = bms_bind(annotated: false)
+  let atom_parent = bms_atom(identity: ^bms_key)
+  !infer_bind_schedules_key_and_value_first(parent: scrutinee_parent, edge: scrutinee)
+    && !infer_match_schedules_scrutinee_first(parent: bind_parent, edge: key)
+    && !infer_bind_schedules_key_and_value_first(parent: atom_parent, edge: key)
+    && !infer_match_schedules_scrutinee_first(parent: atom_parent, edge: key)
+}
+
+// (5) THE STATED GROUPS PERMUTE NOTHING. The behaviour-preserving half, measured: under each new predicate,
+// and under the disjunction the walk uses, the schedule for a Bind and for a Match is EXACTLY the stored
+// order -- so every settled fact lands where it landed before the predicate existed. A predicate naming a
+// non-prefix edge would still let the compiler answer, and this row is what refuses it.
+test fn bms_the_stated_groups_do_not_permute_the_stored_order() -> Bool {
+  let bind = bms_bind(annotated: true)
+  let match_node = bms_match(arm_count: 3)
+  let unannotated_bind = bms_bind(annotated: false)
+  let two_arm_match = bms_match(arm_count: 2)
+  bms_schedule(n: bind, pred: infer_bind_schedules_key_and_value_first) == bind.children
+    && bms_schedule(n: match_node, pred: infer_match_schedules_scrutinee_first) == match_node.children
+    && bms_schedule(n: unannotated_bind, pred: infer_gather_schedules_first) == unannotated_bind.children
+    && bms_schedule(n: two_arm_match, pred: infer_gather_schedules_first) == two_arm_match.children
+}

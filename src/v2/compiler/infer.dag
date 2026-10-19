@@ -8935,7 +8935,54 @@ fn infer_gather_fold_bind_row_on_entries(
 }
 
 fn infer_gather_schedules_first(parent: Node, edge: Edge) -> Bool {
-  infer_loop_schedules_first(parent: parent, edge: edge) || infer_application_schedules_before_callbacks(parent: parent, edge: edge)
+  infer_loop_schedules_first(parent: parent, edge: edge)
+    || infer_application_schedules_before_callbacks(parent: parent, edge: edge)
+    || infer_bind_schedules_key_and_value_first(parent: parent, edge: edge)
+    || infer_match_schedules_scrutinee_first(parent: parent, edge: edge)
+}
+
+// A BIND SCHEDULES ITS KEY AND ITS VALUE BEFORE ITS BODY. The two are what the body's frame reads from the
+// parent's accumulator -- infer_let_body_frame takes the unannotated binder's type from the VALUE's settled
+// facts (infer_settled_type_at over acc.entries) and an annotated one from the annotation edge, never from a
+// sibling -- so their position in the schedule is a dependency, and textual/child position establishes none
+// (gunbc.plans.demand_engine_program 2.4, specimen "Inference's own sibling dependencies"). The key is the
+// positional-0 edge v2.std.node bind_key_edge sites a `let` binder at and the value the positional-1 edge
+// v2.compiler.eval eval_bind_value_edge reads; the body (positional 2) is left to the rest group, where
+// infer_let_body_edge enters it. The first group is taken by SLOT INDEX, so on every conforming Bind it is
+// the stored prefix (v2.std.compilers.body_lowering lower_bind writes key, value, body in that order) and
+// the schedule is stored order, not a permutation of it.
+fn infer_bind_schedules_key_and_value_first(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Bind } =>
+      if positional_child_count(children: parent.children) == 3 {
+        match positional_edges(children: parent.children) {
+          Cons { head: key, tail: Cons { head: value, tail: _ } } => edge == key || edge == value
+          Empty => false
+        }
+      } else {
+        false
+      }
+    ComputationNode { behavior: _ } => false
+    TypeNode { connective: _ } => false
+  }
+}
+
+// A MATCH SCHEDULES ITS SCRUTINEE BEFORE ITS ARMS. The scrutinee is the first positional of a Match (the
+// shape v2.std.node match_arm_children_conform_skip_first skips before checking the arms, and what
+// v2.std.compilers.body_lowering lower_match writes ahead of them); each arm's frame --
+// infer_match_arm_child_frame -- reads the scrutinee's settled facts from the parent's accumulator, for the
+// arm's coverage obligation and for the type a pattern binder is typed with. Arms stay in the rest group,
+// in stored order. As above the group is taken by slot index, so the schedule is the stored order.
+fn infer_match_schedules_scrutinee_first(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Match } =>
+      match positional_edges(children: parent.children) {
+        Cons { head: scrutinee, tail: _ } => edge == scrutinee
+        Empty => false
+      }
+    ComputationNode { behavior: _ } => false
+    TypeNode { connective: _ } => false
+  }
 }
 
 // An application with no callback actual keeps its authored order: every edge is in the first group.
