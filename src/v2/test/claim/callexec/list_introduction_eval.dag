@@ -162,3 +162,72 @@ test fn list_literal_evaluates_to_its_elements_in_order_holds() -> Bool {
 test fn list_literal_order_is_discriminated_holds() -> Bool {
   list_introduction_eval_is(o: list_introduction_eval_of(source: list_introduction_eval_reversed_source), x: 20, y: 10)
 }
+
+fn list_introduction_eval_assembled(source: String) -> Bool {
+  match assemble_program_from_ingest_located(
+    ingest: list_introduction_eval_ingest(probe: source),
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^list_introduction_eval_probe, tail: Empty } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  ).program {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn list_introduction_eval_inferred(source: String) -> Optional<Node> {
+  match bind_outcome(
+    o: assemble_program_from_ingest_located(
+      ingest: list_introduction_eval_ingest(probe: source),
+      admission: Admission {
+        subject: ResolutionSubject { name: Cons { head: ^list_introduction_eval_probe, tail: Empty } },
+        imports: Empty
+      },
+      lm: dag_language_model()
+    ).program,
+    f: fn(p) { infer_and_discharge(tree: p) }
+  ) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: inferred, diagnostics: _ } => optional_present(value: inferred.root)
+  }
+}
+
+test fn list_introduction_eval_stage_assembled() -> Bool {
+  list_introduction_eval_assembled(source: list_introduction_eval_forward_source)
+}
+
+test fn list_introduction_eval_stage_inferred() -> Bool {
+  match list_introduction_eval_inferred(source: list_introduction_eval_forward_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn list_introduction_eval_stage_list_found() -> Bool {
+  match list_introduction_eval_inferred(source: list_introduction_eval_forward_source) {
+    Absent => false
+    Present { value: root } =>
+      match list_introduction_eval_first_list(n: root) {
+        Absent => false
+        Present { value: _ } => true
+      }
+  }
+}
+
+test fn list_introduction_eval_stage_eval_accepted() -> Bool {
+  match list_introduction_eval_of(source: list_introduction_eval_forward_source) {
+    Absent => false
+    Present { value: Accepted { value: _, diagnostics: _ } } => true
+    Present { value: Rejected { diagnostics: _ } } => false
+  }
+}
+
+test fn list_introduction_eval_stage_refusal_is_lookup_miss() -> Bool {
+  match list_introduction_eval_of(source: list_introduction_eval_forward_source) {
+    Absent => false
+    Present { value: Accepted { value: _, diagnostics: _ } } => false
+    Present { value: Rejected { diagnostics: ds } } => ds.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+  }
+}
