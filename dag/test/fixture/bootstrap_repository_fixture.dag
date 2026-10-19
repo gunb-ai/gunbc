@@ -1,0 +1,137 @@
+module test.fixture.bootstrap_repository_fixture
+
+// THE PLUMBING-LEVEL GIT FIXTURE BUILDER (Charter 2, 2026-10-19). One place that authors a
+// throwaway git repository from ops that already carry production callers — the same chain
+// gunbc.devboot.build runs to publish (git.Plumbing.InitAt -> HashObjectWriteStdin ->
+// UpdateIndexCacheInfo -> WriteTreeFromIndex -> CommitTree; identity via
+// git.Core.ConfigLocalSetInRepo). Witnesses build their fixtures HERE rather than inlining
+// retained shell strings, so retiring gunbc.retained_shell_script removes the last shell-script
+// mint sites instead of leaving witnesses a private shell dialect (snappy-bat-554 ruling (b):
+// fixtures at the plumbing level from ops that already exist; gaps are LISTED, never invented).
+// neat-pike-202's witnesses 7/8 (repository_convergence, pre_swap_admission) extend THIS module
+// rather than forking it; their four gap ops (plain non-CAS update-ref, remote add, pack-refs,
+// checkout --detach as an op) are raised with snappy-bat-554 and are not built here.
+//
+// THE FIXTURE BUILDS PRE-STATE, NEVER POST-STATE: it authors the repository the production path is
+// pointed at, and the claim's asserted facts still come only from the production path's own
+// observation chain. Every step's refusal names the step and carries git's stderr — no refusal
+// collapses into a Bool, and a step that could not run is never reported as having run (§5).
+
+import std.types { String, Bool, FilePath }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt, GitNoParents }
+
+// The outcome of authoring the fixture. `commit_hex` is the one commit's oid as git wrote it (the
+// candidate the witness hands the production path); the refusal arm names which step refused and
+// carries that step's stderr, so a fixture that could not be built is never a fixture "with no
+// commit" — the two are different values.
+type FixtureRepoOutcome
+  = FixtureRepoBuilt { commit_hex: String }
+  | FixtureRepoRefused { step: String, cause: String }
+
+// The committer identity lives in the repo's OWN local config: commit-tree refuses without one,
+// and no existing op carries GIT_AUTHOR_* as typed input (inventing one was ruled out, ruling (b)),
+// so the identity is WRITTEN WHERE CONFIG LIVES — git.Core.ConfigLocalSetInRepo, whose production
+// callers are gunbc.deployed_tree_remote and gunbc.repo.repo_local_git_config. Both sides of the
+// identity are set (git refuses with exit 128 on either absence, and each refusal is its own step).
+// The values are fixture-local by construction: the repo is a fresh init under a caller-owned
+// mktemp root, and the address uses RFC 2606's reserved .invalid.
+fn fixture_set_committer_identity(repo: String) -> Optional<FixtureRepoOutcome> {
+  let name = git.Core.ConfigLocalSetInRepo(
+    repo: repo as FilePath,
+    key: "user.name",
+    value: "gunbc fixture",
+  )
+  if !name.success {
+    Present { value: FixtureRepoRefused { step: "config user.name", cause: name.stderr } }
+  } else {
+    let email = git.Core.ConfigLocalSetInRepo(
+      repo: repo as FilePath,
+      key: "user.email",
+      value: "fixture@gunbc.invalid",
+    )
+    if !email.success {
+      Present { value: FixtureRepoRefused { step: "config user.email", cause: email.stderr } }
+    } else {
+      Absent
+    }
+  }
+}
+
+// init -> identity -> tracked file -> hash -> index -> tree -> parentless commit.
+//
+// The tracked file's BYTES travel to git on STDIN (HashObjectWriteStdin), never argv and never
+// through a re-raceable temp file — devboot's own reason at its call site: the object's bytes must
+// not become a command line or a file another producer can replace between write and hash. The
+// bytes are ALSO written into the worktree, because a bootstrap subject is a directory holding
+// files: the on-disk file is what the index entry's mode 100644 claims, and it is what the witness
+// reads back after the production path moves HEAD.
+//
+// `parent_address` is the directory the fresh repo is init'd inside (the caller's scratch root),
+// and `repo` is the new worktree's path — the same (address, path) split devboot passes to InitAt.
+// No ref is created: the production path is what establishes refs under test; a fixture that wrote
+// refs would be authoring part of the post-state.
+fn fixture_build_committed_repo(parent_address: GitRepositoryAddress, repo: String, tracked_path: String, tracked_bytes: String, message: String) -> FixtureRepoOutcome {
+  let init = git.Plumbing.InitAt(address: parent_address, path: repo as FilePath)
+  if init.exit_code != 0 {
+    FixtureRepoRefused { step: "init", cause: trim(s: init.stderr) }
+  } else {
+    match fixture_set_committer_identity(repo: repo) {
+      Present { value: refused } => refused
+      Absent => {
+        let address = GitWorktreeAt { path: repo as FilePath }
+        let written = Filesystem.Write(path: concat(repo, concat("/", tracked_path)), content: tracked_bytes)
+        if !written.success {
+          FixtureRepoRefused { step: "write tracked file", cause: written.error }
+        } else {
+          let hashed = git.Plumbing.HashObjectWriteStdin(address: address, content: tracked_bytes)
+          if hashed.exit_code != 0 {
+            FixtureRepoRefused { step: "hash-object -w --stdin", cause: trim(s: hashed.stderr) }
+          } else {
+            let oid = trim(s: hashed.oid)
+            let index_path = concat(repo, "/.git/index")
+            let staged = git.Plumbing.UpdateIndexCacheInfo(
+              address: address,
+              index: index_path as FilePath,
+              mode: "100644",
+              oid: oid,
+              path: tracked_path,
+            )
+            if staged.exit_code != 0 {
+              FixtureRepoRefused { step: "update-index --cacheinfo", cause: trim(s: staged.stderr) }
+            } else {
+              let tree = git.Plumbing.WriteTreeFromIndex(address: address, index: index_path as FilePath)
+              if tree.exit_code != 0 {
+                FixtureRepoRefused { step: "write-tree", cause: trim(s: tree.stderr) }
+              } else {
+                let committed = git.Plumbing.CommitTree(
+                  address: address,
+                  tree: trim(s: tree.tree),
+                  parents: GitNoParents,
+                  message: message,
+                )
+                if committed.exit_code != 0 {
+                  FixtureRepoRefused { step: "commit-tree", cause: trim(s: committed.stderr) }
+                } else {
+                  FixtureRepoBuilt { commit_hex: trim(s: committed.commit) }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// Remove the caller's scratch tree with the typed rm -rf (production callers across
+// dag/gunbc/instruments and dag/gunbc/runner). The witness needs the CLEANUP ITSELF observed — a
+// leftover tree means the run left the host dirty — so success is returned, not swallowed.
+fn fixture_remove_tree(path: String) -> Bool {
+  shell.Remove.RecursiveForce(path: path as FilePath).success
+}
