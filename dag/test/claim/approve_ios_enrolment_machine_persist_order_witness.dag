@@ -591,7 +591,7 @@ test fn the_law_is_the_machine_and_the_machine_answers() -> Bool {
     observed: absent_observation(),
   )
   let stall = enrolment_commit_evidence_remains_caller_authored_stall
-  let report = stall_report_message(stall: stall)
+  let report = stall_report_message(s: stall)
   // Every conjunct is a CALL whose answer could come back the other way. The three ordering ones ask
   // the sealed machine; the last four ask gunbc.guarantee_stall's own folds about the typed row, which
   // is where the store obligation now lives instead of in a sentence. Together they also keep
