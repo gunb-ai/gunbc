@@ -33,7 +33,7 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, read_host_idleness_over, drain_all_slots_over, drain_all_settled, drain_all_cause, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, read_host_idleness_over, drain_all_slots_over, drain_all_settled, drain_all_cause, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -2068,18 +2068,18 @@ fn runner_host_cap_files_state(subject: RunnerHostFileSubject, context: FleetSsh
 // A UNIT-FILE CHANGE IS PENDING when any observed instance owes a reload, read from its own reload status
 // (never from the lifecycle standing, which a fabric or retirement classification replaces); an instance
 // that could not be read is unknown and counts as pending (an unread unit proves nothing about what a reload would load).
-// systemd reports an instance's NeedDaemonReload for the template's drop-ins too. The answer is LOCATED: one
-// line per unit naming it and which of the two it is, so an operator can act on the unit rather than on a bare flag.
-// An empty list is nothing pending.
-fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation) -> List<String> {
+// systemd reports an instance's NeedDaemonReload for the template's drop-ins too. The answer is LOCATED:
+// the units and which of the two each is, kept typed until the refusal is rendered.
+fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation) -> HostPendingReloads {
   match population {
-    SlotPopulationUnobservable { reason: r } => [concat("the slot population was not observed: ", r)]
-    SlotPopulationObserved { units: us } =>
-      filter(map(us, r => match r.reload {
-        SlotReloadNotPending => ""
-        SlotReloadOwed => join([r.unit as String, " reload=owed (NeedDaemonReload is not no; standing=", runner_slot_unit_standing_wire(standing: r.standing), ")"], "")
-        SlotReloadUnobserved => join([r.unit as String, " reload=unobserved (systemctl show returned no complete block for it; standing=", runner_slot_unit_standing_wire(standing: r.standing), ")"], "")
-      }), l => l != "")
+    SlotPopulationUnobservable { reason: r } => HostPopulationUnobserved { reason: r }
+    SlotPopulationObserved { units: us } => {
+      let owed = map(filter(us, r => match r.reload { SlotReloadNotPending => false SlotReloadOwed => true SlotReloadUnobserved => true }), r => UnitPendingReload {
+        unit: r.unit,
+        kind: match r.reload { SlotReloadUnobserved => PendingReloadUnobserved SlotReloadOwed => PendingReloadOwed SlotReloadNotPending => PendingReloadOwed },
+      })
+      if length(owed) == 0 { HostNoReloadPending } else { HostReloadsPending { units: owed } }
+    }
   }
 }
 
