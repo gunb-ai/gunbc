@@ -5,7 +5,7 @@ import std.optional { Absent, Present }
 import std.algebra { trim }
 import std.measure { ByteSize, byte_size_count }
 import extdeps.systemd { MemoryMax, MemorySwapMax, MemoryHigh, TasksMax, ControlGroup, systemd_unit_property_wire, SystemdUnitProperty }
-import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_mask_argv, systemctl_unmask_argv, systemctl_enable_argv, systemctl_start_argv, systemctl_stop_argv, systemctl_daemon_reload_argv, systemctl_argv_reloads_manager }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv, SystemctlStep, ManagerReloadedImplicitly, ManagerReloadedExplicitly, ManagerNotReloaded, systemctl_mask_step, systemctl_unmask_step, systemctl_enable_step, systemctl_start_step, systemctl_stop_step, systemctl_daemon_reload_step }
 import extdeps.tools.grep { grep_nonempty_lines_in_tree_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
 import extdeps.linux.cgroup_v2_memory {
@@ -204,16 +204,24 @@ type CapFilesState
   | CapFilesDiffer
   | CapFilesUnreadable { cause: String }
 
-// THE STEPS THE BRACKET SENDS, as argv, built by the same constructors the actuator uses: the drain's
-// mask and stop, the activation's unmask, enable and start, and the route's one daemon-reload. Whether
-// any of them reloads the manager is read off the argv (systemctl_argv_reloads_manager), so a pending
+// THE STEPS THE BRACKET SENDS, as typed steps from the same constructors the actuator renders its argv
+// from: the drain's mask and stop, the activation's unmask, enable and start, and the route's one
+// daemon-reload. Whether a step reloads the manager is the effect its constructor declares, so a pending
 // unit-file change is a hazard exactly when a step in the bracket would load it.
-fn host_cap_bracket_steps(unit: NonEmptyStr) -> List<List<String>> {
-  [systemctl_mask_argv(unit: unit), systemctl_stop_argv(unit: unit), systemctl_unmask_argv(unit: unit), systemctl_enable_argv(unit: unit), systemctl_start_argv(unit: unit), systemctl_daemon_reload_argv()]
+fn host_cap_bracket_steps(unit: NonEmptyStr) -> List<SystemctlStep> {
+  [systemctl_mask_step(unit: unit), systemctl_stop_step(unit: unit), systemctl_unmask_step(unit: unit), systemctl_enable_step(unit: unit), systemctl_start_step(unit: unit), systemctl_daemon_reload_step()]
+}
+
+fn host_cap_step_reloads(step: SystemctlStep) -> Bool {
+  match step.effect {
+    ManagerReloadedImplicitly => true
+    ManagerReloadedExplicitly => true
+    ManagerNotReloaded => false
+  }
 }
 
 fn host_cap_bracket_reloads(unit: NonEmptyStr) -> Bool {
-  any(host_cap_bracket_steps(unit: unit), argv => systemctl_argv_reloads_manager(argv: argv))
+  any(host_cap_bracket_steps(unit: unit), step => host_cap_step_reloads(step: step))
 }
 
 // WHEN THE PHASE PROCEEDS (ruling of clever-crane-830, narrow scope): a cap differs AND every

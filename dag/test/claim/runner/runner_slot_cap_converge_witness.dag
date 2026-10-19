@@ -28,6 +28,8 @@ import gunbc.runner.runner_slot_cap_converge {
   CapFilesDiffer,
   CapFilesUnreadable,
   host_cap_bracket_reloads,
+  host_cap_bracket_steps,
+  host_cap_step_reloads,
   SlotCapsStopped,
   SlotCapOutcome,
   SlotCapsLeftInPlace,
@@ -62,7 +64,7 @@ import gunbc.runner.runner_host_file_converge {
   RunnerHostManagerReload,
   RunnerHostCapPhase,
 }
-import extdeps.systemd.systemctl { systemctl_mask_argv, systemctl_unmask_argv, systemctl_enable_argv, systemctl_start_argv, systemctl_stop_argv, systemctl_daemon_reload_argv, systemctl_argv_reloads_manager }
+import extdeps.systemd.systemctl { systemctl_mask_argv, systemctl_unmask_argv, systemctl_enable_argv, systemctl_start_argv, systemctl_stop_argv, systemctl_mask_step, systemctl_unmask_step, systemctl_enable_step, systemctl_start_step, systemctl_stop_step }
 import gunbc.host.host_axis_caps { derived_runner_slot_cap_members, derived_runner_memory_cap_members }
 
 // THE CONTROLS FOR THE SLOT MEMORY-CAP CONVERGE. The decisions are pure over supplied readings (the
@@ -284,14 +286,25 @@ test fn a_ran_but_unsettled_cap_phase_still_bars_the_reload() -> Bool {
 // read off the argv the bracket sends; a start does not, and `--no-reload` is the only thing that turns a
 // mask's reload off. The bracket as built therefore reloads, so a pending file is a hazard.
 test fn the_brackets_mask_unmask_enable_and_reload_steps_reload_the_manager() -> Bool {
-  host_cap_bracket_reloads(unit: unit(n: "01"))
-    && systemctl_argv_reloads_manager(argv: systemctl_mask_argv(unit: unit(n: "01")))
-    && systemctl_argv_reloads_manager(argv: systemctl_unmask_argv(unit: unit(n: "01")))
-    && systemctl_argv_reloads_manager(argv: systemctl_enable_argv(unit: unit(n: "01")))
-    && systemctl_argv_reloads_manager(argv: systemctl_daemon_reload_argv())
-    && !systemctl_argv_reloads_manager(argv: systemctl_start_argv(unit: unit(n: "01")))
-    && !systemctl_argv_reloads_manager(argv: systemctl_stop_argv(unit: unit(n: "01")))
-    && !systemctl_argv_reloads_manager(argv: ["systemctl", "mask", "--no-reload", "actions-runner@srv3-01.service"])
+  let u = unit(n: "01")
+  host_cap_bracket_reloads(unit: u)
+    && host_cap_step_reloads(step: systemctl_mask_step(unit: u))
+    && host_cap_step_reloads(step: systemctl_unmask_step(unit: u))
+    && host_cap_step_reloads(step: systemctl_enable_step(unit: u))
+    && !host_cap_step_reloads(step: systemctl_start_step(unit: u))
+    && !host_cap_step_reloads(step: systemctl_stop_step(unit: u))
+    && length(filter(host_cap_bracket_steps(unit: u), s => host_cap_step_reloads(step: s))) == 4
+}
+
+// Pairing: the typed steps render the SAME argv the actuator's plans send, so the effect table describes
+// the real drain and activation, not a parallel list.
+test fn the_typed_steps_render_the_actuators_argv() -> Bool {
+  let u = unit(n: "01")
+  systemctl_mask_step(unit: u).argv == systemctl_mask_argv(unit: u)
+    && systemctl_unmask_step(unit: u).argv == systemctl_unmask_argv(unit: u)
+    && systemctl_enable_step(unit: u).argv == systemctl_enable_argv(unit: u)
+    && systemctl_start_step(unit: u).argv == systemctl_start_argv(unit: u)
+    && systemctl_stop_step(unit: u).argv == systemctl_stop_argv(unit: u)
 }
 
 // RED (2): a differing cap with a unit-file change pending withholds -- the first slot's mask would load

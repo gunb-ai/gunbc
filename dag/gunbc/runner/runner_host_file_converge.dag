@@ -2042,7 +2042,7 @@ fn runner_host_cap_extras(subject: RunnerHostFileSubject, population: RunnerSlot
 // so a missing, stale or wrong-mode drop-in is a difference even when the live caps match.
 fn runner_host_cap_files_state(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, privilege: RunnerHostPrivilegeStanding) -> CapFilesState {
   let planned = map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: RunnerHostFilesObserveOnly, privilege: privilege, file: f))
-  let refused = filter(map(planned, r => match r.planned.action { HostFileActionRefused { reason: why } => concat(r.planned.path as String, concat(": ", why)) HostFileLeaveInPlace => "" HostFileWrite => "" }), c => c != "")
+  let refused = filter(map(planned, r => match r.planned.action { HostFileActionRefused { reason: why } => concat(r.planned.file.path as String, concat(": ", why)) HostFileLeaveInPlace => "" HostFileWrite => "" }), c => c != "")
   if length(refused) > 0 {
     CapFilesUnreadable { cause: join(refused, "; ") }
   } else if any(planned, r => match r.planned.action { HostFileLeaveInPlace => false HostFileWrite => true HostFileActionRefused { reason: _ } => true }) {
