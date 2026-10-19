@@ -788,13 +788,6 @@ fn srv1_required_retiree_units() -> List<String> {
   }
 }
 
-fn srv1_committed_unit_names() -> List<String> {
-  match committed_slot_identities(host: operator_host_srv1) {
-    CommittedPopulationDerived { members: m } => m |> map(id => runner_slot_unit_name(slot: id) as String)
-    CommittedPopulationWidthUnresolved { host: _, cause: _ } => []
-  }
-}
-
 fn srv1_unit_instance(unit: String) -> String {
   match read_runner_unit_name(observed: unit as NonEmptyStr) {
     RunnerUnitInstance { registration_name: r } => r as String
