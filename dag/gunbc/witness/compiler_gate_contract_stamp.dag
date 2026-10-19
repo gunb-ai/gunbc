@@ -3,7 +3,7 @@ module gunbc.witness.compiler_gate_contract_stamp
 import std.types { Bool, FilePath, List, String }
 import std.optional { Absent, Optional, Present }
 import std.algebra { length, list_append, list_map, string_contains, trim }
-import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.content_hash { ContentHash, content_hash_of_value, lower_hex_16, serialize_content_hash }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
 import gunbc.parse_verdict_schema {
   parse_verdict_reuse_counts_field_labels,
@@ -279,36 +279,27 @@ fn compiler_gate_stamp_matching_entries(entries: List<YamlKeyValue>) -> List<Yam
   filter(entries, kv => kv.key == compiler_gate_contract_stamp_env_key)
 }
 
-// THE ONE SUPPORTED SCALAR FORM. The stamp is the rendering of a content hash, which the renderer emits
-// as exactly sixteen LOWERCASE hex digits and nothing else. Anything else -- a longer run, a shorter run,
-// uppercase, a quote, whitespace, a GitHub expression, or a valid hash with characters added around it --
-// is refused rather than decoded. This is the strict form of the same rule the emitted awk reader
-// enforces; the two are checked against each other by the modelled parity cases, because a reader that
-// accepts a value the OTHER reader rejects is a gate that pairs a subject it should refuse.
+// THE ONE SUPPORTED SCALAR FORM, and it is NOT DEFINED HERE. `lower_hex_16` is the predicate that
+// already backs the `Fnv1a64StructuralDigestHex` carrier in std.content_hash -- the type this stamp IS
+// the rendering of. Re-stating the hex alphabet and the width here would be a second authority free to
+// disagree in silence (DESIGN §6), and the disagreement would be invisible until a subject passed one
+// reader and failed the other.
 //
 // WHY STRICTNESS IS THE POINT AND NOT POLISH. The first version deleted every non-hex character and took
 // the first member, so `XYZ0acdbc124e13bfecXYZ` returned 0acdbc124e13bfec with exit 0 and so did
 // `${{ '0acdbc124e13bfec' }}`. A subject could therefore PASS the guard while its committed workflow
-// carried no contract stamp at all -- which is precisely the class this module exists to close, reopened
-// by the reader meant to close it. Deleting characters is a decoder that invents data; this one does not.
+// carried no contract stamp at all -- the silent arm of the failure mode this module exists to close,
+// reopened by the reader meant to close it. Deleting characters is a decoder that invents data; this one
+// does not.
+// THE WIDTH THE EMITTED READER HAS TO STATE AS A NUMBER. awk carries no type system, so the width of the
+// `lower_hex_16` carrier whose rendering this is must appear as a literal in the program it embeds. It is
+// ONE data row, referenced by both the awk text and the refusal that names it, and
+// `compiler_gate_contract_stamp_literal_width_matches_the_carrier` holds it against the predicate itself
+// -- so a drift between the two is a failed claim, not a silent disagreement.
 data compiler_gate_contract_stamp_literal_length: Int = 16
 
-// Codepoints, compared as NUMBERS: no substring arithmetic, no character deletion, and uppercase fails
-// closed rather than being folded into the accepted set.
-fn compiler_gate_contract_stamp_is_hex_codepoint(c: Int) -> Bool {
-  (c >= 48 && c <= 57) || (c >= 97 && c <= 102)
-}
-
 fn compiler_gate_contract_stamp_is_valid_literal(s: String) -> Bool {
-  if string_length(s: s) != compiler_gate_contract_stamp_literal_length {
-    false
-  } else {
-    fold(
-      chars(s: s),
-      init: true,
-      f: fn(all_ok, c) { all_ok && compiler_gate_contract_stamp_is_hex_codepoint(c: c) }
-    )
-  }
+  lower_hex_16(value: s)
 }
 
 // A SECOND STAMP MEMBER IS UNREADABLE, NOT "THE FIRST ONE WINS". A workflow that declares the stamp
@@ -959,6 +950,61 @@ fn compiler_gate_contract_stamp_evidence_cases() -> List<CompilerGateContractSta
       running: compiler_gate_contract_stamp_running_probe,
       expected_exit: "1",
       expected_finding: "StampAbsent"
+    },
+    // THE FORGED FORMS. Each tree carries a value a permissive reader would decode into the running
+    // stamp, so each is a RED against the specific escape the old gsub allowed -- and, unlike the
+    // controls above, against a tree that WOULD otherwise pair. They run against the emitted guard's own
+    // bytes, not against a shell re-implementation of it, so they exercise the awk that actually ships.
+    // The values are built by the harness from the resolved running stamp (subject `forged:<form>`),
+    // which keeps "the lie is about the value the instruction runs" enforced by construction.
+    CompilerGateContractStampEvidenceCase {
+      label: "RED forged wrapped (chars around the stamp)",
+      subject: SubjectForged { form: ForgedWrapped },
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampUnreadable"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "RED forged expression (\${{ ... }})",
+      subject: SubjectForged { form: ForgedExpression },
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampUnreadable"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "RED forged quoted scalar",
+      subject: SubjectForged { form: ForgedQuoted },
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampUnreadable"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "RED forged truncated (15 digits)",
+      subject: SubjectForged { form: ForgedTruncated },
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampUnreadable"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "RED forged extended (17 digits)",
+      subject: SubjectForged { form: ForgedExtended },
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampUnreadable"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "RED forged uppercased (hex, wrong case)",
+      subject: SubjectForged { form: ForgedUppercased },
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampUnreadable"
+    },
+    CompilerGateContractStampEvidenceCase {
+      label: "RED forged duplicate member (declared twice)",
+      subject: SubjectForged { form: ForgedDuplicate },
+      running: compiler_gate_contract_stamp_running_probe,
+      expected_exit: "1",
+      expected_finding: "StampUnreadable"
     }
   ]
 }
@@ -1332,6 +1378,21 @@ fn compiler_gate_contract_stamp_evidence_subject_text(s: CompilerGateContractSta
     SubjectCommitted => "committed"
     SubjectRewritten => "rewritten"
     SubjectDemoted => "demoted"
+    SubjectForged { form: f } => "forged:" + compiler_gate_contract_stamp_forged_form_text(f: f)
+  }
+}
+
+// THE FORM NAME, likewise as data. The harness matches on this string and refuses an unknown one, so a
+// form added to the type without a harness arm fails loudly instead of being skipped.
+fn compiler_gate_contract_stamp_forged_form_text(f: CompilerGateContractStampForgedForm) -> String {
+  match f {
+    ForgedWrapped => "wrapped"
+    ForgedExpression => "expression"
+    ForgedQuoted => "quoted"
+    ForgedTruncated => "truncated"
+    ForgedExtended => "extended"
+    ForgedUppercased => "uppercased"
+    ForgedDuplicate => "duplicate"
   }
 }
 
