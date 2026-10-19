@@ -84,6 +84,7 @@ fn read_in_place(s: IamBootstrapResource) -> BootstrapSubjectObservation {
     BootstrapPool { pool: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: delta_roster, subject: s)) }
     BootstrapAccount { account: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: delta_roster, subject: s)) }
     BootstrapSecret { secret: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: delta_roster, subject: s)) }
+    BootstrapBucket { bucket: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: delta_roster, subject: s)) }
   } }
 }
 

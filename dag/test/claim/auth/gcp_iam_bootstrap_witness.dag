@@ -406,6 +406,7 @@ test fn every_secret_the_capabilities_stage_binds_is_created_bare() -> Bool {
   let bare = map(iam_bootstrap_bound_secrets(), s => s as String)
   all(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
     BootstrapSecret { secret } => any(bare, s => s == (secret as String))
+    BootstrapBucket { bucket: _ } => true
     BootstrapProject => true
     BootstrapPool { pool: _ } => true
     BootstrapAccount { account: _ } => true
@@ -413,5 +414,5 @@ test fn every_secret_the_capabilities_stage_binds_is_created_bare() -> Bool {
     && count(bare) > 0
     && all(gcp_iam_converge_grant_set_secrets(), g => !any(bare, s => s == (g as String)))
     && !any(bare, s => s == "hetzner-cloud-default-read-api-key")
-    && any(iam_bootstrap_delta_bindings(), d => match d.resource { BootstrapSecret { secret } => (secret as String) == "bmc-mtjade1-gunbc"  BootstrapProject => false  BootstrapPool { pool: _ } => false  BootstrapAccount { account: _ } => false })
+    && any(iam_bootstrap_delta_bindings(), d => match d.resource { BootstrapSecret { secret } => (secret as String) == "bmc-mtjade1-gunbc"  BootstrapProject => false  BootstrapPool { pool: _ } => false  BootstrapAccount { account: _ } => false  BootstrapBucket { bucket: _ } => false })
 }

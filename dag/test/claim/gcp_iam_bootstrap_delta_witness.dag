@@ -41,6 +41,7 @@ fn bound_observation(r: List<IamBootstrapBinding>, s: IamBootstrapResource) -> B
     BootstrapPool { pool: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
     BootstrapAccount { account: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
     BootstrapSecret { secret: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
+    BootstrapBucket { bucket: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
   } }
 }
 

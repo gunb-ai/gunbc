@@ -101,6 +101,7 @@ fn ceremony_cells(ceremony: TrustRootCeremony) -> List<CeremonyCell> {
     OrgAdminAppKeyAccessConverge => as_ceremony_cells(ts: fleet_member_root_cells(grant: org_admin_app_key_ceremony_grant(), ceremony: OrgAdminAppKeyAccessConverge))
     IamBootstrapApply => flat_map(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
       BootstrapSecret { secret } => [CeremonyCell { secret: secret as String, cell: b.cell }]
+      BootstrapBucket { bucket: _ } => []
       BootstrapProject => []
       BootstrapPool { pool: _ } => []
       BootstrapAccount { account: _ } => []

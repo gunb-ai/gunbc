@@ -492,7 +492,7 @@ fn iam_bootstrap_write_policy(resource: IamBootstrapResource, policy: GcpPolicy,
       RestAnswered { answer: _ } => BootstrapPolicyWritten
       RestRefused { refusal } => BootstrapPolicyWriteRefused { refusal: refusal }
     }
-    BootstrapBucket { bucket } => match gcp.Storage.SetBucketIamPolicy(access_token: token, bucket: bucket, policy: policy) {
+    BootstrapBucket { bucket } => match gcp.Storage.SetBucketIamPolicy(access_token: token, bucket: bucket, bindings: policy.bindings, etag: policy.etag, version: policy.version) {
       RestAnswered { answer: _ } => BootstrapPolicyWritten
       RestRefused { refusal } => BootstrapPolicyWriteRefused { refusal: refusal }
     }
