@@ -118,15 +118,14 @@ fn journal_version(m_name: String, generation: String) -> CasSlotObservation<Str
 // (ifGenerationMatch=0) decides it; 412 is the store observing the slot present. A record carries its
 // identity in its object name, so the slot version's content hash is of that name.
 fn journal_mark(bucket: NonEmptyStr, subject: JournalSubject, resource_key: String, consent: String, mark: JournalMark, token: Secret) -> CasOutcome<String> {
-  journal_mark_in_slot(bucket: bucket, subject: subject, resource_key: resource_key, slot: consent, consent: consent, mark: mark, token: token)
+  journal_mark_named(bucket: bucket, name: journal_object_name(subject: subject, resource_key: resource_key, consent: consent, mark: mark), subject: subject, resource_key: resource_key, consent: consent, token: token)
 }
 
-// THE SLOT AND THE CONSENT CAN DIFFER: a record that must be unique per resource lifetime (a pool's first
-// publication) names one slot whatever the consent, and carries the consent in its body, so a concurrent
-// second writer under another digest meets the store's 412 instead of recording its own election.
-fn journal_mark_in_slot(bucket: NonEmptyStr, subject: JournalSubject, resource_key: String, slot: String, consent: String, mark: JournalMark, token: Secret) -> CasOutcome<String> {
+// THE WRITE TAKES ITS OBJECT NAME, it never rebuilds one: a caller whose record must be unique per
+// resource lifetime (a pool's first publication) passes the name its own tested function derives, and
+// the consent rides in the body, so the object written is the object the witness reads.
+fn journal_mark_named(bucket: NonEmptyStr, name: NonEmptyStr, subject: JournalSubject, resource_key: String, consent: String, token: Secret) -> CasOutcome<String> {
   let expected: CasExpectation = ExpectSlotAbsent
-  let name = journal_object_name(subject: subject, resource_key: resource_key, consent: slot, mark: mark)
   match gcp.Storage.InsertObjectIfAbsent(access_token: token, bucket: bucket, object: name, kind: journal_subject_wire(s: subject), subject: resource_key, consent: consent) {
     RestAnswered { answer: m } => match journal_version(m_name: m.name, generation: m.generation) {
       CasObservedReadable { readable: CasReadablePresent { version: v } } => CasCommitted { committed: v }

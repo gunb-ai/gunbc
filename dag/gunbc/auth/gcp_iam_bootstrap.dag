@@ -34,7 +34,7 @@ import gunbc.auth.heal_publisher_provision {
 import gunbc.auth.gcp_iam_bootstrap_delta { BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, bootstrap_delta_over, observe_bootstrap_subject, roster_subjects, subject_not_bootstrapped_text }
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ceremony_trust_root_cells, trust_root_ceremony_entry }
 import extdeps.cloud.gcp.storage
-import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has, journal_object_name, journal_mark_in_slot }
+import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has, journal_object_name, journal_mark_named }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_journal_bucket, iam_bootstrap_journal_bucket_location, iam_bootstrap_journal_bucket_uniform_access, iam_bootstrap_journal_bucket_public_access_prevention,
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
@@ -1182,12 +1182,21 @@ fn iam_bootstrap_initialize_pool_policy(pool: NonEmptyStr, token: Secret) -> Str
 // guard). Bare creates keep a slot per operation: the upstream create is itself 409-exclusive.
 data pool_first_publication_slot: String = "once"
 
+// THE ONE DERIVATION OF A POOL'S JOURNAL OBJECTS: every pool write takes its name from here.
+fn pool_journal_object(pool: NonEmptyStr, mark: JournalMark) -> NonEmptyStr {
+  journal_object_name(subject: JournalPoolFirstPublication, resource_key: iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), consent: pool_first_publication_slot, mark: mark)
+}
+
 fn pool_election_object(pool: NonEmptyStr, consent: String) -> NonEmptyStr {
-  journal_object_name(subject: JournalPoolFirstPublication, resource_key: iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), consent: pool_first_publication_slot, mark: JournalElection)
+  pool_journal_object(pool: pool, mark: JournalElection)
+}
+
+fn pool_journal_write(pool: NonEmptyStr, consent: String, mark: JournalMark, token: Secret) -> JournalMarkOutcome {
+  journal_mark_outcome(o: journal_mark_named(bucket: iam_bootstrap_journal_bucket, name: pool_journal_object(pool: pool, mark: mark), subject: JournalPoolFirstPublication, resource_key: iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), consent: consent, token: token))
 }
 
 fn pool_journal_mark(pool: NonEmptyStr, consent: String, mark: JournalMark, token: Secret) -> Bool {
-  match journal_mark_outcome(o: journal_mark_in_slot(bucket: iam_bootstrap_journal_bucket, subject: JournalPoolFirstPublication, resource_key: iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), slot: pool_first_publication_slot, consent: consent, mark: mark, token: token)) {
+  match pool_journal_write(pool: pool, consent: consent, mark: mark, token: token) {
     JournalMarkRecorded => true  JournalMarkAlreadyPresent => true  JournalMarkRefused { cause: _ } => false
   }
 }
@@ -1231,7 +1240,7 @@ fn iam_bootstrap_publish_initial_pool_policy(pool: NonEmptyStr, cells: List<GcpI
       PoolInitCloseJournal => if all(unresolved, c => pool_journal_mark(pool: pool, consent: c, mark: JournalClosure, token: token)) { PoolPublicationSettled } else { pool_publication_refused(reason: "pool initialized but completion journal failed; recover before continuing") }
       PoolInitPublish => match pool_init_admission(admission: admission, token: token) {
         PoolInitAdmissionRefused { reason } => pool_publication_refused(reason: reason)
-        PoolInitAdmitted => match journal_mark_outcome(o: journal_mark_in_slot(bucket: iam_bootstrap_journal_bucket, subject: JournalPoolFirstPublication, resource_key: pool_key, slot: pool_first_publication_slot, consent: consent, mark: JournalElection, token: token)) {
+        PoolInitAdmitted => match pool_journal_write(pool: pool, consent: consent, mark: JournalElection, token: token) {
           JournalMarkRefused { cause } => pool_publication_refused(reason: concat("pool initialization election could not be recorded; no write: ", cause as String))
           JournalMarkAlreadyPresent => pool_publication_refused(reason: "pool initialization election already taken (once per pool, any consent); a concurrent or earlier publication holds it; recover without another write")
           JournalMarkRecorded => {
