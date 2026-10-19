@@ -1,13 +1,22 @@
 module test.claim.fleet.fleet_host_grant_coverage_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, Int }
 import std.optional { Absent, Present }
 import std.algebra { string_contains }
 import std.content_hash { serialize_content_hash }
 import gunbc.fleet.fleet_converge_scope { FullHost }
 import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FullyApplied, PartiallyApplied }
 import std.algebra { trim }
-import extdeps.sudo.nopasswd_decision { SudoDecisionAdmits, SudoDecisionDenied }
+import extdeps.sudo.nopasswd_decision {
+  SudoDecision,
+  SudoDecisionAdmits,
+  SudoDecisionDenied,
+  SudoDecisionUnobserved,
+  SudoDecisionQuery,
+  sudo_decision_from_run,
+  sudo_decision_binary_absent,
+}
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, process_observation }
 import gunbc.fleet.fleet_host_grant_coverage { InstalledSudoersText }
 import gunbc.fleet.fleet_host_grant_coverage {
   HostGrantObservation,
@@ -206,6 +215,55 @@ test fn a_denied_decision_is_missing_even_when_the_drop_in_names_the_rule() -> B
   let g = witness_grants_as(host: grant_host, login: witness_grant_owner(), decision: SudoDecisionDenied { reason: "overridden" }, installed: InstalledSudoersText { text: join(witness_grant_rendered_lines(host: grant_host), "\n") })
   match grant_admission(grants: g) {
     ApplyAwaitingCapability { capability: c } => string_contains(s: c, pattern: "missing sudoers rule (as ")
+    _ => false
+  }
+}
+
+data witness_query: SudoDecisionQuery = SudoDecisionQuery { runas: "root" as NonEmptyStr, argv: ["/usr/bin/install" as NonEmptyStr, "-d" as NonEmptyStr] }
+
+fn witness_run(code: Int, out: String, err: String) -> SudoDecision {
+  sudo_decision_from_run(query: witness_query, outcome: ProcessRan { observation: process_observation(exit_code: code, stdout: out, stderr: err) })
+}
+
+// THE PURE MAPPING over RECORDED sudo outputs (the one wet exec, sudo's real exit codes and text, is
+// the unpaired gap named in the PR). Non-root-only and overridden-rule both reach sudo as a refusal
+// for `-u root` (exit 1), password-requiring under -n likewise; none of them is read as covered.
+test fn sudo_exit_one_is_denied_for_the_non_root_only_and_overridden_rule() -> Bool {
+  match witness_run(code: 1, out: "", err: "Sorry, user brian is not allowed to execute '/usr/bin/install -d' as root") {
+    SudoDecisionDenied { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn sudo_exit_zero_naming_the_exact_argv_admits() -> Bool {
+  match witness_run(code: 0, out: "/usr/bin/install -d\n", err: "") {
+    SudoDecisionAdmits => true
+    _ => false
+  }
+}
+
+test fn sudo_exit_zero_not_naming_the_argv_is_unobserved_never_admitted() -> Bool {
+  match witness_run(code: 0, out: "/usr/bin/install -d -m 0777\n", err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unexpected_status_and_an_unspawned_sudo_are_unobserved() -> Bool {
+  let other = match witness_run(code: 127, out: "", err: "sudo: not found") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+  let unspawned = match sudo_decision_from_run(query: witness_query, outcome: ProcessNotSpawned { program: "/usr/bin/sudo" as NonEmptyStr, cause: "no such file" as NonEmptyStr }) {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+  other && unspawned
+}
+
+test fn an_absent_binary_is_unobserved_with_its_own_cause_not_a_missing_grant() -> Bool {
+  match sudo_decision_binary_absent(query: witness_query) {
+    SudoDecisionUnobserved { cause: c } => string_contains(s: c as String, pattern: "is not present")
     _ => false
   }
 }
