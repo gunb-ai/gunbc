@@ -7,7 +7,7 @@ import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_bootstrap_model {
   BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
-  iam_bootstrap_capability_bindings, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_resource_key, iam_bootstrap_binding,
+  iam_bootstrap_capability_bindings, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_delta_bindings, iam_bootstrap_resource_key, iam_bootstrap_binding,
   BootstrapSecret, BootstrapProject, BootstrapApplyRole, BootstrapObserveSecret, IamBootstrapBinding,
   iam_bootstrap_identity_federations, iam_bootstrap_bound_secrets, BootstrapPool, BootstrapAccount,
 }
@@ -392,7 +392,10 @@ test fn the_resource_id_syntax_holds_at_its_boundaries() -> Bool {
 }
 
 // The capabilities stage binds a role on every one of these, so the identities stage creates each
-// bare when absent. The two named secrets were absent on 2026-10-14 and would have refused it.
+// bare when absent. It binds ROOT cells only (gunbc#14360 side chat): a grant-set or target secret is
+// a delta subject, created bare by the delta apply (gunbc.auth.gcp_iam_bootstrap_delta_route
+// settle_existence), so it is not the ceremony's to create. The two named secrets (absent on
+// 2026-10-14) are therefore delta secrets now.
 test fn every_secret_the_capabilities_stage_binds_is_created_bare() -> Bool {
   let bare = map(iam_bootstrap_bound_secrets(), s => s as String)
   all(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
@@ -401,7 +404,8 @@ test fn every_secret_the_capabilities_stage_binds_is_created_bare() -> Bool {
     BootstrapPool { pool: _ } => true
     BootstrapAccount { account: _ } => true
   })
-    && all(gcp_iam_converge_grant_set_secrets(), g => any(bare, s => s == (g as String)))
-    && any(bare, s => s == "hetzner-cloud-default-read-api-key")
-    && any(bare, s => s == "bmc-mtjade1-gunbc")
+    && count(bare) > 0
+    && all(gcp_iam_converge_grant_set_secrets(), g => !any(bare, s => s == (g as String)))
+    && !any(bare, s => s == "hetzner-cloud-default-read-api-key")
+    && any(iam_bootstrap_delta_bindings(), d => match d.resource { BootstrapSecret { secret } => (secret as String) == "bmc-mtjade1-gunbc"  BootstrapProject => false  BootstrapPool { pool: _ } => false  BootstrapAccount { account: _ } => false })
 }
