@@ -2,6 +2,7 @@ module gunbc.site.gunb_ai_css
 
 import std.types { String, Int, List, Bool }
 import std.optional { Absent, Present }
+import std.measure { degree_count, percent_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.render_repeat_string_bootstrap { repeat_string }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -9,7 +10,7 @@ import gunbc.site.markup { page_render_refusal_prefix }
 import extdeps.languages.css.values {
   CssLengthUnit, Rem, Ch, CssDecimalLength, css_decimal_length_wire, css_hsl_wire,
   CssFontStack, CssFontFamily, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif,
-  GenericMonospace, css_font_stack_wire_double_quoted,
+  GenericMonospace, css_font_stack_wire, DoubleQuote,
 }
 import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_property_wire }
 import extdeps.languages.css.selectors { SelectorSubject, root_selector, selector_subject_wire }
@@ -68,11 +69,11 @@ type SheetEntry
   | EntryGap { blank_lines: Int }
 
 fn sheet_hue(hue: HueDegrees) -> SheetDecl {
-  SheetDecl { property: CustomProperty { name: hue.name }, value: ValueNumber { n: hue.degrees } }
+  SheetDecl { property: CustomProperty { name: hue.name }, value: ValueNumber { n: 0 + degree_count(d: hue.degrees) } }
 }
 
 fn sheet_percentage(parameter: PercentParameter) -> SheetDecl {
-  SheetDecl { property: CustomProperty { name: parameter.name }, value: ValuePercent { n: parameter.percent } }
+  SheetDecl { property: CustomProperty { name: parameter.name }, value: ValuePercent { n: 0 + percent_count(p: parameter.percent) } }
 }
 
 fn sheet_live_color(token: LiveColorToken) -> SheetDecl {
@@ -184,7 +185,7 @@ fn value_wire(v: SheetValue) -> String {
     ValueNumber { n: n } => to_string(n)
     ValuePercent { n: n } => join([to_string(n), "%"], "")
     ValueLength { length: l } => css_decimal_length_wire(l: l)
-    ValueFonts { stack: s } => css_font_stack_wire_double_quoted(s: s)
+    ValueFonts { stack: s } => css_font_stack_wire(s: s, quote: DoubleQuote)
     ValueLiveColor { token: t } => css_hsl_wire(c: live_token_css(t: t))
   }
 }

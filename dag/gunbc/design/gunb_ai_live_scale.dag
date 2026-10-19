@@ -6,7 +6,7 @@ import extdeps.languages.css.values {
   CssFontStack, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif, GenericMonospace,
 }
 import std.optional { Optional, Absent, Present }
-import std.error_primitives { pure_dag_seam_unreachable_string }
+import std.error_primitives { pure_dag_seam_unreachable_string, pure_dag_seam_unreachable }
 import gunbc.design.scale { ScaleToken, ScaleValue, LengthValue, FontStackValue, named_length_token, measure_prose }
 
 // THE LIVE MEASURES AND TYPE FAMILIES, AS THE SERVED SHEET STATES THEM. Single authority for the
@@ -22,7 +22,8 @@ type LiveMeasure {
   length: CssDecimalLength
 }
 
-data root_font_size_px: Int = 16
+// The browser-default root font size (css-fonts-4 'medium' = 16px), the px a rem denotes.
+data css_default_root_font_size: CssDecimalLength = CssDecimalLength { milli: 16000, unit: Px }
 
 data live_measure_page: LiveMeasure = LiveMeasure { name: "measure-page", length: CssDecimalLength { milli: 56000, unit: Rem } }
 data live_measure_wide: LiveMeasure = LiveMeasure { name: "measure-wide", length: CssDecimalLength { milli: 62000, unit: Rem } }
@@ -67,7 +68,7 @@ fn whole_count_length(thousandths: Int, unit: CssLengthUnit) -> CssLength? {
 
 fn live_measure_scale_length(m: LiveMeasure) -> CssLength? {
   match m.length.unit {
-    Rem => whole_count_length(thousandths: m.length.milli * root_font_size_px, unit: Px)
+    Rem => whole_count_length(thousandths: m.length.milli * css_default_root_font_size.milli / 1000, unit: Px)
     Ch => whole_count_length(thousandths: m.length.milli, unit: Ch)
     Px => whole_count_length(thousandths: m.length.milli, unit: Px)
     Percent => Absent
@@ -78,17 +79,23 @@ fn live_measure_scale_length(m: LiveMeasure) -> CssLength? {
 // the reason. live_scale_token reads this roster for every token it builds: a token either matches a
 // departure row or derives from its live value, and a token that is neither (a fractional pixel with
 // no row) refuses at the divergent seam instead of rounding.
+// Why a token departs from its live value: the cause is a variant, not prose.
+type LiveDepartureCause
+  = FractionalPixelRoundedToWhole
+  | SharedWorkspaceScaleRow
+  | WebFontNotShipped
+
 type LiveScaleDeparture {
   live_name: String
   token: ScaleToken
-  reason: String
+  cause: LiveDepartureCause
 }
 
 data live_scale_departures: List<LiveScaleDeparture> = [
-  LiveScaleDeparture { live_name: "gap-xs", token: named_length_token(name: "gap-xs", px: 6), reason: "0.4rem is 6.4px; the token has been 6px since the tokens landed and the site sheet rounds the live fractional-pixel gap to whole pixels" },
-  LiveScaleDeparture { live_name: "gap-sm", token: named_length_token(name: "gap-sm", px: 14), reason: "0.85rem is 13.6px; the token has been 14px since the tokens landed" },
-  LiveScaleDeparture { live_name: "measure-prose", token: measure_prose, reason: "the live 42rem prose measure is a different fact from gunbc.design.scale.measure_prose (80ch), which the workspace sites share; the token consumes the shared row" },
-  LiveScaleDeparture { live_name: "font-sans", token: ScaleToken { name: "font-body", value: FontStackValue { stack: CssFontStack { families: [GenericFamily { kind: GenericSystemUi }, GenericFamily { kind: GenericSansSerif }] } } }, reason: "the live font-sans stack leads with the Noto Sans web font; the token is the system-only stack the review surface renders (no web fonts shipped)" },
+  LiveScaleDeparture { live_name: "gap-xs", token: named_length_token(name: "gap-xs", px: 6), cause: FractionalPixelRoundedToWhole },
+  LiveScaleDeparture { live_name: "gap-sm", token: named_length_token(name: "gap-sm", px: 14), cause: FractionalPixelRoundedToWhole },
+  LiveScaleDeparture { live_name: "measure-prose", token: measure_prose, cause: SharedWorkspaceScaleRow },
+  LiveScaleDeparture { live_name: "font-sans", token: ScaleToken { name: "font-body", value: FontStackValue { stack: CssFontStack { families: [GenericFamily { kind: GenericSystemUi }, GenericFamily { kind: GenericSansSerif }] } } }, cause: WebFontNotShipped },
 ]
 
 fn live_scale_departure_for(live_name: String, token_name: String) -> List<LiveScaleDeparture> {
@@ -104,7 +111,7 @@ fn live_scale_token(name: String, m: LiveMeasure) -> ScaleToken {
     Present { value: t } => t
     Absent => match live_measure_scale_length(m: m) {
       Present { value: l } => ScaleToken { name: name, value: LengthValue { length: l } }
-      Absent => ScaleToken { name: pure_dag_seam_unreachable_string(), value: LengthValue { length: css_px(n: 0) } }
+      Absent => ScaleToken { name: pure_dag_seam_unreachable_string(), value: LengthValue { length: css_px(n: pure_dag_seam_unreachable()) } }
     }
   }
 }

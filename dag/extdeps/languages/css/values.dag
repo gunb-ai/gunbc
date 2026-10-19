@@ -97,19 +97,20 @@ type CssFontFamily
   = NamedFamily { name: String }
   | GenericFamily { kind: CssGenericFamily }
 
-fn css_font_family_wire(f: CssFontFamily) -> String {
-  match f {
-    NamedFamily { name: n } => join(["'", n, "'"], "")
-    GenericFamily { kind: g } => css_generic_family_token(g: g)
+// A <family-name> may be written as a string with either quote (css-syntax-3 §4.3.5 string tokens);
+// the quote is the one parameter of the spelling. The served stylesheet uses double quotes.
+type CssStringQuote = SingleQuote | DoubleQuote
+
+fn css_string_quote_char(q: CssStringQuote) -> String {
+  match q {
+    SingleQuote => "'"
+    DoubleQuote => "\""
   }
 }
 
-// A <family-name> may be written as a string with either quote (css-syntax-3 §4.3.5 string tokens);
-// the single-quoted spelling above is this repository's canonical one, and the double-quoted
-// spelling below is the same family. The served stylesheet uses double quotes.
-fn css_font_family_wire_double_quoted(f: CssFontFamily) -> String {
+fn css_font_family_wire(f: CssFontFamily, quote: CssStringQuote) -> String {
   match f {
-    NamedFamily { name: n } => join(["\"", n, "\""], "")
+    NamedFamily { name: n } => join([css_string_quote_char(q: quote), n, css_string_quote_char(q: quote)], "")
     GenericFamily { kind: g } => css_generic_family_token(g: g)
   }
 }
@@ -118,12 +119,8 @@ type CssFontStack {
   families: List<CssFontFamily>
 }
 
-fn css_font_stack_wire(s: CssFontStack) -> String {
-  join(map(s.families, f => css_font_family_wire(f: f)), ", ")
-}
-
-fn css_font_stack_wire_double_quoted(s: CssFontStack) -> String {
-  join(map(s.families, f => css_font_family_wire_double_quoted(f: f)), ", ")
+fn css_font_stack_wire(s: CssFontStack, quote: CssStringQuote) -> String {
+  join(map(s.families, f => css_font_family_wire(f: f, quote: quote)), ", ")
 }
 
 // <var> = var( <custom-property-name> , <declaration-value>? ) — CSS Values and Units Level 4
