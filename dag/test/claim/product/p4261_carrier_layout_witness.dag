@@ -257,6 +257,10 @@ import product.p4261_carrier_layout {
   e1_q301_lead_b,
   e1_q300_lone_lead,
   e1_q300_lead_a,
+  e1_q301_resistor_near,
+  e1_q301_resistor_far,
+  e1_route_near_u2,
+  e1_route_toward_j1,
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
@@ -1500,7 +1504,8 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
 // wire and the back cluster's P5 to P7 are one node no reading joins to the lead; the cluster's P10 is
 // ground, its P9 neither ground nor the wire's, none of its other pads is VDD's or the input's, and
 // Q301's lone lead is on the wire's node; Q301's and Q300's lead a are ground, and Q301's lead b is
-// Q300's lone lead, neither ground nor the wire's. The K1 renders its own, and the K1 with nothing
+// Q300's lone lead, neither ground nor the wire's; the resistor beside Q301 joins lead b at its nearer
+// end, and its far end joins the traced point near U2_P5 but only links, at about 2 kohm, beyond it. The K1 renders its own, and the K1 with nothing
 // measured renders none.
 test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
   let net = board_netlist(b: e1_measured)
@@ -1522,6 +1527,8 @@ test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
     && one_node(net: net, a: e1_q301_lead_a, b: e1_ground_ref) && one_node(net: net, a: e1_q300_lead_a, b: e1_ground_ref)
     && one_node(net: net, a: e1_q301_lead_b, b: e1_q300_lone_lead) && !one_node(net: net, a: e1_q301_lead_b, b: e1_ground_ref)
     && !one_node(net: net, a: e1_q301_lead_b, b: e1_w4_end)
+    && one_node(net: net, a: e1_q301_resistor_near, b: e1_q301_lead_b) && !one_node(net: net, a: e1_q301_resistor_far, b: e1_q301_lead_b)
+    && one_node(net: net, a: e1_q301_resistor_far, b: e1_route_near_u2) && !one_node(net: net, a: e1_q301_resistor_far, b: e1_route_toward_j1)
     && count(filter(net.links, l => !is_between(l: l))) == 0
     && carrier_input_reading(layout: p4261_e1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: p4261_k1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
