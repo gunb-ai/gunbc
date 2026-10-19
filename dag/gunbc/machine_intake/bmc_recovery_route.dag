@@ -3141,9 +3141,12 @@ test fn a_capture_band_that_refuses_to_construct_is_not_reported_as_an_inversion
     // stop: the ordering never happened, so nothing says the node came after the reading.
     ChannelRefused { reason: reason } =>
       match reason {
-        // the mint's own words have to be CARRIED, not dropped: a refusal that names the side and loses
-        // the sentence std.interval wrote about the pair is half a diagnosis
-        AbsenceEarlierCaptureBandRefuses { reason: r } => string_length(s: r) > 0
+        // THE MINT'S OWN WORDS, NOT A PARAPHRASE. This is an assertion about CONTENT and it can go red:
+        // std.interval's refusal says "interval endpoints reversed: low exceeds high", and a fold that
+        // substituted its own short label would still be non-empty, so length would not notice. Checking
+        // the sentence is what keeps the refusal traceable to the mint that refused.
+        AbsenceEarlierCaptureBandRefuses { reason: r } =>
+          string_contains(s: r, pattern: "low exceeds high")
         _ => false
       }
     ChannelAdmits => false
@@ -3165,7 +3168,7 @@ test fn a_capture_band_that_refuses_to_construct_is_not_reported_as_an_inversion
     ) {
       ChannelRefused { reason: reason } =>
         match reason {
-          AbsenceLaterCaptureBandRefuses { reason: _ } => true
+          AbsenceLaterCaptureBandRefuses { reason: r } => string_contains(s: r, pattern: "low exceeds high")
           _ => false
         }
       ChannelAdmits => false
