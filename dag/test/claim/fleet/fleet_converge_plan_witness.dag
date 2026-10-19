@@ -2799,7 +2799,7 @@ test fn absent_evidence_and_observed_pending_are_different_subjects() -> Bool {
 // ── A REFUSED HOST REACHES NO AXIS, NOT MERELY NO SLOT PLAN ───────────────────────────────────
 //
 // Routing srv2 away from membership reconciliation repaired ONE axis. The cap axis took no host at
-// all -- `fleet_converge_desired_caps` is fleet-wide -- so a refused host still reconciled desired
+// all -- `derived_runner_slot_cap_members` is fleet-wide -- so a refused host still reconciled desired
 // caps against its observed ones and proposed cap writes for the machine whose width cannot be
 // derived. These rows hold both axes to the same admission.
 test fn a_refused_host_produces_no_cap_plan() -> Bool {

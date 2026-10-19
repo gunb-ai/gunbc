@@ -360,6 +360,7 @@ import extdeps.languages.rust.emit {
   rust_struct_derives,
   rust_struct_derives_copy
 }
+import std.host_text { chars }
 
 type RustIntKind
   = Signed
@@ -2318,7 +2319,7 @@ fn rust_target_model() -> TargetModel {
 fn rust_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 
