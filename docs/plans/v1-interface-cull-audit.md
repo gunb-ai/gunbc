@@ -178,6 +178,122 @@ a structural `(Int, Int, Int)`, not a zero-padded string encoding of one.
 These rows overlap, because a frame is inclusive of its callees. The next dive is inside
 `infer_call_arguments_generic_pass`.
 
+#### P0.7 findings — the hot-frame split (Lane D, diagnosis only)
+
+Method: `perf record -F 299 -g --call-graph fp -p <pid>` on srv1 (aarch64, kernel
+`6.8.0-147-generic`) against a release `gunbc` built with
+release build from `891198514b8` in a private `CARGO_TARGET_DIR` with
+`RUSTFLAGS="-C force-frame-pointers=yes"` (confirmed from the crate fingerprints; frame pointers
+are what makes `--call-graph fp` usable — `eh_frame` unwinding was not relied on), compiling the
+`graphiti-seed-snapshot.json` seed (230 files emitted, 4,485 advisory diagnostics, 0 blocking
+errors; the run's phase lines are frontend 55 s, normalize 807 ms, **reconcile 86 s**, analyses
+835 ms, emit 3 min). The `perf record` cmdline is recorded in the capture's header, so this profile
+is the same artifact §3a's reconcile table came from and is directly comparable to it.
+Frames are aggregated **by symbol** — a symbol's lines are distinct return addresses under
+`--call-graph fp`, so counting them apart splits one function across many rows and understates
+it. Percentages below are of the chain-attributed reconcile subtree; seconds apply the 86 s
+reconcile phase line. Chain attribution reproduces every §3a row above to ~0.1 pp
+(58.10 / 24.15 / 22.39 / 15.32 / 13.71 / 12.26 / 7.12 / 3.72 / ~3), which is the check that the
+aggregation is right; a naive phase-window split by sample timestamp does not reproduce them and
+should not be used.
+
+**Two definitions, used consistently below.** *inclusive* = a sample counts toward a frame if the
+frame appears anywhere on its chain (this is how every §3a row above is measured). *exclusive
+child* = a sample counts toward exactly one frame: the nearest named frame below a given parent on
+the chain, so the numbers under a parent partition that parent's inclusive share.
+
+Inside the pass (58.10% inclusive), its exclusive children:
+
+| of reconcile | ~s | exclusive child of the pass | what it is |
+|---|---|---|---|
+| 7.32% | 6.3 | `v1.rt::chars_to_string` | char-code → string materialisation (a leaf; its own caller is `source_text_at` 6.34%) |
+| 6.74% | 5.8 | `v1.std.core::authored_name_at` | name re-materialisation (15.47% of its 22.39% inclusive sits in-fold) |
+| 3.54% | 3.0 | `infer_env::alias_rhs_of_declaration` | alias right-hand side pulled per formal |
+| 3.35% | 2.9 | `infer_resolve::resolve_node_bounded` | bounded re-resolution demanded per formal |
+| 3.24% | 2.8 | `v1.std.core::module_path_segments` | module path split on the hot path |
+| 1.61% | 1.4 | `v1.std.core::kernel_span` | span fetch |
+| 1.31% | 1.1 | `infer::infer_expr_body` | nested inference re-entered from the pass |
+| 1.28% | 1.1 | `v1.std.core::qualified_last_segment` | last name segment |
+| 1.09% | 0.9 | `infer_resolve::expand_nominal_alias_rhs` | alias expansion demanded per formal |
+| 1.03% | 0.9 | `infer::substitute_generics_apply` | substitution |
+
+These ten partition 30.5 of the pass's 58.10; the rest is a long tail of the same shape. Two
+observations carry the weight. First, **the top four exclusive children are name/span/text
+materialisation and alias re-resolution — not generic solving.** Second, the text classifier
+`infer_env::text_representation_by_identity` is 13.71% inclusive (12.89% of it in-fold, so it is
+already inside the pass's 58%) and is a recursive tree walk whose own self time is 0.66%: the cost
+is the walk plus what it drives into `chars_to_string`.
+
+Generic solving proper is **not** what the 58% buys. Inclusive: `unify_generics` 0.41% (0.4 s),
+`unify_callable_generics` 0.10%, `split_sig_params` 0.65% (0.52% in-fold),
+`param_node_type_expr` 0.07%, `select_formal_for_call_argument` 2.03% (1.74% in-fold),
+`substitute_generics` 2.51% (2.29% in-fold). Summed, all of it is **under 6% of reconcile**, and
+the pure-unification pair is under 0.6%. P0.7's premise is confirmed by measurement: the pass's
+58% is name/text materialisation, alias re-resolution and nested inference.
+
+**Repeated argument-to-parameter matching — answer: yes, structurally, and once measurably
+quadratically.** Inside the pass, `select_formal_for_call_argument` is called once per argument
+(`12147`) and its result is then destructured **five** separate times (`12154, 12169, 12177, 12186,
+12205`, each `(*formal_selection.clone()).clone()`) to pull raw / declared-context / has-formal /
+conformance-type / declaration-bound. The same selection is then **recomputed** by the duplicate
+check: `direct_call_shape_diags` re-runs it per argument (`9578`) and, for each argument, re-runs
+it again over every *earlier* argument to decide `earlier_same_formal` (`9581`) — quadratic in
+argument count, with the self-recursive edge visible in the profile. Measured:
+`select_formal_for_call_argument` 2.03% inclusive / 0.65% self; `direct_call_shape_diags` 3.04%
+inclusive. `formal_code_point_view` is reached from the selection path at 8.20% inclusive
+(see D.7). Small in absolute terms — a §2 defect to clean up, not a term to scope as a repair.
+
+**Direct-call diagnostics split by call site.** `direct_call_arg_mismatch_diags` is 15.32%
+inclusive, but it is not one producer: **11.19% is nested inside the generic pass and 4.14% (3.6 s)
+runs directly from `infer_expr_body`** — a per-call-expression check outside the pass. Its own
+exclusive children are the same shape (`resolve_node_bounded` 2.30%, `authored_name_at` 1.85%,
+`chars_to_string` 1.77%, `module_path_segments` 1.22%).
+
+**Round 2 is not a uniform tax.** The two calls in `infer_expr_body` (lines 13896 and 13909) are
+separable by return address (`+0x12e84` = round 1, `+0x12f74` = round 2; both `bl` targets are the
+pass, confirmed by disassembly). Round 1 is 37.67% (32.4 s), round 2 is 20.38% (17.5 s). The
+round-2 predicate `call_needs_generic_rebinding_pass` measures 0.07% / 0.1 s, so round 2 is already
+conditional and its 17.5 s is work the predicate decided is needed — consistent with §5b.2 and with
+item 4's "do not attempt reuse".
+
+**The open lead (§5b.2, ~29 s outside both argument folds) is attributed.** Chain method: inside
+either fold 62.23% (53.5 s); **outside both 37.77% = 32.5 s**, so the ~29 s estimate is right in
+kind and slightly low in amount. Every one of those samples sits under
+`reconcile → compile_to_resolved_with_options → typecheck_module`, and the nearest named frame on
+the root side under `typecheck_module` partitions the bucket:
+
+| of reconcile | ~s | subtree owner | |
+|---|---|---|---|
+| 19.50% | 16.8 | `infer::infer_items` | per-item body inference outside the folds (81.81% inclusive overall; the 62.23% in-fold part is the pass) |
+| 7.12% | 6.1 | `infer::build_type_env` | per-module environment build — **0.00% in-fold** |
+| 4.61% | 4.0 | no `typecheck_module` frame on the chain | chains truncated at the frame-pointer walk depth (20–25 frames), so the owning child is unrecovered; leaves are `[unknown]` libc 1.55%, `bitmaps::Iter::next` 0.39%, `__aarch64_ldadd8_rel`/`_relax` 0.42% and `malloc` 0.21% — Rc/HAMT atomic and allocator traffic |
+| 3.72% | 3.2 | `infer::build_module_context` | per-module context build — **0.00% in-fold**; §3b's top suspect, measured small |
+| 1.44% | 1.2 | `infer::analyze_item` | |
+| 0.70% | 0.6 | `infer::populate_output_provenance` | |
+| 0.24% | 0.2 | `infer::ground_kernel_views` | |
+| 0.28% | 0.2 | `build_module_interface` + `refresh_direct_service_name` + tail | |
+
+By attributed **self** time, the same bucket is dominated by the leaf pair and the Rc-map
+machinery: `chars_to_string` 3.70% (3.2 s), `authored_name_at` 2.99% (2.6 s),
+`rt::rc_map_insert` 2.09% (1.8 s), `resolve_node_bounded` 1.96% (1.7 s), `rt::rc_map_merge` 1.91%
+(1.6 s), `infer_env::guarded_union_str_bindings_into_acc` 1.12%, `infer_env::union_deps_map_into_acc`
+1.10%, `sigs::topo_resolve_loop` 1.07%, then a tail in the 0.3–0.8% band.
+
+**Answer for the lead, stated plainly:** it is **not** a second argument fold and not one hidden
+defect. It splits three ways — (1) body inference reached outside the folds under `infer_items`
+(~16.8 s), (2) **per-module setup that no fold explains**: `build_type_env` 6.1 s +
+`build_module_context` 3.2 s, both with literally zero overlap with the folds (9.3 s), (3) name and
+Rc materialisation at the leaves (`chars_to_string` + `authored_name_at` ≈ 5.8 s out-of-fold, and
+the `rc_map_*` / `union_*_into_acc` family ≈ 5.3 s). The only large, cleanly-owned, removable term
+in it is (2), and that is exactly D.8.
+
+**Two corrections to §3a rows, both load-bearing for later lanes.**
+`build_type_env` (7.12%) and `build_module_context` (3.72%) have **zero** overlap with the argument
+folds (0.00% in-fold), so unlike every other row in that table their cost is per-module, not
+per-call-site — they are pure setup. And `rc_map_insert` / `rc_map_merge` / `rc_empty_map`
+(2.64% / 1.91% / 1.20% inclusive, all self) are mostly out-of-fold (2.09% / 1.91% / 0.74%), which
+supports §3b's withdrawal of the emitter-clone reading of them.
+
 ### Emit (225 s)
 | inclusive | ~s | producer |
 |---|---|---|
@@ -426,6 +542,99 @@ A lane's pin is its §5 brief **plus** its amendment below, both read at this co
   6. `resolve_nominal_alias_rhs` builds a second transformed value only to read its diagnostics.
   7. `formal_code_point_view` classifies text twice per call.
   8. `build_type_env` rebuilds kernel indices, interning, Optional/Bool and the variant index per module. Find one prepared kernel context per equivalent view. The ordered cycle-key list is also computed three times.
+
+#### Lane D's findings on the §5a-D subitems (P0.7 diagnosis; no code changed)
+
+All eight were read in source at `891198514b8` (both files byte-identical to this branch's
+`src/v1/stage0/src/`) and measured on the profile described in §3a's P0.7 findings. Two of the
+eight as written are **not** what the code does, and three that are real have measured cost below
+one second, which changes what they are worth scoping as. None of these numbers justify a repair
+on their own except D.5 and D.8. Aggregate counts only, per the brief.
+
+| item | claim | verdict | measured (incl, of reconcile) |
+|---|---|---|---|
+| D.1 | empty roster still walks type trees | **real, but the framing is wrong** | 0.41% / 0.4 s |
+| D.2 | correspondence rebuilt across rounds and planning | **real** | 2.03% / 1.7 s (1.74% in-fold) |
+| D.3 | `split_sig_params` classifies twice | **real** | 0.65% / 0.6 s (0.52% in-fold) |
+| D.4 | second-round demands | **diagnosed; no reuse** | round 1 37.67% (32.4 s) vs round 2 20.38% (17.5 s) |
+| D.5 | `structural` built then discarded | **real, and large** | 24.07% / 20.7 s frame, 8.86% (7.6 s) reached out-of-fold |
+| D.6 | second transformed value read only for diagnostics | **real in source, no measured cost** | 0.00% — inlined, cold path |
+| D.7 | text classified twice per call | **real** | 8.20% / 7.1 s, all in-fold |
+| D.8 | per-module kernel/variant rebuild; cycle keys thrice | **real** | `build_type_env` 7.12% / 6.1 s, 0% in-fold |
+
+- **D.1 — confirmed real, and worth less than it looks.** `unify_generics`
+  (`v1_compiler_infer.rs:24997`) has **no** guard on `generic_names` anywhere in its body: the
+  only length tests are on `formal.children`/`actual.children` (25016, 25021, 25054). With an
+  empty roster the loop at 25029 iterates nothing, so `__found` stays `false` and the function
+  still descends — the Arrow arm recurses through `unify_callable_generics` (25046) and the
+  single-child arm requeues both children (25060), returning `acc` unmodified on every exit path.
+  So the walk is a genuine no-op and an early return at that boundary is correct. **But** its total
+  measured cost is 0.41% of reconcile (0.4 s), all of it in-fold, from 105 samples. Do not scope
+  it as a performance item; fold it into whatever already touches this function.
+- **D.2 — confirmed, and the count is concrete.** Inside the pass, `select_formal_for_call_argument`
+  is called once per argument (`12147`) and the result is then destructured **five** separate times
+  (`12154, 12169, 12177, 12186, 12205`, each `(*formal_selection.clone()).clone()`) to pull out
+  raw / declared-context / has-formal / conformance-type / declaration-bound. The same selection is
+  **recomputed** by the duplicate check: `direct_call_shape_diags` re-runs it per argument
+  (`9578`) and then, for each argument, re-runs it again over every *earlier* argument to decide
+  `earlier_same_formal` (`9581`) — quadratic in argument count, with a self-recursive edge visible
+  in the profile. Frame inclusive 2.03% / 1.7 s (1.74% in-fold); its measured immediate callers are
+  `call_argument_selects_formal_index` 0.73%, `direct_call_shape_diags` 0.64%, the cloned-iterator
+  fold of that quadratic loop 0.45%, and itself 0.21%. `formal_code_point_view` is reached from the
+  selection path at 8.20% inclusive. Keep the two identity kinds and the two duplicate checks
+  distinct as the amendment says — the measured 2.03% does not justify merging them.
+- **D.3 — confirmed, as written (twice).** `split_sig_params` (`24921`) runs `param_is_generic_decl`
+  over the same `params` list in two separate full loops — once negated to keep non-generic formals
+  (24929) and once positively to build `generic_names` (24940) — so every parameter is classified
+  twice, each time re-entering `param_node_type_expr` / `param_node_name_at` / `type_node_label` /
+  `is_type_variable` (24977–24986). Cost is 0.65% / 0.6 s.
+- **D.4 — diagnosed, no reuse attempted** (per §5b.2 and quiet-hawk-370's four negatives). The
+  two rounds are separable by return address in `infer_expr_body`: `+0x12e84` (line 13896) = round
+  1 = **37.67% / 32.4 s**, `+0x12f74` (line 13909) = round 2 = **20.38% / 17.5 s**, verified by
+  disassembly (both `bl` targets are `infer_call_arguments_generic_pass`). Round 2 is gated by
+  `call_needs_generic_rebinding_pass` (0.07% / 0.1 s, 18 samples), so it is **already conditional**
+  and the 17.5 s is work the predicate decided is needed — the demand that changes between rounds
+  is the substitution map (`st.subst`, threaded at 12286–12293). Nothing here supports cutting the
+  round; **do not attempt reuse**, as narrowed.
+- **D.5 — real, and the only one of the eight with a large measured frame.**
+  `expand_nominal_alias_rhs_by_name` (`v1_compiler_infer_resolve.rs:480`) computes `structural`
+  eagerly through up to two `resolve_node_bounded` walks (490–524) and then discards it on the
+  ordinary arms, which return only `resolved` (551, 554) — the `structural` binding is read on no
+  path there. Frame inclusive 24.07% / 20.7 s, of which **8.86% / 7.6 s is reached outside the
+  argument folds** (recursive self-calls), so this is not folded into the pass's 58%. Highest
+  value-to-risk ratio of the eight: the demand is provably unobservable on those arms.
+- **D.6 — real in source, no measured cost.** `resolve_nominal_alias_rhs` (`1062`) builds a second
+  transformed value and then reads **only** `validation.diagnostics` from it (1116–1123);
+  `validation.resolved` is discarded at every use, so the value is thrown away. But the function has
+  **zero** samples under its own name: it is inlined at both call sites and reached from
+  `resolve_item_types` (`4446`) once per *parametric type-alias declaration*, not per argument or
+  per formal. It is a clean §2 defect to remove, and must **not** be scoped as a performance item —
+  there is nothing measurable to win.
+- **D.7 — real, exactly as described.** `formal_code_point_view` (`12086`) classifies the same
+  `declared_type` twice per call: once at 12087 (`declaration_reading_of_type_node`) and again at
+  12110 inside the `.str` arm. 8.20% / 7.1 s inclusive, **all of it inside the pass** — so it is
+  already counted in the 58%, and any pass-level repair subsumes it.
+- **D.8 — real, and the answer to the open lead.** `build_type_env` (`28278`) is called once per
+  module from `typecheck_module` (`32169`; `build_module_context` at `32238`), so everything it
+  rebuilds is rebuilt 230 times, and it rebuilds structure that does not depend on the module:
+  `seed_kernel_intern_table` (`28338`), the kernel Optional and Bool nodes
+  (`kernel_optional_type_node` `28420`, `kernel_bool_type_node` `28440`), and
+  `compiler_recursive_types()` twice (`28449`, `28461`) plus `compiler_recursive_name_set()` twice
+  (`28691`, `28742`). The ordered cycle-key list is computed **three times** as written:
+  `v1_rt::sorted_map_keys(&cycle_set_str)` at `28746`, `28758` and `28773`. The two
+  `build_unit_variant_index` calls are **not** a duplicate as this item implied — `28492` builds
+  over the kernel string bindings with no parents, and `28914` builds over the module's own
+  bindings with its parents, which is different work; keep both. Measured: `build_type_env` 7.12% /
+  6.1 s and `build_module_context` 3.72% / 3.2 s, both with **0.00% inside the argument folds** —
+  they are pure per-module setup, which is why the folds' 62% neither contains nor explains them.
+  A single prepared kernel context per equivalent view removes the kernel-independent part of the
+  6.1 s, which is the largest cleanly-owned term in the open lead.
+
+**What Lane D recommends wave 1 take from this.** D.5 and D.8 are the two with enough measured
+mass to matter (7.6 s out-of-fold and 6.1 s out-of-fold respectively, both with zero overlap with
+the argument folds). D.1, D.2, D.3, D.6 and D.7 are genuine §2 defects whose measured cost is
+sub-second to ~2 s — carry them as cleanups inside a PR that already touches their file, not as
+separate performance items. D.4 is closed: diagnosed, no reuse.
 - **E.** Reuse the existing `std.graph` `CallGraphAdjacencyViews`, which builds forward and reverse together, across reach queries. The caller already deduplicates targets. Preserve direction, start-node exclusion, and cycle/refusal behavior.
 - **F.** Single-occurrence names are not enough. Compute reachability from the declared roots (CLI, interpreter, test/claim, roster, script, host-dispatch, qualified indirect entries). Find dead **groups** (self- and mutually-recursive), dead types/data/constants, and dead interpreter and host-adapter code. Include the mirrors, exports, manifests, crate membership and registrations each deletion touches. Every candidate ends as *retained for a named consumer*, *deleted*, or *unresolved with a named question*. Don't add `#[test]`s to `module_path_index` expecting them to execute; its retained test module is not enrolled.
 
