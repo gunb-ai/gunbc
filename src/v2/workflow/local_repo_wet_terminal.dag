@@ -8,7 +8,7 @@ import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_q
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
   ClaimTerminalRow, ClaimDisposition, claim_disposition, Passed,
-  Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict, RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict, NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+  Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict, RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict, NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict, SubjectUnresolvedBeforeVerdict,
 }
 import v2.workflow.wet_evidence {
   WetEvidenceRequirement, LocalRepoCoResidentRequirement,
@@ -3525,6 +3525,7 @@ fn local_repo_wet_identity_passed_on_candidate(
               PanickedBeforeVerdict => false
               NotAttemptedAfterAbort => false
               ObservationUnreadableBeforeVerdict => false
+              SubjectUnresolvedBeforeVerdict => false
             }
         }
     }
