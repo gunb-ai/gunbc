@@ -150,7 +150,7 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Boundaries.**
 
 - A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head uses the distinct windowed operations, a separate contract rather than a mode.
-- Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection. The ghrunner whole-binary sudo grants are planned in [srv1-deploy-principal-split.md](docs/plans/srv1-deploy-principal-split.md).
+- Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection. The ghrunner whole-binary sudo grants are planned in `gunbc.plans.srv1_deploy_principal_split`.
 
 **Existing authorities**
 
