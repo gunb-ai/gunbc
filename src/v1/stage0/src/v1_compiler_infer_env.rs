@@ -3059,7 +3059,8 @@ pub fn kernel_or_unidentified(
                         name: nm.clone(),
                     })
                 } else {
-                    if is_type_variable_name(nm.clone()) {
+                    if (is_type_variable_name(nm.clone()) || is_type_variable_name(n.name.clone()))
+                    {
                         Rc::new(TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter {
     name: nm.clone(),
 })
