@@ -1,7 +1,7 @@
 module v2.extdeps.languages.swift_expr_door
 
 import std.types { String, List, Bool, Int, Map }
-import std.algebra { list_append, fold_list_right, fold_list, Cons, Empty, empty_map, map_insert }
+import std.algebra { list_append, Cons, Empty, map_insert }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.optional { Absent, Present }
@@ -44,10 +44,11 @@ fn swift_expr_door_outside(reason: Symbol) -> Outcome<TargetValueExpression> {
 }
 
 fn swift_expr_door_args_labelled(args: List<SwiftArgument>) -> Bool {
-  match args {
-    Empty => true
-    Cons { head: h, tail: t } => swift_expr_door_arg_is_labelled(a: h) && swift_expr_door_args_labelled(args: t)
-  }
+  fold(args, init: true, f: fn(acc, a) { acc && swift_expr_door_arg_is_labelled(a: a) })
+}
+
+fn swift_expr_door_args_positional(args: List<SwiftArgument>) -> Bool {
+  fold(args, init: true, f: fn(acc, a) { acc && !swift_expr_door_arg_is_labelled(a: a) })
 }
 
 fn swift_expr_door_arg_value(a: SwiftArgument) -> SwiftExpr {
@@ -60,13 +61,6 @@ fn swift_expr_door_arg_label_names(a: SwiftArgument) -> List<String> {
 
 fn swift_expr_door_arg_is_labelled(a: SwiftArgument) -> Bool {
   match a.label { Present { value: _ } => true  Absent => false }
-}
-
-fn swift_expr_door_args_positional(args: List<SwiftArgument>) -> Bool {
-  match args {
-    Empty => true
-    Cons { head: h, tail: t } => !swift_expr_door_arg_is_labelled(a: h) && swift_expr_door_args_positional(args: t)
-  }
 }
 
 fn swift_expr_door_lower_args(args: List<SwiftArgument>) -> Outcome<List<TargetValueExpression>> {
