@@ -1,6 +1,7 @@
 module extdeps.languages.css.values
 
 import std.types { Int, String, Bool, List }
+import std.decimal { fixed_point_trimmed_wire }
 import std.optional { Optional, Absent, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -96,19 +97,20 @@ type CssFontFamily
   = NamedFamily { name: String }
   | GenericFamily { kind: CssGenericFamily }
 
-fn css_font_family_wire(f: CssFontFamily) -> String {
-  match f {
-    NamedFamily { name: n } => join(["'", n, "'"], "")
-    GenericFamily { kind: g } => css_generic_family_token(g: g)
+// A <family-name> may be written as a string with either quote (css-syntax-3 §4.3.5 string tokens);
+// the quote is the one parameter of the spelling. The served stylesheet uses double quotes.
+type CssStringQuote = SingleQuote | DoubleQuote
+
+fn css_string_quote_char(q: CssStringQuote) -> String {
+  match q {
+    SingleQuote => "'"
+    DoubleQuote => "\""
   }
 }
 
-// A <family-name> may be written as a string with either quote (css-syntax-3 §4.3.5 string tokens);
-// the single-quoted spelling above is this repository's canonical one, and the double-quoted
-// spelling below is the same family. The served stylesheet uses double quotes.
-fn css_font_family_wire_double_quoted(f: CssFontFamily) -> String {
+fn css_font_family_wire(f: CssFontFamily, quote: CssStringQuote) -> String {
   match f {
-    NamedFamily { name: n } => join(["\"", n, "\""], "")
+    NamedFamily { name: n } => join([css_string_quote_char(q: quote), n, css_string_quote_char(q: quote)], "")
     GenericFamily { kind: g } => css_generic_family_token(g: g)
   }
 }
@@ -117,12 +119,8 @@ type CssFontStack {
   families: List<CssFontFamily>
 }
 
-fn css_font_stack_wire(s: CssFontStack) -> String {
-  join(map(s.families, f => css_font_family_wire(f: f)), ", ")
-}
-
-fn css_font_stack_wire_double_quoted(s: CssFontStack) -> String {
-  join(map(s.families, f => css_font_family_wire_double_quoted(f: f)), ", ")
+fn css_font_stack_wire(s: CssFontStack, quote: CssStringQuote) -> String {
+  join(map(s.families, f => css_font_family_wire(f: f, quote: quote)), ", ")
 }
 
 // <var> = var( <custom-property-name> , <declaration-value>? ) — CSS Values and Units Level 4
@@ -139,43 +137,23 @@ fn css_var_ref_wire(v: CssVarRef) -> String {
   join(["var(--", v.name, ")"], "")
 }
 
-// <number> with a fractional part (CSS Values and Units Level 4 §4.1), carried as thousandths so the
-// magnitude stays an exact Int; the wire writes the shortest decimal that denotes it (0.4, 0.85, 56).
-// A fraction needing more than three places is not representable and is a different Int, never a
-// rounded one.
-type CssDecimal {
-  milli: Int
-}
-
-fn css_decimal_fraction_wire(frac: Int) -> String {
-  if frac % 100 == 0 {
-    to_string(frac / 100)
-  } else if frac % 10 == 0 {
-    join([if frac / 10 < 10 { "0" } else { "" }, to_string(frac / 10)], "")
-  } else {
-    join([if frac < 10 { "00" } else if frac < 100 { "0" } else { "" }, to_string(frac)], "")
-  }
-}
-
-fn css_decimal_wire(d: CssDecimal) -> String {
-  if d.milli % 1000 == 0 {
-    to_string(d.milli / 1000)
-  } else {
-    join([to_string(d.milli / 1000), ".", css_decimal_fraction_wire(frac: d.milli % 1000)], "")
-  }
-}
+// A <number> with a fractional part (CSS Values and Units Level 4 section 4.1) is carried as an Int of
+// thousandths, so the magnitude stays exact; its wire is std.decimal.fixed_point_trimmed_wire over
+// css_number_fraction_digits places (the shortest decimal: 0.4, 0.85, 56). A fraction needing more
+// than three places is not representable and is a different Int, never a rounded one.
+data css_number_fraction_digits: Int = 3
 
 // A length whose magnitude may be fractional (0.4rem). css_length_wire keeps the Int-valued form.
 type CssDecimalLength {
-  magnitude: CssDecimal
+  milli: Int
   unit: CssLengthUnit
 }
 
 fn css_decimal_length_wire(l: CssDecimalLength) -> String {
-  if l.magnitude.milli == 0 {
+  if l.milli == 0 {
     "0"
   } else {
-    join([css_decimal_wire(d: l.magnitude), css_length_unit_token(u: l.unit)], "")
+    join([fixed_point_trimmed_wire(value: l.milli, decimals: css_number_fraction_digits), css_length_unit_token(u: l.unit)], "")
   }
 }
 
@@ -199,7 +177,7 @@ type CssHsl {
   hue: CssColorComponent
   saturation: CssColorComponent
   lightness: CssColorComponent
-  alpha: Optional<CssDecimal>
+  alpha_milli: Optional<Int>
 }
 
 fn css_hsl_wire(c: CssHsl) -> String {
@@ -208,8 +186,8 @@ fn css_hsl_wire(c: CssHsl) -> String {
     css_color_component_wire(c: c.saturation),
     css_color_component_wire(c: c.lightness),
   ]
-  match c.alpha {
+  match c.alpha_milli {
     Absent => join(["hsl(", join(channels, ", "), ")"], "")
-    Present { value: a } => join(["hsla(", join(concat(channels, [css_decimal_wire(d: a)]), ", "), ")"], "")
+    Present { value: a } => join(["hsla(", join(concat(channels, [fixed_point_trimmed_wire(value: a, decimals: css_number_fraction_digits)]), ", "), ")"], "")
   }
 }

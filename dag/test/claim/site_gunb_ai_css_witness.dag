@@ -23,12 +23,14 @@ import std.types { Bool, String }
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.languages.css.values { CssDecimal, css_decimal_wire, css_hsl_wire }
-import gunbc.design.gunb_ai_hues { live_color_tokens, live_token_css }
+import std.decimal { fixed_point_trimmed_wire }
+import std.list { distinct_by_key }
+import extdeps.languages.css.values { css_hsl_wire, css_number_fraction_digits, css_px, css_ch }
+import gunbc.design.gunb_ai_hues { live_color_tokens, live_token_css, moss, moss_deep, clay, brass_deep, near_black, sand, warm_white }
 import extdeps.color.srgb { Srgb8 }
-import gunbc.design.gunb_ai_hues { moss, moss_deep, clay, brass_deep, near_black, sand, warm_white }
-import gunbc.design.gunb_ai_live_scale { live_measure_scale_exact, live_gap_md, live_gap_xl, live_gap_xs, live_measure_page, live_scale_departures }
-import gunbc.site.gunb_ai_tokens { gap_md }
+import gunbc.design.scale { LengthValue, measure_prose }
+import gunbc.design.gunb_ai_live_scale { live_measure_scale_length, live_gap_md, live_gap_xs, live_measure_title, live_scale_departures }
+import gunbc.site.gunb_ai_tokens { gap_md, gap_xs, gap_sm, site_measure_prose }
 import gunbc.site.gunb_ai_css { render_sheet }
 
 data served_sheet_path: String = "dag/test/fixture/gunb_ai/live_site.css"
@@ -60,13 +62,13 @@ test fn witness_render_ends_at_a_section_boundary() -> Bool {
 // Supplied values at the interface the decimal wire answers for: the shortest decimal denoting the
 // thousandths, so each digit-count branch is exercised by a served value.
 test fn witness_decimal_wire_is_the_shortest_decimal() -> Bool {
-  css_decimal_wire(d: CssDecimal { milli: 400 }) == "0.4"
-    && css_decimal_wire(d: CssDecimal { milli: 850 }) == "0.85"
-    && css_decimal_wire(d: CssDecimal { milli: 56000 }) == "56"
-    && css_decimal_wire(d: CssDecimal { milli: 140 }) == "0.14"
-    && css_decimal_wire(d: CssDecimal { milli: 80 }) == "0.08"
-    && css_decimal_wire(d: CssDecimal { milli: 5 }) == "0.005"
-    && css_decimal_wire(d: CssDecimal { milli: 2500 }) == "2.5"
+  fixed_point_trimmed_wire(value: 400, decimals: css_number_fraction_digits) == "0.4"
+    && fixed_point_trimmed_wire(value: 850, decimals: css_number_fraction_digits) == "0.85"
+    && fixed_point_trimmed_wire(value: 56000, decimals: css_number_fraction_digits) == "56"
+    && fixed_point_trimmed_wire(value: 140, decimals: css_number_fraction_digits) == "0.14"
+    && fixed_point_trimmed_wire(value: 80, decimals: css_number_fraction_digits) == "0.08"
+    && fixed_point_trimmed_wire(value: 5, decimals: css_number_fraction_digits) == "0.005"
+    && fixed_point_trimmed_wire(value: 2500, decimals: css_number_fraction_digits) == "2.5"
 }
 
 // Every colour in the served :root block comes out of gunb_ai_hues, and the alpha-bearing ones are
@@ -89,13 +91,17 @@ test fn witness_swatches_derive_from_live_hsl_parameters() -> Bool {
     && warm_white.color == Srgb8 { r: 244, g: 241, b: 236 }
 }
 
-// Every live measure the served sheet writes is either the source of its site token or has a
-// departure row; the whole-unit conversion is exact for every derived token.
-test fn witness_live_measures_are_exact_or_departures() -> Bool {
-  gap_md.name == "gap-md"
-    && live_measure_scale_exact(m: live_gap_md)
-    && live_measure_scale_exact(m: live_gap_xl)
-    && live_measure_scale_exact(m: live_measure_page)
-    && !live_measure_scale_exact(m: live_gap_xs)
-    && live_scale_departures.length() == 4
+// A site token either matches a departure row or derives from its live value; a fractional pixel with
+// no row refuses. Supplied values: gap-md derives (1.25rem = 20px), gap-xs/gap-sm resolve to their
+// departure rows (6.4px and 13.6px are fractional, so derivation would refuse), and every departure key
+// is unique so the roster lookup cannot take a silently-last row.
+test fn witness_live_scale_tokens_derive_or_match_a_departure() -> Bool {
+  gap_md.value == LengthValue { length: css_px(n: 20) }
+    && gap_xs.value == LengthValue { length: css_px(n: 6) }
+    && gap_sm.value == LengthValue { length: css_px(n: 14) }
+    && site_measure_prose.value == measure_prose.value
+    && live_measure_scale_length(m: live_gap_xs) == Absent
+    && live_measure_scale_length(m: live_gap_md) == Present { value: css_px(n: 20) }
+    && live_measure_scale_length(m: live_measure_title) == Present { value: css_ch(n: 16) }
+    && distinct_by_key(live_scale_departures, key: fn(d) { d.live_name }).length() == live_scale_departures.length()
 }
