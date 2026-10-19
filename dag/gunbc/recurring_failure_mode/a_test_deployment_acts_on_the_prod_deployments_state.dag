@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_test_deployment_acts_on_the_prod_deploymen
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_test_deployment_acts_on_the_prod_deployments_state: RecurringFailureMode = RecurringFailureMode {
   identity: "a_test_deployment_acts_on_the_prod_deployments_state" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a deployment that is not the prod-role holder reads, writes, tears down or impersonates state, a singleton or an external attachment that belongs to the deployment that is. Before gunbc.deployment_risk no carrier distinguished the two: which deployment was prod was spelled only in constructor names (srv1_live_dashboard_instance), in literals (gunbc.live_deploy.spec gunbc_approval_broker_owning_instance = \"srv1-live\"), and in host paths every srv1 deployment shared.",

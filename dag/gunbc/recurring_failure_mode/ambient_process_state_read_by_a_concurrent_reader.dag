@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.ambient_process_state_read_by_a_concurrent_reader
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data ambient_process_state_read_by_a_concurrent_reader: RecurringFailureMode = RecurringFailureMode {
   identity: "ambient_process_state_read_by_a_concurrent_reader" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**ambient process state read by a concurrent reader** (a fact that is really a PARAMETER is instead read from a mutable cell the whole process shares -- the working directory, an env var, a global -- while the runtime schedules concurrent readers of it, so the answer a reader gets depends on which writer last ran and the wrong answer is SILENT: the read succeeds, returns a well-formed value, and is simply about a different subject than the reader meant.",

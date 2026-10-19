@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.collection_callback_operation_unrealized_in_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data collection_callback_operation_unrealized_in_v2_lowering: RecurringFailureMode = RecurringFailureMode {
   identity: "collection_callback_operation_unrealized_in_v2_lowering" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
+
   receipts: [
     "INVALID STATE: std.algebra models collection callback operations as template rows with callback_element_position Present (map, filter, flat_map, any, all, sort_by), but v2 body lowering realized only the fold family. A call of an unrealized row reaches v2.compiler.resolve as a bare name and refuses resolve_reason_unbound_symbol. HARM: v2.std.node calls `map(node.children, e => Edge { .. })`, so on the native route it refused its own resolve and dropped out of the closure index; about twenty other v2 modules call bare `map(`. The refusal is typed and located, so this is a capability gap on the loud side of the ladder, never a silent wrong answer.",
     "DISTINGUISHING FACTS: the earliest unjustified boundary was the MODEL, not lowering. A realized roster call binds its head to the row's declaration (v2.compiler.resolve resolve_realized_declaration), and map / flat_map / any / all / sort_by were inline list elements in std.algebra free_monoid_collection_templates and finite_power_set_templates, copied once per list, with no declaration to bind to. They are now named shapes (collection_map_shape and siblings) referenced from both lists, as fold and filter already were.",

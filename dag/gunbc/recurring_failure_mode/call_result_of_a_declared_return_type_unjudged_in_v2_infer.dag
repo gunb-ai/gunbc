@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.call_result_of_a_declared_return_type_unjudg
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data call_result_of_a_declared_return_type_unjudged_in_v2_infer: RecurringFailureMode = RecurringFailureMode {
   identity: "call_result_of_a_declared_return_type_unjudged_in_v2_infer" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**In v2 infer, the result of a call whose callee returns a DECLARED (non-kernel) type is judged where it is used (climbed, sunny-wolf-624).** Re-measured on main 1f25232cdc through the production assembly route with a std.nat peer (v2.test.claim.compiler.declared_return_result drr_the_real_route_judges_a_projected_generic_call_result): `fn mk() -> Nat { 0 }` used at `fn f() -> Bool { mk() }` REFUSES `arrow_body_does_not_inhabit_declared_return`; the generic `fn mk<T>(xs: List<T>) -> Nat` counterpart refuses the same; `wants_bool(mk())` refuses `application_argument_does_not_inhabit`; an instantiated generic coproduct `Out<Int>` at Bool refuses the declared-return reason; `fn f() -> Nat { mk() }` is accepted. The kernel Int-at-Bool control refuses the same declared-return reason. The original filing (session/stern-swift-290-literal) had Nat-at-Bool ACCEPTED; #13325's `infer_application_result_type` plus later main is what closed the specimens.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.refined_alias_argument_exempt_from_declared_type_inhabitance
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data refined_alias_argument_exempt_from_declared_type_inhabitance: RecurringFailureMode = RecurringFailureMode {
   identity: "refined_alias_argument_exempt_from_declared_type_inhabitance" as NonEmptyStr,
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
+
   receipts: [
     "SUBJECT: a value whose type is a where-refined alias of a kernel primitive -- std.types FilePath, NonEmptyStr, any `String where ...` -- supplied at a direct-call argument position whose declared formal is a RECORD. The floor obligation is that values inhabit declared types (DESIGN 4b, the floor first); this is the floor broken for one argument shape.",
     "SPECIMEN, MEASURED THROUGH compile_dag_diagnostic_census ON THE INTERPRETATION PATH, 2026-09-13, at main b2f9a0c5bbe plus the change filing this row. Formal: `fn take(v: Wrapped) -> Int` with `type Wrapped sole_constructor { inner: ... }`, a monomorphic record. Four arguments, one term changed each time: a String LITERAL refuses (TypeMismatch|Primitive(String) and DeclaredTypeNotInhabited at the argument); a parameter typed String refuses the same way; a parameter typed Int refuses; a parameter typed FilePath is ADMITTED WITH NO ROW AT ALL -- no blocking diagnostic and no advisory names the argument -- and so is `\"x\" as FilePath`. The same four at a generic-instantiation formal (Sealed<JobLog, String>, directly or through an alias) admit the FilePath forms identically. A foreign record at the monomorphic formal refuses (DeclaredTypeNotInhabited), so the exemption is specific to refined-alias arguments, not to non-literal arguments.",

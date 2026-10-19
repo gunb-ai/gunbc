@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.the_replaced_route_is_the_replacement_s_miss_path
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data the_replaced_route_is_the_replacement_s_miss_path: RecurringFailureMode = RecurringFailureMode {
   identity: "the_replaced_route_is_the_replacement_s_miss_path" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "the replaced route is the replacement's miss path (X is scheduled for deletion, and Y's cache-miss, cold-start, first-run or not-yet-built arm resolves to X; every Y execution therefore executes X, the migration reports as progressing, and X's removal date is unreachable because nothing ever stops depending on it)",

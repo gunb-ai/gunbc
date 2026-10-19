@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_bare_type_name_binds_the_wrong_declaration
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_bare_type_name_binds_the_wrong_declaration: RecurringFailureMode = RecurringFailureMode {
   identity: "a_bare_type_name_binds_the_wrong_declaration" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a bare type name binds the wrong declaration: two modules declare the same TYPE NAME with materially different meanings -- DESIGN section 3's meaning fork, the dual of nicknaming -- and a parameter or field typed with that bare name binds the other module's declaration. Nothing refuses. A value constructed with one variant is then READ as a different variant, so a total, exhaustive match returns an arm the value does not inhabit, and every consumer downstream reasons from a verdict that is the opposite of the truth.",

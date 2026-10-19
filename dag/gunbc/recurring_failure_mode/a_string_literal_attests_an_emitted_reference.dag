@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_string_literal_attests_an_emitted_reference
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_string_literal_attests_an_emitted_reference: RecurringFailureMode = RecurringFailureMode {
   identity: "a_string_literal_attests_an_emitted_reference" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "a string literal attests an emitted reference: a gate that must decide whether a name is SPELLED IN EMITTED CODE reads the emitted text whole, so a name that appears only inside a string literal -- prose the program carries as data -- passes as though the code paths into it. The Rust emitter's reference-derived use-line pass (v1.compiler.emit_rust reference_derived_use_line_plan) admits a proposed candidate only when its name is among the emitted source's identifier tokens; that attestation exists to reject misproposed candidates, and a prose mention defeated it.",

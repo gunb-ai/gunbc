@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.reference_query_answered_before_the_fact_is_earned
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data reference_query_answered_before_the_fact_is_earned: RecurringFailureMode = RecurringFailureMode {
   identity: "reference_query_answered_before_the_fact_is_earned" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a `who references X` query is evaluated against an artifact produced at a stage that has not yet earned reference identity, so references the later stage would resolve are structurally invisible and their absence is returned as a zero** (INVALID STATE: a consumer asks a reverse-consumption question of a parse-stage artifact.",

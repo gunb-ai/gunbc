@@ -200,16 +200,20 @@ type TriggerAdmission
   | TriggerCapabilityEmpty { subject: String }
   | TriggerCapabilitySpellsAReferent { subject: String, scheme: String }
 
-fn stall_trigger_admission(s: GuaranteeStall) -> TriggerAdmission {
-  if s.next_rung_trigger.capability == "" {
-    TriggerCapabilityEmpty { subject: s.subject }
+fn next_rung_trigger_admission(subject: String, t: NextRungTrigger) -> TriggerAdmission {
+  if t.capability == "" {
+    TriggerCapabilityEmpty { subject: subject }
   } else {
-    if text_spells_a_dashboard_node_uri(text: s.next_rung_trigger.capability) {
-      TriggerCapabilitySpellsAReferent { subject: s.subject, scheme: dashboard_node_uri_scheme }
+    if text_spells_a_dashboard_node_uri(text: t.capability) {
+      TriggerCapabilitySpellsAReferent { subject: subject, scheme: dashboard_node_uri_scheme }
     } else {
       TriggerAdmitted
     }
   }
+}
+
+fn stall_trigger_admission(s: GuaranteeStall) -> TriggerAdmission {
+  next_rung_trigger_admission(subject: s.subject, t: s.next_rung_trigger)
 }
 
 fn trigger_admission_label(a: TriggerAdmission) -> String {

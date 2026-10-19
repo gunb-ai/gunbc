@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.missing_precondition_reported_as_a_pass
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data missing_precondition_reported_as_a_pass: RecurringFailureMode = RecurringFailureMode {
   identity: "missing_precondition_reported_as_a_pass" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a test whose precondition is missing returns early and the harness reports it as a pass** (INVALID STATE: a claim that measured nothing is counted among the claims that held. A test harness with outcomes pass, fail and ignored has no fourth outcome for `not measured`, so an early `return` from a test body IS the pass arm, whatever the comment beside it says. The harm is the same as any vacuous green: the claim is cited as coverage on exactly the hosts where it never ran, and the precondition's absence -- the one fact worth reporting -- never ranks for fixing.)",

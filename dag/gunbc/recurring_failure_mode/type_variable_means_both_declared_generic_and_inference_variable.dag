@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.type_variable_means_both_declared_generic_and_inference_variable
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data type_variable_means_both_declared_generic_and_inference_variable: RecurringFailureMode = RecurringFailureMode {
   identity: "type_variable_means_both_declared_generic_and_inference_variable" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "TypeVariable means both declared generic and inference variable. INVALID STATE: one name, `v1.std.core` InferredNode `TypeVariable`, carries TWO materially different facts -- (1) a DECLARED GENERIC TYPE PARAMETER, inserted into the environment by v1.compiler.infer_env env_with_type_variable_bindings, and (2) an UNRESOLVED INFERENCE VARIABLE standing for a value whose type is not yet pinned. HARM: a consumer that asks a binding whether its inferred is a TypeVariable cannot tell which fact it just learned, and the two have opposite consequences. This is the DESIGN section 3 meaning fork -- one name, two meanings -- inside the seed's own vocabulary.",

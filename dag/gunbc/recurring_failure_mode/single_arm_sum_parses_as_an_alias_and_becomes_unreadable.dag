@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.single_arm_sum_parses_as_an_alias_and_becomes_unreadable
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data single_arm_sum_parses_as_an_alias_and_becomes_unreadable: RecurringFailureMode = RecurringFailureMode {
   identity: "single_arm_sum_parses_as_an_alias_and_becomes_unreadable" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "single-arm sum parses as an alias and becomes unreadable. INVALID STATE: an author writes a one-member roster as `type K = A`, intending a sum with one arm, and the ARM COUNT SILENTLY DECIDES WHAT KIND OF DECLARATION IT IS -- one arm parses as a TYPE ALIAS, two or more as a coproduct. HARM: the alias reaches a consumer as a bare nominal node carrying NO resolved target and NO children, so any consumer that reads a declaration's members reads nothing, and there is no diagnostic anywhere saying the declaration is not the shape that was written.",

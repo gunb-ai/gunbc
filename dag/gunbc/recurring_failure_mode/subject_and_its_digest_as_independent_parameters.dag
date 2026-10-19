@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.subject_and_its_digest_as_independent_parameters
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data subject_and_its_digest_as_independent_parameters: RecurringFailureMode = RecurringFailureMode {
   identity: "subject_and_its_digest_as_independent_parameters" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "MEMORY ADMISSION INSTANCE (2026-09-13, gunbc#11144 head 938466bf): gunbc.host.memory_change_evaluation::memory_assessment_coverage_present checked minimum membership, equal counts, and one result per required identity. Required [A,A,B] and results [A,B,X] passed despite duplicate A and unrelated X. The normal evaluator maps its own required list and did not produce this shape; this is an authored-public-carrier admission weakness, not evidence of a live fulfillment bypass. Repair joins unique required identities to exactly one result and excludes every result outside that set. test.claim.host.memory_change_evaluation_witness::w_coverage_duplicate_requirement_and_unrelated_result_refuse is the exact discriminator; w_coverage_same_count_missing_identity_refuses preserves cardinality while losing identity; w_coverage_identity_bijection_admits_control is the positive control. The bounded admission predicate is mechanically preventable, not structural: the malformed carrier remains authorable. Its construction ceiling requires a carrier whose construction owns the independent obligation/result join.",

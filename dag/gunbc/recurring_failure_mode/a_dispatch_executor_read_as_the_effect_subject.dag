@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.a_dispatch_executor_read_as_the_effect_subject
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
 
 data a_dispatch_executor_read_as_the_effect_subject: RecurringFailureMode = RecurringFailureMode {
   identity: "a_dispatch_executor_read_as_the_effect_subject" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyImpossible, ceiling_reason: "structurally impossible -- the executor options are hosts with a runner deploy row, so a label no runner carries has no constructor in the dispatch form." as NonEmptyStr } },
 
   receipts: [
     "INVALID STATE: one dispatch input is read both as the runner label the job is placed on and as the host the effect lands on, so a subject that has no runner slots can never be acted on. HARM: the job waits for a runner label no host carries -- no refusal fires, no receipt is written, and the precondition it was dispatched to establish silently stays unmet.",

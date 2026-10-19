@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.alias_resolution_collides_with_kernel_spelling
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data alias_resolution_collides_with_kernel_spelling: RecurringFailureMode = RecurringFailureMode {
   identity: "alias_resolution_collides_with_kernel_spelling" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**an instrument resolves an alias, lands on a name that COLLIDES with a kernel spelling, and attributes the result to the kernel** (the reference under measurement is authored QUALIFIED and points at a type alias; the reader resolves the alias, arrives at the alias declaration's own name, and that name is also a kernel name -- so the row is attributed to the kernel identity, naming THE EXACT CARRIER THE QUALIFICATION WAS WRITTEN TO MOVE AWAY FROM.",

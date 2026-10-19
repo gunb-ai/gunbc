@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.observation_reports_ambient_state_while_clai
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data observation_reports_ambient_state_while_claiming_to_judge_the_supplied_subject: RecurringFailureMode = RecurringFailureMode {
   identity: "observation_reports_ambient_state_while_claiming_to_judge_the_supplied_subject" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "**An observation whose output is a function of ambient process or host state, read as a judgement of the credential, input or subject the caller supplied, reports a fact about a different subject** (INVALID STATE: the reading names the supplied subject and its value was produced by the ambient one; harm: a wrong key reads accepted, or a good key reads rejected, with a plausible typed verdict and no refusal).",
     "SPECIMEN, observed on srv2 2026-10-17 with cursor-agent 2026.09.15-d2fe57e: `cursor-agent status` reports ONLY the stored auth under $XDG_CONFIG_HOME/cursor/auth.json and never the CURSOR_API_KEY it is given. The Cursor standing judged the custody key with `status`, so a host whose operator was logged in read every supplied key as authenticated. The key fact was false from the day it was written; it was a fact about the home directory.",

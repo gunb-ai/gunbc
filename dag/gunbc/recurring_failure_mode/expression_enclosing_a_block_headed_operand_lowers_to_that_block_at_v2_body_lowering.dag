@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.expression_enclosing_a_block_headed_operand_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
   identity: "expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed." as NonEmptyStr } },
 
   receipts: [
     "**an expression that CONTAINS a block-headed sub-expression (a match or an if) lowers to that block alone, and normalize ACCEPTS the module** (INVALID STATE: the lowered value of `t && match w {..}`, `t && u && match w {..}`, `t || match w {..}`, `t && if c {..} else {..}`, `R { v: match w {..}, d: q }` and `h(a: match w {..}, b: c)` is the match or if by itself. The enclosing operator, record or call is gone, along with every sibling operand, field, argument, tag and callee, and there is no diagnostic.) The value the program computes is the block's value, whatever the rest of the expression said. When the types agree, as with Bool operands, that wrong answer type-checks. A name in any dropped sibling never reaches resolve, so an undeclared one is accepted.",

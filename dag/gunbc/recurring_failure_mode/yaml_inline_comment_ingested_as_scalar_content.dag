@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.yaml_inline_comment_ingested_as_scalar_content
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data yaml_inline_comment_ingested_as_scalar_content: RecurringFailureMode = RecurringFailureMode {
   identity: "yaml_inline_comment_ingested_as_scalar_content" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a YAML inline comment is ingested as scalar content** (a bounded YAML reader that does not model comment separation accepts `key: value # comment` and stores `value # comment` as the value, so a syntactically valid document is silently assigned the wrong tree.",

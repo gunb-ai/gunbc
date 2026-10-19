@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_capability_is_declared_missing_from_a_scoped_search
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data a_capability_is_declared_missing_from_a_scoped_search: RecurringFailureMode = RecurringFailureMode {
   identity: "a_capability_is_declared_missing_from_a_scoped_search" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "INVALID STATE: a section 4b(3) declared rung drop -- or any 'the substrate cannot do X' claim -- whose trigger names a capability that ALREADY EXISTS AND EXECUTES. The absence was established by searching where the capability ought to live, and a search whose scope you cannot state is not an absence.",

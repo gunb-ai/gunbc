@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_pattern_binding_a_subset_of_fields_is_an_implicit_wildcard
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_pattern_binding_a_subset_of_fields_is_an_implicit_wildcard: RecurringFailureMode = RecurringFailureMode {
   identity: "a_pattern_binding_a_subset_of_fields_is_an_implicit_wildcard" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a record pattern that binds a SUBSET of its variant's declared fields is accepted, and the unbound fields become IMPLICIT WILDCARDS. The consequence is an asymmetry in what adding a field to a variant does: every CONSTRUCTION site refuses until it supplies the new field, and every MATCH site keeps compiling and never sees it. Adding a field is fail-closed for producers and FAIL-OPEN for consumers.",

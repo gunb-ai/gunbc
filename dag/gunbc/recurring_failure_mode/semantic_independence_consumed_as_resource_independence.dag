@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.semantic_independence_consumed_as_resource_independence
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data semantic_independence_consumed_as_resource_independence: RecurringFailureMode = RecurringFailureMode {
   identity: "semantic_independence_consumed_as_resource_independence" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A producer's ANSWER is proven independent of unrelated pool members, and that proof is consumed as though its RESIDENCY were bounded too.** The two are different properties over the same subject. A fold may correctly exclude an unrelated file from every dependency answer while still parsing, indexing and RETAINING that file in the population it built to compute the answer. The guarantee is true; the expectation read off it is false.",

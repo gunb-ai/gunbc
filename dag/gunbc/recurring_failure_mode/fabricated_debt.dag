@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.fabricated_debt
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data fabricated_debt: RecurringFailureMode = RecurringFailureMode {
   identity: "fabricated_debt" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**fabricated debt** (a declaration is authored for an exposure that does not exist, or that is already declared elsewhere, so the ledger grows a row whose trigger CANNOT FIRE because there is nothing to restore.",

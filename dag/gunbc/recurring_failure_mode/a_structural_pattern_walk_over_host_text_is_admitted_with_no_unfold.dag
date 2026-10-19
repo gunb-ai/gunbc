@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_structural_pattern_walk_over_host_text_is_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_structural_pattern_walk_over_host_text_is_admitted_with_no_unfold: RecurringFailureMode = RecurringFailureMode {
   identity: "a_structural_pattern_walk_over_host_text_is_admitted_with_no_unfold" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a `match` over a kernel (host) String whose arms are the FreeMonoid constructors Empty and Cons with head and tail. The scrutinee is host text; the pattern reads a code-point sequence; no declared unfold stands at the crossing (DESIGN section 4, text_crossings_go_through_the_unfold). The seed admits it with no diagnostic and renders the pattern literally, so the emitted Rust indexes and iterates a Rust String.",

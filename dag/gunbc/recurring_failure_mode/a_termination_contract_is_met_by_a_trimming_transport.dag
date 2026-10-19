@@ -2,10 +2,14 @@ module gunbc.recurring_failure_mode.a_termination_contract_is_met_by_a_trimming_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed, StructurallyImpossible }
+import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
 
 data a_termination_contract_is_met_by_a_trimming_transport: RecurringFailureMode = RecurringFailureMode {
   identity: "a_termination_contract_is_met_by_a_trimming_transport" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: StructurallyGuaranteed }, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "STRUCTURALLY IMPOSSIBLE, and the residue is now narrow and named." }, trigger: climbs_when(capability: "A CAPTURED-TEXT CARRIER THAT DECLARES WHAT ITS TRANSPORT NORMALIZED, sufficient for the liveness arm at every call site of a termination-contracted reader to be DERIVED from the producing transport rather than supplied by the caller, AND fo") } },
 
   receipts: [
     "2026-10-09, PR #13607: srv1 controller installation at edad20b0ded granted an exact sudo cat of its root-owned 0440 policy, then still refused content equality. The actual file ended in LF; bounded_shell_host_drain CapturedStreamEvidence::from_observation removed that byte with retained_utf8_lossy_trimmed before comparison. The repair measures the installed file with a narrowly granted sha256sum operation and hashes the complete expected bytes through stdin. The digest comparison retains the final-newline distinction without changing capture semantics or accepting trimmed policies. policy_digest_readback_preserves_final_newline_identity discriminates the two byte strings, absent output and refused execution. External privilege and custody still require live readback.",

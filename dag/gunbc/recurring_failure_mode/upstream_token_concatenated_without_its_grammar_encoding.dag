@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.upstream_token_concatenated_without_its_gram
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data upstream_token_concatenated_without_its_grammar_encoding: RecurringFailureMode = RecurringFailureMode {
   identity: "upstream_token_concatenated_without_its_grammar_encoding" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**an upstream grammar's token is built by concatenating a raw value, and read back by splitting on a delimiter the raw value may contain** (invalid state: a wire string that the upstream grammar parses differently from what the writer meant, or refuses outright; harm: the first live write hits the wrong range or is rejected, and the reader refuses the spelling the upstream actually returns, so the lane cannot converge at all).",

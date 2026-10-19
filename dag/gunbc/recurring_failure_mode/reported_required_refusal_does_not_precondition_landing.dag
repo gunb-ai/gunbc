@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.reported_required_refusal_does_not_precondition_landing
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data reported_required_refusal_does_not_precondition_landing: RecurringFailureMode = RecurringFailureMode {
   identity: "reported_required_refusal_does_not_precondition_landing" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a required check reaches a terminal refusal on the head and the same head is then landed by hand, so the check detects the invalid state without being a precondition of landing.** INVALID STATE: a committed emitted mirror differs from what its authority emits; the required comparator enumerates that mirror, observes the differing bytes, and reports failure before the merge, yet the merge completes. This is an admission failure after detection, not an inert or mis-scoped detector.",

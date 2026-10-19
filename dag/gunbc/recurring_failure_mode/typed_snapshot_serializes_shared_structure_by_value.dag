@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.typed_snapshot_serializes_shared_structure_by_value
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data typed_snapshot_serializes_shared_structure_by_value: RecurringFailureMode = RecurringFailureMode {
   identity: "typed_snapshot_serializes_shared_structure_by_value" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a per-module typed snapshot serializes, BY VALUE, structure that is shared in memory across modules. TypeEnv holds symbol_index, intern_table and source_indices, which are per-reconcile or pool-scoped and byte-identical across modules, plus its parent environments, all behind Rc and all derived serde::Serialize. serde writes an Rc by value, so ONE module's snapshot re-serializes every pool-scoped field in every environment it reaches, and decode rebuilds each as a separate, unshared copy. It is the identity-rewire class (name_canonicalisation_depends_on_the_co_compiled_graph, removed by gunbc#13076): structural sharing lost at a copy boundary, here serialization.",

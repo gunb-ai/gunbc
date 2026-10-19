@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.censored_estimator_drops_its_own_tail
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data censored_estimator_drops_its_own_tail: RecurringFailureMode = RecurringFailureMode {
   identity: "censored_estimator_drops_its_own_tail" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**censored estimator drops its own tail** (an estimate of a variable is computed over the observations that SURVIVED a threshold on that same variable, so the sample structurally excludes its own extreme and the estimate is biased low with no bound.",

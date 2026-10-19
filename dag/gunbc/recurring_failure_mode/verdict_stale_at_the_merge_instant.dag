@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.verdict_stale_at_the_merge_instant
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data verdict_stale_at_the_merge_instant: RecurringFailureMode = RecurringFailureMode {
   identity: "verdict_stale_at_the_merge_instant" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a head merges carrying a verdict that was reached against a base main has since moved away from, so the evidence certifies a combination that no longer exists.** INVALID STATE: the verdict is real, terminal and green; the tree it was computed over is not the tree that results from the merge, and nothing at the merge instant represents the age of the verdict or the distance between those two trees.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.numeral_admitted_at_every_kernel_declared_type
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data numeral_admitted_at_every_kernel_declared_type: RecurringFailureMode = RecurringFailureMode {
   identity: "numeral_admitted_at_every_kernel_declared_type" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: the shared relation `v1.compiler.infer` `declared_type_inhabitance` answers Inhabits for an Int or Float at a declared kernel type that admits no numeral -- Bool or String -- because its `declared_realizes_as_kernel_numeric` arm admitted a numeral at EVERY kernel-minted declared type.",

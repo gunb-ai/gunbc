@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.wait_keyed_on_a_resource_whose_arrivals_outpace_its_service
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data wait_keyed_on_a_resource_whose_arrivals_outpace_its_service: RecurringFailureMode = RecurringFailureMode {
   identity: "wait_keyed_on_a_resource_whose_arrivals_outpace_its_service" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a gate waits for a shared resource to become idle, and that resource's ARRIVAL RATE exceeds its SERVICE RATE, so the release condition is an absorbing state no amount of patience resolves** (INVALID STATE: a wait whose release predicate is 'nothing is currently in flight on R', where work arrives at R faster than R completes it. HARM: the gate does not gate. The occasions it releases are GAPS IN TRAFFIC rather than the condition being satisfied, so what looks like the guard working is the arrival process pausing.",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.lexer_literal_lexeme_straddles_its_sequence_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data lexer_literal_lexeme_straddles_its_sequence_partner: RecurringFailureMode = RecurringFailureMode {
   identity: "lexer_literal_lexeme_straddles_its_sequence_partner" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**every token after a line comment carried a ByteRange past its true offset, on pure-ASCII sources, because the comment's lexeme was fabricated text** (INVALID STATE: the `.dag` line comment `// ab` lexed to the lexeme `//[32, 97, 98]`, and a bare `//` lexed to `//Empty`. `v2.compiler.tokenize` `lex_walk_step` advances `pos` by the lexeme's length, so every later token start and end was shifted by the difference: +39 after a 13-character comment, and past the end of the file in `extdeps.bazel.build_event_stream`. The captured annotation text was the rendering too.) Every locus consumer after a comment read the wrong bytes: refusal carets, the XL-2 reference-conservation census, and XL-5's exact loci.",

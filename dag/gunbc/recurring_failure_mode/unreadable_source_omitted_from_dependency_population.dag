@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unreadable_source_omitted_from_dependency_population
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data unreadable_source_omitted_from_dependency_population: RecurringFailureMode = RecurringFailureMode {
   identity: "unreadable_source_omitted_from_dependency_population" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a dependency-fact producer silently omits a source it cannot read, then returns an ordinary population over which a consumer decides that no forbidden dependency exists. HARM: unreadable source and successfully inspected source with no imports have the same representation. The consumer reports a clean boundary over a population the producer never established. This is DESIGN section 5's absence-of-observation narrow, a fail-open fallback inside population acquisition.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.ts_lexer_has_no_ingest_rule_set
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data ts_lexer_has_no_ingest_rule_set: RecurringFailureMode = RecurringFailureMode {
   identity: "ts_lexer_has_no_ingest_rule_set" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "STATED FRONTIER, not a repaired defect. v2.extdeps.languages.typescript ts_lex has no whitespace trivia rule: every rule is an emission spelling with baked spacing (eq as space-equals, colon as colon-space), so TypeScript text not laid out exactly as the emitter writes it is unlexable. `const bit: string = bit;` refuses at the space after `=` (gunbc run, BuildBuddy invocation b9e2870f).",

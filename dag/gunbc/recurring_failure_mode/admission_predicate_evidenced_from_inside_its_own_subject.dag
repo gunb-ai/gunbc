@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.admission_predicate_evidenced_from_inside_its_own_subject
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data admission_predicate_evidenced_from_inside_its_own_subject: RecurringFailureMode = RecurringFailureMode {
   identity: "admission_predicate_evidenced_from_inside_its_own_subject" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**an admission predicate evidenced from inside its own subject** (a rule admits an action only when some condition holds -- `the refusal is carried entirely by this class`, `nothing else is failing`, `this is the only cause` -- and the evidence for that condition is read off a surface THAT ONLY REPORTS THE CLASS THE PREDICATE IS ABOUT.",

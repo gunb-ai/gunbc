@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_leader_only_pre_tune_seeds_a_rank_keyed_cache
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data a_leader_only_pre_tune_seeds_a_rank_keyed_cache: RecurringFailureMode = RecurringFailureMode {
   identity: "a_leader_only_pre_tune_seeds_a_rank_keyed_cache" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "A LEADER-ONLY PRE-TUNE SEEDING A RANK-KEYED CACHE MAKES A SYNCHRONIZED PHASE ASYMMETRIC. Upstream facts, read from the pinned Group A runtime's own sources (fleet-converge observe 37227706992): flashinfer.fused_moe.core MoERunner get_cache_key_extras includes tp_rank, ep_rank and cluster_rank in the persisted tactic key for trtllm::fused_moe::gemm1/gemm2; vllm.model_executor.warmup.flashinfer_sparse_mla_warmup tunes under autotune on the leader ONLY (rank_in_group == 0), saves, and every rank loads the leader's file; kernel_warmup flashinfer_autotune then averages per-tactic timings over world.cpu_group (gloo). The leader's keys hit, so it skips the timing collectives and waits at world.barrier; every other rank misses its own rank-keyed keys and blocks in a collective the leader never enters.",

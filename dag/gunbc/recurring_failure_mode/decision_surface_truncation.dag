@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.decision_surface_truncation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data decision_surface_truncation: RecurringFailureMode = RecurringFailureMode {
   identity: "decision_surface_truncation" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**decision surface truncation** (INVALID STATE: a recommendation or settlement is produced while the decision subject's required populations are incomplete — a term, variable, constraint, context parameter, sensitivity cell, or choice-domain candidate lacks a disposition — and the absence is read as irrelevance or as license to optimize over the truncated surface. HARM: the truncated surface can rank a policy that a complete subject would refuse or would never even consider; later evidence reopens the same question at interest, and the interim recommendation looks grounded because it carries numbers.",

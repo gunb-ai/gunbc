@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.merge_carries_prose_true_on_one_side_and_false_on_the_other
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable }
 
 data merge_carries_prose_true_on_one_side_and_false_on_the_other: RecurringFailureMode = RecurringFailureMode {
   identity: "merge_carries_prose_true_on_one_side_and_false_on_the_other" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: Mitigatable, ceiling_reason: "MITIGATABLE, AND THIS IS THE HONEST ANSWER RATHER THAN AN UNBUILT ONE." as NonEmptyStr } },
 
   receipts: [
     "**a merge brings in a prose claim that is TRUE ON THE SIDE THAT WROTE IT AND FALSE ON THE MERGED TREE, because the other side adds the behaviour the claim denies.** INVALID STATE: a doc block, annotation or receipt that correctly describes one branch, landed unmodified on a branch where it asserts the opposite of what the code does. NEITHER SIDE IS WRONG, which is why no conflict fires and why taking a side -- the only operation a text merge offers -- is exactly how the falsehood ships.",

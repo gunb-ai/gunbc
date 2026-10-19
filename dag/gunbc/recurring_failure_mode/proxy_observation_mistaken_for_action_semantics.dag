@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.proxy_observation_mistaken_for_action_semantics
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data proxy_observation_mistaken_for_action_semantics: RecurringFailureMode = RecurringFailureMode {
   identity: "proxy_observation_mistaken_for_action_semantics" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a destructive action is judged by a PROXY observation, never by the action's own semantics** (INVALID STATE: an actor destroys something -- deletes an edge, a file, a roster row, an authority -- and reads the verdict off an observation that stands in a PROXY relation to what the destruction MEANS.",

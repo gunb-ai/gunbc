@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.instrument_artifact_stopped_existing_while_c
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data instrument_artifact_stopped_existing_while_cited: RecurringFailureMode = RecurringFailureMode {
   identity: "instrument_artifact_stopped_existing_while_cited" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "**an instrument's published artifact silently stops existing when the job that published it is replaced, while prose and producers keep citing it as published** (INVALID STATE: the producer still writes the file, the env that arms the write is still set, and every reader -- roadmap rows, rung-drop restoration triggers, gunbc.floor_cost_distribution's annotation, the qualification route's ClaimCostArtifactEvalSteps -- still names the artifact as what each required run uploads; no run uploads it. HARM: a reader who goes to re-derive a figure finds nothing and cannot tell retention expiry from a producer that never ran, and a consumer wired to the artifact reads Absent forever without that ever being a failure anyone sees.)",
 

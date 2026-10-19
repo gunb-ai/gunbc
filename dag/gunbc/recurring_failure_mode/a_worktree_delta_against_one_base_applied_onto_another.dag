@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_worktree_delta_against_one_base_applied_onto_another
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_worktree_delta_against_one_base_applied_onto_another: RecurringFailureMode = RecurringFailureMode {
   identity: "a_worktree_delta_against_one_base_applied_onto_another" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a change set computed against one base is applied onto a different base's tree, and the result is recorded as the worker's candidate** (THE INVALID STATE: gunbc.roadmap.roadmap_belt_actuate belt_scm_delta_capture took the worktree's change population from `git diff <attempt base_sha>` plus untracked files, and re-bound exactly those paths on the project repository's BASE MANIFEST -- the tree the repository was seeded from. Nothing compared the attempt's base with the repository's. When an attempt branched from a later base than the seed, every upstream path the worker did not touch kept the SEED's bytes, so the recorded candidate was neither the attempt's base plus the work nor any tree that ever existed.)",

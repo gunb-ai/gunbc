@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.match_on_a_call_scrutinee_refused_as_arm_navigation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data match_on_a_call_scrutinee_refused_as_arm_navigation: RecurringFailureMode = RecurringFailureMode {
   identity: "match_on_a_call_scrutinee_refused_as_arm_navigation" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a `match` whose scrutinee is a CALL refuses its module at normalize as body_lowering_reason_match_arm_navigation_refused** (INVALID STATE: after gunbc#12145, v2 body lowering can no longer navigate the arms of a match whose scrutinee is a call expression; the arm shape is irrelevant).",

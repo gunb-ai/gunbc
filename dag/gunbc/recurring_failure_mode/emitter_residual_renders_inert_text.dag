@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.emitter_residual_renders_inert_text
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data emitter_residual_renders_inert_text: RecurringFailureMode = RecurringFailureMode {
   identity: "emitter_residual_renders_inert_text" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a dispatcher's residual arm renders input it could not classify as text that is INERT IN THE TARGET LANGUAGE -- a comment, a docstring, a blank -- rather than refusing. The emitted artifact is well-formed and silently INCOMPLETE: the declaration the input carried is simply not there. This is DESIGN section 5's fabricated-plausible-output with the failure arm widening instead of stopping, and it is worse in an emitter than elsewhere, because the consumer of the omission is a downstream COMPILER that has no way to know a declaration was expected.",

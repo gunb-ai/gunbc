@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.anonymous_record_resolved_by_field_names_guesses_on_ambiguity
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data anonymous_record_resolved_by_field_names_guesses_on_ambiguity: RecurringFailureMode = RecurringFailureMode {
   identity: "anonymous_record_resolved_by_field_names_guesses_on_ambiguity" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: an anonymous record literal -- `{ compare: f }` bound to `data x: VersionScheme = ...` -- reaches the Rust emitter with no nominal type on its inferred node, so v1.compiler emit_rust emit_typed_record_lit picks the struct by its FIELD NAMES (find_unique_struct_name_by_fields). When two or more declared structs share those names the lookup returns Absent, and the one-field arm then emitted the BARE FIELD VALUE: `{ compare: f }` became `f`. The declared type the literal was bound to was never consulted. That is DESIGN section 5's absorbing fallback in the emitter: a guess standing where the answer was available, at no warning. The multi-field arm beside it already refused with \"ambiguous anonymous record literal shape; add a nominal type\"; the one-field arm alone fabricated.",

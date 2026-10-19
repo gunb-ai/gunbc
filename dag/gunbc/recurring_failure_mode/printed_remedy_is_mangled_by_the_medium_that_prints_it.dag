@@ -2,7 +2,7 @@ module gunbc.recurring_failure_mode.printed_remedy_is_mangled_by_the_medium_that
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 // ATTRIBUTION, AND WHY THIS ROW IS FILED BY SOMEONE WHO DID NOT IDENTIFY THE CLASS. calm-owl-417
 // identified it while repairing gunbc#10460 and deliberately held it out of that branch, because
@@ -16,6 +16,8 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data printed_remedy_is_mangled_by_the_medium_that_prints_it: RecurringFailureMode = RecurringFailureMode {
   identity: "printed_remedy_is_mangled_by_the_medium_that_prints_it" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a printed remedy is mangled by the medium that prints it** (an instruction is authored correctly, and the channel that carries it to its reader REWRITES it in transit.",

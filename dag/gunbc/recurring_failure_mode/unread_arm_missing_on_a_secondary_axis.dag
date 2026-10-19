@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unread_arm_missing_on_a_secondary_axis
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data unread_arm_missing_on_a_secondary_axis: RecurringFailureMode = RecurringFailureMode {
   identity: "unread_arm_missing_on_a_secondary_axis" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**A CARRIER THAT MODELS UNREAD ON ITS PRIMARY AXIS AND NOT ON A SECONDARY ONE FORCES EVERY ROW TO ASSERT THE SECONDARY FACT.** The author has no arm for what the source did not say, so an arm that says something must be inhabited, and the resulting row is indistinguishable from one whose source stated the fact outright. The defect is not that the author was careless: it is that the carrier offered no way to be careful, and the type system then certifies the fabrication.",

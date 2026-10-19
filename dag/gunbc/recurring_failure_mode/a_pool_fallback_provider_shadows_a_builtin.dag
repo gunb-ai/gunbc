@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_pool_fallback_provider_shadows_a_builtin
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_pool_fallback_provider_shadows_a_builtin: RecurringFailureMode = RecurringFailureMode {
   identity: "a_pool_fallback_provider_shadows_a_builtin" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a bare reference that names a BUILTIN is resolved by the bare-reference loader to an ordinary pool function that happens to share the name, pulling an unrelated module into the closure. HARM: silent wrong resolution -- the closure depends on a module the author never referenced, so that module's refusals, cost and edits reach a file they do not concern, and nothing reports it.",

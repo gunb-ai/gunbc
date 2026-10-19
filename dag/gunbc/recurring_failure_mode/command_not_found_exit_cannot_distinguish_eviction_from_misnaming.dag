@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_ev
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data command_not_found_exit_cannot_distinguish_eviction_from_misnaming: RecurringFailureMode = RecurringFailureMode {
   identity: "command_not_found_exit_cannot_distinguish_eviction_from_misnaming" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "**POSIX 127 (CommandNotFound) is classified Infra because the exit code cannot distinguish shared-FS eviction of a modelled binary, a misspelled emitted command, or a well-formed command mangled in transit by the wrapper** (INVALID STATE: a subject defect and an environmental miss both present as the same reserved shell status, so gunbc.ci.ci_failure_class classify_failure_exit renders stands-environment for a typo or a wrap mangle as readily as for eviction.",
     "SPECIMEN, review 63442: this PR's wrap ran POSIX quoting and then bash_token_lit quoted again, so sh -c received `'cargo build'` as the command name, would have exited 127, and classify_failure_exit would have called it infra. The modelled command identity at wrap start was present and well-formed; the wrapper mangled it in transit. Caught by review, not by the classifier.",

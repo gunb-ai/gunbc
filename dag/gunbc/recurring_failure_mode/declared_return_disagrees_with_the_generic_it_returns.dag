@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.declared_return_disagrees_with_the_generic_it_returns
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data declared_return_disagrees_with_the_generic_it_returns: RecurringFailureMode = RecurringFailureMode {
   identity: "declared_return_disagrees_with_the_generic_it_returns" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a declared return type disagrees with the type its body actually produces, because the body's type comes from a GENERIC CALL'S INSTANTIATION** (INVALID STATE: a function declares `-> F<A>` and returns the result of `g<T>(...)` instantiated at `T = B`, so the produced type is `F<B>`.",

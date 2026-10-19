@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_live_authority_name_carries_a_superseded_claim
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data a_live_authority_name_carries_a_superseded_claim: RecurringFailureMode = RecurringFailureMode {
   identity: "a_live_authority_name_carries_a_superseded_claim" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "a live authority name carries a superseded claim. A rename or authority replacement sweeps prose for the NAME, every occurrence is updated, every updated occurrence resolves -- and the PROPOSITION each name was embedded in is never re-read. The citation is now current and the sentence around it is false.",

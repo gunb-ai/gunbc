@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_count_field_whose_subject_drifted_from_its_producer
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_count_field_whose_subject_drifted_from_its_producer: RecurringFailureMode = RecurringFailureMode {
   identity: "a_count_field_whose_subject_drifted_from_its_producer" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a count field whose subject drifted from its producer** (one field names a population, a different fold materializes that population, and a later change narrows the materializer without narrowing the field. Both remain internally consistent, so nothing refuses; the two simply answer different questions under one name.)",

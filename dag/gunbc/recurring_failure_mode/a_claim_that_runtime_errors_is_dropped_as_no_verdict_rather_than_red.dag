@@ -2,7 +2,7 @@ module gunbc.recurring_failure_mode.a_claim_that_runtime_errors_is_dropped_as_no
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 // FILED ON MANAGER INSTRUCTION (merry-fox-82, 2026-10-17, on PR gunb-ai/gunbc#14063), from a specimen
 // that two harnesses disagreed about. Its own PR on purpose: the row is a claim about the claim runner,
@@ -11,6 +11,8 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 // and each is refused on a located difference, none of them is this.
 data a_claim_that_runtime_errors_is_dropped_as_no_verdict_rather_than_red: RecurringFailureMode = RecurringFailureMode {
     identity: "a_claim_that_runtime_errors_is_dropped_as_no_verdict_rather_than_red" as NonEmptyStr,
+
+    rung: RungUnread { cause: FoundAtAmbiguous },
 
     receipts: [
       "**a claim whose evaluation raises a runtime error is dropped instead of reported, and the run that dropped it reports the claims it did execute as a complete pass** (INVALID STATE: an executor prints one verdict line per claim it FINISHED evaluating and treats a claim that died mid-evaluation as a claim that was never in the batch, so the reported total is the population of survivors.)",

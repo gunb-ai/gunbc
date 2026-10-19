@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.argument_type_obligation_absent_while_the_route_advances
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
 
 data argument_type_obligation_absent_while_the_route_advances: RecurringFailureMode = RecurringFailureMode {
   identity: "argument_type_obligation_absent_while_the_route_advances" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: CannotClimbFurther { why: "structurally guaranteed on each path once every reached application is judged (frontier count zero) and a widening-legal pair is judged by preservation_rule_refinement_widening once integer value-set evidence exists on produced and declared" }, trigger: climbs_when(capability: "v2.std.inhabitance in the native 04_infer closure, sufficient that infer_incompatible_argument_refuses_holds refuses on the emitted binary.") } },
 
   receipts: [
     "INVALID STATE: a reached application advances on the compiler route while the argument's derived type is not judged against the parameter's declared type, so an incompatible argument is Accepted.",

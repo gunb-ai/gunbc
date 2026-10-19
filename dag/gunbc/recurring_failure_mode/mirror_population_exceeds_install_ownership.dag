@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.mirror_population_exceeds_install_ownership
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data mirror_population_exceeds_install_ownership: RecurringFailureMode = RecurringFailureMode {
   identity: "mirror_population_exceeds_install_ownership" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: regeneration produces a module mirror but the installer's package-ownership join omits its owner. HARM: emission and adjudication succeed, then RebuildScopeRefused MirrorHasNoOwningPackage stops the build and restores the installation checkpoint. Taking the candidate by hand bypasses the broken transaction and conceals the missing join; the refusal is correct, the incomplete ownership population is the defect.",
     "DISTINGUISHING FACTS: the compared mirror population, module-bearing partition rows, and executable shell declarations are different populations. A partition-only join cannot describe a module compiled directly by the shell. Absence from a partition must not imply shell ownership: the shell declaration must positively match, and a match in both populations must refuse MirrorHasMultipleOwningPackages. Aggregate and release-excluded products have separately modeled roles rather than fabricated module owners.",

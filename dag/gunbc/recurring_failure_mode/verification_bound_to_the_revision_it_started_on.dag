@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.verification_bound_to_the_revision_it_started_on
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data verification_bound_to_the_revision_it_started_on: RecurringFailureMode = RecurringFailureMode {
   identity: "verification_bound_to_the_revision_it_started_on" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a verification attributed to the revision it STARTED on rather than the one it FINISHED against** (a checkout is a fact about an INSTANT; a build, a regeneration or a test run consumes an INTERVAL. If the working tree changes anywhere inside that interval -- a branch switch, a merge, a colleague's push into a shared worktree, an editor save -- the artifact that gets exercised is the tree as of the READ, and the revision the author names is the tree as of the LAUNCH. The result is real and the subject is wrong.",

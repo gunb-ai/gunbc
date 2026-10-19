@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.provider_substituted_action_runtime
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
+import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
 
 data provider_substituted_action_runtime: RecurringFailureMode = RecurringFailureMode {
   identity: "provider_substituted_action_runtime" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "4, structurally impossible for modeled workflows: UsesStep.uses constructible only as an admitted release." }, trigger: climbs_when(capability: "the capability for a workflow generator to accept only an admitted-use carrier (a gunbc-side Step projection whose uses field is a sole_constructor admitted release, minted only by admit_action_release), sufficient for every generator in gu") } },
 
   receipts: [
     "**provider-substituted action runtime** (an action release's own action.yml declares one execution mechanism, and the platform executes a different one in its place. GitHub ran every actions/upload-artifact@v4 and actions/download-artifact@v4 step in this repository -- action.yml `runs.using: node20` -- under Node 24, annotating each job \"Node.js 20 is deprecated ... being forced to run on Node.js 24\" and continuing green).",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.derived_artifact_gate_blind_to_its_authority_merge
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data derived_artifact_gate_blind_to_its_authority_merge: RecurringFailureMode = RecurringFailureMode {
   identity: "derived_artifact_gate_blind_to_its_authority_merge" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "a clean merge of a roster deletes a row and every guard on its projection stays silent (THE GATE IS NOT WEAK HERE, IT IS ANSWERING A DIFFERENT QUESTION CORRECTLY, which is why this needs its own row rather than a stronger gate.",

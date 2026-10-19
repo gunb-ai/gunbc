@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unresolved_name_is_reported_as_a_decidability_verdict
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data unresolved_name_is_reported_as_a_decidability_verdict: RecurringFailureMode = RecurringFailureMode {
   identity: "unresolved_name_is_reported_as_a_decidability_verdict" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**an unresolved name is reported as a decidability verdict, and at the blocking end as a TYPE** (INVALID STATE: a reference that failed to resolve is reported in a category that presupposes it resolved -- as an undecidable position, or as a type spelled with the unresolved name -- so the report is true-sounding and the resolution deficit is destroyed at the point of reporting).",

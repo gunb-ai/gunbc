@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.routing_a_subject_to_an_unverified_adjudicator
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data routing_a_subject_to_an_unverified_adjudicator: RecurringFailureMode = RecurringFailureMode {
   identity: "routing_a_subject_to_an_unverified_adjudicator" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**routing a subject to an adjudicator never observed to adjudicate it** (INVALID STATE: a subject whose adjudication is transferred to an authority that has never been OBSERVED to adjudicate it, with the transfer recorded as a ROUTING rather than as a loss of coverage. A gate that cannot reach a verdict on a subject declines it and names a second gate as better suited -- no per-item deadline, a larger budget, or ownership of the same subject universe -- and the naming is accepted as the coverage. The origin's decline is typed, located and honest; the destination's SILENCE is not, and nothing in the handing diff distinguishes a destination that answers from one that never runs. The subject then reads as adjudicated by everyone and is adjudicated by no one.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.resolution_scope_conflated_with_ownership_scope
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data resolution_scope_conflated_with_ownership_scope: RecurringFailureMode = RecurringFailureMode {
   identity: "resolution_scope_conflated_with_ownership_scope" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "resolution scope conflated with ownership scope (THE SCOPE THAT LETS YOU FIND A NAME AND THE SCOPE THAT OWNS ITS DECLARATION ARE TWO FACTS, and every instance of this class is a place where one carrier held both.",

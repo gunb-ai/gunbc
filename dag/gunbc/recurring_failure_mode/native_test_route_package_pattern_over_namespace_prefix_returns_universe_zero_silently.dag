@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.native_test_route_package_pattern_over_namespace_prefix_returns_universe_zero_silently
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data native_test_route_package_pattern_over_namespace_prefix_returns_universe_zero_silently: RecurringFailureMode = RecurringFailureMode {
   identity: "native_test_route_package_pattern_over_namespace_prefix_returns_universe_zero_silently" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a package pattern over a namespace prefix (`//v2/test/claim/match_binder:all`) silently returns an empty universe -- universe=0, population=0, refused universe_underived -- where the correct behavior is a typed refusal naming the operand mismatch; the package half of a target pattern matches by exact package equality, and no module's package equals the prefix, so nothing can match (INVALID STATE: the lane reports success-shaped silence -- an empty selection -- instead of the typed operand refusal a mis-targeted pattern deserves, so a caller cannot distinguish 'wrong operand' from 'the lane is dead').**",

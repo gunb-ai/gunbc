@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.error_type_fabricated_as_a_type_by_total_accessors
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data error_type_fabricated_as_a_type_by_total_accessors: RecurringFailureMode = RecurringFailureMode {
   identity: "error_type_fabricated_as_a_type_by_total_accessors" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a type node with name empty and no ident_span, answered where a node's inferred slot holds no type. v1.compiler.infer_types resolved_type answers the nameless error_type node for every non-Resolved state of the slot (an unbound TypeVariable, a carried CompilerError, a Divergent), so an error masquerades as a type (DESIGN section 5). child_type_node passes an UNINFERRED child and an Arrow through unchanged; only a child whose inferred slot is PRESENT and non-Resolved delegates to resolved_type's error_type fallback. The preserved pass-through branches are not fabrication sites.",

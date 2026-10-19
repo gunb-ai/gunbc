@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.marker_present_in_both_arms_of_the_distinction_it_decides
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data marker_present_in_both_arms_of_the_distinction_it_decides: RecurringFailureMode = RecurringFailureMode {
   identity: "marker_present_in_both_arms_of_the_distinction_it_decides" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a marker present in both arms of the distinction it decides** (a reader keys a verdict on a substring that upstream emits on BOTH sides of the question, so the fold answers one arm for every input and its author has no way to notice -- the marker is genuinely there, in genuinely relevant output, saying something other than what it was read as).",

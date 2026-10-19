@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.internal_review_finds_missing_tests_external
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data internal_review_finds_missing_tests_external: RecurringFailureMode = RecurringFailureMode {
   identity: "internal_review_finds_missing_tests_external" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "internal review finds missing tests, external review finds missing checks",

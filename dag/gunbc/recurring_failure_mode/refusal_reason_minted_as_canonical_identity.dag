@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.refusal_reason_minted_as_canonical_identity
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data refusal_reason_minted_as_canonical_identity: RecurringFailureMode = RecurringFailureMode {
   identity: "refusal_reason_minted_as_canonical_identity" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "**a diagnostic reason symbol is written into a resolved value as its identity** (INVALID STATE: v2.compiler.resolve try_resolve_qualified_name_node, on a symbol-index HIT whose declaration node is not an Atom -- every fn, since a fn is an Arrow -- passed `^resolve_reason_unbound_symbol` as the fallback identity to symbol_index_node_identity, so the resolved reference was Accepted as an Atom whose identity is a refusal reason. The bare arm beside it passes the referenced NAME as its fallback.)",
     "HARM. The program is Accepted, downstream stages receive an atom named after a diagnostic, and every consumer that keys on the identity -- infer, emit, the repair-input origin roster -- sees a symbol that names nothing declared. A reader who greps for the reason symbol finds refusals and never this value. It is the fabricated-plausible-output failure of DESIGN section 5 in its smallest form: one field, wrong vocabulary, no signal.",

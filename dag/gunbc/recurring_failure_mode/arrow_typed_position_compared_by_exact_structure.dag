@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.arrow_typed_position_compared_by_exact_struc
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data arrow_typed_position_compared_by_exact_structure: RecurringFailureMode = RecurringFailureMode {
   identity: "arrow_typed_position_compared_by_exact_structure" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
+
   receipts: [
     "INVALID STATE: a callable at an Arrow-typed declared position (a record field typed `fn(Int) -> Bool`, a higher-order formal) is compared with the position's declared type by exact node structure. An Arrow's domain members carry authored binder names, so a named fn whose parameter is `n` does not structurally equal a declared `fn(x: Int) -> Bool` though both have the signature Int -> Bool. HARM: a false definitive refusal, `record_field_value_does_not_inhabit` or `application_argument_does_not_inhabit`, of a well-typed program.",
     "FOUND AT: a false definitive refusal on the data-constant route, then WIDENED to fn bodies when fn_body_record_construct_unjudged_on_native_route was fixed (the construct row began judging fn-body constructs and met the same comparison). Executed: infer_optional_at_required_witness oar_arrow_named_ok / named_x / nullary / arg_ok were red without the arm and pass with it.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it: RecurringFailureMode = RecurringFailureMode {
   identity: "doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a DOCTRINE in the design authority states a safety property unconditionally while the mechanism that would deliver it ranges, BY SIGNED RULING, over a declared subset -- so a reader correctly following the doctrine infers a census the ruling deliberately does not provide** (INVALID STATE: a normative sentence of the form `in a fail-closed substrate X is guaranteed` stands in the document a reader consults FIRST, with no scope qualifier, while the executing mechanism that produces X admits its subjects by a roster an operator signed with a stated price. NOTHING IS HIDDEN AND NOTHING IS BROKEN -- the limitation is declared where it is enforced, counted, written to the disposition artifact and announced per run. THE DEFECT IS ONLY THE JOIN: the two facts live in two documents, one of which is prescriptive and silent about the other. HARM: the doctrine instructs an author to RELY on the mechanism instead of doing the work the mechanism does, so a product-layer migration is performed with no census at all and the author has followed the authority exactly. This is DESIGN section 4b(1) rung inflation applied to a doctrine rather than to an error class, and it is worse in the same way: an inflated doctrine never ranks for climbing, because the document says the guarantee is already there.)",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.witness_oracle_transcribed_from_the_tree_it_measures
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data witness_oracle_transcribed_from_the_tree_it_measures: RecurringFailureMode = RecurringFailureMode {
   identity: "witness_oracle_transcribed_from_the_tree_it_measures" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a witness oracle transcribed from the tree it measures: a claim's expected value is a numeric literal copied from a producer that the same tree already carries -- a pinned calibration rate, a policy row, a width another fold derives -- so the assertion compares the producer's output to a stale copy of itself. DESIGN section 5 names the class (a measurement copied from the same current tree is not an oracle; automating the literal's update collapses the assertion to measure() == measure()) and section 6 names the remedy (name the instrument, never transcribe its output). The class is LAYER-AGNOSTIC: it is the same defect in a fleet witness, a floor witness or a compiler witness, and it is found today only by per-PR review reading the fixture against the producer.",

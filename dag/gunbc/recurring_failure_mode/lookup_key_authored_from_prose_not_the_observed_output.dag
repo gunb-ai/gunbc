@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.lookup_key_authored_from_prose_not_the_obser
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data lookup_key_authored_from_prose_not_the_observed_output: RecurringFailureMode = RecurringFailureMode {
   identity: "lookup_key_authored_from_prose_not_the_observed_output" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A KEY INTO A TOOL'S OUTPUT IS WRITTEN FROM HOW PEOPLE NAME THE THING, NOT FROM WHAT THE TOOL PRINTS.** Invalid state: a route or selector holds a name that no real output contains, and nothing has run it against a capture, so the mismatch cannot surface until the first live reader -- where, unless the selection refuses, it reads as the target having no value rather than the key being wrong.",

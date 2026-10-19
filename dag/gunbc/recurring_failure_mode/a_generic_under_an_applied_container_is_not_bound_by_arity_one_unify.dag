@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_generic_under_an_applied_container_is_not_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_generic_under_an_applied_container_is_not_bound_by_arity_one_unify: RecurringFailureMode = RecurringFailureMode {
   identity: "a_generic_under_an_applied_container_is_not_bound_by_arity_one_unify" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: the v1 seed's arity-one first-wins unify_generics binds a generic only at the top of a type, so a generic reached under an applied container (List<KeyedRow<SubjectKey<K>,V>>) is not bound and the emitter's bound forwarding cannot see it, giving E0277 in the emitted crate. HARM: K4 (std.keyed_roster reground, #13947) cannot land; the one attempt to deepen the binding (#14086, head 049cd38) changed call-type resolution corpus-wide and the v2-native self-host emit refused with 22 hard diagnostics ('function fold/chars not found in scope', 'Present arm scrutinee unresolved') while the depth-3 RED still failed.",
     "DISTINGUISHING FACTS: direct, Optional and Row arguments bind; List/Set/Map-value wrapping does not. RUNG FOUND AT: mitigatable. CEILING: structurally guaranteed in v2 infer, not the seed (a seed fix is a second walker or a corpus-wide behavior change; stern ruled PARK, no mode-split). NEXT TRIGGER: v2 infer owns N-ary generic binding through applied constructors (List<KeyedRow<SubjectKey<K>,V>>). Receipts: #14086, #13947.",

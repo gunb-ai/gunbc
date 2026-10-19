@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.diagnostic_name_mechanism_silent
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data diagnostic_name_mechanism_silent: RecurringFailureMode = RecurringFailureMode {
   identity: "diagnostic_name_mechanism_silent" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "diagnostic name accurate about the situation, silent about the mechanism (a diagnostic's NAME describes the state it was raised in faithfully and says nothing about WHICH PREDICATE produced it, so a reader who treats the name as a cause builds a coherent story with no load-bearing contact with the code.",

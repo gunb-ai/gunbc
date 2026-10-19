@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.wrap_refusal_after_host_script_proceed_mutation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data wrap_refusal_after_host_script_proceed_mutation: RecurringFailureMode = RecurringFailureMode {
   identity: "wrap_refusal_after_host_script_proceed_mutation" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a live_deploy compose_host_script Decide fragment is HostScriptProceed, Mutate including slice-control runs, then a child ExecStart (`gunbc run` / `gunbc converge`) refuses wrap standing (UserSessionAbsent, UncappedSystemSlice, CgroupUnreadable, UserManagerProbeFailed). The host is left part-mutated: sessions and broker set-property already applied, tree-sync not converged.",

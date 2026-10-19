@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.identity_hashed_from_a_shared_mutable_path
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data identity_hashed_from_a_shared_mutable_path: RecurringFailureMode = RecurringFailureMode {
   identity: "identity_hashed_from_a_shared_mutable_path" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "MEMORY CAPTURE INSTANCE (2026-09-13, gunbc#11144 head 938466bf): gunbc.host.mtcollins_memory_change::replay_mtcollins_memory_change read a capture into a String, then independently hashed the path. No witnessed race is claimed, but replacement between those reads could certify bytes other than those recognized. The replay now sends the consumed content through gunbc.host.memory_observation::verify_memory_capture_content to extdeps.tools.sha256sum::sha256sum.Sha256.DigestStdin. The captured String is both the digest input and the returned recognition input; no path is accepted by that verifier. test.claim.host.memory_capture_real_execution_witness::w_capture_digest_binds_consumed_content executes the verifier against a known-answer positive control and changed consumed bytes under the same expected digest. This verifies the content boundary; it does not inject a concurrent writer into the original replay. The path-taking operation remains legitimate for external files, so the broader class retains its existing ceiling.",

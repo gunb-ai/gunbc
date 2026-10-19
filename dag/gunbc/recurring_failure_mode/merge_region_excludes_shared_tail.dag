@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.merge_region_excludes_shared_tail
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data merge_region_excludes_shared_tail: RecurringFailureMode = RecurringFailureMode {
   identity: "merge_region_excludes_shared_tail" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**merge region excludes the shared tail** (a roster carrier whose rows are multi-line blocks ending in an identical suffix makes every two-lane append resolve WRONG BY DEFAULT.",

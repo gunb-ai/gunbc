@@ -1,12 +1,14 @@
 module gunbc.recurring_failure_mode.the_checker_admits_a_cast_the_evaluator_refuses
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
 // gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
 data the_checker_admits_a_cast_the_evaluator_refuses: RecurringFailureMode = RecurringFailureMode {
   identity: "the_checker_admits_a_cast_the_evaluator_refuses" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
   receipts: [
     "INVALID STATE: an explicit `as` cast the typechecker Accepts but the evaluator refuses, so what the cast admits has two authorities (DESIGN section 3): v1.compiler.infer validate_cast abstains whenever either side is outside std.coercion dag_cast_rules, and the seed interpreter's eval_cast decides the cast alone at runtime. HARM: a checked program crashes on a construct its checker blessed, which is below the section 4b floor.",
     "SPECIMENS: `n as Nat` in gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle console_size_of_stat aborted an mtcollins1 boot diagnostic with `TypeError: cannot cast Int to Nat` (CI run 35871654468) although the value was guarded by `n < 0`; runner_microvm_cell_readiness_store decode_attempt hit the same class earlier. The sweep at the fix found three more unguarded Int-as-Nat sites (gunbc.ci_workflow_scan_producer scan walk bound, gunbc.harness.harness_cli harness_release_cli ceiling and generation).",

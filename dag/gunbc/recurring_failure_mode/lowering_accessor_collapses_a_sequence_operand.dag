@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_opera
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data lowering_accessor_collapses_a_sequence_operand: RecurringFailureMode = RecurringFailureMode {
   identity: "lowering_accessor_collapses_a_sequence_operand" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed, and reachable -- once the operand reader returns the whole operand or a located refusal, a missing operand has no constructor." as NonEmptyStr } },
 
   receipts: [
     "a lowering accessor that silently narrows a MULTI-ELEMENT operand to its first element: the caller asks what an argument is and receives a proper part of it, with no refusal and nothing counted, so every consumer downstream reasons about a subset of the program the source actually wrote (DESIGN section 5 -- a failure arm must refuse, never widen)",

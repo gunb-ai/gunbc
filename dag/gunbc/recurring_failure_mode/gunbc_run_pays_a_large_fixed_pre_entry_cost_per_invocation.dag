@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.gunbc_run_pays_a_large_fixed_pre_entry_cost_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation: RecurringFailureMode = RecurringFailureMode {
   identity: "gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "**every `gunbc run` step pays a fixed per-invocation cost that does not scale with its entry's closure** (INVALID STATE: a CI step whose work is a few-module fold -- read one environment variable, compare it to one host name -- costs minutes of wall time before it evaluates anything, and the cost is denominated in the corpus rather than in the entry. A step budget sized for the fold is then consumed by work the fold never demanded.)",
     "HARM. Every fleet-converge and floor step that shells `gunbc run` pays it on every dispatch, so it multiplies across steps and runs. It also hides closure cost: a step that times out cannot be told apart, from its budget alone, from a step whose entry closure grew. Run 36170715248 timed out at 'Mt. Collins boot admission (credential-free)' on a combination of both.",

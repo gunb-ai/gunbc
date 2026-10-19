@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.receipt_subject_is_the_prose_about_the_mecha
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data receipt_subject_is_the_prose_about_the_mechanism: RecurringFailureMode = RecurringFailureMode {
   identity: "receipt_subject_is_the_prose_about_the_mechanism" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a behavioral receipt is built correctly -- fault injection, positive control, typed refusal -- around a subject that is the DOCUMENTATION of the mechanism rather than the mechanism** (INVALID STATE: a module's equivalence receipt compares a declaration whose content is a description of what the module does, so the receipt is green, discriminating, and would not move if every behavior it purports to cover were deleted.",

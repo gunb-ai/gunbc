@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.generic_product_admitted_where_its_argument_type_is_declared
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data generic_product_admitted_where_its_argument_type_is_declared: RecurringFailureMode = RecurringFailureMode {
   identity: "generic_product_admitted_where_its_argument_type_is_declared" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a value whose type is a generic product application `Wrap<T>` reaches a position declared as `T` (or any other established coproduct), and the program is Accepted. HARM: silent wrongness at the compiler floor -- DESIGN section 4b names `values inhabit declared types` as below-baseline when it fails. SPECIMEN: gunbc#13198 (632b72544e) passed `roadmap_standings_read(layout: ...)` (`-> CarrierClosed<RoadmapStandings>`) as `issue_query_snapshot_for_projection.standings` (`standings: RoadmapStandings`). The seed admitted it. At runtime the callee's match on `StandingsObserved | StandingsUnobserved` met a `CarrierClosed` record and aborted with PatternMatchFailure, taking down every srv2 belt tick. The wiring unwrap lives at `gunbc.roadmap.roadmap_served_observation` `served_standings_after_snapshot_close`; this row owns the checker wall, not that unwrap's authorship.",

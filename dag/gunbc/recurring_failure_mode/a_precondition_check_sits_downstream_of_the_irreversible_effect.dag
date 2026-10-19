@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_precondition_check_sits_downstream_of_the_irreversible_effect: RecurringFailureMode = RecurringFailureMode {
   identity: "a_precondition_check_sits_downstream_of_the_irreversible_effect" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a check that would have refused, placed after the effect it was protecting, is not a weak wall -- it is a wall built on the wrong side of the door, and the ordering claim in the prose beside it is what stops anyone looking** (INVALID STATE: a flow declares that every precondition is decided before its irreversible operation, and one of those preconditions is in fact an effect performed AFTER it. Each step is individually correct and the sequence type-checks; only the ORDER is wrong. HARM: the protected operation is non-idempotent and its product is returned exactly once, so the refusal arrives after the only copy of the value has been created, and the failure mode is not a failed run but an orphaned live credential -- a thing that exists, grants access, and which nothing in the tree knows the identity of.",

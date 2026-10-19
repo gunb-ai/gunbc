@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.two_admission_authorities_keyed_on_different_relations
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data two_admission_authorities_keyed_on_different_relations: RecurringFailureMode = RecurringFailureMode {
   identity: "two_admission_authorities_keyed_on_different_relations" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: two authorities answer one admission question -- may this value cross from one model to another -- and each is keyed on a DIFFERENT IDENTITY RELATION, with no conversion between the two keys anywhere in the corpus.",

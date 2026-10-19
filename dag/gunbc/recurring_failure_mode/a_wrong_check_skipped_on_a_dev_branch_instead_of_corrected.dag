@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_wrong_check_skipped_on_a_dev_branch_instead_of_corrected
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_wrong_check_skipped_on_a_dev_branch_instead_of_corrected: RecurringFailureMode = RecurringFailureMode {
   identity: "a_wrong_check_skipped_on_a_dev_branch_instead_of_corrected" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "a wrong check skipped on a dev branch instead of corrected: a preflight refuses hosts that can in fact do the work, because it tests a MECHANISM the fleet does not use rather than the capability the effect needs. The lane that hits it disables the check on its own branch to get moving, marks the commit never-merge, and the correction never reaches main -- so main keeps a wall no host can pass, the dev branch keeps no wall at all, and the next lane re-discovers the refusal from scratch with no record that it was already understood.",

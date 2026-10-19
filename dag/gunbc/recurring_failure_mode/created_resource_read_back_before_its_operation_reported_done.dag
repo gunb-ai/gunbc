@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.created_resource_read_back_before_its_operation_reported_done
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data created_resource_read_back_before_its_operation_reported_done: RecurringFailureMode = RecurringFailureMode {
   identity: "created_resource_read_back_before_its_operation_reported_done" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "**a create that answers with a google.longrunning.Operation is treated as the resource existing, and the readback that follows refuses or mis-reads because the operation had not finished** (INVALID STATE: a run holds a 200 whose body is an Operation, discards it, and reads the resource back at once; the resource is not yet visible, so the readback reports a subject not yet present over a create that is committed.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.deleted_ci_job_survives_at_the_branch_head_that_predates_its_deletion
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data deleted_ci_job_survives_at_the_branch_head_that_predates_its_deletion: RecurringFailureMode = RecurringFailureMode {
   identity: "deleted_ci_job_survives_at_the_branch_head_that_predates_its_deletion" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a deleted CI job keeps running, on every branch whose head predates the deletion, and the PR it blocks never touched the workflow** (the workflow that executes is the one AT THE PULL REQUEST'S HEAD, not the one on the default branch, so deleting a job stops it for main and for nothing else. Every branch cut before that commit keeps a full copy of the old roster and keeps paying for it, once per push, until someone integrates the deletion.",

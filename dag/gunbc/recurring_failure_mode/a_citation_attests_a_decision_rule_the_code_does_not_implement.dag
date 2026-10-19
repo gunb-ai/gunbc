@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_citation_attests_a_decision_rule_the_code_does_not_implement
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data a_citation_attests_a_decision_rule_the_code_does_not_implement: RecurringFailureMode = RecurringFailureMode {
   identity: "a_citation_attests_a_decision_rule_the_code_does_not_implement" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "A module cites a STANDARD and models a decision procedure, but the decision the code implements is a weaker or different rule than the standard's normative one. The citation then attests properties the code does not have -- total order, precedence, canonicality -- and every reader who trusts the anchor inherits them. The anchor is current, the name resolves, and the sentence the code speaks is not the sentence the standard speaks.",

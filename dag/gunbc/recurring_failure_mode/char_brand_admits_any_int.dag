@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.char_brand_admits_any_int
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data char_brand_admits_any_int: RecurringFailureMode = RecurringFailureMode {
   identity: "char_brand_admits_any_int" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: a plain Int, including a non-scalar, is accepted at a position declared std.types Char (type Char = Int where unicode_scalar, brand(\"Char\")). So Char is a BRAND, not a type: DESIGN section 4b -- a brand is cosmetic until construction and acceptance enforce the distinction. This is BELOW THE FLOOR (values inhabit declared types), not a differentiator gap.",
     "HARM: every totality that rests on 'a Char is a scalar by construction' is unproven. std.coercion unicode_scalar_fold spells a List<Char> as host text with no typed refusal, so a surrogate reaching it through an Int retyped as Char cannot be refused by type. The 'Char by construction' reading of a call site cannot be checked by any reviewer or gate today.",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.type_name_field_carries_rendered_value
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data type_name_field_carries_rendered_value: RecurringFailureMode = RecurringFailureMode {
   identity: "type_name_field_carries_rendered_value" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a field named type_name holds a type name on three arms and a fully rendered value on the fourth** (INVALID STATE: ExitClass::NotProcessExit is one spelling whose payload field is called type_name. `classify_exit` Variant arms that are not ProcessExit put ctx.resolve of the variant type symbol, or ProcessExit plus the unknown variant, into it — an actual type or variant name. The final other arm puts ctx.format_value of the non-variant value — the rendered value — into the same field. `exit_status_for_class` interpolates that field into the returned-quote slot with no second match, so every refusal path reads one name for two facts. HARM: a reader of the interpolation site infers the field's contents from its NAME and concludes a String projector yields the word String; a reader of the producer and a live stderr file concludes the markdown body is in the diagnostic. Both readings of adjacent code are correct; the name is a third surface and it lied.",

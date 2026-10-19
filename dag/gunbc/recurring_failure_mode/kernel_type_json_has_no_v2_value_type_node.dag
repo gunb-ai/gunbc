@@ -2,10 +2,14 @@ module gunbc.recurring_failure_mode.kernel_type_json_has_no_v2_value_type_node
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.guarantee_stall { AwaitsOneGrounding, climbs_when }
 
 data kernel_type_json_has_no_v2_value_type_node: RecurringFailureMode = RecurringFailureMode {
   identity: "kernel_type_json_has_no_v2_value_type_node" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: "a v2 std authority for Json owns a value-type NODE for Json, the way v2.std.integer owns integer_int_type_node and v2.std.logic owns bool_node, and dag_kernel_value_type_roster carries a row pointing at it." }, trigger: climbs_when(capability: "a v2 std authority for Json owns a value-type NODE for Json, the way v2.std.integer owns integer_int_type_node and v2.std.logic owns bool_node, and dag_kernel_value_type_roster carries a row pointing at it.") } },
 
   receipts: [
     "INVALID STATE: a value is judged at a position declared Json on the v2 resolve-to-infer route and the judgment cannot be decided, because nothing says what Json denotes. Json is a kernel type (std.types kernel_type_set) with no value-type node in any v2 std authority, so it has no row in v2.extdeps.languages.dag dag_kernel_value_type_roster: no canonical binding, no spelling row, and no denotation.",

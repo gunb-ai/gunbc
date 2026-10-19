@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.cell_add_overrides_the_slot_cpu_policy
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data cell_add_overrides_the_slot_cpu_policy: RecurringFailureMode = RecurringFailureMode {
   identity: "cell_add_overrides_the_slot_cpu_policy" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
   receipts: [
     "2026-10-09, PR #13607: commissioning at f99e440ce59 refused the cell-boundary digest. Independent systemd readback found CPUQuotaPerSecUSec=infinity while all five other fields matched. The persisted quota drop-in dates to the initial 03:47:23 cell apply, whose FullyApplied terminal recorded successful commands, not full boundary convergence. The MemberAdded realization passed the fleet-wide unlimited quota into a slot-specific renderer, overriding srv1-13's declared four-CPU limit.",
     "Repair: the production boundary-add constructor now accepts only a slot and derives every directive from its desired row. The fixture quota renderer remains available for its bounded/unbounded controls. A regression drives the actual MemberAdded dispatch and requires CPUQuota=400%, with no unlimited assignment.",

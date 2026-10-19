@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.map_key_bound_not_derived_for_nested_or_forw
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data map_key_bound_not_derived_for_nested_or_forwarded_generics: RecurringFailureMode = RecurringFailureMode {
   identity: "map_key_bound_not_derived_for_nested_or_forwarded_generics" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: a fn generic over K whose map key is a type CONTAINING K (Map<SubjectKey<K>, V>), or which reaches such a map only by passing K to a callee whose parameter carries the key bound, is emitted without Eq + Hash on K. HARM: the emitted crate fails rustc E0277 at the HashMap bridge, loudly; the generated std.keyed_roster index could not compile until the v1 emitter derived the bound (found by the K4 reground). The v1 emitter read only the HEAD name of a key type and did not forward a callee's declared bound; both are fixed in v1.compiler.emit_rust v1_fn_signature_map_key_param_names and v1_call_forwarding_bound_param_names (MapKeyForwarded), with reds and a negative control in test.claim.map_key_derive_requirement_witness.",
     "V2 GAP, RECORDED NOT FIXED HERE: the native v2 emitter carries supplemental generic-bound contracts for Vec, BTreeSet and HashSet element parameters (v2.extdeps.languages.rust rust_vec_supplemental_generic_bound_contracts, rust_btree_set_supplemental_generic_bound_contracts, rust_hash_set_supplemental_generic_bound_contracts) and has no row for a keyed map's key, so a v2-emitted generic over a map key nested in a key type would show the same E0277. Not exercised yet: no gate-closure fn needs it under v2. RUNG FOUND AT: mitigatable (loud rustc refusal). CEILING: structurally guaranteed. NEXT-RUNG TRIGGER: v2 target model carries a keyed-map key bound contract that reaches nested and callee-forwarded generics, sufficient for the native CLI to emit std.keyed_roster.",

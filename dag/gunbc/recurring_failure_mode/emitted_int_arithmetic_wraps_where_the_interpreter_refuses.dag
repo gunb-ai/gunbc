@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.emitted_int_arithmetic_wraps_where_the_interpreter_refuses
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data emitted_int_arithmetic_wraps_where_the_interpreter_refuses: RecurringFailureMode = RecurringFailureMode {
   identity: "emitted_int_arithmetic_wraps_where_the_interpreter_refuses" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "emitted Int arithmetic diverges from the interpreter's refusal, in TWO PARTITIONS with different harms (one accepted program, two realizations). PARTITION W -- + - * and unary -: release i64 WRAPS and the emitted program returns a fabricated value where the interpreter refuses. PARTITION T -- / and %: the emitted program was ALREADY terminal on a zero divisor and on MIN / -1 and MIN % -1, but under rustc's own classification and text (divide by zero, divide with overflow, remainder with overflow) rather than the interpreter's IntegerOverflow / DivisionByZero split. The identity keeps its first-filed name; the subject is both partitions",

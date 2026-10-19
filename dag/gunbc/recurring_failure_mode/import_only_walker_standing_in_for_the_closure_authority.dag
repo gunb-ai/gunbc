@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.import_only_walker_standing_in_for_the_closure_authority
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data import_only_walker_standing_in_for_the_closure_authority: RecurringFailureMode = RecurringFailureMode {
   identity: "import_only_walker_standing_in_for_the_closure_authority" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a consumer that needs a MODULE CLOSURE -- every module the subject depends on -- is answered by an import-line BFS (extract_import_paths, parse-tree import params, or an adjacency built only from ImportResolutionFact). A provider reached only by a qualified or bare reference is omitted. The compile, skip-set, regen, or fixture then proceeds over a strict subset of the one closure authority (v1_compiler.cli_run extend_sources_to_both_closure_fixpoint: import edges PLUS dotted-reference PLUS bare-reference, to a joint fixpoint). HARM, TWO MECHANISMS, NOT ONE INCIDENT: (1) fixture/compile loaders -- unresolved-type / undefined-variable against a module that resolves in every authority-built closure (loud when the omitted provider is demanded). (2) Class B skip-set -- class_b_path_affects_gate is dag_closure.contains on an ordinary provider .dag path, and class_b_import_closure_gate_skip_label_for_ci takes the not-affected skip when no changed path intersects that set, so the Class B harm is wrongly skipping a provider-only change (the not-affected skip). Other unconditional-run conditions may mask a particular change; they do not reverse this mechanism. No observed production false-skip incident is claimed here; the direction is the possible silent skip, not 'fails to skip'.",

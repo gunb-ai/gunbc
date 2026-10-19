@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_pathname_reresolves_its_ancestry_between_calls
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_pathname_reresolves_its_ancestry_between_calls: RecurringFailureMode = RecurringFailureMode {
   identity: "a_pathname_reresolves_its_ancestry_between_calls" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a pathname re-resolves its ancestry between calls: a producer creates a directory, keeps its PATH, and addresses it again in every later operation. Each of those operations walks the name from the root afresh, so whatever the ancestry means at that instant is what it writes into. An actor able to modify any ancestor -- rename the directory and leave a symlink in its place is the cheap form -- redirects every subsequent write, and the producer returns its ordinary success value naming a path whose contents are now somebody else's. Nothing refuses, because nothing asked a second time; the check that would have asked cannot help either, since a check is itself a path resolution and the state can change between it and the use.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_shared_cargo_target_lets_one_session_measure_anothers_compiler
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data a_shared_cargo_target_lets_one_session_measure_anothers_compiler: RecurringFailureMode = RecurringFailureMode {
   identity: "a_shared_cargo_target_lets_one_session_measure_anothers_compiler" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "OCCURRENCE, 2026-09-22 (sunny-ibex-112): SAME INVALID STATE, NEW POPULATION -- THE SEED BINARY, not the probe root. /cargo-target is the cargo target directory every session in every worktree resolves by default, so `cargo build -p v1-compiler` writes /cargo-target/release/gunbc and /cargo-target/release/claim_executor for EVERYONE. Keyed by what is built, not by who builds it; second writer wins; the loser measures the winner. That is a_shared_probe_root_lets_one_run_compile_anothers_source verbatim, one layer up from the emitted probe crate: there the shared artifact is the generated SOURCE, here it is the COMPILER ITSELF.",

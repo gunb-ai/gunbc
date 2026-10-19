@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.nominal_call_arg_brand_mismatch_does_not_fir
 
 import std.types { NonEmptyStr }
 import std.decl_ref { decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data nominal_call_arg_brand_mismatch_does_not_fire_for_an_alias_of_an_applied_form: RecurringFailureMode = RecurringFailureMode {
   identity: "nominal_call_arg_brand_mismatch_does_not_fire_for_an_alias_of_an_applied_form" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "SPECIMEN (found executing #14330, 2026-10-18): type Inner<T> { v: T }; type IntInner = Inner<Int>; fn take(x: IntInner) -> Int { 0 }; fn p(b: Inner<Bool>) -> Int { take(x: b) } is refused on NEITHER the regenerated mirrors NOR main's: the witness refusal_count read zero on both arms. The same mismatch is refused at an if join and at a record-literal site.",
     "INVALID STATE: a call argument of type Inner<Bool> is accepted for a formal declared IntInner = Inner<Int>. HARM: a silent wrong answer at the most common check, a call argument (DESIGN 5, below the ladder). RUNG FOUND AT: below the ladder for this shape; CEILING: 3, structurally guaranteed through the one declaration relation.",

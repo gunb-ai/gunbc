@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.right_censored_cost_read_as_exact
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data right_censored_cost_read_as_exact: RecurringFailureMode = RecurringFailureMode {
   identity: "right_censored_cost_read_as_exact" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**a right-censored cost read as an exact one** (an instrument stops because a POLICY THRESHOLD fired before the subject completed, and the figure it emits is a LOWER BOUND on the true cost. Carried in the same field, column or type as a completed measurement, it is then summed, ranked, compared against a line, or deflated into a budget as though it were the cost.",

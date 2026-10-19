@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.fci1_control_output_captured_to_journal
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data fci1_control_output_captured_to_journal: RecurringFailureMode = RecurringFailureMode {
   identity: "fci1_control_output_captured_to_journal" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a control that redirects a transient unit's output to a file and then greps that file, where the unit was launched `systemd-run --wait` without `--pipe`. systemd then connects the unit's stdout and stderr to the journal, so the redirect captures nothing and the grep over an empty file fails regardless of what the unit said.",

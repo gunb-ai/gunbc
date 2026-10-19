@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_record_literal_naming_a_union_type_is_accepted_at_typecheck
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data a_record_literal_naming_a_union_type_is_accepted_at_typecheck: RecurringFailureMode = RecurringFailureMode {
   identity: "a_record_literal_naming_a_union_type_is_accepted_at_typecheck" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a record literal whose NAME resolves to a declaration carrying no record constructor -- a coproduct -- is accepted at typecheck**, and the value it builds has no constructor to be: the refusal arrives later, and somewhere else, as a non-exhaustive pattern match at EVAL (INVALID STATE: `type U = A { x: Int } | B` and a data binding `u: U = U { x: 1 }` compile with 0 blocking diagnostics; DESIGN section 4b, `values inhabit declared types`, says the program cannot mean anything, and no typecheck diagnostic says so).",

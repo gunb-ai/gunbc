@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.bound_shaped_closure
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data bound_shaped_closure: RecurringFailureMode = RecurringFailureMode {
   identity: "bound_shaped_closure" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**bound-shaped closure** (a requirement is satisfied by a number that is real, and the row it satisfies stops ranking for work.",

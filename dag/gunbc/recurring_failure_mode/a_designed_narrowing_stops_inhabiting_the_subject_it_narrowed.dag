@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_designed_narrowing_stops_inhabiting_the_subject_it_narrowed
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_designed_narrowing_stops_inhabiting_the_subject_it_narrowed: RecurringFailureMode = RecurringFailureMode {
   identity: "a_designed_narrowing_stops_inhabiting_the_subject_it_narrowed" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A FIXTURE THAT ENUMERATES HAND-PICKED INPUTS INSTEAD OF DERIVING THEM CARRIES A HIDDEN PREMISE: THAT EACH PICK STILL INHABITS THE SUBJECT'S CONSTRAINTS.** The narrowing is normally the RIGHT move -- a claim whose discriminator is the runtime does not need the whole candidate field, and a smaller field is cheaper and says exactly as much. What the narrowing also does, invisibly, is freeze a set of inputs against the constraint population that existed when they were chosen. When a later change TIGHTENS that population, the picks can stop satisfying it, and the claim keeps passing: it reaches its expected verdict through the NEW exclusion rather than through the mechanism it exists to exercise. Nothing reds. The assertion is unchanged, the subject is correct, the verdict is correct, and the reason is different.",

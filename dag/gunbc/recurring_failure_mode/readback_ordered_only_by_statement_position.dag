@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.readback_ordered_only_by_statement_position
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
 
 data readback_ordered_only_by_statement_position: RecurringFailureMode = RecurringFailureMode {
   identity: "readback_ordered_only_by_statement_position" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: CannotClimbFurther { why: "structurally guaranteed." }, trigger: climbs_when(capability: "effect subjects are modeled, so an effect declares what it writes and an observation declares what it reads, and the compiler refuses an unordered pair over one subject.") } },
 
   receipts: [
     "**a readback is written after the effect it must follow and has no dependency edge to it, so nothing in the program says it comes after** (INVALID STATE: an effectful producer and an observation of its consequence are both bound in one function, the observation appearing later in the text, and the author reads that position as sequence. The substrate is a dependency graph: what orders two nodes is an EDGE, and a reading whose inputs do not include the effect's result has none. The order it actually runs in is then decided by the evaluation strategy of whatever is executing it, which is not a property of the program.)",

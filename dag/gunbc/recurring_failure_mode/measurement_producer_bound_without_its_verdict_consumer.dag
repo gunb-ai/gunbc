@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.measurement_producer_bound_without_its_verdict_consumer
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data measurement_producer_bound_without_its_verdict_consumer: RecurringFailureMode = RecurringFailureMode {
   identity: "measurement_producer_bound_without_its_verdict_consumer" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a required lane binds an instrument that RECORDS its verdict instead of returning it, and binds nothing that reads the record back** (INVALID STATE: an instrument is invoked in a mode where a completed measurement carrying blockers is a success -- the blockers go into a receipt and the process exits 0, deliberately, so that a refused subject and a killed runner stay distinguishable. The verdict therefore lives in the receipt, and it becomes a verdict only when something reads it. A lane that binds the producer and omits that reader publishes a green check over a refusal. HARM: every landing through that lane is unverified for as long as the omission stands, and the green check is what a reader consumes, so nothing accumulates that would make the omission rank for fixing.)",

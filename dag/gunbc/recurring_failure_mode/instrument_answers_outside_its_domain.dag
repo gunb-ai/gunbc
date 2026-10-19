@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.instrument_answers_outside_its_domain
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data instrument_answers_outside_its_domain: RecurringFailureMode = RecurringFailureMode {
   identity: "instrument_answers_outside_its_domain" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**an instrument is asked about a subject outside its domain and ANSWERS ANYWAY** (INVALID STATE: a query ranges over a domain narrower than the subject it is being read as covering, and a subject falling outside that domain does not come back as UNKNOWN or as a refusal -- it comes back as a confident, well-formed, WRONG answer, whose direction is set by which way the domain gap happens to point. Deletion, modification, or silence, depending on the gap rather than on the subject.",

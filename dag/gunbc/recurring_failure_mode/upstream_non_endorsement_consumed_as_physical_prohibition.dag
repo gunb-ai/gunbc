@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.upstream_non_endorsement_consumed_as_physical_prohibition
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data upstream_non_endorsement_consumed_as_physical_prohibition: RecurringFailureMode = RecurringFailureMode {
   identity: "upstream_non_endorsement_consumed_as_physical_prohibition" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingAmbiguous },
+
   receipts: [
     "INVALID STATE: a correctly cited vendor non-endorsement is consumed as a prediction of physical impossibility with the citation's authority. OCP Mt. Jade Table 3 states same-channel rank mixing is not supported; that is not a statement that a machine cannot train. The distinction is between the source's qualification vocabulary and a derived claim about hardware behavior, not between cited and uncited prose. HARM: a purchase can reject working configurations without evidence, while a later reader cannot see the inference that excluded them.",
     "SPECIMEN: gunbc.machine_intake.mtcollins1_memory_prediction records the 32-DIMM experiment reported in operator conversation. The prediction was stated before the outcome according to the report, but has NO immutable pre-outcome receipt and is not preregistered. The reported restart at 5m04s, OEM payload 0fde70330502, is weak support with at least seven simultaneous same-channel violations and no cause attribution. It is not evidence that Table 3 implies non-functionality. A full-population training observation would instead falsify the unconditional prediction.",

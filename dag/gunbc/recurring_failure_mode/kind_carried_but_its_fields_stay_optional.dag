@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.kind_carried_but_its_fields_stay_optional
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data kind_carried_but_its_fields_stay_optional: RecurringFailureMode = RecurringFailureMode {
   identity: "kind_carried_but_its_fields_stay_optional" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a carrier gains a positive KIND variant while the fields that kind implies stay OPTIONAL on the same carrier, so a consumer that matches the kind still cannot reach the payload without an unwrap. The kind answers WHICH construct this is and answers nothing about what the construct contains, yet the climb reads as if it had closed both -- which is the shape of DESIGN section 4b(1) rung inflation, because the honest rung is the MINIMUM across the paths and the field path did not move.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.comparison_keyed_on_part_of_the_identity_it_compares
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data comparison_keyed_on_part_of_the_identity_it_compares: RecurringFailureMode = RecurringFailureMode {
   identity: "comparison_keyed_on_part_of_the_identity_it_compares" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a comparison keys on a PROPER COMPONENT of the identity it is comparing, while both sides carry the whole one** (INVALID STATE: a decision over elements identified by a composite -- module path plus declaration name, path plus revision, host plus port, run id plus attempt -- reduces the deciding key to a component of that identity, and the discarded component is present, in scope, and used elsewhere in the same function. The decision may be a membership or equality test between two populations, or a LOOKUP over one; the shape of the decision is not the defect, the projection of the key is. HARM: two distinct elements that agree on the retained component are ONE key, so a member of one population is accepted as a member of the other by an element it is not. The wrong answer is per-element and silent: nothing is missing, nothing is unreached, and the diagnostic surface never fires.",

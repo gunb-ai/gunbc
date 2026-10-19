@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.shared_precondition_re_derived_once_per_clai
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data shared_precondition_re_derived_once_per_claim_frame: RecurringFailureMode = RecurringFailureMode {
   identity: "shared_precondition_re_derived_once_per_claim_frame" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**one pure precondition re-derived once per isolated claim frame, so a cost gate adjudicates the duplication and every disposition it offers is aimed at the wrong quantity** (INVALID STATE: N claims in one file each rebuild the same pure value because the evaluator memoizes within a claim and not across claims, so the gate measures N copies of a shared derivation attributed to N separate rows. The rows then read as individually expensive when the file is collectively duplicated, and DESIGN section 2 already rules on the shape -- several demands with a shared-state least common ancestor are authored duplication, to be carried or shared at that ancestor, never cached and never re-homed. HARM: the gate's refusal is true and its SUBJECT is wrong, so it misdirects every reader who trusts it. The dispositions a cost refusal makes available -- trim the subject, move it to a lane that allows the cost, widen the line -- all price the duplication as though it were the claim's work, and the two correct moves are invisible because neither is a cost decision at all.",

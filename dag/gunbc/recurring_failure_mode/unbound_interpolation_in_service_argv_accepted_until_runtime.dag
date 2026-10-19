@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unbound_interpolation_in_service_argv_accepted_until_runtime
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data unbound_interpolation_in_service_argv_accepted_until_runtime: RecurringFailureMode = RecurringFailureMode {
   identity: "unbound_interpolation_in_service_argv_accepted_until_runtime" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**an interpolation in a service argv names a variable the operation does not bind, the front end accepts the program, and evaluation refuses on the live path** (INVALID STATE: a transport argv string contains `\{name}` that is not an operation input. The tokenizer treats it as interpolation. Compile and typecheck succeed. The first wet call evaluates the argv and refuses NoSuchVariable. HARM: DESIGN section 4b's floor -- names resolve -- is below baseline here: the miss is silent until hardware, a credential, or a destructive step has already run. DISTINGUISHING FACTS: the spelling is a LITERAL the foreign CLI owns, not a gunbc binding. curl -w `%\{http_code}` is curl's write-out token. jq object literals use `\{key: ...}`. Both are valid argv bytes and invalid interpolations.)",

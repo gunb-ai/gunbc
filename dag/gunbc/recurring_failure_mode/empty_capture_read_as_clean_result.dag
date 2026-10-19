@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.empty_capture_read_as_clean_result
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data empty_capture_read_as_clean_result: RecurringFailureMode = RecurringFailureMode {
   identity: "empty_capture_read_as_clean_result" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an empty capture read as a clean result** (an instrument refuses on one stream while the reader keeps the other, so the capture is EMPTY and the empty capture is consumed as a finding of nothing.",

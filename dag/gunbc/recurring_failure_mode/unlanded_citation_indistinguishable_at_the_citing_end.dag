@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unlanded_citation_indistinguishable_at_the_citing_end
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data unlanded_citation_indistinguishable_at_the_citing_end: RecurringFailureMode = RecurringFailureMode {
   identity: "unlanded_citation_indistinguishable_at_the_citing_end" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**a citation to a symbol that has not landed** (a canonical row cites an identity that exists only in an OPEN PR, so on main -- the tree the row lands in -- the citation resolves to nothing.",

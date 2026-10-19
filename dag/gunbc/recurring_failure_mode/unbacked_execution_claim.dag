@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unbacked_execution_claim
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data unbacked_execution_claim: RecurringFailureMode = RecurringFailureMode {
   identity: "unbacked_execution_claim" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**unbacked execution claim** (prose asserts a live executing relation — this runs on X, X reads these fields, Y already resolves Z — that no authority backs, and a reader forms the premise and plans against it.",

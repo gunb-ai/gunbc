@@ -1,7 +1,7 @@
 module gunbc.recurring_failure_mode.an_unimported_bare_name_binds_differently_per_realization
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 // AN UNIMPORTED BARE VALUE NAME IS RESOLVED TWICE -- once per realization of the language -- and
 // the two resolutions have different fallback rules, so one name can mean two functions. The
@@ -13,6 +13,8 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 // bare name with no import anywhere is a resolution the author never made.
 data an_unimported_bare_name_binds_differently_per_realization: RecurringFailureMode = RecurringFailureMode {
   identity: "an_unimported_bare_name_binds_differently_per_realization" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
   receipts: [
     "SPECIMEN, FOUND 2026-10-05. `v2.workflow.floor_route_gap.floor_route_gap_admission_partition` (PR #13376) called `contains(xs: declared, item: row.identity, eq: floor_route_gap_string_eq)` WITHOUT importing `contains`. The interpreter resolved the bare name to `std.algebra.contains` (the generic list-membership function, src/v2/std/algebra.dag:201) and every .dag-level claim and pairing lib test evaluated green. The emitter resolved the same bare name to `v1_rt::contains` -- the 2-parameter String substring builtin (src/v1_rt.rs:332) -- and lowered the call as `v1_rt::contains(declared.clone(), row.identity.clone(), floor_route_gap_string_eq)`, failing the emitted build with error[E0061] 'this function takes 2 arguments but 3 arguments were supplied' at emitted src/v2_workflow_floor_route_gap.rs:2139:106; the String/Rc<im::Vector<String>> type note was the tell that the bound function was the substring builtin, not list membership.",
     "WHY THE LOCAL BATTERY COULD NOT SEE IT: the interpreter's resolution is the only resolution every .dag-level check exercises, so a bare name that binds differently per realization evaluates consistently green on every interpreted lane; emission is the only lane that runs the emitter's fallback, which made CI's emit-build the sole discriminator. A green interpreter run is not evidence that a name means the same thing in the other realization.",

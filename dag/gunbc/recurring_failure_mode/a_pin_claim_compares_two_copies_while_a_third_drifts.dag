@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_pin_claim_compares_two_copies_while_a_thir
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_pin_claim_compares_two_copies_while_a_third_drifts: RecurringFailureMode = RecurringFailureMode {
   identity: "a_pin_claim_compares_two_copies_while_a_third_drifts" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a pin claim compares two copies while a third drifts** (a value is forced to exist twice -- once as a declaration consumers read, once as a literal some parser extracts rather than evaluates. An author writes a claim to keep the two honest, and the claim compares the DECLARATION to a THIRD copy written inside the claim itself. The copy that can actually drift is the one nothing reads.)",

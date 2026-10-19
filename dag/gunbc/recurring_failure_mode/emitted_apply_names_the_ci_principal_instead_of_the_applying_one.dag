@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.emitted_apply_names_the_ci_principal_instead_of_the_applying_one
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data emitted_apply_names_the_ci_principal_instead_of_the_applying_one: RecurringFailureMode = RecurringFailureMode {
   identity: "emitted_apply_names_the_ci_principal_instead_of_the_applying_one" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed." as NonEmptyStr } },
 
   receipts: [
     "INVALID STATE: an emitted live-deploy apply names a principal by constant -- the CI runner principal -- where the principal that actually applies is meant. The apply has two principals (the CI runner under the fleet transaction, the operator under the operator-local entry), and a step written for one fails under the other. HARM: a step that the applying principal cannot perform fails the apply part-way through its mutations, leaving the host mixed.",

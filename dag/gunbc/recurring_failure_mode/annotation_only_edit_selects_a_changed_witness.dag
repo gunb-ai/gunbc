@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.annotation_only_edit_selects_a_changed_witness
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data annotation_only_edit_selects_a_changed_witness: RecurringFailureMode = RecurringFailureMode {
   identity: "annotation_only_edit_selects_a_changed_witness" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: an edit confined to a leading `//` annotation block is read by the required floor as an edit to the test fn the block is attached to. v1_compiler.cli_run required_floor_runner changed_witness_identities_from_edited_test_fns takes its population from the diff's edited test fns, and that population includes an annotation-only hunk. So the witness is selected as CHANGED although DESIGN section 4c rules that adding, deleting or moving an annotation cannot alter any semantic occurrence, graph, resolution or hash.",
     "HARM: a correct, semantics-free annotation edit is refused. When the selected witness's module sits on the floor's hermetic exclusion list, the floor refuses with REQUIRED-FLOOR REFUSAL cause=ChangedWitnessOutsidePreparedSubject. That wall is correct for a real change: it stops the exclusion list from being an escape hatch. Here it fires on a change that has no semantics. The remedy an author then reaches for is to leave the annotation stale, which is how a false statement survives in the corpus.",

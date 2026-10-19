@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.gate_closure_narrower_than_the_closure_its_merge_governs
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data gate_closure_narrower_than_the_closure_its_merge_governs: RecurringFailureMode = RecurringFailureMode {
   identity: "gate_closure_narrower_than_the_closure_its_merge_governs" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a change is admitted in repository A on the only gate empowered to refuse it, while the gate that compiles the closure the merge actually governs sits in repository B and cannot refuse anything in A.** INVALID STATE: NO GATE ELIGIBLE TO BLOCK A'S MERGE COMPILES BOTH REPOSITORIES. State it that way rather than as \"no gate compiles both\", because the second is false here and is the weaker claim: B's gate compiles A+B and has exactly the right closure. What is missing is not the closure. It is the AUTHORITY to refuse a merge in A, and a TRIGGER that fires on A's changes.",

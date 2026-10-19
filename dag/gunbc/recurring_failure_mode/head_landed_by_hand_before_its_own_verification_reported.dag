@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.head_landed_by_hand_before_its_own_verification_reported
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data head_landed_by_hand_before_its_own_verification_reported: RecurringFailureMode = RecurringFailureMode {
   identity: "head_landed_by_hand_before_its_own_verification_reported" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**a head reaches main while that head's own verification run is still in flight, so what lands carries no terminal verdict about itself.** INVALID STATE, AT THE GRAIN THAT WAS ACTUALLY OBSERVED: at the instant of the landing there exists no concluded run for the landed ref. WHAT THIS ROW DOES NOT CLAIM, because the evidence does not reach it: WHICH admission path permitted the landing -- an absent constraint, a constraint that treats an unreported required context as not-failing, or a bypass -- is a separate question, and the actor and the timestamps do not settle it. The class is the uncertified landing itself, which is observable from the record alone.",

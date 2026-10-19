@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unresolved_signature_type_surfaces_as_a_distant_field_read_cascade
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data unresolved_signature_type_surfaces_as_a_distant_field_read_cascade: RecurringFailureMode = RecurringFailureMode {
   identity: "unresolved_signature_type_surfaces_as_a_distant_field_read_cascade" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a function signature names a type the declaring module never resolves (here `Optional<Node>` in a module with no import of v2.std.optional), and the module is still EVALUATED. The unresolved annotation silently becomes the error type, so every value bound out of that return (a `Present { value: x }` payload) is error-typed, and the run fails only when something reads a FIELD of it: `x.kind` refuses as `type error: error type cascade` at the READ, possibly many calls away from the annotation that caused it. A value that is only passed on to a typed parameter never trips it, so two helpers with the same defect can differ in whether they fail.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_instrument_resolves_wider_than_the_subject_it_measures
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data an_instrument_resolves_wider_than_the_subject_it_measures: RecurringFailureMode = RecurringFailureMode {
   identity: "an_instrument_resolves_wider_than_the_subject_it_measures" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an instrument whose setup resolves a POPULATION dies measuring one member of it, because the resolution scope is the instrument's architecture rather than the measurement's question.** The subject of the measurement is one witness; the instrument resolves every entry upfront and pays a whole-tree warm index per process, so the cost of asking about one claim scales with the TREE. On a host sized like the answer, the instrument is killed — OOM or timeout — before it produces a verdict, and the recount the debt process requires becomes impossible on every affordable machine. INVALID STATE: a measuring tool whose setup cost is proportional to a population while its measurement's subject is a single member, with nothing in the tool scoping the resolve to the question.",

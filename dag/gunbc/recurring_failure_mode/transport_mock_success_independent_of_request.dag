@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.transport_mock_success_independent_of_request
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data transport_mock_success_independent_of_request: RecurringFailureMode = RecurringFailureMode {
   identity: "transport_mock_success_independent_of_request" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "**a transport mock reports success independently of its request, so a hermetic success is mistaken for evidence that a real effect could succeed** (INVALID STATE: a single success-valued mock_response answers every endpoint and command, including the explicitly unreachable control.",
     "SPECIMEN: extdeps.ssh.session ssh.Session.ExecPortableWords returns exit_code 0, success true and mock-ssh-portable-words for every client_args. The HostEffect.ShellCommand dissolution exposed this when its wet failure controls moved to typed ReadEffectivePosixPrincipal over SSH.",

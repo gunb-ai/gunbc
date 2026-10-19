@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.shell_projection_return_convention_selected_by_arity
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data shell_projection_return_convention_selected_by_arity: RecurringFailureMode = RecurringFailureMode {
   identity: "shell_projection_return_convention_selected_by_arity" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "shell projection return convention selected by arity (an emitted method's RETURN CONVENTION is decided by counting the declared output fields rather than derived from the declaration that also decides its SIGNATURE, so one arity disagrees with the signature it was signed under).",

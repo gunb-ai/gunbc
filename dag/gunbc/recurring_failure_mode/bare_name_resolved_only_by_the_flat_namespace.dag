@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.bare_name_resolved_only_by_the_flat_namespac
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data bare_name_resolved_only_by_the_flat_namespace: RecurringFailureMode = RecurringFailureMode {
   identity: "bare_name_resolved_only_by_the_flat_namespace" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a bare name resolved only by the flat namespace** (INVALID STATE: a module names a provider or type bare -- `systemd.Journalctl.UnitInvocationLog(...)`, `ConstructionJustification { ... }` -- without importing its declaring module. Every whole-tree compile resolves it, because that compile's single flat namespace already holds the declaring module. An entry compiled ALONE loads only its import closure, the declaring module is not pulled, and the entry refuses (`no field 'Journalctl' on type 'systemd'`, `unresolved type 'ConstructionJustification'`).",

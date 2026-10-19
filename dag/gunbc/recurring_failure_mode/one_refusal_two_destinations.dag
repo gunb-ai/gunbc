@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.one_refusal_two_destinations
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data one_refusal_two_destinations: RecurringFailureMode = RecurringFailureMode {
   identity: "one_refusal_two_destinations" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**one refusal, two destinations, remedy misdirected** (a single refusal at a single source column emits two rows naming DIFFERENT expected types, because two producers resolve the same declared spelling in different environments.",

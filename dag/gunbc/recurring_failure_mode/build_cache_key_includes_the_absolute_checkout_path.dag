@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path
 
 import std.types { NonEmptyStr, String, List, Int }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data build_cache_key_includes_the_absolute_checkout_path: RecurringFailureMode = RecurringFailureMode {
   identity: "build_cache_key_includes_the_absolute_checkout_path" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "a content cache whose key includes an input the identity does not mean never serves the second identity: two compute identities build the SAME commit, but each checks out at its own absolute path (gunbc.compute.work_provider_local ComputeLayout checkout = <root>/compute/work/<identity>/src), and sccache's Rust compilation key carries the absolute source and working-directory paths. The two builds are one computation (std.computation_identity) answered as two cache keys, so every rustc invocation of the second identity misses. Nothing refuses and nothing is wrong in the output: the cost is paid silently, as a full cold Rust build per identity.",

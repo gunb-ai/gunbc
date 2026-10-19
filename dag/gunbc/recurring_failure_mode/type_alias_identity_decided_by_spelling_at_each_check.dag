@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.type_alias_identity_decided_by_spelling_at_e
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data type_alias_identity_decided_by_spelling_at_each_check: RecurringFailureMode = RecurringFailureMode {
   identity: "type_alias_identity_decided_by_spelling_at_each_check" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
+
   receipts: [
     "INVALID STATE: a type alias and its expansion are one type, yet each check that compares two types decided it separately. node_type_compatible compared spelled shape and took no symbol table; transparent_alias_identity_agrees was bolted on at individual call sites; the ExprIf join had none and refused an alias against its expansion. One-site patches in sequence: #13941 #14069 #13974 #14043 #14057, then #13939 added an Optional-specific identity leaf.",
     "HARM: a lawful program refused at whichever check lacked the fallback (surfaced by a private-repo PR after #13939 changed Present{} typing), and the fix at the prompting site left every sibling refusing. Roughly 35 alias-peel helpers in v1 inference and 30 in the Rust emitter each answered the same question.",

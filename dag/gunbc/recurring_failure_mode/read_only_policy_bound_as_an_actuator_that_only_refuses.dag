@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.read_only_policy_bound_as_an_actuator_that_only_refuses
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data read_only_policy_bound_as_an_actuator_that_only_refuses: RecurringFailureMode = RecurringFailureMode {
   identity: "read_only_policy_bound_as_an_actuator_that_only_refuses" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a subject that can only be READ is bound to an interface with an actuation stage, so the binding supplies an actuator whose every arm is a refusal** (the shape compiles, every claim over it passes, and nothing is obviously wrong -- the actuator is doing the safe thing. The defect is that the refusal vocabulary then grows to describe A WRITE THAT DOES NOT EXIST, and those causes are indistinguishable, at the type, from causes about the world.",

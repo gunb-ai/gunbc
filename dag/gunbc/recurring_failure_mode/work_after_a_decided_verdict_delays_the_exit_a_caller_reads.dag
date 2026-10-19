@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.work_after_a_decided_verdict_delays_the_exit
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data work_after_a_decided_verdict_delays_the_exit_a_caller_reads: RecurringFailureMode = RecurringFailureMode {
   identity: "work_after_a_decided_verdict_delays_the_exit_a_caller_reads" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**work after a decided verdict delays the exit a caller reads** (a process decides its answer, then frees its loaded state before ending -- destructors over the whole interpreter graph and libc exit's thread-local destructors -- so a caller that judges it by PROCESS EXIT within an allowance sees a hung or unfinished process whose verdict was already success).",

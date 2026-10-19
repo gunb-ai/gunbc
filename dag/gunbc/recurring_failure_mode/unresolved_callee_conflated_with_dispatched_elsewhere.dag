@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unresolved_callee_conflated_with_dispatched_elsewhere
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data unresolved_callee_conflated_with_dispatched_elsewhere: RecurringFailureMode = RecurringFailureMode {
   identity: "unresolved_callee_conflated_with_dispatched_elsewhere" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**one unresolved-callee state carries both ANSWERED BY ANOTHER DISPATCH PATH and DECLARED SOMEWHERE BUT UNREACHABLE FROM HERE, and the miss is absorbed downstream instead of reaching the refusal already written for it -- so a deletion census built on loud refusal undercounts by the ratio of the two** (INVALID STATE: a call whose callee does not resolve at the direct-call seam produces NO diagnostic, because the same state is reached routinely and legitimately by names another path answers -- pipeline and collection methods, variant constructors. The consumer therefore treats the state as non-fatal for every member. A callee that is genuinely unreachable is then indistinguishable from one that is about to be dispatched elsewhere, and the program continues with a type derived from the callee's own name.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_long_phase_prints_nothing_until_it_ends
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_long_phase_prints_nothing_until_it_ends: RecurringFailureMode = RecurringFailureMode {
   identity: "a_long_phase_prints_nothing_until_it_ends" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a long phase prints nothing until it ends** (a process announces that it is entering a phase, then emits its next line only when the phase TERMINATES. For the whole span in between, a healthy run and a hung run produce byte-identical output: nothing. The receipt is complete and correct once it arrives, so nothing is missing at the end -- the defect is entirely in the middle, where the log cannot answer the one question anybody asks of a long run.)",

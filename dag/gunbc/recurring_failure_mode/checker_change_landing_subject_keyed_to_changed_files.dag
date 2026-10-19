@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.checker_change_landing_subject_keyed_to_chan
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data checker_change_landing_subject_keyed_to_changed_files: RecurringFailureMode = RecurringFailureMode {
   identity: "checker_change_landing_subject_keyed_to_changed_files" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a change to the CHECKER lands, and the required floor's prepared subject is keyed to the files the change touched rather than to the verdicts it decides, so a module the new checker refuses is never re-judged and main admits it red** (THE INVALID STATE is a merged tree holding a module that refuses under Strict preparation, while every required lane that ran on the change that made it refuse reported green. A module's Strict verdict has two inputs: its own .dag closure and the checker that reads it. Every seed ground of v2.workflow.floor_subject_seed was keyed to the first. The host classified a changed non-.dag path as structural-empty for the .dag frontier, which is true of the frontier and false of the verdict. So an edit to the seed's resolve, infer or typecheck reached no module at all, however many verdicts it changed.)",

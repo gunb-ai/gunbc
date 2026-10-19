@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.attested_population_never_joined_to_the_firmware_reading
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data attested_population_never_joined_to_the_firmware_reading: RecurringFailureMode = RecurringFailureMode {
   identity: "attested_population_never_joined_to_the_firmware_reading" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: a boot-attempt receipt carries an operator-attested DIMM population (gunbc.machine_intake.mtcollins1_power_on_account PopulationOperatorAttested) and the same boot's capture carries the firmware's DRAM table, and no fold joins the two. HARM: an attempt is recorded and cited as having run a population the machine did not have, so every conclusion drawn from the attempt (what trained, at what speed, which rank mix the firmware accepted) is attributed to the wrong configuration, silently. SPECIMEN (2026-10-17): artifacts/receipts/mtcollins1-mf82-rdimm4-1.json (#14248) attests four populated slots (J1, J3, J9, J11) and the run 39010930690 firmware table reads eight RDIMMs on socket 0; the receipt was admitted by gunbc.host.host_boot_attempt_admission, which checks it against the slot roster and never against a reading. The contradiction was found by a person reading the capture, not by any gate.",
     "RECOGNITION RULE: wherever an attested population and a firmware reading of the same power-on both exist, require a typed join (count, and per-slot where the reading names slots) whose disagreement is a located refusal, not a prose note. The attested rows are evidence of what the operator did, never of what the machine holds. RUNG FOUND AT: silent wrongness (below the ladder). CEILING: structurally guaranteed once the DRAM-table reading is a typed carrier the admission fold can take. NEXT TRIGGER: the census capture parsed into a typed DRAM-table reading (today only meminfo and lscpu sections are folded, gunbc.host.host_memory_observation).",

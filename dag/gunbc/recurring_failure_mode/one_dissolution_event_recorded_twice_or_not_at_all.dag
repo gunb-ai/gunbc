@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.one_dissolution_event_recorded_twice_or_not_at_all
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data one_dissolution_event_recorded_twice_or_not_at_all: RecurringFailureMode = RecurringFailureMode {
   identity: "one_dissolution_event_recorded_twice_or_not_at_all" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**one dissolution event, recorded twice or not at all** (a roster rule assigns deletion of CONSUMED admissions to the next roster-touching change.",

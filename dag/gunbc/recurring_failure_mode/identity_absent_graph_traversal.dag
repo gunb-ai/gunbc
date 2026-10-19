@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.identity_absent_graph_traversal
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data identity_absent_graph_traversal: RecurringFailureMode = RecurringFailureMode {
   identity: "identity_absent_graph_traversal" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "identity-absent graph traversal (a walk over a graph the COMPILER built re-enters shared nodes because it cannot carry a `visited` or memo key — the nodes have no identity the model is allowed to name — so the only two arms available locally are to PAY the re-entry, or to key on a substitute the substrate forbids.",

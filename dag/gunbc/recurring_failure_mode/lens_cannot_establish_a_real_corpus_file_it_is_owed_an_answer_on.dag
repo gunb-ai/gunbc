@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.lens_cannot_establish_a_real_corpus_file_it_is_owed_an_answer_on
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data lens_cannot_establish_a_real_corpus_file_it_is_owed_an_answer_on: RecurringFailureMode = RecurringFailureMode {
   identity: "lens_cannot_establish_a_real_corpus_file_it_is_owed_an_answer_on" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a source-reading lens answers NotEstablished on a real, compiling corpus file, so every property it exists to decide is cannot-tell there, while an answer is owed** (the lens reaches its analysis only through the v2 front end -- tokenize, parse, normalize -- and when any stage rejects a file the seed compiles, the lens reports the file as not established rather than as clean or convicted).",

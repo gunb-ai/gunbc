@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.variant_arm_position_admits_a_type_name
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data variant_arm_position_admits_a_type_name: RecurringFailureMode = RecurringFailureMode {
   identity: "variant_arm_position_admits_a_type_name" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a variant ARM position whose spelling is already a TYPE name in the same module graph. v2 single-module resolve admits it -- a v2.std.node Connective arm spelled `Cardinality` while `type Cardinality = Required | Optional` is declared elsewhere raised no refusal -- so one name carried two meanings (DESIGN section 3, the meaning fork) and a bare `Cardinality` reference bound whichever declaration the reader's scope reached first. gunbc#13377 answered it by qualifying Cardinality/Optional at the v2 lens call sites, a symptom-link patch that left both declarations standing and made the ambiguity worse.",

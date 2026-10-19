@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.external_mechanism_asserted_under_a_correct_conclusion
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data external_mechanism_asserted_under_a_correct_conclusion: RecurringFailureMode = RecurringFailureMode {
   identity: "external_mechanism_asserted_under_a_correct_conclusion" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**a MECHANISM about external reality is asserted as the reason for a conclusion that is independently CORRECT, so nothing the repository can execute ever refutes it** (INVALID STATE: a carrier states WHY an external system behaves as it does -- this platform suppresses that trigger, that endpoint rate-limits, this token cannot start a run -- and derives a design decision from it.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_claim_asserting_several_causes_cannot_name_which_one_went
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data a_claim_asserting_several_causes_cannot_name_which_one_went: RecurringFailureMode = RecurringFailureMode {
   identity: "a_claim_asserting_several_causes_cannot_name_which_one_went" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "a claim conjoins assertions about SEVERAL SIBLING ARMS of one cause type, so it reddens when any of them collapses and its red cannot name which (INVALID STATE: a producer's outcome is refined from one arm into N typed causes, which is the repair that stops N claims passing on one defect; the CLAIMS are then written as conjunctions spanning those arms, so collapsing the producer to ANY single cause reddens THE SAME SET of claims. Pairwise discrimination is restored -- the claims no longer share one defect -- while per-claim attribution is not: the red says SOME cause collapsed and never which, and two such claims are indistinguishable from each other under every collapse. THE CONFLATION THE TYPE JUST REMOVED IS PUT BACK ONE LAYER UP, in the evidence rather than in the producer, which is why typing the outcome reads as having finished the job)",

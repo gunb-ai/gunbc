@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.witness_reads_a_probe_file_the_commit_does_n
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data witness_reads_a_probe_file_the_commit_does_not_contain: RecurringFailureMode = RecurringFailureMode {
   identity: "witness_reads_a_probe_file_the_commit_does_not_contain" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "**a witness reads its forged source from dag/test/probe/ by path, and the file was never committed** (INVALID STATE: the claim is in the tree and the source it filesystem_reads is not. HARM: it passes in the author's worktree, where the untracked file exists, and errors on the required floor only after the whole run -- 'filesystem_read: No such file or directory' -- so the author learns at the end of a ~45-minute floor what was decidable at commit time. The claim does refuse rather than pass, so this is a late refusal, not a silent pass.)",
 

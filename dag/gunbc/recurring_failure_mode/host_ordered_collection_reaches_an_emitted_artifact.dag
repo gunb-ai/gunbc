@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.host_ordered_collection_reaches_an_emitted_artifact
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data host_ordered_collection_reaches_an_emitted_artifact: RecurringFailureMode = RecurringFailureMode {
   identity: "host_ordered_collection_reaches_an_emitted_artifact" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a collection whose iteration order is a HOST fact -- a hash map's keys, a hash set's members -- is iterated straight into an EMITTED ARTIFACT. The emitted bytes then carry a permutation nothing in the program chose, so the artifact's IDENTITY moves while its MEANING does not. Nothing is wrong with any single run's output: every run is a correct rendering of the same graph. What is destroyed is the artifact's usability as an oracle, and that loss is silent at the site that caused it.",

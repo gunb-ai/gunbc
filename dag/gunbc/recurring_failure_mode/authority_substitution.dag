@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.authority_substitution
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data authority_substitution: RecurringFailureMode = RecurringFailureMode {
   identity: "authority_substitution" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**authority substitution** (fact F lives in carrier A; operation O is governed by carrier B; A is cited as the evidence that O changed; no A→B relation is claimed by either carrier.",

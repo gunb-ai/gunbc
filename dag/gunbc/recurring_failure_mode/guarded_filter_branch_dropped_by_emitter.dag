@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.guarded_filter_branch_dropped_by_emitter
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data guarded_filter_branch_dropped_by_emitter: RecurringFailureMode = RecurringFailureMode {
   identity: "guarded_filter_branch_dropped_by_emitter" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: stage0 rust emission accepts a .dag module containing a construct it cannot project, and publishes a file that silently omits the unprojectable subtree, so the mirror builds cleanly and runs a floor whose diagnostics are unfounded.",

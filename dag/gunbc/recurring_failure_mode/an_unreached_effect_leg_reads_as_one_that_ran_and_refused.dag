@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_unreached_effect_leg_reads_as_one_that_ran_and_refused
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data an_unreached_effect_leg_reads_as_one_that_ran_and_refused: RecurringFailureMode = RecurringFailureMode {
   identity: "an_unreached_effect_leg_reads_as_one_that_ran_and_refused" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an unreached effect leg reads as one that ran and refused** (a remote effect whose transport never reached the host -- ssh could not connect, so no remote shell began -- is reported with the same value as a leg whose script ran and refused, so the caller can neither retry the first without retrying the second nor resume the leftovers the first one strands).",

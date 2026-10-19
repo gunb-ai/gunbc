@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.seeding_census_attributed_by_spelling_over_an_incomplete_pool
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data seeding_census_attributed_by_spelling_over_an_incomplete_pool: RecurringFailureMode = RecurringFailureMode {
   identity: "seeding_census_attributed_by_spelling_over_an_incomplete_pool" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a monotone debt roster seeded from a census whose pool is smaller than the compiler's resolution scope, and which picks a provider by spelling. The unimported-bare-provider roster (v2.workflow.floor_unimported_bare_provider_debt_roster) was seeded from a tree census over the dag and src/v2 roots. It had no src/v1 root, so a declaration imported from a v1.compiler module was invisible to it. It also attributed a bare name to a unique same-spelled declarer OUTSIDE the file's import closure, even when the name bound a declaration INSIDE it (a variant of an imported coproduct). Such a pair was never debt, but it was rostered as ActiveDebt.",

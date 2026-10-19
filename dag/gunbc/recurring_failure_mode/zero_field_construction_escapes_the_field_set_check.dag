@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.zero_field_construction_escapes_the_field_set_check
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data zero_field_construction_escapes_the_field_set_check: RecurringFailureMode = RecurringFailureMode {
   identity: "zero_field_construction_escapes_the_field_set_check" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a construction supplying ZERO fields is accepted for a type that declares fields, and every declared field then reads as `null`** (INVALID STATE: a coproduct variant declaring `{ code: Int, reason: String }` is written bare, or with an empty brace pair, and compiles with zero diagnostics; matching the value binds each declared field to `null`, a value inhabiting neither Int nor String.",

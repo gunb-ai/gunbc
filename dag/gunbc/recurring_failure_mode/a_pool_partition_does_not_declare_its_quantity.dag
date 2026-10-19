@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_pool_partition_does_not_declare_its_quanti
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_pool_partition_does_not_declare_its_quantity: RecurringFailureMode = RecurringFailureMode {
   identity: "a_pool_partition_does_not_declare_its_quantity" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a persisted capacity partition carries magnitudes and does not declare the QUANTITY they are denominated in. product.capacity.pool_events pool_apply_event mints every replayed amount into the Q and S OF THE POOL BEING FOLDED, and the wire has nothing to disagree with -- so a partition written by a seat pool and replayed by a memory pool reinterprets 1 seat as 1 KiB, and a memory partition replayed by a seat pool reinterprets 27262976 KiB as 27262976 seats. HARM: an admission decision computed against a committed total that means something else; the numbers are arithmetically consistent and semantically unrelated, so nothing refuses and nothing looks wrong.",

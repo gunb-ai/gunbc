@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.preparation_membership_derived_from_the_execution_selector
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data preparation_membership_derived_from_the_execution_selector: RecurringFailureMode = RecurringFailureMode {
   identity: "preparation_membership_derived_from_the_execution_selector" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**which modules get COMPILED is derived from which WITNESSES get EXECUTED, so production authority no selected claim imports is never prepared and the ordinary compiler floor goes unchecked over it** (INVALID STATE: a gate names a roster of TEST-MODULE identity prefixes, the run prepares the import closure of that roster, and preparation membership is therefore a downstream consequence of execution selection.",

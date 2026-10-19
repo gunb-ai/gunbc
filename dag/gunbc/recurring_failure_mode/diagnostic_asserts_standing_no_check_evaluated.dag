@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.diagnostic_asserts_standing_no_check_evaluated
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data diagnostic_asserts_standing_no_check_evaluated: RecurringFailureMode = RecurringFailureMode {
   identity: "diagnostic_asserts_standing_no_check_evaluated" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**an emitted diagnostic asserts a positive standing for a check that did not run on the path that emitted it** (INVALID STATE: a refusal or progress message states that some subject was admitted, validated or cleared, while the arm constructing that message never calls the producer of that judgement, so every reader of the text inherits an acceptance the program never established. It is DESIGN section 4b rung inflation emitted at RUNTIME: the message fabricates the acceptance in its own words, and the fabrication travels further than a comment because a diagnostic is the artifact humans quote as evidence for what happened. ",

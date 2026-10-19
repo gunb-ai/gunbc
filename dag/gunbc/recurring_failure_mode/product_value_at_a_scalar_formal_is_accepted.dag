@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.product_value_at_a_scalar_formal_is_accepted
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data product_value_at_a_scalar_formal_is_accepted: RecurringFailureMode = RecurringFailureMode {
   identity: "product_value_at_a_scalar_formal_is_accepted" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a value whose type is a nominal PRODUCT (a record) reaches a position whose declared type is a kernel scalar, or a where-refinement of one such as std.types EpochMs (`Int where range(min: 0)`), and the program is Accepted on the seed path. HARM: silent wrongness at the compiler floor. DESIGN section 4b names `values inhabit declared types` as part of the ordinary floor, so this sits below it, not on a rung: the record fails, if at all, inside a scalar primitive at run time, or orders an event by a value that is not a time.",

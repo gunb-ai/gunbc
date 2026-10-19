@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_prerequisite_merged_while_its_reds_did_not
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_prerequisite_merged_while_its_reds_did_not_pass: RecurringFailureMode = RecurringFailureMode {
   identity: "a_prerequisite_merged_while_its_reds_did_not_pass" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: a prerequisite change is merged on review plus a green required job while the controls it declares as its REDs were never executed, and they fail on the merged head. HARM: the dependent work (#13947) is blocked on a fix that is not there, and the merged PR's body claims a behavior no execution establishes. Receipt: #13978 merged as 2f70aa143c with generic_nested_in_a_key_type_argument_earns_eq_and_hash and generic_caller_reaching_the_map_only_through_a_callee_earns_it FAILING on that head and its parent; the required job v2-bootstrap builds and runs the emitted closures and evaluates no witness, so neither merge gate executed them (the stern-bat-401 receipt).",
     "DISTINGUISHING FACTS: the REDs were authored and enrolled, and the PR body cited them as the evidence, so a reader sees a discriminating control; but no claim_batch [witness] line for the merged head was in the body. A merge-blocking claim is a RED that RAN on the exact head, not one that exists. RUNG FOUND AT: mitigatable (review only). CEILING: mechanically preventable now (a prerequisite PR body carries before/after [witness] lines run on its exact head); structural only once the native compiler judges witness populations on the required path (gunbc.rung_drop v1_required_lanes_withdrawn trigger). NEXT TRIGGER: the native compiler judging the witness population of a changed claim file on the required path."

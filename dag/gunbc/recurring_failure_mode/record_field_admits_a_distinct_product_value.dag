@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.record_field_admits_a_distinct_product_value
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data record_field_admits_a_distinct_product_value: RecurringFailureMode = RecurringFailureMode {
   identity: "record_field_admits_a_distinct_product_value" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a record literal's field declared as one nominal product is initialised with a NON-LITERAL value of a DISTINCT product, and the program is Accepted. HARM: silent wrongness at the compiler floor -- DESIGN section 4b names `values inhabit declared types` as part of the ordinary floor, so this is below it, not a rung.",

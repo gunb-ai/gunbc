@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.type_variable_identified_by_spelling_in_v2
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data type_variable_identified_by_spelling_in_v2: RecurringFailureMode = RecurringFailureMode {
   identity: "type_variable_identified_by_spelling_in_v2" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a type variable is identified by its SPELLING, not by the binder that declares it** (INVALID STATE: in the v2 pipeline a type parameter reference carries no link to its binder. v2.compiler.resolve rewrites a type-parameter atom to canonical_atom(identity: id), keeping only the name; v2.compiler.infer recognizes a callee's type variables by name, through v2.std.type_binder type_param_names; v2.std.node content_hash hashes the atom's identity. Two distinct type parameters that happen to share a spelling are therefore the same variable to every consumer after resolve.)",

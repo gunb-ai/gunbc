@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.extracting_a_collection_whose_elements_are_t
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data extracting_a_collection_whose_elements_are_the_cost: RecurringFailureMode = RecurringFailureMode {
   identity: "extracting_a_collection_whose_elements_are_the_cost" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a projection of a collection of CONSTRUCTED values buys nothing, because the projection IS the construction.** INVALID STATE: a claim reads two scalar fields off the elements of a large literal, is over its cost budget, and the repair chosen is to lift the collection out of the larger structure so the claim can read the smaller declaration. The move is correct as MODELING and worthless as COST whenever the elements are themselves constructed: forcing the extracted list forces every element, so the only saving is whatever ELSE the enclosing structure carried. Where that remainder is small, the extraction measures as noise.",

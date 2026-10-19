@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.fold_accumulator_typed_from_init_not_from_the_expected_type
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data fold_accumulator_typed_from_init_not_from_the_expected_type: RecurringFailureMode = RecurringFailureMode {
   identity: "fold_accumulator_typed_from_init_not_from_the_expected_type" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a fold whose result position has a declared type -- a let annotation, a record field, a parameter -- types its accumulator from `init` alone. `init: none` gives the step function an accumulator of `Unit?`, and `init: 0` gives it `Int` where the declared result is `Nat`. The expected type exists at the site and never reaches the accumulator.",

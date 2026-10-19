@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.qualification_floor_guard_skippable_by_a_wor
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data qualification_floor_guard_skippable_by_a_workflow_file_edit: RecurringFailureMode = RecurringFailureMode {
   identity: "qualification_floor_guard_skippable_by_a_workflow_file_edit" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**the qualification floor's revision guard is skippable by an edit to the workflow file on the qualification branch** (declared with sha-checkout, decision eager-gull-22 2026-10-04).",

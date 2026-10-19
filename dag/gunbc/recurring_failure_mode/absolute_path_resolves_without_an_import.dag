@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.absolute_path_resolves_without_an_import
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data absolute_path_resolves_without_an_import: RecurringFailureMode = RecurringFailureMode {
   identity: "absolute_path_resolves_without_an_import" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a module-qualified path binds in a module that never imports its target module** (INVALID STATE: module `b` writes `t.s.F.Run` with no `import t`, and v2 resolution accepts it, binding to `t`'s declaration. The resolve site is v2.compiler.resolve try_resolve_qualified_name_node, which sends the authored dotted path to v2.std.symbol_index symbol_index_lookup over the corpus-wide index, as though every dotted path were corpus-root absolute. The subject's Admission imports are never consulted. HARM: a dependency that no import declares. It binds wherever the target module happens to share the ingest, and it is invisible to every reader that derives dependencies from imports. That population is the one the XL-2 reference census and XL-5's namespace cut measure: references that bind with no import, through the corpus index.)",

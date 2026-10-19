@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.claim_forced_and_unbracketed
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data claim_forced_and_unbracketed: RecurringFailureMode = RecurringFailureMode {
   identity: "claim_forced_and_unbracketed" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**CLAIM-FORCED AND UNBRACKETED -- a shared memoized host artifact whose identity is not knowable before the fold and which records no fill bracket.** INVALID STATE: the artifact is shared, so a later claim reads it warm, but nothing brackets the fill, so the whole build lands on whichever claim reached it first.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.benchmark_warm_capacity_violation_read_as_engine_performance
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data benchmark_warm_capacity_violation_read_as_engine_performance: RecurringFailureMode = RecurringFailureMode {
   identity: "benchmark_warm_capacity_violation_read_as_engine_performance" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingAmbiguous },
+
   receipts: [
     "INVALID STATE: a warm-serving benchmark whose working set exceeds measured KV capacity, or whose prefix reuse / replay / restore failed, is read as engine throughput or TTFT. HARM: a card or launch is ranked on a workload it did not actually hold, and a later home-serving selection treats that number as Pareto evidence. DISTINGUISHING FACT: over-capacity and failed reuse are properties of the observation's standing, not of the tokens-per-second field. SPECIMEN: the 2026-10-11 rental campaign (closed gunbc#13758) transcribed warm rates beside KV that could not hold the primed working set. RUNG FOUND AT: mitigatable, caught in design review 2026-10-12. CEILING: through the admitted receipt constructor, an observation with a proved capacity violation or other established warm-policy failure cannot become eligible warm-performance evidence. NEXT TRIGGER: P3 receipt fold derives WarmOverCapacity / WarmRejected / WarmValid from committed raw files, and P4 selection consumes only WarmValid as a funded axis. CONSUMPTION: P4 home-serving feasibility and Pareto evidence.",
   ],

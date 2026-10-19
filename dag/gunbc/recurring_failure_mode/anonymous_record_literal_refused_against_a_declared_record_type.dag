@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.anonymous_record_literal_refused_against_a_declared_record_type
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data anonymous_record_literal_refused_against_a_declared_record_type: RecurringFailureMode = RecurringFailureMode {
   identity: "anonymous_record_literal_refused_against_a_declared_record_type" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**v2 resolve refuses an anonymous record literal whose annotated type is a declared record** (INVALID STATE: a well-formed module is Rejected). `v2.test.claim.long.cwc_resolution_probe` `cwc_cwc_module_resolve_accepts` normalizes `type CoproductWireContract { coproduct: String, encoding: VariantEncoding }` and `data review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }`, and resolve refuses with `lve_anonymous_record_expected_type_not_record`. Measured by claim_batch on BuildBuddy, 2026-10-04, swift-bat-688, with a temporary probe claim reading the first diagnostic reason (not landed).",

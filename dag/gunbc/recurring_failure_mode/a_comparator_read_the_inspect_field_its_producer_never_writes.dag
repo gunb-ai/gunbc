@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.a_comparator_read_the_inspect_field_its_producer_never_writes
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
 
 data a_comparator_read_the_inspect_field_its_producer_never_writes: RecurringFailureMode = RecurringFailureMode {
   identity: "a_comparator_read_the_inspect_field_its_producer_never_writes" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable, since the producer is external." as NonEmptyStr } },
 
   receipts: [
     "A READBACK COMPARED A PLANNED VALUE AGAINST AN INSPECT FIELD THE PLAN'S OWN RENDERER NEVER POPULATES. The invalid state is a comparator whose observed side is read from a field chosen by assumption rather than by the producer's documented behaviour: extdeps.docker.cli renders a spec's mounts as `--mount type=...`, which Docker records in HostConfig.Mounts, while extdeps.docker.container_inspect read HostConfig.Binds -- populated by `-v` alone -- with a note asserting the daemon reports a --mount bind there too. Every readback of a real container therefore found the mounts unread.",

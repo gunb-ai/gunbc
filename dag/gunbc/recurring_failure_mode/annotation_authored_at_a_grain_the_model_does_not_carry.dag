@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.annotation_authored_at_a_grain_the_model_does_not_carry
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data annotation_authored_at_a_grain_the_model_does_not_carry: RecurringFailureMode = RecurringFailureMode {
   identity: "annotation_authored_at_a_grain_the_model_does_not_carry" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "annotation authored at a grain the model does not carry: an author writes a source annotation BESIDE the thing it explains -- above an operation inside a service, above a field inside an output, above a let inside a function body -- and the parser refuses it, because DESIGN section 4c models annotations at MODULE-ITEM grain only. The refusal is correct. What makes it recur is that the refused position is the one authoring instinct reaches for first, and nothing objects until a compile that may be minutes away.",

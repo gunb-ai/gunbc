@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_tag_dispatch_cannot_find_its_own_cache_entry
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data a_tag_dispatch_cannot_find_its_own_cache_entry: RecurringFailureMode = RecurringFailureMode {
   identity: "a_tag_dispatch_cannot_find_its_own_cache_entry" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "INVALID STATE: the release-bins lookup (gunbc.fleet.fleet_release_bins_key release_bins_lookup_refs) admits an entry under refs/heads/main or under 'the ref this dispatch runs on', and matched the latter as .ref == GITHUB_REF. For a workflow_dispatch on a TAG the cache API lists that scope as refs/heads/<GITHUB_REF>, so the lookup reads ABSENT for the dispatch's own entry while actions/cache restores it as an exact hit.",

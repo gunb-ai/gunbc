@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.receipt_whose_competent_refuter_is_absent
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data receipt_whose_competent_refuter_is_absent: RecurringFailureMode = RecurringFailureMode {
   identity: "receipt_whose_competent_refuter_is_absent" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a receipt is written about work done ELSEWHERE, is true-looking, and nothing in its audience would red if it were wrong** (INVALID STATE: a claim about another party's work, another lane's finding, or another program's state is filed to an audience from which THE ONLY PARTY POSITIONED TO FALSIFY IT IS ABSENT. HARM: the claim enters the record with the standing of a receipt and the evidentiary weight of an assertion, and because nothing downstream disagrees with it, it is never revisited; later work is planned against it.",

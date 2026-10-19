@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.discriminating_arm_built_but_never_enrolled
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data discriminating_arm_built_but_never_enrolled: RecurringFailureMode = RecurringFailureMode {
   identity: "discriminating_arm_built_but_never_enrolled" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a claim file builds its discriminating arms and enrols only its accepting control** (the fixtures that would go red are constructed, named and committed, but no assertion consumes them; the one enrolled assertion is the arm whose expected answer is `accepted`, so the file cannot fail on the behaviour it was built to police).",

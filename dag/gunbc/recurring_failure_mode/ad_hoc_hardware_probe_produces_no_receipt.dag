@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.ad_hoc_hardware_probe_produces_no_receipt
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data ad_hoc_hardware_probe_produces_no_receipt: RecurringFailureMode = RecurringFailureMode {
   identity: "ad_hoc_hardware_probe_produces_no_receipt" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a probe against hardware answers the deciding question and produces no typed observation, so the answer survives only as prose and may not be cited.** INVALID STATE: an attempt is made against a device, the device answers, a human reads the answer, and the run's OUTPUT IS CONSOLE TEXT rather than a receipt. THE DISTINGUISHING FACT IS NOT THAT SOMEBODY FORGOT TO WRITE IT DOWN. Preservation was never available to skip, because the probe's result was never a receipt in the first place -- there is no carrier the run could have committed, so the only artifact that could survive is a recollection, and a recollection is exactly what the corpus refuses as authority. The defect is in the probe's SHAPE, not in the diligence of whoever ran it.",

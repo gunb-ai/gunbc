@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.parse_memo_hit_serves_occurrences_minted_on_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
 
 data parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path: RecurringFailureMode = RecurringFailureMode {
   identity: "parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyImpossible, ceiling_reason: "structurally impossible -- with no memo nothing is served across paths." as NonEmptyStr } },
 
   receipts: [
     "INVALID STATE: a parsed tree in which two different nodes carry one minted occurrence id, or a node whose id resolves to another node's span. Backtracking (ordered choice, optional, repeat, not-predicate) restores the whole ParseProvenanceState, so occurrence ids are a counter along whichever path survives and a failed attempt's ids are minted again by the next attempt. The packrat table was NOT restored: it survived rejection, so a hit served a capture whose ids were minted on another, usually abandoned, path. parse_prov_merge only advanced the allocator to the larger mark, and v2.std.provenance span_index_adopt kept an existing entry without refusal (both deleted with the parse memo carrier, operator ruling R2 2026-10-08), so when the surviving path minted more ids before the memoized production than the miss path did, the served ids coincide with ids already given to other nodes.",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.instrumentation_counters_inside_a_semantic_v
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data instrumentation_counters_inside_a_semantic_value_defeat_identity: RecurringFailureMode = RecurringFailureMode {
   identity: "instrumentation_counters_inside_a_semantic_value_defeat_identity" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a value that carries semantic content also carries counters that observe its own use, which change on every operation. Two values holding the same semantic content compare unequal whenever an operation intervened between them, so an identity keyed on the value (a content-keyed memo, a demand key, a dedup) recurs only inside the windows where no counted operation happened. Every demand across those windows is a guaranteed miss that still pays key construction, stores an entry and keeps the argument alive.",

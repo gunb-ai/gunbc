@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.execution_provenance_loss
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data execution_provenance_loss: RecurringFailureMode = RecurringFailureMode {
   identity: "execution_provenance_loss" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**execution-provenance loss** (a reported value is consumed as though an observation produced it, while the carrier holds no proof the observation path ran.",

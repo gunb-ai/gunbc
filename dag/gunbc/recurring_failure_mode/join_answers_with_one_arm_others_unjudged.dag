@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.join_answers_with_one_arm_others_unjudged
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data join_answers_with_one_arm_others_unjudged: RecurringFailureMode = RecurringFailureMode {
   identity: "join_answers_with_one_arm_others_unjudged" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a join answers with ONE of its inputs, so the inputs it did not answer with are judged nowhere** (a reduction over several producers -- match arms, branch arms, any fold that collapses N types to one -- picks its answer by a tie-break and every downstream check then reads only that answer.",

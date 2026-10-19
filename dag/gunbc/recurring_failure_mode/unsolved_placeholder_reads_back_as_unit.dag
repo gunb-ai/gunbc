@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unsolved_placeholder_reads_back_as_unit
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data unsolved_placeholder_reads_back_as_unit: RecurringFailureMode = RecurringFailureMode {
   identity: "unsolved_placeholder_reads_back_as_unit" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: an element whose type is an UNSOLVED inference placeholder reaches a consumer typed as the concrete kernel type Unit. v1.compiler.infer types an empty list literal with no expected type as List of type_variable_node empty_list_element. When nothing later solves that variable, an element read from the list arrives at field access as Unit, and the refusal names Unit as the type. The value's type was never established, and the diagnostic reports a type it does not have.",

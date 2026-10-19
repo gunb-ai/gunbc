@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.state_space_conflation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data state_space_conflation: RecurringFailureMode = RecurringFailureMode {
   identity: "state_space_conflation" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "state-space conflation (an `Option`/`None` meaning >2 things — split into named variants; its most-repeated form here is **not-applicable rendered as malformed** — one reason symbol over \"the input is wrong\" and \"this strategy had nothing to say about it\", which have opposite owners and opposite repairs.",

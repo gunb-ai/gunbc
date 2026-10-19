@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.payload_binder_refused_at_resolve_instead_of_owed_to_infer
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data payload_binder_refused_at_resolve_instead_of_owed_to_infer: RecurringFailureMode = RecurringFailureMode {
   identity: "payload_binder_refused_at_resolve_instead_of_owed_to_infer" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**a match arm's payload binder whose variant field is typed by the declaring type's formal (Ok { value: n } over Res<Int>) was refused at resolve (resolve_reason_pattern_payload_formal_uninstantiated), because resolve cannot see the scrutinee's arguments; every generic-coproduct match was therefore unwritable in the native front end.** Resolve now records the binder as owed its field type (LexicalOwedFormal, beside LexicalDeclared / LexicalValued / LexicalUntyped) and infer pays it at arm entry from the scrutinee's instantiated arguments, read through transparent aliases (List<T> is FreeMonoid<T>) and instantiating the field type itself (tail: FreeMonoid<T>). Re-derives gunbc#13558 / #13623 (closed, never ran CI); the claims are src/v2/test/claim/compiler/infer_payload_binder.dag.",

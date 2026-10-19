@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.fail_closed_gate_refuses_its_own_repair
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data fail_closed_gate_refuses_its_own_repair: RecurringFailureMode = RecurringFailureMode {
   identity: "fail_closed_gate_refuses_its_own_repair" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a fail-closed gate predicates evaluation on base-revision health and therefore refuses the change that restores that health.** INVALID STATE: the gate correctly declines to compare an unreadable base, but has no representable arm for `the base defect is exactly the subject this change removes`. Its safety property becomes self-sealing: every ordinary change is rightly refused while the repair is refused for the same reason, so no gate-admitted transition can restore the precondition the gate requires.",

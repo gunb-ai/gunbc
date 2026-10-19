@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.git_execution_bypasses_direct_import_policy
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 // This is the wall's coverage record, consumed by the existing derived failure-mode ledger.
 data git_execution_bypasses_direct_import_policy: RecurringFailureMode = RecurringFailureMode {
   identity: "git_execution_bypasses_direct_import_policy" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a direct-import policy is cited as establishing absence of execution of that dependency. HARM: a caller reaches the same executable through a configured or capability-passed program without adding a protected import, defeating the supposed closure while the import check stays clean.",

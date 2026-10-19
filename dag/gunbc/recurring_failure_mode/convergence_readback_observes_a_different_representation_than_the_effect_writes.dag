@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.convergence_readback_observes_a_different_representation_than_the_effect_writes
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data convergence_readback_observes_a_different_representation_than_the_effect_writes: RecurringFailureMode = RecurringFailureMode {
   identity: "convergence_readback_observes_a_different_representation_than_the_effect_writes" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a convergence plan or verdict reads the drop-in files it authors (or a hardcoded blank) while the effective value lives elsewhere (systemctl show, cgroup memory.swap.max, a system.control shadow), so it reports Converged beside an effective value that differs. DESIGN section 3d: readback is not independent.",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.metered_clock_charges_a_cost_the_budget_does
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data metered_clock_charges_a_cost_the_budget_does_not_intend_to_bound: RecurringFailureMode = RecurringFailureMode {
   identity: "metered_clock_charges_a_cost_the_budget_does_not_intend_to_bound" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a budget is declared over one quantity, its clock counts a broader one, and an implementation detail routes an unintended cost through the difference** (INVALID STATE: an evaluation budget meant to bound how much the interpreter EVALUATES reads CLOCK_THREAD_CPUTIME_ID, which counts the thread's user AND system time, and a spawn path that forces a real fork() of a multi-GB process charges the page-table copy and copy-on-write faults to that thread as system time. HARM: the budget refuses -- correctly by its clock, wrongly by its intent -- and every conclusion drawn from the metered number is about the wrong quantity.",

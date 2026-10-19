@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.typescript_chars_realizes_utf16_code_units_n
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data typescript_chars_realizes_utf16_code_units_not_scalars: RecurringFailureMode = RecurringFailureMode {
   identity: "typescript_chars_realizes_utf16_code_units_not_scalars" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A target's realization of chars returns UTF-16 code units, not the Unicode scalar values the operation is declared to return.** INVALID STATE: `extdeps.languages.typescript.emit` `ts_simple_method_specs` realizes `chars` as `Array.from(recv).map(c => c.charCodeAt(0))`. `Array.from` splits the string into code points, but `charCodeAt(0)` reads each code point's FIRST UTF-16 CODE UNIT. So any scalar above U+FFFF (an astral scalar, for example U+1F600) maps to its high surrogate (55357), not to 128512. The operation's contract is `std.host_text` `chars`: the Unicode scalar values of the host text, in source order, never UTF-16 code units (operator ruling H4, 2026-10-17).",

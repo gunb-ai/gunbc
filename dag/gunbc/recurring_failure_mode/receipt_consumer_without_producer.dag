@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.receipt_consumer_without_producer
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data receipt_consumer_without_producer: RecurringFailureMode = RecurringFailureMode {
   identity: "receipt_consumer_without_producer" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
   receipts: [
     "2026-10-09, PR #13607: srv1 commissioning refused the absent /var/lib/gunbc/microvm-network/converged-slot-network.txt. The earlier observer only wrote a job artifact; no production route published the root-owned receipt the controller consumes. Repair: the installer creates the root-owned receipt directory, and runner_microvm_network_initialize_local_wet binds the local administrator, host and clean source revision, observes all existing convergence predicates, and atomically creates the receipt. A retry observes the same stored generation anew and compares it without replacement; mismatched or unreadable state refuses. Publication admits only this live observer, never caller-supplied receipt text. External network truth remains a live acceptance obligation; no unit test alone establishes it.",
     "2026-10-09 srv1 workspace image run 37878358778, PR #13607: the compiler pair built successfully, then release-bins packing refused BuildDiagnosticsMissing because the product requires gunbc-floor-cmd.log but fleet's pair build dispatch ran the raw cargo line without the floor's capture wrapper. The pack's refusal was correct. Reusing wrap_command_with_floor_attempt_receipt at that producer captures the required diagnostics and preserves compiler failure through tee; no empty log is synthesized and no pack member is dropped.",

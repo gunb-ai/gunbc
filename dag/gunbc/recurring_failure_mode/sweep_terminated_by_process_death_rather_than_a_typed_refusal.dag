@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.sweep_terminated_by_process_death_rather_than_a_typed_refusal
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data sweep_terminated_by_process_death_rather_than_a_typed_refusal: RecurringFailureMode = RecurringFailureMode {
   identity: "sweep_terminated_by_process_death_rather_than_a_typed_refusal" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**a corpus sweep ends by process death, so it reports less than it measured and looks like it stopped for a reason** (INVALID STATE: an instrument folds over a population one subject at a time, and the process is killed by the host -- SIGSEGV from unbounded native recursion in the interpreter -- partway through the fold. DESIGN section 5 admits two arms, succeed fully or fail with a typed located diagnostic, and this is neither: the run produces no cause, no locus and no count, because the code that would have produced them is not running any more.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.recurrence_ledger_scoped_below_the_recurrence
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data recurrence_ledger_scoped_below_the_recurrence: RecurringFailureMode = RecurringFailureMode {
   identity: "recurrence_ledger_scoped_below_the_recurrence" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a recurrence ledger scoped below the recurrence it must find** (an instrument counts repetition WITHIN a unit of work and is reset at that unit's boundary, while the repetition that matters happens ACROSS those units.",

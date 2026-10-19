@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.hand_written_seed_rust_wraps_silently_in_release
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data hand_written_seed_rust_wraps_silently_in_release: RecurringFailureMode = RecurringFailureMode {
   identity: "hand_written_seed_rust_wraps_silently_in_release" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "hand-written seed Rust wraps silently on integer overflow in release (the sibling of emitted_int_arithmetic_wraps_where_the_interpreter_refuses one layer down: that row covers arithmetic the emitter writes, this one covers arithmetic a person wrote in the seed's host Rust).",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.readback_scoped_to_exclude_the_effect_it_verifies
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data readback_scoped_to_exclude_the_effect_it_verifies: RecurringFailureMode = RecurringFailureMode {
   identity: "readback_scoped_to_exclude_the_effect_it_verifies" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a convergence readback asks a question whose SCOPE excludes the very effect it exists to confirm, so the effect reads as absent and the converge applies it again on every run** (INVALID STATE: the observation half of an observe/decide/actuate/readback cycle is bounded -- by a range, a filter, a projection, a field mask, a page -- for a reason that is correct about ONE of the facts it gathers, and the SAME bound silently removes another.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.authored_quotation_terminates_the_string_it_is_authored_in
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data authored_quotation_terminates_the_string_it_is_authored_in: RecurringFailureMode = RecurringFailureMode {
   identity: "authored_quotation_terminates_the_string_it_is_authored_in" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a receipt that QUOTES a phrase terminates the string it is authored in, so the row filing the evidence is the row the evidence disables** (INVALID STATE: an authored ledger string containing a bare double quote, which the lexer reads as the string's terminator; the remainder of the sentence is then parsed as program text and the module refuses). The `.dag` lexer has NO STRING ESCAPING, so a quoted phrase is not expressible inside a string at all -- it is avoided by convention. The refusal names the first words INSIDE the quotation as undefined variables, which is a diagnostic pointing at text the author never intended as code, several hundred columns from anything they were thinking about.",

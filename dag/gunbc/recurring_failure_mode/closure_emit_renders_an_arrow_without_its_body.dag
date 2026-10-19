@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.closure_emit_renders_an_arrow_without_its_bo
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data closure_emit_renders_an_arrow_without_its_body: RecurringFailureMode = RecurringFailureMode {
   identity: "closure_emit_renders_an_arrow_without_its_body" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed, and reached on both paths." as NonEmptyStr } },
 
   receipts: [
     "**the v2 closure emitter (v2.compiler.self_host.compiler_closure_emit emit_compiler_import_closure_from_ingest, the route v2.cli.compile_cli emits through) reports Accepted and returns text in which a module is a record of its members and a member Arrow is rendered as its domain and codomain with NO BODY** (INVALID STATE: `fn add(x: Int, y: Int) -> Int { x + y }` emits `add: ( { x: i32, y: i32 }) -> (i32) -> i32`, and `data native_cli_door_probe_value: Int = 606060` emits `native_cli_door_probe_value: ( {  }) -> (i32) -> i32`. The `x + y` and the `606060` appear nowhere in the output, and no diagnostic of any severity is carried).",

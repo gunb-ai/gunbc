@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.surface_shorthand_preempts_resolved_identity
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data surface_shorthand_preempts_resolved_identity: RecurringFailureMode = RecurringFailureMode {
   identity: "surface_shorthand_preempts_resolved_identity" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**surface shorthand preempts resolved identity** (a semantic consumer dispatches on a raw lexeme after resolution has already named its declaration, so a declared constructor is reinterpreted as a host sentinel or primitive.",

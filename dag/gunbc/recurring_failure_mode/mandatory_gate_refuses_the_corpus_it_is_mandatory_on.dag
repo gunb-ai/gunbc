@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.mandatory_gate_refuses_the_corpus_it_is_mandatory_on
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data mandatory_gate_refuses_the_corpus_it_is_mandatory_on: RecurringFailureMode = RecurringFailureMode {
   identity: "mandatory_gate_refuses_the_corpus_it_is_mandatory_on" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a gate registered as mandatory on a door refuses the very corpus that door exists to admit, so the door is unreachable and the obligation reads enforced while nothing passes through it** (the registration is real, the gate executes, its refusal is typed and located -- and precisely because it always fires, no subject ever reaches the stages behind it, so every downstream obligation on that route is untested by construction rather than by anyone's decision.",

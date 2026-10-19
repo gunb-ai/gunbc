@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.fci1_controls_unrunnable_under_wrap_policy
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data fci1_controls_unrunnable_under_wrap_policy: RecurringFailureMode = RecurringFailureMode {
   identity: "fci1_controls_unrunnable_under_wrap_policy" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a posture whose only executor is an operator-invoked root shell on a host where the gunbc wrap policy refuses that shell. The FCI-1 controls (tools/fabric_ci_fci1_live_instrument.sh, tools/fabric_ci_fci1_bounded_execution_controls.sh and the evidence driver they call) run `gunbc run` as root over ssh on srv3 and inside transient systemd-run units in system.slice. gunbc.compute.unit_bounds user_work_scope_standing refuses the first as UserSessionAbsent (a root ssh shell has no user manager) and the second as UncappedSystemSlice (system.slice is not a declared capped slice); with a user manager present it refuses UserWorkSliceAbsent, because the wrapper never creates gunbc-user-work.slice and srv3 does not provision it. No standing exists under which the controls run.",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.export_receipt_digest_joined_to_a_different_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data export_receipt_digest_joined_to_a_different_generation: RecurringFailureMode = RecurringFailureMode {
   identity: "export_receipt_digest_joined_to_a_different_generation" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a custody export receipt names a Secret Manager version identity from the fetch that placed the file, and a sha256 digest taken from a later, unrelated reread of the same path. HARM: the snapshot take treats the pair as proof of WHICH generation it copied, and a matching digest then certifies the wrong generation. DISTINGUISHING FACTS: the digest must be of the same resolved material whose placement was established; publication is owed only after custody_run_settled of that placement, and a failed or interrupted publication must not report a successful export. RECOGNITION RULE: if a receipt's sm_version and its digest can be assembled from two observations, the join is fabricated. RUNG FOUND AT: design review; never observed. READER STANDING: gunbc.dispatch_credential_snapshot dispatch_credential_snapshot_take now requires the receipt, decodes it, and joins content_sha256 to THE SAME custody buffer it read, with no receipt-free fallback. That closes the reader half of the trigger: a launch cannot treat a digest from one generation as proof of another version named on a different paper. It does NOT climb the writer: plan_host_custody_export still takes sm_version and placed_material as two parameters that agree because one caller passes one fetch. CEILING: a sealed fetch result carrying both, consumed whole by the plan. NEXT-RUNG TRIGGER: that sealed carrier lands.",

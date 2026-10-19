@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.concession_annotation_is_not_a_disposition
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data concession_annotation_is_not_a_disposition: RecurringFailureMode = RecurringFailureMode {
   identity: "concession_annotation_is_not_a_disposition" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**a sentence that admits an invalid construction is allowed to stand in for deleting it** (INVALID STATE: an author identifies a decoration -- a fold that ignores its argument, a published column that is identically one arm for every row, or a located cause computed and then discarded -- and writes an annotation conceding that fact while leaving the construction in the executing surface. The concession is treated as the disposition.",

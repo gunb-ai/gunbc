@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.roster_membership_by_structural_equality
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data roster_membership_by_structural_equality: RecurringFailureMode = RecurringFailureMode {
   identity: "roster_membership_by_structural_equality" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a node becomes a declared-inhabitant roster member because it is STRUCTURALLY EQUAL to some node inside a roster value, not because it denotes that roster entry.** (INVALID STATE: a bare synthetic childless Conj, which is parse residue or an empty product anywhere, is a TypeDenotationKind member of the dag roster. So `v2.compiler.infer` derives it a grounding by lookup, an ungrounded algebra ref, instead of GroundingNotDerived.) Consumers that demand grounding refuse at the wrong link (coercion at `infer_algebra_ref_ungrounded`, not `infer_grounding_demanded_not_derived`), and any frontier claim over such a node reads derived. `v2.std.kind` `roster_kind_index` keys `Map<Node, Kind>` by the node value and entered every node reachable from the roster.",

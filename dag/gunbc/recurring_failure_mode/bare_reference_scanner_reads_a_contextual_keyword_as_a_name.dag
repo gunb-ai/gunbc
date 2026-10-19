@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.bare_reference_scanner_reads_a_contextual_ke
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data bare_reference_scanner_reads_a_contextual_keyword_as_a_name: RecurringFailureMode = RecurringFailureMode {
   identity: "bare_reference_scanner_reads_a_contextual_keyword_as_a_name" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "INVALID STATE: the loader's bare-reference candidate set contains a spelling that the grammar parses as a contextual keyword, not as a name. `v1_compiler.cli_run` `bare_identifier_candidates` is a byte scanner over the annotation-erased text. It knows string literals, `^symbol` literals, binder keywords and destructuring spans, but it does not know the service-operation member keywords of the `.dag` grammar (`response`, `input`, `output`, `idempotent`, `exit`, ...). The parser reads `response { 200 => T }` through the production `v2.extdeps.languages.dag` `dag_grammar_response_block_expr`, which emits `^dag_surface_response_block`, and the scanner still reports `response` as a bare candidate. While no top-level declaration spells a keyword, the census resolves nothing for it and the error is latent. The moment one does, every block using that keyword becomes a reference to it.",

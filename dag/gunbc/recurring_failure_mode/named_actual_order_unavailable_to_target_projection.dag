@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.named_actual_order_unavailable_to_target_projection
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data named_actual_order_unavailable_to_target_projection: RecurringFailureMode = RecurringFailureMode {
   identity: "named_actual_order_unavailable_to_target_projection" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a target realization that places an application's actuals by position (Rust, C and the other targets without named arguments) emits a named-actual application in AUTHORED order. HARM: a call written out of declared order, f(b: 2, a: 1) against fn f(a, b), binds each actual to the wrong parameter in the emitted program, silently. Before MQ-1 PR-B (gunbc#12382) this was the behaviour of v2.std.compilers.target_model target_project_transform_callable_apply_in_arrow_scope: named actuals had been lowered as positional, and projection read node_positional_child_targets in authored order.",

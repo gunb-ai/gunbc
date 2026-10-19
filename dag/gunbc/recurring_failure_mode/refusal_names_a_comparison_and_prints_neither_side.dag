@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.refusal_names_a_comparison_and_prints_neither_side
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data refusal_names_a_comparison_and_prints_neither_side: RecurringFailureMode = RecurringFailureMode {
   identity: "refusal_names_a_comparison_and_prints_neither_side" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a typed refusal names a threshold comparison as its cause and emits neither the threshold in force nor the measured quantity, so the reader cannot reproduce the verdict or size the gap** (INVALID STATE: a mechanism performs a comparison, refuses on it, and reports the comparison's NAME while discarding both of its operands.",

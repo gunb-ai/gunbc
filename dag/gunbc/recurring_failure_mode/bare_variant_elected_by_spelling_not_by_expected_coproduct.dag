@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.bare_variant_elected_by_spelling_not_by_expected_coproduct
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data bare_variant_elected_by_spelling_not_by_expected_coproduct: RecurringFailureMode = RecurringFailureMode {
   identity: "bare_variant_elected_by_spelling_not_by_expected_coproduct" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
+
   receipts: [
     "INVALID STATE: a bare variant spelling in VALUE position is elected to a coproduct by its spelling alone, ignoring the expected type -- `Absent` passed to a ConvergeVerdict parameter (gunbc.host.host_converge) in a module that sees ConvergeVerdict and ObservationVerdict (std.upsert_decision), both declaring Absent, without importing either. The closure-wide unique-spelling tier dropped the ambiguous spelling and the kernel tier filled it with the kernel Optional's Absent, so the reference was typed as an Optional at a Required position. A second shape of the same state: a coproduct arm reached only through the generic global binding lookup typed as a plain variable, with no VariantValueBinding, which the interpreter answers NoSuchVariable at run time.",
     "HARM: the wrong owner was elected silently. gunbc#12791's optional-at-required wall then REFUSED those correct programs, a fabricated refusal (16 sites in gunbc.fleet.fleet_converge_cli and gunbc.file_access, 6 in test.claim.fleet.fleet_converge_cli_witness_test), and #12791 shipped a predicate exclusion for them. No WRONG VALUE is observed shipped: the interpreter matches arms by spelling, so the kernel-elected Absent compared equal to the declared one at run time -- correct by coincidence, which is why the election error was invisible to every by-execution claim (test.claim.variant_election_by_expected_coproduct_witness row 4 is green on the unrepaired seed too; row 1, which asserts the emitted constructor, is the discriminator).",

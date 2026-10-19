@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.handwritten_population_wrong_by_gain_and_by_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data handwritten_population_wrong_by_gain_and_by_loss: RecurringFailureMode = RecurringFailureMode {
   identity: "handwritten_population_wrong_by_gain_and_by_loss" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a handwritten population can be wrong both by failing to gain a member and by failing to lose one. Completeness and liveness are the same derivation problem viewed in opposite directions.** (INVALID STATE: a join, gate, or census filters a live roster by a hand-authored identity list, and that list is treated as the waiter / subject / obligation population. Membership then moves only when an author edits the list. A real waiter never appended is invisible -- the join reports AllWaitersStanding over the identities it knows. A member that retired through another legitimate arm and was left on the list is stale -- the join reports SplitRetirement against a standing that the row's own trigger already authorised.",

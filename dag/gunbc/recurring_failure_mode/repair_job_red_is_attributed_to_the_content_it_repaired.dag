@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.repair_job_red_is_attributed_to_the_content_it_repaired
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data repair_job_red_is_attributed_to_the_content_it_repaired: RecurringFailureMode = RecurringFailureMode {
   identity: "repair_job_red_is_attributed_to_the_content_it_repaired" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a repair job reports failure for reasons that are not about the thing it repaired, and every reader attributes it to the change** (INVALID STATE: a CI job whose purpose is to REPAIR a branch -- regenerate a projection, apply a fix, push the result -- exits non-zero for a reason belonging to the repair PROTOCOL rather than to the content under review, and the only channel most readers have is the job's red square beside the pull request. The red is true about the job and false about the change, and nothing in the rendering distinguishes the two.",

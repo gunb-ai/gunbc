@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.edit_pass_that_matched_nothing_reports_success
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data edit_pass_that_matched_nothing_reports_success: RecurringFailureMode = RecurringFailureMode {
   identity: "edit_pass_that_matched_nothing_reports_success" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an edit pass that matched nothing reports success** (a scripted deletion, rename or rewrite whose locator binds to the WRONG CONSTRUCT finds zero subjects, changes zero bytes, and exits zero -- and a pass that acted on nothing is byte-for-byte indistinguishable from a pass that correctly had nothing to act on.",

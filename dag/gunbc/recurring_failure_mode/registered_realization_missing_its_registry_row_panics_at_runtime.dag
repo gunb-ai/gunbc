@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.registered_realization_missing_its_registry_row_panics_at_runtime
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data registered_realization_missing_its_registry_row_panics_at_runtime: RecurringFailureMode = RecurringFailureMode {
   identity: "registered_realization_missing_its_registry_row_panics_at_runtime" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a primitive with a std.primitives contract and a v1_rt body but no extdeps.languages.rust.emit rt_function_registry row emits an unrealized_host_seam runtime panic** (INVALID STATE: a call to a primitive whose realization EXISTS in the seed runtime is emitted as `v1_rt::unrealized_host_seam::<T>(..)`, because emit_typed_call decides is_rt by registry-row membership alone, so the realization is present and the emitter does not know it.",
