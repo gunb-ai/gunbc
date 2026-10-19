@@ -3364,11 +3364,26 @@ test fn one_reference_enabled_and_disabled_is_a_conflict_even_when_the_kind_agre
         bios_version: BiosVersionObserved { version: "1.08" },
       ),
     ) {
+      // NOT the conflict refusal, and the seam engaged rather than shrugging. NeedsPreparation is the
+      // right shape in spirit but the wrong one in fact here: with no network-kind option enabled this
+      // unit lands on the fail-closed authoring row, so seam_answered is the claim that is actually
+      // true -- an identical duplicate must not be treated as a conflict, which is what this control is
+      // for.
       Refused { cause: BootOptionReferencesConflict { conflict: _ }, gaps: _ } => false
-      Refused { cause: _, gaps: _ } => false
-      NeedsPreparation { admitted: _ } => true
-      Ready { conclusion: _ } => false
-      Unobserved { unanswered: _ } => false
+      _ => seam_answered(
+        firmware_boot_observation(
+          boot_order: BootOrderObserved { devices: [entry(reference: ref_http(), label: "Head")] },
+          boot_options: BootOptionsObserved {
+            options: [
+              boot_option(reference: ref_http(), kind: BootTargetHdd, label: "NVMe0", enabled: true),
+              boot_option(reference: ref_http(), kind: BootTargetHdd, label: "NVMe0", enabled: true),
+            ],
+          },
+          nics: NicsObserved { nics: ["eth0"] },
+          secure_boot: SecureBootDisabled,
+          bios_version: BiosVersionObserved { version: "1.08" },
+        ),
+      )
     }
 }
 
@@ -3376,6 +3391,26 @@ test fn one_reference_enabled_and_disabled_is_a_conflict_even_when_the_kind_agre
 // not-enumerated arm would send the operator the OPPOSITE instruction ('the BMC omitted it -- ask for
 // more' vs 'the BMC said it twice, differently -- ask for less'), and a refusal that names only the
 // reference leaves nothing to show the vendor.
+// THE SEAM ENGAGED RATHER THAN REFUSED: a preparation, on any blocker, by any route. Used wherever a
+// test wants to say "the fold ran and answered" without pinning WHICH row it chose -- and written once
+// because the honest answer for a unit with no network option is a REFUSAL naming the unbound authoring
+// slot, not a NeedsPreparation, and I have now guessed that wrong twice in this file. When the
+// attribute-slot name is read into the catalog, the refusal arm below becomes a bound
+// EnableNetworkStack and this helper is the place to change.
+fn seam_answered(observation: FirmwareBootObservation) -> Bool {
+  match standing_of(observation: observation) {
+    NeedsPreparation { admitted: _ } => true
+    // FAIL-CLOSED IS STILL AN ANSWER: the catalog carries a row for this blocker but its attribute name
+    // is an unbound slot, so the seam refuses with the mechanism named. Asserting NeedsPreparation here
+    // instead would demand a rung the corpus has not earned.
+    Refused { cause: RouteBindingUnresolved { mechanism: _, owed_read: _ }, gaps: gaps } =>
+      length(gaps) == 0
+    Ready { conclusion: _ } => false
+    Unobserved { unanswered: _ } => false
+    Refused { cause: _, gaps: _ } => false
+  }
+}
+
 fn refused_by_reference_conflict(observation: FirmwareBootObservation) -> Bool {
   match standing_of(observation: observation) {
     Refused { cause: BootOptionReferencesConflict { conflict: conflict }, gaps: _ } =>

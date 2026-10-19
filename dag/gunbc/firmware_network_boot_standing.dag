@@ -128,8 +128,8 @@ type BootOrderEntry {
 }
 
 // An entry as the enumeration reports it: identity, WHAT it is, what a human sees, and WHETHER THE
-// FIRMWARE WILL USE IT. `enabled` is not decoration -- a disabled BootOption cannot be pointed at
-// pointed at by `BootNext` either, so "exists" and "can be booted" are genuinely different states and the
+// FIRMWARE WILL USE IT. `enabled` is not decoration -- a disabled BootOption cannot be pointed
+// at by `BootNext` either, so "exists" and "can be booted" are genuinely different states and the
 // old single BootEntry type had no way to say them apart.
 type BootOption {
   reference: NonEmptyStr
