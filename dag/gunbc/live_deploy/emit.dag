@@ -367,7 +367,7 @@ import gunbc.live_deploy.effect_leaf {
   apt_install_unelevated_effect,
   dpkg_status_effect,
 }
-import extdeps.rust.cargo { cargo_default_release_dir_rel, cargo_default_target_relative_segment }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 

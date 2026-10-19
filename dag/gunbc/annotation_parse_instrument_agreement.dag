@@ -12,7 +12,7 @@ import gunbc.emit_stage_blocking_population_census {
   PristineAtRevision,
   LocallyPerturbed
 }
-import extdeps.rust.cargo { cargo_default_release_dir_rel, cargo_default_target_relative_segment }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // TWO LANES RAN ONE COMMAND ON ONE COMMIT AND GOT OPPOSITE VERDICTS, AND BOTH WERE RIGHT.
 //

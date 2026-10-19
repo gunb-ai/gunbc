@@ -64,7 +64,7 @@ import gunbc.live_deploy.member_identity {
   DirectoryRoot, DirectoryRootIdentity, RootAt, DirectoryRootStanding, RootConverged, RootModeRepairable, MemberRefusedOnHost,
   EffectDerivation, EffectsDerived, EffectsRefused, derive_member_plan, effect_labels, plan_mutation_count,
 }
-import extdeps.rust.cargo { cargo_default_release_dir_rel, cargo_default_target_relative_segment }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // THE HOST'S SIDE OF THE RECONCILE, read by the evaluator that plans the deploy so the decision and
 // the mutation are one evaluation (operator direction, 2026-09-06: one semantic evaluation per
