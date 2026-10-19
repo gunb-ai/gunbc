@@ -2,7 +2,14 @@ module gunbc.live_deploy.user_work_pool_slots
 
 import std.nat { Nat }
 
-// OPERATOR RULING 2026-10-16 (escalation msg_16bbe1f1, recommended option default-approved): FOUR
+// OPERATOR DECISION 2026-10-18 (msg_ad04724a via bright-moth-475), AMENDING THE 2026-10-16 RULING
+// BELOW: TWO slots, 44 GiB. Two of the four slots move to srv1-14, the revision-job slot
+// (gunbc.runner.runner_slot_allocation srv1_revision_job_slot), which is charged its own 22 GiB cell
+// plus its controller slice inside the runner envelope. The user-work slice MemoryMax that
+// live_deploy emits falls by 44 GiB at the next deploy; the 2026-10-16 fan-out reasoning is not
+// repudiated, the pool it sized is what funds the revision-job cell.
+//
+// SUPERSEDED BY THE AMENDMENT ABOVE: OPERATOR RULING 2026-10-16 (escalation msg_16bbe1f1, recommended option default-approved): FOUR
 // slots, 88 GiB. Measured on srv1 2026-10-16: each lab belt tick starts ~6 obligation units at once
 // (metering, snapshot-census, result-return, compute-seats, dogfood-start, observe), each a ~4-5 GiB
 // gunbc compile, all in this slice; a harness worker's test job landing in that fan-out was OOM-killed
@@ -17,7 +24,7 @@ import std.nat { Nat }
 // concurrent review/audit/supervisor population that still injects Slice=; the cap is policy,
 // not a claim those members fit without queuing or OOM. Charging that appropriation (44 GiB)
 // into served_deployment_slice_allowance is the same ruling.
-data user_work_charged_slots: Nat = Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } }
+data user_work_charged_slots: Nat = Succ { prev: Succ { prev: Zero } }
 
 type UserWorkPoolSlots
   = UserWorkPoolSlotsDerived { slots: Nat }

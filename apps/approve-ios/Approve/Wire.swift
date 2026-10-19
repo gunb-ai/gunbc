@@ -268,6 +268,15 @@ enum WireDecode {
         EnrolmentGrant(enrollment_id: try WireObject.document(data, allowed: ["enrollment_id"]).string("enrollment_id"))
     }
 
+    // The enrol route's typed refusal (gunbc.auth.approval_device_wire enrolment_refusal_json): the
+    // prose is kept for the human, the kind is what the app may act on.
+    static func enrolmentRefusal(_ data: Data) throws -> EnrolmentRefusalKind {
+        let o = try WireObject.document(data, allowed: ["refused", "enrolment_refusal"])
+        let k = try o.string("enrolment_refusal")
+        guard let kind = EnrolmentRefusalKind(rawValue: k) else { throw WireError.refused(at: "enrolment_refusal", cause: "not an admitted enrolment refusal") }
+        return kind
+    }
+
     static func pendingList(_ data: Data) throws -> [PendingApproval] {
         let o = try WireObject.document(data, allowed: ["pending"])
         return try o.array("pending").enumerated().map { i, row in

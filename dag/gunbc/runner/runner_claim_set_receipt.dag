@@ -23,7 +23,7 @@ import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
 import gunbc.fabric.fabric_cell_grant { CellGrantSettlement, settle_cell_grant }
 import gunbc.runner.runner_claim_set_results {
   ClaimSetResultsDecode, ClaimSetResultsRefused, ResultsDriveSizeMismatch, ResultsDriveUnobserved, ClaimSetResultsAdmission,
-  ClaimSetResultsAdmitted, decode_claim_set_results, admit_claim_set_results,
+  ClaimSetResultsAdmitted, ClaimSetResult, decode_claim_set_results, admit_claim_set_results,
 }
 
 // THE REVISION JOB'S RECEIPT, BUILT ONLY FROM WHAT THE HOST READ.
@@ -42,8 +42,8 @@ import gunbc.runner.runner_claim_set_results {
 // The receipt then goes to gunbc.fabric.fabric_cell_grant settle_cell_grant, which admits it once
 // and releases the cell only after sanitation (FCI-4).
 //
-// DECLARED FRONTIER (DESIGN 3c): the revision-job controller calls claim_set_receipt_and_settle once
-// a revision job's guest has exited. TRIGGER: S4b-3's stand-in inhabitance claim, in which the revision-job guest unit runs claim_set_guest_main over staged inputs and the controller settles the receipt.
+// Consumed by gunbc.runner.runner_revision_job_main revision_job_run, which calls
+// claim_set_receipt_and_settle once a revision job's guest has exited and its teardown settled.
 
 type UnitRuntimeReading
   = UnitRuntimeMeasured { billable: Second }
@@ -55,7 +55,7 @@ type ClaimSetNotReceipted
   | RuntimeNotMeasured { detail: String }
 
 type ClaimSetReceiptOutcome
-  = ClaimSetReceipted { receipt: Receipt<NonEmptyStr>, outputs: ContentHash }
+  = ClaimSetReceipted { receipt: Receipt<NonEmptyStr>, outputs: ContentHash, results: List<ClaimSetResult> }
   | ClaimSetUnreceipted { cause: ClaimSetNotReceipted }
 
 // THE RUNTIME, FROM TWO MONOTONIC MICROSECOND STAMPS. Both must be present, decimal and nonzero
@@ -144,7 +144,7 @@ fn claim_set_receipt(
   completed_at: Timestamp,
 ) -> ClaimSetReceiptOutcome {
   match admit_claim_set_results(decode: decode, claims: claims, revision: revision) {
-    ClaimSetResultsAdmitted { results: _, outputs: o } => match runtime {
+    ClaimSetResultsAdmitted { results: rs, outputs: o } => match runtime {
       UnitRuntimeUnread { detail: d } => ClaimSetUnreceipted { cause: RuntimeNotMeasured { detail: d } }
       UnitRuntimeMeasured { billable: b } => ClaimSetReceipted {
         receipt: Receipt {
@@ -154,6 +154,7 @@ fn claim_set_receipt(
           payload: ExecutionReceipt { step_id: "claim-set", outputs: o, billable: b, completed_at: completed_at },
         },
         outputs: o,
+        results: rs,
       }
     }
     refused => ClaimSetUnreceipted { cause: ResultsNotAdmitted { admission: refused } }
@@ -161,10 +162,12 @@ fn claim_set_receipt(
 }
 
 type ClaimSetJobEnd
-  = ClaimSetJobSettled { receipt: Receipt<NonEmptyStr>, settlement: CellGrantSettlement }
+  = ClaimSetJobSettled { receipt: Receipt<NonEmptyStr>, results: List<ClaimSetResult>, settlement: CellGrantSettlement }
   | ClaimSetJobUnreceipted { cause: ClaimSetNotReceipted }
 
 // THE CONTROLLER'S CALL once the attempt's VMM has exited and its teardown produced the readiness.
+// The two readings are the caller's: the revision job takes them in its await step, before teardown
+// destroys the jail and the unit, and hands them here.
 fn claim_set_receipt_and_settle(
   root: NonEmptyStr,
   work: FabricIdentity<NonEmptyStr, WorkKey>,
@@ -173,24 +176,24 @@ fn claim_set_receipt_and_settle(
   lease: LeaseIdentity,
   claims: FreeSemigroup<Label>,
   revision: VerifiedGitCommitTree,
-  results_drive_path: String,
-  results_drive_bytes: ByteSize,
-  attempt_unit: NonEmptyStr,
+  decode: ClaimSetResultsDecode,
+  runtime: UnitRuntimeReading,
   readiness: CellReadiness,
   completed_at: Timestamp,
 ) -> ClaimSetJobEnd {
   match claim_set_receipt(
     attempt: attempt,
     lease: lease,
-    decode: read_results_drive(path: results_drive_path, staged_bytes: results_drive_bytes),
+    decode: decode,
     claims: claims,
     revision: revision,
-    runtime: read_unit_runtime(unit: attempt_unit),
+    runtime: runtime,
     completed_at: completed_at,
   ) {
     ClaimSetUnreceipted { cause: c } => ClaimSetJobUnreceipted { cause: c }
-    ClaimSetReceipted { receipt: r, outputs: _ } => ClaimSetJobSettled {
+    ClaimSetReceipted { receipt: r, outputs: _, results: rs } => ClaimSetJobSettled {
       receipt: r,
+      results: rs,
       settlement: settle_cell_grant(root: root, work: work, offer: offer, receipt: r, readiness: readiness),
     }
   }

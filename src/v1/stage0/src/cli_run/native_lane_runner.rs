@@ -252,6 +252,9 @@ struct EmittedPreparation {
     /// run can create it, so no peer can overwrite the crate, or the executable built into its target dir, between
     /// emission and every spawn.
     _probe_root: super::emitted_closure_compile_host::PrivateProbeRoot,
+    /// The emitted workspace this preparation built, or `None` for a restored product, which has
+    /// no workspace to judge (`run_runtime_calibration` refuses it).
+    emitted_crate_dir: Option<PathBuf>,
 }
 
 /// The emitted compiler's build as the receipt records it — mirror of
@@ -569,6 +572,7 @@ fn prepare_emitted_compiler_for_entry(
                         warning_headers: manifest.warning_headers,
                     },
                     _probe_root: probe_root,
+                    emitted_crate_dir: None,
                 });
             }
             super::native_product_cache::Lookup::Refused { cause } => eprintln!(
@@ -884,6 +888,7 @@ fn prepare_emitted_compiler_for_entry(
         seed_identity,
         build,
         _probe_root: probe_root,
+        emitted_crate_dir: Some(crate_dir),
     })
 }
 
@@ -1953,6 +1958,31 @@ fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<String, Stri
     Ok(refusal.fatal_reason.clone())
 }
 
+/// THE RUNTIME CALIBRATION SUITE, AN ACTION OF THIS PRODUCER over the workspace it just built. A
+/// restored product has no workspace, so the suite was not run against what is being judged and the
+/// run refuses; the required lane asks for a fresh product. Every expected identity must have
+/// executed and passed (`run_runtime_calibration_suite`).
+fn run_runtime_calibration(prepared: &EmittedPreparation) -> Result<(), String> {
+    let Some(crate_dir) = &prepared.emitted_crate_dir else {
+        return Err("V2-NATIVE REFUSAL cause=RuntimeCalibrationSuiteNotRun — the product was restored, not built by this run, so there is no emitted workspace to run counting_allocator_tests against; require a fresh product".to_string());
+    };
+    let started = std::time::Instant::now();
+    let executed = super::emitted_closure_compile_host::run_runtime_calibration_suite(
+        crate_dir,
+        &prepared._probe_root.target_dir(),
+    )
+    .map_err(|cause| {
+        format!("V2-NATIVE REFUSAL cause=RuntimeCalibrationSuiteNotPassed — {cause}")
+    })?;
+    eprintln!(
+        "v2-native-route: runtime calibration suite passed — {} tests executed ({}) wall_s={}",
+        executed.len(),
+        executed.join(", "),
+        started.elapsed().as_secs()
+    );
+    Ok(())
+}
+
 pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
     let started = std::time::Instant::now();
     eprintln!(
@@ -1972,6 +2002,7 @@ pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
     // NOT HOLD, and a refusal above is the subject never having been reached; those are different
     // terminations with different exit statuses, and the instrument seam is the one place that
     // knows the vocabulary. Deciding it here too would give one fact two homes.
+    run_runtime_calibration(&prepared)?;
     let door_refusal_reason =
         walk_eval_driver_door(&prepared.binary_path, &super::process_workspace_root())?;
     Ok(SelfHostHeld {
@@ -3963,6 +3994,17 @@ pub struct NativeServeProgramRun {
     pub stderr: String,
 }
 
+/// WHICH PHASES A RUN PERFORMS, as the binding row declares them (`gunbc.native_serve_probe_plan`
+/// `NativeServePhase`). The host reads the three answers off the row and holds no per-binding
+/// branch: a phase that is not declared is not run, and its observation reaches the reader as the
+/// absent value (no announcement, port -1, status -1).
+#[derive(Clone, Copy)]
+pub struct NativeServePhases {
+    pub peer_instance: bool,
+    pub refused_launch: bool,
+    pub stuck_ceiling_exit: bool,
+}
+
 /// How long a launch, an announcement or one exchange may take before the run stops waiting. A
 /// deadline here is the instrument refusing to hang, not a budget the service is judged by.
 const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
@@ -4048,6 +4090,7 @@ pub fn run_native_serve_program(
     release_revision: &str,
     refused_revision: &str,
     request_deadline_ms: &str,
+    phases: NativeServePhases,
     requests_for_peer_port: &dyn Fn(i64) -> Result<Vec<String>, String>,
 ) -> Result<NativeServeProgramRun, String> {
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
@@ -4056,37 +4099,49 @@ pub fn run_native_serve_program(
         prepared.closure_identity,
         prepared.binary_path.display()
     );
-    let (refused_status, refused_stderr) =
-        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?;
+    let (refused_status, refused_stderr) = if phases.refused_launch {
+        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?
+    } else {
+        (None, String::new())
+    };
     // The PEER is a second instance of the same entry: the local server the entry's bound REST
     // handler is pointed at, so the answered arm is produced by a real exchange. Its port is the
     // one fact only it can publish, so the reader module is asked for the requests only after it.
-    let mut peer = native_serve_start(
-        &prepared.binary_path,
-        entry,
-        release_revision,
-        request_deadline_ms,
-    )?;
-    let peer_port = match peer
-        .address
-        .as_deref()
-        .and_then(|address| address.rsplit(':').next())
-        .and_then(|port| port.parse::<i64>().ok())
-    {
-        Some(port) => port,
-        None => {
-            let peer_stderr = peer.stop();
-            return Err(format!(
-                "NATIVE-SERVE REFUSAL cause=PeerUnannounced entry={entry} announcement={:?} — the peer instance printed no bound address, so no request can name its port{}",
-                peer.announcement,
-                if peer_stderr.is_empty() { String::new() } else { format!(" (stderr: {})", peer_stderr.trim_end()) }
-            ));
-        }
+    let mut peer = if phases.peer_instance {
+        Some(native_serve_start(
+            &prepared.binary_path,
+            entry,
+            release_revision,
+            request_deadline_ms,
+        )?)
+    } else {
+        None
+    };
+    let peer_port = match &mut peer {
+        None => -1,
+        Some(instance) => match instance
+            .address
+            .as_deref()
+            .and_then(|address| address.rsplit(':').next())
+            .and_then(|port| port.parse::<i64>().ok())
+        {
+            Some(port) => port,
+            None => {
+                let peer_stderr = instance.stop();
+                return Err(format!(
+                    "NATIVE-SERVE REFUSAL cause=PeerUnannounced entry={entry} announcement={:?} — the peer instance printed no bound address, so no request can name its port{}",
+                    instance.announcement,
+                    if peer_stderr.is_empty() { String::new() } else { format!(" (stderr: {})", peer_stderr.trim_end()) }
+                ));
+            }
+        },
     };
     let requests = match requests_for_peer_port(peer_port) {
         Ok(requests) => requests,
         Err(cause) => {
-            peer.stop();
+            if let Some(instance) = &mut peer {
+                instance.stop();
+            }
             return Err(cause);
         }
     };
@@ -4098,7 +4153,9 @@ pub fn run_native_serve_program(
     ) {
         Ok(subject) => subject,
         Err(cause) => {
-            peer.stop();
+            if let Some(instance) = &mut peer {
+                instance.stop();
+            }
             return Err(cause);
         }
     };
@@ -4113,15 +4170,22 @@ pub fn run_native_serve_program(
     // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
     // still running at the deadline is killed, and it reports no status. The peer serves no budget
     // case and is stopped.
-    let (served_exit_status, stderr) = subject.await_exit();
-    let peer_stderr = peer.stop();
+    let (served_exit_status, stderr) = if phases.stuck_ceiling_exit {
+        subject.await_exit()
+    } else {
+        (None, subject.stop())
+    };
+    let (peer_announcement, peer_stderr) = match &mut peer {
+        Some(instance) => (instance.announcement.clone(), instance.stop()),
+        None => (String::new(), String::new()),
+    };
     Ok(NativeServeProgramRun {
         closure_identity: prepared.closure_identity,
         binary_identity: prepared.binary_identity,
         seed_identity: prepared.seed_identity,
         warning_count: prepared.build.warning_count,
         announcement: subject.announcement,
-        peer_announcement: peer.announcement,
+        peer_announcement,
         peer_port,
         responses,
         refused_status,

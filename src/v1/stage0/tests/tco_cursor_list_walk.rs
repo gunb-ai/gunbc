@@ -50,6 +50,28 @@ fn walk_other_pos(xs: FreeMonoid<Int>, ys: FreeMonoid<Int>, acc: Int) -> Int {
   }
 }
 
+fn dot_lockstep(xs: FreeMonoid<Int>, ys: FreeMonoid<Int>, acc: Int) -> Int {
+  match xs {
+    Empty => acc
+    Cons { head: a, tail: xt } =>
+      match ys {
+        Empty => acc
+        Cons { head: b, tail: yt } => dot_lockstep(xt, yt, acc + a * b)
+      }
+  }
+}
+
+fn dot_reset(xs: FreeMonoid<Int>, ys: FreeMonoid<Int>, acc: Int) -> Int {
+  match xs {
+    Empty => acc
+    Cons { head: a, tail: xt } =>
+      match ys {
+        Empty => dot_reset(xt, Empty, acc + a)
+        Cons { head: b, tail: yt } => dot_reset(xt, yt, acc + a * b)
+      }
+  }
+}
+
 fn walk_depth2(xs: FreeMonoid<Int>, acc: Int) -> Int {
   match xs {
     Empty => acc
@@ -185,6 +207,8 @@ fn cursor_is_taken_exactly_where_the_tail_is_unobservable() {
     for (name, cursor) in [
         ("walk_pos", true),
         ("walk_depth2", true),
+        ("dot_lockstep", true),
+        ("dot_reset", true),
         ("walk_escape", false),
         ("walk_xs_after", false),
         ("walk_other_pos", false),
@@ -201,6 +225,18 @@ fn cursor_is_taken_exactly_where_the_tail_is_unobservable() {
                 "{name} must keep the skip realization\n{text}"
             );
         }
+    }
+
+    // Two lists walked in lockstep: each is a cursor, named by its own param, and neither pays `skip`.
+    for name in ["dot_lockstep", "dot_reset"] {
+        let text = fn_text(emitted, name);
+        for cursor in ["__tco_cursor_xs", "__tco_cursor_ys"] {
+            assert!(text.contains(cursor), "{name}: expected {cursor}\n{text}");
+        }
+        assert!(
+            !text.contains("skip("),
+            "{name}: a cursor walk must not skip\n{text}"
+        );
     }
 
     let root = std::env::temp_dir().join(format!("gunbc-cursor-{}", std::process::id()));
@@ -220,6 +256,14 @@ fn main() {
         assert_eq!(walk_pos(Rc::new(xs.clone()), 0), want, "walk_pos n={n}");
         assert_eq!(walk_depth2(Rc::new(xs.clone()), 0), want, "walk_depth2 n={n}");
         assert_eq!(walk_xs_after(Rc::new(xs.clone()), 0), want + n * (n + 1) / 2, "walk_xs_after n={n}");
+        let zs: im::Vector<i64> = (1..=n).collect();
+        let squares: i64 = xs.iter().map(|x| x * x).sum();
+        assert_eq!(dot_lockstep(Rc::new(xs.clone()), Rc::new(zs.clone()), 0), squares, "dot_lockstep n={n}");
+        assert_eq!(dot_reset(Rc::new(xs.clone()), Rc::new(zs.clone()), 0), squares, "dot_reset n={n}");
+        let short: im::Vector<i64> = (1..=n / 2).collect();
+        let short_dot: i64 = (1..=n / 2).map(|x| x * x).sum::<i64>() + (n / 2 + 1..=n).sum::<i64>();
+        assert_eq!(dot_reset(Rc::new(xs.clone()), Rc::new(short.clone()), 0), short_dot, "dot_reset short n={n}");
+        assert_eq!(dot_lockstep(Rc::new(xs.clone()), Rc::new(short.clone()), 0), (1..=n / 2).map(|x| x * x).sum::<i64>(), "dot_lockstep short n={n}");
         let ys: im::Vector<i64> = im::Vector::new();
         let other = walk_other_pos(Rc::new(xs.clone()), Rc::new(ys), 0);
         assert!(other >= 0);

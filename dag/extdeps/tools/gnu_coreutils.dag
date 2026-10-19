@@ -97,6 +97,13 @@ fn mkdir_create_only_command(path: String) -> ArgvCommand {
   argv_command(program: mkdir_program(), arguments: ["--", path])
 }
 
+// mkdir -m: the mode is applied at creation (coreutils manual, "mkdir invocation": -m sets the file mode
+// as in chmod, not a=rwx - umask), so the directory is never visible with a wider mode. Without -p this is
+// still create-only: success proves the name did not exist, so the new directory is empty.
+fn mkdir_create_only_with_mode_command(path: String, octal_mode: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: mkdir_program(), arguments: ["-m", octal_mode as String, "--", path])
+}
+
 // ln WITHOUT -s IS A HARD LINK, and without -f it REFUSES when the destination exists (coreutils
 // "ln invocation"): the create-only publication step. A second name for the same inode, never a
 // replacement of the bytes behind an existing name.
@@ -136,6 +143,12 @@ fn od_hex_span_command(path: String, offset: Int, length: Int) -> ArgvCommand {
 
 fn cp_command(source: String, destination: String) -> ArgvCommand {
   argv_command(program: cp_program(), arguments: [source, destination])
+}
+
+// `--update=none` (coreutils 9.3+, "cp invocation"): copy only when the destination does not exist,
+// and exit 0 either way -- a postinst's "install from default if absent", not an overwrite.
+fn cp_preserve_if_absent_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: cp_program(), arguments: ["-p", "--update=none", source, destination])
 }
 
 // install(1) COPYING /dev/null CREATES AN EMPTY FILE WITH ITS FINAL OWNER AND MODE IN ONE STEP.
@@ -179,6 +192,12 @@ fn rm_recursive_force_command(path: String) -> ArgvCommand {
 // which an absence readback then reports, rather than a host path being emptied through a mount.
 fn rm_recursive_force_one_file_system_command(path: String) -> ArgvCommand {
   argv_command(program: rm_program(), arguments: [coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String, path])
+}
+
+// THE ARGV TAIL FORM of the delete above, for a caller that hands the command to another program to run
+// per entry (find -exec). The operand paths follow it.
+fn rm_recursive_force_one_file_system_exec_argv() -> List<String> {
+  [rm_program().invocation as String, coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String]
 }
 
 // ln(1) -- GNU coreutils, "ln: Make links between files". -s makes a SYMBOLIC link, -f removes an
@@ -548,4 +567,10 @@ fn mv_exact_destination_command(source: String, destination: String) -> ArgvComm
 // same path is safe). Byte order needs LC_ALL=C in the environment, which is the caller's binding.
 fn sort_in_place_command(path: String) -> ArgvCommand {
   argv_command(program: sort_program(), arguments: ["-o", path, path])
+}
+
+// cat(1): the contents of ONE file on stdout (`cat -- PATH`). `--` ends options, so a path beginning with `-`
+// is a file and never a flag.
+fn cat_file_command(path: String) -> ArgvCommand {
+  argv_command(program: cat_program(), arguments: ["--", path])
 }

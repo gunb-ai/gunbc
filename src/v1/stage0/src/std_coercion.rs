@@ -13,6 +13,9 @@ use self::TextRepresentation::*;
 use self::TypeDeclarationProvenance::*;
 use self::TypeRealizationDecision::*;
 use self::TypeReferenceIdentity::*;
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_count_shape, collection_map_shape,
+};
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 use crate::std_literal_elaboration::LiteralSourceKind::*;
 pub use crate::std_literal_elaboration::{LiteralHomomorphism, LiteralSourceKind};
@@ -329,7 +332,7 @@ pub struct ConversionPlan {
 }
 
 pub fn conversion_plan_identity(plan: Rc<ConversionPlan>) -> String {
-    plan.route.clone().decl_name.clone()
+    plan.route.decl_name.clone()
 }
 
 pub fn kernel_carrier_of_literal_source(kind: LiteralSourceKind) -> Rc<ConversionEndpoint> {

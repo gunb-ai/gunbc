@@ -2,7 +2,7 @@ module std.nat
 import std.optional { Present }
 
 import std.types { List, Bool, Int, String }
-import std.algebra { CommutativeMonoid, CommutativeSemiring, Ordering, Less, Equal, Greater }
+import std.algebra { CommutativeMonoid, CommutativeSemiring, Ordering, Less, Equal, Greater, collection_concat_shape }
 
 // THE NATURALS, DECLARED AS WHAT THEY ARE (operator ruling A, 2026-09-30). The carrier is the
 // accepted inductive definition -- zero, and the successor of a natural -- and it is the ONLY
