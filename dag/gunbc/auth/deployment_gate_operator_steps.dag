@@ -164,55 +164,61 @@ fn reviewer_removal_act_for(admission: ReviewerRemovalAdmission) -> ReviewerRemo
   }
 }
 
-data deployment_gate_operator_steps: List<HumanIntervention> = [
-  app_registration_step,
-  app_installation_step,
-  webhook_configuration_step,
-  rule_enablement_step,
-  reviewer_removal_step
-]
+// THE FIVE ACTS, IN THE ONLY ORDER THEY CAN BE PERFORMED, BUILT INTO THE TYPE (review 82535). This was
+// a List<HumanIntervention> whose ordering and cardinality were policed AFTERWARDS by folds: a count that
+// had to stay at five, a uniqueness count per identity, and a walker that found the removal row after the
+// enablement row. All three could be satisfied by EDITING THE DECLARATION — reorder the list literal and
+// the walker reddens only when it runs — which is §5's tell that the type was not carrying the invariant
+// it was claimed to carry.
+//
+// Now the sequence IS the record: five named fields in the order they are performed, and
+// `reviewer_removal` is declared after `rule_enablement`. Reordering means writing a different,
+// non-compiling expression; duplicating an act means naming a sixth field the type does not have; dropping
+// one is a missing field. There is no list to permute, so there is nothing left for a walker to police,
+// and the order reads top-to-bottom off the type rather than off a check.
+type DeploymentGateOperatorSequence {
+  app_registration: HumanIntervention,
+  app_installation: HumanIntervention,
+  webhook_configuration: HumanIntervention,
+  rule_enablement: HumanIntervention,
+  reviewer_removal: HumanIntervention,
+}
+
+data deployment_gate_operator_steps: DeploymentGateOperatorSequence = DeploymentGateOperatorSequence {
+  app_registration: app_registration_step,
+  app_installation: app_installation_step,
+  webhook_configuration: webhook_configuration_step,
+  rule_enablement: rule_enablement_step,
+  reviewer_removal: reviewer_removal_step,
+}
 
 // ---------------------------------------------------------------------------
 // Discriminating fns — the ordering and the count are enforced, not narrated
 // ---------------------------------------------------------------------------
 
-fn human_frequency_is_fleet_once(f: HumanInterventionFrequency) -> Bool {
-  human_intervention_frequency_eq(a: f, b: FleetOnce)
+// Every act in this design is once-per-fleet. A row that drifted to BreakGlassOnly would drop out of
+// the counted burden while still being performed; a row that drifted to EveryProvision would overstate
+// an act that happens once. Written field by field over the sequence: the earlier shape wrapped
+// std's own equality in `human_frequency_is_fleet_once: Frequency -> Bool`, which was a second name for
+// a comparison std already owns, and walked a list the record no longer is (review 82535).
+fn all_steps_are_fleet_once(steps: DeploymentGateOperatorSequence) -> Bool {
+  human_intervention_frequency_eq(a: steps.app_registration.frequency, b: FleetOnce)
+    && human_intervention_frequency_eq(a: steps.app_installation.frequency, b: FleetOnce)
+    && human_intervention_frequency_eq(a: steps.webhook_configuration.frequency, b: FleetOnce)
+    && human_intervention_frequency_eq(a: steps.rule_enablement.frequency, b: FleetOnce)
+    && human_intervention_frequency_eq(a: steps.reviewer_removal.frequency, b: FleetOnce)
 }
 
-// Every act in this design is once-per-fleet. A row that drifted to BreakGlassOnly would drop out
-// of the counted burden while still being performed; a row that drifted to EveryProvision would
-// overstate an act that happens once.
-fn all_steps_are_fleet_once(steps: List<HumanIntervention>) -> Bool {
-  steps |> all(s => human_frequency_is_fleet_once(f: s.frequency))
-}
-
-// How many rows carry a given identity. A brand-checked identity is supposed to make two rows
-// sharing one impossible, but the brand is a name, not a uniqueness proof — so uniqueness is
-// checked, and one completion cannot stand for two acts.
-fn count_with_identity(steps: List<HumanIntervention>, identity: String) -> Int {
-  steps |> filter(s => (s.identity as String) == identity) |> count
-}
-
-// The one ordering that matters for the boundary. The reviewer removal is the only row here that
-// WEAKENS a gate, so it must come strictly after the row that turns the App gate on; a fold that
-// treated them as one step would open an interval in which srv1 root mutation is gated by nothing.
-type RemovalOrderAcc {
-  seen_enable: Bool
-  removal_before_enable: Bool
-}
-
-fn removal_is_strictly_after_enablement(steps: List<HumanIntervention>) -> Bool {
-  let walked = fold(
-    steps,
-    init: RemovalOrderAcc { seen_enable: false, removal_before_enable: false },
-    f: fn(st, s) {
-      RemovalOrderAcc {
-        seen_enable: st.seen_enable || (s.identity as String) == (rule_enablement_step.identity as String),
-        removal_before_enable: st.removal_before_enable
-          || ((s.identity as String) == (reviewer_removal_step.identity as String) && !st.seen_enable)
-      }
-    }
-  )
-  walked.seen_enable && !walked.removal_before_enable
-}
+// THE ORDERING IS THE RECORD, NOT A WALKER OVER IT (review 82535). The reviewer removal is the only act
+// here that WEAKENS a gate, so it must come strictly after the act that turns the App gate on; a sequence
+// that put them in the other order would open an interval in which srv1 root mutation is gated by nothing.
+//
+// That used to be enforced by folding over a List and comparing identities cast to String — a check that
+// could be satisfied by reordering the literal while the realization still lay (§5's tell). Under
+// DeploymentGateOperatorSequence the order IS the field order: `reviewer_removal` is declared after
+// `rule_enablement`. The fold and the `as String` comparisons are gone because there is no list to
+// permute. What a caller can still get wrong is binding a field to the wrong row — `rule_enablement:`
+// pointing at the removal step, say, which no fold over a list would have caught either. That is the
+// remaining falsifiable claim, so it is where the witness aims: each field must hold the row its name
+// promises, and the two boundary rows must be distinct, compared as branded identities rather than as
+// strings cast for comparison.

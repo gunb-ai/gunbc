@@ -559,24 +559,28 @@ type ReviewCredential
   = InstallationAccessToken
   | OAuthClassicWithRepoScope
 
-// The two labels the REST page uses for the token types this endpoint accepts, quoted rather than
-// paraphrased. Both are upstream facts; WHICH one gunbc permits is gunbc.auth's refusal, not a fact
-// about GitHub. A fold over ONE label (as this was) reported the second documented type as
-// undocumented — a false fact about the dependency, which is the one thing this file exists to avoid.
-data review_accepted_token_type: NonEmptyStr = "GitHub App installation access tokens"
-data review_oauth_classic_token_type: NonEmptyStr = "OAuth app tokens and personal access tokens (classic)"
-data review_oauth_classic_scope: NonEmptyStr = "repo"
-
-data review_documented_token_types: List<NonEmptyStr> = [
-  review_accepted_token_type,
-  review_oauth_classic_token_type,
-]
-
-// Whether a token-type label is one GitHub documents for this endpoint. Membership in the quoted set,
-// so a third label ("a token kind GitHub has never heard of") is refused and the two real ones are not.
-fn review_credential_is_documented(token_type: NonEmptyStr) -> Bool {
-  review_documented_token_types |> any(t => t == token_type)
+// THE WORDS GITHUB USES FOR EACH KIND, AS A TOTAL FUNCTION OVER THE SUM. The labels are upstream's own
+// phrasing quoted rather than paraphrased — they are what the REST page prints, and they are what the
+// operator sees when a refusal explains itself.
+//
+// THIS IS THE CLOSED SET, AND IT IS CLOSED BY THE TYPE. An earlier revision carried the same set a
+// second time as `List<NonEmptyStr>` plus `review_credential_is_documented: NonEmptyStr -> Bool`, so a
+// caller could write a third label and be refused only if that predicate happened to run — a validation
+// where §5 asks for construction ("make it unwritable"). Now an invented kind has to be an arm of
+// ReviewCredential first, and adding an arm forces its upstream words to be written here or the match
+// stops being total. What that buys is a COMPILE error, not a test; see the note below on what no check
+// here can do.
+fn review_credential_documented_label(credential: ReviewCredential) -> NonEmptyStr {
+  match credential {
+    InstallationAccessToken => "GitHub App installation access tokens"
+    OAuthClassicWithRepoScope => "OAuth app tokens and personal access tokens (classic)"
+  }
 }
+
+// The scope the classic-token arm needs, upstream's words: "OAuth app tokens and personal access tokens
+// (classic) need the repo scope to use this endpoint with a private repository." A fact about one named
+// arm, not a membership list.
+data review_oauth_classic_scope: NonEmptyStr = "repo"
 
 // GitHub's own worked example for this call, transcribed from the REST reference: the body it posts
 // and the 204 it is answered with. A value of DeploymentProtectionRuleReview, so the example is
@@ -1039,17 +1043,6 @@ fn review_call_succeeded(status: HttpStatus) -> Bool {
 // declaration with no consumer is dangling, and dangling is the one structural red)
 // ---------------------------------------------------------------------------
 
-// THE CALLBACK PAIR IS CHECKABLE, NOT DESCRIPTIVE. A webhook-driven caller posts to the URL GitHub
-// put in the
-// payload's `deployment_callback_url` field, and that field is the one whose name upstream publishes;
-// reading any other field, or posting anywhere else, is refused here. This is the consumer that makes
-// the callback relation a fact rather than a sentence.
-fn rule_review_is_answerable_at(payload_field: NonEmptyStr, target_path: NonEmptyStr) -> Bool {
-  payload_field == rule_review_callback.payload_field
-    && target_path == rule_review_callback.addresses
-    && rule_webhook_payload_field_is_published(name: payload_field)
-}
-
 // THE TOKEN IDENTITY IS READ FROM THE PAYLOAD, not from a configured constant — the upstream's own
 
 // THE PERMISSION THIS CALL NEEDS, as one typed row (axis + level) rather than two strings that have
@@ -1101,36 +1094,6 @@ fn deployment_protection_rule_citation_count() -> Int {
 // one this module publishes. A rename that leaves a citation pointing at a retired name reddens this
 // rather than quietly dropping the citation — the failure mode where a model keeps its authority rows
 // while the facts they covered have moved on. The list below is the live-name census; adding a cited
-// fact without adding it here fails, which is the point.
-data deployment_protection_rule_live_fact_names: List<NonEmptyStr> = [
-  "review_endpoint_path",
-  "review_state_wire",
-  "pending_deployments_endpoint_path",
-  "human_review_endpoint_path",
-  "rule_webhook_field_environment",
-  "environment_protection_rule_type_values",
-  "custom_rule_response_timeout",
-  "rule_gate_approval_ceiling",
-  "wait_timer_maximum",
-  "pending_deployment_reviewer_type_wire",
-  "spec_pinned_commit",
-  "installation_readback_endpoint_path",
-]
-
-fn every_citation_names_a_live_declaration() -> Bool {
-  (deployment_protection_rule_fact_citations |> count)
-    == (deployment_protection_rule_live_fact_names |> count)
-    && (deployment_protection_rule_fact_citations
-        |> all(c => c.fact.module_path == "extdeps.github.deployment_protection_rule"))
-    && (deployment_protection_rule_fact_citations
-        |> all(c => deployment_protection_rule_live_fact_names
-             |> any(n => n == c.fact.decl_name)))
-}
-
-fn rule_webhook_field_names_include(name: NonEmptyStr) -> Bool {
-  rule_webhook_documented_field_names |> any(f => f == name)
-}
-
 // The scope rows, each pointing at a declaration by name. Kept as DeclarationRef values because the
 // citation table above is what reads them; a ref with no citation is dangling and gets deleted.
 fn gate_ref(decl_name: NonEmptyStr) -> DeclarationRef {

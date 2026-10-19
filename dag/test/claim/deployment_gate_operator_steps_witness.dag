@@ -23,7 +23,7 @@ import std.types {
   NonEmptyStr,
   HttpStatus,
 }
-import std.human_intervention { FleetOnce, DischargedAt }
+import std.human_intervention { DischargedAt }
 import extdeps.github.deployment_protection_rule {
   Approved,
   Rejected,
@@ -63,10 +63,8 @@ import gunbc.auth.deployment_gate_operator_steps {
   rule_enablement_step,
   reviewer_removal_step,
   deployment_gate_operator_steps,
-  human_frequency_is_fleet_once,
+  DeploymentGateOperatorSequence,
   all_steps_are_fleet_once,
-  count_with_identity,
-  removal_is_strictly_after_enablement,
 }
 import gunbc.auth.deployment_gate_authorization {
   mint_accepted_rule_review,
@@ -241,70 +239,80 @@ fn admitted_pair() -> ReviewerRemovalAdmission {
 }
 
 // ---------------------------------------------------------------------------
-// 1. The five acts, counted and distinct
+// 1. The five acts: the sequence is a record, so what is left to falsify is the BINDING
 // ---------------------------------------------------------------------------
 
-test fn every_operator_act_is_counted_once_per_fleet() -> Bool {
-  all_steps_are_fleet_once(steps: deployment_gate_operator_steps)
-    && (deployment_gate_operator_steps |> count) == 5
+// THE ORDER IS THE TYPE NOW (review 82535), and that changes what a witness can usefully do. There used
+// to be three checks here — a count that had to be five, a count per identity, and a fold that found the
+// removal row after the enablement row — and all three were satisfiable by editing the declaration they
+// were supposed to be checking (§5's tell). They are gone, and nothing replaces them as a *check*,
+// because there is no list to reorder, drop, or duplicate: `reviewer_removal` is a later FIELD than
+// `rule_enablement`, and the only way to reverse the sequence is to write a different record.
+//
+// What CAN still be written wrongly is a field bound to the wrong row: `rule_enablement: reviewer_removal_step`
+// compiles, and no fold over a list would have caught it either. That is the falsifiable residue, so it
+// is what these tests aim at — each field must hold the act its name promises, and the two boundary acts
+// must be two acts. Compared as branded identities, not as strings cast for comparison (the earlier
+// version's `(x as String) == (y as String)` compared a rendering of the identity with a rendering of it).
+test fn each_field_of_the_sequence_holds_the_act_its_name_promises() -> Bool {
+  deployment_gate_operator_steps.app_registration.identity == app_registration_step.identity
+    && deployment_gate_operator_steps.app_installation.identity
+      == app_installation_step.identity
+    && deployment_gate_operator_steps.webhook_configuration.identity
+      == webhook_configuration_step.identity
+    // the two boundary fields, by name and by row
+    && deployment_gate_operator_steps.rule_enablement.identity == rule_enablement_step.identity
+    && deployment_gate_operator_steps.reviewer_removal.identity
+      == reviewer_removal_step.identity
+    // every act is once-per-fleet, field by field over the record
+    && all_steps_are_fleet_once(steps: deployment_gate_operator_steps)
 }
 
-// The census is not decoration. A row dropped in a rebase and a row duplicated in a merge are both
-// silent in the rendered checklist; each is refused by a count that has to stay at exactly five.
-test fn the_count_refuses_a_silently_dropped_or_doubled_row() -> Bool {
-  (deployment_gate_operator_steps |> count) != 4
-    && (deployment_gate_operator_steps |> count) != 6
-    && human_frequency_is_fleet_once(f: FleetOnce)
-}
-
-test fn no_two_operator_acts_share_an_identity() -> Bool {
-  count_with_identity(
-    steps: deployment_gate_operator_steps, identity: "github.deployment-rule.app.register"
-  ) == 1
-    && count_with_identity(
-         steps: deployment_gate_operator_steps, identity: "github.deployment-rule.app.install"
-       ) == 1
-    && count_with_identity(
-         steps: deployment_gate_operator_steps, identity: "github.deployment-rule.webhook.configure"
-       ) == 1
-    && count_with_identity(
-         steps: deployment_gate_operator_steps,
-         identity: "github.deployment-rule.enable.srv1-production",
-       ) == 1
-    && count_with_identity(
-         steps: deployment_gate_operator_steps,
-         identity: "github.deployment-rule.reviewer-removal.srv1-production",
-       ) == 1
-}
-
-// ---------------------------------------------------------------------------
-// 2. Ordering: the human gate goes last, or the fold refuses
-// ---------------------------------------------------------------------------
-
-test fn the_human_gate_is_removed_only_after_the_app_gate_appears() -> Bool {
-  removal_is_strictly_after_enablement(steps: deployment_gate_operator_steps)
-}
-
-// THE DISCRIMINATING RED for the whole ordering control: the same fold, over the same five rows with
-// the last two swapped — the sequence that removes the human reviewer before anything can replace it.
-test fn a_swapped_ordering_is_refused() -> Bool {
-  !removal_is_strictly_after_enablement(
-    steps: [
-      app_registration_step,
-      app_installation_step,
-      webhook_configuration_step,
-      reviewer_removal_step,
-      rule_enablement_step,
-    ]
-  )
-    && removal_is_strictly_after_enablement(steps: deployment_gate_operator_steps)
-}
-
-// The two acts are not one act wearing a hat: if removal were folded into the enablement row, the
-// ordering control would have nothing to order.
+// THE BOUNDARY IS TWO ACTS, NOT ONE ACT WEARING A HAT. If the removal were folded into the enablement row
+// the ordering would have nothing to order — the type guarantees two FIELDS, and this guarantees two
+// DIFFERENT acts behind them. Distinctness is asserted on the identities directly; an earlier revision
+// cast both to String and compared the castings, which was one step removed from the fact.
 test fn the_removal_is_not_collapsed_into_the_enablement() -> Bool {
-  (rule_enablement_step.identity as String) != (reviewer_removal_step.identity as String)
+  rule_enablement_step.identity != reviewer_removal_step.identity
+    && deployment_gate_operator_steps.rule_enablement.identity
+      != deployment_gate_operator_steps.reviewer_removal.identity
     && (rule_enablement_step.instruction as String).contains("Do not remove any reviewer")
+}
+
+// THE ORDER IS STILL A CLAIM ABOUT THE WORLD, AND IT IS CHECKABLE WHERE IT IS WRITTEN: the field order
+// above has removal last, and the act it names is the one whose instruction removes reviewers while the
+// enablement act's instruction says not to. A re-binding of the two fields reddens the test above; this
+// one reddens if either instruction stops stating which side of the boundary it is on — the pair of
+// claims that keeps an interval with no gate from being described as a handover.
+test fn the_last_field_is_the_one_that_weakens_the_gate() -> Bool {
+  (deployment_gate_operator_steps.reviewer_removal.instruction as String).contains("required reviewers")
+    && (deployment_gate_operator_steps.rule_enablement.instruction as String).contains("custom rule")
+    && (deployment_gate_operator_steps.reviewer_removal.identity as String)
+      != (deployment_gate_operator_steps.rule_enablement.identity as String)
+}
+
+// THE MUTATION THE BINDING CHECK EXISTS FOR, WRITTEN OUT. The sequence type makes reordering impossible
+// as an *edit of the literal* — but a caller can still bind the two boundary fields to each other's rows,
+// and that compiles. This is the swapped sequence, built through the type's own constructor: the control
+// that shows the identity check above is discriminating rather than automatically true. If the binding
+// check were weakened to `true`, this test is where it would be caught — a swapped sequence must NOT look
+// like the honest one.
+test fn a_sequence_with_the_boundary_fields_swapped_is_not_the_honest_one() -> Bool {
+  let swapped = DeploymentGateOperatorSequence {
+    app_registration: app_registration_step,
+    app_installation: app_installation_step,
+    webhook_configuration: webhook_configuration_step,
+    rule_enablement: reviewer_removal_step,
+    reviewer_removal: rule_enablement_step,
+  }
+  // the swap is visible from the outside — which is what makes the binding check a check
+  swapped.rule_enablement.identity != deployment_gate_operator_steps.rule_enablement.identity
+    && swapped.reviewer_removal.identity != deployment_gate_operator_steps.reviewer_removal.identity
+    // and the honest sequence is the one the module publishes, field for field
+    && deployment_gate_operator_steps.rule_enablement.identity == rule_enablement_step.identity
+    && deployment_gate_operator_steps.reviewer_removal.identity == reviewer_removal_step.identity
+    // the swapped pair would put a weakening act in the enabling slot: its instruction is the removal's
+    && (swapped.rule_enablement.instruction as String).contains("required reviewers")
 }
 
 // ---------------------------------------------------------------------------

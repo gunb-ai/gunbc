@@ -31,7 +31,6 @@ import std.types {
 }
 import std.measure {
   Second,
-  second_count,
   measure_le,
 }
 import std.optional {
@@ -44,8 +43,6 @@ import extdeps.github.deployment_protection_rule {
   ReviewCredential,
   InstallationAccessToken,
   OAuthClassicWithRepoScope,
-  review_credential_is_documented,
-  review_accepted_token_type,
   DeploymentProtectionRuleReview,
   ReviewState,
   Approved,
@@ -178,12 +175,6 @@ fn gate_credential_refusal(credential: ReviewCredential) -> Optional<CredentialR
     InstallationAccessToken => none
     OAuthClassicWithRepoScope => Present { value: OperatorOwnedCredential { kind: OAuthClassicWithRepoScope } }
   }
-}
-
-// The permitted arm is a documented one, so the policy cannot drift into inventing a credential kind
-// GitHub does not accept.
-fn gate_credential_is_documented() -> Bool {
-  review_credential_is_documented(token_type: review_accepted_token_type)
 }
 
 // ---------------------------------------------------------------------------

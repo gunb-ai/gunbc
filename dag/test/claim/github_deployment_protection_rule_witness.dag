@@ -111,11 +111,10 @@ import extdeps.github.deployment_protection_rule {
   review_endpoint_body_comment_field,
   review_endpoint_body_alternatives,
   pending_deployments_endpoint_method,
-  review_credential_is_documented,
-  review_accepted_token_type,
+  review_credential_documented_label,
   review_oauth_classic_scope,
-  review_oauth_classic_token_type,
-  review_documented_token_types,
+  InstallationAccessToken,
+  OAuthClassicWithRepoScope,
   review_permission_is_satisfied,
   review_required_permission,
   review_documented_example_body,
@@ -698,16 +697,26 @@ test fn the_silence_is_a_variant_and_the_opposite_arm_needs_a_citation() -> Bool
 // Upstream ACCEPTS both credential kinds at this endpoint, and this model says so. What gunbc permits is
 // a separate decision, witnessed in gunbc.auth.deployment_gate_authorization; an upstream model that
 // quietly omitted the operator-token arm would be stating something false about GitHub.
+//
+// WHAT THIS CHECKS, AND WHAT IT CANNOT. The kinds are a SUM (ReviewCredential) and their upstream
+// wording is a total function over it, so no caller can hand the model "a token kind GitHub has never
+// heard of" — that was the point of deleting the string list and its membership predicate (review 82535;
+// §5 prefers unwritable over validated). What is still checkable, and is checked here, is that BOTH arms
+// exist and are labelled DISTINCTLY: a fold that gave the App arm and the operator arm the same words
+// would let the operator-token lie pass as the App-token fact, and nothing else in the file would notice.
+// The fidelity of each quoted string to the page is a CITATION, not a test — re-typing the sentences here
+// would make this file a second authority over upstream's own words, which is how this test once went red
+// on its own (the witness had dropped "(classic)").
 test fn both_documented_credential_kinds_are_representable() -> Bool {
-  // Both labels GitHub prints for this endpoint are documented. The labels are read from the rows
-  // rather than re-typed here: a second copy of a quoted string is a second authority over it, and
-  // this test failed for exactly that reason -- the witness said "OAuth app tokens and personal access
-  // tokens" while the page says "(classic)" at the end.
-  review_credential_is_documented(token_type: review_accepted_token_type)
-    && review_credential_is_documented(token_type: review_oauth_classic_token_type)
-    && (review_documented_token_types |> count) == 2
+  let app_label = review_credential_documented_label(credential: InstallationAccessToken) as String
+  let operator_label =
+    review_credential_documented_label(credential: OAuthClassicWithRepoScope) as String
+  // both arms are named, and named DIFFERENTLY
+  (length(app_label) > 4 as Nat)
+    && (length(operator_label) > 4 as Nat)
+    && (app_label != operator_label)
+    // the classic arm's scope, in upstream's words: it is the arm that needs `repo`
     && (review_oauth_classic_scope as String) == "repo"
-    && !review_credential_is_documented(token_type: "a token kind GitHub has never heard of")
 }
 
 // The permission the endpoint requires, in the upstream's own words: "Deployments" repository

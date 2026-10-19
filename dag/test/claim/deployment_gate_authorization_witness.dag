@@ -51,7 +51,6 @@ import extdeps.github.deployment_protection_rule {
   installation_field_app_slug,
   installation_readback_success_status,
   ReviewState,
-  custom_rule_response_timeout,
 }
 import extdeps.github.actions_runs {
   WorkflowRunRecord,
@@ -90,7 +89,6 @@ import gunbc.auth.deployment_gate_authorization {
   gate_credential_refusal,
   CredentialRefusal,
   OperatorOwnedCredential,
-  gate_credential_is_documented,
   for_answer_pending_gate,
   gate_pattern_redeems_a_human_decision,
   documented_example_is_not_the_gated_environment,
@@ -783,7 +781,11 @@ test fn the_operators_own_token_is_refused_though_github_accepts_it() -> Bool {
           Present { value: OperatorOwnedCredential { kind: k } } => k == OAuthClassicWithRepoScope
           none => false
         })
-    && gate_credential_is_documented()
+    // "and the permitted kind is one GitHub documents" is NO LONGER A CHECK HERE. It used to be a Bool
+    // over a list of label strings, which a caller could satisfy by editing either side; the kinds are
+    // now the ReviewCredential sum, so an invented kind has to be added upstream first, and the extdeps
+    // witness (both_documented_credential_kinds_are_representable) holds the two arms apart. What this
+    // layer owns is only WHICH arm it permits — the two refusals above.
 }
 
 // The pattern is READ from the selection authority, never restated here. If the selector declines to
