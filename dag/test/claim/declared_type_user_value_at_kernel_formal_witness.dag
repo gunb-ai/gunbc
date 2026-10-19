@@ -55,3 +55,19 @@ test fn ut_int_at_int_formal_still_compiles() -> Bool {
 test fn ut_user_value_at_its_own_declared_type_still_compiles() -> Bool {
   compile_dag_rust_emit_check(ut_nat_to_nat_source(), "src/ut_probe.rs", [], [])
 }
+
+fn ut_newtype_source() -> String {
+  "module ut.probe\n\ntype Meters {{\n  value: Int\n}}\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Meters) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_alias_source() -> String {
+  "module ut.probe\n\ntype Count = Int\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Count) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_single_field_newtype_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_newtype_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_transparent_alias_at_int_formal_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_alias_source(), "src/ut_probe.rs", [], [])
+}

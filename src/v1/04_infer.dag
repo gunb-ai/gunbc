@@ -3397,22 +3397,23 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
 
 // The actual-side exit of kernel_value_declared_type_mismatch_bounded, derived from the FORMAL's
 // declaration (gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel):
-// a KERNEL formal declares exactly one scalar, which a value inhabits only by name, a declared
-// cast, a grounded identity row or refinement, so an actual whose head is a user-declared
-// COPRODUCT (Nat, Optional-shaped Opt<T>, any Disj) or a multi-field product is judged and
-// refused there. `Unit` has no cited authority for its former exemption and is judged like any
-// kernel. A non-kernel formal keeps the two-relation wall's judgment (arm-to-parent, alias,
-// generics are decided there), and a one-child declaration is not distinguishable here between
-// an alias/refinement and a one-field record, nor is an undeclared head (type variable): those
-// stay unjudged, a named residual of the row, never a fabricated verdict.
-fn actual_is_unjudged_by_formal(actual_name: String, formal_name: String, type_env: TypeEnv) -> Bool {
+// a KERNEL formal declares one scalar, so ANY declared actual head -- coproduct, product of any
+// arity (a newtype/brand wrapper included), arm -- is judged against it and inhabits it only by the
+// routes the relation below already owns (name, declared cast, grounded identity row, structural
+// carrier) or by a transparent alias that grounds to the formal (`brand_grounds_transparently_to`;
+// where-refinements were peeled before this point). There is no actual-side list of kinds. `Unit`
+// has no cited authority for its former exemption and is judged like any kernel. A non-kernel
+// formal keeps the two-relation wall's judgment (arm-to-parent, alias and generics are decided
+// there), and an undeclared head (a type variable) has no declaration to judge: both stay
+// unjudged, named residuals of the row, never a fabricated verdict.
+fn actual_is_unjudged_by_formal(actual_name: String, formal_name: String, formal_base: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   if is_kernel_type(name: actual_name) {
     false
   } else if is_kernel_type(name: formal_name) == false {
     true
   } else {
     match lookup_type_by_name(env: type_env, name: actual_name) {
-      Present { value: decl } => (decl.connective == Disj || (decl.connective == Conj && (decl.children |> count) > 1)) == false
+      Present { value: _ } => brand_grounds_transparently_to(name: actual_name, other: formal_base, type_env: type_env, source_indices: source_indices)
       Absent => true
     }
   }
@@ -3444,7 +3445,7 @@ fn kernel_value_declared_type_mismatch_bounded(
     let formal_name = if formal_name_override == "" {
       authored_name_at(source_indices: source_indices, node: formal_base)
     } else { formal_name_override }
-    if actual_name == "" || formal_name == "" || actual_is_unjudged_by_formal(actual_name: actual_name, formal_name: formal_name, type_env: type_env) {
+    if actual_name == "" || formal_name == "" || actual_is_unjudged_by_formal(actual_name: actual_name, formal_name: formal_name, formal_base: formal_base, type_env: type_env, source_indices: source_indices) {
       false
     } else {
       if qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
