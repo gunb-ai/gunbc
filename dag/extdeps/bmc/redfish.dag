@@ -175,9 +175,6 @@ fn redfish_message_id_is_password_change_required(id: String) -> Bool {
   starts_with(s: id, prefix: "Base.") && ends_with(s: id, suffix: ".PasswordChangeRequired")
 }
 
-// THE ID IS RETURNED, NOT JUST CONFIRMED, so the consumer that has to record what the service said can
-// record what the service said. FieldMalformed is reported as a refusal naming its cause rather than
-// answered `false`: a field that could not be read is not a field that was read and found wanting.
 // THE ID IS RETURNED, NOT MERELY CONFIRMED. The id is the String that was READ, kept as a String rather
 // than cast into a NonEmptyStr: the cast would be a claim about a byte string this module has not examined,
 // and the reader that matters (redfish_message_id_is_password_change_required, above) has already checked the
