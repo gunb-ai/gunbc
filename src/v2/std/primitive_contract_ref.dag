@@ -1,0 +1,37 @@
+module v2.std.primitive_contract_ref
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.primitives { PrimitiveContract, primitive_contract_roster }
+import v2.std.node { Symbol, symbol_lexeme }
+
+// THE NAMING OF A std.primitives CONTRACT DECLARATION, ONCE. A PrimitiveContract row is declared at
+// std.primitives.<name>_contract and carries `name: "<name>"`; a call head names the primitive by that `name`.
+// Two consumers need the head-to-declaration step: v2.compiler.primitive_authority finds the row for resolve, and
+// v2.std.compilers.target_model keys a target's primitive-realization row by the same declaration. Neither may
+// re-spell the rule (DESIGN 3), and target_model cannot import primitive_authority (it reaches extdeps.languages.dag,
+// which imports target_model), so the rule lives here, below both.
+fn primitive_contract_module_path() -> String {
+  "std.primitives"
+}
+
+fn primitive_contract_declaration_name(head: Symbol) -> String {
+  concat(symbol_lexeme(sym: head), "_contract", "")
+}
+
+fn primitive_contract_declaration_ref(head: Symbol) -> DeclarationRef {
+  decl_ref(
+    module_path: primitive_contract_module_path(),
+    decl_name: primitive_contract_declaration_name(head: head)
+  )
+}
+
+// WHETHER A CALL HEAD NAMES A DECLARED PRIMITIVE, joined on the contract's own `name` field exactly as
+// v2.compiler.primitive_authority primitive_authority_row_names_head joins it, over the roster that is the
+// authority's list of declared contracts (std.primitives primitive_contract_roster).
+fn primitive_contract_head_is_declared(head: Symbol) -> Bool {
+  fold(
+    primitive_contract_roster(),
+    init: false,
+    f: fn(acc, contract) { acc || contract.name == symbol_lexeme(sym: head) }
+  )
+}
