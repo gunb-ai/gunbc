@@ -56,6 +56,20 @@ data gunb_ai_hue_members: List<SwatchMember> = [
   swatch_filed(sw: brass_deep),
 ]
 
+// The page-chrome black, distinct from near_black on purpose. The served page's
+// <meta name="theme-color"> is #0c0d0c (12,13,12) while its --void background is hsl(37,0%,5%) =
+// (13,13,13) = near_black above; both were read off the live page 2026-10-18. Collapsing them into
+// one swatch would silently change what the browser paints in the address bar, so the difference is
+// kept as data.
+//
+// It is a row rather than a member of gunb_ai_hues because that set's completeness rule
+// (gunbc.site.gunb_ai_tokens.token_binding_complete) ranges over every member and requires each to
+// be bound to a token role — and this colour is not a custom property, it is the chrome colour one
+// meta tag carries, so binding it to a --gunb-* role would model a consumer that does not exist.
+// CONSUMER (§3c): gunbc.site.gunb_ai_page reads it through gunbc.design.palette.swatch_paint to
+// fill <meta name="theme-color">; it is not filed in a SwatchSet because nothing would read the set.
+data theme_chrome_black: Swatch = Swatch { name: "theme-chrome-black", color: Srgb8 { r: 12, g: 13, b: 12 } }
+
 data gunb_ai_hues: SwatchSet = SwatchSet {
   name: "gunb-ai-hues",
   provenance: gunb_ai_hues_provenance,
