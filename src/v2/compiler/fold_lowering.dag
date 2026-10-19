@@ -320,11 +320,10 @@ fn callback_step_row(r: CallbackRealization) -> Optional<CallbackStepRow> {
 // a realization added without its step row is a defect the claim catches on the acceptance path.
 
 // THE COMPLETENESS SURFACE, exported so v2.test.claim.compiler.collection_callback_realization can walk
-// it without re-deriving a roster by hand: the callback realizations the roster declares, the callback
-// realizations the step rows cover, and the roster's own rows. The claim refuses if any roster callback
-// row has no step row, if a step row covers a realization the roster does not name, or if the counts
-// disagree -- a realization added without its step row is a defect caught on the acceptance path.
-fn callback_roster_rows() -> List<CollectionRosterRow> { collection_roster_rows }
+// it without re-deriving a roster by hand: the callback realizations the roster declares and the callback
+// realizations the step rows cover. The claim refuses if any roster callback row has no step row, if a
+// step row covers a realization the roster does not name, or if the counts disagree -- a realization
+// added without its step row is a defect caught on the acceptance path.
 fn callback_roster_callback_realizations() -> List<CallbackRealization> {
   fold_list(xs: collection_roster_rows, empty: [], cons: fn(acc, row) {
     match row.form {
