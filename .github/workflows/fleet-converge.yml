@@ -3382,7 +3382,7 @@ jobs:
     needs: [build, gcp-iam-bootstrap-request, gcp-iam-bootstrap-apply]
     environment: gcp-iam-converge
     timeout-minutes: 60
-    if: "!cancelled() && needs.build.result == 'success' && needs.gcp-iam-bootstrap-apply.result != 'failure' && (github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'branch_run_grant')"
+    if: "!cancelled() && needs.build.result == 'success' && (needs.gcp-iam-bootstrap-apply.result == 'success' || needs.gcp-iam-bootstrap-apply.result == 'skipped') && (github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'branch_run_grant')"
     permissions:
       contents: read
       actions: read
