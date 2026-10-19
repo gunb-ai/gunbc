@@ -132,8 +132,14 @@ test fn verification_refuses_a_mismatched_archive_and_accepts_only_the_signed_on
     && match swift_toolchain_verify(candidate: the_previously_pinned_value) {
          // The pinned value must be the SIGNED one in the refusal text, not the fabricated one.
          Present { value: DigestDiffersFromPin { observed: o, pinned: p } } =>
-           o == "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
-             && p == "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47"
+           o.hex == "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
+             && p.hex == "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47"
+         _ => false
+       }
+    && match swift_toolchain_verify(candidate: truncated) {
+         // The unit carrier survives into the refusal: both sides are ByteSize, not bare counts.
+         Present { value: SizeDiffersFromPin { observed: o, pinned: p } } =>
+           byte_size_count(b: o) == 1122730812 && byte_size_count(b: p) == 1122730813
          _ => false
        }
     && swift_toolchain_digest_is_a_known_refused_value(

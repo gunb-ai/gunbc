@@ -21,9 +21,21 @@ import extdeps.version { VersionIdentity }
 // WHAT IT IS FOR, AND WHAT IT IS NOT. The one Linux rung this pin was established for is the L1 probe
 // of apps/approve-ios: -typecheck over the Foundation-only generated sources, and the ApproveTests
 // vector suites against dag/test/fixture/approval_device_redemption/vectors.json through
-// swift-corelibs-xctest. It runs as the instrument //gunbc/instruments:approve-ios-linux-swift, NOT as a
-// CI job: the CI roster is closed to growth and nothing here registers one. A rung citing a different
-// archive is a different rung and says so.
+// swift-corelibs-xctest. NOT as a CI job: the CI roster is closed to growth and nothing here registers
+// one. A rung citing a different archive is a different rung and says so.
+//
+// WHAT READS THIS MODULE TODAY, STATED HONESTLY. The claims in
+// dag/test/claim/swift_toolchain_pin_witness.dag are the only consumers right now, and they are
+// interpreter-executed (claim_batch --entry, or gunbc test with the target naming a claim FUNCTION).
+// The rosters below -- verification order, the typecheck/test file sets, the runtime dependency closure,
+// the FoundationNetworking gap -- are read by those claims and by NOTHING ELSE, because no
+// //gunbc/instruments:approve-ios-linux-swift exists yet: `gunbc test <label>` realizes an instrument
+// only through the hand-written Rust `instrument_registry` and its `match` on producers
+// (src/v1/stage0/src/target_invocation_host.rs), and that arm is outside a .dag PR's authority. The rows
+// are therefore the CONTRACT the instrument must be written against, not evidence that it runs -- and
+// until the arm exists, the L1 receipts in this PR's body are run by hand and are receipts of a hand
+// run, not of a label. Naming that here is the point: rows no one reads are a parallel representation,
+// and the fix is either the reader or the rows, never a comment claiming the reader.
 //
 // WHY A DISTRIBUTION IS PART OF THE SUBJECT, NOT A FOOTNOTE ON THE VERSION. swift.org ships the same
 // version per distribution with no guarantees across them: the tarballs differ in content and in loader
@@ -240,9 +252,11 @@ data swift_toolchain_refused_digest_from_fabricated_pin: NonEmptyStr = "35026032
 // The digest a candidate archive must equal, derived from the pin rather than re-typed at the call site:
 // an instrument that compares against a literal it carried itself could carry a different literal.
 fn swift_toolchain_digest_matches_pin(digest: Sha256Digest) -> Bool {
-  match pinned_swift_toolchain {
-    Verified { archive: a } => content_hash_eq_cryptographic(left: digest, right: a.expected_identity)
-    Unverified { declared: _ } => false
+  match swift_toolchain_pinned_archive() {
+    // Absent refuses rather than answering: an unverifiable pin accepts nothing.
+    Absent => false
+    Present { value: a } => content_hash_eq_cryptographic(
+      left: digest, right: swift_toolchain_expected_digest(archive: a))
   }
 }
 
@@ -250,9 +264,9 @@ fn swift_toolchain_digest_matches_pin(digest: Sha256Digest) -> Bool {
 // size disagrees has been truncated, and reporting that as "wrong digest" would send a reader to look for
 // tampering when the pipe is what closed.
 fn swift_toolchain_size_matches_pin(size: ByteSize) -> Bool {
-  match pinned_swift_toolchain {
-    Verified { archive: a } => byte_size_count(b: size) == byte_size_count(b: a.observed_size)
-    Unverified { declared: _ } => false
+  match swift_toolchain_pinned_archive() {
+    Absent => false
+    Present { value: a } => byte_size_count(b: size) == byte_size_count(b: swift_toolchain_expected_size(archive: a))
   }
 }
 
@@ -296,8 +310,9 @@ type SwiftToolchainCandidate {
 type SwiftToolchainRefusal
   = SignatureUnverified { detail: NonEmptyStr }
   | SignedByUnlistedKey { observed_fingerprint: NonEmptyStr }
-  | DigestDiffersFromPin { observed: NonEmptyStr, pinned: NonEmptyStr }
-  | SizeDiffersFromPin { observed_bytes: Int, pinned_bytes: Int }
+  | DigestDiffersFromPin { observed: Sha256Digest, pinned: Sha256Digest }
+  | SizeDiffersFromPin { observed: ByteSize, pinned: ByteSize }
+  | PinCarriesNoVerifiedArchive
 
 // THE GATE. Returns Absent (usable) only when the signature verified against the published key's
 // fingerprint AND the digest and size both equal the pin's. Anything else is a named refusal.
@@ -306,24 +321,40 @@ type SwiftToolchainRefusal
 // `pinned_swift_toolchain` by the helpers below, so a caller cannot confirm its own expected value -- the
 // shape that let a wrong pin pass for a verified one.
 fn swift_toolchain_verify(candidate: SwiftToolchainCandidate) -> SwiftToolchainRefusal? {
+  match swift_toolchain_pinned_archive() {
+    // The pin itself unreadable is its own refusal, not a zero-sized archive to compare against. It can
+    // only happen if the data literal below were edited to Unverified, and naming it keeps that from
+    // becoming a code path that returns a plausible-looking archive.
+    Absent => Present { value: PinCarriesNoVerifiedArchive }
+    Present { value: pinned } => verify_against(candidate: candidate, pinned: pinned)
+  }
+}
+
+// The comparison, with the pin RESOLVED and typed as SwiftToolchainVerifiedArchive. No arm here has to
+// invent a size or a digest for the case where the pin is missing, because that case never reaches this
+// function -- which is the difference between a type that cannot misstate and a call order that happens
+// not to let it.
+fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVerifiedArchive) -> SwiftToolchainRefusal? {
   if !candidate.signature_verified {
     Present {
       value: SignatureUnverified { detail: "gpg did not report a Good signature; swift.org's instructions forbid using the toolchain" }
     }
   } else if candidate.signing_key_fingerprint != swift_toolchain_signing_key_fingerprint {
     Present { value: SignedByUnlistedKey { observed_fingerprint: candidate.signing_key_fingerprint } }
-  } else if !swift_toolchain_digest_matches_pin(digest: candidate.observed_digest) {
+  } else if !content_hash_eq_cryptographic(
+      left: candidate.observed_digest,
+      right: swift_toolchain_expected_digest(archive: pinned)) {
     Present {
       value: DigestDiffersFromPin {
-        observed: candidate.observed_digest.hex as NonEmptyStr,
-        pinned: swift_toolchain_pinned_digest_text()
+        observed: candidate.observed_digest,
+        pinned: swift_toolchain_expected_digest(archive: pinned)
       }
     }
-  } else if !swift_toolchain_size_matches_pin(size: candidate.observed_size) {
+  } else if byte_size_count(b: candidate.observed_size) != byte_size_count(b: swift_toolchain_expected_size(archive: pinned)) {
     Present {
       value: SizeDiffersFromPin {
-        observed_bytes: byte_size_count(b: candidate.observed_size),
-        pinned_bytes: byte_size_count(b: swift_toolchain_pinned_size())
+        observed: candidate.observed_size,
+        pinned: swift_toolchain_expected_size(archive: pinned)
       }
     }
   } else {
@@ -337,20 +368,6 @@ fn swift_toolchain_candidate_is_usable(candidate: SwiftToolchainCandidate) -> Bo
   match swift_toolchain_verify(candidate: candidate) {
     Present { value: _ } => false
     Absent => true
-  }
-}
-
-fn swift_toolchain_pinned_digest_text() -> NonEmptyStr {
-  match pinned_swift_toolchain {
-    Verified { archive: a } => a.expected_identity.hex as NonEmptyStr
-    Unverified { declared: _ } => "no-pinned-digest"
-  }
-}
-
-fn swift_toolchain_pinned_size() -> ByteSize {
-  match pinned_swift_toolchain {
-    Verified { archive: a } => a.observed_size
-    Unverified { declared: _ } => byte_size(count: 0)
   }
 }
 
