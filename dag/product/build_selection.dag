@@ -45,8 +45,6 @@ import product.build_fulfillment {
   NewPurchase,
   OwnedInventory,
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE DOMAIN PROJECTOR. std.pareto is the Pareto-assessment spine and knows
 // nothing about hardware; this module is the one place that turns a resolved
@@ -239,44 +237,54 @@ fn candidate_missing_inputs(candidate: BuildCandidate, declared: CurrencyCode) -
 
 // A build that buys nothing reads ZERO on the cash axis, and that is a real
 // reading rather than a substituted one: CashNoPurchaseLines means every line
-// was owned or included, so the incremental cash genuinely is zero — the arm
-// exists to stop a zero being invented for an UNREADABLE answer, not to stop
-// one being reported for a readable one. A refused cash answer never reaches
-// here at all, because it is a declared missing input above.
-fn cash_reading(cash: CashProjection, declared: CurrencyCode) -> BuildAxisReading {
+// was owned or included, so the incremental cash genuinely is zero. A refused
+// cash answer yields NO reading: cash_missing declares the gap on this axis, and
+// std.pareto excuses an absent reading only where a gap names its axis, so an
+// unreadable answer is never rendered as a number.
+fn cash_reading(cash: CashProjection, declared: CurrencyCode) -> List<BuildAxisReading> {
   match cash {
-    CashDerived { cash: c } => BuildAxisReading { axis: cash_axis, magnitude: MagnitudeMoney { money: c } }
-    _ =>
-      BuildAxisReading {
-        axis: cash_axis,
-        magnitude: MagnitudeMoney {
-          money: MoneyOnce { amount: money_amount_micro(count: 0), currency: declared },
+    CashDerived { cash: c } => [BuildAxisReading { axis: cash_axis, magnitude: MagnitudeMoney { money: c } }]
+    CashNoPurchaseLines =>
+      [
+        BuildAxisReading {
+          axis: cash_axis,
+          magnitude: MagnitudeMoney {
+            money: MoneyOnce { amount: money_amount_micro(count: 0), currency: declared },
+          },
         },
-      }
+      ]
+    CashRefused { cause: _ } => []
   }
 }
 
-// A ceiling that no line bounds has no build count to compare, so the entry
-// declares it missing above and this reading is never reached for it. The zero
-// here is unreachable-by-construction rather than a substituted answer: an
-// entry declaring a missing input is incomparable in std.pareto and is excluded
-// as a challenger, so it can neither win nor poison the field.
-fn ceiling_reading(ceiling: ConstructibleCeiling) -> BuildAxisReading {
+// A ceiling that no line bounds, or that was refused, has no build count to
+// compare: ceiling_missing declares the gap on this axis and the reading is
+// absent, not zero. An entry declaring a missing input is incomparable in
+// std.pareto and is excluded as a challenger, so it can neither win nor poison
+// the field.
+fn ceiling_reading(ceiling: ConstructibleCeiling) -> List<BuildAxisReading> {
   match ceiling {
     CeilingDerived { builds: b, bottlenecks: _, bottleneck_units: _ } =>
-      BuildAxisReading { axis: ceiling_axis, magnitude: MagnitudeUnitCount { units: b } }
-    _ => BuildAxisReading { axis: ceiling_axis, magnitude: MagnitudeUnitCount { units: 0 } }
+      [BuildAxisReading { axis: ceiling_axis, magnitude: MagnitudeUnitCount { units: b } }]
+    CeilingUnconstrainedByAnyLine => []
+    CeilingRefused { cause: _ } => []
   }
 }
 
 fn candidate_readings(candidate: BuildCandidate, declared: CurrencyCode) -> List<BuildAxisReading> {
-  [
-    BuildAxisReading { axis: capacity_axis, magnitude: MagnitudeBytes { bytes: candidate.memory_capacity } },
-    cash_reading(cash: candidate.cash, declared: declared),
-    ceiling_reading(ceiling: candidate.resolutions.ceiling),
-    BuildAxisReading { axis: wall_power_axis, magnitude: MagnitudeWatts { watts: candidate.wall_power } },
-    BuildAxisReading { axis: bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: candidate.memory_bandwidth } },
-  ]
+  concat(
+    concat(
+      [BuildAxisReading { axis: capacity_axis, magnitude: MagnitudeBytes { bytes: candidate.memory_capacity } }],
+      cash_reading(cash: candidate.cash, declared: declared),
+    ),
+    concat(
+      ceiling_reading(ceiling: candidate.resolutions.ceiling),
+      [
+        BuildAxisReading { axis: wall_power_axis, magnitude: MagnitudeWatts { watts: candidate.wall_power } },
+        BuildAxisReading { axis: bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: candidate.memory_bandwidth } },
+      ],
+    ),
+  )
 }
 
 fn project_entry(candidate: BuildCandidate, declared: CurrencyCode) -> ParetoEntry {
@@ -304,20 +312,3 @@ fn build_standing(
     sensitivities: [],
   )
 }
-
-data nfr_reason_build_axis_reading_unreachable_arm: String = "axis-reading projection over CashProjection and ConstructibleCeiling: the Derived arm yields its magnitude and the wildcard answers a zero magnitude for the empty arm (CashNoPurchaseLines is a genuine zero; CeilingUnconstrainedByAnyLine is declared a missing input by ceiling_missing) and for the Refused arm, which candidate_missing_inputs has already declared missing, so the refused reading is construction-unreachable at the only caller (per the in-file note above cash_reading) rather than a fabricated zero. Landed with I-3 inventory-aware build fulfillment (#8543, 2026-08-19) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_build_axis_reading_refined_carrier: DissolutionCondition = unbound_dissolution(description: "BuildCandidate carries its cash and ceiling on a refined Derived-only carrier once candidate_missing_inputs has admitted it (illegal states unrepresentable at the reading), so the readings match totally over the refined carrier and the unreachable arms delete with their rows")
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "cash_reading" },
-      reason: nfr_reason_build_axis_reading_unreachable_arm,
-      dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "ceiling_reading" },
-      reason: nfr_reason_build_axis_reading_unreachable_arm,
-      dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
-    },
-]
