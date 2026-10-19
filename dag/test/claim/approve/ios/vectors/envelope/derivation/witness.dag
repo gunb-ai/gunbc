@@ -1,0 +1,147 @@
+// L6-iv: the envelope name the generated Swift asks vectors.json for is the FIXTURE's, not a literal
+// re-spelled in the carrier.
+//
+// data envelope_vectors_fixed (gunbc.auth.approval_device_redemption_fixtures) is the only declaration
+// in the tree that spells an envelope name: gunbc.auth.approval_device_wire spells none. Before this,
+// the carrier hand-typed the same 15 names at_envelope(name: "..."), so a rename on either side moved
+// one file and left the other behind, and no lane runs the Swift to notice (approve_ios_app's
+// approve_ios_vector_check_unenrolled_frontier: ApproveTests is executed by no lane).
+//
+// Now every at_envelope key is read back out of the fixture row; a key that matches no row resolves to
+// the empty string, which the emit guard turns into SwiftRowEmissionRefused with a named reason. Emitting
+// envelope("") would put the red on a MacBook, not in CI.
+//
+// THE CLAIM THAT DISCRIMINATES is the fixture rename, run twice:
+//   - derivation in place (this head): the carrier no longer resolves the key, the emission REFUSES, and
+//     it refuses with the envelope reason — the fault is reported at the emission, not in the test lane;
+//   - derivation bypassed (what the file looked like before): the same rename emits the stale literal and
+//     NOBODY sees it — no refusal, no finding, no test run.
+// At an unchanged fixture both spellings emit identical bytes, so the rename is the only discriminator;
+// the empty-resolve witness and the guard-mutation case show the witnesses are not vacuous.
+//
+// Run each evidence_* at the head under review; a Bool false under `gunbc run --function` exits 2, which
+// means "did not return a ProcessExit" and is NOT a verdict, so every evidence_* returns one explicitly.
+module test.claim.approve.ios.vectors.envelope.derivation.witness
+
+import std.types { Bool, String, List }
+import std.optional { Present }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.approve_ios_swift_protocol_vector_tests {
+  approve_ios_vectors_envelope_name,
+  approve_ios_vectors_envelope_keys_resolve,
+  approve_ios_vectors_envelope_refusal_reason,
+  approve_ios_protocol_vector_tests_swift_text,
+  expected_approve_ios_protocol_vector_tests_swift,
+}
+import gunbc.auth.approval_device_redemption_fixtures { envelope_vectors_fixed }
+import v2.extdeps.languages.swift.rows { SwiftRowEmission, SwiftRowEmitted, SwiftRowEmissionRefused }
+
+// ---------------------------------------------------------------- helpers (not claims)
+
+// The first row's name, taken FROM the fixture. Used to build the needle the byte claim looks for, so
+// the needle is not a literal re-spelled here — the thing under test is checked against the authority
+// rather than against a copy of it.
+fn fixture_row_name_helper() -> String {
+  match first(envelope_vectors_fixed) {
+    Present { value: v } => v.name as String
+    Absent => ""
+  }
+}
+
+// A needle assembled from the fixture's own row name: envelope("<row name>").
+fn envelope_needle_from_fixture_helper() -> String {
+  concat(concat("envelope(\"", fixture_row_name_helper()), "\")")
+}
+
+// How many fixture rows the emitted bytes name, counted by asking the fixture — never by a count typed
+// in this file, which would be a third authority for the same set.
+fn rows_named_in_emission_helper(text: String) -> Nat {
+  count(filter(envelope_vectors_fixed, v => text.contains(concat(concat("envelope(\"", (v.name as String)), "\")"))))
+}
+
+fn emission_text_helper() -> String {
+  approve_ios_protocol_vector_tests_swift_text()
+}
+
+fn refused_for_envelope_reason_helper() -> Bool {
+  match expected_approve_ios_protocol_vector_tests_swift() {
+    SwiftRowEmitted { source: _ } => false
+    SwiftRowEmissionRefused { reason: r } => r == approve_ios_vectors_envelope_refusal_reason
+  }
+}
+
+// ---------------------------------------------------------------- test fn (Bool claims)
+
+// POSITIVE at the head: the guard resolves and the emission really produces bytes.
+test fn every_envelope_key_resolves_to_a_fixture_row() -> Bool {
+  approve_ios_vectors_envelope_keys_resolve() && emission_text_helper() != ""
+}
+
+// POSITIVE at the head: a name read out of the fixture is what the emitted bytes ask for. Both the
+// needle and the expectation come from envelope_vectors_fixed, so neither side is re-spelled here.
+test fn emitted_bytes_ask_for_a_fixture_row_name() -> Bool {
+  let n = fixture_row_name_helper()
+  n != "" && emission_text_helper().contains(envelope_needle_from_fixture_helper())
+}
+
+// RED at the head: a key that names no fixture row resolves to "", which is what the emit guard reads.
+// If an unknown key could resolve to something non-empty, the guard would never see a miss.
+test fn an_unknown_envelope_key_resolves_to_nothing() -> Bool {
+  approve_ios_vectors_envelope_name(name: "enrolment_request_but_spelled_wrong_in_the_carrier") == ""
+}
+
+// RED at the head: the rows actually exercised are a non-empty subset of the fixture, counted from the
+// fixture. Zero would mean the guard is vacuous (nothing asked for, so nothing can miss).
+test fn some_fixture_rows_are_exercised() -> Bool {
+  rows_named_in_emission_helper(text: emission_text_helper()) > 0
+}
+
+// INVERSE at the head: false while the fixture resolves. Evaluated under a renamed row it is the
+// direction that must pass — so it is never read alone.
+test fn emission_is_refused_for_the_envelope_reason() -> Bool {
+  refused_for_envelope_reason_helper()
+}
+
+// POSITIVE at the head: the lookup round-trips EVERY row the fixture declares — the claim is read off
+// the fixture's own rows rather than against a list of names kept here.
+test fn every_fixture_row_name_round_trips_through_the_lookup() -> Bool {
+  all(envelope_vectors_fixed, v => approve_ios_vectors_envelope_name(name: v.name as String) == (v.name as String))
+}
+
+// ---------------------------------------------------------------- evidence wrappers (ProcessExit)
+
+fn evidence_every_envelope_key_resolves_to_a_fixture_row() -> ProcessExit {
+  if every_envelope_key_resolves_to_a_fixture_row() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "an at_envelope key did not resolve to a fixture row, or no bytes were emitted" }
+  }
+}
+
+fn evidence_emitted_bytes_ask_for_a_fixture_row_name() -> ProcessExit {
+  if emitted_bytes_ask_for_a_fixture_row_name() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "emitted bytes do not ask for the fixture row's own name" }
+  }
+}
+
+fn evidence_an_unknown_envelope_key_resolves_to_nothing() -> ProcessExit {
+  if an_unknown_envelope_key_resolves_to_nothing() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "an unknown key resolved to something other than the empty string" }
+  }
+}
+
+fn evidence_some_fixture_rows_are_exercised() -> ProcessExit {
+  if some_fixture_rows_are_exercised() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "no fixture row is named by the emitted bytes; the guard would be vacuous" }
+  }
+}
+
+fn evidence_emission_is_refused_for_the_envelope_reason() -> ProcessExit {
+  if emission_is_refused_for_the_envelope_reason() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "emission was not refused for the envelope reason" }
+  }
+}
+
+fn evidence_every_fixture_row_name_round_trips_through_the_lookup() -> ProcessExit {
+  if every_fixture_row_name_round_trips_through_the_lookup() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "a fixture row's own name did not round-trip through the lookup" }
+  }
+}

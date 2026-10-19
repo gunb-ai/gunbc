@@ -3,7 +3,10 @@ module gunbc.approve_ios_swift_protocol_vector_tests
 import std.types { String, List, Bool }
 import std.algebra { length }
 import std.optional { Present }
-import gunbc.auth.approval_device_redemption_fixtures { surface_vectors, SurfaceVector }
+// The carrier reads the artifact row that names its own emitted file, so it declares that dependency
+// rather than relying on whichever closure the entry file happens to pull in.
+import gunbc.generated_artifact { ApprovalDeviceVectorsArtifact, artifact_location }
+import gunbc.auth.approval_device_redemption_fixtures { surface_vectors, SurfaceVector, envelope_vectors_fixed, EnvelopeVector }
 import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftType, SwiftArgument, SwiftDeclarationModifier,
   SwiftCommentedDecl, SwiftDocLineComment, SwiftLineComment,
@@ -17,7 +20,7 @@ import v2.extdeps.languages.swift.syntax {
   sw_expr, sw_ret, sw_do_catch, sw_let, sw_var, sw_let_typed, sw_for, sw_assign, sw_cmt_stmt,
   sw_field, sw_p_, sw_func, sw_struct, sw_doc, sw_cmt, sw_import
 }
-import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
+import v2.extdeps.languages.swift.rows { SwiftRowEmission, SwiftRowEmitted, swift_rows_emit_source_file }
 
 // apps/approve-ios/ApproveTests/ProtocolVectorTests.swift AS A SWIFT SYNTAX TREE
 // (v2.extdeps.languages.swift.syntax), emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) into the
@@ -43,7 +46,23 @@ fn at_data_utf8(e: SwiftExpr) -> SwiftExpr { sw_calln(f: "Data", a: [sw_pos(v: s
 fn at_load() -> SwiftExpr { sw_try(e: sw_calln(f: "load", a: [])) }
 
 // try envelope("<name>")
-fn at_envelope(name: String) -> SwiftExpr { sw_try(e: sw_calln(f: "envelope", a: [sw_pos(v: sw_str(s: name))])) }
+// The envelope a test pulls out of the decoded vectors.json is named HERE by the row it exercises, not
+// by a literal re-spelled in this module. The name the Swift asks for is read back out of
+// data envelope_vectors_fixed — the fixture is the only declaration that spells an envelope name at all
+// (the wire module spells none), so a second spelling here was a second authority: a rename on either
+// side moved one file and the check that should have caught it runs on no lane.
+// An unresolvable key resolves to the empty string, which the emit guard below refuses: emitting
+// envelope("") would put the red in a test lane no CI runs.
+fn approve_ios_vectors_envelope_name(name: String) -> String {
+  match first(filter(envelope_vectors_fixed, v => v.name == name)) {
+    Present { value: v } => v.name as String
+    Absent => ""
+  }
+}
+
+fn at_envelope(name: String) -> SwiftExpr {
+  sw_try(e: sw_calln(f: "envelope", a: [sw_pos(v: sw_str(s: approve_ios_vectors_envelope_name(name: name)))]))
+}
 
 // v.input.<f>
 fn at_vin(f: String) -> SwiftExpr { sw_mem(b: sw_path(b: "v", m: "input"), m: f) }
@@ -519,10 +538,29 @@ fn approve_ios_protocol_vector_tests_swift_file() -> SwiftSourceFile {
 // refused. Carried as a value, not baked into the emitted bytes: no Swift text is produced on this arm.
 data approve_ios_vectors_resource_refusal_reason: Symbol = "approve-ios-vectors-resource-name-not-a-stem-and-extension"
 
+// The envelope names are the fixture's, so a key that matches no row is a fault in THIS module and has
+// to be reported here, not as an empty-string lookup buried in Swift that only a Mac would notice.
+// Checked on the constructed file rather than against a list of names kept here: a list would put the
+// set of envelope names back into this module, which is the authority this change removes.
+fn approve_ios_vectors_envelope_keys_resolve() -> Bool {
+  !approve_ios_protocol_vector_tests_swift_text().contains("envelope(\"\")")
+}
+
+fn approve_ios_protocol_vector_tests_swift_text() -> String {
+  match swift_rows_emit_source_file(f: approve_ios_protocol_vector_tests_swift_file()) {
+    SwiftRowEmitted { source: s } => s
+    SwiftRowEmissionRefused { reason: _ } => ""
+  }
+}
+
+data approve_ios_vectors_envelope_refusal_reason: Symbol = "approve-ios-vectors-envelope-name-not-a-fixture-row"
+
 fn expected_approve_ios_protocol_vector_tests_swift() -> SwiftRowEmission {
-  if approve_ios_vectors_resource_join_ok() {
-    swift_rows_emit_source_file(f: approve_ios_protocol_vector_tests_swift_file())
-  } else {
+  if !approve_ios_vectors_resource_join_ok() {
     SwiftRowEmissionRefused { reason: approve_ios_vectors_resource_refusal_reason }
+  } else if !approve_ios_vectors_envelope_keys_resolve() {
+    SwiftRowEmissionRefused { reason: approve_ios_vectors_envelope_refusal_reason }
+  } else {
+    swift_rows_emit_source_file(f: approve_ios_protocol_vector_tests_swift_file())
   }
 }
