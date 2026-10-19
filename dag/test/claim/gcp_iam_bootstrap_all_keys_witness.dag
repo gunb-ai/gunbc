@@ -8,6 +8,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster, fleet_version_adder_grant_roster }
 import gunbc.fleet.host_credential_custody_converge { host_custody_credential_roster, host_credential_custody_row }
 import gunbc.auth.gcp_iam_converge { gcp_iam_converge_grant_sets, gcp_iam_converge_targets, bmc_assimilator_grant_sets_over }
+import gunbc.auth.bmc_assimilator_cells { bmc_assimilator_cells_over }
 import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
 import gunbc.spark.secret_access_ensure { spark_secret_access_grant }
 import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
@@ -120,8 +121,8 @@ fn with_signoff_signed(g: SecretAccessGrant) -> SecretAccessGrant {
 }
 
 test fn an_unsigned_canary_reaches_no_grant_set_and_a_signed_srv3_grant_does() -> Bool {
-  let unsigned_canary = bmc_assimilator_grant_sets_over(grants: signed_grants_only(grants: [with_signoff_unsigned(g: bmc_wif_canary_grant)]))
-  let signed_srv3 = bmc_assimilator_grant_sets_over(grants: signed_grants_only(grants: [with_signoff_signed(g: bmc_srv3_admin_access_grant)]))
+  let unsigned_canary = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: signed_grants_only(grants: [with_signoff_unsigned(g: bmc_wif_canary_grant)])))
+  let signed_srv3 = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: signed_grants_only(grants: [with_signoff_signed(g: bmc_srv3_admin_access_grant)])))
   count(unsigned_canary) == 0
     && count(signed_srv3) == 1
     && all(signed_srv3, g => count(g.grants) == 1 && all(g.grants, x => (x.target.secret as String) == (bmc_srv3_admin_access_grant.secret_ref.secret as String)))
@@ -132,8 +133,8 @@ test fn an_unsigned_canary_reaches_no_grant_set_and_a_signed_srv3_grant_does() -
 test fn bmc_grants_naming_two_principals_refuse_the_member() -> Bool {
   let p = bmc_wif_canary_grant.principal
   let elsewhere = SecretAccessGrant { secret_ref: bmc_wif_canary_grant.secret_ref, principal: GrantPrincipal { service_account: "someone-else@gunbai-secrets.iam.gserviceaccount.com" as ServiceAccountEmail, condition: p.condition }, role: bmc_wif_canary_grant.role, consumer: bmc_wif_canary_grant.consumer, justification: bmc_wif_canary_grant.justification, signoff: bmc_wif_canary_grant.signoff, provenance: bmc_wif_canary_grant.provenance }
-  let split = bmc_assimilator_grant_sets_over(grants: [bmc_wif_canary_grant, elsewhere])
-  let today = bmc_assimilator_grant_sets_over(grants: bmc_wif_signed_grants())
+  let split = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: [bmc_wif_canary_grant, elsewhere]))
+  let today = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: bmc_wif_signed_grants()))
   count(split) == 1 && all(split, g => match g.member { GrantMemberUnresolved { cause: _ } => true  GrantMemberResolved { member: _ } => false })
     && count(today) == 1 && all(today, g => match g.member { GrantMemberResolved { member: _ } => true  GrantMemberUnresolved { cause: _ } => false })
 }
