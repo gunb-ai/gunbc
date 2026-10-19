@@ -133,7 +133,7 @@ import extdeps.systemd.unit_file {
   SystemdInstallSection, NotInstallable, Installable,
   SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst, OnSuccess, OnFailure,
   SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
-  Environment, EnvironmentFile, WorkingDirectory, ServiceUser, ServiceGroup,
+  Environment, WorkingDirectory, ServiceUser, ServiceGroup,
   TimeoutStartSec,
   SystemdTimerDirective, TimerUnit, OnCalendar, OnBootSec, OnUnitInactiveSec,
   AccuracySec, RandomizedDelaySec, Persistent,
@@ -183,7 +183,6 @@ import gunbc.live_deploy.user_work_pool_slots {
 }
 import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
-import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryManaged, OwnedDirectoryDeclared,
   owned_directory_path, owned_directory_member, owned_directory_install_plan_of, owned_directory_install_argv,
@@ -931,7 +930,6 @@ fn live_deploy_approval_broker_unit_file_on(
       WorkingDirectory { path: release_dir as NonEmptyStr },
       release_locus_workspace_root_environment(release_dir: release_dir),
       approval_broker_base_url_environment(spec: spec),
-      EnvironmentFile { path: release_locus_tree_receipt_path(root: svc.repo_root as String, revision: revision) as NonEmptyStr },
       ExecStart { command: join([
         release_locus_binary_path(root: svc.repo_root as String, revision: revision),
         " serve",
@@ -3076,9 +3074,8 @@ fn release_locus_tree_receipt_step(owner: NonEmptyStr, base_root: String, revisi
 fn locus_tree_receipt_step_at(owner: NonEmptyStr, dir: String, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: join([
     printf_program().invocation as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
-    "\\ninstalled_digest=%s\\n", approval_device_crypto_deployed_digest_env_name as String, "=%s\\n' ",
-    "\"$(", approval_broker_tree_digest_expr(root: dir), ")\" ",
-    "\"$(", sha256sum_program().invocation as String, " ", join([dir, "/", gunbc_release_bin_name], ""), " | ", cut_program as String, " -d' ' -f1)\"",
+    "\\ninstalled_digest=%s\\n' ",
+    "\"$(", approval_broker_tree_digest_expr(root: dir), ")\"",
     " | ", join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
       join([dir, "/", release_locus_tree_receipt_name], "")]), " "),
   ], ""))

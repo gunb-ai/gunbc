@@ -128,7 +128,7 @@ fn device_crypto_proof_of(admission: DeviceCryptoAdmission, fold: DeclarationRef
   }
 }
 
-// WHAT THE DEPLOY PROVISIONED, read as given: gunbc.live_deploy.emit writes the sha256 of the executable it installed
+// WHAT THE DEPLOY PROVISIONS (PR 4b adds the route), read as given: gunbc.live_deploy.emit will write the sha256 of the executable it installed
 // to the EnvironmentFile of the broker's unit under this name, so the broker holds the digest of the artifact that was
 // installed and not one it computed or was told by the sidecar. An unbound or empty value expects nothing: the call refuses.
 data approval_device_crypto_deployed_digest_env_name: NonEmptyStr = "GUNBC_DEVICE_CRYPTO_DEPLOYED_DIGEST"
