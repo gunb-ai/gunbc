@@ -7,6 +7,7 @@ import extdeps.communication.medium { Medium }
 import v2.compiler.eval { inputs_for_emit_host }
 import v2.compiler.emit_host {
   run_emit_host,
+  runtime_value_parse,
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
 }
@@ -539,5 +540,28 @@ test fn probe_source_has_fn() -> Bool {
 }
 test fn probe_compile_skipped() -> Bool {
   match probe_receipt() { Accepted { value: r, diagnostics: _ } => r.compile_skipped
+    Rejected { diagnostics: _ } => false }
+}
+
+test fn probe_logical_clean() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
+      match r.logical_run { Accepted { value: _, diagnostics: None } => true
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false }
+    Rejected { diagnostics: _ } => false }
+}
+test fn probe_logical_accepted() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
+      match r.logical_run { Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false }
+    Rejected { diagnostics: _ } => false }
+}
+test fn probe_parse_ok() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
+      match r.logical_run { Accepted { value: l, diagnostics: _ } =>
+          match runtime_value_parse(target: rust_list_fold_target_model_staging(), stdout: l.stdout) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false }
+        Rejected { diagnostics: _ } => false }
     Rejected { diagnostics: _ } => false }
 }
