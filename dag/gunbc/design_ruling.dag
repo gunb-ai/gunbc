@@ -287,6 +287,23 @@ data runner_host_sudoers_is_installed: DesignRuling = DesignRuling {
   provenance: "Operator decision, default (dashboard msg_b6241e41, relayed by sleek-owl-397), reversing the 2026-09-22 decision that the rendered gunbc-ghrunner.sudoers stays modeled and uninstalled: the RENDERED rule alone is installed on the runner hosts at /etc/sudoers.d/gunbc-ghrunner through gunbc.runner.runner_host_file_converge, validated by visudo on the staging path before the rename, 0440 root-owned, read back and compared, refusing typed on any mismatch, with no catch-all and no widening beyond the rendered lines. Cause: srv3 apply 39127216304 and srv4 apply 39128728092 failed at the first host-wide grant (sudo: a password is required) because nothing installed the file.",
 }
 
+// NO NEW TRANSPORT MOCK ARM FOR A WITNESS'S BENEFIT. STANDING AS OF 2026-08-23, REAFFIRMED 2026-10-19.
+// The transport effect `gunbc.WitnessBin.Run` has no mock arm, and the hermetic envelope therefore cannot
+// serve a claim that runs a real binary. The ruling is that this stays refused rather than filled in: a
+// witness that needs a real binary goes WET, into the wet lane and its own cgroup, and never gets a mock
+// arm grafted onto the transport so that it can be run hermetically. Cause: a mock arm at the transport
+// would let any claim claim to have run a binary, which is the whole thing the envelope exists to prevent.
+// Consequences the capture witnesses obey: `test.claim.compute.output_capture_absence_witness` supplies the
+// readings as data and never dispatches, and the executing control for the same route is
+// `test.claim.compute.output_capture_absence_wet_witness`, scheduled wet in
+// v2.workflow.local_repo_wet_terminal and excluded from hermetic discovery by gunbc.ci.ci_layer_roots.
+data capture_witness_never_adds_a_transport_mock_arm: DesignRuling = DesignRuling {
+  reference: "capture witness never adds a transport mock arm",
+  decided: "2026-08-23",
+  section: "5",
+  provenance: "Operator ruling of 2026-08-23, relayed again by snappy-bat-554 on 2026-10-19 while this was decided: a witness that must run a real binary goes WET (the wet lane, its own cgroup); `gunbc.WitnessBin.Run` stays without a mock arm, and no mock arm is added to the transport to make a wet effect hermetically runnable. Cause: a transport mock arm would let any claim report that it ran a binary, which is precisely what the hermetic envelope exists to refuse.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     job_roster_closed_to_growth,
@@ -326,6 +343,7 @@ fn design_rulings() -> List<DesignRuling> {
     flex_market_policy_is_operator_decided,
     flex_fleet_cap_raised_to_three_dollars,
     flex_operator_template_v2,
+    capture_witness_never_adds_a_transport_mock_arm,
   ]
 }
 
