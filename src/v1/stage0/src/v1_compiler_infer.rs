@@ -4732,7 +4732,7 @@ pub fn actual_is_unjudged_by_formal(
                 ),
                 TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: _, .. } => false,
                 TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => true,
-                TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => true,
+                TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => false,
             }
         }
     }

@@ -10267,8 +10267,9 @@ pub struct ReferenceDerivedProviderBinding {
 
 pub fn canonical_string_set(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
+        let no_items_yet = v1_rt::rc_empty_map::<String, bool>();
         let presence = items.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
+            no_items_yet.clone(),
             |acc: Rc<HashMap<String, bool>>, item: String| {
                 if (item.clone() == "".to_string()) {
                     acc.clone()

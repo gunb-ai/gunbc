@@ -3043,7 +3043,8 @@ pub fn kernel_or_unidentified(
                 TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: v.clone() },
             ),
             _ => {
-                if crate::std_types::is_kernel_type(nm.clone()) {
+                if (crate::std_types::is_kernel_type(nm.clone()) || node_is_kernel_mint(n.clone()))
+                {
                     Rc::new(TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
                         name: nm.clone(),
                     })
