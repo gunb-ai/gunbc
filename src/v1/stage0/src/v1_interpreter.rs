@@ -15795,7 +15795,7 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 fn reference_derived_closure_admission_value(
     admission: &crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission,
     ctx: &InterpContext,
-) -> InterpResult<Value> {
+) -> Value {
     use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission as A;
     let nullary = |type_name: &str, variant_name: String| Value::Variant {
         type_name: ctx.sym(type_name),
@@ -15842,7 +15842,7 @@ fn reference_derived_closure_admission_value(
         };
         nullary("ReferenceDerivedClosureScenarioFailure", name.to_string())
     };
-    Ok(match admission {
+    match admission {
         A::ReferenceDerivedClosureEstablished { receipt } => Value::Variant {
             type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
             variant_name: ctx.sym("ReferenceDerivedClosureEstablished"),
@@ -15893,7 +15893,7 @@ fn reference_derived_closure_admission_value(
                 (ctx.sym("trigger"), trigger_value(trigger)),
             ])),
         },
-    })
+    }
 }
 
 /// Encode a `StructuralBindingRefusal` with its COMPLETE payload, one arm per `.dag` variant.
@@ -16367,27 +16367,25 @@ fn namespace_structural_observation_admissions_value(
     compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
     admissions: &[Rc<crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
     ctx: &InterpContext,
-) -> InterpResult<Value> {
-    Ok(list_value(
+) -> Value {
+    list_value(
         admissions
             .iter()
-            .map(|admission| {
-                Ok(Value::Record {
-                    type_name: ctx.sym("OrdinaryCompileStructuralAdmission"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (
-                            ctx.sym("compiled_module"),
-                            subject_module_value(compiled_module, ctx),
-                        ),
-                        (
-                            ctx.sym("admission"),
-                            reference_derived_closure_admission_value(admission, ctx)?,
-                        ),
-                    ])),
-                })
+            .map(|admission| Value::Record {
+                type_name: ctx.sym("OrdinaryCompileStructuralAdmission"),
+                fields: Rc::new(sorted_fields(vec![
+                    (
+                        ctx.sym("compiled_module"),
+                        subject_module_value(compiled_module, ctx),
+                    ),
+                    (
+                        ctx.sym("admission"),
+                        reference_derived_closure_admission_value(admission, ctx),
+                    ),
+                ])),
             })
-            .collect::<InterpResult<Vec<_>>>()?,
-    ))
+            .collect::<Vec<_>>(),
+    )
 }
 
 /// ONE PROJECTION OF `CompileDiagnosticCensusRow`, CALLED BY EVERY PRODUCER OF IT.
@@ -25164,7 +25162,7 @@ macro_rules! v1_builtin_arms {
                     &compiled_module,
                     &admissions,
                     $ctx,
-                )?))
+                )))
             },
 
             arm "free_call.emit_rust_reference_derived_rows_bridge" { "emit_rust_reference_derived_rows_bridge" } => {
@@ -30870,8 +30868,7 @@ mod binding_refusal_encoder_tests {
             let causes = unsupported();
             assert_eq!(causes.len(), expected.len());
             for ((family, cause), (name, payload)) in causes.into_iter().zip(expected) {
-                let v = reference_derived_closure_admission_value(&refused(cause), ctx)
-                    .unwrap_or_else(|_| panic!("{family}: must encode, not error"));
+                let v = reference_derived_closure_admission_value(&refused(cause), ctx);
                 let encoded = cause_of(&v, ctx);
                 let Value::Variant { variant_name, .. } = encoded else {
                     panic!("{family}: cause is not a variant")
@@ -30895,7 +30892,7 @@ mod binding_refusal_encoder_tests {
     #[test]
     fn a_supported_refusal_encodes_with_its_capability_and_gap() {
         with_ctx(|ctx| {
-            let v = reference_derived_closure_admission_value(&supported(), ctx).expect("encodes");
+            let v = reference_derived_closure_admission_value(&supported(), ctx);
             let Value::Variant {
                 variant_name,
                 fields,
@@ -30949,8 +30946,7 @@ mod binding_refusal_encoder_tests {
                     Rc::new(refused(cause)),
                     Rc::new(supported()),
                 ];
-                let v = namespace_structural_observation_admissions_value(&module(), &mixed, ctx)
-                    .unwrap_or_else(|_| panic!("{family}: mixed list must encode"));
+                let v = namespace_structural_observation_admissions_value(&module(), &mixed, ctx);
                 let Value::List(rows) = &v else {
                     panic!("{family}: result is not a list")
                 };
