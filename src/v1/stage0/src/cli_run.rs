@@ -3722,89 +3722,143 @@ fn insert_module_path(index: &mut HashMap<String, String>, module_path: &str, re
 
 /// Walks every `.dag` under `source_roots`, visiting each module-bound file.
 ///
-/// Parse failures do not panic and are not skipped: each becomes a typed located
-/// `ModuleBindingRefusal`, all of them are collected, and the walk refuses as a
-/// counted set at the end.
+/// Nothing here exits or panics: every file the walk cannot bind returns as a typed, located
+/// `ModuleIndexRefusal`, all of them collected so one run names every offender, and each CALLER
+/// chooses its exit class. The infallible index consumers stop the process with exit 1
+/// (`refuse_module_index`); the `gunbc test` claim route reports them as no observation (exit 2)
+/// through `try_with_module_path_index`, so the corpus is walked once for both.
 fn for_each_parsed_module_binding(
     source_roots: &[String],
     mut visit: impl FnMut(usize, &Path, ParsedModuleBinding),
-) {
-    let mut refusals: Vec<ModuleBindingRefusal> = Vec::new();
-    let mut headerless_claim_sources: Vec<String> = Vec::new();
+) -> Vec<ModuleIndexRefusal> {
+    let mut refusals: Vec<ModuleIndexRefusal> = Vec::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
         let root_path = Path::new(&anchored_root);
         let mut dag_files = Vec::new();
-        collect_dag_files(root_path, &mut dag_files);
+        if let Err(e) = collect_dag_files_result(root_path, &mut dag_files) {
+            refusals.push(ModuleIndexRefusal::RootUnreadable {
+                path: anchored_root.clone(),
+                reason: e,
+            });
+            continue;
+        }
         for source in dag_files {
             let path = source.path();
-            let content = source.read().unwrap_or_else(|e| {
-                panic!(
-                    "for_each_parsed_module_binding: failed to read {:?}: {}",
-                    path, e
-                )
-            });
+            let content = match source.read() {
+                Ok(c) => c,
+                Err(e) => {
+                    refusals.push(ModuleIndexRefusal::Unreadable {
+                        path: claim_source_location(path),
+                        reason: e.to_string(),
+                    });
+                    continue;
+                }
+            };
             let binding = match parse_module_binding(path, &content) {
                 Ok(ModuleBindingOutcome::Bound(binding)) => binding,
                 // A fragment elsewhere stays unclassified. Under the claim root a file that
                 // declares no module can never be named by a claim label (paths follow names),
-                // so every consumer of this walk -- floor, claim_batch, census, `gunbc test` --
-                // refuses it instead of dropping it.
+                // so it refuses instead of being dropped.
                 Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => {
                     if path.starts_with(claim_root_of(&anchored_root)) {
-                        headerless_claim_sources.push(claim_source_location(path));
+                        refusals.push(ModuleIndexRefusal::HeaderAbsent {
+                            path: claim_source_location(path),
+                        });
                     }
                     continue;
                 }
-                // Fail-closed, but the line stops with a TYPED, LOCATED refusal
-                // rather than an untyped panic that discarded the span. Siblings
-                // continue so the report is COUNTED and complete: one run names
-                // every unparseable file, not just the first (§5 factory model —
-                // a stopped-line audit ledgers every deficit before restart).
+                // Typed and located, with the parser's own span; siblings continue so the report
+                // is COUNTED and complete (§5 factory model).
                 Err(refusal) => {
-                    refusals.push(refusal);
+                    refusals.push(ModuleIndexRefusal::Unparseable(refusal));
                     continue;
                 }
             };
             visit(root_idx, path, binding);
         }
     }
-    refuse_unparseable_module_sources(&refusals, &headerless_claim_sources);
+    refusals
 }
 
-/// The refusal arm of the module-index walk: typed (each carries the parser's own
-/// `CompilerDiagnostic`), located (path + span), counted (every offender named, with a total).
-/// Replaces a `panic!` with a formatted string, which stopped the line but discarded the span
-/// and reported only the first offender.
-///
-/// RUNG, stated exactly: the PER-FILE refusal is typed and located; the AGGREGATE is retained
-/// structurally until rendering; the OPERATION-LEVEL outcome is still a process exit, NOT a
-/// typed result returned to a caller. So an in-process observer cannot witness this arm; a run
-/// receipt must come from an EXTERNAL observer until the exit moves to the command boundary.
-fn refuse_unparseable_module_sources(
-    refusals: &[ModuleBindingRefusal],
-    headerless_claim_sources: &[String],
-) {
-    if refusals.is_empty() && headerless_claim_sources.is_empty() {
+/// One file the module-index walk cannot bind. `rendered` is the single wording of each cause:
+/// the three non-parse causes render through `claim_source_refusal_rendered`, the Rust mirror of
+/// `gunbc.target_invocation` `ClaimSourceRefusalCause`; a parse failure keeps its own located
+/// rendering as the `Unparseable` payload.
+pub(crate) enum ModuleIndexRefusal {
+    Unparseable(ModuleBindingRefusal),
+    HeaderAbsent { path: String },
+    Unreadable { path: String, reason: String },
+    RootUnreadable { path: String, reason: String },
+}
+
+impl ModuleIndexRefusal {
+    pub(crate) fn rendered(&self) -> String {
+        match self {
+            Self::Unparseable(r) => claim_source_refusal_rendered(
+                &r.source_path,
+                &ClaimSourceRefusalCause::Unparseable {
+                    diagnostic: r.rendered(),
+                },
+            ),
+            Self::HeaderAbsent { path } => {
+                claim_source_refusal_rendered(path, &ClaimSourceRefusalCause::ModuleHeaderAbsent)
+            }
+            Self::Unreadable { path, reason } => claim_source_refusal_rendered(
+                path,
+                &ClaimSourceRefusalCause::Unreadable {
+                    reason: reason.clone(),
+                },
+            ),
+            Self::RootUnreadable { path, reason } => claim_source_refusal_rendered(
+                path,
+                &ClaimSourceRefusalCause::RootUnreadable {
+                    reason: reason.clone(),
+                },
+            ),
+        }
+    }
+}
+
+/// The exit arm for the INFALLIBLE index consumers (floor, `claim_batch`, `claim_executor`,
+/// census, compile): a refusal set stops the line with exit 1, counted and located, exactly as the
+/// unparseable arm always did; the header-less and unreadable causes join it. The exit class is
+/// those consumers' standing contract and is not changed here. A caller that answers "what did
+/// this observe" (`gunbc test`) takes the typed set from `try_with_module_path_index` instead.
+fn refuse_module_index(refusals: &[ModuleIndexRefusal]) {
+    if refusals.is_empty() {
         return;
     }
-    eprintln!(
-        "module index refused: {} unparseable .dag source(s)",
-        refusals.len()
-    );
-    for refusal in refusals {
-        eprintln!("  {}", refusal.rendered());
-    }
-    if !headerless_claim_sources.is_empty() {
+    // The unparseable header and line keep the exact wording this exit has always printed
+    // (the failure-mode ledger and the replacement-migration plan cite it); the other causes
+    // follow under their own counted header.
+    let unparseable: Vec<&ModuleBindingRefusal> = refusals
+        .iter()
+        .filter_map(|r| match r {
+            ModuleIndexRefusal::Unparseable(u) => Some(u),
+            _ => None,
+        })
+        .collect();
+    if !unparseable.is_empty() {
         eprintln!(
-            "module index refused: {} claim-root .dag source(s) declare no module",
-            headerless_claim_sources.len()
+            "module index refused: {} unparseable .dag source(s)",
+            unparseable.len()
         );
-        for path in headerless_claim_sources {
-            eprintln!(
-                "  {}",
-                claim_source_refusal_rendered(path, &ClaimSourceRefusalCause::ModuleHeaderAbsent)
-            );
+        for refusal in &unparseable {
+            eprintln!("  {}", refusal.rendered());
+        }
+    }
+    let others: Vec<&ModuleIndexRefusal> = refusals
+        .iter()
+        .filter(|r| !matches!(r, ModuleIndexRefusal::Unparseable(_)))
+        .collect();
+    if !others.is_empty() {
+        eprintln!(
+            "module index refused: {} unreadable or module-less claim-root .dag source(s)",
+            others.len()
+        );
+        for refusal in others {
+            eprintln!("  {}", refusal.rendered());
         }
     }
     std::process::exit(1);
@@ -20963,67 +21017,6 @@ pub fn claim_source_refusal_rendered(path: &str, cause: &ClaimSourceRefusalCause
     format!("claim source refused: {path}{tail}")
 }
 
-/// EVERY SOURCE THE CLAIM ROUTE CANNOT READ, LOCATED AND COUNTED, WITHOUT STOPPING THE PROCESS.
-///
-/// `process_shared_index` exits 1 on a header-bearing unparseable file and silently drops a file
-/// whose header is not recognized, so a broken claim file reads as "no discovered claim" (exit 2,
-/// indistinct from a typo) or as a claim failure (exit 1). `gunbc test` answers "what did the
-/// claim observe", so an unreadable source is no observation: this walk runs the SAME
-/// `parse_module_binding` the index runs, over the same roots, and returns instead of exiting.
-/// Unparseable refuses wherever it is (it would stop the index for every operand); a missing
-/// module header refuses under `<root>/test/claim`, the claim route's universe, where paths
-/// follow names. The walk does not own the index's own exit contract
-/// (`refuse_unparseable_module_sources`, the parse gate's seam); it only runs ahead of it.
-pub(crate) fn claim_source_refusals(source_roots: &[String]) -> Vec<String> {
-    use crate::module_path_index::{parse_module_binding, ModuleBindingOutcome};
-    let mut out = Vec::new();
-    for root in source_roots {
-        let anchored = anchor_source_root(root);
-        let claim_root = claim_root_of(&anchored);
-        let mut files = Vec::new();
-        if let Err(e) = collect_dag_files_result(Path::new(&anchored), &mut files) {
-            out.push(claim_source_refusal_rendered(
-                &anchored,
-                &ClaimSourceRefusalCause::RootUnreadable { reason: e },
-            ));
-            continue;
-        }
-        for source in files {
-            let path = source.path();
-            let content = match source.read() {
-                Ok(c) => c,
-                Err(e) => {
-                    out.push(claim_source_refusal_rendered(
-                        &claim_source_location(path),
-                        &ClaimSourceRefusalCause::Unreadable {
-                            reason: e.to_string(),
-                        },
-                    ));
-                    continue;
-                }
-            };
-            match parse_module_binding(path, &content) {
-                Ok(ModuleBindingOutcome::Bound(_)) => {}
-                Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => {
-                    if path.starts_with(&claim_root) {
-                        out.push(claim_source_refusal_rendered(
-                            &claim_source_location(path),
-                            &ClaimSourceRefusalCause::ModuleHeaderAbsent,
-                        ));
-                    }
-                }
-                Err(refusal) => out.push(claim_source_refusal_rendered(
-                    &refusal.source_path,
-                    &ClaimSourceRefusalCause::Unparseable {
-                        diagnostic: refusal.rendered(),
-                    },
-                )),
-            }
-        }
-    }
-    out
-}
-
 /// THE CLAIM ROUTE'S EXECUTOR: the floor's discovery authority over the modules the operand can
 /// reach, then the floor's claim evaluation over the claims it selects.
 ///
@@ -21045,12 +21038,18 @@ pub fn run_claim_route(
     module_selected: &dyn Fn(&str) -> bool,
     claim_selected: &dyn Fn(&str, &str) -> bool,
 ) -> Result<Vec<ClaimRouteMember>, String> {
-    let refusals = claim_source_refusals(source_roots);
-    if !refusals.is_empty() {
+    // The ONE module-index walk, taken fallibly: an unreadable source is no observation, not a
+    // wrong label and not a failed claim. The walk fills the shared path-index cache on success,
+    // so the resolves below read it instead of walking again.
+    if let Err(refusals) = entry_resolve::try_with_module_path_index(source_roots) {
         return Err(format!(
             "{} unreadable claim source(s) — no observation:\n  {}",
             refusals.len(),
-            refusals.join("\n  ")
+            refusals
+                .iter()
+                .map(ModuleIndexRefusal::rendered)
+                .collect::<Vec<_>>()
+                .join("\n  ")
         ));
     }
     let index = process_shared_index(source_roots);
