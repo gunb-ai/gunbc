@@ -89,15 +89,15 @@ fn connective_name(value: Connective) -> String {
   }
 }
 
-fn dag_node_bag_hash(digests: List<String>) -> Hash {
-  digests |> sort_by(d => d) |> fold(init: atom_identity_hash("^dag_collect_bag_empty"), f: (acc, d) => hash_combine(acc, d))
+fn dag_node_bag_hash(digests: List<String>) -> String {
+  to_string(value: digests |> sort_by(d => d) |> fold(init: atom_identity_hash("^dag_collect_bag_empty"), f: (acc, d) => hash_combine(acc, d)))
 }
 
-fn dag_node_seq_hash(digests: List<String>) -> Hash {
-  digests |> fold(init: atom_identity_hash("^dag_collect_seq_empty"), f: (acc, d) => hash_combine(acc, d))
+fn dag_node_seq_hash(digests: List<String>) -> String {
+  to_string(value: digests |> fold(init: atom_identity_hash("^dag_collect_seq_empty"), f: (acc, d) => hash_combine(acc, d)))
 }
 
-fn child_subtree_hash(connective: Connective, digests: List<String>) -> Hash {
+fn child_subtree_hash(connective: Connective, digests: List<String>) -> String {
   match connective {
     Conj => dag_node_bag_hash(digests: digests)
     Disj => dag_node_bag_hash(digests: digests)
@@ -106,12 +106,12 @@ fn child_subtree_hash(connective: Connective, digests: List<String>) -> Hash {
   }
 }
 
-fn dag_node_surface_leaf_mix(node: Node) -> Hash {
-  atom_identity_hash(concat(
+fn dag_node_surface_leaf_mix(node: Node) -> String {
+  to_string(value: atom_identity_hash(concat(
     node.name, "|",
     connective_name(value: node.connective), "|",
     inferred_fingerprint(value: node.inferred), "|",
-    expr_data_variant(data: node.expr_data)))
+    expr_data_variant(data: node.expr_data))))
 }
 
 fn literal_value_fingerprint(value: LiteralValue) -> String {
@@ -130,32 +130,32 @@ fn literal_value_fingerprint(value: LiteralValue) -> String {
 // (Bind.declaration, VariantPattern.field_bindings) must be folded in
 // recursively or two arms/bindings differing only by pattern collapse to the
 // same fingerprint.
-fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> Hash {
+fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
   match pattern {
-    Absent => atom_identity_hash("^dag_collect_match_pattern_absent")
+    Absent => to_string(value: atom_identity_hash("^dag_collect_match_pattern_absent"))
     Present { value: Bind { declaration: d } } =>
-      hash_combine(atom_identity_hash("Bind"), dag_node_surface_fingerprint_rec(node: d))
+      to_string(value: hash_combine(atom_identity_hash("Bind"), dag_node_surface_fingerprint_rec(node: d)))
     Present { value: LitPattern { value: v } } =>
-      atom_identity_hash(concat("LitPattern:", literal_value_fingerprint(value: v)))
+      to_string(value: atom_identity_hash(concat("LitPattern:", literal_value_fingerprint(value: v))))
     Present { value: VariantPattern { name: n, parent_enum: pe, field_bindings: fbs, parent_identity: _ } } =>
       let base = atom_identity_hash(concat(
         "VariantPattern:", n, "|",
         match pe { Present { value: p } => p  Absent => "" }))
       let field_hashes = fbs |> map(f => dag_node_surface_fingerprint_rec(node: f))
-      hash_combine(base, dag_node_seq_hash(digests: field_hashes))
-    Present { value: Wildcard } => atom_identity_hash("Wildcard")
+      to_string(value: hash_combine(base, dag_node_seq_hash(digests: field_hashes)))
+    Present { value: Wildcard } => to_string(value: atom_identity_hash("Wildcard"))
   }
 }
 
-fn dag_node_surface_fingerprint_rec(node: Node) -> Hash {
+fn dag_node_surface_fingerprint_rec(node: Node) -> String {
   let child_hashes = node.children |> map(c => dag_node_surface_fingerprint_rec(node: c))
   let param_hashes = node.params |> map(p => dag_node_surface_fingerprint_rec(node: p))
   let with_children = hash_combine(dag_node_surface_leaf_mix(node: node), child_subtree_hash(connective: node.connective, digests: child_hashes))
   let with_params = hash_combine(with_children, dag_node_seq_hash(digests: param_hashes))
-  hash_combine(with_params, match_pattern_fingerprint_rec(pattern: node.match_pattern))
+  to_string(value: hash_combine(with_params, match_pattern_fingerprint_rec(pattern: node.match_pattern)))
 }
 
-fn dag_node_surface_fingerprint(node: Node) -> Hash {
+fn dag_node_surface_fingerprint(node: Node) -> String {
   dag_node_surface_fingerprint_rec(node: node)
 }
 
@@ -163,7 +163,7 @@ fn dag_collect_fp_memo_reset() -> Bool {
   true
 }
 
-fn dag_node_surface_fingerprint_memo(node: Node) -> Hash {
+fn dag_node_surface_fingerprint_memo(node: Node) -> String {
   dag_node_surface_fingerprint(node: node)
 }
 
