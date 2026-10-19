@@ -26,16 +26,27 @@ du -sh "$CARGO_TARGET_DIR" 2>/dev/null | sed 's/^/TARGET_CACHE /'
 seed(){ sha256sum "$MIRROR" 2>/dev/null | cut -c1-16; }
 echo "SEED_BEFORE $(seed)"
 
-echo "########## build claim_executor ##########"
-timeout -k 30 "$BUILD_TIMEOUT" cargo build --release --bin claim_executor 2>&1 | grep -E "^error|Finished" | tail -3
-[ -x target/release/claim_executor ] || { echo "FATAL no claim_executor"; exit 1; }
+# CARGO_TARGET_DIR moves the artifacts: target/release/claim_executor would not exist, and
+# checking for it there would fail every run. Resolve the binary from the target dir.
+CE="$CARGO_TARGET_DIR/release/claim_executor"
+build_ce(){ # (re)build claim_executor; incremental, so a no-change round is cheap
+  timeout -k 30 "$BUILD_TIMEOUT" cargo build --release --bin claim_executor 2>&1 | grep -E "^error|Finished" | tail -3
+}
 
 round=0
 while [ "$round" -lt "$MAX_ROUNDS" ]; do
   round=$((round+1))
+  # REBUILD EVERY ROUND, from whatever the previous round installed. A stale claim_executor
+  # would emit a candidate generated from the OLD mirrors, so "installed=0" would be a lie and
+  # a real non-fixed-point could be reported as converged (or the previous round's install
+  # silently reverted). Incremental cargo makes the no-change case cheap.
+  echo "########## round $round: build claim_executor from the current mirrors ##########"
+  build_ce
+  [ -x "$CE" ] || { echo "FATAL no claim_executor at $CE"; exit 1; }
+  ls -la "$CE" | awk '{print "CE_BYTES", $5}'
   echo "########## round $round: emit candidate ##########"
   rm -rf target/stage0-regen-candidate
-  timeout -k 30 "$GEN_TIMEOUT" ./target/release/claim_executor --required-regen \
+  timeout -k 30 "$GEN_TIMEOUT" "$CE" --required-regen \
       --source-root dag --source-root src/v2 > "/tmp/rr_$round.log" 2>&1
   echo "RR_EXIT=$? round=$round   (1 is expected: the .dag changed, so there IS drift)"
   grep -aE "first_generation_equal|candidate=|declared_divergent|FAIL generated surface|admitted edges|elapsed_ms" \
