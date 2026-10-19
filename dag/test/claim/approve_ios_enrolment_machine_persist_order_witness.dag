@@ -89,7 +89,7 @@ import gunbc.approve_ios_enrolment_machine {
   enrolment_persist_proof_route_ref,
   approve_ios_enrolment_state_generator_frontier_rows,
 }
-import extdeps.crypto.signature { VerifyingKey }
+import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
 import extdeps.apple.secure_enclave { SecureEnclaveWrappedKeyBlob }
 import extdeps.apple.app_attest { AttestKeyId }
 import extdeps.apple.apns { ApnsDeviceToken }
@@ -102,7 +102,7 @@ fn prepared_payload() -> PreparedEnrolmentPayload {
   PreparedEnrolmentPayload {
     code: "7F3K-9Q" as NonEmptyStr,
     decision_key_blob: "sec-enclave-wrapped/v1/agdY2Jj" as SecureEnclaveWrappedKeyBlob,
-    decision_key_pub: VerifyingKey { point_b64url: "BLRl9cHf4dS7wQx1p0N0dGFybW9yX2tleV9wb2ludA" as NonEmptyStr },
+    decision_key_pub: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BLRl9cHf4dS7wQx1p0N0dGFybW9yX2tleV9wb2ludA" as NonEmptyStr },
     attest_key_id: "aGFzLWtleS1pZC1mb3ItZW5yb2xtZW50" as AttestKeyId,
     transcript: "transcript-over-the-assertion" as NonEmptyStr,
     attestation: optional_absent(),
