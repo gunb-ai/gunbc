@@ -558,6 +558,7 @@ fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
     NotEquals { left: l, right: r } =>
       expression_accesses_runner_var_via_env(expression: l) ||
         expression_accesses_runner_var_via_env(expression: r)
+    LogicalNot { operand: o } => expression_accesses_runner_var_via_env(expression: o)
     StringLiteral { value: _ } => false
   }
 }
@@ -579,6 +580,7 @@ fn expression_uses_context(expression: Expression, target: ExpressionContext) ->
     NotEquals { left: l, right: r } =>
       expression_uses_context(expression: l, target: target) ||
         expression_uses_context(expression: r, target: target)
+    LogicalNot { operand: o } => expression_uses_context(expression: o, target: target)
     StringLiteral { value: _ } => false
   }
 }
@@ -784,6 +786,11 @@ fn evaluate_expression(expression: Expression, github_path: fn(List<String>) -> 
                 ExpressionValue { value: "true" }
               }
           }
+      }
+    LogicalNot { operand: o } =>
+      match evaluate_expression(expression: o, github_path: github_path) {
+        ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
+        ExpressionValue { value: v } => if gha_value_is_truthy(s: v) { ExpressionValue { value: "" } } else { ExpressionValue { value: "true" } }
       }
   }
 }
