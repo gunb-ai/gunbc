@@ -2295,12 +2295,13 @@ test fn the_shared_scan_refuses_reserved_characters_wherever_they_sit() -> Bool 
 // it checks at two positions because upstream scans the whole setting (salt and digest alike) before dispatching
 // to the scheme — a rule that fired only on salts would be wrong and invisible.
 //
-// WHY IT EXCLUDES '$', CR AND LF, AND WHY THAT IS NOT A HOLE. Those three cannot be spliced into a setting
-// without destroying the string the splice is meant to test: '$' is the segment delimiter, so a candidate holding
-// one is a different setting than the one being adjudicated, and CR/LF cannot occur in a single-line candidate at
-// all. Their refusal is asserted where it can be stated — in the consuming module, whose salt character class and
-// segment-count arms name them — so this row does not re-check the impossible, but the comment is the audit trail
-// that says the omission was reasoned rather than forgotten.
+// WHY '$' IS SPOILED OUT OF THE SWEEP, AND WHY THAT IS NOT A HOLE. '$' is the segment delimiter: a candidate
+// holding one is no longer the setting being adjudicated but a different setting with an extra segment, so
+// splicing it would test the segment count and report that it had tested the alphabet. Its refusal is asserted
+// where it can honestly be stated — the consuming module's segment-count arm, which counts the delimiters it is
+// given — so nothing is unclaimed here. CR and LF are not members of the shelf's list today and are written
+// nowhere in this file, because a candidate cannot carry either and stay a single-line setting; had I spliced an
+// escape for them, the escape itself is what the parser would have complained about, not the rule.
 //
 // THE DENOMINATOR IS PINNED BECAUSE A SWEEP OVER AN EMPTY LIST SCORES PERFECTLY. list_length must equal the
 // refused tally, and a zero-length shelf is reported as a failure outright; without that, emptying the list —
@@ -2311,13 +2312,13 @@ test fn every_reserved_character_the_shelf_claims_is_actually_refused_in_both_po
   let reserved = crypt_reserved_characters()
   let digest = "8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj."
   let spliced_digest = fold(reserved, init: 0, f: (n, r) =>
-    if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n
+    if (r as String) == "$" then n
     else if cause_of(crypt_digest: concat(concat("$6$saltsalt$", r as String), digest)) is Present { value: _ } then n + 1 else n)
   let spliced_salt = fold(reserved, init: 0, f: (n, r) =>
-    if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n
+    if (r as String) == "$" then n
     else if cause_of(crypt_digest: concat(concat(concat("$6$salt", r as String), "salt$"), digest)) is Present { value: _ } then n + 1 else n)
   let testable = fold(reserved, init: 0, f: (n, r) =>
-    if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n else n + 1)
+    if (r as String) == "$" then n else n + 1)
   testable > 0 && spliced_digest == testable && spliced_salt == testable
 }
 
