@@ -257,7 +257,8 @@ service vast_ai.SearchOffers {
       // 🟡 feature:vast-search-wire-units dissolve-on: the REST transport encodes a typed ByteSize or
       // Bandwidth input into a declared wire unit. Until then these three are the wire integers (MB, MB,
       // Mb/s) of the POST body, produced only by vast_ai_wire_mb and vast_ai_wire_mbps from the typed
-      // VastAiOfferQuery; no other module spells them.
+      // VastAiOfferQuery here and, on Templates.Create, from the typed template spec; no module outside the
+      // typed callers spells them.
       gpu_ram_min_mb: Int
       cuda_max_good_min: Int
       cpu_ram_min_mb: Int
@@ -702,6 +703,9 @@ service vast_ai.Templates {
       ssh_direct: Bool
       jup_direct: Bool
       use_jupyter_lab: Bool
+      // 🟡 feature:vast-search-wire-units dissolve-on: the same transport encoding as SearchOffers above;
+      // these three are the wire integers (MB, MB, Mb/s) of the template body, produced only by
+      // vast_ai_wire_mb and vast_ai_wire_mbps from the typed FlexTemplateSpec.
       min_cuda_max_good: Int
       min_cpu_ram_mb: Int
       min_gpu_ram_mb: Int
