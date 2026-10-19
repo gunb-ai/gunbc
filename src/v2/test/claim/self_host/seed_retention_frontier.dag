@@ -9,6 +9,7 @@ import v2.compiler.self_host.seed_retention_frontier {
   retained_host_binary,
   retained_reason_undeclared,
   seed_retention_census,
+  seed_retention_frontier_crate_relative_paths,
   seed_retention_frontier_roster,
   seed_retention_frontier_top_level_src_basenames,
   seed_retention_frontier_total_holds,
@@ -357,4 +358,12 @@ test fn witness_report_census_manifest_is_its_own_standing_not_self_emitted() ->
   r.exit == 0
     && report_has(lines: r.lines, pattern: "self_emitted=1 emitted_unexecuted=0 seed_retained=2 unclassified=0")
     && report_has(lines: r.lines, pattern: "generated_census_artifacts=1")
+}
+
+// RED guard for review 82697: hand-maintained hosts are frontier rows but never regen join
+// exemptions. The live roster carries target_invocation_host.rs; the projection must not.
+test fn witness_hand_maintained_hosts_are_rows_but_not_join_exemptions() -> Bool {
+  any(xs: seed_retention_frontier_crate_relative_paths(), predicate: fn(p) { p == "src/target_invocation_host.rs" })
+    && !any(xs: seed_retention_frontier_top_level_src_basenames(), predicate: fn(b) { b == "target_invocation_host.rs" })
+    && any(xs: seed_retention_frontier_top_level_src_basenames(), predicate: fn(b) { b == "std_logic.rs" })
 }

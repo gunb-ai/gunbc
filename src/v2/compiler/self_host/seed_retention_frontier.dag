@@ -181,7 +181,24 @@ fn retained_build_script(path: String) -> SeedRetentionFrontierRow {
   }
 }
 
-data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
+// Top-level src/ files that required_regen_host already subtracts through
+// HAND_MAINTAINED_STAGE0_FILES before the committed-not-emitted join. They are rows so the
+// frontier fold classifies every observed file, but they are NOT join exemptions: projecting them
+// into seed_retention_frontier_top_level_src_basenames would widen that refusal to files whose
+// disappearance from the emitter it must still catch (required_regen_host
+// live_frontier_projection_is_not_the_crate_layout_filename_union).
+data seed_retention_frontier_hand_maintained_hosts: List<SeedRetentionFrontierRow> = [
+  retained_reason_undeclared(path: "src/emitted_closure_compile_host.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/evaluation_budget_consequence_generated.rs", cause: WetActuatorGeneratedSource),
+  retained_reason_undeclared(path: "src/generated_artifact_boundary_host.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/gunbc_file_transport_generated.rs", cause: WetActuatorGeneratedSource),
+  retained_reason_undeclared(path: "src/native_route_seed_boundary_generated.rs", cause: WetActuatorGeneratedSource),
+  retained_reason_undeclared(path: "src/partition_crate_boundary_host.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/release_locus_seed_constants_generated.rs", cause: WetActuatorGeneratedSource),
+  retained_reason_undeclared(path: "src/target_invocation_host.rs", cause: SeedRetainedIntrinsicSource)
+]
+
+data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_elsewhere(path: "src/v1_interpreter.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.plans.interpreter_kernel_d", decl_name: "interpreter_kernel_d_plan"),
   retained_reason_undeclared(path: "src/bounded_shell_host_drain.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/cli_run.rs", cause: SeedRetainedIntrinsicSource),
@@ -285,14 +302,6 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_support_dir_member(path: "src/cli_run/test_marker.rs"),
   retained_support_dir_member(path: "src/cli_run/test_migration.rs"),
   retained_support_dir_member(path: "src/cli_run/witness_gates.rs"),
-  retained_reason_undeclared(path: "src/emitted_closure_compile_host.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/evaluation_budget_consequence_generated.rs", cause: WetActuatorGeneratedSource),
-  retained_reason_undeclared(path: "src/generated_artifact_boundary_host.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/gunbc_file_transport_generated.rs", cause: WetActuatorGeneratedSource),
-  retained_reason_undeclared(path: "src/native_route_seed_boundary_generated.rs", cause: WetActuatorGeneratedSource),
-  retained_reason_undeclared(path: "src/partition_crate_boundary_host.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/release_locus_seed_constants_generated.rs", cause: WetActuatorGeneratedSource),
-  retained_reason_undeclared(path: "src/target_invocation_host.rs", cause: SeedRetainedIntrinsicSource),
   retained_test_harness(path: "tests/base_closure_member_absent_at_live_path.rs"),
   retained_test_harness(path: "tests/census_identity_call_type.rs"),
   retained_test_harness(path: "tests/dag_parse_sweep_refusal_location.rs"),
@@ -310,6 +319,8 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_test_harness(path: "tests/type_equals_applied_head_identity.rs"),
   retained_build_script(path: "build.rs")
 ]
+
+data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = concat(seed_retention_frontier_join_roster, seed_retention_frontier_hand_maintained_hosts)
 
 type SeedRetentionCensusRow
   = RetainedRostered { crate_relative_path: String }
@@ -370,7 +381,7 @@ fn top_level_src_basename(path: String) -> String {
 fn seed_retention_frontier_top_level_src_basenames() -> List<String> {
   filter(
     xs: list_map(
-      xs: seed_retention_frontier_crate_relative_paths(),
+      xs: roster_paths(roster: seed_retention_frontier_join_roster),
       f: fn(path) { top_level_src_basename(path: path) }
     ),
     predicate: fn(basename) { basename != "" }
