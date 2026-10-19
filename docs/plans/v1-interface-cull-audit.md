@@ -1076,3 +1076,11 @@ break was caused by (`cli_run.rs:5067-5070` names it); this lane does not recomm
 
 Signed: lane K (merry-moth-703), 2026-10-19. Inventory only — no behavior touched, no measurement run;
 the single operator decision is raised separately with the recommendation above.
+
+### 8.x Decision (still-fox-649, 2026-10-19): option A
+
+All the whole-pool validations survive. W1/W2 (one module, one authority) move into the name-path index, where they cost nothing. W6 stays CI-only. W3–W5 are unchanged.
+
+Option B would make the path index's silent first-claim-wins permanent. That is a silent wrong answer, forbidden outright by DESIGN §5; the 2026-07-01 `extdeps.shell` floor break was exactly this. It is not a tradeoff this plan may make, so it needed no operator card.
+
+Lane P (P1.2) may start once lane A lands and O2 has been split into parse failures and genuine fragments. Its first change makes duplicate claims refuse in the path index.
