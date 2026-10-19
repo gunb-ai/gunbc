@@ -277,8 +277,12 @@ fn emit_fold_eval_decode(v: RuntimeValue) -> Optional<Int> {
   })
 }
 
+fn emit_fold_eval_no_digits() -> List<Int> {
+  []
+}
+
 fn emit_fold_eval_fields_digits(fields: List<RuntimeFieldValue>) -> Optional<List<Int>> {
-  fold(fields, init: optional_present(value: []), f: fn(acc, f) {
+  fold(fields, init: optional_present(value: emit_fold_eval_no_digits()), f: fn(acc, f) {
     match acc {
       Present { value: ds } =>
         match emit_fold_eval_decode(v: f.value) {
