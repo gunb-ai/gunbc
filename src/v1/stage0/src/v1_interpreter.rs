@@ -7629,6 +7629,9 @@ fn call_function(
     });
     let result = call_function_guarded(ctx, fn_node, args, env, depth);
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
+    if depth == 1 {
+        zz_dump_calls();
+    }
     record_raise_frame(&result, fn_node, depth);
     // A located TypeError carries its raise site but no route back up the call chain, which made
     // a production-path defect (harness_probe_cli, 2026-09-18) expensive to attribute. Append each
@@ -25776,7 +25779,11 @@ fn zz_count_all(func_name: &str) {
     let st = g.get_or_insert_with(|| (0, std::collections::HashMap::new()));
     st.0 += 1;
     *st.1.entry(func_name.to_string()).or_insert(0) += 1;
-    if st.0 % 100_000 == 0 {
+}
+
+fn zz_dump_calls() {
+    let g = ZZ_ALL_CALLS.lock().unwrap();
+    if let Some(st) = g.as_ref() {
         let body: String = st.1.iter().map(|(k, n)| format!("{} {}\n", k, n)).collect();
         let _ = std::fs::write("/tmp/zzcalls.txt", format!("total {}\n{}", st.0, body));
     }
