@@ -5559,7 +5559,8 @@ type ReferenceDerivedProviderBinding {
 // iteration and as the input to `dedupe_rust_import_lines`, so first-binder-wins and the
 // "prior" cover predicates see a determined line order rather than first-seen of an unordered walk.
 fn canonical_string_set(items: List<String>) -> List<String> {
-  let presence = items |> fold(init: empty_map(), f: (acc, item) =>
+  let no_items_yet: Map<String, Bool> = empty_map()
+  let presence = items |> fold(init: no_items_yet, f: (acc, item) =>
     if item == "" { acc } else { map_insert(acc, item, true) }
   )
   sorted_map_keys(presence)
