@@ -138,8 +138,14 @@ python3 $LOGS/patch_rebind_probe18.py src/v1/stage0/src/v1_compiler_infer.rs    
 # guessed path. Non-fatal: the remote build is still the real gate; this only front-loads the cheap failure.
 git show $CAR:instruments/stubcheck.py > $LOGS/stubcheck.py || echo "no stubcheck to fetch (continuing)"
 if [ -s $LOGS/stubcheck.py ]; then
-  timeout 900 python3 $LOGS/stubcheck.py $LOGS/patch_rebind_probe18.py 2>&1 | tail -10
-  echo "stubcheck rc=$? (a FAIL here means the injected code will not build; the build below would fail the same way, minutes later)"
+  # PROBE18_STUB=1 opts the patcher into stub mode (the stub seed has the fold marker but no call
+  # arm). rc is captured WITHOUT a pipe -- `... | tail` makes $? tail's status, which reported a
+  # hard FAIL as rc=0 on the runner.
+  PROBE18_STUB=1 timeout 900 python3 $LOGS/stubcheck.py $LOGS/patch_rebind_probe18.py > $LOGS/stubcheck.out 2>&1
+  SCRC=$?
+  tail -10 $LOGS/stubcheck.out
+  echo "stubcheck rc=$SCRC (a FAIL here means the injected code will not build; the build below would fail the same way, minutes later)"
+  [ $SCRC -eq 0 ] || { echo "STUBCHECK HARD FAIL -- aborting before the 20-minute build"; exit 33; }
 fi
 echo "injected: v4=$(grep -ac rebind18_print src/v1/stage0/src/v1_compiler_infer.rs) predOwn=$(grep -ac 'fn rebind18_print' src/v1/stage0/src/v1_compiler_infer.rs) s1b=$(grep -ac s1b_count_mint src/v1/stage0/src/v1_compiler_infer_types.rs) enterExit=$(grep -ac 's1b_enter();' src/v1/stage0/src/v1_compiler_infer.rs)"
 [ "$(grep -ac rebind18_print src/v1/stage0/src/v1_compiler_infer.rs)" -ge 2 ] || { echo "PROBE NOT IN THE EMITTED SEED -- a suite/probe run here would be meaningless"; exit 12; }

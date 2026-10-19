@@ -48,6 +48,7 @@ RT_ANCHOR = "ret: crate::v1_compiler_infer_types::callable_return_type(gnode.clo
 
 # --- the fold-print call site (same anchor the v16 probe uses)
 MARKER = "diagnostics: Rc::new(vec![type_mismatch_error("
+BREAK = "break Rc::new(UnifyGenericsAcc {"
 
 TAG_DECL = '''static REBIND18_TAG: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 static REBIND18_TAGSEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -196,9 +197,15 @@ def _patch_text(src: str):
     out = out[:k] + " " + SET_RT + out[k:]
     rep["rt_via"] = "head of the else-block containing the struct literal"
 
-    # the print fn + the fold call
+    # THE CALL SITE. The marker sits inside `break Rc::new(UnifyGenericsAcc { ... })`, so inserting
+    # AT the marker puts the call inside a struct literal's field list -- "expected one of `,`, `:`,
+    # or `}`, found `.`" seven times on the runner. Walk back to the enclosing statement, the same
+    # way probe v16 does.
     i = out.index(MARKER)
-    out = out[:i] + CALL + out[i:]
+    b = out.rfind(BREAK, 0, i)
+    if b < 0:
+        return src, rep | {"ok": False, "why": "no enclosing break before the diagnostic marker"}
+    out = out[:b] + CALL + out[b:]
     anchor_fn = "fn unify_generics("
     j = out.index(anchor_fn)
     out = out[:j] + TAG_DECL + PRINT_FN + "\n" + out[j:]
