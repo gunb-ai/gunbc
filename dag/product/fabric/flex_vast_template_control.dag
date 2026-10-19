@@ -1,12 +1,13 @@
 module product.fabric.flex_vast_template_control
 
-import std.types { String, NonEmptyStr, Bool, List, Secret, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, Secret, list_length }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import std.measure { mebibyte_count, mebibyte_ceiling, bandwidth_count }
+import product.fabric.flex_vast_loop { flex_vast_disk_gigabytes }
 import extdeps.cloud.vast_ai
 import extdeps.cloud.vast_ai { VastAiTemplateRow, VastAiTemplateList, VastAiTemplateCreateResult }
 import gunbc.fleet.flex_pass_run { flex_vast_key, FlexVastKeyReady, FlexVastKeyRefused }
@@ -57,13 +58,13 @@ fn flex_template_create(api_key: Secret, spec: FlexTemplateSpec) -> String uses 
     tag: spec.tag,
     env: flex_template_env(spec: spec),
     runtype: spec.runtype as String,
-    recommended_disk_space: spec.disk_gigabytes,
+    recommended_disk_space: flex_vast_disk_gigabytes(disk: spec.disk),
     private: true,
     onstart: spec.onstart,
     ssh_direct: spec.ssh_direct,
     jup_direct: spec.jup_direct,
     use_jupyter_lab: spec.use_jupyter_lab,
-    min_cuda_max_good: spec.min_cuda_max_good,
+    min_cuda_max_good: spec.min_cuda_max_good as Int,
     min_cpu_ram_mb: mebibyte_count(m: mebibyte_ceiling(b: spec.min_cpu_ram)) as Int,
     min_gpu_ram_mb: mebibyte_count(m: mebibyte_ceiling(b: spec.min_gpu_ram)) as Int,
     min_inet_down_mbps: (bandwidth_count(b: spec.min_inet_down) / 1000000) as Int,
