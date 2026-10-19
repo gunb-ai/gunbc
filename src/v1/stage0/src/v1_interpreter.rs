@@ -25777,14 +25777,8 @@ fn zz_count_all(func_name: &str) {
     st.0 += 1;
     *st.1.entry(func_name.to_string()).or_insert(0) += 1;
     if st.0 % 100_000 == 0 {
-        let mut v: Vec<_> = st.1.iter().collect();
-        v.sort_by(|a, b| b.1.cmp(a.1));
-        let line: Vec<String> = v
-            .iter()
-            .take(80)
-            .map(|(k, n)| format!("{}={}", k, n))
-            .collect();
-        eprintln!("ZZCALLS total={} {}", st.0, line.join(" "));
+        let body: String = st.1.iter().map(|(k, n)| format!("{} {}\n", k, n)).collect();
+        let _ = std::fs::write("/tmp/zzcalls.txt", format!("total {}\n{}", st.0, body));
     }
 }
 
