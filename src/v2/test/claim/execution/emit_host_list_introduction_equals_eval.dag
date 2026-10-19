@@ -85,7 +85,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { Pass, SemanticMismatch, BuildFailed, RunFailed, Deferred, verdict_establishes_divergence, verdict_establishes_equivalence }
+import v2.std.verdict { verdict_establishes_divergence, verdict_establishes_equivalence }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -108,10 +108,8 @@ fn emit_fold_eval_lit(id: Symbol) -> Node {
   fold_fixture_atom(id: id)
 }
 
-fn emit_fold_eval_list_arrow() -> Node {
-  fold_fixture_arrow_with_body(
-    params: fold_fixture_empty_domain_params(),
-    body: fold_fixture_call_body(
+fn emit_fold_eval_call_node() -> Node {
+  fold_fixture_call_body(
       xs: lie_list(elements: [
         emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_lit_one),
         emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_lit_two),
@@ -122,11 +120,14 @@ fn emit_fold_eval_list_arrow() -> Node {
         left_operand: ^dag_binding_mvp1_fold_acc,
         right_operand: ^dag_binding_mvp1_fold_h
       )
-    )
   )
 }
 
-data emit_fold_eval_subgraph_node: Node = emit_fold_eval_list_arrow()
+fn emit_fold_eval_list_arrow() -> Node {
+  fold_fixture_arrow_with_body(params: fold_fixture_empty_domain_params(), body: emit_fold_eval_call_node())
+}
+
+data emit_fold_eval_subgraph_node: Node = emit_fold_eval_call_node()
 
 fn emit_fold_eval_generic_facts(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
@@ -464,19 +465,3 @@ test fn emit_host_list_introduction_unwired_refuses_holds() -> Bool {
     ).verdict
   )
 }
-
-fn probe_reason(r: Symbol) -> Bool {
-  match emit_fold_eval_run_with(target: rust_list_fold_target_model_staging()).verdict {
-    BuildFailed { actual: _, diagnostic: d } => d.reason == r
-    _ => false
-  }
-}
-
-test fn probe_r_field_miss() -> Bool { probe_reason(r: ^emit_fold_eval_list_field_miss) }
-test fn probe_r_not_agg() -> Bool { probe_reason(r: ^emit_fold_eval_list_not_aggregate) }
-test fn probe_r_arg_absent() -> Bool { probe_reason(r: ^emit_fold_eval_arg_absent) }
-test fn probe_r_literal() -> Bool { probe_reason(r: ^emit_fold_eval_literal_miss) }
-test fn probe_r_closure() -> Bool { probe_reason(r: ^emit_fold_eval_closure_arg_not_closure) }
-test fn probe_r_closure_absent() -> Bool { probe_reason(r: ^emit_fold_eval_closure_arg_absent) }
-test fn probe_r_grounding() -> Bool { probe_reason(r: ^eval_rejected_grounding_not_derived) }
-test fn probe_r_pending() -> Bool { probe_reason(r: ^eval_rejected_pending_children) }
