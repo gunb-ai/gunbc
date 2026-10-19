@@ -14,7 +14,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 import v2.std.list_introduction { list_introduction_elements_optional }
-import v2.std.node { Node, NodeFold, Symbol, fold_node }
+import v2.std.node { Node, NodeFold, Symbol, fold_node, symbol_eq }
 import v2.std.runtime { RuntimeAggregate, RuntimeFieldValue, RuntimePrimitive, RuntimeValue }
 import v2.std.text { String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -228,7 +228,7 @@ test fn list_introduction_eval_stage_refusal_is_lookup_miss() -> Bool {
   match list_introduction_eval_of(source: list_introduction_eval_forward_source) {
     Absent => false
     Present { value: Accepted { value: _, diagnostics: _ } } => false
-    Present { value: Rejected { diagnostics: ds } } => ds.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+    Present { value: Rejected { diagnostics: ds } } => symbol_eq(a: ds.head.reason, b: ^eval_rejected_runtime_binding_lookup_miss)
   }
 }
 
@@ -236,7 +236,7 @@ fn list_introduction_eval_reason_is(wanted: Symbol) -> Bool {
   match list_introduction_eval_of(source: list_introduction_eval_forward_source) {
     Absent => false
     Present { value: Accepted { value: _, diagnostics: _ } } => false
-    Present { value: Rejected { diagnostics: ds } } => ds.head.reason == wanted
+    Present { value: Rejected { diagnostics: ds } } => symbol_eq(a: ds.head.reason, b: wanted)
   }
 }
 
@@ -282,4 +282,15 @@ test fn list_introduction_eval_reason_grounding_node_mismatch() -> Bool {
 
 test fn list_introduction_eval_reason_runtime_value_node_unrepresentable() -> Bool {
   list_introduction_eval_reason_is(wanted: ^eval_rejected_runtime_value_node_unrepresentable)
+}
+
+test fn list_introduction_eval_stage_eval_ran() -> Bool {
+  match list_introduction_eval_of(source: list_introduction_eval_forward_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn list_introduction_eval_reason_runtime_binding_lookup_miss() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_runtime_binding_lookup_miss)
 }
