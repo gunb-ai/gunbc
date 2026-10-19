@@ -389,6 +389,9 @@ fn one_callee_two_distinct_settled_arguments_still_refuses() {
 // change the answer. RED-before / GREEN-after is stated per row.
 // ---------------------------------------------------------------------------
 
+use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
+use v1_compiler::cli_run;
+use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
 use v1_compiler::v1_compiler_infer::{unify_generics, UnifyGenericsAcc};
 use v1_compiler::v1_compiler_infer_types::{node_type_shape, TextJudgment, TextNotAskedReason};
 use v1_compiler::v1_std_core::{no_span, InferredNode};
@@ -699,5 +702,78 @@ fn fold_refuses_a_declared_parameter_type_bound_to_a_distinct_settled_instance()
         !acc.diagnostics.is_empty(),
         "Map(Int, Int) then Map(String, Int) must refuse even when the bound node declares a parameter it does not use: {:?}",
         acc.diagnostics
+    );
+}
+
+// ---------------------------------------------------------------------------
+// PRODUCER REPAIR -- collision controls (parent msg_78d4eb21).
+//
+// A generic function with NO value parameters hands its declared result type over
+// uninstantiated: with no actuals the substitution is empty and substitute_generics_apply
+// short-circuits on it, so `empty_map()` was typed as the DECLARATION's own `Map(K, V)` and
+// the fold then refused the settled instance that arrived later. The repair seeds an
+// unbound variable per declared parameter the actuals did not solve. Naming that variable
+// after the bare parameter would make two calls to the SAME generic function share it --
+// producer 2's defect (bare_map_node minting std's own declared names) at the call site --
+// so the id carries the call site. These rows are why.
+// ---------------------------------------------------------------------------
+
+const COLLISION_SOURCE: &str = r#"
+module test.producer_collision
+
+import std.types { Map }
+import std.algebra { empty_map }
+
+fn ints() -> Map<Int, Int> { empty_map() }
+fn texts() -> Map<String, Int> { empty_map() }
+"#;
+
+fn collision_resolved() -> ResolvedPipelineResult {
+    let ws = workspace_root();
+    let roots = [ws.join("src/v2"), ws.join("dag")];
+    let sources =
+        resolve_imports_transitively_with_source_roots("test.dag", COLLISION_SOURCE, &roots);
+    compile_to_resolved(Rc::new(sources.into()))
+}
+
+/// THE COLLISION ROW (the parent's case). Two calls to one zero-argument generic function,
+/// bound to two different concrete Maps, must both type: no hard diagnostic, no conflict,
+/// no cross-binding. Cross-binding would surface here as the second declaration's settled
+/// instance refusing the binding the first call took -- a wrong answer is what the shared
+/// variable produces, and the row fails on it either loudly or silently-quietly.
+///
+/// RED-BEFORE is expected: pre-repair both calls carry the callee's own Map(K, V).
+#[test]
+fn collision_two_zero_arg_generic_calls_both_type() {
+    let resolved = collision_resolved();
+    let msgs: Vec<String> = resolved
+        .diagnostics
+        .iter()
+        .filter(|d| cli_run::compile_clean_diagnostic_is_hard(d))
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect();
+    assert!(
+        msgs.is_empty() && resolved.graph.is_some(),
+        "two empty_map() calls bound to Map(Int, Int) and Map(String, Int) must both type: {:?}",
+        msgs,
+    );
+}
+
+/// REFUSAL TWIN, built at the fold itself so nothing upstream can satisfy it: two distinct
+/// SETTLED instances of the same head must still refuse. Without this row the accept above
+/// could be satisfied by an implementation that admits any pair merely because a variable
+/// is involved somewhere.
+#[test]
+fn collision_pair_still_refuses_when_instantiated_twice() {
+    let bound = fold_app("Map", &[fold_leaf("Int"), fold_leaf("Int")]);
+    let actual = fold_app("Map", &[fold_leaf("String"), fold_leaf("Int")]);
+    let acc = fold_step(bound, actual);
+    assert!(
+        !acc.diagnostics.is_empty(),
+        "Map(Int, Int) then Map(String, Int) are two settled instances and must refuse: {:?}",
+        acc.diagnostics
+            .iter()
+            .map(|d| format!("{:?}", d))
+            .collect::<Vec<String>>()
     );
 }
