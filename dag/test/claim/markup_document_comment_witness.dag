@@ -288,14 +288,6 @@ test fn witness_comment_body_cannot_close_a_raw_text_element() -> Bool {
   }
 }
 
-// THE GUARD'S OWN CASE, stated before the two that review 82504 motivated. Nothing in the repo claimed it:
-// no file asserted that PLAIN text holding "</script>" inside a <script> element is refused, so the guard
-// could have been deleted outright and every witness stayed green -- and I had just moved its input from the
-// raw child text to the serialized children, which is the one edit that could have quietly broken it. If
-// serialization had escaped "<" (it does not: child_medium sets EscapeRaw precisely so raw-text bytes reach
-// the guard un-escaped), "</script" would have become "&lt;/script", the substring test would have found
-// nothing, and the refusal would have evaporated with no claim to notice.
-
 // THE GUARD'S OWN CASE, and until now the only case nobody claimed: PLAIN text holding the close sequence
 // inside a raw-text element. It predates the two below, and it is the reason the guard exists. My fix moved
 // the guard's input from the raw child list to the SERIALIZED children, which is exactly the edit that could
