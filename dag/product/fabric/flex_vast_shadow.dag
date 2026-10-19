@@ -42,7 +42,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand { debt_payoff_objective, DemandObjective }
 import product.fabric.budget { MoneyAccount }
 import extdeps.cloud.vast_ai {
-  VastAiOffer, VastAiOfferHostResources, VastAiOfferQuery, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
+  VastAiOffer, VastAiOfferHostResources, VastAiOfferQuery, vast_ai_wire_mb, vast_ai_wire_mbps, vast_ai_bits_per_megabit, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
   vast_ai_search_type_bid, vast_ai_search_limit_default, vast_ai_keyset_page_limit,
   vast_ai_min_bid_money_per_hour, vast_ai_quote_currency,
   vast_ai_instance_dph_total_money_per_hour,
@@ -428,21 +428,6 @@ type FlexVastHostFilters {
   verified: Bool
 }
 
-// Vast's search and offer vocabulary counts RAM in MB (taken as mebibytes, as vast_gpu_ram_bytes already does)
-// and inet_down in Mb/s (decimal megabits). The typed policy converts to those integers only at the
-// Vast boundary: the query body and the offer comparison below.
-fn flex_megabits_per_second_factor() -> Nat {
-  1000000
-}
-
-fn flex_vast_mb(b: ByteSize) -> Int {
-  mebibyte_count(m: mebibyte_ceiling(b: b))
-}
-
-fn flex_vast_mbps(b: Bandwidth) -> Int {
-  bandwidth_count(b: b) / flex_megabits_per_second_factor()
-}
-
 type FlexHostImageRow {
   recipe: DeclarationRef
   image: NonEmptyStr
@@ -458,7 +443,7 @@ data flex_flash_next_vast_filters: FlexVastHostFilters = FlexVastHostFilters {
   cuda_max_good_min: cuda_13_0_driver_requirement.toolkit_major,
   cpu_ram_min: mebibyte_to_byte_size(m: mebibyte(count: 128000)),
   gpu_ram_min: mebibyte_to_byte_size(m: mebibyte(count: 90000)),
-  inet_down_min: bandwidth(count: 1000 * flex_megabits_per_second_factor()),
+  inet_down_min: bandwidth(count: 1000 * vast_ai_bits_per_megabit),
   verified: true,
 }
 
@@ -567,10 +552,10 @@ fn flex_vast_offer_query(recipe: ServingRecipe) -> VastAiOfferQuery? {
             value: VastAiOfferQuery {
               search_type: vast_ai_search_type_bid,
               limit: vast_ai_search_limit_default,
-              gpu_ram_min_mb: flex_vast_mb(b: f.gpu_ram_min),
+              gpu_ram_min: f.gpu_ram_min,
               cuda_max_good_min: f.cuda_max_good_min,
-              cpu_ram_min_mb: flex_vast_mb(b: f.cpu_ram_min),
-              inet_down_min: flex_vast_mbps(b: f.inet_down_min),
+              cpu_ram_min: f.cpu_ram_min,
+              inet_down_min: f.inet_down_min,
               verified: f.verified,
             },
           }
@@ -639,9 +624,9 @@ fn flex_optional_decimal_at_least(d: ExactDecimal?, min: Int) -> Bool {
 fn flex_offer_meets_filters(offer: VastAiOffer, host: VastAiOfferHostResources, filters: FlexVastHostFilters) -> Bool {
   host.id == offer.id
     && flex_optional_decimal_at_least(d: offer.cuda_max_good, min: filters.cuda_max_good_min)
-    && flex_optional_decimal_at_least(d: offer.inet_down, min: flex_vast_mbps(b: filters.inet_down_min))
-    && offer.gpu_ram >= flex_vast_mb(b: filters.gpu_ram_min)
-    && host.cpu_ram >= flex_vast_mb(b: filters.cpu_ram_min)
+    && flex_optional_decimal_at_least(d: offer.inet_down, min: vast_ai_wire_mbps(b: filters.inet_down_min))
+    && offer.gpu_ram >= vast_ai_wire_mb(b: filters.gpu_ram_min)
+    && host.cpu_ram >= vast_ai_wire_mb(b: filters.cpu_ram_min)
     && (!filters.verified || offer.verification == "verified")
 }
 
