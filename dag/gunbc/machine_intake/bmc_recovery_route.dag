@@ -45,6 +45,7 @@ import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
 // three fields.
 import extdeps.bmc.ipmi_channel {
   IpmiUserId, IpmiChannelNumber, IpmiChannelPrivilegeLimit, IpmiPrivilegeAdministrator,
+  IpmiPrivilegeOperator, IpmiPrivilegeNoAccess,
   IpmiUserChannelAccess, ipmi_user_channel_access,
 }
 import extdeps.bmc.redfish {
@@ -2844,6 +2845,357 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
         RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: _ } => true
         RescueHostUnreachable { cause: _ } => false
       })
+}
+
+// THE ADMITTED CHANNEL FIXTURE, SHARED BY THE EIGHT PER-ARM CLAIMS BELOW.
+//
+// WHY A FIXTURE AND NOT EIGHT COPIES. Each claim below changes ONE field of an observation that the
+// admission admits, and requires the ONE refusal that field causes. For that to mean anything the rest
+// of the observation has to be exactly the admitted one, eight times over; nine copies of nine fields
+// is nine ways for two of them to drift apart and for a claim to go green while testing nothing. The
+// control half of every claim is the unmodified fixture, so a claim cannot pass because the fixture
+// itself was broken -- that half would be red.
+type AdmittedChannelFixture {
+  observation: InBandChannelObservation
+  reachability: RescueHostReachability
+}
+
+fn recovery_admitted_channel_fixture() -> AdmittedChannelFixture {
+  AdmittedChannelFixture {
+    observation: InBandChannelObservation {
+      subject: recovery_test_subject(),
+      rescue_host_address: recovery_rescue_host_address(),
+      device_node: recovery_ipmi_device_node,
+      kernel_modules: recovery_ipmi_kernel_modules,
+      channel: InBandChannelPasswordless { transport: OpenIpmiDriver },
+      administrator: recovery_administrator_account(),
+      evidence: recovery_inband_channel_capture_ref,
+      observed_at: recovery_inband_channel_instant(),
+      device_node_created_at: recovery_device_node_creation_instant(),
+    },
+    reachability: rescue_host_reachable(
+      address: recovery_rescue_host_address(),
+      ssh_port: openssh_standard_port,
+      ipmi: recovery_complete_ipmi_presence(),
+      medium: recovery_usb_medium(),
+    ),
+  }
+}
+
+// THE REST OF THE OBSERVATION, UNCHANGED. Every perturbed claim writes the nine fields explicitly,
+// taking eight of them from the fixture, so the field under test is the only visible difference
+// between the claim's observation and the admitted one.
+fn channel_carries_credential(word: IpmiArgvCredentialOption) -> InBandAccessWithoutCredential {
+  InBandChannelCredentialCarriedOnArgv { transport: OpenIpmiDriver, credential_option: word }
+}
+
+fn channel_account_at(
+  fixture: AdmittedChannelFixture,
+  privilege: IpmiChannelPrivilegeLimit,
+) -> InBandAdministratorAccount {
+  InBandAdministratorAccount {
+    access: ipmi_user_channel_access(channel: 1, user: 1, privilege: privilege),
+    evidence: fixture.observation.administrator.evidence,
+  }
+}
+
+fn recovery_perturbed_channel_observation(
+  fixture: AdmittedChannelFixture,
+  rescue_host_address: Ipv4Address,
+  device_node: IpmiDeviceNode,
+  kernel_modules: List<LinuxKernelModuleName>,
+  channel: InBandAccessWithoutCredential,
+  administrator: InBandAdministratorAccount,
+  observed_at: CapturedInstant,
+  device_node_created_at: CapturedInstant,
+) -> InBandChannelObservation {
+  InBandChannelObservation {
+    subject: fixture.observation.subject,
+    rescue_host_address: rescue_host_address,
+    device_node: device_node,
+    kernel_modules: kernel_modules,
+    channel: channel,
+    administrator: administrator,
+    evidence: fixture.observation.evidence,
+    observed_at: observed_at,
+    device_node_created_at: device_node_created_at,
+  }
+}
+
+// NO RESCUE HOST REFUSES THE CHANNEL, AND THE ARM SAYS IT WAS THE HOST. An observation that passes every
+// channel test still admits nothing when the host it was read on is not reachable: the reading would be
+// bytes from a machine nobody reached. The control is the same observation against a reachable host.
+test fn a_channel_read_on_a_host_nobody_reached_admits_nothing() -> Bool {
+  let f = recovery_admitted_channel_fixture()
+  let unreachable = RescueHostUnreachable {
+    cause: NoRescueHostAddressResponded {
+      address: recovery_rescue_host_address(),
+      ssh_port: openssh_standard_port,
+    },
+  }
+  (match in_band_channel_admission(observation: f.observation, reachability: unreachable) {
+    ChannelAdmits => false
+    ChannelRefused { reason: reason } => reason == AbsenceNoRescueHost
+  })
+    && (match in_band_channel_admission(observation: f.observation, reachability: f.reachability) {
+      ChannelAdmits => true
+      ChannelRefused { reason: _ } => false
+    })
+}
+
+// A CHANNEL THAT CARRIED A CREDENTIAL IS REFUSED WITH THE WORD THAT CARRIED IT. The option name has to
+// survive into the refusal: an operator told "your channel carried a credential" needs to know which word
+// to delete from the invocation, and the parse already knew, so throwing it away would be a second loss
+// of a fact the model carries. -P and -E are checked apart because they are different arms.
+test fn the_credential_bearing_channel_names_the_option_that_carried_it() -> Bool {
+  let f = recovery_admitted_channel_fixture()
+  (match in_band_channel_admission(
+    observation: recovery_perturbed_channel_observation(
+      fixture: f,
+      rescue_host_address: f.observation.rescue_host_address,
+      device_node: f.observation.device_node,
+      kernel_modules: f.observation.kernel_modules,
+      channel: channel_carries_credential(IpmiArgvPassword),
+      administrator: f.observation.administrator,
+      observed_at: f.observation.observed_at,
+      device_node_created_at: f.observation.device_node_created_at,
+    ),
+    reachability: f.reachability,
+  ) {
+    ChannelAdmits => false
+    ChannelRefused { reason: reason } =>
+      reason == AbsenceChannelCarriedCredential { credential_option: IpmiArgvPassword }
+  })
+    // the environment arm is not folded onto the command-line arm: same refusal shape, different word
+    && (match in_band_channel_admission(
+      observation: recovery_perturbed_channel_observation(
+        fixture: f,
+        rescue_host_address: f.observation.rescue_host_address,
+        device_node: f.observation.device_node,
+        kernel_modules: f.observation.kernel_modules,
+        channel: channel_carries_credential(IpmiArgvPasswordFromEnv),
+        administrator: f.observation.administrator,
+        observed_at: f.observation.observed_at,
+        device_node_created_at: f.observation.device_node_created_at,
+      ),
+      reachability: f.reachability,
+    ) {
+      ChannelAdmits => false
+      ChannelRefused { reason: reason } =>
+        reason == AbsenceChannelCarriedCredential { credential_option: IpmiArgvPasswordFromEnv }
+    })
+    && (match in_band_channel_admission(observation: f.observation, reachability: f.reachability) {
+      ChannelAdmits => true
+      ChannelRefused { reason: _ } => false
+    })
+}
+
+// A CHANNEL THAT WAS NEVER READ KEEPS THE CAUSE THE PARSE FOUND. This is the arm review 82692 turned on:
+// the six parse refusals used to be flattened into one prose string, so a reader could not tell "no -I"
+// from "-I named an out-of-band transport". Each is checked to arrive as itself, with its own payload.
+test fn a_channel_never_read_carries_the_parse_refusal_that_caused_it() -> Bool {
+  let f = recovery_admitted_channel_fixture()
+  let out_of_band = RefusalTransportOutOfBand {
+    wire: "lanplus",
+    why_not_in_band: "lanplus reaches the BMC over the network from another machine" as NonEmptyStr,
+  }
+  let transport_absent = RefusalTransportAbsent {
+    why: "no -I was given, so ipmitool would fall back to the build-time default interface" as NonEmptyStr,
+  }
+  (match in_band_channel_admission(
+    observation: recovery_perturbed_channel_observation(
+      fixture: f,
+      rescue_host_address: f.observation.rescue_host_address,
+      device_node: f.observation.device_node,
+      kernel_modules: f.observation.kernel_modules,
+      channel: InBandChannelNotObserved { refusal: out_of_band },
+      administrator: f.observation.administrator,
+      observed_at: f.observation.observed_at,
+      device_node_created_at: f.observation.device_node_created_at,
+    ),
+    reachability: f.reachability,
+  ) {
+    ChannelAdmits => false
+    ChannelRefused { reason: reason } => reason == AbsenceChannelNeverRead { refusal: out_of_band }
+  })
+    // a DIFFERENT cause has to arrive DIFFERENTLY: if the two were collapsed, one of these two halves
+    // would be comparing against the wrong refusal and go red rather than agreeing.
+    && (match in_band_channel_admission(
+      observation: recovery_perturbed_channel_observation(
+        fixture: f,
+        rescue_host_address: f.observation.rescue_host_address,
+        device_node: f.observation.device_node,
+        kernel_modules: f.observation.kernel_modules,
+        channel: InBandChannelNotObserved { refusal: transport_absent },
+        administrator: f.observation.administrator,
+        observed_at: f.observation.observed_at,
+        device_node_created_at: f.observation.device_node_created_at,
+      ),
+      reachability: f.reachability,
+    ) {
+      ChannelAdmits => false
+      ChannelRefused { reason: reason } => reason == AbsenceChannelNeverRead { refusal: transport_absent }
+    })
+    && (match in_band_channel_admission(observation: f.observation, reachability: f.reachability) {
+      ChannelAdmits => true
+      ChannelRefused { reason: _ } => false
+    })
+}
+
+// AN ACCOUNT THAT IS NOT ADMINISTRATOR IS REFUSED WITH WHAT WAS REPORTED. The six published privilege
+// levels must not collapse to one bit: NO ACCESS and OPERATOR are different diagnoses, and the byte the
+// controller printed exists, so the arm carries it.
+test fn an_account_that_is_not_administrator_names_the_privilege_it_reported() -> Bool {
+  let f = recovery_admitted_channel_fixture()
+  (match in_band_channel_admission(
+    observation: recovery_perturbed_channel_observation(
+      fixture: f,
+      rescue_host_address: f.observation.rescue_host_address,
+      device_node: f.observation.device_node,
+      kernel_modules: f.observation.kernel_modules,
+      channel: f.observation.channel,
+      administrator: channel_account_at(fixture: f, privilege: IpmiPrivilegeOperator),
+      observed_at: f.observation.observed_at,
+      device_node_created_at: f.observation.device_node_created_at,
+    ),
+    reachability: f.reachability,
+  ) {
+    ChannelAdmits => false
+    ChannelRefused { reason: reason } =>
+      reason == AbsenceAccountIsNotAdministrator { reported: IpmiPrivilegeOperator }
+  })
+    // NO ACCESS is not the same refusal as OPERATOR -- this is the collapse the old Bool made
+    && (match in_band_channel_admission(
+      observation: recovery_perturbed_channel_observation(
+        fixture: f,
+        rescue_host_address: f.observation.rescue_host_address,
+        device_node: f.observation.device_node,
+        kernel_modules: f.observation.kernel_modules,
+        channel: f.observation.channel,
+        administrator: channel_account_at(fixture: f, privilege: IpmiPrivilegeNoAccess),
+        observed_at: f.observation.observed_at,
+        device_node_created_at: f.observation.device_node_created_at,
+      ),
+      reachability: f.reachability,
+    ) {
+      ChannelAdmits => false
+      ChannelRefused { reason: reason } =>
+        reason == AbsenceAccountIsNotAdministrator { reported: IpmiPrivilegeNoAccess }
+    })
+    && (match in_band_channel_admission(observation: f.observation, reachability: f.reachability) {
+      ChannelAdmits => true
+      ChannelRefused { reason: _ } => false
+    })
+}
+
+// THE DEVICE NODE IS CHECKED AGAINST THE PRESENCE THE SSH SESSION REPORTED, NOT AGAINST NOTHING. The
+// fixture reads /dev/ipmi0; an observation naming /dev/ipmi1 is a different interface, and the admission
+// has to say so by arm. The control is the same observation with the node the session reported.
+test fn a_channel_read_through_a_different_device_node_is_refused_by_that_arm() -> Bool {
+  let f = recovery_admitted_channel_fixture()
+  (match in_band_channel_admission(
+    observation: recovery_perturbed_channel_observation(
+      fixture: f,
+      rescue_host_address: f.observation.rescue_host_address,
+      device_node: IpmiDevIpmiNode { device_number: 1 },
+      kernel_modules: f.observation.kernel_modules,
+      channel: f.observation.channel,
+      administrator: f.observation.administrator,
+      observed_at: f.observation.observed_at,
+      device_node_created_at: f.observation.device_node_created_at,
+    ),
+    reachability: f.reachability,
+  ) {
+    ChannelAdmits => false
+    ChannelRefused { reason: reason } => reason == AbsenceDeviceNodeDisagrees
+  })
+    && (match in_band_channel_admission(observation: f.observation, reachability: f.reachability) {
+      ChannelAdmits => true
+      ChannelRefused { reason: _ } => false
+    })
+}
+
+// THE READING HAS TO FOLLOW THE NODE, NOT PRECEDE IT. The device node is created when the in-band driver
+// binds, so a channel reading stamped BEFORE the node existed was not read through that node -- it is a
+// row from some other moment. The claim swaps the two times and requires the ordering arm; the unswapped
+// pair admits. (This is the ordering the artifact README states: the node's mtime is earlier than the
+// re-capture, so the admitted direction is the one the bytes actually show.)
+test fn a_channel_reading_stamped_before_the_device_node_existed_is_refused() -> Bool {
+  let f = recovery_admitted_channel_fixture()
+  (match in_band_channel_admission(
+    observation: recovery_perturbed_channel_observation(
+      fixture: f,
+      rescue_host_address: f.observation.rescue_host_address,
+      device_node: f.observation.device_node,
+      kernel_modules: f.observation.kernel_modules,
+      channel: f.observation.channel,
+      administrator: f.observation.administrator,
+      observed_at: recovery_device_node_creation_instant(),
+      device_node_created_at: recovery_inband_channel_instant(),
+    ),
+    reachability: f.reachability,
+  ) {
+    ChannelAdmits => false
+    ChannelRefused { reason: reason } => reason == AbsenceNodeCreatedAfterTheReading
+  })
+    && (match in_band_channel_admission(observation: f.observation, reachability: f.reachability) {
+      ChannelAdmits => true
+      ChannelRefused { reason: _ } => false
+    })
+}
+
+// THE MODULE SETS ARE COMPARED BOTH WAYS, SO NEITHER AN ABSENCE NOR AN ADDITION ADMITS. The channel is
+// read through the loaded modules; a host that reports a module the reading does not have, or one the
+// reading has and the host lacks, means the reading and the session are not the same machine state. The
+// extra name below is one the rescue image does not carry at all, so its presence is unambiguous.
+test fn a_channel_whose_modules_differ_from_the_hosts_are_refused() -> Bool {
+  let f = recovery_admitted_channel_fixture()
+  let extra: List<LinuxKernelModuleName> = [
+    "ipmi_ssif",
+    "ipmi_devintf",
+    "ipmi_msghandler",
+    "acpi_ipmi",
+    "ipmi_watchdog",
+  ]
+  let short: List<LinuxKernelModuleName> = ["ipmi_ssif", "ipmi_devintf", "ipmi_msghandler"]
+  (match in_band_channel_admission(
+    observation: recovery_perturbed_channel_observation(
+      fixture: f,
+      rescue_host_address: f.observation.rescue_host_address,
+      device_node: f.observation.device_node,
+      kernel_modules: extra,
+      channel: f.observation.channel,
+      administrator: f.observation.administrator,
+      observed_at: f.observation.observed_at,
+      device_node_created_at: f.observation.device_node_created_at,
+    ),
+    reachability: f.reachability,
+  ) {
+    ChannelAdmits => false
+    ChannelRefused { reason: reason } => reason == AbsenceKernelModulesDisagree
+  })
+    // the other direction: the reading is MISSING a module the session reported, which is a different
+    // mismatch and the guard compares both ways, so this half has to refuse too
+    && (match in_band_channel_admission(
+      observation: recovery_perturbed_channel_observation(
+        fixture: f,
+        rescue_host_address: f.observation.rescue_host_address,
+        device_node: f.observation.device_node,
+        kernel_modules: short,
+        channel: f.observation.channel,
+        administrator: f.observation.administrator,
+        observed_at: f.observation.observed_at,
+        device_node_created_at: f.observation.device_node_created_at,
+      ),
+      reachability: f.reachability,
+    ) {
+      ChannelAdmits => false
+      ChannelRefused { reason: reason } => reason == AbsenceKernelModulesDisagree
+    })
+    && (match in_band_channel_admission(observation: f.observation, reachability: f.reachability) {
+      ChannelAdmits => true
+      ChannelRefused { reason: _ } => false
+    })
 }
 
 // THE CREDENTIAL DECISION IS MADE BY THE PARSE, AND THE ADMITTED ARM CANNOT HOLD A CREDENTIAL. Parts, each
