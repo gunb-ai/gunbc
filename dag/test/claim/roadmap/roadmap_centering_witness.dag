@@ -152,9 +152,14 @@ test fn the_preamble_does_not_restate_how_to_test() -> Bool {
 
 // THE SHELL->DAG MIGRATION BATCH 1 ROWS (operator ruling 2026-09-20), read from the live authority:
 // each of the ten rows carries its plan on the row, and the plan renders into that node's brief.
+// AMENDED 2026-10-19 (Charter 2 retained_shell_script carve): the batch originally held ten rows.
+// shell-dag-floor-peak-calibration-rows is withdrawn here rather than completed -- its acceptance
+// artifact (dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness.dag) and its subject
+// (v2.workflow.ci_floor_peak_emit) were both measured to have NO consumer outside their own two
+// witnesses, so they are deleted as dangling under DESIGN 3c and the ticket's bar can no longer be
+// met by anything that exists. The other nine rows are the operator's batch, unchanged.
 data shell_dag_migration_node_ids: List<String> = [
   "shell-dag-cron-entry-line-builder",
-  "shell-dag-floor-peak-calibration-rows",
   "shell-dag-ci-fmt-gate-line",
   "shell-dag-ci-deploy-invoke-prelude",
   "shell-dag-ci-heal-regen-invoke",
@@ -175,7 +180,7 @@ fn declared_row_centered_and_rendered(id: String) -> Bool {
   }
 }
 
-test fn the_ten_shell_dag_migration_nodes_are_centered_and_render() -> Bool {
-  count(shell_dag_migration_node_ids) == 10
+test fn the_nine_shell_dag_migration_nodes_are_centered_and_render() -> Bool {
+  count(shell_dag_migration_node_ids) == 9
     && all(shell_dag_migration_node_ids, id => declared_row_centered_and_rendered(id: id))
 }

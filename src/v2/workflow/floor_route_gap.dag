@@ -240,14 +240,6 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.parse.parse_witness_perf_holds",
       tail: Cons {
-      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_observed_shell_holds",
-      tail: Cons {
-      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_ambiguous_shell_holds",
-      tail: Cons {
-      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_malformed_shell_holds",
-      tail: Cons {
-      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_missing_shell_holds",
-      tail:  Cons {
       head: "test.claim.random_bytes_csprng_witness.random_bytes_base64url_mint_16_length_holds",
       tail: Cons {
       head: "test.claim.random_bytes_csprng_witness.random_bytes_base64url_mint_20_length_holds",
@@ -286,10 +278,6 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds",
       tail: Empty {}
-    }
-    }
-    }
-    }
     }
     }
     }

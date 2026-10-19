@@ -41,8 +41,12 @@ fn dirname_ascent(path: PathIntent, target: NonEmptyStr) -> DirnameAscent {
 // stopping before stop_before, until relative_entry exists at expected_kind. start is PathRefStart
 // — the PathIntent.PathRef carrier shape only; PathLiteral and PathJoin are unwritable at
 // construction so nearest_ancestor_walk_target never fabricates a bash variable name. The procfs
-// membership assign that seeds start is lowered by v2.extdeps.languages.bash_proc_self_cgroup from
-// extdeps.linux.proc_self_cgroup semantics.
+// membership assign that seeds start WAS lowered by v2.extdeps.languages.bash_proc_self_cgroup; that
+// emitter was deleted (Charter 2 carve, 2026-10-19) as a bridge with no production caller, so the
+// typed reader extdeps.linux.proc_self_cgroup read_unified_cgroup_membership is now the only
+// realization of this intent's meaning. The three lowering fns below stay: they are the typed model
+// of the ascent, not shell -- see the PR body's follow-up note that they currently have no production
+// consumer.
 
 type PathRefStart {
   name: NonEmptyStr
