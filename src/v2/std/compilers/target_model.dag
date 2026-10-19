@@ -15905,17 +15905,12 @@ fn target_project_callable_arg_in_arrow_scope(
     Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
     Absent =>
   match arg.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      bind_outcome(
-        o: target_value_expr_arrow_body_scope_binding(
-          arrow: arrow,
-          body: body,
-          binding: id,
-          target: target
-        ),
-        f: fn(scoped) {
-          outcome_accepted(target_value_expression_binding_ref(binding: scoped))
-        }
+    TypeNode { connective: Atom { identity: _ } } =>
+      target_value_expr_project_atom_in_arrow_scope(
+        arrow: arrow,
+        node: arg,
+        target: target,
+        source_bool_form: source_bool_form
       )
     TypeNode { connective: Conj } => target_project_callable_arg_in_arrow_scope_otherwise(arrow: arrow, arg: arg, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
     TypeNode { connective: Disj } => target_project_callable_arg_in_arrow_scope_otherwise(arrow: arrow, arg: arg, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
