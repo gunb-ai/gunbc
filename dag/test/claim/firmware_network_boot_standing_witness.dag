@@ -1595,15 +1595,19 @@ test fn a_one_shot_row_consumes_its_own_existing_option_prerequisite() -> Bool {
     && match bind_route_from(
          route: UefiShellOverSol {
            sol_channel: "ttyS4",
-           shell_script: "fs0:\\netboot\snponly.efi",
+           shell_script: "ipxe/snponly.efi",
            authority: witness_authority,
          },
          redirect_to: RedirectTargetAbsent { why: "not a redirect blocker" },
          existence: nothing_exists,
          observed_bios_version: Absent,
        ) {
-         RouteBound { route: _ } => true
-         RouteBound { route: RedfishOneShotOverride { service_root: _, authority: _ } } => false
+         // THE ROW TYPE IS ASSERTED, not merely 'something bound': a `_` here would be matched first
+         // and leave any specific arm below it dead code, which is the same defect I keep finding.
+         RouteBound {
+           route: UefiShellOverSol { sol_channel: c, shell_script: script, authority: _ },
+         } => c == "ttyS4" && script == "ipxe/snponly.efi"
+         RouteBound { route: _ } => false
          BindingRefused { refusal: _ } => false
        }
 }
