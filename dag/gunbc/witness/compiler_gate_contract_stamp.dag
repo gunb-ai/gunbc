@@ -18,7 +18,7 @@ import v2.cli.population_verb_names { cli_verb_parse_population }
 import extdeps.github.actions { Step, RunStep }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlMapping, YamlString }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
-// THE GUARD IS BUILT AS NODES AND RENDERED, never joined from strings (review 82001, manager
+// THE GUARD IS BUILT AS NODES AND RENDERED, never joined from strings (ruling from
 // ruling). These are the same three modules the memory guard and the toolchain isolation carrier
 // import: a builder for the tree, the emitter that renders it, and the dissolution vocabulary for
 // the marker that names when this carrier can be deleted.
@@ -475,7 +475,7 @@ fn compiler_gate_contract_stamp_awk_program() -> String {
   )
 }
 
-// THE GUARD IS A NODE TREE, NOT A STRING. Manager ruling on review 82001: "build the step as
+// THE GUARD IS A NODE TREE, NOT A STRING. RULING ON THIS CARRIER, as given: "build the step as
 // nodes, not strings ... use that same route for the guard so no shell syntax is hand-joined.
 // Inside the awk program, it is acceptable if it is a single typed argument rather than spliced
 // text." So every STATEMENT here -- both tests, every printf, every exit, the two assignments --
@@ -743,7 +743,7 @@ fn compiler_gate_contract_stamp_guard_script_is_renderable() -> Bool {
     Accepted { value: script, diagnostics: _ } =>
       // THE MARKER AND THE REFUSALS SURVIVE RENDERING. Checked here, in the path that produces
       // the committed artifact, and not only in the witness: a marker that a later refactor
-      // drops would otherwise reopen exactly the unmarked-runner defect review 82001 named.
+      // drops would otherwise reopen exactly the unmarked-runner defect this carrier exists to close.
       !string_contains(s: script, pattern: compiler_gate_contract_stamp_emit_refused_poison)
         && string_contains(s: script, pattern: "dissolve-on: ")
         && string_contains(s: script, pattern: "exit 1")
@@ -776,29 +776,13 @@ fn compiler_gate_contract_stamp_guard_step() -> Step {
 // ================================================================================================
 // THE EVIDENCE IS ENROLLED, NOT ANECDOTAL.
 //
-// Review 82145 (claude/opus[1m], REQUEST_CHANGES) filed two blocking findings against
-// test/compiler_gate_contract_stamp/run_evidence.sh, and both are correct as filed:
-//
-//   (1) it is new hand-written shell with no modeled `.dag` authority and no dissolution marker;
-//   (2) NOTHING RUNS IT -- `git grep -n run_evidence` matched only my own fixtures/README.md, so
-//       the RED and the five controls existed only as something I ran by hand and reported.
-//
-// Finding (2) is the more serious of the two and it indicts my own reporting: DESIGN section 4b(4)
-// says the discriminating RED and its positive control must STAY ENROLLED, and section 5 says done
-// means "a real consumer green by execution plus a discriminating input that goes red when the
-// behavior is wrong". Evidence I executed once in a terminal and then described in prose is
-// ATTESTED, not enrolled -- and attestation is precisely the thing the class row this PR answers was
-// full of ("no silent wrongness here"). The fix is not a better write-up.
-//
-// WHAT IS NOW MODELED, AND WHAT IS NOT. The case table -- which cases exist, which subject each
-// reads, what exit code and which diagnostic each must produce -- is derived here, in .dag, and is
-// the SINGLE AUTHORITY for it (section 3: interface, realization, policy). The emitted step (below)
-// carries those expectations INTO the job, and a witness claim reads the committed runner back and
-// refuses if its run_case lines have drifted from these rows. What remains in bash is the act of
-// SPAWNING A PROCESS and reading its exit code and stdout: no capability for that exists in the
-// substrate (src/v2 and dag/ expose no process-exec surface -- dag/std/process.dag models an exit
-// VALUE, not an exec), so that part is not "semantics expressible in .dag" that was skipped; it is a
-// missing capability, which is what the trigger below names.
+// The case table -- which cases exist, which subject each reads, what exit code and which diagnostic
+// each must produce -- is derived here, in .dag, and is the SINGLE AUTHORITY for it (section 3:
+// interface, realization, policy). The emitted step carries those expectations INTO the required job,
+// and the harness refuses locally if the committed runner's invocations have drifted from these rows.
+// What remains in bash is the act of SPAWNING A PROCESS and reading its exit code and stdout inside a
+// step that runs before any candidate binary exists; the residual and its two dissolution triggers are
+// stated on the carrier itself, at test/compiler_gate_contract_stamp/run_evidence.sh, and nowhere else.
 //
 // THE SUBJECT IS A SYMBOL, NOT A PATH, on purpose. `fixture` / `committed` / `rewritten` / `demoted`
 // name WHERE THE TREE COMES FROM; the runner binds each to a real file. A path in the model would be
@@ -928,7 +912,7 @@ data compiler_gate_contract_stamp_evidence_shell_emit_scaffold: Disposition = Sc
   }
 }
 
-data compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compiler_gate_contract_stamp_evidence_statements -- the case TABLE, the expected exit codes and the expected findings are already modeled in .dag (compiler_gate_contract_stamp_evidence_cases), and the generated step hands them to the harness as argv; what remains here is spawning the guard and reading its exit status INSIDE A STEP ON THE REQUIRED PATH. NOT a missing exec capability: shell.Exec.RunArgv exists (extdeps/shell/exec.dag, ProcessObservation carrying exit_code, stdout and stderr) and is callable from a test fn (test/claim/machine_intake/fan_observe_witness.dag:297). Dissolves on the trigger of gunbc.rung_drop v1_required_lanes_withdrawn -- its restoration_trigger is exactly this capability: on every landing revision, a binary built from an emission of v2 judges this population on the required path with a discriminating red. Until that drop is retired nothing on the required path evaluates a witness (the drop records it; DESIGN 3c/4b call it the declared drop), so the only pull_request workflows, heal.yml and witnesses.yml, invoke no test fn: heal runs claim_executor --regen-round-cost, an instrument its own source places outside //:required, plus three plain-fn entry points, and the instrument that runs `gunbc test <label>` is workflow_dispatch-only. WHEN THAT DROP IS RETIRED, these rows become a `gunbc test` row in gunbc.instrument_targets and this step dissolves into it, so the runner and the drop retire together rather than separately. Moving the cases into a claim NOW would put them in the very population that drop says is unjudged -- de-enrolment, the defect review 82145 filed as blocking, not dissolution.")
+data compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compiler_gate_contract_stamp_evidence_statements -- bash-node carrier that invokes the contract-stamp evidence harness, one command node per modelled case row; dissolves on either of two capabilities, naming different halves: orch-emitted node kinds in v2.extdeps.languages.bash_build for extraction, structural scanning and argv driving (which retire the residual SHELL), or gunbc.rung_drop v1_required_lanes_withdrawn's restoration_trigger, which retires the residual TEST PROCESS by making these rows a `gunbc test` row evaluated on the required path.")
 
 data compiler_gate_contract_stamp_evidence_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ gunbc contract stamp evidence emission was rejected by v2.workflow.bash_emit: the case table's bash node tree could not be rendered. This literal must never reach a committed workflow; the generation gate refuses instead."
 
@@ -1006,23 +990,7 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
         ]
       )
     ),
-    // THE VERDICT CHANNELS ARE PER-RUN TOO (review 82230). The count was keyed to the run identity but
-    // the MARKER was not, and the marker is the channel that carries failure: with fixed /tmp names,
-    // slot A leaves a marker, slot B's --prepare deletes it before A reads it, A exits green with a
-    // failed case. A silent widen is a hard reject under DESIGN 5, and this job already admits slots
-    // share a host -- "Isolate toolchain homes" exists because "concurrent runner slots stop sharing
-    // one toolchain". The old text in this comment claimed clearing the marker here protected the run;
-    // it protected a REUSED runner and exposed a CONCURRENT one.
-    //
-    // RUNNER_TEMP is Actions' per-job scratch; GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT makes it per-ATTEMPT,
-    // because a retried job reuses RUNNER_TEMP. Both assignment values are built from var words, so
-    // the serializer renders them as "$RUNNER_TEMP"'/x' (the fleet-converge axis block is the golden)
-    // instead of a literal that could never expand.
-    // THE TOKEN MUST EXIST BEFORE ANYTHING IS KEYED TO IT. Outside Actions -- the step's bytes run by
-    // hand -- both vars are unset and the token degenerates to the single character "-", which a
-    // transcript full of hyphens would satisfy, and the per-run DIRECTORY would degenerate the same
-    // way. Checked here, at the top, rather than in the count at the bottom: the directory and both
-    // verdict channels are derived from the token, so an empty one must be refused before it is used.
+
     bash_build_if_from_stmts(
       cond: bash_build_test_bracket(
         words: [
@@ -1050,14 +1018,11 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
         bash_build_exit(code: "1")
       ]
     ),
-    // THE VERDICT CHANNELS ARE PER-RUN TOO (review 82230, claude/opus[1m], REQUEST_CHANGES). The count
-    // was keyed to the run identity but the MARKER was not, and the marker is the channel that carries
-    // FAILURE: with fixed /tmp names, slot A leaves a marker, slot B's --prepare deletes it before A
-    // reads it, and A exits green with a failed case. Run the interleaving the other way and a stale
-    // marker reddens a clean run. A silent widen is a hard reject under DESIGN 5, and this very job
-    // admits slots share a host -- "Isolate toolchain homes" exists because "concurrent runner slots
-    // stop sharing one toolchain". What the earlier comment here called protection (clearing the marker
-    // in --prepare) protected a REUSED runner and exposed a CONCURRENT one.
+    // THE VERDICT CHANNELS ARE PER-RUN. The case count is keyed to the run identity; a channel that is
+    // not keyed to it can be cleared by a neighbour. Concurrent runner slots share a host -- this very
+    // job carries an "Isolate toolchain homes" step because "concurrent runner slots stop sharing one
+    // toolchain" -- so a fixed marker name lets one slot's --prepare delete another slot's failure and
+    // turn a real refusal green. A silent widen is a hard reject under DESIGN 5.
     //
     // RUNNER_TEMP is Actions' per-job scratch and GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT makes it
     // per-ATTEMPT, because a retried job reuses RUNNER_TEMP. Values are built from var words so the
@@ -1298,7 +1263,7 @@ data compiler_gate_contract_stamp_evidence_fail_marker_name: String = "gunbc-con
 // make a partial run look complete.
 data compiler_gate_contract_stamp_evidence_transcript_marker: String = "gunbc-contract-stamp-evidence-case"
 
-// (the fixed /tmp paths this row used to hold were the review 82230 defect; see the var rows above)
+// (a fixed /tmp path here would be the shared-channel defect; see the var rows above)
 
 data compiler_gate_contract_stamp_evidence_verdict_ok: String = "ALL ASSERTIONS HELD"
 

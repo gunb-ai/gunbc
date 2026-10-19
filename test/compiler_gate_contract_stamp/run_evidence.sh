@@ -1,66 +1,42 @@
 #!/usr/bin/env bash
 # Execute the contract-stamp guard against the real bytes, and fail if it does not refuse what it
 # is supposed to refuse.
-# SCAFFOLD - dissolve-on: TWO capabilities, named separately because they retire DIFFERENT halves of
-# this file. Naming only one is what review 82230 filed, and review 82166 filed its mirror image, so the
-# pair is on the record rather than one of them being traded away.
-#   (1) orch-emitted for the RESIDUAL SHELL: the orchestration-to-shell bash-emit capability, i.e. node
-#       kinds in v2.extdeps.languages.bash_build (rendered by v2.workflow.bash_emit / bash_emit_stmts)
-#       for WHAT THIS FILE DOES -- extract a committed workflow member, scan it structurally, drive
-#       argv, invoke awk. Everything this PR could express that way already IS expressed that way: the
-#       guard step and the evidence step are node trees, and that is why they carry dissolve-on lines in
-#       the emitted YAML. What has no node kind is the extraction and the awk program, and that is the
-#       residual sitting in this file. When those node kinds land, this file becomes an emitted step.
-#   (2) gunbc.rung_drop v1_required_lanes_withdrawn for the TEST PROCESS: its restoration_trigger --
-#       "on every landing revision, a binary built from an emission of v2 ... judges this population on
-#       the required path with a discriminating red" -- is the condition under which the modelled rows in
-#       compiler_gate_contract_stamp_evidence_cases become a `gunbc test` row in gunbc.instrument_targets
-#       and run the guard through shell.Exec.RunArgvOutcome. When THAT lands, this file is DELETED rather
-#       than emitted, because nothing needed executing by hand any more.
-# Cited by symbol so carrier and drop retire together rather than separately (manager ruling on review
-# 82166, 2026-10-18). A runner-side pre-build reader of a committed workflow member (GitHub's own
-# workflow_sha) would retire the guard's READ as well; it is not what dissolves the SPAWNING residual.
+# SCAFFOLD - dissolve-on: TWO capabilities, because they retire DIFFERENT halves of this file.
+#   (1) orch-emitted -- for the RESIDUAL SHELL: node kinds in v2.extdeps.languages.bash_build
+#       (rendered by v2.workflow.bash_emit / bash_emit_stmts) for what this file still does by hand:
+#       extract a committed workflow member, scan it structurally, drive argv, invoke awk. Everything
+#       expressible that way already is -- both steps are node trees, which is why they carry
+#       dissolve-on lines in the emitted YAML. When those node kinds land, this file becomes an
+#       emitted step.
+#   (2) gunbc.rung_drop v1_required_lanes_withdrawn -- for the TEST PROCESS: its restoration_trigger is
+#       the condition under which the modelled rows (compiler_gate_contract_stamp_evidence_cases) become
+#       a `gunbc test` row in gunbc.instrument_targets and run the guard through
+#       shell.Exec.RunArgvOutcome. When that lands, this file is DELETED rather than emitted.
+#       Cited by symbol so carrier and drop retire together rather than separately.
 #
-# HONEST STATE OF THE RESIDUAL, corrected after review 82166 (claude/opus[1m]) caught me claiming a
-# capability gap that does not exist. I wrote that "the substrate has no process-exec surface at all"
-# and cited Command::new/ProcessBuilder. THAT WAS FALSE: `git grep -l shell.Exec.Run dag src` returns
-# dag/extdeps/shell/exec.dag, which declares shell.Exec.RunArgv / RunArgvOutcome / RunArgvStdin with
-# ProcessObservation {exit_code, stdout, stderr} -- exactly the spawn-and-observe I said was missing --
-# and dag/test/claim/machine_intake/fan_observe_witness.dag:297 CALLS it from a `test fn`. My grep used
-# the wrong names, and the scaffold's dissolution trigger therefore named a capability that has already
-# landed, which is not an honest trigger (§5: "a dissolution condition describes how admitted debt ends;
-# it does not authorize creating it").
+# WHY THE GUARD IS READ BY THE RUNNER RATHER THAN BY A TYPED READER, and why the RED is a step here
+# rather than a claim row. The guard runs BEFORE any candidate binary exists. The only binary that
+# could read the tree is the tree's own -- the party under suspicion -- and a pre-stamp head does not
+# yet contain the reader module, so a pre-build read is structurally necessary rather than convenient.
+# Spawning itself is not the gap: shell.Exec.RunArgv / RunArgvOutcome exist
+# (dag/extdeps/shell/exec.dag, ProcessObservation carrying exit_code, stdout and stderr) and are
+# callable from a test fn. What is missing is an EVALUATOR of such claims on the required
+# pull_request path: heal.yml runs the claim executor as an instrument, not a gate, and the instrument
+# that runs `gunbc test <label>` is workflow_dispatch-only. A claim would therefore sit off the required
+# path, and the discriminating RED would be attested rather than executed.
 #
-# WHAT I DID ABOUT IT, and why the file is still here. Everything that does NOT need a process has been
-# MOVED into .dag, per §5: which cases exist, which subject each reads, the expected exit code and the
-# expected finding for each are rows (compiler_gate_contract_stamp_evidence_cases in
-# gunbc.witness.compiler_gate_contract_stamp), emitted into the generated step as one command node per
-# row and passed here as argv -- so this file holds NO table that could drift from the model, and no
-# modelling that the .dag route already covers. What remains here is the ACT OF SPAWNING inside a step
-# that runs BEFORE the subject binary is built. The modelled RunArgv route is a claim, and a claim is
-# not executed anywhere on the required pull_request path today: `heal.yml` runs `claim_executor
-# --regen-round-cost` (an instrument, not a gate), and the instrument that executes `gunbc test <label>`
-# rows -- instrument-dispatch.yml:9 -- is `workflow_dispatch`-only. Moving the evidence into claims
-# would therefore move it OFF the required path, which is the exact defect review 82145 filed as
-# blocking ("the RED and its controls were ATTESTED, not enrolled"; §4b(4)). So the residual is
-# retained as an admitted, marked scaffold whose trigger is now an honest capability, and the enrolment
-# stays where it is observable: in the generated witnesses.yml step, on the required path.
-
 # WHO OWNS WHAT. The case TABLE -- which cases exist, which subject each reads, what exit code and
 # which diagnostic each must produce -- is modelled in .dag, at
 # dag/gunbc/witness/compiler_gate_contract_stamp.dag (compiler_gate_contract_stamp_evidence_cases),
 # and it is EMITTED into .github/workflows/witnesses.yml as one command node per row. This script
-# contains no table of expectations, because a second copy of a table is a second authority: review
-# 82145 (claude/opus[1m], REQUEST_CHANGES) filed exactly that as blocking, together with "executed by
-# nothing", and DESIGN section 5 prefers construction over validation -- the emitted bytes should be
-# REQUIRED to agree with the model, not checked against it afterwards.
+# contains no table of expectations, because a second copy of a table is a second authority. The
+# emitted step carries the model's rows INTO the required job, and local mode refuses if the committed
+# runner's invocations have drifted from them: DESIGN section 5 prefers construction over validation,
+# so the emitted bytes are REQUIRED to agree with the model rather than checked against it afterwards.
 #
-# What remains here is the ACT OF SPAWNING inside a step that runs before the subject binary exists --
-# stated once, above, rather than twice: review 82188 (claude/opus[1m], REQUEST_CHANGES) filed as
-# blocking that this header contradicted itself, because this paragraph still asserted the retracted
-# "no Command::new / ProcessBuilder surface anywhere" claim below the correction that says otherwise.
-# A scaffold whose stated reason contradicts itself has no honest dissolution condition (§5), so the
-# duplicate is deleted rather than annotated.
+# What remains here, precisely: the ACT OF SPAWNING inside a step that runs before the subject binary
+# exists. A scaffold whose stated reason contradicts itself has no honest dissolution condition, so the
+# capability position is stated once, above, and nowhere else.
 #
 # THREE MODES
 #   (no args)        LOCAL. Extract the generated step's own bytes from the committed witnesses.yml
@@ -107,7 +83,7 @@ evidence_step_name='- name: Execute the contract-stamp guard against the recorde
 placeholder='${{ env.GUNBC_COMPILER_GATE_CONTRACT_STAMP }}'
 running_probe_token="__FROM_WORKFLOW__"
 case_token_default="gunbc-contract-stamp-evidence-case"
-# THE PATHS ARE PER-RUN, AND DERIVED HERE EXACTLY AS THE MODEL DERIVES THEM (review 82230).
+# THE PATHS ARE PER-RUN, AND DERIVED HERE EXACTLY AS THE MODEL DERIVES THEM.
 # The step passes --transcript/--fail-marker explicitly, so argv normally decides. But local mode and
 # --prepare can be reached without them, and if this file fell back to a FIXED /tmp name while the model
 # used a per-run one, the two spellings of one fact would disagree -- the step would write where this
@@ -150,7 +126,7 @@ if [ -n "$evidence_dir" ]; then
 fi
 transcript="${GUNBC_CONTRACT_STAMP_EVIDENCE_TRANSCRIPT:-${evidence_dir:+$evidence_dir/}gunbc-contract-stamp-evidence.log}"
 fail_marker="${GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER:-${evidence_dir:+$evidence_dir/}gunbc-contract-stamp-evidence.fail}"
-# ONE RULE, EVERY CHANNEL, NO EXEMPTION FOR ARGV (review 82257, claude/opus[1m]).
+# ONE RULE, EVERY CHANNEL, NO EXEMPTION FOR ARGV.
 # Every verdict channel -- transcript or fail marker, however it was obtained -- must live inside the
 # per-run directory. Earlier this file exempted paths handed in as argv, on the reasoning that a caller
 # naming a scratch file is doing something legitimate. That exemption was a HOLE, and the reviewer's
@@ -173,6 +149,19 @@ require_per_run_channels() {
     echo "      marker and turn a real refusal green (reviews 82230, 82257)." >&2
     exit 1
   fi
+  # NEVER INSIDE THE REPO. A transcript that lands in the working tree is a transcript someone commits:
+  # this PR shipped exactly that, an empty gunbc-contract-stamp-evidence.log added by a blanket `git add
+  # -A` after a manual probe (§3c, "a new artifact with no final consumer"). Per-run placement alone did
+  # not prevent it -- the probe simply ran without RUNNER_TEMP, so the fallback landed here. A verdict
+  # channel is scratch data with no consumer, so it is refused inside the tree as well as outside the
+  # per-run directory.
+  case "$1" in
+    "$repo"/*)
+      echo "FAIL: refusing a verdict channel inside the repo tree: '$1'." >&2
+      echo "      Scratch that lives in the working tree gets committed (it already did once)." >&2
+      echo "      Set RUNNER_TEMP (or GUNBC_CONTRACT_STAMP_EVIDENCE_DIR) to a path outside '$repo'." >&2
+      exit 1 ;;
+  esac
   case "$1" in
     "$evidence_dir"/*)
       return 0 ;;
@@ -300,7 +289,7 @@ extract_block "$committed" "$evidence_step_name" > "$tmpdir/evidence_step.sh" \
 extract_block "$committed" "$guard_step_name" > "$guard_template" \
   || bail "could not extract the guard from the committed workflow"
 
-# ONE FACT, TWO SPELLINGS, SO COMPARE THE SPELLINGS (review 82230 follow-up).
+# ONE FACT, TWO SPELLINGS, SO COMPARE THE SPELLINGS.
 # The step gets its channels from model rows via per-run vars; this file derives its own from
 # RUNNER_TEMP + the run identity. If the two derivations ever disagree -- a model row edited, an env
 # override left set -- the step writes to one file while this count reads another, and local mode
@@ -350,7 +339,7 @@ case "$(step_assign GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL)" in
   *) bail "the step's fail-marker leaf differs from this harness's '$fail_name'" ;;
 esac
 # NO FIXED /tmp PATH ANYWHERE IN THE STEP. Concurrent runner slots share /tmp, so a fixed name there is
-# the review 82230 defect regardless of how many other guards are in place.
+# the shared-path defect regardless of how many other guards are in place.
 if grep -q '/tmp/' "$tmpdir/evidence_step.sh"; then
   bail "the modelled evidence step still references a fixed /tmp path -- channels must be per-run"
 fi

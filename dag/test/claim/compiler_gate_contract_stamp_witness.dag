@@ -300,7 +300,7 @@ test fn the_generated_step_has_no_warning_arm_and_no_override_input_holds() -> B
     && string_contains(s: script, pattern: "'[' '-z' \"$STAMP_TREE\" ']'")
     && string_contains(s: script, pattern: "'[' \"$STAMP_TREE\" '!=' \"$STAMP_RUNNING\" ']'")
     && !string_contains(s: script, pattern: "if ! STAMP_TREE=")
-    // DISSOLVED, NOT ABANDONED (review 82001): the carrier names the capability whose arrival makes
+    // DISSOLVED, NOT ABANDONED: the carrier names the capability whose arrival makes
     // it deletable, in the same "# dissolve-on:" form the fleet's other shell carriers use. A marker
     // asserted only by a review comment is a marker that disappears in the next refactor.
     && string_contains(s: script, pattern: "dissolve-on: ")
@@ -525,12 +525,13 @@ test fn the_guard_step_depends_on_nothing_the_checkout_does_not_give_holds() -> 
 }
 
 // ================================================================================================
-// THE EVIDENCE IS ENROLLED. Review 82145 (claude/opus[1m], REQUEST_CHANGES) filed, correctly, that
-// the behavioural evidence was run by nothing: `git grep -n run_evidence` matched only my own
-// fixtures/README.md. DESIGN section 4b(4) requires the discriminating RED and its positive control
-// to STAY ENROLLED, and section 5 requires "a real consumer green by execution plus a discriminating
-// input that goes red". The claims below are what keep that enrolment from decaying back into prose
-// I once ran in a terminal.
+// WHY THESE CLAIMS EXIST. DESIGN section 4b(4) requires the discriminating RED and its positive
+// control to STAY ENROLLED, and section 5 requires "a real consumer green by execution plus a
+// discriminating input that goes red when the behavior is wrong". Evidence executed once in a
+// terminal and then described in prose is ATTESTED, not enrolled, and attestation decays silently:
+// these claims are what makes a missing, mis-ordered or drifted evidence step a refusal rather than
+// a story. Note that no `test fn` is evaluated on the required pull_request path (see the harness's
+// own header), so the guarantee is the generated step; these claims keep it from decaying.
 // ================================================================================================
 
 test fn the_evidence_step_is_enrolled_in_the_required_gate_holds() -> Bool {
@@ -549,7 +550,7 @@ test fn the_evidence_step_carries_the_dissolution_marker_and_refuses_on_the_mark
   string_contains(s: body, pattern: "dissolve-on: ")
     && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_harness_path)
     && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_fail_marker_name)
-    // THE VERDICT CHANNELS ARE PER-RUN (review 82230): concurrent runner slots share /tmp, so a fixed
+    // THE VERDICT CHANNELS ARE PER-RUN: concurrent runner slots share /tmp, so a fixed
     // marker path let one slot's --prepare delete another slot's marker and turn a real refusal green.
     // The step must reference the per-run vars, never a literal /tmp path.
     && string_contains(s: body, pattern: compiler_gate_contract_stamp_evidence_fail_marker_var)
