@@ -14,7 +14,7 @@ import std.optional { Optional, Present, Absent }
 // THE SEAL PROBES RUN THROUGH THE CORPUS'S OWN HARNESS, never a hand-rolled compiler call: it reports
 // blocking diagnostics by class AND subject, so a probe can name WHICH mint refused rather than merely
 // that something refused.
-import gunbc.compile_census_probe { blocking_subject_count_for }
+import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // THE FRONTIER IS WITNESSED, NOT ASSERTED IN PROSE: the witness reads the bound triggers and
 // states what their status is TODAY, so the day the probe lands, this is the thing that changes.
@@ -1253,8 +1253,78 @@ fn fixture_existence_enabled() -> NetworkOptionExistenceStanding {
   network_option_existence(options: good_options())
 }
 
+// THE DISABLED COUNTERPART, DERIVED -- not hand-written. Built from an enumeration holding a PXE
+// option with enabled: false, so this standing can only be what the fold says it is. My first
+// version of the one-shot prerequisite test used fixture_existence_enabled() for its 'disabled'
+// arm, which meant the disabled case was never exercised at all; deriving both from option lists
+// makes the substitution impossible to repeat unnoticed.
+fn fixture_existence_disabled() -> NetworkOptionExistenceStanding {
+  network_option_existence(options: [opt_disabled_pxe(ref_pxe())])
+}
+
 fn fixture_available() -> AvailableNetworkStanding {
   available_network_options(options: good_options())
+}
+
+// EXISTENCE IS NOT DERIVABLE FROM USABILITY, AND THE ATTEMPT IS WHERE THE DIFFERENCE IS DECISION-
+// BEARING (merry-fox-82, round 2 item 2). I published M19 ('answer existence with the usability fold')
+// as EQUIVALENT-BY-CONSTRUCTION. That claim was too broad and it was wrong: it was made over the
+// binder alone, where both Disabled and Enabled satisfy a one-shot's prerequisite and nothing else
+// consults the standing. Widen the interface by one call -- `network_boot_attempt`, which forwards the
+// SAME standing into the SAME binder one layer up -- and the mutant separates:
+//
+//   observation: BootOrder = [NVMe0]; BootOptions = { NVMe0 enabled, PXE DISABLED }
+//   so usability (available_network_options) says NoAvailableNetworkOption, while existence says
+//   NetworkOptionExistsDisabled.
+//     real fold      : the redirect rows refuse (no usable target), the one-shot row binds (an option
+//                    exists, which is all its prerequisite asks) -> AttemptConstructed
+//     usability-derived: existence collapses to NoNetworkOptionExists, the one-shot prerequisite fails,
+//                    every row for this blocker refuses                      -> AttemptRouteUnbound
+//
+// So the equivalence is refused and the interface it was claimed over is named: the claim held for
+// `bind_route_from` in isolation and failed as soon as the standing travelled through `prepare`/
+// `network_boot_attempt`. A mutant is equivalent only relative to an interface; naming the interface
+// is part of the claim, and mine named the narrow one.
+test fn an_attempt_over_a_disabled_option_constructs_where_usability_would_unbind_it() -> Bool {
+  let disabled_options = [opt_disk(ref_disk()), opt_disabled_pxe(ref_pxe())]
+  match network_boot_attempt(
+    blocker: NetworkBootOptionNotSelected,
+    join: join_head_to_options(devices: [disk_entry()], options: disabled_options),
+    available: available_network_options(options: disabled_options),
+    // DERIVED, not hand-written: this is what the real fold concludes about the same list.
+    existence: network_option_existence(options: disabled_options),
+    observed_bios_version: present(version: "1.08"),
+    boot_control: BootControlUnobserved,
+    reset_observed_at: witness_epoch,
+    resulting_dhcp: DhcpOfferObserved { offer_ref: "synthetic-offer" },
+    unit_label: "synthetic-unit",
+  ) {
+    // CONSTRUCTED, on a one-shot: the route that can arm an entry that exists but is neither selected
+    // nor enabled. If existence had been taken from usability this arm would be AttemptRouteUnbound,
+    // which is the other half of the witness -- the mutant's answer, refused by name.
+    AttemptConstructed { attempt: built } =>
+      match built.route {
+        RedfishOneShotOverride { service_root: root, authority: _ } => root == "redfish:Systems/Self"
+        PointUefiBootNext { service_root: _, boot_option: _, authority: _ } => false
+        IpmiOneShotOverride { channel: _, authority: _ } => false
+        _ => false
+      }
+    AttemptBlockerUncataloged { blocker: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+  }
+    // THE FOLD-LEVEL HALF OF THE SAME CLAIM, stated where it is decided: on a list whose only network
+    // option is disabled, existence says an option EXISTS and usability says none is USABLE. If these
+    // two ever agree again, the folds have collapsed into one another and this is the assertion that
+    // says so.
+    && match network_option_existence(options: disabled_options) {
+         NetworkOptionExistsDisabled { examined_count: examined } => examined == 2
+         NoNetworkOptionExists { examined_count: _ } => false
+         NetworkOptionExistsEnabled { examined_count: _ } => false
+       }
+    && match available_network_options(options: disabled_options) {
+         NoAvailableNetworkOption { examined_count: _ } => true
+         AvailableNetworkOptionsPresent { head: _, additional_count: _ } => false
+       }
 }
 
 // THE OBSERVED VERSION, in the shape the mint wants. Named once because a stale-version witness and a
@@ -1576,12 +1646,13 @@ test fn a_one_shot_row_consumes_its_own_existing_option_prerequisite() -> Bool {
          BindingRefused { refusal: _ } => false
        }
     // (b) BINDS WHEN AN OPTION EXISTS BUT IS DISABLED: existence, not usability, is the question a
-    // one-shot asks. fixture_existence_enabled() derives from good_options(), so this arm cannot be
-    // satisfied by a hand-written standing that blesses whatever the fold now answers.
+    // one-shot asks. fixture_existence_disabled() derives from an enumeration whose only network
+    // option carries enabled: false -- so this arm genuinely tests the DISABLED standing. (It used
+    // to call fixture_existence_enabled(), which meant the disabled case was never exercised.)
     && match bind_route_from(
          route: one_shot,
          redirect_to: RedirectTargetAbsent { why: "not a redirect blocker" },
-         existence: fixture_existence_enabled(),
+         existence: fixture_existence_disabled(),
          observed_bios_version: Absent,
        ) {
          RouteBound { route: RedfishOneShotOverride { service_root: s, authority: _ } } =>
@@ -1642,6 +1713,120 @@ test fn the_bios_projection_carries_the_version_it_read_and_invents_none() -> Bo
          Absent => true
          Present { value: _ } => false
        }
+}
+
+// AN OFF-HEAD DISABLED PXE OPTION IS AN EXISTING OPTION, AND THE PUBLIC ENTRY MUST SAY SO
+// (merry-fox-82, round 2 item 1). Observation: BootOrder = [enabled NVMe0], BootOptions = {enabled
+// NVMe0, DISABLED PXE}. The head is a disk, so the head arms do not fire; the PXE option is away
+// from the head and disabled, so usability reports nothing usable. Before the repair this reached
+// the `NoAvailableNetworkOption` arm and answered NetworkBootOptionAbsent -- a blocker whose own
+// definition says the enumeration contains NO network-kind entry, when it plainly contains one --
+// and the catalog then had only the authoring row for that blocker, so the seam told the operator to
+// write BIOS attributes on a board whose only defect was that its existing option was unselected and
+// disabled. The repair asks EXISTENCE, which is kind-only and ignores the flag, for the blocker, and
+// keeps usability as the source of a concrete redirect target. Asserted through the public entry,
+// because that is where an operator sees the answer, with the two neighbours that keep the answer
+// honest: an enabled head with an enabled network option stays Ready, and a unit with no network
+// option at all still authors.
+// THREE SEPARATE TESTS, not one &&-chain: a chained assertion reports one FAIL for three claims and
+// leaves the next reader to guess which conjunct broke. Each claim gets its own name, so one run
+// attributes the failure. (merry-fox-82 round 2 item 1; the shared fixture is `disabled_off_head`.)
+// THE CASE: enabled disk head, DISABLED PXE option away from the head. The answer must be the
+// existing-option blocker -- never NetworkBootOptionAbsent, whose definition says the enumeration
+// contains no network-kind entry when it plainly contains one.
+test fn the_off_head_disabled_option_is_not_answered_as_absent() -> Bool {
+  let disabled_off_head = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [disk_entry()] },
+    boot_options: BootOptionsObserved { options: [opt_disk(ref_disk()), opt_disabled_pxe(ref_pxe())] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  match firmware_network_boot_standing(
+    observation: disabled_off_head,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") },
+  ) {
+    NeedsPreparation {
+      admitted: AdmittedPreparation {
+        route: RedfishOneShotOverride { service_root: root, authority: _ },
+        blocking: NetworkBootOptionNotSelected,
+      },
+    } => root == "redfish:Systems/Self"
+    NeedsPreparation { admitted: AdmittedPreparation { route: _, blocking: NetworkBootOptionAbsent } } => false
+    NeedsPreparation { admitted: _ } => false
+    Ready { conclusion: _ } => false
+    Unobserved { unanswered: _ } => false
+    Refused { cause: _, gaps: _ } => false
+  }
+}
+
+// THE NEIGHBOUR THAT MUST NOT MOVE: the repair must not turn every unit into "not selected".
+test fn an_enabled_head_with_an_enabled_option_stays_ready_after_the_repair() -> Bool {
+  // THE NEIGHBOUR THAT MUST NOT MOVE (merry-fox-82 round 2 item 1): with the network option ENABLED
+  // and at the head, the same fixtures answer Ready. If the repair had collapsed every state into
+  // 'not selected', this is the test that goes red. boot_target is the Redfish target enum, not a
+  // reference string: the control asserts the unit will boot a PXE target, which is the point.
+  match standing_of(good_observation()) {
+    Ready {
+      conclusion: AdmittedReadyConclusion {
+        firmware_mode: _,
+        network_interface: _,
+        boot_target: BootTargetPxe,
+        evidence: _,
+      },
+    } => true
+    Ready { conclusion: _ } => false
+    NeedsPreparation { admitted: _ } => false
+    Unobserved { unanswered: _ } => false
+    Refused { cause: _, gaps: _ } => false
+  }
+}
+
+// THE OTHER NEIGHBOUR THAT MUST NOT MOVE (merry-fox-82 round 2 item 1). Remove the network option
+// entirely and the answer is still the authoring path -- the repair must not have swallowed the
+// genuine absence case, which is the only state whose definition actually says 'no network-kind entry
+// in the enumeration'.
+test fn a_unit_with_no_network_option_still_authors_after_the_repair() -> Bool {
+  match standing_of(
+    firmware_boot_observation(
+      boot_order: BootOrderObserved { devices: [disk_entry()] },
+      boot_options: BootOptionsObserved { options: [opt_disk(ref_disk())] },
+      nics: NicsObserved { nics: ["eth0"] },
+      secure_boot: SecureBootDisabled,
+      bios_version: BiosVersionObserved { version: "1.08" },
+    ),
+  ) {
+    // THE AUTHORING PATH, AT THE RUNG THE CATALOG ACTUALLY SUPPORTS. The catalog's only row for
+    // NetworkBootOptionAbsent is EnableNetworkStack, whose attribute name is an unbound slot, so the
+    // public entry answers a refusal that NAMES the authoring mechanism (fail-closed: this module will
+    // not emit a BIOS write it cannot name). That is still the authoring answer -- the routing chose the
+    // author row -- and asserting the mechanism is what distinguishes it from the redirect answer the
+    // neighbouring state gets. Asserting NeedsPreparation here instead would be expecting a rung the
+    // corpus has not earned yet; when the name is read in, this arm moves to a bound EnableNetworkStack.
+    NeedsPreparation {
+      admitted: AdmittedPreparation { route: _, blocking: NetworkBootOptionAbsent },
+    } => true
+    // NEVER THE DISABLED-CASE ANSWER. The whole point of the repair is that these two states differ, so
+    // this neighbour must not arrive at the redirect/one-shot answer the off-head DISABLED option gets.
+    // Without this arm the test is weak: before the repair this state refused with the authoring name,
+    // and it still refuses with the authoring name, so the refusal arm alone cannot detect a regression.
+    NeedsPreparation {
+      admitted: AdmittedPreparation { route: _, blocking: NetworkBootOptionNotSelected },
+    } => false
+    Refused {
+      cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: owed },
+      gaps: gaps,
+    } =>
+      mechanism == "redfish-bios-network-stack"
+        && string_contains(s: owed, pattern: "redfish:Bios")
+        && length(gaps) == 0
+    NeedsPreparation { admitted: _ } => false
+    Ready { conclusion: _ } => false
+    Unobserved { unanswered: _ } => false
+    Refused { cause: _, gaps: _ } => false
+  }
 }
 
 // THE ROUTE MUST BE ABLE TO FIX WHAT IT CLAIMS IS BLOCKING. A boot order full of
@@ -2004,7 +2189,7 @@ test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
 // call route (may a stranger call the mint and pass its output off as this module's verdict), and
 // merry's specific ask -- legitimate evidence reused with a swapped conclusion.
 
-data verdict_probe_hdr: String = "module probe_verdict_forgery\nimport std.types { Bool, EpochMs, List, NonEmptyStr }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }\nimport extdeps.uri { uri_https }\nimport extdeps.bmc.types { boot_order_entry, boot_option, BootTargetPxe }\nimport extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }\nimport gunbc.firmware_network_boot_standing { FirmwareNetworkBootStanding, Ready, ReadyEvidence, AdmittedReadyConclusion, FirmwareBootObservation, firmware_boot_observation, BootOrderUnobserved, BootOptionsUnobserved, NicsUnobserved, SecureBootUnobserved, BiosVersionUnobserved, PreparationBlockingOn, NoInterfaceCarriesPxe, prepare, join_head_to_options, available_network_options }\n"
+data verdict_probe_hdr: String = "module probe_verdict_forgery\nimport std.types { Bool, EpochMs, List, NonEmptyStr }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }\nimport extdeps.uri { uri_https }\nimport extdeps.bmc.types { BootTargetPxe }\nimport extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }\nimport gunbc.firmware_network_boot_standing { FirmwareNetworkBootStanding, Ready, ReadyEvidence, AdmittedReadyConclusion, FirmwareBootObservation, firmware_boot_observation, BootOrderUnobserved, BootOptionsUnobserved, NicsUnobserved, SecureBootUnobserved, BiosVersionUnobserved, PreparationBlockingOn, NoInterfaceCarriesPxe, prepare, join_head_to_options, available_network_options, network_option_existence, NetworkOptionExistsEnabled, boot_order_entry, boot_option, redirect_target, RedirectTargetStanding }\n"
 
 // THE OBSERVATION EVERY FORGE SHARES, spelled once so the two sources below differ in EXACTLY one
 // way: whether a Ready is wrapped around the evidence.
@@ -2053,18 +2238,18 @@ fn sole_ctor_count(source: String) -> Int {
   }
 }
 
-// WHY THIS IS A RATHER THAN A COUNT. A plain "the forge source reports SoleConstructorViolation >= 1"
-// would be SATISFIED BY THE EVIDENCE SEAL ALONE, because the same source forges a ReadyEvidence too,
-// which was already sealed -- so the probe would stay green if the verdict seal were deleted. That is
-// a vacuous probe wearing the name of a discriminating one. So the claim is RELATIVE: wrapping the
-// identical forged evidence in a hand-written Ready must add at least one refusal of its own, and the
-// baseline must refuse at least one (proving the source compiled and the harness reports). Delete
-// `sole_constructor` from the verdict union and the second arm goes red.
 // WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused and the lawful pair
 // over the SAME imports must be clean -- without that pair, "the probe refused" is indistinguishable
-// from "the probe never compiled". The mutation that reddens it is deleting `sole_constructor` from the
-// ReadyEvidence RECORD: both forgeries can obtain their evidence only through that type's mint, so
-// custody of a verdict runs through custody of its evidence.
+// from "the probe never compiled". OWNERSHIP OF MUTATIONS, stated so no claim here is broader than the
+// row that reddens it: THIS test is reddened by deleting `sole_constructor` from the `ReadyEvidence`
+// record -- both hostile sources contain a `ReadyEvidence` literal, so unsealing it takes both counts to
+// zero. It is NOT the row that owns the conclusion seal: `forge_ready_source` would still be refused for
+// its forged evidence even with the conclusion unsealed, so asserting the conclusion guarantee here would
+// be a probe passing for the wrong reason. The conclusion seal is owned by
+// the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count, whose probe writes a conclusion
+// over LAWFUL evidence and therefore has nowhere for the refusal to come from but the conclusion record.
+// Custody of a verdict runs through custody of its CONCLUSION: a caller can extract and hold lawful
+// evidence from a verdict it was handed; it cannot mint a conclusion to pair it with.
 //
 // What this does NOT prove is that the `sole_constructor` annotation on the FirmwareNetworkBootStanding
 // UNION refuses anything. Measured directly -- wrapping an already-forged evidence in a hand-written
@@ -2117,9 +2302,51 @@ test fn the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count() -> 
 // witnessing; refusing a call that would not compile proves nothing.
 data direct_mint_source: String = verdict_probe_hdr + "\nfn bypass_to_a_verdict() -> FirmwareNetworkBootStanding {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  prepare(\n    blocker: NoInterfaceCarriesPxe,\n    join: join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option]),\n    available: available_network_options(options: [enabled_network_option]),\n\n    existence: network_option_existence(options: [enabled_network_option]),\n    observed_bios_version: Present { value: \"1.08\" },\n  )\n}\n"
 
-// THE LAWFUL PAIR: the same module, the same import of the mint, and no call. If this source also
-// refused, the wall would be 'you may not import this name' and the claim above would be false.
+// THE LAWFUL PAIR, AND NOT A WEAK ONE (merry-fox-82, round 2 item 3). The first control imported
+// the mint and defined an identity function, which proved only that importing is allowed -- it
+// exercised NONE of the argument builders the hostile call uses, so the pair did not hold the mint's
+// shape fixed. The wall could have been 'you may not build these arguments' and the control would
+// still have been clean, making the control's cleanliness say nothing about the call.
+//
+// So this control builds the SAME FIVE ARGUMENTS, with the SAME builders and the SAME literals
+// (`boot_option`, `boot_order_entry`, `join_head_to_options`, `available_network_options`,
+// `network_option_existence`), and then calls `redirect_target` -- a fold in the same module with the
+// same two argument types and no caller admission list. The only difference between this source and
+// the hostile one is the CALL TO `prepare`. That is what makes the refusal attributable to the call
+// rather than to the imports, the builders, the literals, or the module.
 data lawful_import_source: String = verdict_probe_hdr + "\nfn names_the_blocker(b: PreparationBlockingOn) -> PreparationBlockingOn {\n  b\n}\n"
+
+data lawful_call_source: String = verdict_probe_hdr + "\nfn where_to_redirect() -> RedirectTargetStanding {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  redirect_target(\n    join: join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option]),\n    available: available_network_options(options: [enabled_network_option]),\n  )\n}\n"
+
+// THE CONTROL MUST BE CLEAN IN ITSELF, AND THE PAIR MUST BE DIFFERENTIAL.
+// `total_blocking_count_for` answers -1 when the census never ran and a count otherwise, so:
+//  (a) the control must RUN (a census that never ran is not a clean compile) and be free of the
+//      admission refusal, while exercising the same argument builders;
+//  (b) the hostile source's blocking count must be the control's PLUS EXACTLY ONE -- the admission
+//      refusal for `prepare`. The differential shape is the point: both sources share one header, so
+//      whatever the shared imports themselves draw is present in both and cancels. If the probe were
+//      refused for a SECOND reason (an unresolvable name, a wrong arity, a missing import -- exactly
+//      the bugs merry-fox-82 found in the first version), the delta would be 2 and this test would go
+//      red. That is what 'otherwise valid call, refused solely by admission' means mechanically; a
+//      bare `>= 1` on one class could never say it.
+test fn the_direct_mint_probe_has_a_clean_control_over_the_same_arguments() -> Bool {
+  let control = total_blocking_count_for(source: lawful_call_source)
+  let probe = total_blocking_count_for(source: direct_mint_source)
+  // (a) THE CONTROL COMPILES AT ALL, and calls the same builders without being refused for it.
+  0 <= control
+    && blocking_subject_count_for(
+      source: lawful_call_source,
+      wanted_class: "ConstructorCallAdmissionRefused",
+      wanted_subject: "prepare",
+    ) == 0
+    // (b) THE HOSTILE SOURCE IS THE CONTROL PLUS ONE REFUSAL AND NOTHING ELSE.
+    && blocking_subject_count_for(
+      source: direct_mint_source,
+      wanted_class: "ConstructorCallAdmissionRefused",
+      wanted_subject: "prepare",
+    ) >= 1
+    && probe == control + 1
+}
 
 test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
   blocking_subject_count_for(
@@ -2129,6 +2356,12 @@ test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
   ) >= 1
     && blocking_subject_count_for(
       source: lawful_import_source,
+      wanted_class: "ConstructorCallAdmissionRefused",
+      wanted_subject: "prepare",
+    ) == 0
+    // THE REAL CONTROL, not the import-only one above: same builders, same literals, ungated call.
+    && blocking_subject_count_for(
+      source: lawful_call_source,
       wanted_class: "ConstructorCallAdmissionRefused",
       wanted_subject: "prepare",
     ) == 0
@@ -2956,15 +3189,35 @@ test fn the_same_head_with_an_enabled_network_option_is_not_refused() -> Bool {
   // Pinning one specific row here would make the control brittle to a legitimate change of preferred
   // row, while still proving the thing that matters -- that the seam does NOT answer 'nothing exists,
   // go author one' for a board that has one.
-  match mechanism_named_by(observation: authored_board) {
-    Present { value: mechanism } =>
-      mechanism != "redfish-bios-network-stack"
-        && (
-          mechanism == "redfish-one-shot-override"
-            || mechanism == "ipmi-one-shot-override"
-            || mechanism == "redfish-uefi-boot-next"
-        )
-    Absent => false
+  // THE NAME SAYS *IS NOT REFUSED*, so a refusal must fail this test (merry-fox-82, round 2). The old
+  // form asked mechanism_named_by, whose Present arm accepts a NeedsPreparation OR a named
+  // RouteBindingUnresolved -- so a board answered by a REFUSAL that happens to name a mechanism passed a
+  // test whose name claims it was not refused. Asserted on the verdict kind directly now. Which row is
+  // chosen stays unpinned on purpose: a redirect at the head or a one-shot that arms the existing option
+  // are both correct answers for a board that HAS one, and pinning one would make the control brittle to
+  // a legitimate change of preferred row while proving nothing extra. What is pinned is the two things
+  // that are not negotiable: the verdict is a preparation (never a refusal), the blocker is the one this
+  // observation describes, and the route consumes an existing option rather than authoring firmware.
+  match standing_of(observation: authored_board) {
+    NeedsPreparation {
+      admitted: AdmittedPreparation { route: route, blocking: NetworkBootOptionNotSelected },
+    } =>
+      match route {
+        PointUefiBootNext { service_root: _, boot_option: _, authority: _ } => true
+        RedfishOneShotOverride { service_root: _, authority: _ } => true
+        IpmiOneShotOverride { channel: _, authority: _ } => true
+        // Everything that WRITES FIRMWARE is refused here: this board has a network option, so an
+        // authoring route would be the defect this control exists to catch.
+        EnableNetworkStack { service_root: _, attribute: _, authority: _ } => false
+        SelectNicBoot { service_root: _, attribute: _, authority: _ } => false
+        SetSecureBootAttribute { service_root: _, attribute: _, authority: _ } => false
+        UefiShellOverSol { sol_channel: _, shell_script: _, authority: _ } => false
+        HumanConsole { instruction: _, authority: _ } => false
+      }
+    NeedsPreparation { admitted: _ } => false
+    Refused { cause: _, gaps: _ } => false
+    Ready { conclusion: _ } => false
+    Unobserved { unanswered: _ } => false
   }
 }
 
@@ -3136,10 +3389,25 @@ test fn a_secure_boot_enabled_unit_is_answered_by_name_rather_than_left_unanswer
     bios_version: BiosVersionObserved { version: "2.00" },
   )
   match standing_of(observation: enabled) {
-    // A refusal that names the mechanism and what is owed. Unobserved would be the lie: every axis
-    // of this unit was read.
-    Refused { cause: _, gaps: _ } => true
-    NeedsPreparation { admitted: _ } => true
+    // ASSERTED, not merely "answered" (merry-fox-82, round 2). The name claims this unit is answered
+    // BY NAME, with a cause that shows the BIOS axis was read -- so anything looser than that must go
+    // red. The catalog's only row for this blocker is SetSecureBootAttribute and its attribute slot is
+    // unbound, so the honest answer is a refusal that NAMES the mechanism and points at the one read
+    // that resolves it; both are pinned below, along with the requirement that no axis may still be
+    // reported unanswered (every axis of this unit was read, so a non-empty gap list here is the lie
+    // this test exists to refuse). The BIOS version itself is asserted at the fold that decides it, by
+    // the_bios_projection_carries_the_version_it_read_and_invents_none; the public entry cannot
+    // discriminate that field today because this row is unbound either way -- a frontier, not a pass.
+    Refused {
+      cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: owed },
+      gaps: gaps,
+    } =>
+      mechanism == "redfish-bios-secure-boot"
+        && string_contains(s: owed, pattern: "redfish:Bios")
+        && string_contains(s: owed, pattern: "SecureBoot")
+        && length(gaps) == 0
+    Refused { cause: _, gaps: _ } => false
+    NeedsPreparation { admitted: _ } => false
     Ready { conclusion: _ } => false
     Unobserved { unanswered: _ } => false
   }

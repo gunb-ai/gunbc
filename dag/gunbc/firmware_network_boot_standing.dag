@@ -505,11 +505,15 @@ type RouteBindingStanding
   // cannot name the key it would PATCH. That is a refusal with a specific remedy attached, not a
   // coverage gap -- and it is fail-closed, which is what makes it safe to ship this seam before any
   // per-firmware attribute read exists.
-  // THE NAME IS REAL -- FOR ANOTHER BOARD. A transcription carries the BIOS version it was read
-  // against (MechanismNameGrounding), so a name transcribed before a BIOS update, or copied from a
-  // different family, is REFUSED instead of written. The two versions travel as typed fields rather
-  // than interpolated into a sentence, because the comparison a machine must make is between the
-  // fields, and prose that disagrees with its own payload is worse than no prose (DESIGN 5).
+  // THE NAME IS REAL, BUT NOT SHOWN CURRENT FOR THIS UNIT. A transcription carries the BIOS version it
+  // was read against (MechanismNameGrounding) and the binder refuses unless the two version STRINGS
+  // agree. State the rung exactly (merry-fox-82, round 2): that comparison is an equality over
+  // SPELLINGS. Agreement shows the transcription and this unit's read say the same version; it does NOT
+  // establish board or family identity -- two different boards can report the same version string, and
+  // nothing here reads a model, a vendor, or a board id -- so this arm never claims to have rejected a
+  // name for coming from another family. It records a spelling mismatch, with both spellings as typed
+  // fields, because the comparison a machine must make is between the fields, and prose that disagrees
+  // with its own payload is worse than no prose (DESIGN 5).
   // THE TWO REFUSALS, GROUPED BEHIND ONE ARM. The grouping is not tidiness: what a not-executable row
   // carries is a REFUSAL, and naming that separately makes 'this row cannot be driven, and here is a
   // drivable route' unrepresentable rather than merely unused. The compiler proved the earlier shape
@@ -519,14 +523,14 @@ type RouteBindingStanding
 
 // WHAT THE BINDER MAY SAY WHEN IT WILL NOT BIND: the only thing a not-executable row carries. Two
 // arms, and a caller that reports why a unit is stuck has to be able to say which of the two it is --
-// 'read this' and 'your transcription is from another board' send the operator to different places.
+// 'read this' and 'the version your transcription was grounded to is not what this unit reports' send the operator to different places.
 type RouteBindingRefusal
   = RouteBindingUnresolvedRoute { mechanism: NonEmptyStr, owed_read: NonEmptyStr }
-  // THE NAME IS REAL -- FOR ANOTHER BOARD. A transcription carries the BIOS version it was read
-  // against (MechanismNameGrounding), so a name transcribed before a BIOS update, or copied from a
-  // different family, is REFUSED instead of written. The two versions travel as typed fields rather
-  // than interpolated into a sentence, because the comparison a machine must make is between the
-  // fields, and prose that disagrees with its own payload is worse than no prose (DESIGN 5).
+  // THE SPELLINGS DISAGREE. The name may be perfectly real; what is missing is proof that it matches
+  // what THIS unit reports. Both spellings travel on the arm -- the one the transcription was grounded
+  // to and the one the unit reports -- because the refusal's whole value is that an operator can see
+  // which two readings disagree. The arm deliberately does not claim the name came from another board:
+  // equality here is over strings, and a mismatch is a mismatch whoever the other board was.
   | RouteBindingStaleGrounding {
       mechanism: NonEmptyStr,
       grounded_for_bios_version: NonEmptyStr,
@@ -832,7 +836,7 @@ fn bind_consuming_existing_option(
             // returns (`examined_count`), and the module has no Int->String authority to borrow; minting
             // one to duplicate a number that travels typed a field away would be a second
             // representation of the same fact, and the first thing to go stale when the fold changes.
-            owed_read: "this row's own requirements say a network boot option must ALREADY exist, and this unit enumerates none classified as a network boot target by extdeps.bmc.types (see examined_count for how many options were looked at). A one-shot override would arm a boot that cannot happen, so the row is refused rather than offered; the authoring route is the one that can answer this unit",
+            owed_read: "this row's own requirements say a network boot option must ALREADY exist, and this unit enumerates none classified as a network boot target by extdeps.bmc.types ; the count of options examined is not carried on this refusal, so do not go looking for it here -- the read that resolves the question is the unit's own BootOptions enumeration. A one-shot override would arm a boot that cannot happen, so the row is refused rather than offered; the authoring route is the one that can answer this unit",
           },
         }
     }
@@ -1202,9 +1206,13 @@ fn attribute_slot_refusal(
                   },
                 },
               }
-            // THE COMPARISON THAT MAKES A TRANSCRIPTION SAFE. Equal means the name is established for
-            // the firmware actually on the unit; unequal means it is another board's, or a superseded
-            // version of this one -- and either way the write goes nowhere, so it does not get to go.
+            // THE COMPARISON THAT KEEPS A STALE NAME FROM BEING PATCHED, stated at the rung it holds:
+            // an equality over two version SPELLINGS. Equal means the transcription and this unit's read
+            // say the same version; unequal means they do not -- and either way the write goes nowhere,
+            // so it does not get to go. This proves nothing about which BOARD the name came from: no
+            // model, vendor, or board id is read anywhere in this fold, and two boards can share a
+            // version string. What it does prove is enough for the purpose -- a name whose spelling
+            // matches the unit's current read is not a name from an older reading of that read.
             Present { value: seen } =>
               if read_against == seen {
                 Absent
@@ -1412,11 +1420,16 @@ fn ready_evidence(
 //      -- the bypass that sealing the type alone would leave open -- is refused by the compiler. Proven
 //      by no_foreign_module_may_call_the_verdict_mint_directly, which pairs the hostile source with a
 //      lawful one over identical imports (refusal without a lawful pair proves nothing).
-//  (2) ENFORCED -- THE SEALED RECORD INSIDE THE ARM. `Ready` carries a `ReadyEvidence`, which is a
-//      sole_constructor RECORD, and record seals this compiler does enforce. So a foreign `Ready {...}`
-//      is refused not by the annotation below but because it cannot obtain the evidence field: the only
-//      mint is call-walled to `ready_or_refuse_on_nics`. Custody of the verdict runs through custody of
-//      its evidence -- composition, not decoration. Proven by no_foreign_module_may_write_a_verdict_by_hand.
+//  (2) ENFORCED -- THE SEALED CONCLUSION RECORD, NOT THE ACT OF OBTAINING EVIDENCE. Being exact,
+//      because an earlier draft of this paragraph got it wrong (merry-fox-82, round 2): a caller CAN
+//      obtain a lawful `ReadyEvidence` -- the public entry returns a `Ready` that carries one, and its
+//      fields are readable, so a caller can extract it and hold it. That is not the hole and sealing
+//      the act of obtaining was never the guarantee. What the caller CANNOT do is WRITE a sealed
+//      `AdmittedReadyConclusion`: the record is sole_constructor and its only mint is call-walled, so
+//      lawful evidence cannot be paired with a hand-written conclusion. Custody runs through the
+//      CONCLUSION, not through possession of the proof. Proven by
+//      no_foreign_module_may_write_a_verdict_by_hand and, for the rewrap specifically, by
+//      the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count.
 //  (3) NOT ENFORCED BY THIS COMPILER -- the `sole_constructor` annotation on THIS UNION. Measured, not
 //      believed: adding a hand-written `Ready {...}` around an already-forged evidence raised the
 //      SoleConstructorViolation count by ZERO, so the union-level annotation is not what refuses. Every
@@ -1437,10 +1450,12 @@ fn ready_evidence(
 // untamperable evidence attached. Sealing what proves the verdict while leaving the verdict itself
 // mutable protects the receipt and abandons the thing it is a receipt FOR.
 //
-// So the admitted conclusion is ONE sealed record, and it is the only payload the arm carries. There
-// is no way to hold the evidence without the conclusion it belongs to, and therefore no way to move
-// evidence onto a different conclusion: to change any of the four fields you must write the record
-// literal, and the record literal is the sealed thing. The witness proves this the way HOLD 1 asks:
+// So the admitted conclusion is ONE sealed record, and it is the only payload the arm carries. Stated
+// precisely: a caller can READ both halves out of a verdict it was handed -- nothing here hides the
+// evidence inside the conclusion -- but it cannot MINT a conclusion, because to write any of the four
+// fields you must write the record literal, and the record literal is the sealed thing. The guarantee
+// is therefore about authoring a pairing, not about possession: extract the evidence and you hold a
+// receipt; write a conclusion with it and you are refused. The witness proves this the way HOLD 1 asks:
 // take a LAWFUL result and ALTER its conclusion (the rewrap), beside a PASS-THROUGH control over the
 // same imports -- a probe that merely writes a forbidden evidence literal on both sides is satisfied
 // by the old payload seal and would have stayed green through exactly this defect.
@@ -2185,14 +2200,14 @@ fn decide(
                     available: available_network_options(options: options),
                     existence: network_option_existence(options: options),
                     // THE VERSION IS IN HAND, SO IT IS CARRIED. An earlier revision passed `Absent`
-                    // here on the reasoning that Secure Boot is evaluated ABOVE the BIOS axis and so
-                    // this fold 'has no version'. That was wrong in a way that mattered: the BIOS axis
-                    // is a field of `observation`, in scope at this very line, and dropping it threw away
-                    // a read that had already been made. The consequence was fail-open in disguise -- a
-                    // `SecureBoot` attribute transcription grounded to BIOS 1.08 on a unit now reporting
-                    // 2.00 was never compared, because the comparison's right-hand side had been
-                    // discarded, and every stale name looked merely unverifiable instead of wrong.
-                    // Carry the read; keep the absence for the axes that truly did not answer.
+                    // here, and the reason it gave -- that this arm runs above the BIOS axis and so has
+                    // no version -- was simply false: `bios_version` is a field of the `observation`
+                    // already in scope at this line. The consequence was not a fail-open (the route for
+                    // this blocker is an unbound attribute slot, so the answer was a refusal either way)
+                    // but a lost read: a `SecureBoot` attribute transcription grounded to BIOS 1.08 on a
+                    // unit now reporting 2.00 was never compared, because the comparison's right-hand
+                    // side had been discarded, so every stale name looked merely unverifiable instead of
+                    // wrong. Carry the read; keep Absent only for axes that truly did not answer.
                     //
                     // Absent is still the honest answer when the BIOS axis itself did not answer: an
                     // invented "" or "unknown" would be a fabricated observation of the worst kind, one
@@ -2385,10 +2400,27 @@ fn decide_absent(
     decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide_from_joins"),
   ]
  {
-  match available {
-    AvailableNetworkOptionsPresent { head: _, additional_count: _ } =>
-      // Options exist and at least one is a usable network target; the order simply does not select
-      // it. Redirect, do not write BIOS.
+  // THE BLOCKER IS CHOSEN FROM EXISTENCE, NOT FROM USABILITY (merry-fox-82, round 2 item 1). The
+  // first version matched only `available`, so an observation with an enabled disk head and a
+  // DISABLED PXE option away from the head reached the NoAvailableNetworkOption arm and answered
+  // `NetworkBootOptionAbsent` -- a blocker whose own definition says the enumeration contains no
+  // network-kind entry, when it plainly contains one. That misanswer then poisoned everything
+  // downstream: the catalog filter drops the existing-option remedies for an Absent blocker, so the
+  // binder could not repair it and the public entry named an authoring mechanism (a BIOS write) for
+  // a unit that only needed its existing option pointed at. Existence (`network_option_existence`,
+  // kind-only, ignores the enabled flag) is the fold that answers 'does a network option EXIST';
+  // usability (`available`, the same fold consulting `enabled`) stays the source for naming a
+  // concrete, usable redirect target -- which is why `available` is still forwarded to `prepare`
+  // untouched. The two folds differ ONLY on the enabled flag, and this arm is where the difference
+  // earns its keep.
+  match existence {
+    // A NETWORK OPTION EXISTS BUT NOTHING USABLE CAN BE POINTED AT, and the head is not it: the
+    // order does not select it, which is exactly `NetworkBootOptionNotSelected`. Redirect-class rows
+    // will be refused here for want of a target (usability says none is usable) and the one-shot rows
+    // -- whose prerequisite is existence, satisfied by the DISABLED arm -- bind. That is the answer
+    // this state deserves: a one-shot override exists precisely to boot an entry that is not selected
+    // (and, on this firmware, not enabled).
+    NetworkOptionExistsDisabled { examined_count: _ } =>
       prepare(
         blocker: NetworkBootOptionNotSelected,
         join: join,
@@ -2396,8 +2428,23 @@ fn decide_absent(
         existence: existence,
         observed_bios_version: observed_bios_version,
       )
-    NoAvailableNetworkOption { examined_count: _ } =>
-      // Nothing usable exists at all: the network stack has to be authored first.
+    // THE TWO READS DISAGREE: usability says nothing usable, existence says something usable. From a
+    // single observation this arm is unreachable -- both folds classify with the same predicate and
+    // differ only on the flag, so Enabled existence forces usability Present (the arm above). Kept
+    // total rather than refused, and answered like the arm above because both readings of the
+    // disagreement end at the same next step: do NOT author firmware while an option exists; ask the
+    // binder, which will refuse what it cannot name and carry the owed read.
+    NetworkOptionExistsEnabled { examined_count: _ } =>
+      prepare(
+        blocker: NetworkBootOptionNotSelected,
+        join: join,
+        available: available,
+        existence: existence,
+        observed_bios_version: observed_bios_version,
+      )
+    NoNetworkOptionExists { examined_count: _ } =>
+      // NO network-kind entry in the enumeration at all -- the only state `NetworkBootOptionAbsent`
+      // describes, and now the only state that answers it. The network stack has to be authored.
       prepare(
         blocker: NetworkBootOptionAbsent,
         join: join,
@@ -2596,61 +2643,222 @@ fn enumerated_options_or_empty(observation: FirmwareBootObservation) -> List<Boo
   }
 }
 
+// ONE PASS OVER THE ENUMERATION, NOT ONE PER OPTION (merry-fox-82, round 2 item 4; DESIGN.md §6).
+// The first version asked, for every option, 'does any other option carry your reference with a
+// different decision?' -- an inner `filter` per outer option, n^2 comparisons for a check that reads
+// each option once. Options are now BUCKETED BY REFERENCE with a map fold (insert O(1)), and only the
+// buckets with two or more readings are examined. The §6 obligation is stated where it can be checked
+// against a contract rather than against prose: `map_insert` is contracted `work: "1"` and
+// `sorted_map_keys` is contracted `work: "n * log(n)"`, so the pass is n + n log n with no
+// option-by-option scan anywhere in it.
+//
+// THE BUCKET KEYS ARE VISITED IN SORTED ORDER because the receipt names a specific pair, and a receipt
+// whose content moved when the BMC reordered its enumeration is the order-dependence this fold exists
+// to eliminate. This is also why the keys are visited at all rather than the values: `map_values` has
+// no documented order, and a first-conflict taken from unordered values would make the witness
+// flaky in exactly the way a reviewer is right to refuse.
 fn conflicting_reference_readings(
   options: List<BootOption>
 ) -> Optional<ConflictingReferenceReadings> {
-  // THE ACCUMULATOR IS A LIST, NOT AN OPTIONAL, and not for style. `fold_list` with an `Optional`
-  // accumulator has failed to resolve in this compiler before (the resolve error names neither arm),
-  // so the proven shape -- accumulate candidates, then take the head once -- is used. `list_head`
-  // gives the FIRST conflict rather than the last, which matters: reporting the last would make the
-  // receipt depend on enumeration order, and order-dependence is the defect this fold exists to catch.
-  let clashes: List<ConflictingReferenceReadings> = fold_list(
-    xs: options,
-    empty: [],
-    // PARAMETERS ARE UNANNOTATED because that is the dialect of `cons:` here -- every other fold in
-    // this file writes it that way, and annotating them is a parse error (the compiler reports it as
-    // 'expected RParen, found Colon' against the accumulator TYPE, which points nowhere near the
-    // real mistake). The types are not lost: they are fixed by the `empty:` seed and the fold.
-    cons: fn(acc, option) {
-      match find_conflicting_pair(options: options, against: option) {
-        Present { value: clash } => list_append(left: acc, right: [clash])
-        Absent => acc
-      }
+  // One bucket per BootOptionReference, in first-listed order. `fold` and the map primitives are
+  // host primitives (std.primitives contracts), not imports: every other keyed fold in the tree
+  // writes them bare.
+  let buckets: Map<NonEmptyStr, List<BootOption>> = fold(
+    options,
+    init: empty_map(),
+    f: fn(acc, option) {
+      let key = option.reference
+      map_insert(
+        acc,
+        key,
+        concat(match map_get(acc, key) { Present { value: seen } => seen  Absent => [] }, [option]),
+      )
     },
   )
-  list_head(xs: clashes)
+  sorted_map_keys(buckets)
+    |> fold(
+      init: Absent,
+      f: fn(acc, reference) {
+        match acc {
+          // THE FIRST CONFLICT IN KEY ORDER WINS AND NOTHING AFTER IT IS EXAMINED. `Optional` is the
+          // whole accumulator -- no `length > 0`, no boolean 'have we found one' shadow of it.
+          Present { value: _ } => acc
+          Absent =>
+            match map_get(buckets, reference) {
+              Absent => acc
+              Present { value: readings } => conflict_within_bucket(reference: reference, readings: readings)
+            }
+        }
+      },
+    )
 }
 
-// THE INNER HALF: does `against` have a same-reference, different-decision twin? Kept separate from
-// the outer fold so the predicate ('same identity, different decision') exists in exactly one place;
-// inlined twice it is two predicates waiting to disagree about what a conflict is, which is precisely
-// the class of bug this whole arm exists to prevent.
-fn find_conflicting_pair(
-  options: List<BootOption>,
-  against: BootOption
+// THE CHECK INSIDE ONE REFERENCE'S BUCKET. Every option here shares a reference by construction, so
+// what is left is the decision-bearing question: do these entries agree on kind and on enabled? A
+// bucket of one can only answer 'agree', which is why identical duplicates -- the same reference read
+// the same way twice, which some BMCs emit -- collapse instead of refusing.
+//
+// NO PREDICATE HELPER OVER THE PAIR. An `all_agree(options) -> Bool` would put the real answer behind
+// a bit, and this fold's whole purpose is to NAME the two readings that disagree.
+fn conflict_within_bucket(
+  reference: NonEmptyStr,
+  readings: List<BootOption>
 ) -> Optional<ConflictingReferenceReadings> {
-  match filter(options, other =>
-    other.reference == against.reference
-      && (other.kind != against.kind || other.enabled != against.enabled)
-  ) {
+  match readings {
     Empty => Absent
-    // THE TWIN IS NAMED, not counted: an operator reading 'two readings conflict' has to know which
-    // reference and which two kinds, or they cannot go ask the BMC about it. `length > 0` would throw
-    // away the only part of the finding that is actionable.
-    Cons { head: twin, tail: _ } =>
-      Present {
-        value: ConflictingReferenceReadings {
-          option_reference: against.reference,
-          first: option_reading(option: against),
-          second: option_reading(option: twin),
-        },
+    Cons { head: first, tail: _ } =>
+      // THE TWIN IS THE FIRST DISAGREEING READING IN BUCKET ORDER, and the bucket order is the
+      // enumeration order under a key that never changes -- so both claims, 'which pair' and
+      // 'first means first', are pinned without an inner scan.
+      match first_disagreeing(other_than: first, in_: readings) {
+        Absent => Absent
+        Present { value: twin } =>
+          // THE ORDER IS CANONICAL, NOT THE INPUT'S: the pair is ranked by
+          // ordered_reading_pair, so the same physical disagreement reported in either enumeration
+          // order yields byte-identical receipts. A twin exists precisely because the readings
+          // differ, so the ranking never collapses them into one.
+          match ordered_reading_pair(
+            a: option_reading(option: first),
+            b: option_reading(option: twin),
+          ) {
+            OrderedReferenceReadings { first: earlier, second: later } =>
+              Present {
+                value: ConflictingReferenceReadings {
+                  option_reference: reference,
+                  first: earlier,
+                  second: later,
+                },
+              }
+          }
       }
   }
 }
 
-// THE DECISION-BEARING PROJECTION OF AN OPTION, as it appears in a receipt. Not the whole option: a
-// receipt that carried the labels would invite a reader to reason from them, and this module never
-// consults a label when it decides anything.
+// THE ONE PLACE THAT DECIDES WHICH READING PRINTS FIRST, returning the pair in that order. The
+// receipt's order is a CLAIM, not an accident: the same physical disagreement must yield the same
+// receipt whichever way the BMC listed its enumeration, and that is only true if the order is a
+// function of the readings alone. Rank is by decision-bearing kind first (network readings sort
+// ahead, because the operator's question in this module is always 'where is the network path'), then
+// by the enabled flag (enabled first: the actionable disagreement is usually 'the same entry reported
+// both available and unavailable'), then by target name as a tiebreak.
+fn ordered_reading_pair(a: ReferenceReading, b: ReferenceReading) -> OrderedReferenceReadings {
+  match reading_precedes(candidate: a, other: b) {
+    true => OrderedReferenceReadings { first: a, second: b }
+    false =>
+      // NOT SIMPLY SWAPPED: `reading_precedes` is a weak order, so false covers both 'b comes first'
+      // and 'they rank alike'. Asking the mirror question distinguishes them, and the tie is answered
+      // by name rather than left to the caller's order.
+      match reading_precedes(candidate: b, other: a) {
+        true => OrderedReferenceReadings { first: b, second: a }
+        false => tie_broken_by_name(a: a, b: b)
+      }
+  }
+}
+
+fn tie_broken_by_name(a: ReferenceReading, b: ReferenceReading) -> OrderedReferenceReadings {
+  if rank_label(reading: a) <= rank_label(reading: b) {
+    OrderedReferenceReadings { first: a, second: b }
+  } else {
+    OrderedReferenceReadings { first: b, second: a }
+  }
+}
+
+// A WEAK ORDER OVER READINGS, expressed as a named decision and not as subtraction. Equal ranks are
+// 'neither precedes', which the caller must handle explicitly -- a <= b shortcut here would silently
+// make the tie belong to whichever reading the BMC listed first.
+fn reading_precedes(candidate: ReferenceReading, other: ReferenceReading) -> Bool {
+  let c = reading_rank(reading: candidate)
+  let o = reading_rank(reading: other)
+  match c < o {
+    true => true
+    false =>
+      match o < c {
+        true => false
+        // SAME RANK: a genuine tie on the decision-bearing class, broken by the target name so the
+        // pair is still deterministic. Two readings that reach here differ in nothing that changes
+        // what the firmware would do.
+        false => rank_label(reading: candidate) < rank_label(reading: other)
+      }
+  }
+}
+
+type OrderedReferenceReadings {
+  first: ReferenceReading
+  second: ReferenceReading
+}
+
+fn same_reading(a: ReferenceReading, b: ReferenceReading) -> Bool {
+  a.target == b.target && a.enabled == b.enabled
+}
+
+type ReadingRank = NetworkEnabled | NetworkDisabled | OtherEnabled | OtherDisabled
+
+fn reading_rank(reading: ReferenceReading) -> Int {
+  match reading_rank_standing(reading: reading) {
+    NetworkEnabled => 0
+    NetworkDisabled => 1
+    OtherEnabled => 2
+    OtherDisabled => 3
+  }
+}
+
+// THE RANK IS DERIVED FROM THE CLASSIFIER, NOT FROM A TABLE OF NAMES. Whether a target is a network
+// target is answered by extdeps.bmc.types -- the same single source every other fold in this module
+// asks -- so a new upstream target cannot be ranked as 'other' by a list someone forgot to update.
+fn reading_rank_standing(reading: ReferenceReading) -> ReadingRank {
+  match redfish_boot_target_network_standing(t: reading.target) {
+    NetworkBootTarget { via: _ } =>
+      match reading.enabled {
+        true => NetworkEnabled
+        false => NetworkDisabled
+      }
+    NotNetworkBootTarget { why: _ } =>
+      match reading.enabled {
+        true => OtherEnabled
+        false => OtherDisabled
+      }
+  }
+}
+
+fn rank_label(reading: ReferenceReading) -> NonEmptyStr {
+  match reading.target {
+    BootTargetPxe => "Pxe"
+    BootTargetNone => "None"
+    BootTargetHdd => "Hdd"
+    BootTargetCd => "Cd"
+    BootTargetUsb => "Usb"
+    BootTargetBiosSetup => "BiosSetup"
+    BootTargetDiags => "Diags"
+    BootTargetUefiHttp => "UefiHttp"
+  }
+}
+
+// THE ONE COMPARISON, WRITTEN ONCE AND USED BY BOTH THE DECISION AND THE RECEIPT. Two readings of one
+// reference conflict exactly when a field that changes what the firmware WOULD DO differs: the target
+// (boot PXE vs boot the disk) or the enabled flag (an entry the firmware will consider vs one it will
+// not). A label difference is not a conflict and never was -- BMCs rename entries freely, and refusing
+// on a rename would strand a unit whose only defect is a nicer name.
+fn readings_conflict(a: BootOption, b: BootOption) -> Bool {
+  a.kind != b.kind || a.enabled != b.enabled
+}
+
+fn first_disagreeing(
+  other_than: BootOption,
+  in_: List<BootOption>
+) -> Optional<BootOption> {
+  match in_ {
+    Empty => Absent
+    Cons { head: candidate, tail: rest } =>
+      // THE HEAD ITSELF is in the bucket; comparing it with itself reports no conflict (no field
+      // differs from itself), so no identity skip is needed and none is pretended.
+      if readings_conflict(a: other_than, b: candidate) {
+        Present { value: candidate }
+      } else {
+        first_disagreeing(other_than: other_than, in_: rest)
+      }
+  }
+}
+
 fn option_reading(option: BootOption) -> ReferenceReading {
   ReferenceReading { target: option.kind, enabled: option.enabled }
 }
