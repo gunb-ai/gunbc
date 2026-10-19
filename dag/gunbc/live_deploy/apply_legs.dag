@@ -1,0 +1,156 @@
+module gunbc.live_deploy.apply_legs
+
+import std.types { String }
+import std.algebra { Cons, Empty, list_append }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.findutils { find_owned_regular_files_exec_command }
+import extdeps.tools.chmod { chmod_binary_path }
+import extdeps.tailscale.serve { ScopedRemovalSupported, ScopedRemovalUnsupported, ScopedRemovalUnobserved }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryManaged, owned_directory_install_plan_of }
+import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
+import gunbc.managed_directory {
+  managed_directory_admit, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
+  EntriesUnmanaged, EntriesReadableByDependents,
+  managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
+}
+import gunbc.membership_reconcile { EffectsReady, ApplyRefused, membership_effects }
+import gunbc.live_deploy.lab_host_plan { LabPlanReady, LabPlanRefused, lab_plan_refusal_reason }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
+import gunbc.live_deploy.emit { deployment_apply_plan, owned_directory_will_install }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
+
+// THE APPLY FOLD'S LEGS AS DATA, replacing the apply bash script the way gunbc.live_deploy.retract_legs
+// replaced the retract script. A leg is one typed operation on the host; the runner
+// (gunbc.host.host_effect_realize realize_live_deploy_apply_on_host) matches the closed sum totally and
+// folds the first failure into a NotConverged naming that leg's step.
+//
+// THE PLAN DECIDES EVERY REFUSAL BEFORE ANY LEG RUNS. The script's refusals were Decide fragments and a
+// refused fold dropped every Mutate; DeployApplyPlan keeps that: ApplyPlanRefused carries the step and
+// reason and returns no leg for the runner to start.
+type DeployApplyLeg
+  = ApplyLegEnsureDirectory { target: OwnedDirectoryTarget }
+  | ApplyLegRepairDirectoryEntries { command: ArgvCommand }
+
+type DeployApplyPlan
+  = ApplyPlanReady { legs: List<DeployApplyLeg> }
+  | ApplyPlanRefused { step: String, reason: String }
+
+fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
+  match leg {
+    ApplyLegEnsureDirectory { target: _ } => "ensure-owned-directory"
+    ApplyLegRepairDirectoryEntries { command: _ } => "repair-directory-entries"
+  }
+}
+
+// ── OWNED DIRECTORIES ────────────────────────────────────────────────────────────────────────────
+//
+// One target's legs: the ensure (observe, decide, install, independent readback -- gunbc.owned_directory
+// owned_directory_ensure), then for a managed directory whose entries its dependents read, the
+// unprivileged additive chmod of the entries the applying principal owns. A mode derivation with no
+// plan, a writer the owner and group do not cover, and a refused entry-mode derivation each refuse the
+// whole plan with the step that named it.
+fn deploy_apply_directory_target_plan(t: OwnedDirectoryTarget) -> DeployApplyPlan {
+  match owned_directory_install_plan_of(t: t) {
+    EnsurePlanUnavailable { reason } =>
+      ApplyPlanRefused { step: "owned-directory", reason: join(["owned directory NOT ENSURED: owned_directory_install_plan_of has no plan: ", reason], "") }
+    EnsurePlanAvailable { plan: _ } =>
+      match t {
+        OwnedDirectoryDeclared { member: _, path: _, owner: _, mode: _ } =>
+          ApplyPlanReady { legs: [ApplyLegEnsureDirectory { target: t }] }
+        OwnedDirectoryManaged { directory } =>
+          match managed_directory_admit(d: directory) {
+            ManagedDirectoryRefused { member: m, path: p, writer: w } =>
+              ApplyPlanRefused {
+                step: "owned-directory",
+                reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], ""),
+              }
+            ManagedDirectoryAdmitted { dir } =>
+              match dir.entries {
+                EntriesUnmanaged => ApplyPlanReady { legs: [ApplyLegEnsureDirectory { target: t }] }
+                EntriesReadableByDependents { repaired_by } =>
+                  match managed_directory_entry_mode(d: dir) {
+                    ManagedEntryModeRefused { member: m, path: p, reason: r } =>
+                      ApplyPlanRefused {
+                        step: "owned-directory",
+                        reason: join(["managed host directory entries NOT REPAIRED: managed_directory_entry_mode refused. member=", m as String, " path=", p as String, " reason=", r as String], ""),
+                      }
+                    ManagedEntryModeDerived { mode } =>
+                      ApplyPlanReady {
+                        legs: [
+                          ApplyLegEnsureDirectory { target: t },
+                          ApplyLegRepairDirectoryEntries {
+                            command: find_owned_regular_files_exec_command(
+                              dir: dir.path as String,
+                              owner: repaired_by.name as String,
+                              command: [chmod_binary_path as String, entry_mode_add_read_symbolic(mode: mode)],
+                            ),
+                          },
+                        ],
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn deploy_apply_directories_plan_from(targets: List<OwnedDirectoryTarget>, legs: List<DeployApplyLeg>) -> DeployApplyPlan {
+  match targets {
+    Empty => ApplyPlanReady { legs: legs }
+    Cons { head: t, tail: rest } =>
+      match deploy_apply_directory_target_plan(t: t) {
+        ApplyPlanRefused { step: s, reason: r } => ApplyPlanRefused { step: s, reason: r }
+        ApplyPlanReady { legs: more } => deploy_apply_directories_plan_from(targets: rest, legs: list_append(left: legs, right: more))
+      }
+  }
+}
+
+fn deploy_apply_directories_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
+  deploy_apply_directories_plan_from(
+    targets: filter(xs: deployment_directory_demands(spec: spec), predicate: t => owned_directory_will_install(spec: spec, plan: plan, t: t)),
+    legs: [],
+  )
+}
+
+// ── THE FOLD ─────────────────────────────────────────────────────────────────────────────────────
+//
+// lab plan, then the tailscale client capability, then the wholesale membership refusal, then each
+// family's legs in the order the script ran them. A family appears here when its legs are typed; the
+// cutover to this plan happens when the last family does.
+fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, legs: List<DeployApplyLeg>) -> DeployApplyPlan {
+  match deploy_apply_directories_plan(spec: spec, plan: plan) {
+    ApplyPlanRefused { step: s, reason: r } => ApplyPlanRefused { step: s, reason: r }
+    ApplyPlanReady { legs: ds } => ApplyPlanReady { legs: list_append(left: legs, right: ds) }
+  }
+}
+
+fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
+  match spec.target.lab_plan {
+    LabPlanRefused { cause: c } =>
+      ApplyPlanRefused {
+        step: "lab-plan",
+        reason: join(["live-deploy apply refused: lab plan refused (", lab_plan_refusal_reason(cause: c) as String, ") (DESIGN 5: refuse, never widen)"], ""),
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
+      match spec.target.tailscale_client {
+        ScopedRemovalUnobserved { reason: r } =>
+          ApplyPlanRefused {
+            step: "tailscale-client",
+            reason: join(["live-deploy apply refused: this target's tailscale client version is UNOBSERVED (", r, "), so whether scoped serve exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)"], ""),
+          }
+        ScopedRemovalUnsupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan)
+        ScopedRemovalSupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan)
+      }
+  }
+}
+
+fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
+  match membership_effects(plan: deployment_apply_plan(spec: spec)) {
+    ApplyRefused { refusals: rs } =>
+      ApplyPlanRefused {
+        step: "wholesale",
+        reason: join(["live-deploy apply refused WHOLESALE: the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown); the entire fold is refused rather than partially applied. refused-member-count=", to_string(count(rs))], ""),
+      }
+    EffectsReady { effects: _ } => deploy_apply_family_plans(spec: spec, plan: plan, legs: [])
+  }
+}

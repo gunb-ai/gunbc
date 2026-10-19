@@ -245,7 +245,7 @@ import gunbc.ci.ci_deploy_access {
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep, EnsuredPackage, EnsuredOwnershipMarker }
 import gunbc.fabric.fabric_storage_placement { FabricStorageOwnershipMarkerSpec }
 import extdeps.access.posix { FileMode, file_mode_octal }
-import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_off_argv }
+import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_off_argv, tailscale_program }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.host.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
 import gunbc.runner.runner_host_deploy {
@@ -269,6 +269,10 @@ import gunbc.runner.runner_slot_retirement {
 import gunbc.live_deploy.retract_legs {
   DeployRetractLeg, DeployRetractPlan, RetractPlanReady, RetractPlanRefused, deploy_retract_plan_legs, deploy_retract_leg_step,
   RetractServeOff, RetractDisableIfLoaded, RetractRemoveForce, RetractRemoveEmptyDirectory, RetractRemoveRecursive, RetractDaemonReload, RetractUnitGoneReadback,
+}
+import gunbc.live_deploy.apply_legs {
+  DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
+  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
 }
 import gunbc.systemctl_show_read { systemctl_show_load_state_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
@@ -512,7 +516,7 @@ import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan, OwnedDirectoryEnsureOutcome,
-  owned_directory_ensure, owned_directory_observe,
+  owned_directory_ensure, owned_directory_observe, owned_directory_install_argv,
   owned_directory_outcome_converged, owned_directory_outcome_detail,
   ObserverRead, ObserverReadOut, ObserverReadFailed,
   ObserverTransportRefused, ObserverExited,
@@ -5491,7 +5495,7 @@ fn live_deploy_retract_run_leg(leg: DeployRetractLeg, ports: DeployRetractPorts)
   let load_of = ports.load
   match leg {
     RetractServeOff { endpoint: e } =>
-      deploy_retract_command_failure(outcome: command(sudo_elevate_command(command: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))))
+      deploy_retract_command_failure(outcome: command(sudo_elevate_command(command: concat([tailscale_program().invocation as String], tailscale_serve_off_argv(endpoint: e)))))
     RetractDisableIfLoaded { unit: u } => {
       let load = deploy_retract_load_state_of(capture: load_of(u))
       match load {
@@ -5530,6 +5534,93 @@ fn live_deploy_retract_run_legs_from(legs: List<DeployRetractLeg>, ports: Deploy
         Absent => live_deploy_retract_run_legs_from(legs: rest, ports: ports, done: done + 1)
       }
   }
+}
+
+// ── THE APPLY FOLD'S RUNNER (gunbc.live_deploy.apply_legs) ───────────────────────────────────────
+//
+// THE PORTS ARE THE HOST-TOUCHING OPERATIONS AND NOTHING ELSE: one argv through the transport, and
+// C1, the directory provider. Production supplies deploy_apply_ports_on_host; a control supplies
+// outcomes. The runner is a pure fold over them, so a leg after a failed one is never dispatched.
+type DeployApplyPorts {
+  command: fn(ArgvCommand) -> RunArgvTransportOutcome
+  ensure_directory: fn(OwnedDirectoryTarget) -> OwnedDirectoryEnsureOutcome
+}
+
+fn deploy_apply_ports_on_host(transport: HostEffectTransport) -> DeployApplyPorts {
+  DeployApplyPorts {
+    command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
+    ensure_directory: fn(t) { live_deploy_apply_ensure_directory_on_host(target: t, transport: transport) },
+  }
+}
+
+// C1: ONE OWNED DIRECTORY, ENSURED THROUGH THE ONE PROVIDER. The reads are the privileged list and stat
+// of the directory's parent chain (the same ones gunbc.live_deploy.member_observe makes), each keeping
+// its origin typed; the install is the provider's plan elevated; the verdict is the provider's
+// independent second stat, never the install's exit status.
+fn deploy_apply_directory_read(op: ExecutorPrivilegedOperation, transport: HostEffectTransport) -> ObserverRead {
+  match run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: op), transport: transport) {
+    RunArgvTransportRefused { reason: r } => ObserverReadFailed { origin: ObserverTransportRefused { cause: r } }
+    RunArgvTransportObserved { observed: o } =>
+      if o.success {
+        ObserverReadOut { stdout: o.stdout }
+      } else {
+        ObserverReadFailed { origin: ObserverExited { exit_code: o.exit_code, stderr: o.stderr } }
+      }
+  }
+}
+
+fn deploy_apply_directory_observe(path: FilePath, transport: HostEffectTransport) -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(
+    path: path,
+    list: p => deploy_apply_directory_read(op: ListDirectoryEntries { path: p as String as NonEmptyStr }, transport: transport),
+    stat: p => deploy_apply_directory_read(op: ReadDirectoryIdentity { path: p as String as NonEmptyStr }, transport: transport),
+  )
+}
+
+fn live_deploy_apply_ensure_directory_on_host(target: OwnedDirectoryTarget, transport: HostEffectTransport) -> OwnedDirectoryEnsureOutcome {
+  owned_directory_ensure(
+    policy: EnsureMayApply,
+    target: target,
+    observe: p => deploy_apply_directory_observe(path: p, transport: transport),
+    run: plan => match run_argv_over_host_effect_transport(
+      command: sudo_elevate_command(command: owned_directory_install_argv(plan: plan)),
+      transport: transport,
+    ) {
+      RunArgvTransportRefused { reason: _ } => false
+      RunArgvTransportObserved { observed: o } => o.success
+    },
+  )
+}
+
+type DeployApplyRun
+  = ApplyRunOk { legs_run: Int }
+  | ApplyRunFailed { step: String, reason: String, legs_run: Int }
+
+fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optional<String> {
+  let command = ports.command
+  let ensure = ports.ensure_directory
+  match leg {
+    ApplyLegEnsureDirectory { target: t } => {
+      let outcome = ensure(t)
+      if owned_directory_outcome_converged(o: outcome) { Absent } else { Present { value: owned_directory_outcome_detail(o: outcome) } }
+    }
+    ApplyLegRepairDirectoryEntries { command: c } => deploy_retract_command_failure(outcome: command(c))
+  }
+}
+
+fn deploy_apply_run_legs_from(legs: List<DeployApplyLeg>, ports: DeployApplyPorts, done: Int) -> DeployApplyRun {
+  match legs {
+    Empty => ApplyRunOk { legs_run: done }
+    Cons { head: leg, tail: rest } =>
+      match deploy_apply_run_leg(leg: leg, ports: ports) {
+        Present { value: why } => ApplyRunFailed { step: deploy_apply_leg_step(leg: leg), reason: why, legs_run: done }
+        Absent => deploy_apply_run_legs_from(legs: rest, ports: ports, done: done + 1)
+      }
+  }
+}
+
+fn deploy_apply_run_legs(legs: List<DeployApplyLeg>, ports: DeployApplyPorts) -> DeployApplyRun {
+  deploy_apply_run_legs_from(legs: legs, ports: ports, done: 0)
 }
 
 // THE APPROVAL BROKER'S RELEASE TREE, INSTALLED AS A TYPED, FAIL-FAST VERTICAL (W6). One leg of the
