@@ -13,6 +13,6 @@ RC="/tmp/detached_${TAG}.rc"
 ctrl-build --remote -- bash -lc "
   rm -f $OUT $RC
   mkdir -p /tmp
-  nohup bash -c 'bash $SCRIPT $*; echo \$? > $RC' > $OUT 2>&1 < /dev/null &
+  setsid nohup bash -c "bash $SCRIPT $*; echo \$? > $RC" > $OUT 2>&1 < /dev/null & disown
   echo STARTED pid=\$! tag=$TAG out=$OUT
 "
