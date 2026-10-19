@@ -44,7 +44,9 @@ import v2.std.integer { Int }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr, parse_production_emitted_identity_optional }
-import v2.std.node { Node, Symbol, EdgeLabel, Authored, CoreEdgeLabel, CoreMarker, Positional, ProductionEdge, StructuralLabel }
+import v2.std.node {
+  Node, Symbol, EdgeLabel, Authored, CoreEdgeLabel, CoreMarker, Positional, ProductionEdge, StructuralLabel, AdmitCallersEdge, ArrowBodyEdge, ArrowEffectClaimsEdge, ArrowExecutionModeClaimEdge, ArrowResourceRequirementsEdge, ArrowSignatureOrderEdge, BinderDefaultEdge, BinderStructureEdge, BinderTypeEdge, CastTargetEdge, ConstantMemberEdge, ConstructTagEdge, ConstructTagElidedEdge, DeclarationReferenceEdge, FieldProjectionBaseEdge, FieldProjectionFieldEdge, LexicalReferenceEdge, LoopBoundEdge, LoopCarrierEdge, LoopDomainEdge, LoopRealizedDeclarationEdge, MapLiteralEntriesEdge, MapLiteralEntryEdge, MatchArmBodyEdge, MatchArmPatternEdge, MatchArmScopeExitEdge, ParameterReferenceEdge, TypeAliasEdge, TypeAnnotationEdge, TypeBodyEdge, TypeParamsEdge
+}
 import std.optional { Absent, Optional, Present }
 
 // WHICH AUTHORED NAMES DECLARE, AND WHICH NAME SOMETHING THE MODULE SCOPE DOES NOT HOLD (XL-2
