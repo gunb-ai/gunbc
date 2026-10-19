@@ -159,7 +159,7 @@ fn compiler_gate_invocation_argv_rows_from(
       // emitted walk and left the stamp unmoved, which defeats the guard entirely. There is one list now,
       // read twice: once to build the command, once to certify it. Mutating a producer therefore moves
       // the stamp, which is what the discriminator asserts.
-      xs: [parse_verdict_reuse_args(), parse_verdict_publish_args()],
+      xs: [reuse_args, publish_args],
       f: fn(args) {
         join(
           ["argv:", parse_verdict_invocation_contract_row(verb: cli_verb_parse_population, args: args)],
