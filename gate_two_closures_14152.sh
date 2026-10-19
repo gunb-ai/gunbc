@@ -16,6 +16,16 @@
 #   target/release/gunbc test //gunbc/instruments:self-host
 #   target/release/gunbc test //gunbc/instruments:v2-native-cli
 set -u
+# Persisted cargo target dir: a cold release build of gunbc is ~5-6 minutes, and this instrument builds
+# one per side (head, main, and any rerun). The runner keeps /root between dispatches while
+# /tmp is recreated per dispatch, so sharing a target dir is what makes a rerun incremental
+# instead of three more cold builds against the 45-minute client cap.
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/root/gunbc_target_gate}"
+mkdir -p "$CARGO_TARGET_DIR" 2>/dev/null || true
+# SIDE_FILTER runs one side only ("head" or "main") so a third cold build can be spread over
+# dispatches; counts are still compared only when BOTH sides have been produced by this
+# method, which the final comparison enforces.
+SIDE_FILTER=${SIDE_FILTER:-both}
 LOGS=${LOGS:?LOGS required}
 mkdir -p $LOGS
 TARGETS=${TARGETS:-"self-host v2-native-cli"}
@@ -43,6 +53,7 @@ echo "comparator bytes: $(wc -c < $LOGS/hard_diag_by_identity.py)"
 
 run_side () {
   side=$1; sha=$2; d=$LOGS/clone_$side
+  [ "$SIDE_FILTER" = "both" ] || [ "$SIDE_FILTER" = "$side" ] || { echo "[$side] SKIPPED by SIDE_FILTER=$SIDE_FILTER (its counts must not be read)"; return 7; }
   rm -rf $d
   git clone -q $REPO $d >> $LOGS/clone_$side.log 2>&1 || { echo "VOID: clone failed for $side"; return 5; }
   ( cd $d && git fetch -q --depth 1 origin $sha && git checkout -q FETCH_HEAD ) >> $LOGS/clone_$side.log 2>&1 || { echo "VOID: checkout failed for $side"; return 5; }
