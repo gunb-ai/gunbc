@@ -123,6 +123,87 @@ Known blind spots before anything is deleted:
 | `04_types.dag`, `04_resolve.dag` | 3 + 3 | |
 | others | 1–2 each | `workspace_members`, `trait_derive_emit`, `stage0_crates`, `languages`, `dag_collect_support`, `04_sigs` |
 
+## 3a. Problem sections, measured (perf, srv1)
+
+`perf record -F 299 --call-graph fp` attached to one `gunbc compile --entry
+src/v2/compiler/source_root_eval.dag --source-root dag --source-root src/v2
+--dependency-pool-index primary-precedence --target rust` at `891198514b8`. The seed was built with
+`-C force-frame-pointers=yes` on srv1 (aarch64, a shared host under load). Samples are split by
+phase using the run's own `compile.*` lines. Phase walls: pre 101 s, frontend 55 s, reconcile 87 s,
+emit 225 s, post-emit ~60 s. These agree with CI. The percentages are **inclusive within the phase**.
+The seconds are those shares applied to the phase wall, so they are approximate.
+
+This **supersedes** §3b where the two disagree. In particular, §3b's reconcile suspects were measured
+and are small.
+
+### Pre-frontend (101 s)
+| inclusive | ~s | producer |
+|---|---|---|
+| 74% | 75 | `entry_resolve` `build_module_path_index_uncached` → `pool_acquire::heads_reading_for` → `module_path_index::index::parse_module_binding` → **`v1_compiler_tokenize::tokenize_artifact` (54%)** |
+| 25% | 25 | `extend_sources_to_both_closure_fixpoint` → `build_both_closure_edge_index` → `closure_name_census` → `build_symbol_index_census_raw_nodes` |
+
+To learn each file's `module` binding, the index **fully tokenizes every `.dag` in the pool**
+(8,847 files). The binding is on line 1, and DESIGN §3 already says paths follow names. So the name
+is derivable from the path, and the walk's demand is the defect (§2), not the tokenizer's speed.
+
+### Frontend (55 s)
+| inclusive | ~s | producer |
+|---|---|---|
+| 63% | 35 | `v1.compiler.annotation_bind` `bind_annotations` → `swept_region_order` → `swept_region_key` → `zero_padded` / `zero_padded_with` |
+| 16% | 9 | tokenize |
+| 8% | 5 | parse |
+| 4% | 2 | resolve |
+
+`swept_region_order` is `sort_by(r => swept_region_key(r))`. The key is a 36-char string built by
+prepending `"0"` one character at a time, with `string_length` re-measured each step. The emitter
+lowers `sort_by` to `slice::sort_by` with **the key recomputed for both operands on every
+comparison** (`v1_compiler_annotation_bind.rs` `swept_region_order`, the `__ka`/`__kb` lines). The
+emitter repeats this lowering in **22 sites across 12 generated files**, so per §6b the root is the
+emitter's `sort_by` lowering: compute each key once, then sort. A secondary issue: the key should be
+a structural `(Int, Int, Int)`, not a zero-padded string encoding of one.
+
+### Reconcile (87 s)
+| inclusive | ~s | producer |
+|---|---|---|
+| 58% | 50 | `v1.compiler.infer` `infer_call_arguments_generic_pass` |
+| 24% | 21 | `v1.compiler.infer_resolve` `expand_nominal_alias_rhs(_by_name)` → `resolve_node_bounded` |
+| 22% | 19 | `v1.std.core` `authored_name_at` (see the cross-phase entry below) |
+| 15% | 13 | `direct_call_arg_mismatch_diags` |
+| 14% | 12 | `v1.compiler.infer_env` `text_representation_by_identity_bounded` |
+| 12% | 11 | `declared_type_obligation_diags` / `declared_type_inhabitance` |
+| 7% | 6 | `build_type_env` |
+| 3.7% | 3 | `build_module_context` (§3b's top suspect) |
+| ~3% | 3 | all `rc_map_insert`/`rc_map_merge` (§3b's emitter clone suspect) |
+
+These rows overlap, because a frame is inclusive of its callees. The next dive is inside
+`infer_call_arguments_generic_pass`.
+
+### Emit (225 s)
+| inclusive | ~s | producer |
+|---|---|---|
+| 58% | 131 | `v1.compiler.emit_rust` `reference_derived_use_line_plan` |
+| 30% | 67 | ↳ `record_lit_ref_names` → `record_lit_resolved_ctor_import_names` → **`struct_candidates_by_field_names` (12% self)** / `find_struct_name_by_fields` / `anonymous_record_struct_candidates` |
+| 14.5% | 33 | ↳ `v1.compiler.infer_emit_info` `collect_type_node_import_surface_names` (the prior art's walk; it is no longer the top term) |
+| 21% | 47 | `emit_imports` / `emit_specific_import_use_lines` |
+| 19% | 43 | `authored_name_at` |
+| 18% | 40 | `emit_typed_item` (rendering) |
+
+The new top term is a structural-record lookup: for each record literal, find the struct whose
+field names match. With 12% self time it looks like a scan of every struct per literal. Read it next.
+
+### Post-emit (~60 s, not in any CI phase line)
+| inclusive | ~s | producer |
+|---|---|---|
+| ~46% | ~27 | freeing the compile's data structures at exit (`cfree`, `Rc::drop_slow`) |
+| 32% | 19 | `gunbc_crate_partition` `emitted_target_reach` → `reached_set` → `std.graph` `graph_reverse_reachable_members` → **`reverse_adjacency`**, rebuilt per reach query |
+| — | — | printing 4,485 advisory lines (~10 ms apart in the log) |
+
+### Cross-phase: `authored_name_at`
+`v1.std.core` `authored_name_at` re-materializes a name from the file's char codes on every call
+(`map_get` by file path, then `chars_to_string`). It is ~19 s in reconcile and ~43 s in emit. The
+fact is computed once per occurrence and re-demanded many times. Before anyone reaches for a cache,
+ask whether the name should be carried on the node (the occurrence-identity domain).
+
 ## 3b. Problem sections, dive 1 (code reading, not profiles)
 
 Four read-only investigations, one per phase. **None of them got a profile.** The remote image has no
