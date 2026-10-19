@@ -659,28 +659,114 @@ fn fold_node_topdown<A,R>(n: Node, ctx: A, algebra: NodeFoldTopDown<A,R>) -> R {
 // infer_child_context_cannot_depend_on_a_sibling_result). This algebra does: child_context also receives
 // the parent's accumulator AFTER the children already folded, and `first` schedules the dependency
 // children ahead of the rest.
-// THE SCHEDULE IS A PARTITION, SO IT IS A PERMUTATION BY CONSTRUCTION. `first` selects which edges are
+// THE SCHEDULE IS A PARTITION, SO IT IS A PERMUTATION BY CONSTRUCTION. `first` selects which children are
 // folded before the others, each part keeping its authored order; no schedule can drop, duplicate or
-// invent an edge, so there is nothing to validate. With `first` false everywhere and a child_context that
+// invent a child, so there is nothing to validate. With `first` false everywhere and a child_context that
 // ignores the accumulator, this is fold_node_topdown exactly.
+// `first` and child_context RECEIVE THE CHILD'S SLOT, NOT ONLY ITS EDGE. The normalized tree may share one
+// node at several positions, so two children can carry structurally equal edges -- a Bind whose value and
+// body are one node, a Match whose scrutinee is also an arm -- and an edge alone cannot say which role a
+// child plays (side-chat review on #14501). The slot carries the child's ordinal among its parent's
+// positional children, which is what a positional role is.
 type NodeFoldDependent<A,R> {
   init: fn(Node, A) -> R
-  first: fn(Node, Edge) -> Bool
-  child_context: fn(Node, A, R, Edge) -> A
+  first: fn(Node, ChildSlot) -> Bool
+  child_context: fn(Node, A, R, ChildSlot) -> A
   step: fn(R, Edge, R) -> R
 }
 
-fn node_fold_dependent_schedule<A,R>(n: Node, algebra: NodeFoldDependent<A,R>) -> List<Edge> {
+// A CHILD AS ITS PARENT HOLDS IT: the edge, and where it sits -- its ordinal among the parent's positional
+// children, or labeled. Equal edges at two positions are two slots.
+type ChildSlot {
+  edge: Edge
+  ordinal: ChildOrdinal
+}
+
+type ChildOrdinal
+  = PositionalOrdinal { index: Int }
+  | LabeledChild
+
+type ChildSlotsAcc {
+  slots: List<ChildSlot>
+  next_positional: Int
+}
+
+fn node_child_slots(n: Node) -> List<ChildSlot> {
+  let walked = fold(n.children, init: ChildSlotsAcc { slots: [], next_positional: 0 }, f: fn(acc, e) { node_child_slots_step(acc: acc, e: e) })
+  walked.slots
+}
+
+fn node_child_slots_step(acc: ChildSlotsAcc, e: Edge) -> ChildSlotsAcc {
+  if is_positional(e: e) {
+    ChildSlotsAcc {
+      slots: list_snoc_item(xs: acc.slots, item: ChildSlot { edge: e, ordinal: PositionalOrdinal { index: acc.next_positional } }),
+      next_positional: acc.next_positional + 1
+    }
+  } else {
+    ChildSlotsAcc {
+      slots: list_snoc_item(xs: acc.slots, item: ChildSlot { edge: e, ordinal: LabeledChild }),
+      next_positional: acc.next_positional
+    }
+  }
+}
+
+fn node_fold_dependent_schedule<A,R>(n: Node, algebra: NodeFoldDependent<A,R>) -> List<ChildSlot> {
+  let slots = node_child_slots(n: n)
   concat(
-    fold(n.children, init: [], f: fn(acc, e) { if algebra.first(n, e) { list_snoc_item(xs: acc, item: e) } else { acc } }),
-    fold(n.children, init: [], f: fn(acc, e) { if algebra.first(n, e) { acc } else { list_snoc_item(xs: acc, item: e) } })
+    fold(slots, init: [], f: fn(acc, s) { if algebra.first(n, s) { list_snoc_item(xs: acc, item: s) } else { acc } }),
+    fold(slots, init: [], f: fn(acc, s) { if algebra.first(n, s) { acc } else { list_snoc_item(xs: acc, item: s) } })
   )
 }
 
 fn fold_node_dependent<A,R>(n: Node, ctx: A, algebra: NodeFoldDependent<A,R>) -> R {
-  fold(node_fold_dependent_schedule(n: n, algebra: algebra), init: algebra.init(n, ctx), f: fn(acc, e) {
-    algebra.step(acc, e, fold_node_dependent(n: e.target, ctx: algebra.child_context(n, ctx, acc, e), algebra: algebra))
+  fold(node_fold_dependent_schedule(n: n, algebra: algebra), init: algebra.init(n, ctx), f: fn(acc, s) {
+    algebra.step(acc, s.edge, fold_node_dependent(n: s.edge.target, ctx: algebra.child_context(n, ctx, acc, s), algebra: algebra))
   })
+}
+
+// WHAT EACH CHILD OF A Bind AND OF A Match IS, read from its slot. A `let` is a Bind with three positional
+// children -- binder, value, body -- and any labeled child (the <type-annotation>) is metadata beside them
+// (v2.std.compilers.body_lowering lower_bind / lower_bind_annotated); a Match's first positional child is
+// its scrutinee and every later one an arm (lower_match). Reading the role off the slot rather than off
+// the edge is what keeps two equal edges in different roles apart.
+type BindSlotRole
+  = BindKeySlot
+  | BindValueSlot
+  | BindBodySlot
+  | BindLabeledSlot
+  | BindSlotUnrecognized
+
+fn bind_slot_role(slot: ChildSlot) -> BindSlotRole {
+  match slot.ordinal {
+    PositionalOrdinal { index: i } =>
+      if i == 0 {
+        BindKeySlot
+      } else if i == 1 {
+        BindValueSlot
+      } else if i == 2 {
+        BindBodySlot
+      } else {
+        BindSlotUnrecognized
+      }
+    LabeledChild => BindLabeledSlot
+  }
+}
+
+type MatchSlotRole
+  = MatchScrutineeSlot
+  | MatchArmSlot
+  | MatchLabeledSlot
+
+fn match_slot_role(slot: ChildSlot) -> MatchSlotRole {
+  match slot.ordinal {
+    PositionalOrdinal { index: i } =>
+      if i == 0 {
+        MatchScrutineeSlot
+      } else {
+        MatchArmSlot
+      }
+    LabeledChild => MatchLabeledSlot
+  }
 }
 
 type EdgeDiscipline

@@ -56,7 +56,7 @@ import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
-import v2.std.node { is_positional, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, Occupancy, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
+import v2.std.node { BindBodySlot, BindKeySlot, BindLabeledSlot, BindSlotUnrecognized, BindValueSlot, ChildSlot, MatchArmSlot, MatchLabeledSlot, MatchScrutineeSlot, bind_slot_role, match_slot_role, is_positional, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, Occupancy, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -8152,7 +8152,8 @@ fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, m
   }
 }
 
-fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
+fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, slot: ChildSlot, resolved: ResolvedTree) -> InferFrame {
+  let edge = slot.edge
   if infer_application_actual_is_callback(application: parent, edge: edge) {
     infer_callback_argument_frame(application: parent, frame: infer_frame_inherited(frame: frame), acc: acc, callback: edge.target, resolved: resolved)
   } else {
@@ -8162,12 +8163,16 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
         infer_fold_carrier_frame(bind: parent, frame: infer_frame_inherited(frame: frame), acc: acc, loop_node: edge.target, resolved: resolved)
       } else if infer_loop_takes_collection_member(loop_node: parent) {
         infer_fold_member_frame(loop_node: parent, frame: infer_frame_inherited(frame: frame), acc: acc, step: edge.target, resolved: resolved)
-      } else if infer_let_body_edge(parent: parent, edge: edge) {
+      } else if infer_let_body_slot(parent: parent, slot: slot) {
         infer_let_body_frame(bind: parent, frame: infer_frame_keep_uninhabited_match_expected(frame: frame), acc: acc)
       } else {
         match parent.kind {
           ComputationNode { behavior: Match } =>
-            infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved)
+            match match_slot_role(slot: slot) {
+              MatchArmSlot => infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved)
+              MatchScrutineeSlot => infer_frame_inherited(frame: frame)
+              MatchLabeledSlot => infer_frame_inherited(frame: frame)
+            }
           ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
           TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
         }
@@ -8581,23 +8586,19 @@ fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGather
   match infer_match_scrutinee(match_node: parent) {
     Absent => infer_frame_inherited(frame: frame)
     Present { value: scrutinee } =>
-      if scrutinee == edge.target {
-        infer_frame_inherited(frame: frame)
-      } else {
-        match lookup_inferred_facts_in_entries(entries: acc.entries, key: scrutinee) {
-          Absent => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-          Present { value: facts } =>
-            match inferred_facts_resolved_type(facts: facts) {
-              Violates { diagnostic: _ } => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-              Holds { value: scrutinee_type } =>
-                match infer_match_coproduct_of_type(scrutinee_type: scrutinee_type, resolved: resolved) {
-                  CoproductNotDeclared => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-                  CoproductArityMismatch => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-                  UninhabitedScrutinee => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-                  CoproductRead { coproduct: coproduct } => infer_match_arm_paid_frame(frame: frame, arm: edge.target, coproduct: coproduct)
-                }
-            }
-        }
+      match lookup_inferred_facts_in_entries(entries: acc.entries, key: scrutinee) {
+        Absent => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: _ } => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+            Holds { value: scrutinee_type } =>
+              match infer_match_coproduct_of_type(scrutinee_type: scrutinee_type, resolved: resolved) {
+                CoproductNotDeclared => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+                CoproductArityMismatch => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+                UninhabitedScrutinee => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+                CoproductRead { coproduct: coproduct } => infer_match_arm_paid_frame(frame: frame, arm: edge.target, coproduct: coproduct)
+              }
+          }
       }
   }
 }
@@ -8770,11 +8771,16 @@ fn infer_bind_body(bind: Node) -> Optional<Node> {
   list_at_optional(xs: positional_child_target_nodes(node: bind), index: 2)
 }
 
-fn infer_let_body_edge(parent: Node, edge: Edge) -> Bool {
+// THE LET BODY CHILD, told by its slot (v2.std.node bind_slot_role): a body whose edge equals the value's
+// is still the body, and the value is never mistaken for it.
+fn infer_let_body_slot(parent: Node, slot: ChildSlot) -> Bool {
   if infer_is_let_bind(bind: parent) {
-    match infer_bind_body(bind: parent) {
-      Present { value: body } => edge.target == body
-      Absent => false
+    match bind_slot_role(slot: slot) {
+      BindBodySlot => true
+      BindKeySlot => false
+      BindValueSlot => false
+      BindLabeledSlot => false
+      BindSlotUnrecognized => false
     }
   } else {
     false
@@ -8961,11 +8967,11 @@ fn infer_gather_fold_bind_row_on_entries(
   }
 }
 
-fn infer_gather_schedules_first(parent: Node, edge: Edge) -> Bool {
-  infer_loop_schedules_first(parent: parent, edge: edge)
-    || infer_application_schedules_before_callbacks(parent: parent, edge: edge)
-    || infer_bind_schedules_key_and_value_first(parent: parent, edge: edge)
-    || infer_match_schedules_scrutinee_first(parent: parent, edge: edge)
+fn infer_gather_schedules_first(parent: Node, slot: ChildSlot) -> Bool {
+  infer_loop_schedules_first(parent: parent, edge: slot.edge)
+    || infer_application_schedules_before_callbacks(parent: parent, edge: slot.edge)
+    || infer_bind_schedules_key_and_value_first(parent: parent, slot: slot)
+    || infer_match_schedules_scrutinee_first(parent: parent, slot: slot)
 }
 
 // A BIND SCHEDULES ITS KEY AND ITS VALUE BEFORE ITS BODY. The two are what the body's frame reads from the
@@ -8975,44 +8981,41 @@ fn infer_gather_schedules_first(parent: Node, edge: Edge) -> Bool {
 // (gunbc.plans.demand_engine_program 2.4, specimen "Inference's own sibling dependencies"). Which child is
 // the key and which the value is not re-derived here: the key is the binder v2.compiler.lexical_scope
 // bind_binder reads (the reader resolve sites the binder with, and infer_is_let_bind gates on), the value
-// is infer_bind_value, and the body stays in the rest group, where infer_let_body_edge enters it. The
-// predicate classifies the EDGE, not its target: the key is the edge v2.std.node bind_key_edge names, and
-// the value is a POSITIONAL edge to the value node, so an annotation edge sharing the value's target (the
-// normalized tree may share one node at several positions) stays in the rest group. For the layouts
+// is infer_bind_value, and the body stays in the rest group, where infer_let_body_slot enters it. The
+// predicate classifies the CHILD'S SLOT, not its edge or target (v2.std.node bind_slot_role): the
+// normalized tree may share one node at several positions, so a value and a body -- or an annotation and a
+// value -- can carry equal edges, and only the slot says which role a child plays. For the layouts
 // v2.std.compilers.body_lowering lower_bind and lower_bind_annotated write -- key, value, body, then the
 // annotation -- the first group is the stored prefix and the schedule is stored order; an admitted Bind
 // with its annotation between key and value is reordered to key, value, annotation, body, which still puts
 // the value before the body and changes no fact the body reads.
-fn infer_bind_schedules_key_and_value_first(parent: Node, edge: Edge) -> Bool {
+fn infer_bind_schedules_key_and_value_first(parent: Node, slot: ChildSlot) -> Bool {
   match bind_binder(n: parent) {
     Present { value: _ } =>
-      bind_key_edge(parent: parent, edge: edge) || infer_bind_value_edge(bind: parent, edge: edge)
+      match bind_slot_role(slot: slot) {
+        BindKeySlot => true
+        BindValueSlot => true
+        BindBodySlot => false
+        BindLabeledSlot => false
+        BindSlotUnrecognized => false
+      }
     Absent => false
-  }
-}
-
-fn infer_bind_value_edge(bind: Node, edge: Edge) -> Bool {
-  if is_positional(e: edge) {
-    match infer_bind_value(bind: bind) {
-      Present { value: value } => edge.target == value
-      Absent => false
-    }
-  } else {
-    false
   }
 }
 
 // A MATCH SCHEDULES ITS SCRUTINEE BEFORE ITS ARMS. Each arm's frame -- infer_match_arm_child_frame -- reads
 // the scrutinee's settled facts from the parent's accumulator, for the arm's coverage obligation and for
 // the type a pattern binder is typed with, and both this predicate and that frame take the scrutinee from
-// infer_match_scrutinee_edge. Arms stay in the rest group, in stored order; for the layout
-// v2.std.compilers.body_lowering lower_match writes the schedule is the stored order.
-fn infer_match_schedules_scrutinee_first(parent: Node, edge: Edge) -> Bool {
+// infer_match_scrutinee_edge. The scrutinee is told from an arm by its SLOT (v2.std.node match_slot_role),
+// so an arm whose edge equals the scrutinee's stays an arm. Arms stay in the rest group, in stored order;
+// for the layout v2.std.compilers.body_lowering lower_match writes the schedule is the stored order.
+fn infer_match_schedules_scrutinee_first(parent: Node, slot: ChildSlot) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Match } =>
-      match infer_match_scrutinee_edge(match_node: parent) {
-        Present { value: scrutinee } => edge == scrutinee
-        Absent => false
+      match match_slot_role(slot: slot) {
+        MatchScrutineeSlot => true
+        MatchArmSlot => false
+        MatchLabeledSlot => false
       }
     ComputationNode { behavior: _ } => false
     TypeNode { connective: _ } => false
@@ -9078,9 +9081,9 @@ fn infer_gather_fold_algebra(partials: List<Node>, kinds: List<RosterKindIndex>,
         frame: frame
       )
     },
-    first: fn(parent, e) { infer_gather_schedules_first(parent: parent, edge: e) },
-    child_context: fn(parent, frame, acc, e) {
-      infer_gather_child_context(parent: parent, frame: frame, acc: acc, edge: e, resolved: resolved)
+    first: fn(parent, s) { infer_gather_schedules_first(parent: parent, slot: s) },
+    child_context: fn(parent, frame, acc, s) {
+      infer_gather_child_context(parent: parent, frame: frame, acc: acc, slot: s, resolved: resolved)
     },
     step: fn(acc, e, child) {
       infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials, kinds: kinds, resolved: resolved)
