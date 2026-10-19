@@ -1,0 +1,12 @@
+module v2.test.claim.manual.ctor_tag_arm_naming_qualified
+
+// Frontier repro, second spelling: the qualified path form. Also must NOT compile.
+
+import std.primitives { tag_of }
+
+type Pq = Q0 | Q1 { a: Int }
+
+test fn qualified_payload_arm_as_a_value() -> Bool {
+  let arm = tag_of(v: Pq::Q1)
+  true
+}
