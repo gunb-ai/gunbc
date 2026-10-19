@@ -765,6 +765,27 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
+  // THE RUNNER-RETIREMENT MASK. `systemctl mask --now` of one runner unit inside the operator's authorized
+  // interruption scope is reversible (unmask), recurs on every provision whose transition requires the retiree,
+  // and mints one exact-unit sudoers line. select_authorization_pattern selects FederatedScopedGrant: the
+  // ghrunner grant is derived from the same conjunction the apply masks from
+  // (gunbc.runner.runner_host_grants runner_slot_retirement_mask_operations), so the grant set and the mask set
+  // are one fact. The operator's 2026-10-16 interruption authorization is the scope, not a per-effect witness.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_slot_provision", decl_name: "retirement_mask_line"),
+    effect: PrivilegedEffect {
+      subject: "on every provision whose transition requires a runner unit retired and whose operator interruption authorization covers it, mask --now that one unit" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on the host, the dispatched fleet-converge apply's host principal" as NonEmptyStr },
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.heal_publisher_federation", decl_name: "heal_publisher_wif_pool"),
     effect: recurring_credential_read(subject: "heal publisher reads the gunbai-bot App key under its own pool and provider" as NonEmptyStr),

@@ -134,7 +134,7 @@ import gunbc.runner.runner_slot_retirement {
   CgroupEventsBatchRead,
   CgroupEventsBatchUnread,
 }
-import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_grantee, runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
+import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_grantee, runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused, runner_host_sudoers_install_path }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 
@@ -284,8 +284,6 @@ fn runner_host_depriv_file(depriv: String) -> RunnerHostFileDesired {
 // cannot install its own grant). Only the rendered lines are written: 0440 root-owned, validated by
 // visudo on the staging path before the rename, and read back byte-for-byte by the converge.
 // A host whose body cannot be rendered is WITHHELD with the producer's own cause, not skipped.
-data runner_host_sudoers_install_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner" as NonEmptyStr
-
 type RunnerHostSudoersDesired
   = SudoersFileDesired { file: RunnerHostFileDesired }
   | SudoersFileWithheld { withheld: RunnerHostFileWithheld }
