@@ -1,0 +1,508 @@
+module test.claim.claim_coverage_census_s1_witness
+
+// THE DISCOVERED-UNIVERSE CENSUS, WITNESSED (Charter 4 exit census, sunny-ibex-149).
+//
+// The live census (`gunbc.claim_coverage_census_live claim_coverage_census_exit`) reads the checkout and
+// cannot be answered by a test. Its POLICY is pure and injected: `gunbc.claim_coverage_census_s1
+// classify_rows`/`derive_executed` decide standings and executed-by from an injected universe, claim rows,
+// classifier rows and produced identities, and `gunbc.claim_coverage_census_s1_live s1_block` turns a
+// composition into printed lines plus an exit. So every arm below -- including all three exits -- is
+// checked over fixtures decided by the same functions the live instrument runs.
+//
+// NO COUNT LITERALS, NO HEAD READING, NO SILENT ARMS. Nothing here asserts a population size of the live
+// corpus: an exact expected list is asserted instead, so a carrier that silently gained or lost members
+// fails a named expectation rather than a number. And every fixture asserts its OWNERSHIP of the line it
+// expects -- "some line mentions it", never "some line exists" -- because an assertion that passes when the
+// census prints nothing at all is how a census that stopped answering reads as green. Where a test needs to
+// show a channel is not muted, it pairs a stale member with a grounded one in the SAME carrier: a channel
+// that printed everything, or nothing, would fail one of the two halves.
+
+import std.types { String, Bool, List }
+import std.algebra { string_contains }
+import std.optional { Absent, Present }
+import gunbc.claim_coverage_census_s1 {
+  ClaimRow, ClassifierRow, S1Census, ClassifierStanding, S1Composed, S1InputsUnread,
+  classify_rows, derive_executed, s1_uncovered, s1_census_lines,
+  s1_block, s1_exit_held, s1_exit_did_not_hold, s1_exit_unread
+}
+
+// The fixture corpus: two claims of module `m` over `m.dag` and one of module `other` over `other.dag`.
+// The module is a fixture token and the identity is its exact `module.function` spelling -- the same shape
+// the source ingress produces, so the join is exercised rather than approximated.
+fn fixture_rows() -> List<ClaimRow> {
+  [
+    ClaimRow { identity: "m.a", entry: "m.dag", function: "a" },
+    ClaimRow { identity: "m.b", entry: "m.dag", function: "b" },
+    ClaimRow { identity: "other.c", entry: "other.dag", function: "c" }
+  ]
+}
+
+fn fixture_universe() -> List<String> {
+  ["m.a", "m.b", "other.c"]
+}
+
+// A cover row naming one identity, as the drop populations and the fill-debt list spell them.
+fn cover_identity(carrier: String, member: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: member,
+    grain: IdentityGrain,
+    match_: ExactMemberMatch,
+    function: Absent,
+    cover: true
+  }
+}
+
+// A cover row over a whole FILE: the grain the rung drops and the frozen deferrals declare. The member must
+// be a repo path, and the fold grounds it through the one expansion -- never by string surgery.
+fn cover_file(carrier: String, member: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: member,
+    grain: FileGrain,
+    match_: ExactMemberMatch,
+    function: Absent,
+    cover: true
+  }
+}
+
+// A file cover narrowed to one function: the shape a drop population reaches when it names one claim of a
+// file. `function` is a declared field, never parsed out of the member.
+fn cover_file_fn(carrier: String, member: String, function: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: member,
+    grain: FileGrain,
+    match_: ExactMemberMatch,
+    function: Present { value: function },
+    cover: true
+  }
+}
+
+// A frontier pattern: substring matching exists ONLY for that carrier, and this is how the witness says
+// "this row is a frontier pattern" without reaching for the real carrier.
+fn frontier_pattern(pattern: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: "gunbc.ci.ci_layer_roots.witness_exclusion_frontier",
+    member: pattern,
+    grain: FileGrain,
+    match_: SubstringMemberMatch,
+    function: Absent,
+    cover: true
+  }
+}
+
+// An EXPECTATION row: floor_expected_red's shape. An expectation excuses nothing, so a covered-by-nothing
+// claim stays uncovered however many expectation rows name it.
+fn expectation_identity(member: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: "v2.workflow.floor_route_authority.floor_expected_red",
+    member: member,
+    grain: IdentityGrain,
+    match_: ExactMemberMatch,
+    function: Absent,
+    cover: false
+  }
+}
+
+// The fill-debt carrier, spelled once so every stale-row assertion names the carrier it claims to test.
+data fill_debt_carrier: String = "v2.workflow.floor_pure_producer_share.floor_single_claim_fill_debt"
+
+// `s1_uncovered` answers by identity; membership is a fold, so no builtin spelling can be assumed here.
+fn list_has(xs: List<String>, wanted: String) -> Bool {
+  fold(
+    xs,
+    init: false,
+    f: fn(acc, x) { acc || x == wanted }
+  )
+}
+
+fn covered(census: S1Census, identity: String) -> Bool {
+  !list_has(xs: s1_uncovered(census: census), wanted: identity)
+}
+
+fn line_names(lines: List<String>, needle: String) -> Bool {
+  any(lines, s => string_contains(s: s, pattern: needle))
+}
+
+// A row's verdict, read from its carrier+member -- the standing carries the row it judged, so the witness
+// asks the same question a reader of the receipt asks: which row, and how did it stand.
+fn stale_stands(stands: List<ClassifierStanding>, member: String) -> Bool {
+  any(stands, standing => match standing {
+    StaleEnrolled { row: row } => row.member == member
+    _ => false
+  })
+}
+
+fn ungrounded_stands(stands: List<ClassifierStanding>, member: String) -> Bool {
+  any(stands, standing => match standing {
+    UngroundedDropMember { row: row } => row.member == member
+    _ => false
+  })
+}
+
+fn grounded_cover(stands: List<ClassifierStanding>, member: String) -> Bool {
+  any(stands, standing => match standing {
+    GroundedCover { row: row, covers: _ } => row.member == member
+    _ => false
+  })
+}
+
+fn covers_of(stands: List<ClassifierStanding>, member: String) -> List<String> {
+  fold(
+    stands,
+    init: [],
+    f: fn(acc, standing) {
+      match standing {
+        GroundedCover { row: row, covers: covers } => if row.member == member { covers } else { acc }
+        _ => acc
+      }
+    }
+  )
+}
+
+// A census over an injected classification, so no test restates the classification it is asserting.
+fn census_over(rows: List<ClaimRow>, universe: List<String>, covers: List<ClassifierRow>, produced: List<String>) -> S1Census {
+  S1Census {
+    universe: universe,
+    rows: rows,
+    executed: derive_executed(rows: rows, produced: produced),
+    stands: classify_rows(universe: universe, rows: rows, classifier_rows: covers)
+  }
+}
+
+// POSITIVE CONTROL: a controlled fixture with a KNOWN covered set exits 0. Two claims are covered (one by
+// an identity row, one by a function-narrowed file row), the third by a whole-file drop row, and the
+// required job's bound producer names one identity: the census holds, prints the head it was read at, and
+// names nothing as a finding. This is the arm that fails if any finding channel is muted -- so the covered
+// set itself is asserted per identity, not just the exit.
+test fn a_fixture_whose_claims_are_all_covered_holds_and_exits_zero() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [
+      cover_identity(carrier: "t.drop", member: "m.a"),
+      cover_file_fn(carrier: "t.drop", member: "m.dag", function: "b"),
+      cover_file(carrier: "t.drop", member: "other.dag")
+    ],
+    produced: ["m.a"]
+  )
+  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  block.exit_code == s1_exit_held
+    && covered(census: census, identity: "m.a")
+    && covered(census: census, identity: "m.b")
+    && covered(census: census, identity: "other.c")
+    && any(block.lines, line => line == "S1-CENSUS head:fixturehead")
+    && !line_names(lines: block.lines, needle: "UNCOVERED ")
+    && !line_names(lines: block.lines, needle: "STALE-ENROLLED")
+    && !line_names(lines: block.lines, needle: "UNGROUNDED-DROP-MEMBER")
+}
+
+// REMOVE A COVERED CLAIM FROM ITS DROP AND THE CENSUS MUST NAME IT (warm-wolf-570's RED). The row covering
+// `m.b` is deleted and nothing else changes: `m.b` alone is named, the census exits 1, and the reason says
+// the universe did not hold. The other two are asserted NOT named, which is what makes this a report about
+// the deleted cover rather than about the fixture.
+test fn removing_a_covered_claim_from_its_drop_makes_the_census_name_it() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [
+      cover_identity(carrier: "t.drop", member: "m.a"),
+      cover_file(carrier: "t.drop", member: "other.dag")
+    ],
+    produced: []
+  )
+  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  block.exit_code == s1_exit_did_not_hold
+    && (s1_uncovered(census: census) == ["m.b"])
+    && line_names(lines: block.lines, needle: "UNCOVERED m.b")
+    && !line_names(lines: block.lines, needle: "UNCOVERED m.a")
+    && !line_names(lines: block.lines, needle: "UNCOVERED other.c")
+    && string_contains(s: block.reason, pattern: "did not hold")
+}
+
+// AN EXPECTATION EXCUSES NOTHING. floor_expected_red is carried with cover:false, so naming an uncovered
+// claim in it cannot green the census: the claim stays uncovered and the census exits 1. The other arm of
+// the same fixture is a cover row holding the census (above), so this is about cover vs expectation and not
+// about the fixture.
+test fn a_floor_expected_red_row_never_covers_a_claim() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [
+      cover_identity(carrier: "t.drop", member: "m.a"),
+      cover_file(carrier: "t.drop", member: "other.dag"),
+      expectation_identity(member: "m.b")
+    ],
+    produced: []
+  )
+  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  block.exit_code == s1_exit_did_not_hold
+    && (s1_uncovered(census: census) == ["m.b"])
+    && !line_names(lines: block.lines, needle: "UNCOVERED m.a")
+}
+
+// STALE ENROLLMENT IS NAMED, EVERY ONE OF IT. These are jolly-boar-495's pre-fix #14373 fill-debt rows, at
+// the identities the pre-fix carrier itself declared (module field + claim, from c07970511^: the rows at
+// src/v2/workflow/floor_pure_producer_share.dag lines 1059/1264/1592). None of the three claims exists at
+// this head, so each must be refused BY NAME -- not counted, not dropped -- and the census must exit 1
+// because of them. The whole dotted identity is asserted, because a bare function name joins to nothing at
+// the identity grain and the RED would then pass vacuously.
+test fn the_three_prefix_fill_debt_rows_are_stale_enrolled_by_name() -> Bool {
+  let rows = fixture_rows()
+  let stale = [
+    "v2.test.claim.body_cast_node.bcn_let_in_value_cast_carries_its_target",
+    "v2.test.claim.compiler.kernel_value_type_roster_witness.kvr_a_named_calls_bool_formal_is_counted_not_judged_holds",
+    "v2.test.claim.type_param_binder_frame.tpb_emitter_refuses_a_generic_arrow"
+  ]
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: map(stale, member => cover_identity(carrier: fill_debt_carrier, member: member)),
+    produced: []
+  )
+  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  block.exit_code == s1_exit_did_not_hold
+    && all(stale, member => line_names(lines: block.lines, needle: concat("STALE-ENROLLED ", concat(fill_debt_carrier, concat(" ", member)))))
+    && all(stale, member => stale_stands(stands: census.stands, member: member))
+    && any(block.lines, line => line == "S1-CENSUS head:fixturehead")
+}
+
+// THE SAME CARRIER, POST-FIX: NOTHING IS STALE, AND THE RENAMED CLAIM IS GROUNDED. Two halves in one
+// carrier over one file: the pre-fix tpb identity (which #14373 renamed away) stands stale, and the real
+// claim -- `..._where_rows_declare_no_type_params` -- stands a grounded cover over exactly its own
+// identity. A stale channel that printed everything would fail the second half; one that printed nothing
+// would fail the first. This is the non-vacuity check for the test above, and it is the shape of the
+// positive control jolly-boar-495 asked for: the post-fix list prints none.
+test fn the_prefix_row_is_stale_while_its_renamed_successor_is_grounded() -> Bool {
+  let tpb = "v2.test.claim.type_param_binder_frame"
+  let prefix = concat(tpb, ".tpb_emitter_refuses_a_generic_arrow")
+  let successor = concat(prefix, "_where_rows_declare_no_type_params")
+  let rows = [ClaimRow { identity: successor, entry: "tpb.dag", function: "tpb_emitter_refuses_a_generic_arrow_where_rows_declare_no_type_params" }]
+  let universe = [successor]
+  let census = census_over(
+    rows: rows,
+    universe: universe,
+    covers: [
+      cover_identity(carrier: fill_debt_carrier, member: prefix),
+      cover_identity(carrier: fill_debt_carrier, member: successor)
+    ],
+    produced: []
+  )
+  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  stale_stands(stands: census.stands, member: prefix)
+    && line_names(lines: block.lines, needle: concat("STALE-ENROLLED ", concat(fill_debt_carrier, concat(" ", prefix))))
+    && !line_names(lines: block.lines, needle: concat("STALE-ENROLLED ", concat(fill_debt_carrier, concat(" ", successor))))
+    && grounded_cover(stands: census.stands, member: successor)
+    && (covers_of(stands: census.stands, member: successor) == universe)
+    && !stale_stands(stands: census.stands, member: successor)
+}
+
+// THE FULL POST-FIX LIST PRINTS NOTHING STALE. Every member resolves into the discovered universe, so the
+// stale channel is silent AND the census holds -- silence with a clean exit, not silence over findings.
+test fn a_fully_resolving_carrier_prints_no_stale_row_and_holds() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [
+      cover_identity(carrier: fill_debt_carrier, member: "m.a"),
+      cover_identity(carrier: fill_debt_carrier, member: "m.b"),
+      cover_identity(carrier: fill_debt_carrier, member: "other.c")
+    ],
+    produced: []
+  )
+  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  !line_names(lines: block.lines, needle: "STALE-ENROLLED")
+    && block.exit_code == s1_exit_held
+    && all(fixture_universe(), id => grounded_cover(stands: census.stands, member: id))
+}
+
+// STALENESS IS DECIDED AGAINST THE WHOLE UNIVERSE, never against a filtered view of it. `m.a` is in the
+// universe but is absent from the injected rows: a caller that classified over the ROWS would report it
+// stale, while the fold classifies over the UNIVERSE, so an enrolled claim discovery holds is never refused.
+// This is what keeps a filtered report (uncovered-only, say) from inventing stale enrollments.
+test fn a_claim_the_universe_holds_is_never_stale_enrolled_when_rows_are_filtered() -> Bool {
+  let rows = [ClaimRow { identity: "m.b", entry: "m.dag", function: "b" }]
+  let census = S1Census {
+    universe: fixture_universe(),
+    rows: rows,
+    executed: [],
+    stands: classify_rows(
+      universe: fixture_universe(),
+      rows: rows,
+      classifier_rows: [
+        cover_identity(carrier: "t.drop", member: "m.a"),
+        cover_identity(carrier: "t.drop", member: "m.b")
+      ]
+    )
+  }
+  !line_names(lines: s1_census_lines(census: census, head: "h"), needle: "STALE-ENROLLED m.a")
+    && covered(census: census, identity: "m.a")
+    && covered(census: census, identity: "m.b")
+}
+
+// THE 41: A DROP MEMBER THAT GROUNDS IN NEITHER PATH NOR IDENTITY IS REFUSED, EACH ONE A FINDING. These
+// values are fixture instances of the shape warm-wolf-570 ruled must not be repaired by editing the
+// declaration: they parse as neither a `.dag` path nor a dotted identity. They travel at their declared text
+// and the census refuses them by carrier AND member, so every one of them is a located finding.
+test fn a_drop_member_that_is_neither_path_nor_identity_is_an_ungrounded_refusal() -> Bool {
+  let rows = fixture_rows()
+  let ungroundable = [
+    "the whole long-lane class is excused",
+    "long_lane_quarantine_membership",
+    "some.identation.that.is.not.a.path.and.not.a.claim"
+  ]
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: map(ungroundable, member => cover_file(carrier: "gunbc.rung_drop.t.drop", member: member)),
+    produced: []
+  )
+  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  block.exit_code == s1_exit_did_not_hold
+    && all(ungroundable, member => line_names(lines: block.lines, needle: concat("UNGROUNDED-DROP-MEMBER gunbc.rung_drop.t.drop ", member)))
+    && all(ungroundable, member => ungrounded_stands(stands: census.stands, member: member))
+}
+
+// GRAIN IS THE DECLARED FIELD, AND THE SHAPE CHECK ONLY REFUSES A DISAGREEMENT. The SAME member text under
+// two declared grains: `m.dag` declared FileGrain covers the file's claims; declared IdentityGrain is a
+// typed refusal, because a path is not an identity spelling. The grain is never inferred from the string --
+// it is read from the row -- and a mismatch is never coerced into whichever grain would pass.
+test fn the_same_member_covers_at_its_declared_grain_and_refuses_at_the_other() -> Bool {
+  let rows = fixture_rows()
+  let as_file = classify_rows(
+    universe: fixture_universe(),
+    rows: rows,
+    classifier_rows: [cover_file(carrier: "t.drop", member: "m.dag")]
+  )
+  let as_identity = classify_rows(
+    universe: fixture_universe(),
+    rows: rows,
+    classifier_rows: [cover_identity(carrier: "t.drop", member: "m.dag")]
+  )
+  (covers_of(stands: as_file, member: "m.dag") == ["m.a", "m.b"])
+    && ungrounded_stands(stands: as_identity, member: "m.dag")
+}
+
+// AN EXACT FILE MEMBER SELECTING NO DISCOVERED CLAIM IS REFUSED. A real-looking path whose file discovery
+// holds no claims for -- renamed, deleted, or never there -- is an ungroundable refusal naming the drop, not
+// a silent "covered nothing". This is the population a prose drop could hide forever.
+test fn an_exact_file_member_selecting_no_discovered_claim_is_refused() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [cover_file(carrier: "t.drop", member: "renamed_away.dag")],
+    produced: []
+  )
+  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  block.exit_code == s1_exit_did_not_hold
+    && line_names(lines: block.lines, needle: "UNGROUNDED-DROP-MEMBER t.drop renamed_away.dag")
+    && ungrounded_stands(stands: census.stands, member: "renamed_away.dag")
+}
+
+// THE ONE EXPANSION IS THE FILE'S OWN DISCOVERED CLAIMS -- total over the file, exact across files. A
+// whole-file cover grants both of `m.dag`'s identities and does NOT reach into `other.dag`, which is the
+// difference between a declared expansion and a prefix match.
+test fn a_file_grain_cover_grants_exactly_that_files_discovered_identities() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [cover_file(carrier: "t.drop", member: "m.dag")],
+    produced: []
+  )
+  (covers_of(stands: census.stands, member: "m.dag") == ["m.a", "m.b"])
+    && (s1_uncovered(census: census) == ["other.c"])
+}
+
+// A FRONTIER PATTERN THAT SELECTS NOTHING IS A FINDING. Substring matching is allowed for that one carrier
+// because the frontier declares patterns -- so a pattern grounding in no discovered file is refused exactly
+// like a stale member, while a pattern that grounds covers the files it selects.
+test fn a_frontier_pattern_grounding_in_no_file_is_refused_and_one_grounding_covers() -> Bool {
+  let rows = fixture_rows()
+  let dead = classify_rows(
+    universe: fixture_universe(),
+    rows: rows,
+    classifier_rows: [frontier_pattern(pattern: "no_such_lane_directory")]
+  )
+  let live = classify_rows(
+    universe: fixture_universe(),
+    rows: rows,
+    classifier_rows: [frontier_pattern(pattern: "m.da")]
+  )
+  ungrounded_stands(stands: dead, member: "no_such_lane_directory")
+    && (covers_of(stands: live, member: "m.da") == ["m.a", "m.b"])
+}
+
+// EXECUTED-BY IS DERIVED FROM THE PRODUCER'S OWN CLAIM SET AND NOTHING ELSE. An identity the producer names
+// is executed only if discovery ALSO enrolled it: a binding cannot manufacture an executed claim for a file
+// holding no test, so the ghost identity contributes nothing and the claims remain in the reported
+// population. Executed-by is never a list the census authored.
+test fn a_producer_naming_an_undiscovered_claim_executes_nothing() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [],
+    produced: ["m.a", "ghost.fn_that_discovery_does_not_hold", "m.b"]
+  )
+  (census.executed == ["m.a", "m.b"])
+    && (s1_uncovered(census: census) == ["other.c"])
+    && line_names(lines: s1_census_lines(census: census, head: "h"), needle: "UNCOVERED other.c")
+    && !line_names(lines: s1_census_lines(census: census, head: "h"), needle: "UNCOVERED m.a")
+}
+
+// A PRODUCER THAT EXPOSES NO CLAIM SET LEAVES THE UNIVERSE UNCOVERED, and that IS the finding: nothing is
+// excused because a required job "should" run it. The census exits 1 and names every identity.
+test fn a_producer_exposing_no_claim_set_leaves_the_universe_uncovered_and_is_a_finding() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(rows: rows, universe: fixture_universe(), covers: [], produced: [])
+  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  block.exit_code == s1_exit_did_not_hold
+    && all(fixture_universe(), id => line_names(lines: block.lines, needle: concat("UNCOVERED ", id)))
+}
+
+// EXIT 2 IS THE ONLY ARM FOR AN INPUT THAT COULD NOT BE READ, AND IT DECIDES NOTHING. The channels are
+// disjoint by construction: an unread input prints its located causes and prints NO claim population -- no
+// UNCOVERED, no STALE-ENROLLED, no UNGROUNDED-DROP-MEMBER -- because a census that could not read is not a
+// census whose claims failed. If this ever sees a finding line beside an unread cause, the channels have
+// been merged and the exit-2 arm has become a fake green.
+test fn an_unread_input_exits_two_and_reports_no_claim_population() -> Bool {
+  let block = s1_block(
+    s1: S1InputsUnread { causes: ["m.dag: unreadable", "the dag grammar did not prepare: the marker channel cannot answer"] },
+    head: "fixturehead"
+  )
+  block.exit_code == s1_exit_unread
+    && line_names(lines: block.lines, needle: "S1-CENSUS INPUT UNREAD m.dag: unreadable")
+    && line_names(lines: block.lines, needle: "marker channel cannot answer")
+    && !line_names(lines: block.lines, needle: "UNCOVERED ")
+    && !line_names(lines: block.lines, needle: "STALE-ENROLLED")
+    && !line_names(lines: block.lines, needle: "UNGROUNDED-DROP-MEMBER")
+    && string_contains(s: block.reason, pattern: "could not be read")
+}
+
+// A NOTE TRAVELS WITH THE RECEIPT. An unbound or doubled required-job label changes what `executed` can
+// mean, so it prints even when the standings are clean: an unattributable label is not coverage and not a
+// silent zero either. It is not a claim finding, so the census still holds with the note on the page.
+test fn an_unattributable_required_job_label_prints_beside_clean_standings() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [
+      cover_identity(carrier: "t.drop", member: "m.a"),
+      cover_identity(carrier: "t.drop", member: "m.b"),
+      cover_identity(carrier: "t.drop", member: "other.c")
+    ],
+    produced: []
+  )
+  let note = "REQUIRED-JOB LABEL UNBOUND //gunbc/instruments:t.thing (no producer binds it: nothing it runs is attributable)"
+  let block = s1_block(s1: S1Composed { census: census, notes: [note] }, head: "fixturehead")
+  line_names(lines: block.lines, needle: "REQUIRED-JOB LABEL UNBOUND")
+    && block.exit_code == s1_exit_held
+}

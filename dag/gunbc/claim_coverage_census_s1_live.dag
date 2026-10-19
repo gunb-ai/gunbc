@@ -1,0 +1,558 @@
+module gunbc.claim_coverage_census_s1_live
+
+// THE LIVE COMPOSITION OF THE DISCOVERED UNIVERSE (Charter 4 exit census, sunny-ibex-149).
+//
+// ONE instrument, ONE label. `//gunbc/instruments:claim-coverage-census` is that instrument
+// (warm-wolf-570's one-instrument ruling), so this module adds NO label, NO registry arm and NO second
+// entry: the existing live entry `gunbc.claim_coverage_census_live claim_coverage_census_exit` composes
+// the fold below and prints its standings beside the wet schedule's receipt.
+//
+// ONE universe: S1, every discovered test fn, at IDENTITY grain. The universe comes from discovery's own
+// per-file authority -- `v2.workflow.floor_discovery_source_authority discover_floor_rows_for_source`,
+// folded over every governed `.dag` file and merged by `floor_discovery_finalize_source_outcomes`, the
+// same authority the required floor runs per prepared source -- deliberately NOT from
+// `discover_floor_corpus_rows_from_host_facts`, because that corpus fold additionally applies the
+// discovery-corpus mode's row ADMISSION (`witness_row_excluded_from_discovery`, the quarantine /
+// long-lane / `witness_exclusion_frontier` policy). Admission is a COVER-side classifier of this census;
+// applying it on the universe side would let the very carrier that is supposed to EXCUSE a claim hide it
+// from the population first, which is how a frontier entry would shrink the universe instead of covering
+// a member of it.
+//
+// TEST IDENTIFICATION IS THE MARKER CHANNEL, not a text scan and not a name convention. Each governed
+// file's marked declaration names are read beside lowering by `v2.compiler.module_acquisition
+// acquisition_test_markers` (the idiom `gunbc.instruments.layout_witness_join` uses) and handed to the
+// authority as the `marked` argument. A file whose markers cannot be read is a REFUSED INPUT naming the
+// file, never an empty marker list -- an empty list would enrol that file as holding no tests, which is
+// the silent shrink this channel exists to prevent.
+//
+// THE IDENTITY IS READ, NEVER BUILT BY STRING SURGERY. The module name comes from the source ingress
+// inventory (`floor_discovery_source_inventory_live`, the same ingress the required floor's discovery
+// reads, keyed by its own path spelling), and the identity is that module joined to the discovery's own
+// function name -- the spelling every classifier carrier (the wet schedule, floor_expected_red, the
+// fill-debt list, the drop populations) uses. Nothing here splits a path into a module, and a discovered
+// file the index does not locate is a refused input rather than an invented spelling.
+//
+// THE EXECUTED-BY RELATION IS DERIVED, NEVER AUTHORED. The required job's instrument labels are the
+// emitted workflow's own rows (`gunbc.emitted_subject_build_gate`); each label is bound through
+// `gunbc.instrument_targets`; and only a binding whose producer NAMES claim identities contributes an
+// executed claim -- which, at this head, is the CliWire form alone. Every other producer form, the bin
+// programs included, exposes no claim set, so the claims it would have run stay Uncovered and print: a
+// missing claim set is reported as the universe being uncovered, exactly as ruled, and never repaired by
+// inventing enrollment. A label that binds to nothing, or to more than one producer, is a located
+// finding beside the receipt: a missing binding must never read as coverage, and never as a silent zero.
+
+import std.types { String, List, Int, Map, NonEmptyStr }
+import std.algebra { empty_map, map_insert, map_lookup, is_empty, list_find_first, trim }
+import std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import extdeps.bazel.label { render_label }
+import extdeps.exec.command { LocalExec }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git { git_rev_parse_head_command }
+import extdeps.github.actions_environment { github_sha_variable_name }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.source_root_read { source_root_candidate_is_file }
+import gunbc.target_binding { TargetBinding, TargetProducer }
+import gunbc.instrument_targets { instrument_bindings }
+import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
+import v2.cli.repository_layout { repository_tree_directory, repository_storage_layout }
+import v2.compiler.module_acquisition {
+  AcquisitionEnv, AcquisitionEnvReady, AcquisitionEnvUnprepared, AcquisitionMarkersRead,
+  AcquisitionMarkersRefused, SourceRootBinding, acquisition_env, acquisition_test_markers
+}
+import v2.compiler.source_authority { ModuleFileRef }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow, FloorMarkedSource }
+import v2.workflow.floor_discovery_producer {
+  FloorDiscoverySource, FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused,
+  floor_discovery_source_inventory_live
+}
+import v2.workflow.floor_discovery_source_authority {
+  FloorDiscoveryAccepted, FloorDiscoveryProducerResult, FloorDiscoveryRefused, FloorDiscoveryWalkState,
+  discover_floor_rows_for_source, floor_discovery_finalize_source_outcomes
+}
+import gunbc.claim_coverage_census_s1 {
+  ClaimRow, S1Census, S1Composition, S1Composed, S1InputsUnread,
+  classify_rows, derive_executed, s1_census_lines, s1_block, s1_stale_rows, s1_ungrounded_rows, s1_uncovered
+}
+import gunbc.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
+
+// The marker channel's accumulator: the facts it could supply, and the files it could not read with
+// their causes (a cause is located by path, because an unread file is a refusal that names its file).
+type MarkedFold {
+  marked: List<FloorMarkedSource>
+  unread: List<String>
+}
+
+// What naming the discovered rows produced: the claims it could name, and the rows it could not. A
+// discovered file with no declared module cannot be given an identity, and inventing one from the
+// directory is exactly the string surgery this census exists to refuse.
+type NamedClaim {
+  claims: List<ClaimRow>
+  unnamed: List<String>
+}
+
+// The walk's accumulator: the module files it found, and the located causes of a listing it could not
+// perform. A failed listing never contributes paths.
+type WalkFold {
+  paths: List<String>
+  refusals: List<String>
+}
+
+data dag_file_suffix: String = ".dag"
+
+// The checkout the census is run against, spelled the way every other relative path in this fold is
+// spelled: relative to the process working directory, which is what the walk's own root paths and the
+// ingress inventory's own reads assume. The head is resolved from the same directory the census read its
+// facts from, so the printed head is the head of the tree the census enumerated -- not a head looked up
+// somewhere else and pasted onto the receipt.
+data census_checkout_dir: String = "."
+
+// A bound recursion over the tree, so a symlinked directory cycle cannot spin the census. The bound is a
+// walk bound, not a claim about the repository: no governed tree is anywhere near it deep, and a tree
+// deeper than the bound would lose files -- which is not silent, because the lost universe then shows up
+// as the claims the census no longer names. It is stated so the bound is a decision on the record.
+data walk_depth_bound: Int = 32
+
+// The one binding of the two governed trees: the pair `gunbc.instruments.layout_witness_join` binds, so
+// the marker channel reads files where the repository keeps them.
+fn governed_bindings() -> List<SourceRootBinding> {
+  [
+    SourceRootBinding { tree: V2Tree, host_directory: repository_tree_directory(tree: V2Tree) },
+    SourceRootBinding { tree: DagTree, host_directory: repository_tree_directory(tree: DagTree) }
+  ]
+}
+
+// The governed tree a repo path sits under. Two bindings claiming the same path is a broken binding list,
+// not a choice to make: it yields no binding, and the file is then a refused input naming itself.
+fn binding_of_path(path: String) -> Optional<SourceRootBinding> {
+  list_find_first(
+    xs: governed_bindings(),
+    predicate: fn(binding) { starts_with(s: path, prefix: concat(binding.host_directory, "/")) }
+  )
+}
+
+// A governed file as the module file it is: the tree whose directory it sits under, and the path beneath
+// that directory. The prefix is stripped at the bound directory's own length -- a path never becomes a
+// module name here.
+fn governed_file_ref(path: String) -> Optional<ModuleFileRef> {
+  match binding_of_path(path: path) {
+    Absent => optional_absent()
+    Present { value: binding } =>
+      if string_length(s: path) <= string_length(s: binding.host_directory) {
+        optional_absent()
+      } else {
+        optional_present(
+          value: ModuleFileRef {
+            tree: binding.tree,
+            relative_path: substring(
+              s: path,
+              start: string_length(s: binding.host_directory) + 1,
+              end: string_length(s: path)
+            )
+          }
+        )
+      }
+  }
+}
+
+// THE WALK, under the producer's own rule (`floor_discovery_walk_path` in
+// `v2.workflow.floor_discovery_producer`): a `.dag` path is a module file, anything else is a directory
+// to list, and a failed listing counts as a file only when the host's own failure kind said
+// NotADirectory (`gunbc.source_root_read source_root_candidate_is_file`, the one authority for that
+// admission). Anything else -- a vanished entry, a permission refusal, a broken link -- is returned as a
+// located refusal, because a failed listing read as an empty directory is how a universe shrinks
+// silently.
+fn walk_tree(dir: String, depth: Int) -> WalkFold {
+  if depth <= 0 {
+    WalkFold { paths: [], refusals: [concat("walk depth bound reached at: ", dir)] }
+  } else {
+    let listed = Filesystem.List(path: dir)
+    if listed.success {
+      fold(
+        split(s: listed.entries, delimiter: "\n"),
+        init: WalkFold { paths: [], refusals: [] },
+        f: fn(acc, name) {
+          if name == "" {
+            acc
+          } else {
+            let child = concat(concat(dir, "/"), name)
+            if ends_with(s: child, suffix: dag_file_suffix) {
+              WalkFold { paths: concat(acc.paths, [child]), refusals: acc.refusals }
+            } else {
+              let inner = walk_tree(dir: child, depth: depth - 1)
+              WalkFold {
+                paths: concat(acc.paths, inner.paths),
+                refusals: concat(acc.refusals, inner.refusals)
+              }
+            }
+          }
+        }
+      )
+    } else if source_root_candidate_is_file(root: false, error_kind: listed.error_kind) {
+      WalkFold { paths: [], refusals: [] }
+    } else {
+      WalkFold {
+        paths: [],
+        refusals: [concat(concat("cannot list ", dir), ": ", listed.error)]
+      }
+    }
+  }
+}
+
+// The module files of both governed roots, and the located cause of any root that could not be walked.
+fn governed_dag_files() -> WalkFold {
+  fold(
+    witness_layer_roots,
+    init: WalkFold { paths: [], refusals: [] },
+    f: fn(acc, root) {
+      let walked = walk_tree(dir: root, depth: walk_depth_bound)
+      WalkFold {
+        paths: concat(acc.paths, walked.paths),
+        refusals: concat(acc.refusals, walked.refusals)
+      }
+    }
+  )
+}
+
+// `(repo path -> content)`: the ingress's own read, reused so the marker channel does not re-read what
+// the ingress already held. The key is the ingress's path spelling, which is the same key the module
+// index below uses, so a fact and a name can never be paired across two spellings.
+fn content_index(sources: List<FloorDiscoverySource>) -> Map<String, String> {
+  fold(
+    sources,
+    init: empty_map(),
+    f: fn(index, source) { map_insert(m: index, key: source.repo_path, value: source.content) }
+  )
+}
+
+// `(repo path -> declared module)`, the identity's only module authority. An empty declared module means
+// the ingress could not read a module declaration for that file, and the caller refuses such a file
+// rather than inventing a module from the path.
+fn module_index(sources: List<FloorDiscoverySource>) -> Map<String, String> {
+  fold(
+    sources,
+    init: empty_map(),
+    f: fn(index, source) { map_insert(m: index, key: source.repo_path, value: source.module_path) }
+  )
+}
+
+// The content of one governed file: the ingress's read where it covers the file, the readonly checkout
+// otherwise. Absent is an unreadable file, which the caller reports rather than skipping.
+fn file_content(contents: Map<String, String>, path: String) -> Optional<String> {
+  match map_lookup(m: contents, key: path) {
+    Present { value: content } => optional_present(value: content)
+    Absent =>
+      match Filesystem.Read(path: path) {
+        read => if read.success {
+          optional_present(value: read.content)
+        } else {
+          optional_absent()
+        }
+      }
+  }
+}
+
+// THE MARKER CHANNEL over the walked files. The marked names come from the acquisition channel, which
+// parses beside lowering -- never from a text scan for the word `test`, and never from a name
+// convention. A file with no marked declaration is a file holding no tests, said by the parser; a file
+// the channel could not read is a refusal naming the file, and it is NOT handed an empty list.
+fn marked_over_files(
+  env: AcquisitionEnv,
+  contents: Map<String, String>,
+  paths: List<String>
+) -> MarkedFold {
+  fold(
+    paths,
+    init: MarkedFold { marked: [], unread: [] },
+    f: fn(acc, path) {
+      match governed_file_ref(path: path) {
+        Absent => MarkedFold {
+          marked: acc.marked,
+          unread: concat(acc.unread, [concat(path, ": under no bound source tree")])
+        }
+        Present { value: file } =>
+          match file_content(contents: contents, path: path) {
+            Absent => MarkedFold {
+              marked: acc.marked,
+              unread: concat(acc.unread, [concat(path, ": unreadable")])
+            }
+            Present { value: content } =>
+              match acquisition_test_markers(env: env, file: file, content: content) {
+                AcquisitionMarkersRead { declarations: declarations } => MarkedFold {
+                  marked: concat(acc.marked, [FloorMarkedSource {
+                    repo_path: path,
+                    marked: map(declarations, declaration => declaration.name)
+                  }]),
+                  unread: acc.unread
+                }
+                AcquisitionMarkersRefused { cause: cause } => MarkedFold {
+                  marked: acc.marked,
+                  unread: concat(acc.unread, [concat(path, ": ", cause)])
+                }
+              }
+          }
+      }
+    }
+  )
+}
+
+// THE UNIVERSE, AT IDENTITY GRAIN, from discovery's policy-free per-file authority. Each walked file
+// folds on its own marker fact and on the content the ingress (or the checkout read) already supplied to
+// the marker channel -- the very bytes the marked names were read from, so a fact can never be folded
+// against different content than it describes. The fold refuses the universe rather than dropping a file:
+// a marker fact with no content beside it is an input nobody read, reported as such instead of enrolling
+// the file as holding no tests.
+fn universe_outcomes(
+  marked: List<FloorMarkedSource>,
+  contents: Map<String, String>
+) -> FloorDiscoveryProducerResult {
+  let folded = map(
+    marked,
+    source => match map_lookup(m: contents, key: source.repo_path) {
+      // A marker fact with no content beside it is an input nobody read, reported through the
+      // authority's OWN located-refusal channel (its disposition_refusal field) rather than being
+      // dropped or folded against empty content -- either of which would enrol the file as holding
+      // no tests, the silent shrink this whole channel exists to prevent.
+      Absent => FloorDiscoveryWalkState {
+        rows: [],
+        walk_failures: 0,
+        walk_failure_path: optional_absent(),
+        wire_contract_misplaced_paths: [],
+        disposition_refusal: optional_present(
+          value: concat(source.repo_path, ": no content beside its marker fact")
+        )
+      }
+      Present { value: content } => discover_floor_rows_for_source(
+        repo_path: source.repo_path,
+        marked: source.marked,
+        content: content
+      )
+    }
+  )
+  return floor_discovery_finalize_source_outcomes(outcomes: folded)
+}
+
+// The identity is the ingress's declared module joined to the discovered function name -- the same
+// spelling `witness_identity_qualified_name` gives the wet schedule, so a classifier row and a
+// discovered row meet at one grain. A row whose file the index does not locate, or whose declared module
+// is empty, is carried as `unnamed`: refused, never renamed.
+fn name_rows(rows: List<FloorDiscoveryRow>, index: Map<String, String>) -> NamedClaim {
+  fold(
+    rows,
+    init: NamedClaim { claims: [], unnamed: [] },
+    f: fn(acc, row) {
+      match map_lookup(m: index, key: row.entry) {
+        Present { value: module } =>
+          if module == "" {
+            NamedClaim {
+              claims: acc.claims,
+              unnamed: concat(acc.unnamed, [concat("no declared module for discovered file: ", row.entry)])
+            }
+          } else {
+            NamedClaim {
+              claims: concat(acc.claims, [ClaimRow {
+                identity: concat(module, concat(".", row.function)),
+                entry: row.entry,
+                function: row.function
+              }]),
+              unnamed: acc.unnamed
+            }
+          }
+        Absent => NamedClaim {
+          claims: acc.claims,
+          unnamed: concat(acc.unnamed, [concat("no declared module for discovered file: ", row.entry)])
+        }
+      }
+    }
+  )
+}
+
+// What a bound producer NAMES. Only the CliWire form carries a (file, function) pair at all; the bin
+// programs, the whole-program builds and every census/plan producer name no claim identity, so they
+// execute no claim of S1 and their claims stay Uncovered -- the finding, printed rather than repaired.
+// The match is exhaustive by construction: a producer form added upstream fails this module to compile,
+// which is what keeps "names nothing" a decision and not a default.
+fn producer_named_identities(producer: TargetProducer, index: Map<String, String>) -> List<String> {
+  match producer {
+    CliWireProgramProducer { entry: entry, function: function } =>
+      match map_lookup(m: index, key: entry) {
+        Present { value: module } => [concat(module, concat(".", function))]
+        Absent => []
+      }
+    NativeClaimProgramProducer { entry: _, deadline: _ } => []
+    NativeServeProgramProducer { entry: _, probe: _ } => []
+    V2NativeCensusProducer { reading: _ } => []
+    SelfHostProducer {} => []
+    RequiredFloorProducer {} => []
+    BazelProducer {} => []
+    BehavioralReceiptPlanProducer {} => []
+    BehavioralReceiptCensusProducer {} => []
+    BehavioralReceiptSelftestProducer {} => []
+    HeadsReadingDifferentialProducer {} => []
+    CompileCleanDiagnosticCensusProducer {} => []
+    V2NativeCliProducer {} => []
+    V2NativeFrontierProducer {} => []
+    EmittedCrateWorkspaceProducer {} => []
+    EvaluationStoreAddressExactHeadProducer {} => []
+    PrimitiveEgressCensusProducer {} => []
+    PrimitiveEgressCensusV2Producer {} => []
+    PrimitiveEgressCensusDagProducer {} => []
+    PrimitiveEgressCensusSeedProducer {} => []
+    TypedGraphExclusiveBytesProducer {} => []
+    TypedGraphExclusiveBytesFloorSubjectProducer {} => []
+    RequiredLaneResolutionCensusProducer {} => []
+    BareReferenceChannelOutcomeProducer {} => []
+    SelfHostBehavioralEquivalenceProducer {} => []
+    DependencyDemandCensusProducer {} => []
+    GenericIdentityCensusProducer {} => []
+    InterpolationHoleCensusProducer {} => []
+    SharedTypeLeafCollisionCensusProducer {} => []
+    CardinalityRealizationProducer {} => []
+    RegenRoundCostProducer {} => []
+  }
+}
+
+// The bindings of one instrument label, read from the roster. The label is the emitted row's own rendered
+// text, never a string the census wrote.
+fn labelled_bindings(label: String) -> List<TargetBinding> {
+  filter(instrument_bindings(), b => render_label(l: b.target) == label)
+}
+
+// The labels whose binding is missing or doubled, as located findings beside the receipt. A label that
+// binds to nothing says the required job runs something with no bound producer; a doubled binding says
+// two producers claim one label. Neither may read as coverage and neither may read as a silent zero.
+fn unbound_label_findings() -> List<String> {
+  fold(
+    emitted_subject_build_rows(),
+    init: [],
+    f: fn(findings, row) {
+      let label = emitted_subject_build_label_text(row: row)
+      let bound = labelled_bindings(label: label)
+      if count(bound) == 1 {
+        findings
+      } else if count(bound) == 0 {
+        concat(findings, [concat("REQUIRED-JOB LABEL UNBOUND ", concat(label, " (no producer binds it: nothing it runs is attributable)"))])
+      } else {
+        concat(findings, [concat("REQUIRED-JOB LABEL AMBIGUOUS ", concat(label, " (more than one producer binds it)"))])
+      }
+    }
+  )
+}
+
+// THE EXECUTED-BY SET: the claim identities the required job's bound producers name, kept only where
+// discovery enrolled them -- the authority's `derive_executed` drops anything outside the universe, so a
+// binding can never manufacture an executed claim for a file that holds no test.
+fn executed_of(rows: List<ClaimRow>, index: Map<String, String>) -> List<String> {
+  derive_executed(
+    rows: rows,
+    produced: fold(
+      emitted_subject_build_rows(),
+      init: [],
+      f: fn(names, row) {
+        let label = emitted_subject_build_label_text(row: row)
+        fold(
+          labelled_bindings(label: label),
+          init: names,
+          f: fn(inner, binding) {
+            concat(inner, producer_named_identities(producer: binding.producer, index: index))
+          }
+        )
+      }
+    )
+  )
+}
+
+// THE FOLD: inventory -> walk -> marker channel -> the authority's per-file fold -> identities ->
+// classifiers -> executed-by. Every unread input stops it with a located cause, and nothing after a stop
+// is reported.
+fn s1_compose() -> S1Composition {
+  match floor_discovery_source_inventory_live(pool_roots: witness_layer_roots) {
+    FloorDiscoverySourcesRefused { reason: reason } =>
+      S1InputsUnread { causes: [concat("source inventory refused: ", reason)] }
+    FloorDiscoverySourcesObserved { sources: sources } => {
+      let walked = governed_dag_files()
+      let contents = content_index(sources: sources)
+      if !is_empty(xs: walked.refusals) {
+        S1InputsUnread { causes: walked.refusals }
+      } else {
+        match acquisition_env(layout: repository_storage_layout(), bindings: governed_bindings()) {
+          AcquisitionEnvUnprepared { diagnostics: _ } =>
+            S1InputsUnread { causes: ["the dag grammar did not prepare: the marker channel cannot answer"] }
+          AcquisitionEnvReady { env: env } => {
+            let marked = marked_over_files(env: env, contents: contents, paths: walked.paths)
+            if !is_empty(xs: marked.unread) {
+              S1InputsUnread { causes: map(marked.unread, cause => concat("markers unread: ", cause)) }
+            } else {
+              match universe_outcomes(marked: marked.marked, contents: contents) {
+                FloorDiscoveryRefused { reason: reason } =>
+                  S1InputsUnread { causes: [concat("discovery refused: ", reason)] }
+                FloorDiscoveryAccepted { rows: rows } => {
+                  let named = name_rows(rows: rows, index: module_index(sources: sources))
+                  if !is_empty(xs: named.unnamed) {
+                    S1InputsUnread { causes: named.unnamed }
+                  } else {
+                    let universe = map(named.claims, claim => claim.identity)
+                    S1Composed {
+                      census: S1Census {
+                        universe: universe,
+                        rows: named.claims,
+                        executed: executed_of(rows: named.claims, index: module_index(sources: sources)),
+                        stands: classify_rows(
+                          universe: universe,
+                          rows: named.claims,
+                          classifier_rows: s1_all_classifier_rows()
+                        )
+                      },
+                      notes: unbound_label_findings()
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE HEAD THE EVIDENCE IS AT, read rather than passed in. The primary authority is the checkout's own
+// revision, asked of git through the sealed argv builder for that one operation
+// (`extdeps.git git_rev_parse_head_command`, the builder the revision-job witness asks); where the run is
+// an Actions run, the runner's pinned `GITHUB_SHA` is the fallback, since that revision IS the subject the
+// run was dispatched for. Both authorities answering nothing is printed as such rather than printed as a
+// head: a receipt must not certify a revision it did not read. This is a locator printed beside the
+// standings, not an input the census depends on -- an unreadable head does not invalidate the enumeration,
+// so it is a note on the receipt and never an unread input.
+fn census_head_reading() -> String {
+  let git_head = match run_shell_command_capture(
+    command: git_rev_parse_head_command(repository_dir: census_checkout_dir),
+    transport: LocalExec
+  ) {
+    ProcessOutputPresent { text: text } => trim(s: text)
+    ProcessOutputAbsent => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
+  }
+  if git_head != "" {
+    return git_head
+  }
+  let runner_sha = actions_variable_trimmed(name: github_sha_variable_name as NonEmptyStr)
+  if runner_sha != "" {
+    return runner_sha
+  }
+  return "UNREADABLE (git rev-parse --short HEAD refused and GITHUB_SHA unset)"
+}
+
+// The live entry's own block: the same pure policy, at the head this checkout is actually at.
+fn s1_live_block() -> S1Block {
+  s1_block(s1: s1_compose(), head: census_head_reading())
+}
+
+// The receipt lines of a composed census, at the head the facts were read at, with the notes beside them
+// -- an unattributable required-job label changes what `executed` can mean, so it prints.
+fn s1_receipt_lines(census: S1Census, notes: List<String>, head: String) -> List<String> {
+  concat(notes, s1_census_lines(census: census, head: head))
+}

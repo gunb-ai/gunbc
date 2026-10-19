@@ -1,0 +1,380 @@
+module gunbc.claim_coverage_census_s1
+
+import std.types { String, Bool, List, Int, Map }
+import std.optional { Optional, Absent, Present }
+import std.algebra { empty_map, map_insert, map_lookup, is_empty, string_contains }
+
+// THE DISCOVERED UNIVERSE, CLASSIFIED (manager ruling 2026-10-19, Charter 4, plus the two scope
+// additions: the ungroundable drop members, and jolly-boar-495's StaleEnrolled standing).
+//
+// ONE universe is enrolled: S1, every discovered test fn, at IDENTITY grain. Every other carrier
+// (the floor_single_claim_fill_debt list, witness_exclusion_frontier, the rung_drop populations,
+// explicit_witness_admission, frozen_path_deferrals, floor_expected_red) is a CLASSIFIER over
+// subsets of S1 — never a peer source. A classifier row whose identity is not in S1 gets the typed
+// standing `StaleEnrolled`: naming a claim discovery does not find is a standing the census carries
+// and prints, never a silent miss and never a widening of S1 to accept the name.
+//
+// GRAIN IS EXPLICIT AND NEVER COMPARED ACROSS. A File-grain classifier row reaches identities only
+// through `expand_file` — the discovered rows of that file, the same discovery that produced S1 —
+// so file-to-identity is exact and total, never a string match. A value that parses as neither a
+// path nor an identity is a typed `UngroundedDropMember` row and a finding, never a coercion into
+// whichever grain would pass. The 41 such values on main are findings the exit-1 arm prints;
+// repairing one drop's population to a grounded grain is a separate per-drop fix, made only where
+// its meaning is unambiguous, and NEVER by restating the string here.
+//
+// EXECUTED-BY IS DERIVED, NEVER HAND-AUTHORED (correction approved 2026-10-19). An identity is
+// executed only by a bound target producer that NAMES it — emitted workflow job, to its bound
+// target, to the producer's own entry/function fields (the same fields `gunbc test` dispatches on).
+// The fleet's identity-grain `gunbc run --entry E --function F` steps name what they execute, but
+// `F` is not required to carry the `test` marker: a step whose function discovery does not enrol
+// executes NOTHING THIS CENSUS ENROLS, and calling it covered would be the census inventing an
+// enrollment to close its own gap. So what the live entry prints at this head is the floor's own
+// finding: the run steps execute ordinary fns, the self-host / v2-native-cli bound producers are
+// whole-program builds that name no claim identity, and the universe is Uncovered except where a
+// grounded cover row reaches it.
+
+// One discovered claim, spelled every way it is needed: `identity` is the carrier spelling
+// (`witness_identity_qualified_name` — the declaring module header plus "." plus the function, which
+// is how every classifier on the cover side spells a claim), `entry` is the repo path discovery
+// walked it from, which is what a File-grain classifier row names, and `function` is the bare
+// declaration name, which is what a file+function carrier (a ScheduleWitnessEntry) names beside its
+// file. Keeping all three on the row is what lets the join be identity-to-identity, the expansion be
+// path-to-identity, and a file+function carrier select exactly one identity — the fold never
+// converts a path into a module name by string surgery, and never covers a whole file where the
+// carrier admitted one function.
+type ClaimRow {
+  identity: String
+  entry: String
+  function: String
+}
+
+type ClaimGrain
+  = IdentityGrain
+  | FileGrain
+
+// HOW a File-grain member selects files. The carriers disagree and BOTH relations are declared
+// authorities: a rung_drop population names whole paths (equality), while a
+// witness_exclusion_frontier pattern is matched by CONTAINMENT — the frontier's own matching
+// authority is `witness_row_excluded_from_discovery` in gunbc.ci.ci_layer_roots, which asks whether
+// the row's entry CONTAINS the pattern. Carrying the relation on the row keeps the census from
+// silently unifying two relations into one equality, which would make every frontier pattern read as
+// ungrounded (no entry equals a bare stem) or every drop path read as grounded by accident.
+// Identity-grain rows always join by exact spelling; this field is unread for them.
+type ClaimMemberMatch
+  = ExactMemberMatch
+  | SubstringMemberMatch
+
+// One classifier row: which carrier claims this member, at what grain, matched how, as cover or as
+// enrollment. `member` is the carrier spelling `module_path + "." + function` when grain is
+// IdentityGrain, or a repo path (or, under substring matching, the pattern the carrier declares)
+// when it is FileGrain. `carrier` names the declaration the row was read from, so every printed
+// finding is located and the RED arm — delete a covered claim from its drop, the census must name
+// it — lands on a file the reader can open.
+//
+// `function` is present ONLY where the carrier itself names a function beside its file — a
+// ScheduleWitnessEntry schedules one entry AND one function, and a census that dropped the function
+// and covered the whole file would credit the lane with claims it never scheduled. Absent means the
+// carrier's authority stops at the member it declared: an identity-grain row already spells the
+// function inside `member`, and a file-grain row reaches every discovered identity of what its
+// relation selects. This field is never filled in by inference.
+type ClassifierRow {
+  carrier: String
+  member: String
+  grain: ClaimGrain
+  match_: ClaimMemberMatch
+  function: Optional<String>
+  cover: Bool
+}
+
+// The verdict for one classifier row after joining it against S1.
+type ClassifierStanding
+  = StaleEnrolled { row: ClassifierRow }
+  // A row whose declared grain and spelling disagree, or a File-grain row whose expansion finds no
+  // discovered identity: the row LOOKS populated while covering or enrolling nothing. Typed refusal,
+  // and a finding — the 41 ungroundable drop values live here.
+  | UngroundedDropMember { row: ClassifierRow }
+  // Joined to at least one S1 identity; `covers` is that expansion.
+  | GroundedCover { row: ClassifierRow, covers: List<String> }
+  | GroundedEnrollment { row: ClassifierRow, covers: List<String> }
+
+// The census as data: the universe, the derived executed set, and every row's verdict. The live
+// entry builds it from the live discovery walk; everything above it is pure, so the classification
+// is checkable against a fixture (the controlled positive control with a known covered set).
+type S1Census {
+  universe: List<String>
+  rows: List<ClaimRow>
+  executed: List<String>
+  stands: List<ClassifierStanding>
+}
+
+// An identity is dotted-path-free and a repo path ENDS in `.dag`: the one shape fact separating the
+// two spellings. This is the SHAPE CHECK that turns a declared grain into a typed refusal — the
+// grain itself is always the declared field, never re-derived from the string.
+fn member_is_repo_path(member: String) -> Bool {
+  string_contains(s: member, pattern: ".dag")
+}
+
+// Universe membership is the join everywhere; one map build so no call site scans.
+fn universe_index(universe: List<String>) -> Map<String, Bool> {
+  fold(
+    universe,
+    init: empty_map(),
+    f: fn(acc, id) { map_insert(m: acc, key: id, value: true) }
+  )
+}
+
+// THE ONE EXPANSION. A File-grain member reaches identities only here: the discovered rows its
+// declared match relation selects, returned at the identity spelling carriers use. An empty answer
+// is returned as empty — the caller must type it `UngroundedDropMember`, never read it as
+// covered-nothing.
+fn expand_file(rows: List<ClaimRow>, row: ClassifierRow) -> List<String> {
+  let universe_set = universe_index(universe: map(rows, r => r.identity))
+  rows
+    |> filter(r => matches_member(row: row, path: r.entry) && narrows_to(row: row, claim: r))
+    |> map(r => r.identity)
+    |> filter(id => match map_lookup(m: universe_set, key: id) {
+      Present { value: _ } => true
+      Absent => false
+    })
+}
+
+// Where the carrier named a function beside its file, the expansion narrows to that one claim;
+// where it did not, the row's authority is the member it declared and every discovered identity of
+// what the relation selects is reached. Narrowing is by the discovery's own function name, so no
+// string splitting of an identity is involved.
+fn narrows_to(row: ClassifierRow, claim: ClaimRow) -> Bool {
+  match row.function {
+    Present { value: named } => claim.function == named
+    Absent => true
+  }
+}
+
+// The declared relation, applied to one file path. NEVER widened: an exact member never matches by
+// containment, a substring member never matches by anything but containment.
+fn matches_member(row: ClassifierRow, path: String) -> Bool {
+  match row.match_ {
+    ExactMemberMatch => row.member == path
+    SubstringMemberMatch => string_contains(s: path, pattern: row.member)
+  }
+}
+
+// Classify one row against S1. A File-grain row expands through the SAME discovery that built S1,
+// via its declared match relation; an Identity-grain row joins its spelling directly. No path
+// compares a member across grains, and a member whose DECLARED GRAIN AND SPELLING DISAGREE is
+// refused as ungroundable — the typed refusal the ruling demands for the 41 values whose strings
+// parse as neither path nor identity.
+//
+// The shape check runs only for an EXACT member: an exact File-grain member must spell a path (the
+// `.dag` terminal) and an exact Identity-grain member must not. A SUBSTRING member is a stem or a
+// directory prefix by nature ("impossible_bug", "test/claim/long/"), so no path spelling is
+// required of it — but it must select at least one discovered file, or it is UngroundedDropMember
+// too: a pattern that matches nothing covers nothing, and printing that as grounded would be the
+// stale-present-tense lie DESIGN 3 names, in census form.
+fn classify_row(universe: List<String>, rows: List<ClaimRow>, row: ClassifierRow) -> ClassifierStanding {
+  if declares_exact(row: row) && member_is_repo_path(member: row.member) != declares_file(row: row) {
+    UngroundedDropMember { row: row }
+  } else {
+    match row.grain {
+      FileGrain =>
+        if is_empty(xs: expand_file(rows: rows, row: row)) {
+          UngroundedDropMember { row: row }
+        } else {
+          if row.cover {
+            GroundedCover { row: row, covers: expand_file(rows: rows, row: row) }
+          } else {
+            GroundedEnrollment { row: row, covers: expand_file(rows: rows, row: row) }
+          }
+        }
+      IdentityGrain =>
+        match map_lookup(m: universe_index(universe: universe), key: row.member) {
+          Absent => StaleEnrolled { row: row }
+          Present { value: _ } =>
+            if row.cover {
+              GroundedCover { row: row, covers: [row.member] }
+            } else {
+              GroundedEnrollment { row: row, covers: [row.member] }
+            }
+        }
+    }
+  }
+}
+
+fn declares_exact(row: ClassifierRow) -> Bool {
+  match row.match_ {
+    ExactMemberMatch => true
+    SubstringMemberMatch => false
+  }
+}
+
+fn declares_file(row: ClassifierRow) -> Bool {
+  match row.grain {
+    FileGrain => true
+    IdentityGrain => false
+  }
+}
+
+fn classify_rows(universe: List<String>, rows: List<ClaimRow>, classifier_rows: List<ClassifierRow>) -> List<ClassifierStanding> {
+  map(
+    classifier_rows,
+    row => classify_row(universe: universe, rows: rows, row: row)
+  )
+}
+
+// The derived executed set: a bound producer executes exactly the identities it NAMES, so the
+// executed set is the names the required jobs' producers carry, kept only where discovery enrolled
+// them. Nothing here is typed by hand: an entry/function pair a producer does not carry contributes
+// nothing, and a name discovery does not enrol executes no ENROLLED claim (that is what makes a run
+// step over an ordinary fn report honestly instead of closing the census's gap).
+fn derive_executed(rows: List<ClaimRow>, produced: List<String>) -> List<String> {
+  let universe_set = universe_index(universe: map(rows, r => r.identity))
+  filter(
+    produced,
+    name => match map_lookup(m: universe_set, key: name) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  )
+}
+
+// Every S1 identity neither executed by a bound producer nor reached by any grounded COVER row:
+// the exit-1 arm's report of the floor.
+fn s1_uncovered(census: S1Census) -> List<String> {
+  let executed_set = universe_index(universe: census.executed)
+  let covered_set = fold(
+    census.stands,
+    init: empty_map(),
+    f: fn(acc, standing) {
+      match standing {
+        GroundedCover { row: _, covers: covers } =>
+          fold(
+            covers,
+            init: acc,
+            f: fn(inner, id) { map_insert(m: inner, key: id, value: true) }
+          )
+        _ => acc
+      }
+    }
+  )
+  filter(
+    census.universe,
+    id => match map_lookup(m: executed_set, key: id) {
+      Present { value: _ } => false
+      Absent => match map_lookup(m: covered_set, key: id) {
+        Present { value: _ } => false
+        Absent => true
+      }
+    }
+  )
+}
+
+// Rows standing StaleEnrolled, located at their carrier (jolly-boar-495's first consumer is the
+// fill-debt list; the same arm catches floor_expected_red and the frozen deferrals).
+fn s1_stale_rows(census: S1Census) -> List<ClassifierRow> {
+  filter_map(
+    census.stands,
+    standing => match standing {
+      StaleEnrolled { row: row } => Present { value: row }
+      _ => Absent
+    }
+  )
+}
+
+fn s1_ungrounded_rows(census: S1Census) -> List<ClassifierRow> {
+  filter_map(
+    census.stands,
+    standing => match standing {
+      UngroundedDropMember { row: row } => Present { value: row }
+      _ => Absent
+    }
+  )
+}
+
+// THE RECEIPT: verdict lines, each located, and the head the facts were read at (executed evidence
+// at the printed head). Lengths are never emitted — the lines themselves are the population.
+fn s1_census_lines(census: S1Census, head: String) -> List<String> {
+  let stale_lines = map(
+    s1_stale_rows(census: census),
+    row => concat(concat(concat("STALE-ENROLLED ", row.carrier), " "), row.member)
+  )
+  let ungrounded_lines = map(
+    s1_ungrounded_rows(census: census),
+    row => concat(concat(concat("UNGROUNDED-DROP-MEMBER ", row.carrier), " "), row.member)
+  )
+  let uncovered_lines = map(
+    s1_uncovered(census: census),
+    id => concat("UNCOVERED ", id)
+  )
+  concat(
+    concat(concat(["S1-CENSUS head:" + head], stale_lines), ungrounded_lines),
+    uncovered_lines
+  )
+}
+
+// THE COMPOSITION'S ANSWER IN TWO CHANNELS: the census (with the located findings that are not
+// standings), or the causes of an input nobody could read. The channels are disjoint by construction --
+// nothing downstream of a missing input is ever reported as a clean census, which is what keeps the
+// exit-2 arm from reading as a green run. The type lives with the pure policy so a witness can construct
+// both arms without touching the fold's filesystem, acquisition or roster dependencies.
+type S1Composition
+  = S1Composed { census: S1Census, notes: List<String> }
+  | S1InputsUnread { causes: List<String> }
+
+// THE BLOCK THE LIVE ENTRY PRINTS AND THE EXIT IT ANSWERS, computed as PURE DATA over an injected
+// composition (warm-wolf-570: exit 1 lists one typed, located row per claim that is neither run nor
+// covered by a drop; exit 2 means an input could not be read). The head is a PARAMETER, not a read, so
+// the three arms are reachable from a witness with a fixture locator: a test can assert the exit of a
+// composition it constructed instead of only of whatever the checkout happens to look like.
+//
+// The two channels never mix: a composition that could not read prints only its causes and answers 2 --
+// it is not a census that failed, it is a census that cannot answer, and reporting a claim failure would
+// read as if the population had been decided. A composed census answers 1 exactly when a finding is
+// printed: a stale enrollment, an ungroundable drop member, or an uncovered discovered claim. Zero is
+// answered only when the fold found nothing to complain about, which -- at this head, with the live
+// population -- it will not: the findings ARE the result.
+type S1Block {
+  lines: List<String>
+  exit_code: Int
+  reason: String
+}
+
+data s1_exit_held: Int = 0
+data s1_exit_did_not_hold: Int = 1
+data s1_exit_unread: Int = 2
+
+fn s1_block(s1: S1Composition, head: String) -> S1Block {
+  match s1 {
+    S1InputsUnread { causes: causes } => S1Block {
+      lines: map(causes, cause => concat("S1-CENSUS INPUT UNREAD ", cause)),
+      exit_code: s1_exit_unread,
+      reason: "claim-coverage-census: the discovered universe could not be read (causes listed above); no claim population was decided"
+    }
+    S1Composed { census: census, notes: notes } => {
+      let lines = concat(notes, s1_census_lines(census: census, head: head))
+      let findings = count(s1_stale_rows(census: census))
+        + count(s1_ungrounded_rows(census: census))
+        + count(s1_uncovered(census: census))
+      if findings == 0 {
+        S1Block { lines: lines, exit_code: s1_exit_held, reason: "" }
+      } else {
+        S1Block {
+          lines: lines,
+          exit_code: s1_exit_did_not_hold,
+          reason: "claim-coverage-census: the discovered universe did not hold -- a discovered test claim is executed by no required job and covered by no drop, or a carrier enrolled an identity discovery does not hold, or a drop population member grounds in no path and no identity (each is listed above, located)"
+        }
+      }
+    }
+  }
+}
+
+fn filter_map<T, U>(xs: List<T>, f: fn(T) -> Optional<U>) -> List<U> {
+  fold(
+    xs,
+    init: [],
+    f: fn(acc, x) {
+      match f(x) {
+        Present { value: y } => concat(acc, [y])
+        Absent => acc
+      }
+    }
+  )
+}

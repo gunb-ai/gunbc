@@ -15,6 +15,8 @@ import gunbc.claim_coverage_census {
   ClaimCoverageHeld, ClaimCoverageDidNotHold,
   claim_coverage, claim_coverage_standing, claim_coverage_receipt_lines,
 }
+import gunbc.claim_coverage_census_s1_live { s1_live_block }
+import gunbc.claim_coverage_census_s1 { s1_exit_held, s1_exit_did_not_hold, s1_exit_unread }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -50,14 +52,43 @@ fn claim_executors() -> List<ClaimExecutorRow> {
 }
 
 // `gunbc test //gunbc/instruments:claim-coverage-census`: 0 every enrolled claim is executed by a
-// required job; 1 the uncovered population is nonempty (printed above the exit by identity, each
-// tagged with its declaring drop or UNDECLARED).
+// required job AND the discovered universe holds; 1 either census printed a finding (each listed above,
+// located); 2 the discovered census could not read an input, so no population was decided.
+//
+// THE ONE INSTRUMENT PRINTS TWO CENSUSES (warm-wolf-570's one-instrument ruling: no second label, no
+// registry arm). The wet schedule's receipt is stern-raven-457's claim-grain census; the block composed
+// below is the DISCOVERED universe (S1) and the standings every other enrolled-claim carrier contributes
+// over it. The exits compose by taking the worse, and the unread channel outranks a did-not-hold: a census
+// that could not read is not a census that failed, it is a census that cannot answer, and reporting the
+// failure would hide which. The policy is one pure function over an injected composition
+// (`gunbc.claim_coverage_census_s1_live s1_block`), so a witness can assert all three arms over a fixture
+// instead of only over whatever the checkout happens to look like.
 fn claim_coverage_census_exit() -> CliWireResponse {
   let c = claim_coverage(inputs: ClaimCoverageInputs { sources: claim_sources(), jobs: claim_executors() })
-  let bytes = concat(claim_coverage_receipt_lines(c: c) |> join(separator: "\n"), "\n")
-  match claim_coverage_standing(c: c) {
-    ClaimCoverageHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }
-    ClaimCoverageDidNotHold { uncovered: u } =>
-      CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: concat("claim-coverage-census: did not hold: ", concat(to_string(u |> count), " enrolled claims are executed by no required job (listed above by identity)")) } }
+  let s1 = s1_live_block()
+  let bytes = concat(
+    concat(claim_coverage_receipt_lines(c: c) |> join(separator: "\n"), "\n"),
+    concat(s1.lines |> join(separator: "\n"), "\n")
+  )
+  if s1.exit_code == s1_exit_unread {
+    return CliWirePrintable { bytes: bytes, exit: ExitFailure { code: s1_exit_unread, reason: s1.reason } }
+  }
+  let wet_holds = match claim_coverage_standing(c: c) {
+    ClaimCoverageHeld => true
+    ClaimCoverageDidNotHold { uncovered: _ } => false
+  }
+  if wet_holds && s1.exit_code == s1_exit_held {
+    return CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+  }
+  return CliWirePrintable {
+    bytes: bytes,
+    exit: ExitFailure {
+      code: s1_exit_did_not_hold,
+      reason: if !wet_holds {
+        "claim-coverage-census: did not hold -- an enrolled claim is executed by no required job, or the discovered universe printed a finding (each listed above, located)"
+      } else {
+        s1.reason
+      }
+    }
   }
 }
