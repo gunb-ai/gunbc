@@ -912,3 +912,20 @@ Instruments and the arm recipe are in silent-lark-766's handoff, dashboard messa
 4. Per-call setup is 2.9 ms, because params are already `Rc`.
 
 Lane D's 9.3 s per-module setup (`build_type_env` + `build_module_context`) is new and not covered by these negatives.
+
+## 5d. Profiling recipe and trap (lane D handoff). Applies to every lane that measures
+
+- **Aggregate by symbol, never by line.** Under `--call-graph fp`, one function's lines are distinct return addresses, so per-line aggregation splits a function and understates it. Split by return address only on purpose. For example, round 1 is `infer_expr_body+0x12e84` (37.67%) and round 2 is `+0x12f74` (20.38%); both are calls to `infer_call_arguments_generic_pass`.
+- **Attribute by call chain, not by time window.** The sample clock and `run.log` timestamps drift: the sample span is 532.9 s against 423.8 s of wall time.
+- **Validity gate:** a new script must reproduce the §3a reconcile rows (58.10 / 24.15 / 22.39 / 15.32 / 13.71 / 12.26 / 7.12 / 3.72) to about 0.1 pp. If it doesn't, the script is wrong.
+- **Reusable on srv1:**
+  - `~/samples.pkl` (the pickled samples);
+  - `~/one.py`;
+  - `~/perf-still-fox/out/VERIFIED/`. Never quote from `out/DO_NOT_TRUST/`.
+  - The binary at `891198514b8` in `~/perf-still-fox`; don't rebuild it.
+- About 4 s of chains truncate at fp walk depth (20–25 frames). Recovering them needs `--max-stack` or dwarf.
+- Reconcile's mass is name/text materialization, alias re-resolution and per-module setup. **Do not scope reconcile work at `unify_*`**, which is under 0.6%.
+
+## 5e. Preamble correction: branch base
+
+"Branch from origin/main" applies to **code** lanes. A lane whose deliverable is a section of this doc commits to `v1-interface-cull-audit`, because a main-based PR would delete the doc. Lanes D, H and K already did this.
