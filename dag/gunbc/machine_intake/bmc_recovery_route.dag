@@ -32,6 +32,8 @@ import gunbc.machine_intake.bmc_inband_recovery_receipts {
   // the two folds over it are imported, never re-declared (review 82481).
   CapturedInstant, CaptureTimeBand, CaptureTimeBandInverted, recovery_capture_day,
   captured_epoch_millisecond, captured_band, captured_instant_band, captured_band_precedes,
+  captured_band_ordering, CapturedBandOrdering, BandPrecedes, BandDoesNotPrecede,
+  EarlierBandRefuses, LaterBandRefuses,
   captured_bound_utc_text, recovery_inband_channel_instant, recovery_device_node_creation_instant,
   recovery_reset_instant, recovery_post_reset_instant,
 }
@@ -802,6 +804,13 @@ type RecoveryChannelAbsence
   | AbsenceDeviceNodeDisagrees
   | AbsenceKernelModulesDisagree
   | AbsenceNodeCreatedAfterTheReading
+  // A BAND THAT WILL NOT CONSTRUCT IS NEITHER EARLY NOR LATE (review 82765). The ordering used to answer
+  // Bool, and a band whose bounds refused to build came back "does not precede" -- so the fold reported
+  // "the node was created after the reading" about a pair it had never managed to compare. Which side
+  // failed is the fact worth having: a device-node time that will not build is a defect in the device-node
+  // time, and the repair is a re-capture, not a re-reading of the channel.
+  | AbsenceEarlierCaptureBandRefuses { reason: String }
+  | AbsenceLaterCaptureBandRefuses { reason: String }
 
 fn in_band_channel_admission(
   observation: InBandChannelObservation,
@@ -832,17 +841,29 @@ fn in_band_channel_admission(
               // reading's minute are separate facts on the carrier (review 82404), and this fold is what
               // keeps them separate: an observation stamping the node as created after the reading was
               // taken cannot have read it, so it refuses rather than being admitted on a plausible
-              // ordering.
-              } else if captured_band_precedes(
-                earlier: observation.device_node_created_at,
-                later: observation.observed_at,
-              ) == false {
-                ChannelRefused { reason: AbsenceNodeCreatedAfterTheReading }
-              } else if observation.kernel_modules |> all(m => ipmi.kernel_modules |> any(h => h == m)) == false
-                || ipmi.kernel_modules |> all(m => observation.kernel_modules |> any(h => h == m)) == false {
-                ChannelRefused { reason: AbsenceKernelModulesDisagree }
+              // ordering. THE ORDERING IS MATCHED, NOT ASKED OF AS A BOOL, so the three ways it can fail
+              // stay three: a genuine inversion, and one refusal per side whose band would not construct.
+              // The module comparison stays last, exactly where it was -- the ordering verdict is asked
+              // before it and a failed comparison still short-circuits it.
               } else {
-                ChannelAdmits
+                match captured_band_ordering(
+                  earlier: observation.device_node_created_at,
+                  later: observation.observed_at,
+                ) {
+                  BandDoesNotPrecede => ChannelRefused { reason: AbsenceNodeCreatedAfterTheReading }
+                  EarlierBandRefuses { reason: r } =>
+                    ChannelRefused { reason: AbsenceEarlierCaptureBandRefuses { reason: r } }
+                  LaterBandRefuses { reason: r } =>
+                    ChannelRefused { reason: AbsenceLaterCaptureBandRefuses { reason: r } }
+                  BandPrecedes =>
+                    if observation.kernel_modules |> all(m => ipmi.kernel_modules |> any(h => h == m)) == false
+                      || ipmi.kernel_modules
+                        |> all(m => observation.kernel_modules |> any(h => h == m)) == false {
+                      ChannelRefused { reason: AbsenceKernelModulesDisagree }
+                    } else {
+                      ChannelAdmits
+                    }
+                }
               }
           }
       }
@@ -3082,6 +3103,74 @@ test fn an_account_that_is_not_administrator_names_the_privilege_it_reported() -
       ChannelRefused { reason: reason } =>
         reason == AbsenceAccountIsNotAdministrator { reported: IpmiPrivilegeNoAccess }
     })
+    && (match in_band_channel_admission(observation: f.observation, reachability: f.reachability) {
+      ChannelAdmits => true
+      ChannelRefused { reason: _ } => false
+    })
+}
+
+// A BAND THAT WILL NOT CONSTRUCT IS REPORTED AS THAT, NOT AS AN INVERSION. The ordering used to answer
+// Bool, and both "the pair is out of order" and "one of the bands refused to build" came back false, so
+// the fold told the operator the queue was created after the reading when it had never compared the two.
+// A band whose bounds invert is minted here on purpose -- captured_band is the module's own mint, so this
+// is the same construction a mis-transcribed capture line goes through. Each half names the SIDE that
+// failed, which is the whole point: a device-node time that will not build is a defect in the device-node
+// time, and a re-reading of the channel cannot repair it. Both halves carry the mint's own words, so the
+// refusal does not paraphrase std.interval's diagnosis.
+test fn a_capture_band_that_refuses_to_construct_is_not_reported_as_an_inversion() -> Bool {
+  let f = recovery_admitted_channel_fixture()
+  // the day's 06:27:00 as the HIGH bound and 06:59:59 as the LOW: a pair no reading can license
+  let inverted: CapturedInstant = captured_band(
+    low: captured_epoch_millisecond(day: recovery_capture_day(), hour: 6, minute: 59, second: 59),
+    high: captured_epoch_millisecond(day: recovery_capture_day(), hour: 6, minute: 27, second: 0),
+  )
+  (match in_band_channel_admission(
+    observation: recovery_perturbed_channel_observation(
+      fixture: f,
+      rescue_host_address: f.observation.rescue_host_address,
+      device_node: f.observation.device_node,
+      kernel_modules: f.observation.kernel_modules,
+      channel: f.observation.channel,
+      administrator: f.observation.administrator,
+      observed_at: f.observation.observed_at,
+      device_node_created_at: inverted,
+    ),
+    reachability: f.reachability,
+  ) {
+    // THE ARM IS THE ASSERTION. AbsenceNodeCreatedAfterTheReading would be the lie this fix exists to
+    // stop: the ordering never happened, so nothing says the node came after the reading.
+    ChannelRefused { reason: reason } =>
+      match reason {
+        // the mint's own words have to be CARRIED, not dropped: a refusal that names the side and loses
+        // the sentence std.interval wrote about the pair is half a diagnosis
+        AbsenceEarlierCaptureBandRefuses { reason: r } => string_length(s: r) > 0
+        _ => false
+      }
+    ChannelAdmits => false
+  })
+    // the other side: an unreadable READING time is a different defect from an unreadable NODE time, and
+    // collapsing them would send the operator to re-capture the wrong line
+    && (match in_band_channel_admission(
+      observation: recovery_perturbed_channel_observation(
+        fixture: f,
+        rescue_host_address: f.observation.rescue_host_address,
+        device_node: f.observation.device_node,
+        kernel_modules: f.observation.kernel_modules,
+        channel: f.observation.channel,
+        administrator: f.observation.administrator,
+        observed_at: inverted,
+        device_node_created_at: f.observation.device_node_created_at,
+      ),
+      reachability: f.reachability,
+    ) {
+      ChannelRefused { reason: reason } =>
+        match reason {
+          AbsenceLaterCaptureBandRefuses { reason: _ } => true
+          _ => false
+        }
+      ChannelAdmits => false
+    })
+    // and the admitted pair still admits: the two new arms must not become the easy answer
     && (match in_band_channel_admission(observation: f.observation, reachability: f.reachability) {
       ChannelAdmits => true
       ChannelRefused { reason: _ } => false

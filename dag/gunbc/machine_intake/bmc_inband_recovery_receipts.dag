@@ -470,16 +470,41 @@ fn captured_instant_band(instant: CapturedInstant) -> Optional<OrderedClosedInte
 // a band that failed to construct is not allowed to look early, late, or equal -- it refuses. This is
 // the only way ordering is asked of a capture time anywhere, so a claim cannot get a different answer
 // from the one a fold would give.
-fn captured_band_precedes(earlier: CapturedInstant, later: CapturedInstant) -> Bool {
-  match captured_instant_band(instant: earlier) {
-    Present { value: e } =>
-      match captured_instant_band(instant: later) {
-        Present { value: l } =>
-          captured_milliseconds_le(earlier: interval_high(interval: e), later: interval_low(interval: l))
-        Absent => false
+fn captured_band_ordering(earlier: CapturedInstant, later: CapturedInstant) -> CapturedBandOrdering {
+  match earlier {
+    // WHICH SIDE FAILED IS THE ANSWER, not a detail. A caller that reports "the earlier thing came
+    // later" when the earlier band never constructed has drawn a conclusion it never measured, and it
+    // points the repair at the wrong fact: a node time that will not build is a defect in the node time.
+    // The mint's own words come along, so the refusal is not a fresh claim about the capture.
+    CaptureTimeBandInverted { reason: r } => EarlierBandRefuses { reason: r }
+    CaptureTimeBand { band: e } =>
+      match later {
+        CaptureTimeBandInverted { reason: r } => LaterBandRefuses { reason: r }
+        CaptureTimeBand { band: l } =>
+          if captured_milliseconds_le(earlier: interval_high(interval: e), later: interval_low(interval: l)) {
+            BandPrecedes
+          } else {
+            BandDoesNotPrecede
+          }
       }
-    Absent => false
   }
+}
+
+// WHY A BAND CANNOT BE ORDERED AGAINST ANOTHER. Four answers, because there are four different facts
+// and the old Bool reported all of them as "does not precede": a real late band, an earlier band that
+// failed to construct, a later band that failed to construct, and a pair that does lie in order. A
+// band that failed to construct is not early, not late and not equal, and saying which side failed is
+// what makes the refusal actionable (review 82765).
+type CapturedBandOrdering
+  = BandPrecedes
+  | BandDoesNotPrecede
+  | EarlierBandRefuses { reason: String }
+  | LaterBandRefuses { reason: String }
+
+// THE BOOLEAN PROJECTION, for the claims that only ask whether one band lies before another. It is the
+// same fold, so a claim cannot get an answer different from the one a gate gets.
+fn captured_band_precedes(earlier: CapturedInstant, later: CapturedInstant) -> Bool {
+  captured_band_ordering(earlier: earlier, later: later) == BandPrecedes
 }
 
 // A BAND BOUND AS UTC TEXT, for the claims that read a bound back against the artifact. The conversion
