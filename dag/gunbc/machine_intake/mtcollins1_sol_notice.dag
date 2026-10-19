@@ -10,8 +10,6 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.machine_intake.sol_hold { sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker }
 import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_boot_sol_capture_path_env, mtcollins1_sol_incident_path, mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_workflow_events_path, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_delivery_suffix, mtcollins1_boot_sol_pid_path_env, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_token_env }
-import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // THE SOL NOTICES, AS THEIR OWN PROCESS (operator ruling 2026-09-27: the admitted route is this run's
 // log and step summary -- not ntfy, no new credential). The boot's .dag watch cannot report while it
@@ -228,7 +226,8 @@ fn sol_notice_annotation(notice: SolNotice) -> LogAnnotation {
   let message = concat(notice.title, concat(": ", notice.body))
   match notice.kind {
     SolNoticeCollectorExited => AnnotationWarning { message: message, file: Absent, line: Absent, col: Absent }
-    _ => AnnotationError { message: message, file: Absent, line: Absent, col: Absent }
+    SolNoticeObservationLost => AnnotationError { message: message, file: Absent, line: Absent, col: Absent }
+    SolNoticeSourceUnreadable => AnnotationError { message: message, file: Absent, line: Absent, col: Absent }
   }
 }
 
@@ -301,7 +300,8 @@ fn sol_notice_deliver(paths: SolNoticePaths, notice: SolNotice, channel: SolNoti
       }
       sol_notice_record(paths: paths, delivery: written)
     }
-    _ => sol_notice_record(paths: paths, delivery: written)
+    SolNoticeDeliveryFailed { kind: _, identity: _, channel: _, error: _ } => sol_notice_record(paths: paths, delivery: written)
+    SolNoticeAlreadyDelivered { kind: _, identity: _, channel: _ } => sol_notice_record(paths: paths, delivery: written)
   }
 }
 
@@ -326,18 +326,20 @@ fn sol_notice_observe(paths: SolNoticePaths) -> SolNoticePassResult {
   }
   let history = match events {
     SolSourceUnreadable { path: p, cause: c } => [sol_unreadable_notice(role: "request-history", path: p, cause: c)]
-    _ => []
+    SolSourceRead { content: _ } => []
+    SolSourceAbsent => []
   }
   let pid_notice = match pid {
     SolSourceUnreadable { path: p, cause: c } => [sol_unreadable_notice(role: "collector-pid", path: p, cause: c)]
-    _ => []
+    SolSourceRead { content: _ } => []
+    SolSourceAbsent => []
   }
-  let unreadable = flat_map([client, incident, events, pid], src => match src { SolSourceUnreadable { path: p, cause: _ } => [p]  _ => [] })
+  let unreadable = flat_map([client, incident, events, pid], src => match src { SolSourceUnreadable { path: p, cause: _ } => [p]  SolSourceRead { content: _ } => []  SolSourceAbsent => [] })
   SolNoticePassResult {
     notices: exits.concat(lost).concat(history).concat(pid_notice),
     deliveries: [],
     unreadable: unreadable,
-    exit_owed: match pid { SolSourceRead { content: c } => trim(s: c) != ""  _ => false },
+    exit_owed: match pid { SolSourceRead { content: c } => trim(s: c) != ""  SolSourceAbsent => false  SolSourceUnreadable { path: _, cause: _ } => false },
   }
 }
 
@@ -370,7 +372,7 @@ fn sol_notice_pass_complete(pass: SolNoticePassResult) -> Bool {
 }
 
 fn sol_notice_pass_saw_exit(pass: SolNoticePassResult) -> Bool {
-  pass.notices.any(n => match n.kind { SolNoticeCollectorExited => true  _ => false })
+  pass.notices.any(n => match n.kind { SolNoticeCollectorExited => true  SolNoticeObservationLost => false  SolNoticeSourceUnreadable => false })
 }
 
 // THE FINAL DRAIN, judged on each pass's own snapshot: done when a pass is complete and, if an exit is
@@ -433,10 +435,3 @@ fn mtcollins1_sol_notice_wet() -> ProcessExit
     exit_failure(reason: concat("mtcollins1 SOL notice: not every observed notice was delivered on both channels, a source was unreadable, or an owed collector exit was never observed; see ", sol_notice_ledger_path(paths: paths)))
   }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "sol_notice_annotation" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "sol_notice_deliver" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "sol_notice_observe" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "sol_notice_pass_saw_exit" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-]
