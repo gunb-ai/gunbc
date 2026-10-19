@@ -964,6 +964,12 @@ data approval_device_routes: List<ApprovalDeviceRoute> = [
   ApprovalDeviceRoute { path: approval_device_push_path, path_is_prefix: false, method: POST, request_body: approval_device_body_type(decl_name: "PushUpdateRequest"), request_media_type: application_json },
 ]
 
+// The served path template of a route: a prefix route takes one ParamToken segment, a fixed route
+// is its literal. The one spelling, read by the server's route table and by its witness.
+fn approval_device_route_template(r: ApprovalDeviceRoute) -> String {
+  if r.path_is_prefix { join([r.path as String, "\{segment\}"], "") } else { r.path as String }
+}
+
 // The route constants the table must cover, as an identity join target.
 data approval_device_route_paths: List<NonEmptyStr> = [
   approval_device_enrol_path, approval_device_pending_path, approval_device_request_path_prefix,

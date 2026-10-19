@@ -31,11 +31,13 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
   approval_write_admission_under, approval_writer_authority, approval_writer_process,
 }
-import extdeps.http.server { ServeHttpResponse }
+import extdeps.http.server { ServeHttpResponse, ServedRouteSpec, http_method_label }
+import gunbc.site.brand { site_favicon_path }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_template,
   approval_broker_decide_path_template,
   approval_broker_submit_path,
+  approval_broker_store_receipt_path_template,
   approval_broker_status_path_template,
   approval_broker_confirm_path_prefix,
   approval_broker_listen_port,
@@ -43,7 +45,7 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_status_url,
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT }
-import gunbc.auth.approval_device_wire { approval_device_routes, ApprovalDeviceRoute }
+import gunbc.auth.approval_device_wire { approval_device_routes, ApprovalDeviceRoute, approval_device_push_path, approval_device_route_template }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -112,11 +114,46 @@ test fn approval_broker_table_selects_the_six_device_routes_as_posts() -> Bool {
 // receipt is minted from the broker's decision store and nowhere else, and it is a separate POST so
 // that bearer authority over store writes never rides the public status GET.
 test fn approval_broker_table_carries_no_other_route() -> Bool {
-  count(approval_broker_route_specs()) == 11
+  served_routes_equal_declared(specs: approval_broker_route_specs(), declared: declared_broker_route_keys())
     && match approval_broker_route_table_build() {
-      ServedRouteTableBuilt { table: t } => count(t.routes) == 11
+      ServedRouteTableBuilt { table: t } => count(t.routes) == count(approval_broker_route_specs())
       ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     }
+}
+
+// The declared set: the six approval/site routes by name, and every device route read from
+// approval_device_routes. No count is copied from the tree.
+fn route_key(method: HttpMethod, raw: String) -> String {
+  join([http_method_label(method: method), raw], " ")
+}
+
+fn declared_broker_route_keys() -> List<String> {
+  concat([
+    route_key(method: GET, raw: site_favicon_path),
+    route_key(method: GET, raw: approval_broker_confirm_path_template as String),
+    route_key(method: POST, raw: approval_broker_decide_path_template as String),
+    route_key(method: POST, raw: approval_broker_submit_path as String),
+    route_key(method: GET, raw: approval_broker_status_path_template as String),
+    route_key(method: POST, raw: approval_broker_store_receipt_path_template as String),
+  ], approval_device_routes |> map(r => route_key(method: r.method, raw: approval_device_route_template(r: r))))
+}
+
+fn served_routes_equal_declared(specs: List<ServedRouteSpec<ApprovalBrokerHandler>>, declared: List<String>) -> Bool {
+  let served = specs |> map(sp => route_key(method: sp.method, raw: sp.raw))
+  all(declared, k => length(xs: served |> filter(x => x == k)) == 1)
+    && all(served, k => length(xs: declared |> filter(x => x == k)) == 1)
+}
+
+test fn approval_broker_extra_served_spec_is_refused() -> Bool {
+  !served_routes_equal_declared(
+    specs: concat(approval_broker_route_specs(), [ServedRouteSpec { method: GET, raw: "/extra", handler: DevicePushUpdateHandler }]),
+    declared: declared_broker_route_keys())
+}
+
+test fn approval_broker_missing_served_spec_is_refused() -> Bool {
+  !served_routes_equal_declared(
+    specs: approval_broker_route_specs() |> filter(sp => sp.method != PUT && sp.raw != approval_device_push_path as String),
+    declared: declared_broker_route_keys())
 }
 
 // A METHOD THE PAIR DOES NOT DEFINE IS 405 WITH THE ALLOWED SET, not a 404 and not a decision.
