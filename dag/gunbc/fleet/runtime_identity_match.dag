@@ -390,7 +390,17 @@ type RuntimeIdentityAbsence
   // here the six octets may be flawless and the PROBE read the wrong file, which is a fact about the
   // tooling. Folding the two into one arm is how a probe defect gets blamed on a machine, and the fold
   // reports BOTH when both are true rather than picking the first one it noticed.
-  | ProvenanceUnestablished { unestablished_count: Int }
+  //
+  // WHY IT CARRIES THE CAUSES THEMSELVES AND NOT A COUNT OF THEM. The causes ARE the diagnostic content of
+  // this gap: "the probe reported the address IN USE, from `read from live interface state`" and "no source
+  // was ever recorded" are different instructions to the operator -- one says point the probe at a permanent
+  // source, the other says the probe never said where anything came from. A count-only arm made every pair of
+  // causes produce an identical gap, so the distinction the address carries was AUTHORED, PROMISED BY THE
+  // SOURCE COMMENT, AND THEN DISCARDED: current-only with detail A and current-only with detail B answered the
+  // same, and the public verdict could not name either (HOLD review, merry-fox-82). This is still one source
+  // of truth: how many were unestablished is `unestablished.length()`, derived from this very list, so there
+  // remains exactly one place a count can be wrong.
+  | ProvenanceUnestablished { unestablished: List<PermanenceNotEstablishedCause> }
 
 // Which axis did not answer, on which side, and whether it was silence or a refusal.
 type RuntimeIdentityGap {
@@ -678,32 +688,48 @@ fn axes_agree(pair: AxisReadingPair) -> Bool {
 // the ONLY reason these two fns exist -- the four combinations they enumerate are otherwise the generic's.
 //
 // ONE ADDRESS AS THIS AXIS SEES IT: the octets, and where they came from. A record rather than a pair of
-// booleans, because a bool can only ever record a conclusion -- `is_perm_addr: Bool` would let a caller
-// assert permanence without saying what it read, which is precisely the inference this type exists to make
-// unnameable. The two fields are independent facts: the source is not derivable from the address and the
-// address is not derivable from the source, so neither is stored beside the other as a shortcut.
+// booleans -- not because a bool could not record the conclusion (the free-standing `PermanenceEstablished`
+// arm lets any caller record it too), but because a bool could not record the LACK: `is_perm_addr: Bool`
+// collapses "read a permanent source", "read live interface state", and "no idea where this came from" into
+// two states, and the second is the one an operator has to be able to see. Keeping cause and detail here is
+// what lets a probe say WHICH, and `remedy_for_unestablished` is what makes saying it worth something. The
+// two fields stay independent facts: the source is not derivable from the address and the address is not
+// derivable from the source, so neither is stored beside the other as a shortcut.
 type ReportedNetworkAddress {
   address: Eui48Address
   provenance: AddressProvenance
 }
 
 // WHERE AN ADDRESS WAS READ FROM. A closed union with exactly the states the fleet's sources can actually
-// be in. `PermanenceEstablished` is claimed only by a probe that read a permanent-address source (a Linux
-// `perm_addr`/`addr_assign_type` pair, or firmware's own burned-in listing); `AddressIsCurrentOnly` is the
-// honest statement that a *current* address was read and the source cannot show permanence, with the probe's
-// own words in `detail` so an operator can see which source was read; `AddressSourceUnestablished` is the
-// state a caller is in when it has an address and no idea how it was assigned -- which is NOT the same as
-// current-only and must not be folded into it, because current-only is a known limitation to reason about and
-// unestablished is an unknown one. A future source that establishes permanence a different way (an SMBus
-// read of the NIC's EEPROM, say) adds a constructor here and a case in `usable_address`; nothing else moves.
+// be in. The CLAIM each arm makes is what is nailed down here; who may make it is NOT nailed down by the
+// type, and the distinction is worth stating because the name reads like a guarantee.
+//
+// `PermanenceEstablished` ASSERTS that its reporter read a permanent-address source (a Linux
+// `perm_addr`/`addr_assign_type` pair, or firmware's own burned-in listing). It carries no source, so the
+// assertion is NOT enforced by this shape: the arm is free-standing and any caller may construct it, directly
+// or through either minting fn in this module (`permanent_report`, `octet_ineligible_report`), and the dry
+// half of this cut has no probe for it to be checked against. What the shape DOES make unwritable is the
+// pair that would contradict it -- "established" cannot be asserted inside the absence that says permanence
+// was not established. So an unearned `PermanenceEstablished` is refused by the PROBE that will mint it (the
+// wet half, S1/S2, where the source is in hand), and until that probe exists the only guards are this
+// comment, the fold's own refusal to invent the arm, and the witness tests that name which reports came from
+// which kind of source. A reader tempted to treat the arm as verified should read `AddressProvenance`'s
+// consumers instead: the fold's guarantee is about how provenance is USED, never about whether it was earned.
+//
+// `AddressIsCurrentOnly` is the honest statement that a *current* address was read and the source cannot show
+// permanence, with the probe's own words in `detail` so an operator can see which source was read;
+// `AddressSourceUnestablished` is the state a caller is in when it has an address and no idea how it was
+// assigned -- which is NOT the same as current-only and must not be folded into it, because current-only is a
+// known limitation to reason about and unestablished is an unknown one. A future source that establishes
+// permanence a different way (an SMBus read of the NIC's EEPROM, say) adds a constructor here, a case in
+// `usable_address`, and an arm in `remedy_for_unestablished`; nothing else moves.
 type AddressProvenance
   = PermanenceEstablished
   | PermanenceNotEstablished { cause: PermanenceNotEstablishedCause }
 
 // WHY A SOURCE COULD NOT ESTABLISH PERMANENCE, kept out of `AddressProvenance` so the absence that reports
-// it can carry the cause without also carrying the arm that says permanence WAS established -- a sum that can
-// hold "established" inside a "not established" absence is the illegal state a constructor is supposed to
-// make unwritable.
+// it can carry the cause without also carrying the arm that says permanence WAS established -- the two cannot
+// be named together, which is the illegal state this split removes.
 type PermanenceNotEstablishedCause
   = AddressIsCurrentOnly { detail: NonEmptyStr }
   | AddressSourceUnestablished
@@ -822,21 +848,70 @@ fn resolve_nic_side(standing: AxisStanding<List<ReportedNetworkAddress>>) -> Res
 // deriving them in two places, and is why this is one fn over the reported list rather than two predicates a
 // caller combines. Order follows the addresses as reported, which makes the verdict independent of which
 // check is written first.
+// THE CAUSES ARE KEPT, NOT COUNTED: flat_map collects the cause of each unestablished address in report
+// order, so the gap can name WHICH kinds appeared and quote the probe's own words for the current-only ones.
+// A `filter` + count here would reproduce exactly the defect the HOLD named: the cause survives long enough to
+// be tested for presence and then vanishes, leaving every pair of causes indistinguishable in the verdict.
 fn unusable_reasons(reported: List<ReportedNetworkAddress>) -> List<RuntimeIdentityAbsence> {
-  let unestablished = reported.filter(r => match r.provenance {
-    PermanenceEstablished => false
-    PermanenceNotEstablished { cause: _ } => true
+  let unestablished = reported.flat_map(r => match r.provenance {
+    PermanenceEstablished => []
+    PermanenceNotEstablished { cause: c } => [c]
   })
   let unestablished_count = unestablished.length()
   if unestablished_count == 0 {
     [NoEligibleEvidence { reported_count: reported.length() }]
   } else if unestablished_count == reported.length() {
-    [ProvenanceUnestablished { unestablished_count: unestablished_count }]
+    [ProvenanceUnestablished { unestablished: unestablished }]
   } else {
     [
-      ProvenanceUnestablished { unestablished_count: unestablished_count },
+      ProvenanceUnestablished { unestablished: unestablished },
       NoEligibleEvidence { reported_count: reported.length() },
     ]
+  }
+}
+
+// THE REMEDY THIS FOLD OFFERS FOR ONE UNESTABLISHED CAUSE, derived by an exhaustive map rather than stored
+// beside the cause. WHY A DERIVATION AND NOT A FIELD: if the remedy travelled on the address, a reporter could
+// pair any cause with any remedy, and the fold would relay advice that contradicts its own evidence; matched
+// here, the advice cannot disagree with the cause it is about, and a new cause must say what its remedy is
+// before the module compiles. WHY THE FOLD MAY OFFER ADVICE AT ALL: it is allowed to name the ACTION its
+// evidence supports (re-read from a permanent source; record the source) -- an action derived from a declared
+// cause. It is NOT allowed to say that action is warranted, because the cause itself is the reporter's
+// standing, not this fold's finding (see `AddressProvenance`). One arm per cause; nothing here decides
+// whether the cause was truthfully reported.
+type UnestablishedRemedy
+  // THE REPORTER NAMED WHERE IT READ AND WHAT IT READ WAS IN-USE STATE; the words are quoted so the operator
+  // sees the probe's own claim rather than this module's paraphrase of it.
+  = PointTheProbeAtAPermanentSource { probe_said: NonEmptyStr }
+  // NO SOURCE WAS RECORDED AT ALL. The advice is to record a source, not to discard the address: an
+  // unsourced address may still be the machine's real permanent address, and nothing here may say otherwise.
+  | RecordTheSourceBeforeTrustingTheAddress
+
+// WHAT THE PROBE FAILED TO ESTABLISH, IN THE OPERATOR'S TERMS. The reason this fn exists at all is to make
+// the carried causes CONSUMED rather than merely stored: a cause nobody reads is documentation with a type
+// annotation, and the HOLD named precisely that -- a distinction authored, promised, and discarded. Two
+// causes, two remedies, and the current-only one QUOTES THE PROBE'S OWN WORDS, so a fold that substituted,
+// erased, or defaulted the detail changes this output and the public control goes red. It is a closed map
+// over a closed union, not a predicate: no arm is asked "is this the current-only one?", and a third cause
+// added to `PermanenceNotEstablishedCause` stops compiling here instead of inheriting a remedy that may not
+// fit it.
+fn remedy_for_unestablished(cause: PermanenceNotEstablishedCause) -> UnestablishedRemedy {
+  match cause {
+    AddressIsCurrentOnly { detail: d } => PointTheProbeAtAPermanentSource { probe_said: d }
+    AddressSourceUnestablished => RecordTheSourceBeforeTrustingTheAddress
+  }
+}
+
+// THE REMEDIES FOR ONE GAP, in report order; empty for every gap that is not about provenance. Public, and
+// the path the witness discriminates through: it is reached from the gap the public verdict returns, so an
+// assertion here is an assertion about `runtime_identity_match`'s output and not about a private helper.
+fn remedies_for_gap(gap: RuntimeIdentityGap) -> List<UnestablishedRemedy> {
+  match gap.absence {
+    ProvenanceUnestablished { unestablished: cs } =>
+      cs.map(c => remedy_for_unestablished(cause: c))
+    Unread { reason: _ } => []
+    ControllerRefused { refusal: _ } => []
+    NoEligibleEvidence { reported_count: _ } => []
   }
 }
 

@@ -50,6 +50,11 @@ import gunbc.fleet.runtime_identity_match {
   AddressIsCurrentOnly,
   AddressSourceUnestablished,
   usable_addresses,
+  remedies_for_gap,
+  remedy_for_unestablished,
+  UnestablishedRemedy,
+  PointTheProbeAtAPermanentSource,
+  RecordTheSourceBeforeTrustingTheAddress,
   AxisStanding,
   AxisWasRead,
   AxisStayedSilent,
@@ -653,20 +658,49 @@ fn gap_is_no_eligible(gap: RuntimeIdentityGap) -> Bool {
 // failure mode -- it is what `Unprovable` exists to prevent.
 fn gap_is_unprovenance(gap: RuntimeIdentityGap) -> Bool {
   match gap.absence {
-    ProvenanceUnestablished { unestablished_count: _ } => true
+    ProvenanceUnestablished { unestablished: _ } => true
     NoEligibleEvidence { reported_count: _ } => false
     ControllerRefused { refusal: _ } => false
     Unread { reason: _ } => false
   }
 }
 
+// THE COUNT IS READ FROM THE CAUSES, NEVER STORED BESIDE THEM: `unestablished.length()` is the only spelling
+// that keeps one place where a count can be wrong. If this helper took a stored count, a module could keep a
+// list and a count that disagree and every test here would still pass.
 fn gap_unestablished_count(gap: RuntimeIdentityGap) -> Int {
   match gap.absence {
-    ProvenanceUnestablished { unestablished_count: c } => c
+    ProvenanceUnestablished { unestablished: cs } => cs.length()
     NoEligibleEvidence { reported_count: _ } => -1
     ControllerRefused { refusal: _ } => -1
     Unread { reason: _ } => -1
   }
+}
+
+// THE REMEDIES THE GAP OFFERS, AS LABELS AND AS QUOTED WORDS, kept apart rather than concatenated because
+// string append is not part of this grammar's proven surface here. Each label is chosen by an EXHAUSTIVE match
+// in THIS file over the module's closed `UnestablishedRemedy`: a wildcard arm here would let the module rename
+// or merge a remedy and keep these tests green, which is why every arm is spelled out and a fourth arm stops
+// compiling rather than falling through to a label.
+fn remedy_labels(gaps: List<RuntimeIdentityGap>) -> List<String> {
+  gaps.flat_map(g => remedies_for_gap(gap: g).map(r => match r {
+    PointTheProbeAtAPermanentSource { probe_said: _ } => "point-at-permanent-source"
+    RecordTheSourceBeforeTrustingTheAddress => "record-the-source"
+  }))
+}
+
+// THE PROBE'S OWN WORDS, in report order, for the current-only remedies only. This is the read that makes the
+// carried detail CONSUMED: if the fold substituted, erased, or defaulted a cause's words anywhere on the path
+// from the address to the verdict, this list changes and the public control below goes red.
+fn remedy_probe_words(gaps: List<RuntimeIdentityGap>) -> List<String> {
+  gaps.flat_map(g => remedies_for_gap(gap: g).flat_map(r => match r {
+    PointTheProbeAtAPermanentSource { probe_said: d } => [d]
+    RecordTheSourceBeforeTrustingTheAddress => []
+  }))
+}
+
+fn remedy_count(gaps: List<RuntimeIdentityGap>) -> Int {
+  gaps.flat_map(g => remedies_for_gap(gap: g)).length()
 }
 
 // A gap list that says EXACTLY THIS: one gap, on one named side, of one named kind, with one count. Used by
@@ -1019,7 +1053,7 @@ fn gap_is_refusal(gap: RuntimeIdentityGap) -> Bool {
     // non-evidence kinds are listed by name rather than defaulted, so adding a sixth absence to the module
     // stops compiling here instead of quietly answering `false`.
     NoEligibleEvidence { reported_count: _ } => false
-    ProvenanceUnestablished { unestablished_count: _ } => false
+    ProvenanceUnestablished { unestablished: _ } => false
   }
 }
 
@@ -1035,7 +1069,7 @@ fn gap_detail(gap: RuntimeIdentityGap) -> NonEmptyStr {
     // told which kind it actually got. Both non-evidence arms are named, so a new absence cannot fall
     // through to a rendering that belongs to a different kind.
     NoEligibleEvidence { reported_count: _ } => "no eligible address; reported count"
-    ProvenanceUnestablished { unestablished_count: _ } => "source cannot establish permanence; unestablished count"
+    ProvenanceUnestablished { unestablished: _ } => "source cannot establish permanence; unestablished count"
   }
 }
 
@@ -1065,7 +1099,7 @@ fn first_gap_refusal_kind(gaps: List<RuntimeIdentityGap>) -> NonEmptyStr {
       NoEligibleEvidence { reported_count: _ } => "no-eligible-evidence"
       // named, not defaulted: a fifth absence kind must stop compiling HERE rather than report "none"
       // and let a refusal-kind assertion pass on a gap that was never a refusal.
-      ProvenanceUnestablished { unestablished_count: _ } => "provenance-unestablished"
+      ProvenanceUnestablished { unestablished: _ } => "provenance-unestablished"
     }
     Absent => "none"
   }
@@ -1481,6 +1515,10 @@ test fn test_identical_octets_differing_only_in_provenance_bind_nothing() -> Boo
   match runtime_identity_match(pre: pre, post: post) {
     Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
       one_provenance_gap_on(gaps: gaps, side: PostBootOsSide, count: 1)
+        // AND THE GAP SAYS WHICH CAUSE, IN THE PROBE'S OWN WORDS. Without these two lines the two
+        // unestablished causes answer identically and the detail the address carries is decorative.
+        && remedy_labels(gaps: gaps) == ["point-at-permanent-source"]
+        && remedy_probe_words(gaps: gaps) == ["read from live interface state"]
     _ => false
   }
 }
@@ -1509,8 +1547,111 @@ test fn test_an_unsourced_address_reports_its_own_cause() -> Bool {
   match runtime_identity_match(pre: pre, post: post) {
     Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
       one_provenance_gap_on(gaps: gaps, side: PostBootOsSide, count: 1)
+        // AND IT ASKS FOR A DIFFERENT THING THAN CURRENT-ONLY DOES: no probe words, because no probe
+        // recorded a source to quote. This line and the two in the current-only test are what make the two
+        // causes ANSWER DIFFERENTLY; without them one arm could serve both and every count still matched.
+        && remedy_labels(gaps: gaps) == ["record-the-source"]
+        && remedy_probe_words(gaps: gaps) == []
     _ => false
   }
+}
+
+// TWO CURRENT-ONLY ADDRESSES CARRY TWO SETS OF THE PROBE'S WORDS. The pair merry-fox-82 asked for: identical
+// octets are not required, only identical causes with DIFFERENT details, because that is the input a
+// cause-collapsing implementation survives -- if the gap kept one cause per KIND (or defaulted, or deduplicated
+// the detail), the two probes' different claims would merge into one sentence and the second probe's evidence
+// would vanish from a record that still looked complete. Both sets of words must arrive verbatim and in report
+// order: same label twice, two distinct quotations.
+test fn test_two_current_only_addresses_keep_two_sets_of_the_probe_s_words() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
+  }
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead {
+      value: [
+        current_only_report(addr: fixture_mac_b(), detail: "read from live interface state"),
+        current_only_report(addr: fixture_mac_c(), detail: "read from the installer's DHCP lease record"),
+      ],
+    },
+  }
+  match runtime_identity_match(pre: pre, post: post) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      one_provenance_gap_on(gaps: gaps, side: PostBootOsSide, count: 2)
+        && remedy_count(gaps: gaps) == 2
+        && remedy_labels(gaps: gaps) == ["point-at-permanent-source", "point-at-permanent-source"]
+        && remedy_probe_words(gaps: gaps) == [
+          "read from live interface state",
+          "read from the installer's DHCP lease record",
+        ]
+    _ => false
+  }
+}
+
+// THE TWO UNESTABLISHED CAUSES ASK FOR TWO DIFFERENT THINGS, AND BOTH SURVIVE ONE GAP. One address the probe
+// says it read from live state, and one that arrived with no recorded source at all, on the same side: this is
+// the control that makes the carried causes OBSERVABLE rather than merely present. Under the count-only gap
+// merry-fox-82 named, this input, a gap of two current-only causes, and a gap of two unsourced causes all
+// answered `unestablished_count == 2` -- so a module that threw the causes away entirely would have passed
+// every test in this file. Distinct labels in report order is the assertion that cannot be satisfied by a
+// count, a kind, or a first-cause-wins fold.
+test fn test_the_two_unestablished_causes_answer_differently_inside_one_gap() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
+  }
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead {
+      value: [
+        current_only_report(addr: fixture_mac_b(), detail: "read from live interface state"),
+        unsourced_report(addr: fixture_mac_c()),
+      ],
+    },
+  }
+  match runtime_identity_match(pre: pre, post: post) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.length() == 1
+        && one_provenance_gap_on(gaps: gaps, side: PostBootOsSide, count: 2)
+        && remedy_labels(gaps: gaps) == ["point-at-permanent-source", "record-the-source"]
+        && remedy_probe_words(gaps: gaps) == ["read from live interface state"]
+    _ => false
+  }
+}
+
+// THE REMEDY MAP, PINNED AT ITS OWN LEVEL, one cause in and one remedy out. The verdict-level tests above
+// prove the map is reached from the public verdict; this proves each cause maps to its OWN remedy, which the
+// verdict tests cannot isolate -- a map that returned the same remedy for both causes fails here, and a map
+// that swapped them fails here too, while the count-only gap left both invisible. Total by construction: every
+// arm of `PermanenceNotEstablishedCause` is named, so a third cause is a compile error and not a silent
+// default.
+test fn test_each_unestablished_cause_gets_its_own_remedy() -> Bool {
+  let current_words = match remedy_for_unestablished(
+    cause: AddressIsCurrentOnly { detail: "read from live interface state" },
+  ) {
+    PointTheProbeAtAPermanentSource { probe_said: d } => [d]
+    RecordTheSourceBeforeTrustingTheAddress => []
+  }
+  let unsourced_labels = match remedy_for_unestablished(cause: AddressSourceUnestablished) {
+    PointTheProbeAtAPermanentSource { probe_said: _ } => ["point-at-permanent-source"]
+    RecordTheSourceBeforeTrustingTheAddress => ["record-the-source"]
+  }
+  current_words == ["read from live interface state"] && unsourced_labels == ["record-the-source"]
 }
 
 // A SIDE HOLDING BOTH BAD ADDRESSES SAYS BOTH THINGS AT ONCE. One address whose source was never recorded
