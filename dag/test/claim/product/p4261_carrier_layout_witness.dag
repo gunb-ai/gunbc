@@ -118,6 +118,7 @@ import product.p4261_carrier_layout {
   PolarityContradicted,
   PolarityUnestablished,
   NoMeasuredBoard,
+  InputUnmapped,
   SidesUnrecorded,
   AcrossInputStanding,
   AcrossInput,
@@ -227,6 +228,14 @@ import product.p4261_carrier_layout {
   installed,
   board_graph,
   board_netlist,
+  k1_measured,
+  k1_u1_p5,
+  k1_200,
+  k1_beige,
+  k1_ringed_via,
+  k1_pin22_point,
+  e1_beige_top,
+  e1_vdd_volts,
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
@@ -398,6 +407,11 @@ fn housing_with_sides(latch_row: RowSide, away_row: RowSide) -> ConnectorHousing
   }
 }
 
+// The K1 as it stood before anything was measured on it.
+fn unmeasured_k1() -> CarrierLayoutObservation {
+  layout_with(base: p4261_k1_layout, components: p4261_k1_layout.components, measured: Absent, input: Absent)
+}
+
 fn e1_with_housing(h: ConnectorHousing) -> CarrierLayoutObservation {
   layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: p4261_e1_layout.measured, input: Present { value: InputConnector { housing: h, fuse_terminal: e1_input.fuse_terminal } })
 }
@@ -406,7 +420,7 @@ fn e1_with_housing(h: ConnectorHousing) -> CarrierLayoutObservation {
 // latch, the return contacts the latch side, separated by silent (above-threshold) readings to ground on the fused side;
 // the return-side readings have inferred second points, and the standing carries them. The same
 // positions recorded on the opposite sides read the other way round; a side left unrecorded refuses;
-// the K1 has no measured board.
+// the K1's board is measured but its J20 is not mapped, and a board with nothing measured says so.
 test fn j20_polarity_is_derived_from_the_readings() -> Bool {
   let e1 = match input_polarity(layout: p4261_e1_layout) {
     PolarityEstablished { fused_side, return_side, fused: _, returns, isolation } =>
@@ -430,13 +444,21 @@ test fn j20_polarity_is_derived_from_the_readings() -> Bool {
   }
   let k1 = match input_polarity(layout: p4261_k1_layout) {
     PolarityUnestablished { gaps } => any(gaps, g => match g {
+      InputUnmapped => true
+      _ => false
+    })
+    PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => false
+    PolarityContradicted { readings: _ } => false
+  }
+  let unmeasured = match input_polarity(layout: unmeasured_k1()) {
+    PolarityUnestablished { gaps } => any(gaps, g => match g {
       NoMeasuredBoard => true
       _ => false
     })
     PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => false
     PolarityContradicted { readings: _ } => false
   }
-  e1 && swapped && unrecorded && k1
+  e1 && swapped && unrecorded && k1 && unmeasured
 }
 
 fn placed_d2(s: AcrossInputStanding) -> Bool {
@@ -1146,8 +1168,9 @@ test fn an_enable_bound_above_the_threshold_minimum_establishes_nothing() -> Boo
 }
 
 // A READING TAKEN AFTER AN INCIDENT SAYS SO. The same held enable reading renders with the incident
-// caveat when ordered after the probe bridge, and without it when ordered before; a hedged statement
-// is named as hedged.
+// caveat when ordered after the probe bridge, and without it when ordered before; a standing resting on
+// a hedged statement says so, and one resting on a plain statement does not (the report's hypotheses
+// quote hedged readings of their own, so the word alone is not the reading's).
 test fn a_post_incident_reading_is_never_presented_as_before() -> Bool {
   let after = [NodeVoltageObservation {
     asset: p4261_e1_b, at: terminal_ref(component: e1_u1_p5, terminal: "pin 7" as TerminalIdentity), reference: e1_ground_ref, record: both_points_recorded,
@@ -1161,7 +1184,7 @@ test fn a_post_incident_reading_is_never_presented_as_before() -> Bool {
     && after_text.contains("rests on a hedged statement")
     && before_text.contains("U1_P5's enable (UVLO/EN) is HELD BELOW its threshold, so the gate is held off")
     && !before_text.contains("rests on readings taken after an incident")
-    && !before_text.contains("hedged")
+    && !before_text.contains("rests on a hedged statement")
 }
 
 // A REFERENCE-DESIGN CONNECTION IS NOT AN EDGE. TI's application circuit wires the controller's GATE
@@ -1352,7 +1375,7 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
     && links_between(net: live, a: u1_pin(pin: "pin 7"), b: ground_pad) == 4
     && text.contains("U1_P5 pin 7 -- about 40000 ohm on the 200000 ohm range -- Q21_P5 tab")
     && text.contains("U1_P5 pin 7 -- about 100000 ohm on the 2000000 ohm range -- Q21_P5 tab")
-    && text.contains("U1_P5 pin 7 -- 557 ohm on the 2000 ohm range, red probe on back-side pad on the trace toward Q300 / Q301, on the ground rings pad")
+    && text.contains("U1_P5 pin 7 -- 557 ohm on the 2000 ohm range, red probe on back-side pad first read from the pin 7 wire, on the ground rings pad")
     && text.contains("U1_P5 pin 7 -- about 11000 ohm on the 20000 ohm range, red probe on U1_P5 pin 7")
     && links_between(net: swapped, a: pad_ref(), b: u1_pin(pin: "pin 7")) == 2
     && netlist_text(net: swapped).contains("about 11000 ohm on the 200 ohm range, red probe on U1_P5 pin 7")
@@ -1362,7 +1385,7 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
 // THE LIVE E1 IS READ THROUGH THE NETLIST. Its beep classes and its baseline readings meet in one ground
 // node -- J20's return row, D5's grounded tab by a beep, the copper ring and the ground pad at the
 // baseline -- the OVLO pad is one node with pin 8, pin 7 is in neither, nothing contradicts, and the
-// report renders the netlist; the K1, with no measured board, renders none.
+// report renders the netlist; the K1 renders its own, and the K1 with nothing measured renders none.
 test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
   let net = board_netlist(b: e1_measured)
   let ring = terminal_ref(component: e1_ground_ring, terminal: "ring" as TerminalIdentity)
@@ -1372,5 +1395,56 @@ test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
     && !one_node(net: net, a: u1_pin(pin: "pin 7"), b: e1_ground_ref) && !one_node(net: net, a: u1_pin(pin: "pin 7"), b: pad_ref())
     && count(filter(net.links, l => !is_between(l: l))) == 0
     && carrier_input_reading(layout: p4261_e1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
-    && carrier_input_reading(layout: p4261_k1_layout).contains("no board measured, so no measured netlist")
+    && carrier_input_reading(layout: p4261_k1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
+    && carrier_input_reading(layout: unmeasured_k1()).contains("no board measured, so no measured netlist")
+}
+
+fn k1_pin(pin: NonEmptyStr) -> ElectricalTerminalRef {
+  terminal_ref(component: k1_u1_p5, terminal: pin as TerminalIdentity)
+}
+
+// THE K1 IS ITS OWN BOARD. Its readings build its own netlist: pin 7 joins one end of its '200'
+// resistor and not its ringed via, pin 22 the point across from it, and pin 21 the beige part's top
+// end, as the E1's pin 21 joins its own. The K1's pin 7 is not the E1's. The K1's readings handed to the
+// E1's graph join nothing and link nothing, and the E1's own netlist holds no K1 join.
+test fn the_k1_is_read_on_its_own_board() -> Bool {
+  let k1 = board_netlist(b: k1_measured)
+  let e1 = board_netlist(b: e1_measured)
+  let k1_200_end = terminal_ref(component: k1_200, terminal: "end read from pin 7 (which end unrecorded)" as TerminalIdentity)
+  let k1_into_e1 = measured_netlist(graph: board_graph(b: e1_measured), resistances: k1_measured.bench.resistances)
+  one_node(net: k1, a: k1_pin(pin: "pin 7"), b: k1_200_end)
+    && !one_node(net: k1, a: k1_pin(pin: "pin 7"), b: terminal_ref(component: k1_ringed_via, terminal: "via" as TerminalIdentity))
+    && one_node(net: k1, a: k1_pin(pin: "pin 21"), b: terminal_ref(component: k1_beige, terminal: "top end" as TerminalIdentity))
+    && one_node(net: k1, a: k1_pin(pin: "pin 22"), b: terminal_ref(component: k1_pin22_point, terminal: "point" as TerminalIdentity))
+    && one_node(net: e1, a: u1_pin(pin: "pin 21"), b: e1_beige_top)
+    && !terminal_ref_equal(a: k1_pin(pin: "pin 7"), b: u1_pin(pin: "pin 7"))
+    && count(k1_into_e1.links) == 0 && count(k1_into_e1.nodes) == count(board_graph(b: e1_measured).classes)
+    && !one_node(net: k1_into_e1, a: k1_pin(pin: "pin 7"), b: k1_200_end)
+    && !one_node(net: e1, a: k1_pin(pin: "pin 7"), b: k1_200_end)
+}
+
+// A reading from the E1's part across from pin 21 to one of pin 21's neighbours, above the baseline.
+fn beige_apart_from(pin: NonEmptyStr) -> ResistanceObservation {
+  let o = pad_to_pin(pin: pin, display: DisplayValue { ohms: 3500, approximate: false })
+  ResistanceObservation {
+    asset: o.asset, first: e1_beige_top, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range, display: o.display,
+    stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence,
+  }
+}
+
+// THE BIAS SUPPLY IS READ, NOT JUDGED. Live, the E1's part across from pin 21 is at the baseline to it,
+// and energized its top end read about 4.86 V, hedged: rendered against pin 21 with its hedge, as a
+// point no reading separates from pins 20 and 22, with no window read from it -- no standing says the
+// supply is inside 4.60-5.15 V. Supplied readings separating that point from both neighbours drop the
+// access-point caveat and still read no window; the K1, with nothing energized, renders pin 21 unread.
+test fn the_bias_supply_is_rendered_and_no_window_is_read() -> Bool {
+  let e1 = carrier_input_reading(layout: p4261_e1_layout)
+  let separated = carrier_input_reading(layout: e1_with_bench(vs: [e1_vdd_volts], rs: concat(e1_bench_record.resistances, [beige_apart_from(pin: "pin 20"), beige_apart_from(pin: "pin 22")])))
+  e1.contains("U1_P5 VDD (pin 21, internal-regulator output): beige two-terminal part directly across from U1_P5 pin 21 top end read about 4.860 V")
+    && e1.contains("hedged ('like 4.86 or something')")
+    && e1.contains("no reading separates from U1_P5 pin 20 and U1_P5 pin 22, so not yet the pin's access point; no window is read from it")
+    && separated.contains("top end read about 4.860 V")
+    && !separated.contains("so not yet the pin's access point")
+    && separated.contains("no window is read from it")
+    && carrier_input_reading(layout: p4261_k1_layout).contains("U1_P5 VDD (pin 21, internal-regulator output): unread")
 }
