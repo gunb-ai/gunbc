@@ -1,0 +1,116 @@
+module test.claim.runner.runner_apply_grants_join_witness
+
+import std.types { Bool, String, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, SystemdMaskNowUnit, executor_privileged_operation_argv,
+}
+import gunbc.runner.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
+import gunbc.runner.runner_host_grants { runner_host_privileged_operations }
+import gunbc.runner.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
+import gunbc.runner.runner_slot_retirement {
+  SlotRetirementEvidence, SlotRetirementEvidencePresent, SlotRetirementEvidenceAbsent,
+  interruption_authorization_for_host, HostInterruptionAuthorizationPresent, HostInterruptionAuthorizationAbsent,
+}
+import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.fleet.fleet_converge_plan { fleet_converge_apply_shell, fleet_converge_apply_terminal, FleetConvergeRequest, FullHostConverge }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE IDENTITY JOIN: every `sudo -n` line a host's apply script emits has a matching line in that
+// host's rendered grants (runner_host_privileged_operations, the operation set the sudoers file is
+// rendered from). A line the grants do not authorize is refused by sudo at apply time -- under
+// `set -e` the script stops there and every later line never runs (gunbc.recurring_failure_mode
+// a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize).
+//
+// The comparison is over words, not quoting: the apply renders quoted words, the grant renders
+// sudoers words, so both are reduced to their unquoted argv joined by spaces, the apply side keeping
+// its `sudo -n` prefix and the grant side gaining it.
+
+fn join_evidence(host: HostIdentity) -> SlotRetirementEvidence {
+  match interruption_authorization_for_host(host: host) {
+    HostInterruptionAuthorizationPresent { authorization: a } =>
+      SlotRetirementEvidencePresent { authorization: a, standings: [] }
+    HostInterruptionAuthorizationAbsent { host: _, cause: c } =>
+      SlotRetirementEvidenceAbsent { cause: c }
+  }
+}
+
+fn join_apply_text(deploy: RunnerHostDeploy) -> String {
+  let host = deploy.host_label as HostIdentity
+  let request = FullHostConverge {
+    host: deploy.host_label,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: host),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: join_evidence(host: host),
+  }
+  fleet_converge_apply_shell(request: request, terminal: fleet_converge_apply_terminal(request: request))
+}
+
+fn join_unquoted(l: String) -> String { replace(s: l, from: "'", to: "") }
+
+fn join_grant_words(op: ExecutorPrivilegedOperation) -> String {
+  concat("sudo -n ", join(map(executor_privileged_operation_argv(op: op), w => w as String), " "))
+}
+
+fn join_apply_sudo_lines(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+    |> map(l => join_unquoted(l: l))
+    |> filter(l => l.starts_with(prefix: "sudo -n "))
+}
+
+fn join_ungranted(text: String, ops: List<ExecutorPrivilegedOperation>) -> List<String> {
+  let granted = map(ops, op => join_grant_words(op: op))
+  join_apply_sudo_lines(text: text) |> filter(l => count(filter(granted, g => g == l)) == 0)
+}
+
+fn join_is_mask(op: ExecutorPrivilegedOperation) -> Bool {
+  match op { SystemdMaskNowUnit { unit: _ } => true _ => false }
+}
+
+test fn every_sudo_line_srv1_apply_emits_is_granted() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      join_ungranted(text: join_apply_text(deploy: d), ops: runner_host_privileged_operations(deploy: d)) == []
+  }
+}
+
+// POSITIVE POLE: the apply carries mask lines at all, so an empty ungranted set is a measurement
+// and not a script that emitted no privileged line.
+test fn srv1_apply_carries_mask_lines_and_the_grants_carry_them_too() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      count(join_apply_sudo_lines(text: join_apply_text(deploy: d)) |> filter(l => string_contains(s: l, pattern: " mask --now "))) > 0
+        && count(filter(runner_host_privileged_operations(deploy: d), op => join_is_mask(op: op)))
+          == count(join_apply_sudo_lines(text: join_apply_text(deploy: d)) |> filter(l => string_contains(s: l, pattern: " mask --now ")))
+  }
+}
+
+// DISCRIMINATING CONTROL: removing any one mask grant makes the join name exactly that line.
+test fn removing_one_mask_grant_reds_the_join() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      let ops = runner_host_privileged_operations(deploy: d)
+      let masks = filter(ops, op => join_is_mask(op: op))
+      count(masks) > 0
+        && all(masks, m => count(join_ungranted(text: join_apply_text(deploy: d), ops: filter(ops, op => join_grant_words(op: op) != join_grant_words(op: m)))) == 1)
+  }
+}
+
+// DISCRIMINATING CONTROL, NON-MASK: with only the mask grants the join reds on the other lines.
+test fn removing_the_non_mask_grants_reds_the_join() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      count(join_ungranted(text: join_apply_text(deploy: d), ops: filter(runner_host_privileged_operations(deploy: d), op => join_is_mask(op: op)))) > 0
+  }
+}

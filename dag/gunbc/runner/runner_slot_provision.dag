@@ -19,6 +19,7 @@ import gunbc.ownership { Ownership, Owned }
 import gunbc.executor_privileged_operation {
   EnsureOwnedDirectory,
   RemoveDirectoryTree,
+  SystemdMaskNowUnit,
   executor_managed_directory_mode,
   executor_privileged_operation_shell_command,
 }
@@ -61,9 +62,7 @@ import gunbc.runner.runner_unit {
   RunnerUnitInstanceMalformed,
   NotARunnerUnit,
 }
-import extdeps.systemd.systemctl { systemctl_mask_now_argv }
-import extdeps.sudo.elevation { sudo_elevate_argv }
-import gunbc.shell_command_text { shell_command_text_of_argv, shell_command_text_of_node, shell_command_intent }
+import gunbc.shell_command_text { shell_command_text_of_node, shell_command_intent }
 import v2.extdeps.languages.bash_build { bash_build_with_redir }
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
@@ -162,7 +161,7 @@ fn slot_member_unit_name(m: RunnerSlotMember) -> NonEmptyStr {
 }
 
 fn retirement_mask_line(unit: String) -> String {
-  shell_command_text_of_argv(argv: sudo_elevate_argv(command: systemctl_mask_now_argv(unit: unit as NonEmptyStr)))
+  executor_privileged_operation_shell_command(op: SystemdMaskNowUnit { unit: unit as NonEmptyStr })
 }
 
 fn realization_requires_actuation(evidence: SlotRetirementEvidence, unit: String) -> Bool {
