@@ -90,3 +90,33 @@ worth anything if the edits are visible.
 4. S1 predictions are unchanged for the 8 original rows. Row `collision_two_zero_arg_generic_calls_both_type`
    is predicted **FAIL at RED** and **PASS at repair**; if it passes at RED the fixture is not
    discriminating and I say so instead of calling the repair verified.
+
+## AMENDMENT 3 (10:45Z, before any result is read): three dispatches invalidated by my own harness, not by the tree
+
+Predictions above are UNCHANGED and still unrevised. What follows is what the runs so far cost,
+so that no number in them is mistaken for a measurement, and so a rerun is not blind.
+
+1. ROWS, first attempt (label `repair`, 10:11-10:41Z): INVALID, no verdict. It ran the whole
+   crate filter (`cargo test --lib cross_coproduct`) under one 1500s bound, but
+   `RUST_TEST_THREADS=1` (.cargo/config.toml:17) serialises the suite and EVERY
+   `compile_to_resolved` row recompiles the std corpus (~2 min/row, 35 rows). Exit 124 = my own
+   bound; 8 of 9 rows reported MISSING_FATAL which under that exit code means ONLY "the suite
+   never reached them" -- the first two rows did get verdicts (collision_pair PASS, and the
+   log shows the third row `collision_two_zero_arg_generic_calls_both_type` started and was
+   still compiling when the bound fired). PASS on collision_pair is real; nothing else is.
+   Fixed by one `--exact` invocation per row on its own ROW_TIMEOUT plus positional row
+   selection. NOT a fixture-hang diagnosis: the collision row was still in its first compile,
+   which is consistent with it being merely slow. It gets its own 1200s dispatch.
+2. GATE, two attempts: INVALID, the script never ran. First dispatch passed `LOGS=... HEAD_REF=...`
+   as separate ctrl-build args, which are word-split, so `bash -lc` took `LOGS=/tmp/x` as its
+   COMMAND and the rest as $0 -- exit 0-ish in 13 seconds with zero script output. Second
+   attempt omitted them and the script's own `LOGS=${LOGS:?LOGS required}` killed it in 6 seconds.
+   Both logs look like "the gate printed nothing"; the difference between an unmeasured gate and
+   a gate that measured nothing is only visible in the log, which is why the wrapper now carries
+   them inside the quoted -c string and says so in its header.
+3. A THIRD failure mode was avoided only by accident: the gate scripts are tracked at the repo
+   ROOT on the instruments line. A dispatch naming `instruments/gate_two_closures_14152.sh`
+   would die on "No such file or directory".
+
+Consequence for reading results: a fast exit with no `T=` stamps means the harness, not the tree.
+Every row verdict below comes only from a run that printed `ROW <label> <row> PASS|FAIL rc=`.
