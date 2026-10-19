@@ -17,7 +17,8 @@ import v2.std.compilers.target_model {
   target_operator_realizations_catalog_node,
   target_value_expression_binding_ref,
   target_value_expression_callable_apply,
-  target_value_expression_resolved_primitive_call,
+  LocalCallee,
+  PrimitiveRowCallee,
   target_value_expression_to_concrete_tokens
 }
 import v2.std.diagnostic { Accepted, Rejected, None, Outcome, bind_outcome }
@@ -27,8 +28,9 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rust_primitive_string_length_call() -> TargetValueExpression {
-  target_value_expression_resolved_primitive_call(
+  target_value_expression_callable_apply(
     callee: ^string_length,
+    kind: PrimitiveRowCallee,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   )
 }
@@ -37,6 +39,7 @@ fn rust_primitive_string_length_call() -> TargetValueExpression {
 fn rust_user_string_length_call() -> TargetValueExpression {
   target_value_expression_callable_apply(
     callee: ^string_length,
+    kind: LocalCallee,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   )
 }
@@ -44,6 +47,7 @@ fn rust_user_string_length_call() -> TargetValueExpression {
 fn rust_primitive_unknown_call() -> TargetValueExpression {
   target_value_expression_callable_apply(
     callee: ^string_to_upper,
+    kind: LocalCallee,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   )
 }
