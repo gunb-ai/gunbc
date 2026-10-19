@@ -458,6 +458,30 @@ test fn test_two_refusals_stay_two_refusals() -> Bool {
   }
 }
 
+// THE SILENT SIDE'S WORDS TRAVEL FROM THAT SIDE, IN BOTH DIRECTIONS. The test above covers the post side
+// staying quiet; a fold that substituted stock words for the PRE side's own reason passed every witness
+// here until this one existed. It matters because those words are the difference between "the agent was
+// never installed" and "the agent ran and the file is empty" -- the operator's next action, written by the
+// side that was quiet, transcribed unchanged.
+test fn test_a_silent_firmware_side_keeps_its_own_words() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisStayedSilent { reason: "the firmware exposes no such property" },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
+  }
+  match runtime_identity_match(pre: pre, post: post_agreeing()) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } =>
+      gaps.length() == 1
+        && first_gap_axis(gaps: gaps) == BoardSerialAxis
+        && first_gap_side(gaps: gaps) == PreBootFirmwareSide
+        && !first_gap_is_refusal(gaps: gaps)
+        && first_gap_detail(gaps: gaps) == "the firmware exposes no such property"
+    _ => false
+  }
+}
+
 // NO AXIS MAY VANISH QUIETLY. With the third, "unreachable" examination arm deleted, the only thing keeping
 // an axis from silently contributing nothing is this count: every row must answer with EXACTLY ONE
 // examination, whatever its standings are. The mixture below puts a silent side and a refused side in the
