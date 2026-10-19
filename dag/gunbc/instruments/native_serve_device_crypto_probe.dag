@@ -71,12 +71,11 @@ fn native_serve_probe_release_revision() -> String {
   "0123456789abcdef0123456789abcdef01234567"
 }
 
-// Deliberately SHORTER than the startup self-check (the sha256 of the running binary alone is about 0.5 s, plus about 60 ms
-// per P-256 verify) and longer than any one request: this is the RED that startup does not inherit the request deadline.
-// A launch whose startup readiness were bounded by this deadline would exit 2 (worker unrealized) before the first case;
-// bounded by its own native_serve_startup_deadline it announces, binds and serves every case below.
+// Generous: the verifier's P-256 and P-384 arithmetic is native but a cold first request pays for it,
+// and no case here is a budget case. (That startup does not inherit the request deadline is judged by
+// //gunbc/instruments:native-serve-startup-slow, whose startup is a declared, ratio-bounded spin.)
 fn native_serve_probe_request_deadline_ms() -> String {
-  "400"
+  "30000"
 }
 
 // ── The cases ────────────────────────────────────────────────────────────────────────────────

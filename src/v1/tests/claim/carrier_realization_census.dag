@@ -490,7 +490,7 @@ fn typed_census_from_sources(sources: List<SourceFile>) -> String {
 // first worker -- which runs the startup fold, within its own startup_deadline -- BEFORE the bind, so a self-check that refuses
 // never becomes reachable; a driver that declares none is emitted unchanged: bind first, realize after, on the request deadline.
 fn crc_serve_before_bind(startup: Bool) -> String {
-  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup)
+  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup, startup_bound: false)
   match (file.content |> split(delimiter: "TcpListener::bind((")).first() {
     Present { value: head } => head
     Absent => ""
@@ -505,4 +505,12 @@ test fn a_startup_entry_realizes_its_worker_before_it_binds_and_bounds_it_by_the
 test fn a_driver_with_no_startup_binds_before_it_realizes_its_worker_on_the_request_deadline() -> Bool {
   let head = crc_serve_before_bind(startup: false)
   !string_contains(s: head, pattern: "realize_generation(&stuck") && !string_contains(s: head, pattern: "startup_deadline")
+}
+
+test fn a_declared_startup_bound_replaces_the_contracts_default_before_the_first_worker_is_realized() -> Bool {
+  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: true, startup_bound: true)
+  match (file.content |> split(delimiter: "TcpListener::bind((")).first() {
+    Present { value: head } => string_contains(s: head, pattern: "contract.startup_deadline = native_serve_startup_bound();") && string_contains(s: head, pattern: "let mut contract")
+    Absent => false
+  }
 }
