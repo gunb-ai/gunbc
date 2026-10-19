@@ -193,7 +193,7 @@ fn provisioning_arm_attempt(arm: ProvisioningArm) -> AttemptBinding {
 // gunbc.nbd_proxy_virtual_media_install's OsInstallActuatorStep / os_install_actuator_steps rather
 // than a second step vocabulary. Discharge-by-name proves ONLY that the declaration exists, never that
 // the arm's shape is exercised end to end (S0 keeps BoundaryInhabitation as a separate carrier for
-// that reason), so landing this module fires S0's own consumer frontier with nothing yet executing.
+// that reason), so this frontier stays DissolutionPending (witnessed) until that name appears, and Fired would still not mean the arm is exercised.
 data provisioning_arm_consumer_frontier: DissolutionCondition = BoundDissolution {
   trigger: DeclarationAppears { ref: provisioning_arm_consumer_ref() },
 }

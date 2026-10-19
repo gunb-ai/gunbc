@@ -19,6 +19,8 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_chainloader_build_receipt,
 }
 import gunbc.provisioning.provisioning_arm {
+  provisioning_arm_consumer_frontier,
+  provisioning_arm_consumer_ref,
   ArmShape,
   DeliveryStrategy,
   PxeOrUefiHttp,
@@ -52,7 +54,9 @@ import gunbc.provisioning.provisioning_arm {
 // ── Sibling fixtures: the ONLY place this witness names sibling-owned shapes. The S4 binding is a
 // sole_constructor, so the only honest fixture is the one S4's own witness builds through the real
 // producer; fixture_seed_is_a_real_binding below owes the inhabitance claim that it is Present. ──
+import std.dissolution { DissolutionPending, DissolutionFired }
 import gunbc.firmware_network_boot_standing {
+  frontier_status,
   FirmwareNetworkBootStanding,
   NeedsPreparation,
   Ready,
@@ -399,4 +403,21 @@ test fn a_ready_standing_arms_pxe_with_no_preparation() -> Bool {
 // frontier quietly unsatisfiable.
 test fn the_consumer_frontier_names_the_s9_actuator_literally() -> Bool {
   provisioning_arm_consumer_ref() == decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps")
+}
+
+// THE FRONTIER IS WAITING, NOT SILENTLY ABSENT. With nothing present it must say Pending (not Fired:
+// a missing consumer is not a delivered one); handed exactly the declaration it names it fires; handed
+// a lookalike in the same module, or the S0 standing's own producer, it stays Pending, so a rename or a
+// retarget to a non-consumer cannot discharge it. The status is computed by S0's frontier_status over
+// the population handed in, so the state of the world is never written down here.
+test fn the_arm_consumer_frontier_is_pending_until_the_named_actuator_appears() -> Bool {
+  frontier_status(condition: provisioning_arm_consumer_frontier, present_decls: []) == DissolutionPending
+    && frontier_status(
+         condition: provisioning_arm_consumer_frontier,
+         present_decls: [decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps")],
+       ) == DissolutionFired
+    && frontier_status(
+         condition: provisioning_arm_consumer_frontier,
+         present_decls: [decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps_other")],
+       ) == DissolutionPending
 }
