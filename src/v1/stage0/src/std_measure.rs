@@ -1399,7 +1399,7 @@ pub fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
 }
 
 pub fn credits_per_minute_issuer(r: CreditsPerMinute) -> Rc<DeclarationRef> {
-    r.credit.clone().issuer.clone()
+    r.credit.issuer.clone()
 }
 
 pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {

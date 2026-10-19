@@ -4607,7 +4607,7 @@ fn convergence_surface_roles(
         BTreeSet<String>,
         BTreeSet<String>,
         BTreeSet<String>,
-        HashMap<String, String>,
+        HashMap<String, (String, String)>,
     ),
     String,
 > {
@@ -4653,6 +4653,7 @@ fn convergence_surface_roles(
     let seed_embedded_basenames = seed_modules
         .into_iter()
         .map(|module| format!("{module}.rs"))
+        .filter(|basename| !generated_product_roles.contains_key(basename))
         .collect::<BTreeSet<_>>();
     Ok((
         basename_to_module,
@@ -4697,7 +4698,7 @@ fn convergence_plan_from_model(
     bootstrap_sources: &BTreeSet<String>,
     bootstrap_products: &BTreeSet<String>,
     seed_embedded_basenames: &BTreeSet<String>,
-    generated_product_roles: &HashMap<String, String>,
+    generated_product_roles: &HashMap<String, (String, String)>,
     affected_bound: &RegenEmissionScope,
     seen_state_keys: &[String],
     seed_digest: &str,
@@ -4777,7 +4778,7 @@ fn convergence_plan_from_model(
             }
             let role = if bootstrap_products.contains(basename) {
                 "BootstrapSourceMirror"
-            } else if let Some(role) = generated_product_roles.get(basename) {
+            } else if let Some((role, _)) = generated_product_roles.get(basename) {
                 role.as_str()
             } else if generation_modules.contains(&module) {
                 "GenerationInput"
@@ -4786,22 +4787,27 @@ fn convergence_plan_from_model(
             } else {
                 "GenerationSubject"
             };
+            let aggregate_membership = generated_product_roles
+                .get(basename)
+                .map(|(_, membership)| membership.as_str());
             let seed_embedded = seed_embedded_basenames.contains(basename);
             let role_value = Value::Variant {
                 type_name: ctx.sym("RegenGenerationRole"),
                 variant_name: ctx.sym(role),
                 fields: Rc::new(vec![]),
             };
-            let membership_value = if seed_embedded {
+            // An aggregate product's membership is read from its declared row ALONE: the basename
+            // heuristic below never mints it, and a product with no row is refused upstream.
+            let membership_value = if let Some(membership) = aggregate_membership {
+                Value::Variant {
+                    type_name: ctx.sym("RegenSeedMembership"),
+                    variant_name: ctx.sym(membership),
+                    fields: Rc::new(vec![]),
+                }
+            } else if seed_embedded {
                 Value::Variant {
                     type_name: ctx.sym("RegenSeedMembership"),
                     variant_name: ctx.sym("SeedEmbedded"),
-                    fields: Rc::new(vec![]),
-                }
-            } else if role == "NonSeedGeneratedOutput" {
-                Value::Variant {
-                    type_name: ctx.sym("RegenSeedMembership"),
-                    variant_name: ctx.sym("OutsideSeed"),
                     fields: Rc::new(vec![]),
                 }
             } else {
@@ -6913,7 +6919,7 @@ pub fn regen_generation_role_population(
         BTreeSet<String>,
         BTreeSet<String>,
         HashMap<String, String>,
-        HashMap<String, String>,
+        HashMap<String, (String, String)>,
     ),
     String,
 > {
@@ -6987,7 +6993,23 @@ pub fn regen_generation_role_population(
                 roles.len()
             ));
         } else {
-            generated_product_roles.insert(product.clone(), roles.into_iter().next().unwrap());
+            let memberships = list_result(
+                "regen_generated_product_seed_membership_labels",
+                vec![(Some("product".to_string()), str_value(product))],
+            )?;
+            if memberships.len() != 1 {
+                return Err(format!(
+                    "SeedMembershipUnresolved: aggregate product {product} has {} declared seed memberships",
+                    memberships.len()
+                ));
+            }
+            generated_product_roles.insert(
+                product.clone(),
+                (
+                    roles.into_iter().next().unwrap(),
+                    memberships.into_iter().next().unwrap(),
+                ),
+            );
         }
     }
     Ok((

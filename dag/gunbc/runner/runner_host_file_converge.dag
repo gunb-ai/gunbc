@@ -55,6 +55,12 @@ import gunbc.typed_remote_file_write {
   RemoteFileMode,
   RemoteFileModeOwnerReadWriteWorldRead,
   RemoteFileViaNonInteractiveSudo,
+  RemoteFileModeOwnerGroupRead,
+  remote_file_mode_octal,
+  RemoteFileValidation,
+  NoValidation,
+  VisudoCheck,
+  remote_file_privileged_argv,
   RemoteFileConverged,
   TypedRemoteFileWriteAdmission,
   TypedRemoteFileWriteAdmitted,
@@ -128,8 +134,9 @@ import gunbc.runner.runner_slot_retirement {
   CgroupEventsBatchRead,
   CgroupEventsBatchUnread,
 }
-import gunbc.runner.runner_host_grants {  bootstrap_principal_is_not_the_grantee }
+import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_grantee, runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused, runner_host_sudoers_install_path }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 
 // THE HOST FILES A RUNNER HOST MUST CARRY FOR ITS SLOTS TO BE TORN DOWN WHOLE, CONVERGED OVER THE
 // FLEET EDGE AS THE HOST'S ADMINISTRATOR.
@@ -174,6 +181,7 @@ type RunnerHostFileDesired {
   path: FilePath
   content: String
   mode: RemoteFileMode
+  validation: RemoteFileValidation
 }
 
 type RunnerHostFileWithheld {
@@ -219,6 +227,7 @@ fn runner_slot_cpu_desired(host: HostIdentity) -> RunnerSlotCpuDesired {
                 bytes_value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }) as NonEmptyStr,
               ),
               mode: RemoteFileModeOwnerReadWriteWorldRead,
+              validation: NoValidation,
             },
           }
       }
@@ -232,6 +241,7 @@ fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> Li
       path: runner_unit_teardown_dropin_path() as FilePath,
       content: gunbc_runner_unit_teardown_dropin_text(),
       mode: RemoteFileModeOwnerReadWriteWorldRead,
+      validation: NoValidation,
     },
     RunnerHostFileDesired {
       subject: "needrestart-runner-deferral" as NonEmptyStr,
@@ -240,6 +250,7 @@ fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> Li
         NeedrestartServiceSelectionOverride { units: prefix, selection: RestartDeferredByDefault },
       ]),
       mode: RemoteFileModeOwnerReadWriteWorldRead,
+      validation: NoValidation,
     },
   ]
 }
@@ -250,6 +261,7 @@ fn runner_host_fragment_file(fragment: String) -> RunnerHostFileDesired {
     path: runner_unit_system_path as FilePath,
     content: fragment,
     mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
   }
 }
 
@@ -259,6 +271,42 @@ fn runner_host_depriv_file(depriv: String) -> RunnerHostFileDesired {
     path: runner_unit_depriv_dropin_path() as FilePath,
     content: depriv,
     mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }
+}
+
+// THE SUDOERS DROP-IN IS THE RENDERED ARTIFACT'S BYTES, FROM THE ONE PRODUCER OF THEM. The content is
+// gunbc.runner.runner_host_grants runner_host_sudoers_body -- the same fold
+// tier_o_artifact_emit consumes, that decides, per host, between runner_host_sudoers_content and the refused-width variant, and the
+// one the drift watch compares the committed file with -- so what lands on the host is what is
+// committed, never a second rendering. It is installed by the ADMINISTRATOR, which holds its own
+// root through the bootstrap edge and so does not need the grants this file confers (the grantee
+// cannot install its own grant). Only the rendered lines are written: 0440 root-owned, validated by
+// visudo on the staging path before the rename, and read back byte-for-byte by the converge.
+// A host whose body cannot be rendered is WITHHELD with the producer's own cause, not skipped.
+type RunnerHostSudoersDesired
+  = SudoersFileDesired { file: RunnerHostFileDesired }
+  | SudoersFileWithheld { withheld: RunnerHostFileWithheld }
+
+fn runner_host_sudoers_desired(host: HostIdentity) -> RunnerHostSudoersDesired {
+  match runner_host_sudoers_body(host: host, artifact_path: artifact_path(a: RunnerHostSudoersArtifact { host: host })) {
+    RunnerHostSudoersBodyProduced { content: c } =>
+      SudoersFileDesired {
+        file: RunnerHostFileDesired {
+          subject: "runner-host-sudoers" as NonEmptyStr,
+          path: runner_host_sudoers_install_path as FilePath,
+          content: c,
+          mode: RemoteFileModeOwnerGroupRead,
+          validation: VisudoCheck,
+        },
+      }
+    RunnerHostSudoersBodyRefused { reason: r } =>
+      SudoersFileWithheld {
+        withheld: RunnerHostFileWithheld {
+          subject: "runner-host-sudoers" as NonEmptyStr,
+          cause: concat("runner_host_file_converge: the rendered sudoers body is refused, so nothing is installed: ", r) as NonEmptyStr,
+        },
+      }
   }
 }
 
@@ -299,7 +347,11 @@ fn runner_host_file_desired_population_from_uid_reading(
     RunnerHostFilesDesired { files: fs, withheld: ws } =>
       match runner_slot_cpu_desired(host: host) {
         SlotCpuRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
-        SlotCpuDesired { per_slot: _, file: f } => RunnerHostFilesDesired { files: concat(fs, [f]), withheld: ws }
+        SlotCpuDesired { per_slot: _, file: f } =>
+          match runner_host_sudoers_desired(host: host) {
+            SudoersFileDesired { file: sf } => RunnerHostFilesDesired { files: concat(fs, [f, sf]), withheld: ws }
+            SudoersFileWithheld { withheld: sw } => RunnerHostFilesDesired { files: concat(fs, [f]), withheld: concat(ws, [sw]) }
+          }
       }
   }
 }
@@ -572,10 +624,16 @@ type RunnerHostPathMetadata
 // The directories a file's safety rests on: every ancestor from the write scope's root down to the
 // file's own directory. Each is a prefix of the path ending just before one of its separators.
 fn runner_host_path_ancestors(path: String) -> List<String> {
+  path_ancestors_within_scope(scope: runner_host_file_scope, path: path)
+}
+
+// THE SAME RULE OVER ANY WRITE SCOPE: a custody row on a different medium roots its ancestors at its
+// own scope (gunbc.fleet.host_credential_custody_converge custody_medium_scope), not at /etc.
+fn path_ancestors_within_scope(scope: FileTreeScope, path: String) -> List<String> {
   filter(
     path_ancestor_prefixes(path: path),
-    a => a == (runner_host_file_scope.root_path as String)
-      || starts_with(s: a, prefix: concat(runner_host_file_scope.root_path as String, "/")),
+    a => a == (scope.root_path as String)
+      || starts_with(s: a, prefix: concat(scope.root_path as String, "/")),
   )
 }
 
@@ -588,7 +646,31 @@ fn runner_host_root_only_find_argv(paths: List<String>, kind: String) -> List<St
   concat(["find"], concat(paths, ["-maxdepth", "0", "-type", kind, "-user", "root", "-group", "root", "-not", "-perm", "/022"]))
 }
 
+// A FILE IS ROOT-ONLY AT ITS DESIRED MODE, NOT AT "ANY MODE NOBODY ELSE CAN WRITE". Same far-side find, same
+// printed-set classification (classify_root_only_paths), but the permission clause is the EXACT mode, spelled
+// by typed_remote_file_write's own remote_file_mode_octal -- the spelling the chmod leg uses, so the observation
+// and the write cannot disagree about what 0440 is. An identical-bytes root-owned 0644 file is therefore not
+// printed for a 0440 desire, and the action is a repair write rather than an adoption.
+fn runner_host_file_mode_find_argv(path: String, mode: RemoteFileMode) -> List<String> {
+  ["find", path, "-maxdepth", "0", "-type", "f", "-user", "root", "-group", "root", "-perm", remote_file_mode_octal(mode: mode)]
+}
+
+// A FIND THAT DID NOT SUCCEED OBSERVED NOTHING, FOR EVERY CALLER. The transport's "converged" means a result
+// came back, not that the command succeeded, and this classifier used to decide from stdout alone:
+// exit 1 with an empty stdout ("Permission denied") read as a repairable mismatch (a write), and a failed
+// run that happened to print the path read as a match (an adoption or a go-ahead to install). So an
+// unsuccessful execution is unobservable BEFORE stdout is read; only a successful run may establish a
+// match or a mismatch. find exits 0 whether or not the predicate printed a path, so exit 0 is the whole
+// success signal.
 fn classify_root_only_paths(requested: List<String>, exit_code: Int, stdout: String, stderr: String) -> RunnerHostPathMetadata {
+  if exit_code != 0 {
+    PathsUnobservable { reason: join(["the far-side find did not succeed, so its output establishes neither a match nor a mismatch; exit=", to_string(exit_code), " ", trim(s: stderr)], "") }
+  } else {
+    classify_printed_root_only_paths(requested: requested, exit_code: exit_code, stdout: stdout, stderr: stderr)
+  }
+}
+
+fn classify_printed_root_only_paths(requested: List<String>, exit_code: Int, stdout: String, stderr: String) -> RunnerHostPathMetadata {
   let printed = filter(map(split(s: stdout, delimiter: "\n"), l => trim(s: l)), l => l != "")
   let unsafe = filter(requested, r => !any(printed, p => p == r))
   if length(unsafe) == 0 {
@@ -596,7 +678,7 @@ fn classify_root_only_paths(requested: List<String>, exit_code: Int, stdout: Str
   } else {
     PathsNotRootOnly {
       paths: unsafe,
-      detail: join(["not printed by find as root:root with no group/other write (missing, wrong owner, writable, or wrong type); find exit=", to_string(exit_code), " ", trim(s: stderr)], ""),
+      detail: join(["not printed by find as root:root with no group/other write (missing, wrong owner, wrong mode or writable, or wrong type); find exit=", to_string(exit_code), " ", trim(s: stderr)], ""),
     }
   }
 }
@@ -635,7 +717,13 @@ fn runner_host_file_action(observation: RunnerHostFileObservation) -> RunnerHost
       match observation.content {
         HostFileUnobservable { reason: r } => HostFileActionRefused { reason: r }
         HostFileAbsent => HostFileWrite
-        HostFileDiffers => HostFileWrite
+        HostFileDiffers =>
+          match observation.file_metadata {
+            PathsRootOnly => HostFileWrite
+            PathsNotRootOnly { paths: _, detail: _ } => HostFileWrite
+            PathsUnobservable { reason: r } => HostFileActionRefused { reason: concat("file metadata unobservable: ", r) }
+            PathsNotApplicable => HostFileActionRefused { reason: "differing content but file metadata was not read" }
+          }
         HostFileIdentical =>
           match observation.file_metadata {
             PathsRootOnly => HostFileLeaveInPlace
@@ -989,6 +1077,7 @@ fn runner_slot_population_read_completely(population: RunnerSlotPopulation) -> B
 type RunnerHostRemoteLeg
   = LegAdministratorPrivilegeProbe
   | LegRootOnlyFind { paths: List<String>, kind: String }
+  | LegFileModeFind { path: String, mode: RemoteFileMode }
   | LegMetadataProbe { path: String }
   | LegListServiceUnits
   | LegShowSlotProperties { units: List<NonEmptyStr> }
@@ -1001,7 +1090,8 @@ fn runner_host_leg_argv(leg: RunnerHostRemoteLeg) -> List<String> {
   match leg {
     LegAdministratorPrivilegeProbe => elevated_argv(command: ["true"])
     LegRootOnlyFind { paths: ps, kind: k } => runner_host_root_only_find_argv(paths: ps, kind: k)
-    LegMetadataProbe { path: p } => runner_host_file_metadata_probe_argv(path: p)
+    LegFileModeFind { path: p, mode: m } => runner_host_file_mode_find_argv(path: p, mode: m)
+    LegMetadataProbe { path: p } => elevated_argv(command: runner_host_file_metadata_probe_argv(path: p))
     LegListServiceUnits => systemctl_list_all_service_units_argv()
     LegShowSlotProperties { units: us } => systemctl_show_properties_argv(units: us, properties: runner_slot_show_properties)
     LegRetireeCgroupEvents { argv: a } => a
@@ -1015,6 +1105,7 @@ fn runner_host_leg_kind(leg: RunnerHostRemoteLeg) -> String {
   match leg {
     LegAdministratorPrivilegeProbe => "privilege-probe"
     LegRootOnlyFind { paths: _, kind: _ } => "root-only-find"
+    LegFileModeFind { path: _, mode: _ } => "file-mode-find"
     LegMetadataProbe { path: _ } => "metadata-probe"
     LegListServiceUnits => "list-service-units"
     LegShowSlotProperties { units: _ } => "show-slot-properties"
@@ -1025,7 +1116,7 @@ fn runner_host_leg_kind(leg: RunnerHostRemoteLeg) -> String {
   }
 }
 
-data runner_host_leg_kinds: List<String> = ["privilege-probe", "root-only-find", "metadata-probe", "list-service-units", "show-slot-properties", "retiree-cgroup-events", "job-user-passwd", "residue-load-state", "elevated"]
+data runner_host_leg_kinds: List<String> = ["privilege-probe", "root-only-find", "file-mode-find", "metadata-probe", "list-service-units", "show-slot-properties", "retiree-cgroup-events", "job-user-passwd", "residue-load-state", "elevated"]
 
 fn run_runner_host_leg(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, leg: RunnerHostRemoteLeg) -> TypedArgvExecOutcome
 {
@@ -1043,7 +1134,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<RunnerHostFi
     concat(
       flat_map(files, f => [
         LegMetadataProbe { path: f.path as String },
-        LegRootOnlyFind { paths: [f.path as String], kind: "f" },
+        LegFileModeFind { path: f.path as String, mode: f.mode },
         LegRootOnlyFind { paths: runner_host_path_ancestors(path: f.path as String), kind: "d" },
       ]),
       concat(
@@ -1099,6 +1190,19 @@ fn observe_runner_host_paths(
     TypedArgvExecRefused { reason: why } => PathsUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
       classify_root_only_paths(requested: paths, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+  }
+}
+
+fn observe_runner_host_file_mode(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  file: RunnerHostFileDesired,
+) -> RunnerHostPathMetadata
+{
+  match run_runner_host_leg(subject: subject, context: context, leg: LegFileModeFind { path: file.path as String, mode: file.mode }) {
+    TypedArgvExecRefused { reason: why } => PathsUnobservable { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      classify_root_only_paths(requested: [file.path as String], exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
   }
 }
 
@@ -1167,7 +1271,7 @@ fn observe_runner_host_file_content(
               match typed_remote_file_step(
                 target: subject.target,
                 context: context,
-                raws: typed_remote_file_compare_argv(write: w),
+                raws: remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_compare_argv(write: w)),
                 stdin_payload: w.content,
               ) {
                 TypedRemoteFileStepArgvRefused => HostFileUnobservable { reason: "comparison argv refused as non-portable under the far-side shell re-parse allowlist" }
@@ -1194,8 +1298,8 @@ fn observe_runner_host_file(
     file_metadata: match content {
       HostFileAbsent => PathsNotApplicable
       HostFileUnobservable { reason: _ } => PathsNotApplicable
-      HostFileIdentical => observe_runner_host_paths(subject: subject, context: context, paths: [file.path as String], kind: "f")
-      HostFileDiffers => observe_runner_host_paths(subject: subject, context: context, paths: [file.path as String], kind: "f")
+      HostFileIdentical => observe_runner_host_file_mode(subject: subject, context: context, file: file)
+      HostFileDiffers => observe_runner_host_file_mode(subject: subject, context: context, file: file)
     },
     ancestors: observe_runner_host_paths(subject: subject, context: context, paths: runner_host_path_ancestors(path: file.path as String), kind: "d"),
   }
@@ -1617,7 +1721,19 @@ type RunnerHostFileResult {
   outcome: RunnerHostFileOutcome
 }
 
-// A write is converged only when its bytes read back AND the published file is root-only. The byte
+// The judgment over the post-write metadata reading, apart from the leg that takes it: the reason a wrong
+// mode, a wrong owner or an unreadable reading refuses at the metadata readback even though the bytes read
+// back, or nothing when the file is root-only at its desired mode.
+fn runner_host_file_readback_refusal(metadata: RunnerHostPathMetadata) -> String? {
+  match metadata {
+    PathsRootOnly => none
+    PathsNotRootOnly { paths: _, detail: d } => Present { value: d }
+    PathsUnobservable { reason: r } => Present { value: r }
+    PathsNotApplicable => Present { value: "file metadata was not read after the write" }
+  }
+}
+
+// A write is converged only when its bytes read back AND the published file is root-only at its desired mode. The byte
 // read-back is typed_remote_file_write's; the ownership read-back is here, because that carrier
 // deliberately claims nothing about metadata it never reads.
 fn apply_runner_host_file(
@@ -1636,14 +1752,13 @@ fn apply_runner_host_file(
         admission: runner_host_file_write_admission(file: planned.file),
         mode: planned.file.mode,
         privilege: RemoteFileViaNonInteractiveSudo,
+        validation: planned.file.validation,
       ) {
         TypedRemoteFileConvergenceRefused { step: st, reason: why } => HostFileWriteRefused { step: st, reason: why }
         TypedRemoteFileConverged { converged: c } =>
-          match observe_runner_host_paths(subject: subject, context: context, paths: [planned.file.path as String], kind: "f") {
-            PathsRootOnly => HostFileConvergedByWrite { converged: c }
-            PathsNotRootOnly { paths: _, detail: d } => HostFileWriteRefused { step: "metadata-readback", reason: d }
-            PathsUnobservable { reason: r } => HostFileWriteRefused { step: "metadata-readback", reason: r }
-            PathsNotApplicable => HostFileWriteRefused { step: "metadata-readback", reason: "file metadata was not read after the write" }
+          match runner_host_file_readback_refusal(metadata: observe_runner_host_file_mode(subject: subject, context: context, file: planned.file)) {
+            Absent => HostFileConvergedByWrite { converged: c }
+            Present { value: why } => HostFileWriteRefused { step: "metadata-readback", reason: why }
           }
       }
   }

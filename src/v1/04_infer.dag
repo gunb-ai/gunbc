@@ -107,7 +107,7 @@ import v1.compiler.infer_types {
   bare_map_node, bare_set_node,
   callable_inferred,
   normalize_access_type_node,
-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, alias_identity_in_judgment,
+  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, alias_identity_in_judgment, alias_names_identity_in_judgment,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   is_product_type,
   node_type_deps,
@@ -126,7 +126,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { transparent_alias_rhs, alias_head_reaches, alias_rhs_head_of_declaration, type_names_settle_to_one_declaration, overlay_skips_kernel_name,
+import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -173,7 +173,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
@@ -896,15 +896,12 @@ fn expected_deciding_variant_owner(expected: Node?, name: String, scope: InferSc
 }
 
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
-  if contains(name, ".") {
-    match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
-      Present { value: resolved } =>
-        if resolved.connective == Disj && has_child_named(n: resolved, name: qualified_last_segment(name: name), source_indices: scope.type_env.source_indices) {
-          Present { value: resolved }
-        } else { none }
-      Absent => none
-    }
-  } else {
+  match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
+    Present { value: resolved } =>
+      if resolved.connective == Disj && has_child_named(n: resolved, name: qualified_last_segment(name: name), source_indices: scope.type_env.source_indices) {
+        Present { value: resolved }
+      } else { none }
+    Absent =>
   match map_get(scope.locals, name) {
     Present { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
@@ -1566,8 +1563,8 @@ fn declared_type_kernel_inhabitance_mismatch(declared: Node, produced: Node, sco
       Absent => with_required_cardinality(n: declared)
     }
     kernel_value_declared_type_mismatch(
-      formal: peel_nominal_alias_identity(n: declared_required, env: scope.type_env, module_name: scope.module_name),
-      actual: peel_nominal_alias_identity(n: produced, env: scope.type_env, module_name: scope.module_name),
+      formal: expand_nominal_alias_rhs(n: declared_required, env: scope.type_env, module_name: scope.module_name),
+      actual: expand_nominal_alias_rhs(n: produced, env: scope.type_env, module_name: scope.module_name),
       type_env: scope.type_env,
       source_indices: scope.type_env.source_indices)
   }
@@ -2247,7 +2244,7 @@ fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, type_env: TypeEnv
     && !is_declared_container_alias_spelling(name: actual_name)
     && !brand_grounds_transparently_to(name: formal_name, other: actual, type_env: type_env, source_indices: source_indices)
     && !brand_grounds_transparently_to(name: actual_name, other: formal, type_env: type_env, source_indices: source_indices)
-    && !type_names_settle_to_one_declaration(left: formal_name, right: actual_name, env: type_env)
+    && !alias_identity_in_judgment(left: formal, right: actual, source_indices: source_indices, text: TextJudgedIn { env: type_env })
 }
 
 fn is_where_refinement_type(ty: Node) -> Bool {
@@ -2791,7 +2788,7 @@ fn where_refinement_value_under_cast(value_expr: Node) -> Node {
   }
 }
 
-// Cost shape (bare-minimum-cost, DESIGN 6): peel_nominal_alias_identity runs only on the refusal
+// Cost shape (bare-minimum-cost, DESIGN 6): expand_nominal_alias_rhs runs only on the refusal
 // path (predicates present AND not covered), inside the final else of
 // where_refinement_mismatch_diags. That fn runs on EVERY infer_expr with an expected type; 97% of
 // calls find zero predicates, and an eager peel at fn entry was 6.5s of discarded
@@ -2958,7 +2955,7 @@ fn where_refinement_mismatch_diags(
     ) {
       []
     } else {
-      let formal_checked = peel_nominal_alias_identity(n: formal_resolved, env: type_env, module_name: module_name)
+      let formal_checked = expand_nominal_alias_rhs(n: formal_resolved, env: type_env, module_name: module_name)
       flat_map(
         preds,
         pred => where_refinement_diags_for_predicate(
@@ -3347,7 +3344,7 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
 // an alias binding carries the ALIAS declaration's span while its `name` field carries the TARGET.
 // So the authored reading answers `KAlias` and the field answers `KOuter`. An earlier attempt
 // compared authored names and was measured INERT, because it was comparing a name with itself.
-// (An attempt before that followed `decl.inferred` -- the shape `peel_nominal_alias_identity` reads
+// (An attempt before that followed `decl.inferred` -- the shape `expand_nominal_alias_rhs` reads
 // for PARAMETERIZED aliases -- which this binding does not carry at all, and was also inert.
 // Typecheck and regen were green over both.)
 //
@@ -3487,7 +3484,7 @@ fn exposure_is_application(exposure: TypeHeadExposure) -> Bool {
   }
 }
 
-data equality_admission_wall_note: String = "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. A StuckTypeHead operand (no declaration identity at all) is the same parameter case seen one authority earlier -- measured live at v2.std.collection map_insert's 'candidate == key' over bare K, a load-bearing generic comparison -- and admits under the same boundary rather than refusing on a namelessness that is a property of genericity, not of brokenness. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). An empty list literal comparison ('x == []' / '!= []') is the same idiom one carrier over -- an EMPTINESS test on the finite container, decidable by cardinality regardless of element admissibility -- and is likewise exempt before any walk (surfaced live at dag/gunbc/commit_workflow.dag 'refusals == []' and dag/extdeps/languages/markdown.dag 'inner == []', where the floor's per-witness resolve grain hands the literal a synthesized element node with no declaration identity). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and peel_nominal_alias_identity is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already)."
+data equality_admission_wall_note: String = "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. A StuckTypeHead operand (no declaration identity at all) is the same parameter case seen one authority earlier -- measured live at v2.std.collection map_insert's 'candidate == key' over bare K, a load-bearing generic comparison -- and admits under the same boundary rather than refusing on a namelessness that is a property of genericity, not of brokenness. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). An empty list literal comparison ('x == []' / '!= []') is the same idiom one carrier over -- an EMPTINESS test on the finite container, decidable by cardinality regardless of element admissibility -- and is likewise exempt before any walk (surfaced live at dag/gunbc/commit_workflow.dag 'refusals == []' and dag/extdeps/languages/markdown.dag 'inner == []', where the floor's per-witness resolve grain hands the literal a synthesized element node with no declaration identity). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and expand_nominal_alias_rhs is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already)."
 
 type EqualityAdmissionRefusal {
   type_name: String
@@ -3584,7 +3581,7 @@ fn equality_leaf_admission(peeled: Node, name: String, ident_key: String, scope:
   if provenance_realizes_natively(p: type_reference_provenance(n: peeled)) {
     return none
   }
-  let resolved = peel_nominal_alias_identity(n: peeled, env: scope.type_env, module_name: scope.module_name)
+  let resolved = expand_nominal_alias_rhs(n: peeled, env: scope.type_env, module_name: scope.module_name)
   let resolved_identity = type_reference_identity(n: resolved, source_indices: source_indices)
   if (resolved.connective != NoConnective) || resolved_identity != ident_key || (resolved.children |> count) != (peeled.children |> count) {
     if resolved_identity == ident_key {
@@ -3745,7 +3742,9 @@ fn literal_introduction_type_mismatch(formal: Node, actual_expr: Node, scope: In
   }
 }
 
-fn application_type_name_identity(
+// The spelling of the head an alias EXPANDS to (RHS structure, not identity: which declaration a name denotes is
+// settled_declaration_of_type_name / alias_names_settled_agree). Used to name the expansion for structural comparisons.
+fn application_type_expansion_head_name(
   type_name: String,
   type_env: TypeEnv,
   module_name: String,
@@ -3757,34 +3756,26 @@ fn application_type_name_identity(
         Present { value: Resolved { node: target } } =>
           authored_name_at(
             source_indices: source_indices,
-            node: peel_nominal_alias_identity(n: target, env: type_env, module_name: module_name))
+            node: expand_nominal_alias_rhs(n: target, env: type_env, module_name: module_name))
         _ =>
           authored_name_at(
             source_indices: source_indices,
-            node: peel_nominal_alias_identity(n: decl, env: type_env, module_name: module_name))
+            node: expand_nominal_alias_rhs(n: decl, env: type_env, module_name: module_name))
       }
     Absent => type_name
   }
 }
 
-// THE SAME PEEL, ANSWERED AS A DECLARATION. application_type_name_identity answers a leaf
-// SPELLING, and two declarations that share a spelling then read as one type: a module declaring its
-// own `type FreeMonoid<T> { .. }` had its record admitted at a List<Int> formal, because List peels
-// to std.algebra's FreeMonoid and both leaves read "FreeMonoid". When both sides name a declaration,
-// the declarations decide; the spelling stays the answer only where no declaration is recoverable.
-fn application_type_name_declaration(
-  type_name: String,
-  type_env: TypeEnv,
-  module_name: String,
-  source_indices: Map<String, NewlineIndex>
-) -> DeclarationRef? {
-  match lookup_type_by_name(env: type_env, name: type_name) {
-    Present { value: decl } =>
-      let peeled = match decl.inferred {
-        Present { value: Resolved { node: target } } => peel_nominal_alias_identity(n: target, env: type_env, module_name: module_name)
-        _ => peel_nominal_alias_identity(n: decl, env: type_env, module_name: module_name)
+// The declaration a type NAME denotes once its alias chain settles: the head of the same settled_type the one relation
+// (alias_settled_agree / alias_names_settled_agree) compares, so a module declaring its own `type FreeMonoid<T> { .. }`
+// and std.algebra's carrier stay two declarations, and the spelling never decides.
+fn settled_declaration_of_type_name(type_name: String, type_env: TypeEnv) -> DeclarationRef? {
+  match declaration_named_by_type_name(name: type_name, env: type_env) {
+    Present { value: d } =>
+      match settled_type_of_declaration(d: d, source_indices: type_env.source_indices, env: type_env, fuel: 16) {
+        Present { value: settled } => Present { value: settled.head }
+        Absent => none
       }
-      type_reference_declaration_ref(n: peeled, source_indices: source_indices, env: type_env)
     Absent => none
   }
 }
@@ -3793,7 +3784,7 @@ fn structured_application_structural_type_name(
   type_name: String,
   scope: InferScope
 ) -> String {
-  application_type_name_identity(
+  application_type_expansion_head_name(
     type_name: type_name,
     type_env: scope.type_env,
     module_name: scope.module_name,
@@ -3840,10 +3831,6 @@ fn application_type_names_compatible(
   } else if formal_name == lit_name {
     true
   } else {
-    let formal_identity = application_type_name_identity(
-      type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
-    let lit_identity = application_type_name_identity(
-      type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
     let same_declaration = match lookup_type_by_name(env: type_env, name: formal_name) {
       Present { value: formal_item } =>
         match lookup_type_by_name(env: type_env, name: lit_name) {
@@ -3860,26 +3847,12 @@ fn application_type_names_compatible(
         }
       Absent => false
     }
-    let same_identity = if same_declaration { true } else {
-      match application_type_name_declaration(
-        type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
-        Present { value: formal_decl } =>
-          match application_type_name_declaration(
-            type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
-            Present { value: lit_decl } => declaration_ref_eq(a: formal_decl, b: lit_decl)
-            Absent => formal_identity == lit_identity
-          }
-        Absent => formal_identity == lit_identity
-      }
-    }
-    if same_identity {
+    if same_declaration {
       true
     } else if dag_can_cast(source_type: lit_name, target_type: formal_name) {
       true
-    } else if type_name_transparently_aliases_to(
-      alias_name: lit_name, target_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
-      || type_name_transparently_aliases_to(
-        alias_name: formal_name, target_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+    } else if alias_names_identity_in_judgment(
+      left: formal_name, right: lit_name, source_indices: source_indices, text: TextJudgedIn { env: type_env }) {
       true
     } else {
       match lookup_type_by_name(env: type_env, name: formal_name) {
@@ -3888,44 +3861,6 @@ fn application_type_names_compatible(
         Absent => false
       }
     }
-  }
-}
-
-// THE TRANSPARENT-ALIAS HEAD RELATION IS KEYED ON DECLARATIONS, NOT SPELLINGS. It used to ask
-// peel_nominal_alias_identity for the alias's target name, but that peel exists to KEEP the brand:
-// it returns the structural body stamped with the alias's own authored identity, so the name it
-// yields is the alias again and the relation answered false for every alias whose body is not a
-// kernel primitive. A record literal handed to a formal declared through such an alias -- `type
-// TokenThroughput = FieldOfFractions<Nat>` receiving `FieldOfFractions { .. }`, and equally `type
-// A = SomeRecord` receiving `SomeRecord { .. }` -- was then refused at the head as a mismatch
-// between an alias and its own body. The alias's target is not re-derived from its leaf: a leaf
-// read in the judging scope admitted a same-leaf record declared by ANOTHER module (measured), and
-// DESIGN section 4 keys compatibility on the declaration a position resolves to. So the relation
-// reads the DeclarationRef that resolve wrote on the alias item's right-hand side head, in the
-// alias's own scope (v1.compiler.infer alias_rhs_reference, through the one writer
-// v1.compiler.infer_resolve reference_with_declaration), and compares it with the declaration the other side resolves to. An alias whose head
-// carries no identity (a kernel spelling, today) is not read: no agreement, fail-closed. This is a
-// HEAD relation, like every name comparison application_type_names_compatible makes: an applied
-// right-hand side contributes its constructor, and its arguments are judged where the nodes are.
-// The chase is over identities and bounded, so an alias cycle stops rather than recursing.
-fn type_name_transparently_aliases_to(
-  alias_name: String,
-  target_name: String,
-  type_env: TypeEnv,
-  module_name: String,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  match lookup_type_by_name(env: type_env, name: alias_name) {
-    Absent => false
-    Present { value: alias_decl } =>
-      match application_type_name_declaration(type_name: target_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
-        Absent => false
-        Present { value: target_ref } =>
-          match alias_rhs_head_declaration(decl: alias_decl, type_env: type_env) {
-            Absent => false
-            Present { value: head } => alias_head_reaches(head: head, target: target_ref, type_env: type_env, fuel: 16)
-          }
-      }
   }
 }
 
@@ -3986,7 +3921,7 @@ fn alias_rhs_head_declaration(decl: Node, type_env: TypeEnv) -> DeclarationRef? 
 // which is exactly such an alias of `Fnv1a64Structural`. The fact needed -- what a declaration
 // aliases -- does not survive `resolve_item_types`, so no amount of peeling at this seam can
 // recover it, which is gunbc#8873's finding and the reason its relation is computed ONCE during
-// census construction. This wall therefore consumes `type_names_settle_to_one_declaration` over the
+// census construction. This wall therefore consumes `alias_identity_in_judgment` (the one alias relation) over the
 // `SymbolIndex` the judgment already carries rather than minting a second identity relation, per
 // the coordination ruling recorded on that lane.
 //
@@ -3996,6 +3931,7 @@ fn alias_rhs_head_declaration(decl: Node, type_env: TypeEnv) -> DeclarationRef? 
 // formal node the seam already holds, and the alias relation is a map lookup on a census built once.
 fn coproduct_variant_payload_admits_type_name(
   decl: Node,
+  actual: Node,
   actual_name: String,
   type_env: TypeEnv,
   module_name: String,
@@ -4013,7 +3949,7 @@ fn coproduct_variant_payload_admits_type_name(
         lit_name: actual_name,
         type_env: type_env,
         module_name: module_name,
-        source_indices: source_indices) || type_names_settle_to_one_declaration(left: payload_name, right: actual_name, env: type_env)
+        source_indices: source_indices) || alias_identity_in_judgment(left: payload_type, right: actual, source_indices: source_indices, text: TextJudgedIn { env: type_env })
       payload_name != "" && names_agree
     )
   )
@@ -4038,7 +3974,7 @@ fn coproduct_variant_payload_admits_type_name(
 // excluded by construction rather than carved out: (1) optionality is excluded on both sides by the
 // caller's cardinality guard and by the `Optional` carrier exclusion; (2) a brand alias does not
 // resolve to a `Disj` declaration, so it never reaches this arm, and a TRANSPARENT alias of the same
-// coproduct is settled by `type_names_settle_to_one_declaration` before it; (3) an anonymous record
+// coproduct is settled by `alias_identity_in_judgment` before it; (3) an anonymous record
 // literal has no authored name, and this arm requires both sides to resolve BY NAME to a
 // declaration; (4) cardinality is read from the nodes the seam already holds, not rebuilt.
 //
@@ -4459,11 +4395,8 @@ fn refinement_inhabitance(declared: Node, produced: Node, scope: InferScope) -> 
 }
 
 // THE SINGLE DECISION PROCEDURE. It CONSUMES the established predicates rather than restating
-// them: coproduct_payload_where_parent_required already peels transparent aliases through
-// type_names_settle_to_one_declaration, so this relation inherits the NAME-level alias relation instead of
-// re-deriving it. The node-level relation (settled_type / alias_settled_agree) is a second path that
-// stops differently at applied-argument aliases; folding the name seam into settled_type is the
-// follow-up (failure mode type_alias_identity_decided_by_spelling_at_each_check).
+// them: alias identity is decided by the one relation (alias_identity_in_judgment over settled_type / alias_settled_agree),
+// at the node level and, for a seam holding only spellings, through its name entry.
 // A KERNEL-GROUNDED CARRIER IS INHABITED BY ITSELF AND BY ITS TRANSPARENT ALIASES. The carrier is
 // declared as a coproduct (std.nat Nat = Zero | Succ) and realized as the kernel integer, so the
 // structural judgments below -- which exist to tell a payload from its parent, a kernel value from a
@@ -4585,7 +4518,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // bare-name identity debt routed to 2K's identity-keying lane.
 fn declared_type_carries_optional(declared: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
-  let declared_peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
+  let declared_peeled = expand_nominal_alias_rhs(n: declared, env: scope.type_env, module_name: scope.module_name)
   declared.return_cardinality == CardOptional
     || declared_peeled.return_cardinality == CardOptional
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared)) == "Optional"
@@ -4718,7 +4651,7 @@ fn side_is_collection_after_peel(n: Node, scope: InferScope) -> Bool {
       || node_is_keyed_collection(n: n, source_indices: si) {
     true
   } else {
-    let peeled = peel_nominal_alias_identity(n: n, env: scope.type_env, module_name: scope.module_name)
+    let peeled = expand_nominal_alias_rhs(n: n, env: scope.type_env, module_name: scope.module_name)
     node_is_element_collection(n: peeled, source_indices: si)
       || node_is_keyed_collection(n: peeled, source_indices: si)
   }
@@ -4733,7 +4666,7 @@ fn side_is_established_non_collection_identity(n: Node, scope: InferScope) -> Bo
   if is_generic || type_node_is_callable(n: n) {
     false
   } else {
-    let peeled = peel_nominal_alias_identity(n: n, env: scope.type_env, module_name: scope.module_name)
+    let peeled = expand_nominal_alias_rhs(n: n, env: scope.type_env, module_name: scope.module_name)
     let peeled_is_kernel = is_kernel_type(name: authored_name_at(source_indices: si, node: peeled))
     let refinement_base_is_kernel = if is_where_refinement_type(ty: n) {
       match n.children |> first {
@@ -4845,7 +4778,7 @@ fn product_versus_coproduct_head_mismatch(declared: Node, produced: Node, scope:
       formal_name: declared_name, lit_name: produced_name,
       type_env: scope.type_env, module_name: scope.module_name,
       source_indices: scope.type_env.source_indices)
-      || type_names_settle_to_one_declaration(left: declared_name, right: produced_name, env: scope.type_env) {
+      || alias_identity_in_judgment(left: declared, right: produced, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
     false
   } else {
     let declared_product = nominal_product_head_name(n: declared, scope: scope)
@@ -5046,7 +4979,7 @@ fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope
     index: scope.type_env.symbol_index, name: name)
   match lookup_type_by_name(env: scope.type_env, name: representative) {
     Present { value: decl } =>
-      let peeled = peel_nominal_alias_identity(
+      let peeled = expand_nominal_alias_rhs(
         n: decl, env: scope.type_env, module_name: scope.module_name)
       if is_product_type(n: peeled) && is_where_refinement_type(ty: peeled) == false { name } else { "" }
     Absent => ""
@@ -5084,7 +5017,7 @@ fn nominal_coproduct_head_name_if_declared_coproduct(name: String, scope: InferS
     index: scope.type_env.symbol_index, name: name)
   match lookup_type_by_name(env: scope.type_env, name: representative) {
     Present { value: decl } =>
-      let peeled = peel_nominal_alias_identity(
+      let peeled = expand_nominal_alias_rhs(
         n: decl, env: scope.type_env, module_name: scope.module_name)
       if peeled.connective == Disj { name } else { "" }
     Absent => ""
@@ -5177,7 +5110,7 @@ fn nominal_coproduct_application_head_name(n: Node, scope: InferScope) -> String
           index: scope.type_env.symbol_index, name: name)
         match lookup_type_by_name(env: scope.type_env, name: representative) {
           Present { value: decl } =>
-            let peeled = peel_nominal_alias_identity(
+            let peeled = expand_nominal_alias_rhs(
               n: decl, env: scope.type_env, module_name: scope.module_name)
             if peeled.connective == Disj { name } else { "" }
           Absent => ""
@@ -5205,7 +5138,6 @@ fn nominal_product_head_names_agree(
     type_env: scope.type_env,
     module_name: scope.module_name,
     source_indices: scope.type_env.source_indices)
-    || type_names_settle_to_one_declaration(left: declared_name, right: produced_name, env: scope.type_env)
 }
 
 // ARITY DIFFERENCE IS NOT THIS CLASS, and neither is an unapplied side. Two applications of one
@@ -5486,7 +5418,7 @@ fn coproduct_payload_where_parent_required(
         module_name: scope.module_name,
         source_indices: source_indices) {
       false
-    } else if type_names_settle_to_one_declaration(left: formal_name, right: actual_name, env: scope.type_env) {
+    } else if alias_identity_in_judgment(left: formal, right: actual, source_indices: source_indices, text: TextJudgedIn { env: scope.type_env }) {
       false
     } else {
       let actual_rep = transparent_alias_representative(index: scope.type_env.symbol_index, name: actual_name)
@@ -5503,6 +5435,7 @@ fn coproduct_payload_where_parent_required(
           } else {
             coproduct_variant_payload_admits_type_name(
               decl: decl,
+              actual: actual,
               actual_name: actual_name,
               type_env: scope.type_env,
               module_name: scope.module_name,
@@ -5532,7 +5465,7 @@ fn structured_application_site_type_mismatch(
     ExprRecordLit { parent_enum: _ } =>
       structured_application_site_type_mismatch_with_peeled(
         formal: formal,
-        formal_peeled: peel_nominal_alias_identity(n: formal, env: scope.type_env, module_name: scope.module_name),
+        formal_peeled: expand_nominal_alias_rhs(n: formal, env: scope.type_env, module_name: scope.module_name),
         formal_structural_name: structured_application_structural_type_name(
           type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: formal), scope: scope),
         actual_expr: actual_expr,
@@ -5560,8 +5493,7 @@ fn structured_application_site_type_mismatch(
 data kernel_container_carrier_module: String = "std.algebra"
 
 // The declaration a formal type denotes: a kernel container spelling's std.algebra carrier, or the
-// declaration its alias resolves to (application_type_name_declaration, the same peel the
-// application-site identity uses).
+// declaration its alias resolves to (settled_declaration_of_type_name, the head of the settled type the one relation compares).
 fn structured_formal_carrier_declaration(formal_peeled: Node, scope: InferScope) -> DeclarationRef? {
   let source_indices = scope.type_env.source_indices
   let name = authored_name_at(source_indices: source_indices, node: formal_peeled)
@@ -5571,8 +5503,7 @@ fn structured_formal_carrier_declaration(formal_peeled: Node, scope: InferScope)
       Absent => none
     }
   } else {
-    application_type_name_declaration(
-      type_name: name, type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
+    settled_declaration_of_type_name(type_name: name, type_env: scope.type_env)
   }
 }
 
@@ -5780,27 +5711,6 @@ fn carried_structural_type_name(n: Node, source_indices: Map<String, NewlineInde
   }
 }
 
-// A qualified identity may never be reduced to its last segment here: a.Item and b.Item are
-// distinct declarations even though their nicknames coincide. Full carried names are the
-// strongest identity available for this legacy field-initializer seam; if either side cannot
-// retain that identity, decline the alias admission and let the mismatch stay loud.
-fn declared_alias_target_matches_produced(expected: Node, produced: Node, env: TypeEnv) -> Bool {
-  let expected_name = authored_name_at(source_indices: env.source_indices, node: expected)
-  let produced_name = authored_name_at(source_indices: env.source_indices, node: produced)
-  match lookup_type_by_name(env: env, name: expected_name) {
-    Present { value: decl } =>
-      let target_name = if decl.name != "" {
-        decl.name
-      } else {
-        carried_structural_type_name(n: decl, source_indices: env.source_indices, depth: 0)
-      }
-      target_name != ""
-        && target_name != expected_name
-        && target_name == produced_name
-    Absent => false
-  }
-}
-
 fn direct_call_structured_record_literal_resolved_type_mismatch(
   formal: Node,
   substitution_basis: Node,
@@ -5811,8 +5721,7 @@ fn direct_call_structured_record_literal_resolved_type_mismatch(
 ) -> Bool {
   match actual_expr.expr_data {
     ExprRecordLit { parent_enum: _ } =>
-      let formal_peeled = peel_nominal_alias_identity(n: formal, env: type_env, module_name: module_name)
-      let formal_name = authored_name_at(source_indices: source_indices, node: formal_peeled)
+      let formal_name = authored_name_at(source_indices: source_indices, node: formal)
       match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
         Present { value: lit_name } =>
           if application_type_names_compatible(
@@ -5821,13 +5730,13 @@ fn direct_call_structured_record_literal_resolved_type_mismatch(
             false
           } else {
             let actual_raw = resolved_type(n: actual_expr)
-            let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+            let actual = expand_nominal_alias_rhs(n: actual_raw, env: type_env, module_name: module_name)
             direct_call_arg_type_mismatch(
               formal: formal, substitution_basis: substitution_basis, actual: actual, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices)
           }
         Absent =>
           let actual_raw = resolved_type(n: actual_expr)
-          let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+          let actual = expand_nominal_alias_rhs(n: actual_raw, env: type_env, module_name: module_name)
           direct_call_arg_type_mismatch(
             formal: formal, substitution_basis: substitution_basis, actual: actual, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices)
       }
@@ -5939,9 +5848,9 @@ fn call_argument_selects_formal_index(argument: Node, argument_index: Int, forma
 // Cost shape (DESIGN §6 bare-minimum-cost) and single authority (§3).
 // direct_call_arg_mismatch_diags and direct_call_structured_application_mismatch_diags were
 // line-for-line duplicates of the same per-formal prologue: param_node_type_expr,
-// substitute_generics, peel_nominal_alias_identity, authored_name_at, and the named-then-positional
+// substitute_generics, expand_nominal_alias_rhs, authored_name_at, and the named-then-positional
 // actual search. Both run over the SAME value_params, typed_args and call_subst at the one
-// direct-call seam, so every formal was canonicalized twice per call. peel_nominal_alias_identity
+// direct-call seam, so every formal was canonicalized twice per call. expand_nominal_alias_rhs
 // is resolve_node_bounded, an unmemoized recursive rebuild allocating a fresh Node per level, and
 // it measured as the ENTIRE cost of the conformance seam: on gunbc.host.host_effect_realize the two
 // timed peels inside direct_call_arg_mismatch_diags accounted for that function to within
@@ -6004,7 +5913,7 @@ fn direct_call_structured_application_mismatch_diags(
           let host_into_sequence = !type_node_is_callable(n: formal)
             && host_text_into_structural_sequence(
               formal: formal,
-              actual: peel_nominal_alias_identity(n: resolved_type(n: actual_expr), env: type_env, module_name: module_name),
+              actual: expand_nominal_alias_rhs(n: resolved_type(n: actual_expr), env: type_env, module_name: module_name),
               unpeeled_actual: resolved_type(n: actual_expr),
               env: type_env)
           if host_into_sequence {
@@ -6020,7 +5929,7 @@ fn direct_call_structured_application_mismatch_diags(
             || direct_call_structured_record_literal_resolved_type_mismatch(
               formal: formal, substitution_basis: app.formal.substitution_basis, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices)) {
             let actual_raw = resolved_type(n: actual_expr)
-            let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+            let actual = expand_nominal_alias_rhs(n: actual_raw, env: type_env, module_name: module_name)
             [text_crossing_or_type_mismatch_error(expected: formal, got: actual, env: type_env, span: actual_expr.span, module_name: module_name)]
           } else {
             []
@@ -6216,10 +6125,8 @@ fn direct_call_generic_type_argument_inhabitance_diags(
                             obligation: DeclaredTypeObligation {
                               position: PositionGenericTypeArgument,
                               subject: app.formal.parameter_identity,
-                              declared: peel_nominal_alias_identity(
-                                n: child_type_node(ch: declared_pair.second), env: scope.type_env, module_name: scope.module_name),
-                              produced: peel_nominal_alias_identity(
-                                n: child_type_node(ch: produced_child), env: scope.type_env, module_name: scope.module_name),
+                              declared: child_type_node(ch: declared_pair.second),
+                              produced: child_type_node(ch: produced_child),
                               span: actual_expr.span
                             },
                             scope: scope
@@ -6252,10 +6159,8 @@ fn container_element_nominal_brand_mismatch(
       Present { value: formal_ch } =>
         match actual.children |> first {
           Present { value: actual_ch } =>
-            let formal_el = peel_nominal_alias_identity(
-              n: child_type_node(ch: formal_ch), env: type_env, module_name: module_name)
-            let actual_el = peel_nominal_alias_identity(
-              n: child_type_node(ch: actual_ch), env: type_env, module_name: module_name)
+            let formal_el = child_type_node(ch: formal_ch)
+            let actual_el = child_type_node(ch: actual_ch)
             nominal_call_arg_brand_mismatch(formal: formal_el, actual: actual_el, type_env: type_env, source_indices: source_indices)
           Absent => false
         }
@@ -6858,7 +6763,7 @@ data direct_call_shape_wall_note: String = "WALL (DESIGN §5) — the compile se
 // direct_call_structured_application_mismatch_diags (+ resolved-type legacy checks there).
 // A VALUE'S TEXT REPRESENTATION IS ITS RESOLVED TYPE'S DECLARATION IDENTITY
 // (v1.compiler.infer_env text_representation_by_identity). It is NOT re-read through
-// peel_nominal_alias_identity: that peel looks the spelling up by name in THIS scope, which is the
+// expand_nominal_alias_rhs: that peel looks the spelling up by name in THIS scope, which is the
 // caller-re-resolution escape.
 fn argument_text_representation(value: Node, type_env: TypeEnv) -> TextRepresentation {
   text_representation_by_identity(n: expression_value_type(e: value), env: type_env)
@@ -6909,7 +6814,7 @@ fn direct_call_arg_mismatch_diags(
             []
           } else {
           let actual_raw = expression_value_type(e: actual_expr)
-          let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+          let actual = expand_nominal_alias_rhs(n: actual_raw, env: type_env, module_name: module_name)
           let formal_text = if formal_code_point_view(formal: app.formal, env: type_env) != none { CodePointSequence } else { text_representation_by_identity(n: formal, env: type_env) }
           let actual_text = argument_text_representation(value: actual_expr, type_env: type_env)
           let unjudged = text_unjudged_advisories(a: formal_text, b: actual_text, position: "a call argument", span: actual_expr.span, module_name: module_name)
@@ -8037,7 +7942,7 @@ fn destination_declares_scalar_sequence_unfold(destination_type: Node, scope: In
 // direction has no declared route and is not unfolded: a code-point sequence at a host-text formal
 // stays a refusal (v1.compiler.infer_types node_type_equals_core, builtin_text_argument_crossing_diags).
 // The value's representation is read from the SAME peeled type direct_call_arg_mismatch_diags
-// judges (expression_value_type through peel_nominal_alias_identity), so a qualified
+// judges (expression_value_type through expand_nominal_alias_rhs), so a qualified
 // v2.std.text.String value whose raw resolved node still reads as the spelling String is not
 // mistaken for host text and unfolded twice.
 fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> Node {
@@ -11332,7 +11237,18 @@ fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarati
   let spelling = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: n))
   let carried = declaration_carried_through_resolution(n: n, hops: 3)
   match carried {
-    Present { value: d } => if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+    Present { value: d } =>
+      // The declaration a reference carries is settled through any transparent alias (alias_settled_agree's own reading),
+      // so an alias of std Optional reads as Optional by the one relation instead of by a leaf of its own.
+      match settled_type(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env, fuel: 16) {
+        Present { value: settled } => if declaration_is_std_optional(d: settled.head) { IsStdOptional } else { IsOtherType }
+        // A chain ending at a kernel type names no declaration and is not Optional; a chain that settles to neither is unrecovered, typed.
+        Absent =>
+          match kernel_settled_name(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env, fuel: 16) {
+            Present { value: _ } => IsOtherType
+            Absent => OptionalUnrecovered { spelling: spelling }
+          }
+      }
     Absent => optional_reading_by_census(n: n, scope: scope, spelling: spelling)
   }
 }
@@ -11706,9 +11622,6 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         } else if node_type_compatible(
           left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
           []
-        } else if declared_alias_target_matches_produced(
-          expected: expected_node, produced: got_node, env: scope.type_env) {
-          []
         } else if rejects_string_for_optional_coproduct_field(
           expected: expected_node,
           got: got_node,
@@ -11730,8 +11643,8 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             Present { value: resolved } => resolved
             Absent => with_required_cardinality(n: expected_node)
           }
-          let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
-          let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
+          let formal_peeled = expand_nominal_alias_rhs(n: expected_required, env: scope.type_env, module_name: scope.module_name)
+          let actual_peeled = expand_nominal_alias_rhs(n: got_node, env: scope.type_env, module_name: scope.module_name)
           if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
@@ -15531,7 +15444,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
 // past it. COST SHAPE IS PART OF THE CONTRACT. The representative is derived ONCE, during symbol-
 // index census construction, over the same module population the census already walks, and every
 // consumer reads it by name through two map lookups. No consumer chases an alias chain, and in
-// particular no consumer calls peel_nominal_alias_identity per comparison -- a previous attempt at
+// particular no consumer calls expand_nominal_alias_rhs per comparison -- a previous attempt at
 // this seam did, and moved whole-corpus regeneration from ~100 seconds to beyond 31 minutes.
 // KEYING. Both the fully-qualified declared path (`module.Name`) and the bare name are recorded;
 // the bare key is recorded only when the corpus declares that name exactly once, so a homonym
@@ -16992,7 +16905,7 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
             declared_type: declared_type,
             declaration_bound_conformance: preserve_outer_optional_cardinality(
               outer: declared_type,
-              inner: peel_nominal_alias_identity(n: declared_type, env: env, module_name: module_name)),
+              inner: expand_nominal_alias_rhs(n: declared_type, env: env, module_name: module_name)),
             substitution_basis: declaration_substitution_basis(n: declared_type, env: env, generic_names: generic_names)
           }
         }) },
@@ -18202,6 +18115,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     type_summaries: empty_type_summary_index(),
     type_decl_items: type_decl_index_with_qualified_names(index: empty_type_decl_index(), qualified_names: qualified_names),
     fn_decl_items: empty_map(),
+    fn_decl_identity_items: empty_map(),
     structural_alias_fn_surface_names: empty_map(),
     structural_alias_direct_fn_names: empty_set()
   }
@@ -18215,7 +18129,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       }
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, fn_decl_identity_items: built_raw.fn_decl_identity_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       let recursive_name = intern_str(table: m.type_env.intern_table, id: ident)
@@ -18234,6 +18148,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     type_decl_items: built.type_decl_items,
     data_variant_wire_spellings: empty_map(),
     fn_decl_items: built.fn_decl_items,
+    fn_decl_identity_items: built.fn_decl_identity_items,
     fn_map_key_bounds: empty_map(),
     recursive_type_set: all_recursive,
     fielded_variants: variant_shapes.fielded,
@@ -18253,7 +18168,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     fn_type_env: empty_type_env(),
     fn_return_type: none,
     expected_type: none,
-    tco_cursor_param: "",
+    tco_cursor_params: [],
     tco_cursor_tails: empty_map()
   }
 }
