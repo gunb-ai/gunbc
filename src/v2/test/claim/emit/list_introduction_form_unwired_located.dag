@@ -46,14 +46,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // only the reason and locus text per target.
 data list_introduction_probe_source: String = "module list_introduction_probe\n\nimport std.types { List }\n\ndata list_introduction_probe_value: List<Int> = [1, 2]\n"
 
-data list_introduction_probe_ingest: SourceRootIngest = Cons {
-  head: DagSourceReadWitness {
-    source: Medium { carried: list_introduction_probe_source, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: ^list_introduction_probe_artifact, file_path: "src/v2/list_introduction_probe.dag" },
-    compilation_unit: ^list_introduction_probe_cu,
+data list_introduction_types_source: String = "module std.types\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = FreeMonoid<T>\n"
+
+data list_introduction_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
+
+fn list_introduction_witness(source: String, id: Symbol, path: String, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: cu,
     source_root: V2Tree
-  },
-  tail: Empty
+  }
+}
+
+data list_introduction_probe_ingest: SourceRootIngest = Cons {
+  head: list_introduction_witness(source: list_introduction_probe_source, id: ^list_introduction_probe_artifact, path: "src/v2/list_introduction_probe.dag", cu: ^list_introduction_probe_cu),
+  tail: Cons {
+    head: list_introduction_witness(source: list_introduction_types_source, id: ^list_introduction_types_artifact, path: "src/v2/std/types.dag", cu: ^list_introduction_types_cu),
+    tail: Cons {
+      head: list_introduction_witness(source: list_introduction_algebra_source, id: ^list_introduction_algebra_artifact, path: "src/v2/std/algebra.dag", cu: ^list_introduction_algebra_cu),
+      tail: Empty
+    }
+  }
 }
 
 type ListIntroductionTargetVerdict
