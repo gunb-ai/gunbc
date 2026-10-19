@@ -255,3 +255,27 @@ test fn dbg_r_e() -> Bool {
 test fn dbg_r_f() -> Bool {
   match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "]") _ => false }
 }
+
+test fn dbg_r_g() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "vec![1i32, 2i32]") _ => false }
+}
+
+test fn dbg_r_h() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "vec![1_i32, 2_i32]") _ => false }
+}
+
+test fn dbg_r_i() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "vec![1") _ => false }
+}
+
+test fn dbg_r_j() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "2]") _ => false }
+}
+
+test fn dbg_r_k() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "vec![1,") _ => false }
+}
+
+test fn dbg_r_l() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "vec![1 ") _ => false }
+}
