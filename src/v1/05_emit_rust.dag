@@ -20851,7 +20851,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \}", "\n",
       "        \}", "\n",
       "    \};", "\n",
-      "    let output = native_self_host_frontier_output(Rc::new(read(manifest_path)), Rc::new(read(verdict_path)), Rc::new(read(observed_path)));", "\n",
+      "    let output = native_self_host_frontier_output(read(manifest_path), read(verdict_path), read(observed_path));", "\n",
       "    for line in output.lines.iter() \{", "\n",
       "        println!(\"{}\", line);", "\n",
       "    \}", "\n",
