@@ -11,7 +11,7 @@ import gunbc.generated_artifact { artifact_path }
 // typed retained row (gunbc.approve_ios_app approve_ios_retained_swift_rows). A path in neither is a
 // Swift file nothing refuses an edit to and nothing names; a path in both has two authorities.
 // The listing is a SUPPLIED value: the join discriminates at one interface (DESIGN 3); the route that
-// produces a real listing is observed by gunbc.approve_ios_swift_join_live approve_ios_swift_join_live_report, which the merge path cannot execute (gunbc.rung_drop approve_ios_swift_join_live_off_the_merge_path).
+// produces a real listing is observed by gunbc.approve_ios_swift_join_live approve_ios_swift_join_live_report, which the merge path cannot execute (gunbc.guarantee_stall approve_ios_swift_join_live_off_the_merge_path_stall).
 
 type SwiftJoinFinding
   = SwiftFileUnaccounted { path: String }

@@ -12,7 +12,7 @@ import gunbc.approve_ios_swift_join { swift_join_is_clean, is_approve_ios_swift 
 // git reports it (git.Inspect.HeadCommit then ListTreePathsAtRevision, the route
 // gunbc.rust_item_host_observation head_rust_sources uses), not a hand copy. It reaches git, which
 // the hermetic per-PR envelope has no route for, so it is an operator instrument and not a floor
-// claim: gunbc.rung_drop approve_ios_swift_join_live_off_the_merge_path declares that.
+// claim: gunbc.guarantee_stall approve_ios_swift_join_live_off_the_merge_path_stall declares that.
 //   gunbc run --entry dag/gunbc/approve_ios_swift_join_live.dag --function approve_ios_swift_join_live_report
 // The report judges the OBSERVED tree only: nothing is appended to what git returned. A clean
 // checkout exits 0; a revision whose committed tree holds an unaccounted apps/approve-ios swift file
