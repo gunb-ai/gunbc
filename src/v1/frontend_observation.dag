@@ -36,7 +36,7 @@ fn frontend_phase_receipt(frontend: FrontendResult) -> FrontendPhaseReceipt {
     occurrence_count: frontend.occurrence_transport.index.entries |> count,
     declaration_count: frontend.occurrence_transport.declarations |> count,
     reference_count: frontend.occurrence_transport.references |> count,
-    graph_present: frontend.graph != none
+    graph_present: match frontend.graph { Present { value: _ } => true  Absent => false }
   }
 }
 

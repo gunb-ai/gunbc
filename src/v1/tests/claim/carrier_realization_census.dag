@@ -321,14 +321,14 @@ fn typed_item_rows(module_file: String, item: Node, env: TypeEnv, type_decls: Ty
   } else {
     typed_field_rows(module_file: module_file, enclosing: enclosing, fields: item.children, env: env, type_decls: type_decls, si: si)
   }
-  let param_rows_t = if item.body == none {
+  let param_rows_t = if match item.body { Absent => true  Present { value: _ } => false } {
     no_typed_rows()
   } else {
     function_value_params(params: item.params) |> fold(init: no_typed_rows(), f: (acc, prm) => concat(acc, typed_occurrence_rows(
       module_file: module_file, enclosing: enclosing, position_kind: "fn_signature_param",
       n: param_node_type_expr(n: prm), env: env, type_decls: type_decls, si: si)))
   }
-  let return_rows = if item.body == none || is_type_def_item(item: item) {
+  let return_rows = if match item.body { Absent => true  Present { value: _ } => false } || is_type_def_item(item: item) {
     no_typed_rows()
   } else {
     typed_occurrence_rows(module_file: module_file, enclosing: enclosing, position_kind: "fn_signature_return",
