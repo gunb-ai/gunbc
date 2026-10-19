@@ -38,7 +38,9 @@ import extdeps.git.inspect { MergeBaseOutcome, MergeBaseReported, NoCommonAncest
 // (removals_for_drop) and renders rung_drop_removal_message, so the rung-drop projection a reader opens
 // states the deleting commit and paths. The projection states the record; the LAW (observed_removal_verdict)
 // is executed by test.claim.rung_drop_removal_witness, which is not on the required path, so it is not yet
-// enforced per PR. The standing/debt fold does not read removals: removal is evidence, not a standing.
+// enforced per PR. ENFORCEMENT TRIGGER: the native compiler judging witness-bearing modules on the required
+// path (gunbc.rung_drop v1_required_lanes_withdrawn); until then observed_removal_verdict is consumed only
+// by the witness. The standing/debt fold does not read removals: removal is evidence, not a standing.
 
 // DECLARATION GRAIN IS A NAMED FRONTIER, NOT A SILENT GAP. `removed_paths` are file paths, absent at
 // head by `git cat-file -e HEAD:<path>`. A removal of a symbol inside a surviving file needs the
