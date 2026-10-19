@@ -1967,12 +1967,15 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
     element: dag_grammar_choice(
       left: dag_grammar_postfix_call_suffix_expr(),
       right: dag_grammar_sequence(
-        left: grammar_expr_not_predicate(element: dag_grammar_block_of_one_name_before_else_expr()),
+        left: dag_grammar_same_line_terminal_guard(token_class: ^dag_token_lbrace),
         right: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+          left: grammar_expr_not_predicate(element: dag_grammar_block_of_one_name_before_else_expr()),
           right: dag_grammar_sequence(
-            left: dag_grammar_record_field_init_list_helper(),
-            right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+            left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+            right: dag_grammar_sequence(
+              left: dag_grammar_record_field_init_list_helper(),
+              right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+            )
           )
         )
       )
