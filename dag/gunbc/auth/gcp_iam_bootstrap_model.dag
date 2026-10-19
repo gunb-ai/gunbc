@@ -14,6 +14,9 @@ import gunbc.auth.gcp_iam_converge {
 }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, impersonation_cells, StandingPoolImpersonation, standing_impersonation_cell }
 import gunbc.auth.gcp_secret_access { secret_access_desired_cells }
+import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref }
+import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
+import gunbc.auth.approval_store_receipt { approval_store_receipt_mac_key_secret_ref }
 import gunbc.auth.gcp_iam_bootstrap_federation {
   iam_bootstrap_service_account, iam_bootstrap_service_account_id, gcp_iam_bootstrap_wif_pool_id, gcp_iam_bootstrap_wif_provider_id,
   gcp_iam_bootstrap_wif_pool_display_name, gcp_iam_bootstrap_wif_attribute_mapping, gcp_iam_bootstrap_wif_attribute_condition, gcp_iam_bootstrap_wif_principal_set,
@@ -307,4 +310,38 @@ fn iam_bootstrap_delta_principal() -> String {
 fn iam_bootstrap_delta_deny_rules() -> List<GcpDenyPolicyRule> {
   [GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule { denied_principals: [iam_bootstrap_delta_principal()],
     denied_permissions: iam_bootstrap_denied_permissions, exception_principals: none, exception_permissions: none, denial_condition: none } } }]
+}
+
+// ── WHO OWNS A DECLARED SECRET'S IAM: exactly two arms ───────────────────────────────────────
+// Operator, 2026-10-18 (relayed by warm-crane-219): "and not just for flex vast key, for ALL keys" --
+// no manual ceremony for any declared secret. So every secret any declarer names classifies into one of
+// two closed arms, and there is no third "applied by hand" arm. BootstrapRostered: its cells are in the
+// roster above, so the bootstrap delta binds them under one approval. CeremonyTrustRoot: the approval
+// loop's own MAC keys, whose readers are what an approval is checked against, so an approval-gated route
+// must never own their IAM (ruling by warm-crane-219, 2026-10-19); only the first-time root ceremony
+// binds them.
+type SecretIamOwner
+  = BootstrapRostered
+  | CeremonyTrustRoot { reason: NonEmptyStr }
+
+type CeremonyTrustRootSecret { secret: NonEmptyStr, reason: NonEmptyStr }
+
+data ceremony_trust_root_reason: NonEmptyStr = "an approval-loop MAC key: whoever rebinds its readers can mint or forge the approval that gates the converge and the bootstrap delta themselves" as NonEmptyStr
+
+fn ceremony_trust_root_secrets() -> List<CeremonyTrustRootSecret> {
+  map([approval_mac_key_secret_ref, approval_submission_mac_key_secret_ref, approval_store_receipt_mac_key_secret_ref], r =>
+    CeremonyTrustRootSecret { secret: r.secret, reason: ceremony_trust_root_reason })
+}
+
+fn ceremony_trust_root_secret(secret: NonEmptyStr) -> Bool {
+  any(ceremony_trust_root_secrets(), t => (t.secret as String) == (secret as String))
+}
+
+// ABSENT IS THE RED: a declared secret neither rostered nor a trust root is one whose cells still need
+// an operator by hand, which the operator's ruling forbids.
+fn secret_iam_owner(secret: NonEmptyStr) -> SecretIamOwner? {
+  match filter(ceremony_trust_root_secrets(), t => (t.secret as String) == (secret as String)).first() {
+    Present { value: t } => Present { value: CeremonyTrustRoot { reason: t.reason } }
+    Absent => if any(iam_bootstrap_bound_secrets(), s => (s as String) == (secret as String)) { Present { value: BootstrapRostered } } else { none }
+  }
 }
