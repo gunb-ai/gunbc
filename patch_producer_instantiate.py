@@ -68,12 +68,16 @@ REPLACED = """        let resolved_type = match sig {
           Absent => error_type
         }"""
 
-# NO `//` COMMENT INSIDE THE FUNCTION BODY. Measured, not assumed: a comment line here is
-# diagnosed `source annotation sits inside a declaration body. Only module-item grain is
-# modeled` and it is a HARD diagnostic -- my 15-line block took this file's hard-diagnostic
-# count from 241 to 256, which would have polluted the two-closure gate and the self-host
-# count with something that is not a type error. The explanation lives in the commit message
-# and the PR body instead, where nothing measures it.
+# NO COMMENT BETWEEN THE SEED'S FIRST LINE AND ITS `|>` CONTINUATION. Measured A/B on this
+# exact position (all other content identical, one file at a time):
+#   no comment                                  -> 241 hard diagnostics, parses
+#   one `// comment` line inserted               -> 3114 hard diagnostics, and
+#                                       `expected expression, found PipeArrow`
+# So the rule is narrow and specific, not "comments are banned in bodies" -- this file has
+# 3269 in-body comment lines and they are fine. A comment interrupts the line-initial `|>`
+# pipeline continuation, which then cascades into a thousand diagnostics. parsecheck.py plus
+# the hard-diagnostic-neutrality comparison in repair_regen_14152.sh both catch it; the
+# comment stays out of the emitted patch and the explanation lives in the commit message.
 COMMENT = ""
 
 SEED = COMMENT + """
