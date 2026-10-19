@@ -313,7 +313,7 @@ fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<G
   match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: n } =>
+        GroundingNotDerived { node: n, site: _ } =>
           outcome_rejected(d: translate_grounding_not_derived_diagnostic(node: n))
         DerivedGrounding { grounding: _ } =>
           outcome_accepted(GroundingGatePassed {})
