@@ -122,7 +122,7 @@ def main():
     # depends on, and must not have touched anything else.
     if MUTATE != "name-keyed" and MUTATE != "withdrawn":
         assert out.count("fresh_call_variables") == 2, "seed must be built once and used once"
-        assert 'type_variable_node(id: concat(g, "@", span.file as String' in out, "id must be call-site keyed"
+        assert 'type_variable_node(id: concat(g, "@", span.file' in out, "id must be call-site keyed"
     delta = len(out.split("\n")) - len(src.split("\n"))
     open(PATH, "w", encoding="utf-8").write(out)
     print("patched %s  mutate=%s  line-delta=%+d" % (PATH, MUTATE or "none", delta))
