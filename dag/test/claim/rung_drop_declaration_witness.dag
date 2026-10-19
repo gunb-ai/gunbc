@@ -199,23 +199,22 @@ test fn unreadable_standing_roster_drops_are_only_not_yet_counted_populations() 
 // dropped the cause, or a row naming the wrong capability, fails the per-row needle; the arms
 // differ across rows (instance projection, population join, surface), so one constant cannot satisfy all four.
 test fn each_typed_uncounted_row_renders_the_capability_it_lacks() -> Bool {
-  contains_text(haystack: rung_drop_declaration_message(d: direct_call_unbound_carried_generic_compat), needle: "none projects the member identities")
-    && contains_text(haystack: rung_drop_declaration_message(d: floor_cost_high_cpu_withheld), needle: "none projects the member identities")
+  contains_text(haystack: rung_drop_declaration_message(d: floor_cost_high_cpu_withheld), needle: "none projects the member identities")
     && contains_text(haystack: rung_drop_declaration_message(d: floor_cut_regen_second_generation_agreement), needle: "is not modeled")
-    && contains_text(haystack: rung_drop_declaration_message(d: emitted_bytes_witness_required_lane), needle: "no substrate-visible surface")
-    && !contains_text(haystack: rung_drop_declaration_message(d: emitted_bytes_witness_required_lane), needle: "none projects the member identities")
+    && !contains_text(haystack: rung_drop_declaration_message(d: floor_cut_regen_second_generation_agreement), needle: "none projects the member identities")
+    && !contains_text(haystack: rung_drop_declaration_message(d: floor_cost_high_cpu_withheld), needle: "is not modeled")
 }
 
-// POSITIVE CONTROL / BOUND: the two multi-population rows stay prose (their split is a follow-up) and remain counted debt, while
-// the four converted rows are no longer prose debt.
+// POSITIVE CONTROL / BOUND: the multi-population rows (2, 4) and the rows whose prose does not state every typed field (1, 6) stay counted prose debt, while
+// the two converted rows are no longer prose debt.
 test fn the_converted_rows_leave_prose_debt_and_the_multi_population_rows_stay() -> Bool {
   let ids = map(authored_prose_rung_drops(ds: rung_drop_roster), d => d.identity)
   length(xs: filter(ids, i => i == required_gate_bankruptcy.identity)) == 1
     && length(xs: filter(ids, i => i == text_boundary_identity_wall.identity)) == 1
-    && length(xs: filter(ids, i => i == direct_call_unbound_carried_generic_compat.identity)) == 0
+    && length(xs: filter(ids, i => i == direct_call_unbound_carried_generic_compat.identity)) == 1
     && length(xs: filter(ids, i => i == floor_cut_regen_second_generation_agreement.identity)) == 0
     && length(xs: filter(ids, i => i == floor_cost_high_cpu_withheld.identity)) == 0
-    && length(xs: filter(ids, i => i == emitted_bytes_witness_required_lane.identity)) == 0
+    && length(xs: filter(ids, i => i == emitted_bytes_witness_required_lane.identity)) == 1
 }
 
 // RED: A PROSE ROW CONVERTED TO TYPED WITHOUT DELETING ITS LEGACY ARM IS REFUSED. The converted four have no arm left to re-list

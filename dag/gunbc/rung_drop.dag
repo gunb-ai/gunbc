@@ -253,7 +253,9 @@ type LegacyProseIdentity
   | RequiredGateBankruptcy
   | TextBoundaryIdentityWall
   | FabricEvidenceGating
+  | EmittedBytesWitnessRequiredLane
   | DirectCallArgSeamV2Exemption
+  | DirectCallUnboundCarriedGenericCompat
   | FloorCostClaimQualificationUnavailable
   | SparkRoleScopedRetirementProductionRoot
   | FloorCutHeal
@@ -280,7 +282,9 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
     TextBoundaryIdentityWall => "text_boundary_identity_wall"
     FabricEvidenceGating => "fabric_evidence_gating"
     RustUnitTestsOffTheMergePath => "rust_unit_tests_off_the_merge_path"
+    EmittedBytesWitnessRequiredLane => "emitted_bytes_witness_required_lane"
     DirectCallArgSeamV2Exemption => "direct_call_arg_seam_v2_exemption"
+    DirectCallUnboundCarriedGenericCompat => "direct_call_unbound_carried_generic_compat"
     FloorCostClaimQualificationUnavailable => "floor_cost_claim_qualification_unavailable"
     SparkRoleScopedRetirementProductionRoot => "spark_role_scoped_retirement_production_root"
     FloorCutHeal => "floor_cut_heal"
@@ -317,7 +321,6 @@ type UncountedCause
   | DerivedEnumerationYieldedNoMember
   | NoInstanceProjection
   | NoModeledPopulationJoin
-  | NoSubstrateVisibleSurface
 
 fn uncounted_cause_label(c: UncountedCause) -> String {
   match c {
@@ -325,7 +328,6 @@ fn uncounted_cause_label(c: UncountedCause) -> String {
     DerivedEnumerationYieldedNoMember => "a derived enumeration yielded no member"
     NoInstanceProjection => "an instrument counts the class but none projects the member identities"
     NoModeledPopulationJoin => "the join from the subject to its population is not modeled"
-    NoSubstrateVisibleSurface => "no substrate-visible surface exposes the subject"
   }
 }
 
@@ -492,7 +494,9 @@ data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
   TextBoundaryIdentityWall,
   FabricEvidenceGating,
   RustUnitTestsOffTheMergePath,
+  EmittedBytesWitnessRequiredLane,
   DirectCallArgSeamV2Exemption,
+  DirectCallUnboundCarriedGenericCompat,
   FloorCostClaimQualificationUnavailable,
   SparkRoleScopedRetirementProductionRoot,
   FloorCutHeal,
