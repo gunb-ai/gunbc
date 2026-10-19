@@ -2657,6 +2657,22 @@ fn eval_fold_closure_argument_child_state(
   }
 }
 
+// A LIST LITERAL'S HEAD NAMES A TYPE (std.algebra FreeMonoid), NOT A VALUE: infer derives no grounding for
+// that reference, so asking the facts of it (eval_fold_callee_reference_child_state) refuses
+// eval_rejected_grounding_not_derived anchored on the head. The literal's own facts carry the type, so the
+// head child contributes no structural demand; the elements are the runtime arguments.
+fn eval_fold_list_head_child_state(edge: Edge) -> EvalFoldState {
+  EvalFoldState {
+    node: edge.target,
+    progress: Interpreted,
+    structural: Accepted { value: edge.target, diagnostics: None },
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: outcome_rejected(
+      d: eval_diagnostic(reason: ^eval_rejected_pending_children, node: edge.target)
+    )
+  }
+}
+
 fn eval_fold_child_for_edge(
   acc: EvalFoldState,
   edge: Edge,
@@ -2671,7 +2687,11 @@ fn eval_fold_child_for_edge(
     progress: acc.progress,
     edge: edge
   ) {
-    eval_fold_callee_reference_child_state(edge: edge, tree: tree)
+    if eval_node_is_list_introduction(node: acc.node) {
+      eval_fold_list_head_child_state(edge: edge)
+    } else {
+      eval_fold_callee_reference_child_state(edge: edge, tree: tree)
+    }
   } else if eval_fold_is_closure_argument_edge(
     parent: acc.node,
     progress: acc.progress,
