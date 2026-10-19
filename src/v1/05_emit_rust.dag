@@ -1897,7 +1897,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         let peel = is_parametric_opaque_type_by_name(env: env, type_name: name)
         let arg_list = n.children |> map(arg =>
           let typed_arg = render_rust_decl_type_container_arg(arg: arg, source_indices: source_indices, env: env)
-          if peel {
+          let spelled_arg = if peel {
             render_rust_phantom_opaque_applied_decl_arg(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env), type_decl_items: type_decl_items)
           } else if rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env)) != none {
             rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env)).value
@@ -1907,6 +1907,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
               Absent => render_rust_decl_type(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
             }
           }
+          if peel { spelled_arg } else { render_rust_declaration_position(n: typed_arg, spelled: spelled_arg, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names) }
         )
         let applied_ty = if name == tuple_type_name {
           render_tuple_parts(parts: arg_list, target: Rust)
