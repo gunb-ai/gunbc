@@ -572,3 +572,22 @@ test fn a_non_fabric_loaded_inactive_cgroupless_extra_still_withholds() -> Bool 
   let show = masked_show_reload(load: "loaded", active: "inactive", cgroup: "", reload: "no")
   plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
 }
+
+// RED (fail-closed): an unrecognized LoadState word is not proof of "no unit file", so an inactive,
+// cgroupless extra with it is still reached.
+test fn a_non_fabric_unknown_load_state_extra_withholds() -> Bool {
+  let show = masked_show_reload(load: "lodaed", active: "inactive", cgroup: "", reload: "no")
+  plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
+
+// RED: bad-setting and error leave a unit file a reload re-reads and may load, so they are reached.
+test fn a_non_fabric_bad_setting_or_error_extra_withholds() -> Bool {
+  plan_withheld_naming(p: extras_plan_with(extra_show: masked_show_reload(load: "bad-setting", active: "inactive", cgroup: "", reload: "no"), as_fabric: false), needle: "actions-runner@srv3-06.service")
+    && plan_withheld_naming(p: extras_plan_with(extra_show: masked_show_reload(load: "error", active: "inactive", cgroup: "", reload: "no"), as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
+
+// Positive: the masked inactive cgroupless extra with nothing owed stays inert.
+test fn a_non_fabric_masked_inactive_cgroupless_extra_stays_inert() -> Bool {
+  let show = masked_show_reload(load: "masked", active: "inactive", cgroup: "", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 0
+}
