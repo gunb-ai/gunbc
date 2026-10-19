@@ -251,7 +251,8 @@ fn recorded_decision(code: Int, out: String) -> SudoDecision {
 }
 
 // Sudo version 1.9.15p5, recorded on srv1 by bright-moth-475 on 2026-10-19 (see extdeps.sudo.nopasswd_decision): the verbatim
-// stdout of `sudo -n -ll -U ghrunner -u root <argv>` for the granted install argv.
+// stdout of ghrunner's self-listing `sudo -n -u ghrunner sudo -n -ll -u root <argv>` for the granted install argv (the `-U ghrunner`
+// form run as root gave identical stdout).
 data recorded_15p5_query: SudoDecisionQuery = SudoDecisionQuery { runas: "root" as NonEmptyStr, argv: ["/usr/bin/install" as NonEmptyStr, "-d" as NonEmptyStr, "-m" as NonEmptyStr, "00755" as NonEmptyStr, "-o" as NonEmptyStr, "ghrunner" as NonEmptyStr, "-g" as NonEmptyStr, "ghrunner" as NonEmptyStr, "/var/lib/gunbc/fleet-converge" as NonEmptyStr] }
 
 data recorded_15p5_stdout: String = "Sudoers entry: /etc/sudoers.d/gunbc-ghrunner\n    RunAsUsers: root\n    Options: !authenticate\n    Commands:\n\t/usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge\n    Matched: /usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge\n"

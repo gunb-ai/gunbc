@@ -35,8 +35,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // SECOND RECORDED VERSION, Sudo version 1.9.15p5 (Ubuntu noble's package, 1.9.15p5-3ubuntu5.24.04.4). Three
 // observations, each with its own place:
 // (1) NOPASSWD and Denied arms, observed on srv1 by session bright-moth-475 on 2026-10-19 (read-only listings,
-//     nothing executed), run as ghrunner the way the plan runs them: `sudo -n -ll -U ghrunner -u root /usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge`
-//     exited 0 printing `Options: !authenticate` in the layout above; the ungranted `/usr/bin/true` exited 1 with empty stdout.
+//     nothing executed). The production-shape read is ghrunner listing its own grants, as the plan runs it:
+//     `sudo -n -u ghrunner sudo -n -ll -u root /usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge`
+//     exited 0 printing `Options: !authenticate` in the layout above; the same self-listing for `/usr/bin/true`
+//     exited 1 with empty stdout. Corroboration, a separate read: `sudo -n -ll -U ghrunner -u root <the install argv>`
+//     run as root gave identical stdout.
 // (2) PASSWD arm and listpw facts, executed by session sunny-gull-750 on 2026-10-19 against real sudo 1.9.15p5
 //     in a debootstrap noble chroot on a BuildBuddy remote runner (not a fleet host), over the same synthetic
 //     sudoers as the 1.9.16p2 record, listing principal `probe` via su: `sudo -n -ll -u root /usr/bin/true` exited 0
