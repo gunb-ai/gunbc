@@ -7177,9 +7177,7 @@ pub fn run_self_host_frontier(source_roots: &[String]) -> Result<i32, String> {
             .path();
         if path.extension().and_then(|x| x.to_str()) == Some("rs") {
             if let Some(stem) = path.file_stem().and_then(|x| x.to_str()) {
-                if stem != "lib" && stem != "main" {
-                    closure.push(stem.to_string());
-                }
+                closure.push(stem.to_string());
             }
         }
     }
@@ -7187,9 +7185,9 @@ pub fn run_self_host_frontier(source_roots: &[String]) -> Result<i32, String> {
     let verdict = format!(
         "{}\n{}\n",
         if controls_passed {
-            "controls-passed"
+            crate::gunbc_stage0_stage0_emitted_population_manifest::self_host_frontier_verdict_passed_word()
         } else {
-            "controls-not-passed"
+            crate::gunbc_stage0_stage0_emitted_population_manifest::self_host_frontier_verdict_not_passed_word()
         },
         closure.join("\n")
     );
