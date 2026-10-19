@@ -33,6 +33,18 @@ fn probe_verdict(p: ProbePair) -> String {
   }
 }
 
+fn take_nullary(k: fn() -> Int) -> Int {
+  k()
+}
+
+test fn w_nullary_block_closure() -> Bool {
+  take_nullary(k: fn() { 9 }) == 9
+}
+
+test fn w_nullary_arrow_closure() -> Bool {
+  take_nullary(k: fn() => 9) == 9
+}
+
 test fn w_unparenthesized_single_param_lambda() -> Bool {
   take_one(n: 3, k: x => x + 1) == 4
 }
