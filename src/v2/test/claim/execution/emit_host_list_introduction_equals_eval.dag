@@ -1,8 +1,6 @@
 module v2.test.claim.execution.emit_host_list_introduction_equals_eval
 
 import std.types { List, Map }
-import v2.compiler.emit { emit }
-import v2.compiler.eval { eval, inputs_root_only }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -26,8 +24,7 @@ import v2.test.claim.emit.fold_call_closure_fixture {
   fold_fixture_arrow_with_body,
   fold_fixture_atom,
   fold_fixture_call_body,
-  fold_fixture_closure_arrow,
-  fold_fixture_empty_domain_params
+  fold_fixture_closure_arrow
 }
 import v2.test.claim.callexec.list_introduction_eval { lie_list }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
@@ -41,9 +38,7 @@ import std.optional {
   optional_present,
   optional_absent
 }
-import extdeps.communication.medium { Medium }
 import v2.std.diagnostic {
-  diagnostics_fatal_reason,
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
@@ -66,7 +61,7 @@ import v2.std.node {
   Transform,
   TypeNode
 }
-import v2.std.node_query { find_arrow_body_child }
+import v2.std.node_query { binder_edge, find_arrow_body_child }
 import v2.std.runtime {
   RuntimeFieldValue,
   BindInterpreter,
@@ -115,11 +110,11 @@ fn emit_fold_eval_lit(id: Symbol) -> Node {
 fn emit_fold_eval_call_node() -> Node {
   fold_fixture_call_body(
       xs: lie_list(elements: [
-        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_lit_one),
-        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_lit_two),
-        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_lit_three)
+        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_e1),
+        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_e2),
+        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_e3)
       ]),
-      z: emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_lit_zero),
+      z: emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_z),
       closure: fold_fixture_closure_arrow(
         left_operand: ^dag_binding_mvp1_fold_acc,
         right_operand: ^dag_binding_mvp1_fold_h
@@ -127,8 +122,21 @@ fn emit_fold_eval_call_node() -> Node {
   )
 }
 
+fn emit_fold_eval_param(name: Symbol) -> Edge {
+  binder_edge(name: name, type_node: fold_fixture_atom(id: ^dag_binding_type_int))
+}
+
+fn emit_fold_eval_params() -> List<Edge> {
+  [
+    emit_fold_eval_param(name: ^dag_binding_mvp1_fold_e1),
+    emit_fold_eval_param(name: ^dag_binding_mvp1_fold_e2),
+    emit_fold_eval_param(name: ^dag_binding_mvp1_fold_e3),
+    emit_fold_eval_param(name: ^dag_binding_mvp1_fold_z)
+  ]
+}
+
 fn emit_fold_eval_list_arrow() -> Node {
-  fold_fixture_arrow_with_body(params: fold_fixture_empty_domain_params(), body: emit_fold_eval_call_node())
+  fold_fixture_arrow_with_body(params: emit_fold_eval_params(), body: emit_fold_eval_call_node())
 }
 
 data emit_fold_eval_subgraph_node: Node = emit_fold_eval_call_node()
@@ -211,10 +219,10 @@ fn emit_fold_eval_closure_operator_is_sub(closure: Node) -> Bool {
 }
 
 fn emit_fold_eval_digit_of(id: Symbol) -> Optional<Int> {
-  if id == ^dag_binding_mvp1_fold_lit_zero { optional_present(value: 0) }
-  else if id == ^dag_binding_mvp1_fold_lit_one { optional_present(value: 1) }
-  else if id == ^dag_binding_mvp1_fold_lit_two { optional_present(value: 2) }
-  else if id == ^dag_binding_mvp1_fold_lit_three { optional_present(value: 3) }
+  if id == ^dag_binding_mvp1_fold_z { optional_present(value: 0) }
+  else if id == ^dag_binding_mvp1_fold_e1 { optional_present(value: 1) }
+  else if id == ^dag_binding_mvp1_fold_e2 { optional_present(value: 2) }
+  else if id == ^dag_binding_mvp1_fold_e3 { optional_present(value: 3) }
   else { optional_absent() }
 }
 
@@ -469,36 +477,3 @@ test fn emit_host_list_introduction_unwired_refuses_holds() -> Bool {
     ).verdict
   )
 }
-
-fn probe_emit() -> Outcome<Medium<String>> {
-  emit(tree: emit_fold_eval_tree_for(root: emit_fold_eval_list_arrow()), target: rust_list_fold_target_model_staging())
-}
-
-test fn probe_emit_ok() -> Bool {
-  match probe_emit() { Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false }
-}
-
-test fn probe_emit_has_vec() -> Bool {
-  match probe_emit() { Accepted { value: m, diagnostics: _ } => string_contains(s: m.carried, pattern: "fold_call_callee(vec![1, 2, 3], 0")
-    Rejected { diagnostics: _ } => false }
-}
-
-test fn probe_eval_ok() -> Bool {
-  match eval(tree: emit_fold_eval_tree_for(root: emit_fold_eval_list_arrow()), interpretation: emit_fold_eval_interpretation(), inputs: inputs_root_only(root: emit_fold_eval_call_node())) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn probe_reason(r: Symbol) -> Bool {
-  match probe_emit() { Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == r }
-}
-test fn probe_r_unwired() -> Bool { probe_reason(r: ^target_value_expr_list_introduction_form_unwired) }
-test fn probe_r_lex() -> Bool { probe_reason(r: ^target_value_expr_reason_transform_shape_invalid) }
-test fn probe_r_binding() -> Bool { probe_reason(r: ^target_lex_rule_literal_not_found) }
-test fn probe_r_none() -> Bool { probe_reason(r: ^target_value_expression_emit_unsupported_kind) }
-test fn probe_r_scope() -> Bool { probe_reason(r: ^target_value_expr_reason_body_scope_binding_invalid) }
-test fn probe_r_operator() -> Bool { probe_reason(r: ^target_operator_realization_catalog_miss) }
-test fn probe_r_arrow_body() -> Bool { probe_reason(r: ^target_value_expr_reason_arrow_body_form_unsupported) }
