@@ -28,7 +28,7 @@ import product.fabric.flex_market {
   FlexOwnerLabel, FlexOwnedCard, FlexCapAssessment, FlexCapUnder,
   FlexCleanupAction, FlexDestroy, FlexKeep, FlexReleasePlan, flex_release_pass,
 }
-import product.fabric.serving_recipe { ServingSelectionQuote, SelectionQuoteEstablished }
+import product.fabric.serving_recipe { ServingRecipe, ServingSelectionQuote, SelectionQuoteEstablished }
 import product.fabric.flex_vast_shadow {
   flex_roster_restrict,
   FlexInstancesStanding, FlexInstancesComplete, FlexChargesStanding, FlexChargesComplete,
@@ -38,7 +38,7 @@ import product.fabric.flex_vast_shadow {
   FlexReconcileVerdict, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire, FlexReconcileNeedsExhaustedRoster,
   FlexTemplateRealization, FlexTemplateResolved, FlexServingTemplate,
   flex_write_decision, flex_cap_from_roster, flex_reconcile_acquisition, flex_instance_ours,
-  flex_serving_template, flex_serving_recipe, flex_trial_total,
+  flex_serving_template, flex_trial_total,
   flex_vast_api_read_grant,
 }
 import gunbc.flex_vast_credential { flex_vast_api_key_secret_ref, flex_vast_api_key_host_path, flex_vast_api_key_custody_host }
@@ -106,7 +106,12 @@ type FlexTemplateHashRow {
   hash: NonEmptyStr
 }
 
-data flex_vast_template_hashes: List<FlexTemplateHashRow> = []
+data flex_vast_template_hashes: List<FlexTemplateHashRow> = [
+  FlexTemplateHashRow {
+    recipe: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
+    hash: "c6793d31e3204da102145c4c331e42ae" as NonEmptyStr,
+  },
+]
 
 fn flex_vast_template_hash(rows: List<FlexTemplateHashRow>, recipe: DeclarationRef) -> NonEmptyStr? {
   match first_where(rows, row => (row.recipe.module_path == recipe.module_path) && (row.recipe.decl_name == recipe.decl_name)) {
@@ -163,6 +168,7 @@ type FlexPassInput {
   cards: List<FlexOwnedCard>
   allocations: List<RentedServingAllocation>
   intent: FlexCreateIntent?
+  recipe: ServingRecipe
   template_hashes: List<FlexTemplateHashRow>
   no_room: Bool
   replacement_serving: Bool
@@ -282,7 +288,7 @@ fn flex_vast_disk_gigabytes(disk: ByteSize) -> Int {
 
 // Every wall the create meets, in a fixed order. WET refuses at the first; DRY reports them all beside
 // the write it would make.
-fn flex_create_walls(policy: FlexPolicy, observation: FlexPassObservation, intent: FlexCreateIntent, hashes: List<FlexTemplateHashRow>) -> List<FlexCreateRefusal> {
+fn flex_create_walls(policy: FlexPolicy, observation: FlexPassObservation, intent: FlexCreateIntent, recipe: ServingRecipe, hashes: List<FlexTemplateHashRow>) -> List<FlexCreateRefusal> {
   concat(
     flex_placement_wall(placement: intent.placement),
     concat(
@@ -294,9 +300,9 @@ fn flex_create_walls(policy: FlexPolicy, observation: FlexPassObservation, inten
           Absent => [FlexRefusedAdmissionNotAdmitted]
           Present { value: bid } => flex_budget_wall(policy: policy, charges: observation.charges, bid: bid)
         },
-        match flex_serving_template(recipe: flex_serving_recipe) {
+        match flex_serving_template(recipe: recipe) {
           FlexTemplateResolved { template: _ } =>
-            match flex_vast_template_hash(rows: hashes, recipe: flex_serving_recipe.id) {
+            match flex_vast_template_hash(rows: hashes, recipe: recipe.id) {
               Absent => [FlexRefusedTemplateHashUnread]
               Present { value: _ } => []
             }
@@ -309,13 +315,13 @@ fn flex_create_walls(policy: FlexPolicy, observation: FlexPassObservation, inten
 }
 
 // The create request, only when the bid, the template and its Vast hash all exist.
-fn flex_create_request(policy: FlexPolicy, intent: FlexCreateIntent, hashes: List<FlexTemplateHashRow>) -> FlexCreateRequest? {
+fn flex_create_request(policy: FlexPolicy, intent: FlexCreateIntent, recipe: ServingRecipe, hashes: List<FlexTemplateHashRow>) -> FlexCreateRequest? {
   match flex_admitted_bid(admission: intent.admission) {
     Absent => none
     Present { value: bid } =>
-      match flex_serving_template(recipe: flex_serving_recipe) {
+      match flex_serving_template(recipe: recipe) {
         FlexTemplateResolved { template: t } =>
-          match flex_vast_template_hash(rows: hashes, recipe: flex_serving_recipe.id) {
+          match flex_vast_template_hash(rows: hashes, recipe: recipe.id) {
             Absent => none
             Present { value: hash } =>
               Present {
@@ -469,14 +475,14 @@ fn flex_plan_destroy(input: FlexPassInput, action: FlexCleanupAction) -> FlexPas
 }
 
 fn flex_plan_create(input: FlexPassInput, intent: FlexCreateIntent) -> FlexPassPlan {
-  let walls = flex_create_walls(policy: input.policy, observation: input.observation, intent: intent, hashes: input.template_hashes)
+  let walls = flex_create_walls(policy: input.policy, observation: input.observation, intent: intent, recipe: input.recipe, hashes: input.template_hashes)
   match input.policy.actuation {
-    Plan => FlexPlanDryCreate { would: flex_create_request(policy: input.policy, intent: intent, hashes: input.template_hashes), walls: concat(walls, flex_wet_gate_wall(gates: input.gates)) }
+    Plan => FlexPlanDryCreate { would: flex_create_request(policy: input.policy, intent: intent, recipe: input.recipe, hashes: input.template_hashes), walls: concat(walls, flex_wet_gate_wall(gates: input.gates)) }
     Apply =>
       match flex_first_refusal(walls: concat(walls, flex_wet_gate_wall(gates: input.gates))) {
         Present { value: first } => FlexPlanRefused { refusal: FlexPassCreateRefused { refusal: first } }
         Absent =>
-          match flex_create_request(policy: input.policy, intent: intent, hashes: input.template_hashes) {
+          match flex_create_request(policy: input.policy, intent: intent, recipe: input.recipe, hashes: input.template_hashes) {
             Absent => FlexPlanRefused { refusal: FlexPassCreateRefused { refusal: FlexRefusedAdmissionNotAdmitted } }
             Present { value: request } => FlexPlanCreate { request: request, intent: intent }
           }

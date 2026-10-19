@@ -17,6 +17,7 @@ import gunbc.serving.rented_ninfer_source { RentedWeightsPlacement, RentedArtifa
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
 import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
+import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
 import extdeps.vllm.local_inference_lab_build { VllmEngineRelease, local_inference_lab_vllm_release }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.harness.harness_reasoning_wire {
@@ -194,8 +195,9 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
   },
 }
 
-// Recipe (b). Every figure below that is not structural is an operator reading: drivers at or above
-// 580 work (tested on a 595 host); about 900 tokens per second at 16 concurrent; 400 GiB disk;
+// Recipe (b). The driver floor DERIVES from the CUDA 13 the recipe needs (the Vast template's cuda_max_good >= 13),
+// as NVIDIA's CUDA toolkit release notes state it, so it is cited and no longer a transcribed screen. Every other figure below
+// that is not structural is an operator reading: about 900 tokens per second at 16 concurrent; 400 GiB disk;
 // weights and saved kernel tuning started from the object store with no Hugging Face fallback.
 data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
   id: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
@@ -205,13 +207,13 @@ data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
   },
   engine: EngineVllm { build: local_inference_lab_vllm_release },
   catalog_unit: none,
-  published_tcp_port: 8000,
+  // The inference server listens on 18000 (HTTPS, self-signed, bearer password); the image's Caddy portal owns 8000.
+  // Read from the secret-free template by crisp-seal-306 (Flex L2), 2026-10-19.
+  published_tcp_port: 18000,
   cards: [serving_card_class_rtx_pro_6000_blackwell],
   driver_floor: ServingDriverFloor {
-    major: 580,
-    standing: TranscribedUncited {
-      read_obligation: "operator reading: drivers at or above 580 work, tested on a 595 host; read the lab vLLM build's stated minimum" as NonEmptyStr,
-    },
+    major: cuda_13_0_driver_requirement.min_driver_major,
+    standing: cuda_13_0_driver_requirement.standing,
   },
   disk: gib(n: 400),
   cache: ServingCacheTiers {
@@ -490,7 +492,7 @@ data serving_recipe_frontier: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
-    reason: "Throughput and cache tiers are unread (unit cost is UnitCostThroughputUnread, not a guess); disk, cache and port settings are operator policy (flex_operator_template_v2). The driver floor 580 is TranscribedUncited, so serving_driver_verdict returns CardScreenedOnUncitedFloor rather than an established acceptance or refusal. The disk, cache and setting standings have no production reader: the derivation gunbc.serving.serving_provision_derivation reads the placement, engine release, port, start source and served model id but is itself run only by witnesses (see its frontier row), and nothing reads disk, cache sizes or settings.",
+    reason: "Throughput and cache tiers are unread (unit cost is UnitCostThroughputUnread, not a guess); disk, cache and port settings are operator policy (flex_operator_template_v2). The disk, cache and setting standings have no production reader: the derivation gunbc.serving.serving_provision_derivation reads the placement, engine release, port, start source and served model id but is itself run only by witnesses (see its frontier row), and nothing reads disk, cache sizes or settings.",
     dissolution: unbound_dissolution(description: "a consumer reads the recipe's cache sizes (serving_cache_bytes), disk and setting standings, plus an operator or measured throughput reading. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(

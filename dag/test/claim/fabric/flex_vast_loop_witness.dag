@@ -107,7 +107,7 @@ fn w_intent(entry: FlexShadowFieldEntry, admitted: Bool) -> FlexCreateIntent {
 }
 
 data w_hashes: List<FlexTemplateHashRow> = [
-  FlexTemplateHashRow { recipe: flex_serving_recipe.id, hash: "witness-template" as NonEmptyStr },
+  FlexTemplateHashRow { recipe: w_recipe.id, hash: "witness-template" as NonEmptyStr },
 ]
 
 fn w_charges(units: Int) -> FlexChargesStanding {
@@ -125,6 +125,10 @@ fn w_charges(units: Int) -> FlexChargesStanding {
 fn w_ours(id: Int, dollars: Int) -> VastAiInstance { inst_labelled(id: id, machine_id: 42, label: Present { value: "gunbc-flex" }, dollars: dollars) }
 fn w_foreign(id: Int, dollars: Int) -> VastAiInstance { inst_labelled(id: id, machine_id: 42, label: Present { value: "ctrl-bidder" }, dollars: dollars) }
 
+// THE PASS INPUT'S RECIPE: a recipe whose template resolves, so the create walls can clear. The selected flex
+// recipe (Flash-Next) does not resolve until its served model id is read, which the unresolved witness asserts.
+data w_recipe: ServingRecipe = serving_recipe_qwen3_8_27b_nvfp4_ninfer
+
 fn w_input(mode: ApplyMode, gates: FlexWetGates, roster: FlexInstancesStanding, charges: FlexChargesStanding, intent: FlexCreateIntent?) -> FlexPassInput {
   FlexPassInput {
     policy: FlexPolicy {
@@ -141,7 +145,7 @@ fn w_input(mode: ApplyMode, gates: FlexWetGates, roster: FlexInstancesStanding, 
     cards: [],
     allocations: [w_acquired()],
     intent: intent,
-    template_hashes: w_hashes,
+    recipe: w_recipe, template_hashes: w_hashes,
     no_room: false,
     replacement_serving: false,
   }
@@ -208,7 +212,7 @@ test fn dry_with_a_destroy_due_records_it_and_destroys_nothing() -> Bool {
     policy: w_input(mode: Plan, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none).policy,
     gates: w_open, now: 1792008000000, cooldown: none,
     observation: FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2), w_ours(id: 1002, dollars: 2)]), charges: w_charges(units: 1) },
-    cards: w_two_cards(), allocations: [w_acquired()], intent: none, template_hashes: w_hashes, no_room: false, replacement_serving: true,
+    cards: w_two_cards(), allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   }
   let p = flex_plan_pass(input: input)
   match p {
@@ -235,11 +239,11 @@ test fn a_wet_destroy_binds_the_card_to_its_allocation_and_a_card_without_one_st
   let base = w_input(mode: Apply, gates: w_open, roster: observation.roster, charges: observation.charges, intent: none)
   let with_both = FlexPassInput {
     policy: base.policy, gates: w_open, now: base.now, cooldown: none, observation: observation,
-    cards: w_two_cards(), allocations: [w_acquired()], intent: none, template_hashes: w_hashes, no_room: false, replacement_serving: true,
+    cards: w_two_cards(), allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   }
   let without = FlexPassInput {
     policy: base.policy, gates: w_open, now: base.now, cooldown: none, observation: observation,
-    cards: w_two_cards(), allocations: [], intent: none, template_hashes: w_hashes, no_room: false, replacement_serving: true,
+    cards: w_two_cards(), allocations: [], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   }
   match flex_plan_pass(input: without) {
     FlexPlanRefused { refusal: FlexPassNoAllocationForCard { id: _ } } => true
@@ -253,7 +257,7 @@ test fn a_wet_destroy_is_held_by_the_closed_gates() -> Bool {
   let base = w_input(mode: Apply, gates: w_closed, roster: observation.roster, charges: observation.charges, intent: none)
   let p = flex_plan_pass(input: FlexPassInput {
     policy: base.policy, gates: w_closed, now: base.now, cooldown: none, observation: observation,
-    cards: w_two_cards(), allocations: [w_acquired()], intent: none, template_hashes: w_hashes, no_room: false, replacement_serving: true,
+    cards: w_two_cards(), allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   })
   match w_refusal_of(p: p) {
     Present { value: FlexPassCreateRefused { refusal: FlexRefusedKeyNotLive { custody: _, causes: _ } } } => true
@@ -264,14 +268,14 @@ test fn a_wet_destroy_is_held_by_the_closed_gates() -> Bool {
 // ---- WET REFUSES: today's Estimated entry (member or non-member), an unestablished quote, a refused
 // admission, an unread template hash, and the closed gates each stop the pass.
 fn w_estimated(member: Bool) -> FlexShadowFieldEntry {
-  ShadowEntryEstimated { provisional_member: member, standings: [flex_serving_recipe.driver_floor.standing] }
+  ShadowEntryEstimated { provisional_member: member, standings: [w_recipe.driver_floor.standing] }
 }
 
 fn w_wet_refusal(entry: FlexShadowFieldEntry, admitted: Bool, gates: FlexWetGates, hashes: List<FlexTemplateHashRow>) -> FlexPassRefusal? {
   let base = w_input(mode: Apply, gates: gates, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: entry, admitted: admitted) })
   w_refusal_of(p: flex_plan_pass(input: FlexPassInput {
     policy: base.policy, gates: gates, now: base.now, cooldown: none, observation: base.observation,
-    cards: [], allocations: base.allocations, intent: base.intent, template_hashes: hashes, no_room: false, replacement_serving: false,
+    cards: [], allocations: base.allocations, intent: base.intent, recipe: w_recipe, template_hashes: hashes, no_room: false, replacement_serving: false,
   }))
 }
 
@@ -397,7 +401,7 @@ test fn a_foreign_card_is_never_planned_for_destroy() -> Bool {
   let p = flex_plan_pass(input: FlexPassInput {
     policy: base.policy, gates: w_open, now: base.now, cooldown: none, observation: observation,
     cards: [w_card(owner: "ctrl-bidder", id: "2001" as NonEmptyStr), w_card(owner: "ctrl-pool", id: "2002" as NonEmptyStr)],
-    allocations: [w_acquired()], intent: none, template_hashes: w_hashes, no_room: false, replacement_serving: true,
+    allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   })
   !w_is_write(p: p)
 }
@@ -440,11 +444,11 @@ test fn an_active_cooldown_blocks_the_next_create_and_an_expired_one_does_not() 
   let base = w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) })
   let active = FlexPassInput {
     policy: base.policy, gates: w_open, now: 1792008000000 + 1000, cooldown: Present { value: FlexRentCooldown { asked_at: 1792008000000, until: 1792011600000 } },
-    observation: base.observation, cards: [], allocations: base.allocations, intent: base.intent, template_hashes: w_hashes, no_room: false, replacement_serving: false,
+    observation: base.observation, cards: [], allocations: base.allocations, intent: base.intent, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: false,
   }
   let expired = FlexPassInput {
     policy: base.policy, gates: w_open, now: 1792011600000, cooldown: Present { value: FlexRentCooldown { asked_at: 1792008000000, until: 1792011600000 } },
-    observation: base.observation, cards: [], allocations: base.allocations, intent: base.intent, template_hashes: w_hashes, no_room: false, replacement_serving: false,
+    observation: base.observation, cards: [], allocations: base.allocations, intent: base.intent, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: false,
   }
   match flex_plan_pass(input: active) {
     FlexPlanRefused { refusal: FlexPassCooldownActive { until: u } } => u == 1792011600000
@@ -509,7 +513,7 @@ fn w_destroy_due_input() -> FlexPassInput {
   let base = w_input(mode: Apply, gates: w_open, roster: observation.roster, charges: observation.charges, intent: none)
   FlexPassInput {
     policy: base.policy, gates: w_open, now: base.now, cooldown: none, observation: observation,
-    cards: w_two_cards(), allocations: [w_acquired()], intent: none, template_hashes: w_hashes, no_room: false, replacement_serving: true,
+    cards: w_two_cards(), allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   }
 }
 
@@ -576,6 +580,20 @@ test fn an_unbound_instance_id_is_never_destroyed() -> Bool {
         RentedReleaseDestroyRefused { decision: _ } => true
         _ => false
       }
+    _ => false
+  }
+}
+
+test fn the_selected_flex_recipe_has_an_unresolved_template_until_its_served_id_is_read() -> Bool {
+  // The pass takes its recipe as input: the selected Flash-Next recipe (served model id unread) refuses the
+  // create with the template wall even though its Vast template hash is present.
+  let base = w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) })
+  let hashes = [FlexTemplateHashRow { recipe: flex_serving_recipe.id, hash: "witness-template" as NonEmptyStr }]
+  match w_refusal_of(p: flex_plan_pass(input: FlexPassInput {
+    policy: base.policy, gates: base.gates, now: base.now, cooldown: none, observation: base.observation,
+    cards: [], allocations: base.allocations, intent: base.intent, recipe: flex_serving_recipe, template_hashes: hashes, no_room: false, replacement_serving: false,
+  })) {
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedTemplateUnresolved } } => true
     _ => false
   }
 }
