@@ -126,7 +126,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
+import v1.compiler.infer_env { is_type_variable_name, settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -3418,6 +3418,7 @@ fn actual_is_unjudged_by_formal(actual: Node, actual_name: String, formal_name: 
       TypeReferenceNamesDeclaration { declaration: _ } => brand_grounds_transparently_to(name: actual_name, other: formal_base, type_env: type_env, source_indices: source_indices)
       TypeReferenceIsKernelType { name: _ } => false
       TypeReferenceIsTypeVariable { id: _ } => true
+      TypeReferenceUninstantiatedTypeParameter { name: _ } => true
       TypeReferenceUnidentified { authored: _, resolved: _ } => false
     }
   }
@@ -11367,6 +11368,7 @@ fn optional_reading_by_census(n: Node, scope: InferScope, spelling: String) -> O
       if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
     TypeReferenceIsKernelType { name: kernel } => optional_reading_of_kernel_mint(kernel: kernel)
     TypeReferenceIsTypeVariable { id: _ } => IsOtherType
+    TypeReferenceUninstantiatedTypeParameter { name: _ } => IsOtherType
     TypeReferenceUnidentified { authored: _, resolved: _ } =>
       if spelling == "Optional" { OptionalUnrecovered { spelling: spelling } } else { IsOtherType }
   }
@@ -14537,10 +14539,6 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
 
 fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
   map(items, item => infer_item(item: item, scope: scope))
-}
-
-fn is_type_variable_name(name: String) -> Bool {
-  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
 }
 
 type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node> }
