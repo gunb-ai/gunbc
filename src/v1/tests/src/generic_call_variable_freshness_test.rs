@@ -156,3 +156,122 @@ fn minted_variables_are_fresh_per_call_site() {
         "some minted variable carries no call-site tag at all: {distinct:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PERMANENT: the narrowing pin. `uninstantiated_call_generics` mints ONLY for a call that carries
+// no argument nodes. This row is the reason that guard cannot be quietly widened: it asks for a
+// generic call that DOES pass an argument and DOES leave its declared parameter unbound, and
+// requires main's behaviour to survive untouched.
+//
+// The callee is `fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat>`
+// (dag/std/measure.dag:284). `S` appears only in the return type, so the argument cannot bind it:
+// `unify_generics` records no binding, `map_has(call_subst, "S")` is false, and a mint would fire
+// under the pre-narrowing guard. Minting there is not harmless -- it replaces the CALLER's own `S`
+// with a variable no actual mentions, and because the emitter's clone-bound pre-pass keys on the
+// parameter NAME (src/v1/05_emit_rust.dag, clone_param), the emitted signature silently loses its
+// `S: Clone` bound. That is exactly how PR-1's head first went red on `v2-bootstrap`:
+// error[E0277] `S: Clone` at stage0/src/std_realization_measurement.rs:341:72 in the self-host
+// product, with main green on the same gate.
+// ---------------------------------------------------------------------------
+
+const NARROWING_SOURCE: &str = r#"
+module test.narrowing_pin
+
+import std.measure { time_measure }
+
+// ONE call, WITH an argument, whose declared parameter `S` the argument cannot reach. Written to
+// match dag/test/claim/realization_scale_agnostic.dag:4, an in-tree call of the same function, so
+// the row cannot go red for a reason unrelated to the mint.
+fn pinned() -> Bool {
+  let m = time_measure(count: 10)
+  m.count == 0
+}
+"#;
+
+fn pinned_minted_state() -> (Vec<String>, usize) {
+    let ws = workspace_root();
+    let roots = [ws.join("src/v2"), ws.join("dag")];
+    let sources =
+        resolve_imports_transitively_with_source_roots("test.dag", NARROWING_SOURCE, &roots);
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let mut ids: Vec<String> = Vec::new();
+    let mut saw_fn = false;
+    let mut call_nodes = 0usize;
+    if let Some(graph) = &resolved.graph {
+        for m in graph.modules.iter() {
+            for item in m.items.iter() {
+                if item.name == "pinned" {
+                    saw_fn = true;
+                    type_variable_ids_under(item, 0, &mut ids);
+                    call_nodes = count_named_nodes(item, "time_measure", 0);
+                }
+            }
+        }
+    }
+    // Both guards are fatal: a missing item or a call that stopped being a call would let the
+    // assertions below pass while the row measured nothing at all.
+    assert!(
+        saw_fn,
+        "fn pinned() is not in the resolved tree -- the row would pass by looking at nothing"
+    );
+    assert!(
+        call_nodes >= 1,
+        "no `time_measure` call node under fn pinned() -- the call the narrowing pins is not in \
+         the tree, so this row would prove nothing about it (found {call_nodes})"
+    );
+    (ids, call_nodes)
+}
+
+/// Count nodes whose name matches, depth-bounded like `type_variable_ids_under`.
+fn count_named_nodes(n: &Rc<Node>, name: &str, depth: u32) -> usize {
+    if depth > 12 {
+        return 0;
+    }
+    // Suffix, not equality: a resolved call node may carry the qualified name
+    // ("std.measure.time_measure"), and matching only the bare name would trip the fatal guard in
+    // the caller and fail the row for a naming accident rather than for the claim.
+    let mut hits = usize::from(n.name.ends_with(name));
+    for c in n.children.iter() {
+        hits += count_named_nodes(c, name, depth + 1);
+    }
+    if let Some(b) = &n.body {
+        hits += count_named_nodes(b, name, depth + 1);
+    }
+    for p in n.params.iter() {
+        hits += count_named_nodes(p, name, depth + 1);
+    }
+    hits
+}
+
+#[test]
+fn arguments_present_do_not_trigger_the_call_site_mint() {
+    let (ids, call_nodes) = pinned_minted_state();
+    let distinct: std::collections::HashSet<&String> = ids.iter().collect();
+    let minted: Vec<&&String> = distinct.iter().filter(|i| i.contains('@')).collect();
+
+    println!(
+        "NARROWING-INVENTORY positions={} distinct={} minted={} calls={} sample={:?}",
+        ids.len(),
+        distinct.len(),
+        minted.len(),
+        call_nodes,
+        distinct.iter().take(6).collect::<Vec<_>>()
+    );
+
+    // The whole claim: nothing call-site-tagged may appear, because this call HAS an argument.
+    assert!(
+        minted.is_empty(),
+        "the call-site mint fired at a call that passes an argument: {minted:?} -- minting here \
+         fabricates a binding unify_generics did not make, replaces the caller's own type \
+         variable, and silently drops the emitted `S: Clone` bound (the pre-narrowing guard \
+         produced ids like \"S@<file>:<start>-<end>\" at exactly this shape)"
+    );
+    // And the parameter must still be present as main leaves it, so the row cannot be satisfied by
+    // the call simply having lost its type.
+    assert!(
+        distinct.iter().any(|i| **i == "S"),
+        "no type variable `S` reachable under fn pinned(): {distinct:?} -- expected main's \
+         behaviour to survive untouched (the callee's own declared parameter), so the narrowing \
+         is not merely suppressing minting but changing what the call types to"
+    );
+}
