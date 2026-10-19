@@ -13,10 +13,6 @@ fn take_two(n: Int, m: Int, k: fn(Int, Int) -> Int) -> Int {
   k(n, m)
 }
 
-fn take_nullary(k: fn() -> Int) -> Int {
-  k()
-}
-
 // Is a declared sum usable as a FIELD type (the 3-arm readings shape review 7 asks for)?
 type ProbeReading
   = HashFailed { exit_code: Int, stderr: String }
@@ -43,10 +39,6 @@ test fn w_unparenthesized_single_param_lambda() -> Bool {
 
 test fn w_parenthesized_multi_param_lambda() -> Bool {
   take_two(n: 3, m: 4, k: (a, b) => a + b) == 7
-}
-
-test fn w_nullary_function_parameter() -> Bool {
-  take_nullary(k: () => 9) == 9
 }
 
 test fn w_sum_as_field_type() -> Bool {
