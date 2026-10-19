@@ -28,7 +28,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, uri_scheme_inhabitants }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.decl_ref { DeclarationRef, decl_ref }
-import v2.std.primitive_contract_ref { primitive_contract_declaration_ref_of_leaf, primitive_contract_path_is_contract }
+import v2.std.primitive_contract_ref { primitive_contract_declaration_ref_of_leaf, primitive_contract_leaf_of_path }
 
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
@@ -6063,44 +6063,44 @@ fn target_transform_resolved_callee(body: Node, target: TargetModel) -> Outcome<
             f: fn(leaf) { outcome_accepted(TargetResolvedCallee { callee: leaf, kind: LocalCallee }) }
           )
         Present { value: path } =>
-          match qualified_name_last_segment(qn: path) {
+          match primitive_contract_leaf_of_path(path: path) {
+            Present { value: leaf } => outcome_accepted(TargetResolvedCallee { callee: leaf, kind: PrimitiveRowCallee })
             Absent =>
-              outcome_rejected(
-                target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: child)
-              )
-            Present { value: leaf } =>
-              if primitive_contract_path_is_contract(path: path) {
-                outcome_accepted(TargetResolvedCallee { callee: leaf, kind: PrimitiveRowCallee })
-              } else {
-                bind_outcome(
-                  o: match type_expression_projection_from_target(target: target) {
-                    Accepted { value: projection, diagnostics: d } => Accepted { value: projection, diagnostics: d }
-                    Rejected { diagnostics: _ } =>
-                      outcome_rejected(target_declaration_reference_form_absent_diagnostic(node: child))
-                  },
-                  f: fn(projection) {
-                    bind_outcome(
-                      o: target_type_expr_declaration_reference_emitted(
-                        projection: projection,
-                        path: path,
-                        reference: child
-                      ),
-                      f: fn(emitted) {
-                        match list_at_optional(xs: positional_child_target_nodes(node: emitted), index: 0) {
-                          Present { value: spelled } =>
-                            bind_outcome(
-                              o: target_node_atom_identity(node: spelled),
-                              f: fn(spelling) {
-                                outcome_accepted(TargetResolvedCallee { callee: spelling, kind: DeclarationReferenceCallee })
-                              }
-                            )
-                          Absent =>
-                            outcome_rejected(target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: child))
+              match qualified_name_last_segment(qn: path) {
+                Absent =>
+                  outcome_rejected(
+                    target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: child)
+                  )
+                Present { value: _ } =>
+                  bind_outcome(
+                    o: match type_expression_projection_from_target(target: target) {
+                      Accepted { value: projection, diagnostics: d } => Accepted { value: projection, diagnostics: d }
+                      Rejected { diagnostics: _ } =>
+                        outcome_rejected(target_declaration_reference_form_absent_diagnostic(node: child))
+                    },
+                    f: fn(projection) {
+                      bind_outcome(
+                        o: target_type_expr_declaration_reference_emitted(
+                          projection: projection,
+                          path: path,
+                          reference: child
+                        ),
+                        f: fn(emitted) {
+                          match list_at_optional(xs: positional_child_target_nodes(node: emitted), index: 0) {
+                            Present { value: spelled } =>
+                              bind_outcome(
+                                o: target_node_atom_identity(node: spelled),
+                                f: fn(spelling) {
+                                  outcome_accepted(TargetResolvedCallee { callee: spelling, kind: DeclarationReferenceCallee })
+                                }
+                              )
+                            Absent =>
+                              outcome_rejected(target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: child))
+                          }
                         }
-                      }
-                    )
-                  }
-                )
+                      )
+                    }
+                  )
               }
           }
       }
