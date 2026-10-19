@@ -2090,13 +2090,15 @@ fn runner_host_cap_phase_text(phase: RunnerHostCapPhase) -> String {
 // THE AFFECTED POPULATION IS EVERY LOADED RUNNER INSTANCE, not only the declared sets: the template
 // reload reaches an instance nobody declared. Declared and retired units are ours to drain; a loaded
 // unit outside both is an EXTRA, which this route reads (caps, idleness) but never drains, activates or
-// retires. An extra is a hazard only when the template reload would reach a live cgroup for it (`reach`,
+// retires. An extra is a hazard exactly when the template reload would reach a live cgroup for it (`reach`,
 // derived once from its own show block): a masked, inactive, cgroupless extra has nothing to apply to.
+// The lifecycle standing never vetoes that fact: LoadState and ActiveState are independent, so a masked
+// but ACTIVE extra is reached however it is classified.
 fn runner_host_cap_extras(desired_units: List<NonEmptyStr>, retired_units: List<NonEmptyStr>, population: RunnerSlotPopulation) -> List<NonEmptyStr> {
   match population {
     SlotPopulationUnobservable { reason: _ } => []
     SlotPopulationObserved { units: us } =>
-      map(filter(us, r => !any(desired_units, d => (d as String) == (r.unit as String)) && !any(retired_units, d => (d as String) == (r.unit as String)) && (match r.reach { ReachesLiveCgroup => true ReloadInert => false }) && (match r.standing { SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => true SlotTeardownEffective => true SlotReloadPending => true SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true SlotAllocationNotEffective { detail: _ } => true SlotFabricMemberNotARunner { load_state: _ } => true SlotFabricMemberRunsARunner => true SlotUnitUnread => true })), r => r.unit)
+      map(filter(us, r => !any(desired_units, d => (d as String) == (r.unit as String)) && !any(retired_units, d => (d as String) == (r.unit as String)) && (match r.reach { ReachesLiveCgroup => true ReloadInert => false }))), r => r.unit)
   }
 }
 
