@@ -3,10 +3,8 @@ module test.claim.runner.runner_host_cap_bracket_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.optional { Absent, Present }
 import std.measure { second, second_count }
-import std.temporal_effect { LeaseAbsent, LeaseRunningPastExpiry }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import gunbc.runner.runner_slot_actuation { SlotActuationOutcome, SlotActivated, SlotActuationRefused }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsRestartedAndRead, SlotCapsRefused }
 import gunbc.runner.runner_host_cap_bracket {
   AdmissionMaskOnly,
   SlotDrainReading,
@@ -15,17 +13,11 @@ import gunbc.runner.runner_host_cap_bracket {
   BracketWaiting,
   BracketAdmissionNotClosed,
   BracketBoundExceeded,
-  HostCapBracketResult,
-  BracketAtDesired,
-  BracketRefused,
-  BracketRefusedReadmit,
-  BracketRefusedReadback,
-  BracketRefusedWriteNotSettled,
   HostAdmitting,
+  HostLeftState,
   HostLeftDrained,
+  host_left_of_readmit,
   bracket_wait_step,
-  bracket_result,
-  host_drain_lease_observed,
   host_cap_drain_ticks,
   runner_host_cap_drain_policy,
 }
@@ -80,43 +72,30 @@ test fn mask_only_with_an_idle_listener_is_not_closed() -> Bool {
 }
 
 fn units() -> List<NonEmptyStr> { [u(n: "01"), u(n: "02")] }
-fn read_ok() -> List<SlotCapOutcome> { [SlotCapsRestartedAndRead { unit: u(n: "01") }, SlotCapsRestartedAndRead { unit: u(n: "02") }] }
-fn read_mismatch() -> List<SlotCapOutcome> { [SlotCapsRestartedAndRead { unit: u(n: "01") }, SlotCapsRefused { unit: u(n: "02"), step: "readback", reason: "memory.max 27917287424" }] }
 fn readmitted() -> List<SlotActuationOutcome> { [SlotActivated { unit: u(n: "01") }, SlotActivated { unit: u(n: "02") }] }
 fn readmit_stuck() -> List<SlotActuationOutcome> { [SlotActivated { unit: u(n: "01") }, SlotActuationRefused { unit: u(n: "02"), step: "start", reason: "x" }] }
 
-fn at_desired(r: HostCapBracketResult) -> Bool { match r { BracketAtDesired { units: _ } => true BracketRefused { refusal: _, left: _ } => false } }
-fn refused_admitting(r: HostCapBracketResult) -> Bool { match r { BracketRefused { refusal: _, left: HostAdmitting } => true BracketRefused { refusal: _, left: HostLeftDrained { units: _ } } => false BracketAtDesired { units: _ } => false } }
+fn admitting(l: HostLeftState) -> Bool { match l { HostAdmitting => true HostLeftDrained { units: _ } => false } }
 
-// drain, idle, write, readback, re-admit lands AtDesired
-test fn drain_write_readback_and_readmit_lands_at_desired() -> Bool {
-  at_desired(r: bracket_result(units: units(), write_settled: true, readbacks: read_ok(), readmit: readmitted()))
+// every slot re-admitted and read back: the host is left admitting
+test fn a_fully_readmitted_host_is_left_admitting() -> Bool {
+  admitting(l: host_left_of_readmit(units: units(), outcomes: readmitted()))
 }
 
-// RED: a readback mismatch is a failure, never success, and the host is re-admitted
-test fn a_readback_mismatch_is_reported_as_a_failure() -> Bool {
-  refused_admitting(r: bracket_result(units: units(), write_settled: true, readbacks: read_mismatch(), readmit: readmitted()))
-}
-
-// RED: an unsettled write is a failure even with clean readings
-test fn an_unsettled_write_is_a_failure() -> Bool {
-  refused_admitting(r: bracket_result(units: units(), write_settled: false, readbacks: read_ok(), readmit: readmitted()))
-}
-
-// RED: a refusal path (no readbacks) still reports re-admission, and a stuck slot is left DRAINED
+// RED: a stuck slot leaves the host DRAINED and names exactly that slot
 test fn a_slot_that_does_not_readmit_leaves_the_host_drained_and_says_so() -> Bool {
-  match bracket_result(units: units(), write_settled: false, readbacks: [], readmit: readmit_stuck()) {
-    BracketRefused { refusal: BracketRefusedReadmit { refused: _ }, left: HostLeftDrained { units: us } } => length(us) == 1
-    BracketAtDesired { units: _ } => false
-    BracketRefused { refusal: _, left: _ } => false
+  match host_left_of_readmit(units: units(), outcomes: readmit_stuck()) {
+    HostLeftDrained { units: us } => length(us) == 1
+    HostAdmitting => false
   }
 }
 
 // RED: a readmit list shorter than the units cannot read as admitting
 test fn a_missing_readmit_reading_is_not_admitting() -> Bool {
-  !at_desired(r: bracket_result(units: units(), write_settled: true, readbacks: read_ok(), readmit: [SlotActivated { unit: u(n: "01") }]))
+  !admitting(l: host_left_of_readmit(units: units(), outcomes: [SlotActivated { unit: u(n: "01") }]))
 }
 
-test fn the_lease_is_absent_only_when_the_host_is_admitting() -> Bool {
-  host_drain_lease_observed(left: HostAdmitting) == LeaseAbsent && host_drain_lease_observed(left: HostLeftDrained { units: units() }) == LeaseRunningPastExpiry
+// RED: no readmit reading at all (refusal before any re-admission ran) is not admitting
+test fn no_readmit_reading_is_not_admitting() -> Bool {
+  !admitting(l: host_left_of_readmit(units: units(), outcomes: []))
 }

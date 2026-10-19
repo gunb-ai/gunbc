@@ -3,7 +3,6 @@ module gunbc.runner.runner_host_cap_bracket
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
 import std.measure { Second, second, second_count }
-import std.temporal_effect { HeldLeaseObservedState, LeaseAbsent, LeaseRunningPastExpiry }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome,
@@ -17,15 +16,15 @@ import gunbc.runner.runner_slot_actuation {
   SlotReadRefused,
   read_slot_over,
   read_slot_worker_over,
-  drain_and_mask_runner_slot_over,
+  run_slot_steps_over,
   activate_runner_slot_over,
   slot_actuation_settled,
   slot_actuation_outcome_wire,
   slot_state_active,
 }
 import gunbc.runner.runner_slot_actuation { slot_is_masked }
+import extdeps.systemd.systemctl { systemctl_mask_argv }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, slot_cap_outcome_settled }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 
 // THE DRAIN BRACKET OVER ONE HOST, AS A PURE STEP MACHINE PLUS THE THREE EFFECTS IT SEQUENCES.
@@ -55,13 +54,12 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 // API (a different credential site, a separate change); its arm joins AdmissionClosure when its consumer
 // does, because an arm with no producer is a declaration nothing reads.
 //
-// DIVERGES FROM std.temporal_effect HeldLease, WITH REASON. "This host is drained by this run" is a lease
-// whose release is the re-admit readback, and the observed-state vocabulary (HeldLeaseObservedState) is
-// reused as-is: after the run, every slot re-admitted reads LeaseAbsent; a slot still masked after the run
-// ended reads LeaseRunningPastExpiry, a hold nobody is running. The LeaseEpoch and the compare-and-set
-// that std.durable_exclusive_hold derives from it are NOT inhabited: the host path has no durable store,
-// and the host's single writer is the dispatching workflow's concurrency group. A durable store for the
-// hold is the trigger to inhabit the whole carrier.
+// DIVERGES FROM std.temporal_effect HeldLease AND std.durable_exclusive_hold, WITH REASON. "This host is
+// drained by this run" is a lease whose release is the re-admit readback (HostLeftState), but both
+// carriers rest on a LeaseEpoch and a compare-and-set over a durable store; the host path has no durable
+// store and its single writer is the dispatching workflow's concurrency group. A durable store for the
+// hold is the trigger to inhabit them; no vocabulary is borrowed meanwhile, since a borrowed name with no
+// epoch behind it would be a meaning fork.
 
 type AdmissionClosure = | AdmissionMaskOnly
 
@@ -143,21 +141,11 @@ type HostLeftState
 type HostCapBracketRefusal
   = BracketRefusedAdmissionNotClosed { listeners: List<NonEmptyStr> }
   | BracketRefusedBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second }
-  | BracketRefusedWriteNotSettled
-  | BracketRefusedReadback { refused: List<String> }
-  | BracketRefusedReadmit { refused: List<String> }
-
-type HostCapBracketResult
-  = BracketAtDesired { units: List<NonEmptyStr> }
-  | BracketRefused { refusal: HostCapBracketRefusal, left: HostLeftState }
 
 fn bracket_refusal_wire(r: HostCapBracketRefusal) -> String {
   match r {
     BracketRefusedAdmissionNotClosed { listeners: ls } => join(["admission is not closed: a running idle listener is not stopped under a mask-only closure, so no cap was written; listeners=", join(map(ls, u => u as String), " ")], "")
     BracketRefusedBoundExceeded { busy: b, unproven: u, waited: w } => join(["the drain bound of ", to_string(second_count(s: w)), "s was exceeded, so no cap was written; busy=", join(map(b, x => x as String), " "), " unproven=", join(map(u, x => x as String), " ")], "")
-    BracketRefusedWriteNotSettled => "the cap drop-ins did not converge or the manager reload did not settle"
-    BracketRefusedReadback { refused: rs } => join(["the live cgroup does not show the desired caps: ", join(rs, "; ")], "")
-    BracketRefusedReadmit { refused: rs } => join(["re-admission did not read back: ", join(rs, "; ")], "")
   }
 }
 
@@ -165,14 +153,6 @@ fn host_left_wire(l: HostLeftState) -> String {
   match l {
     HostAdmitting => "host left admitting (every slot unmasked, active and read back)"
     HostLeftDrained { units: us } => join(["host left DRAINED: still masked or not read back: ", join(map(us, u => u as String), " ")], "")
-  }
-}
-
-// THE LEASE'S OBSERVED STATE AFTER THE RUN: released only by the re-admit readback.
-fn host_drain_lease_observed(left: HostLeftState) -> HeldLeaseObservedState {
-  match left {
-    HostAdmitting => LeaseAbsent
-    HostLeftDrained { units: _ } => LeaseRunningPastExpiry
   }
 }
 
@@ -187,32 +167,11 @@ fn readmit_unsettled(outcomes: List<SlotActuationOutcome>) -> List<NonEmptyStr> 
   })
 }
 
-fn readback_refusals(slots: List<SlotCapOutcome>) -> List<String> {
-  map(filter(slots, s => !slot_cap_outcome_settled(o: s)), s => match s {
-    SlotCapsRefused { unit: u, step: st, reason: why } => join([u as String, " ", st, ": ", why], "")
-    SlotCapsLeftInPlace { unit: u } => concat(u as String, " left in place")
-    SlotCapsRestartedAndRead { unit: u } => concat(u as String, " read")
-  })
-}
-
-// THE VERDICT, PURE, over what the caller observed after the wait: whether the write and reload settled,
-// each slot's cgroup readback, and the re-admission outcomes. AtDesired needs every one; the host's left
-// state is derived from the re-admission alone, so a refusal never hides that a slot is still masked.
-fn bracket_result(units: List<NonEmptyStr>, write_settled: Bool, readbacks: List<SlotCapOutcome>, readmit: List<SlotActuationOutcome>) -> HostCapBracketResult {
-  let stuck = readmit_unsettled(outcomes: readmit)
-  let left = if length(stuck) == 0 && length(readmit) == length(units) { HostAdmitting } else { HostLeftDrained { units: if length(stuck) == 0 { units } else { stuck } } }
-  match left {
-    HostLeftDrained { units: _ } => BracketRefused {
-      refusal: BracketRefusedReadmit { refused: map(filter(readmit, o => !slot_actuation_settled(o: o)), o => slot_actuation_outcome_wire(o: o)) },
-      left: left,
-    }
-    HostAdmitting =>
-      if !write_settled { BracketRefused { refusal: BracketRefusedWriteNotSettled, left: left } }
-      else if any(readbacks, s => !slot_cap_outcome_settled(o: s)) || length(readbacks) != length(units) {
-        BracketRefused { refusal: BracketRefusedReadback { refused: readback_refusals(slots: readbacks) }, left: left }
-      }
-      else { BracketAtDesired { units: units } }
-  }
+// WHAT THE HOST IS LEFT IN, from the re-admission readback alone: every unit needs exactly one settled
+// outcome, so a refused, pending or missing one leaves the host DRAINED and names the units.
+fn host_left_of_readmit(units: List<NonEmptyStr>, outcomes: List<SlotActuationOutcome>) -> HostLeftState {
+  let stuck = readmit_unsettled(outcomes: outcomes)
+  if length(stuck) == 0 && length(outcomes) == length(units) { HostAdmitting } else { HostLeftDrained { units: if length(stuck) == 0 { units } else { stuck } } }
 }
 
 // ── The effects ─────────────────────────────────────────────────────────────────────────────────
@@ -233,11 +192,22 @@ fn read_slot_drain_over(target: SshTarget, context: FleetSshExecutionContext, un
   }
 }
 
+// MASK ONLY, NEVER STOP: the mask inhibits successors and is safe at any time. Stopping a running idle
+// listener races a job assignment, so this route never takes it (DrainSteps in the shared drain actuator
+// would, for a slot whose job finished mid-wait). A failed mask is not reported here: the next reading
+// shows the slot unmasked, and an unmasked slot is never drained.
+fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String?
+{
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => Present { value: why }
+    SlotRead { reading: r } => if slot_is_masked(r: r) { none } else { run_slot_steps_over(target: target, context: context, steps: [systemctl_mask_argv(unit: unit)]) }
+  }
+}
+
 // CLOSE ADMISSION, THEN WAIT. The first pass only READS: under a mask-only closure a running idle
 // listener refuses the host before anything is changed, because stopping it races a job assignment.
-// Later passes mask every slot (the mask is safe at any time and stops successors) and stop only a
-// slot whose worker is gone, through the existing actuator (drain_and_mask_runner_slot_over, which
-// refuses to stop on an unreadable listing). Each pass is judged by bracket_wait_step.
+// Later passes only MASK every slot; nothing is ever stopped, so a slot leaves service only when its own
+// job ends and the mask blocks its restart. Each pass is judged by bracket_wait_step.
 fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int) -> BracketWaitStep
 {
   let closure = runner_host_cap_admission_closure
@@ -252,7 +222,7 @@ fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionConte
 
 fn drain_pass_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int) -> BracketWaitStep
 {
-  let _masked = map(units, u => drain_and_mask_runner_slot_over(target: target, context: context, unit: u))
+  let _masked = map(units, u => mask_slot_only_over(target: target, context: context, unit: u))
   let readings = map(units, u => read_slot_drain_over(target: target, context: context, unit: u))
   match bracket_wait_step(closure: runner_host_cap_admission_closure, readings: readings, ticks_left: ticks_left) {
     BracketWaiting { ticks_left: n } => {
