@@ -241,6 +241,7 @@ import product.p4261_carrier_layout {
   AttachmentJoined,
   AttachmentDisputed,
   AttachmentUnconfirmed,
+  AttachmentRuled,
   ReadOnlyAtAttachment,
   ProjectionReadOnlyAtAttachment,
   attachment_standing,
@@ -252,6 +253,10 @@ import product.p4261_carrier_layout {
   e1_w4_end,
   e1_back_cluster,
   e1_q301_lone_lead,
+  e1_q301_lead_a,
+  e1_q301_lead_b,
+  e1_q300_lone_lead,
+  e1_q300_lead_a,
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
@@ -680,7 +685,7 @@ fn rl_resistance(o: ResistanceObservation) -> ResistanceObservation {
 fn rl_attachment(a: ProbeAttachment) -> ProbeAttachment {
   ProbeAttachment {
     point: terminal_ref(component: rl_c(c: a.point.component), terminal: a.point.terminal), intended: terminal_ref(component: rl_c(c: a.intended.component), terminal: a.intended.terminal),
-    statement: a.statement, disputes: a.disputes,
+    statement: a.statement, disputes: a.disputes, ruling: a.ruling,
   }
 }
 
@@ -1325,6 +1330,7 @@ fn wire_to(pin: NonEmptyStr, display: ResistanceDisplay) -> ResistanceObservatio
 fn attachment_is(layout: CarrierLayoutObservation, a: ProbeAttachment, which: Nat) -> Bool {
   match attachment_standing(layout: layout, a: a) {
     AttachmentJoined { attachment: _, joins } => which == 0 && count(joins) > 0
+    AttachmentRuled { attachment: _ } => which == 3
     AttachmentDisputed { attachment: _ } => which == 1
     AttachmentUnconfirmed { attachment: _ } => which == 2
   }
@@ -1332,7 +1338,9 @@ fn attachment_is(layout: CarrierLayoutObservation, a: ProbeAttachment, which: Na
 
 // A WIRE STANDS FOR ITS PIN ONLY ONCE A READING JOINS THEM. Live, the first taped wire meant for pin 7
 // is disputed -- no reading joins it to pin 7's lead, and the operator has since doubted where it sat --
-// and the report quotes the disputes; the second is disputed, the third unconfirmed. Pin 7 is held
+// and the report quotes the disputes; the second is disputed, the third ruled on by the operator. A
+// ruling settles the record but is no reading: the first wire's volts under a ruling still leave pin 7
+// to its own lead. Pin 7 is held
 // below its threshold by the reading on its own lead, and with only the first wire's readings the
 // enable standing would name the wire instead. Supplied: the same wire and readings with no dispute are unconfirmed, still no reading
 // of pin 7; a 500 ohm reading between the wire and the lead joins nothing; a baseline reading joins
@@ -1341,7 +1349,8 @@ fn attachment_is(layout: CarrierLayoutObservation, a: ProbeAttachment, which: Na
 // wire's readings leave pin 7 merely unread.
 test fn a_wire_stands_for_its_pin_only_once_joined() -> Bool {
   let wire_volts = filter(e1_bench_record.voltages, o => terminal_ref_equal(a: o.at, b: e1_pin7_wire_end))
-  let undisputed = ProbeAttachment { point: e1_pin7_attachment.point, intended: e1_pin7_attachment.intended, statement: e1_pin7_attachment.statement, disputes: [] }
+  let undisputed = ProbeAttachment { point: e1_pin7_attachment.point, intended: e1_pin7_attachment.intended, statement: e1_pin7_attachment.statement, disputes: [], ruling: [] }
+  let ruled = ProbeAttachment { point: e1_pin7_attachment.point, intended: e1_pin7_attachment.intended, statement: e1_pin7_attachment.statement, disputes: e1_pin7_attachment.disputes, ruling: e1_w4_attachment.ruling }
   let text = carrier_input_reading(layout: p4261_e1_layout)
   let live = count(wire_volts) == 3
     && attachment_is(layout: p4261_e1_layout, a: e1_pin7_attachment, which: 1)
@@ -1350,9 +1359,11 @@ test fn a_wire_stands_for_its_pin_only_once_joined() -> Bool {
     && enable_is(ss: enable_of(layout: p4261_e1_layout), held: true)
     && enable_gap(ss: enable_of(layout: e1_with_attached(attachments: [e1_pin7_attachment], vs: wire_volts, rs: [])), which: 4)
     && attachment_is(layout: p4261_e1_layout, a: e1_w2_attachment, which: 1)
-    && attachment_is(layout: p4261_e1_layout, a: e1_w4_attachment, which: 2)
+    && attachment_is(layout: p4261_e1_layout, a: e1_w4_attachment, which: 3)
     && text.contains("W4: wire taped at U1_P5's left-hand row, far end in an alligator clip (far end), attached at U1_P5 pin 7 on the operator's word")
-    && text.contains("is UNCONFIRMED: no reading joins it to U1_P5 pin 7")
+    && text.contains("is RULED on by the operator ('yes i am hyper confident that p6 == pin 7")
+    && attachment_is(layout: e1_with_attached(attachments: [ruled], vs: wire_volts, rs: []), a: ruled, which: 3)
+    && enable_gap(ss: enable_of(layout: e1_with_attached(attachments: [ruled], vs: wire_volts, rs: [])), which: 4)
     && text.contains("W2: stranded red conductor of a red/black pair, taped at U1_P5's left-hand row (far end), attached at U1_P5 pin 7 on the operator's word ('It should be better now' (2026-10-19)), is DISPUTED")
   let unjoined = e1_with_attached(attachments: [undisputed], vs: wire_volts, rs: [])
   let unconfirmed = attachment_is(layout: unjoined, a: undisputed, which: 2) && enable_gap(ss: enable_of(layout: unjoined), which: 4)
@@ -1488,7 +1499,8 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
 // report renders the netlist. The first wire and RP1 are one node, 1.3 kohm from pin 7's lead; the third
 // wire and the back cluster's P5 to P7 are one node no reading joins to the lead; the cluster's P10 is
 // ground, its P9 neither ground nor the wire's, none of its other pads is VDD's or the input's, and
-// Q301's lone lead is on the wire's node. The K1 renders its own, and the K1 with nothing
+// Q301's lone lead is on the wire's node; Q301's and Q300's lead a are ground, and Q301's lead b is
+// Q300's lone lead, neither ground nor the wire's. The K1 renders its own, and the K1 with nothing
 // measured renders none.
 test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
   let net = board_netlist(b: e1_measured)
@@ -1507,6 +1519,9 @@ test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
     && one_node(net: net, a: e1_q301_lone_lead, b: e1_w4_end) && one_node(net: net, a: e1_q301_lone_lead, b: cluster_pad(name: "P6"))
     && !one_node(net: net, a: e1_w4_end, b: e1_ground_ref) && !one_node(net: net, a: e1_w4_end, b: pad_ref())
     && q301_join_needs_the_baseline()
+    && one_node(net: net, a: e1_q301_lead_a, b: e1_ground_ref) && one_node(net: net, a: e1_q300_lead_a, b: e1_ground_ref)
+    && one_node(net: net, a: e1_q301_lead_b, b: e1_q300_lone_lead) && !one_node(net: net, a: e1_q301_lead_b, b: e1_ground_ref)
+    && !one_node(net: net, a: e1_q301_lead_b, b: e1_w4_end)
     && count(filter(net.links, l => !is_between(l: l))) == 0
     && carrier_input_reading(layout: p4261_e1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: p4261_k1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")

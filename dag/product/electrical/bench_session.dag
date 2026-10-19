@@ -137,12 +137,14 @@ fn is_at_baseline(o: ResistanceObservation) -> Bool {
 // readings taken at the wire are recorded at the wire's point, and intended names the terminal the wire
 // was meant for. Whether it stands for that terminal is derived from readings joining the two, in the
 // layer that reads the board, and never stored here; disputes are the operator's own later statements
-// doubting where it sat.
+// doubting where it sat. A ruling is the operator's statement settling that the wire sits on the
+// terminal: it closes the question in the record, and it is still not a reading.
 type ProbeAttachment {
   point: ElectricalTerminalRef
   intended: ElectricalTerminalRef
   statement: EvidenceRef
   disputes: List<EvidenceRef>
+  ruling: List<EvidenceRef>
 }
 
 type BenchRecord {
