@@ -568,6 +568,78 @@ test fn a_wait_that_names_a_human_is_not_answered_by_the_app() -> Bool {
 
 // THE TAP'S OWN BINDING: escalation, revision and attempt are the capability's authenticated claims,
 // not the workflow's word about them. Each mutation is exactly what the MAC exists to prevent.
+// THE ORDER HAS A RED. A decision that refuses says one thing at a time, so "which check said no first"
+// is a claim about the code — and a claim with no test that has TWO things wrong at once is a comment,
+// not a check. Below, several checks are broken TOGETHER in each case and the name reported must be the
+// first in upstream's order of authority. Reorder the refusal list in broker_answer_decision and this
+// goes red while every single-fault test above stays green.
+test fn when_several_checks_would_refuse_the_first_one_in_order_is_reported() -> Bool {
+  // Everything wrong at once: a run id that is not the filed one, a concluded run, another environment
+  // waiting, no rule attribution, and a tap bound to a different request.
+  refusal_name_for(
+    wait: waiting_on(
+      environment_name: other_env, named: [] as List<PendingDeploymentReviewer>
+    ),
+    run: run_record(run_id: 35447067114, settled: true, failed: true),
+    claim: gate_claim,
+    capability: gate_capability(decision: ProposeApprove),
+    ownership: unattributed_ownership()
+  )
+    == "RecordRunIdIsNotTheFiledRun"
+    // Fix the record's id and the settlement is the next authority.
+    && refusal_name_for(
+         wait: waiting_on(
+           environment_name: other_env, named: [] as List<PendingDeploymentReviewer>
+         ),
+         run: run_record(run_id: gate_run_id, settled: true, failed: true),
+         claim: gate_claim,
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: unattributed_ownership()
+       )
+       == "TheRunHasConcluded"
+    // With the run in flight, the wait's environment outranks the ownership refusal and the tap, both of
+    // which are also broken in this case.
+    && refusal_name_for(
+         wait: waiting_on(
+           environment_name: other_env, named: [] as List<PendingDeploymentReviewer>
+         ),
+         run: an_in_flight_run(),
+         claim: tap_from_another_request(),
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: unattributed_ownership()
+       )
+       == "WaitNamesAnotherEnvironment"
+    // Ownership is checked before the tap: the broken rule attribution is reported even though the tap
+    // is ALSO wrong here.
+    && refusal_name_for(
+         wait: an_answerable_wait(),
+         run: an_in_flight_run(),
+         claim: tap_from_another_request(),
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: unattributed_ownership()
+       )
+       == "RuleOwnershipNotEstablished"
+    // The tap is last: with everything else right, only its mismatch remains.
+    && refusal_name_for(
+         wait: an_answerable_wait(),
+         run: an_in_flight_run(),
+         claim: tap_from_another_request(),
+         capability: gate_capability(decision: ProposeApprove),
+         ownership: minted_ownership()
+       )
+       == "TapBindsAnotherRequest"
+}
+
+// A FILING whose ATTEMPT is not the one the capability fixture authenticated — the fourth fault, so the
+// ordering test can break all four checks at once without duplicating the capability record.
+data tap_from_another_request: GateRequestClaim = GateRequestClaim {
+  run_id: 35447067113,
+  environment: gated_env,
+  escalation_id: "srv1-gate-35447067113",
+  request_revision: "rev-1",
+  attempt: "fleet-converge-99999999999" as AttemptIdentity,
+}
+
 test fn a_capability_for_another_request_or_revision_is_refused() -> Bool {
   capability_binds_request(capability: gate_capability(decision: ProposeApprove), claim: gate_claim)
     && !capability_binds_request(
