@@ -10,6 +10,7 @@ import gunbc.claim_coverage_census {
   ClaimSource, ClaimExecutorRow, ClaimCoverageInputs,
   ClaimCoverageHeld, ClaimCoverageDidNotHold, claim_coverage, claim_coverage_standing, undeclared,
 }
+import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
 import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
 import gunbc.claim_coverage_census_live { claim_sources, claim_executors, claim_coverage_census_exit }
 
@@ -68,9 +69,10 @@ test fn an_uncovered_identity_with_no_declaring_drop_is_undeclared() -> Bool {
 test fn the_live_source_enrols_the_whole_wet_schedule_and_no_live_job_executes_it() -> Bool {
   let schedule = local_repo_wet_schedule()
   let c = claim_coverage(inputs: ClaimCoverageInputs { sources: claim_sources(), jobs: claim_executors() })
-  (schedule |> count) > 0
-    && (c.enrolled |> count) == (schedule |> count)
-    && (c.uncovered |> count) == (schedule |> count)
+  let want = schedule |> map(w => witness_identity_qualified_name(identity: w.identity))
+  (want |> count) > 0
+    && c.enrolled == want
+    && (c.uncovered |> map(u => u.identity)) == want
 }
 
 // The live entry reports the did-not-hold exit, not success.
