@@ -1,7 +1,7 @@
 module test.claim.repository_bootstrap_wet_witness
 
-import std.types { String, Bool, Int, FilePath, GitRef }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { String, Bool, Int, List, FilePath, GitRef }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.optional { Present, Absent }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 import extdeps.shell
@@ -132,22 +132,31 @@ fn head_readback_verdict(head_success: Bool, head_sha: String, head_stderr: Stri
   }
 }
 
-fn probe_head_matches(repo: String, expected: String) -> Bool {
+fn probe_head_matches(repo: String, expected: String) -> HeadReadback {
   let head = git.Inspect.HeadCommitIn(repository_path: repo)
-  match head_readback_verdict(
+  head_readback_verdict(
     head_success: head.success,
     head_sha: head.sha,
     head_stderr: head.stderr,
     expected: expected,
-  ) {
-    HeadAtCandidate { observed: _ } => true
-    HeadWrong { observed: _ } => false
-    HeadUnreadable { stderr: _ } => false
+  )
+}
+
+// The carried cause is READ, not decoration (review 82686): each refusal arm renders itself into the
+// witness's own failure reason, which claim_batch prints ("FAIL <fn> (... code <n>: <reason>)"), so an
+// unreadable observation reaches the operator as the op's own stderr and a wrong observation as the
+// value it saw. The accepted arm renders ""; the tests treat non-empty as the refusal.
+fn head_readback_diagnostic(verdict: HeadReadback, expected: String) -> String {
+  match verdict {
+    HeadAtCandidate { observed: _ } => ""
+    HeadWrong { observed: observed } => join(["head: observed ", observed, ", expected ", expected], "")
+    HeadUnreadable { stderr: stderr } => join(["head: unreadable: ", stderr], "")
   }
 }
 
 // `git diff --quiet HEAD --` (tracked worktree vs HEAD's tree) is git.Core.TrackedWorktreeDiffFromInRepo,
-// the SAME op the production path itself calls at its post-checkout read (repository_convergence:906),
+// the SAME op the production path itself calls at its post-checkout read, in
+// gunbc.live_deploy.repository_convergence.observe_repository_coherence,
 // so the witness compares against the same reading it audits rather than a second spelling. The
 // treeish is the candidate oid, not the string HEAD: the probe runs after the transition, and naming
 // the oid means "worktree equals THIS revision's tree" — the claim the stall names — instead of
@@ -169,16 +178,20 @@ fn worktree_readback_verdict(diff_exit_code: Int, diff_paths_nul: String, diff_s
   }
 }
 
-fn probe_worktree_matches_candidate(repo: String, candidate: String) -> Bool {
+fn probe_worktree_matches_candidate(repo: String, candidate: String) -> WorktreeReadback {
   let diff = git.Core.TrackedWorktreeDiffFromInRepo(repository_path: repo, treeish: candidate as GitRef)
-  match worktree_readback_verdict(
+  worktree_readback_verdict(
     diff_exit_code: diff.exit_code,
     diff_paths_nul: diff.paths_nul,
     diff_stderr: diff.stderr,
-  ) {
-    WorktreeCleanAgainstCandidate => true
-    WorktreeDiffers { differing_paths: _ } => false
-    WorktreeUnreadable { exit_code: _, stderr: _ } => false
+  )
+}
+
+fn worktree_readback_diagnostic(verdict: WorktreeReadback) -> String {
+  match verdict {
+    WorktreeCleanAgainstCandidate => ""
+    WorktreeDiffers { differing_paths: differing_paths } => join(["worktree differs from the candidate tree at: ", differing_paths], "")
+    WorktreeUnreadable { exit_code: exit_code, stderr: stderr } => join(["worktree: unreadable (exit ", to_string(exit_code), "): ", stderr], "")
   }
 }
 
@@ -205,18 +218,22 @@ fn bytes_readback_verdict(
   }
 }
 
-fn probe_file_bytes(path: String, expected: String) -> Bool {
+fn probe_file_bytes(path: String, expected: String) -> BytesReadback {
   let read = Filesystem.Read(path: path)
-  match bytes_readback_verdict(
+  bytes_readback_verdict(
     read_success: read.success,
     read_content: read.content,
     read_error: read.error,
     read_error_kind: read.error_kind,
     expected: expected,
-  ) {
-    BytesAsExpected => true
-    BytesWrong { observed: _ } => false
-    BytesUnreadable { error: _, error_kind: _ } => false
+  )
+}
+
+fn bytes_readback_diagnostic(verdict: BytesReadback, path: String) -> String {
+  match verdict {
+    BytesAsExpected => ""
+    BytesWrong { observed: observed } => join(["bytes at ", path, ": observed ", observed], "")
+    BytesUnreadable { error: error, error_kind: error_kind } => join(["bytes at ", path, ": unreadable (", error_kind, "): ", error], "")
   }
 }
 
@@ -240,17 +257,23 @@ fn git_head_file_readback_verdict(read_success: Bool, read_content: String, read
   }
 }
 
-fn probe_not_initialized(git_head_path: String) -> Bool {
+fn probe_not_initialized(git_head_path: String) -> GitHeadFileReadback {
   let read = Filesystem.Read(path: git_head_path)
-  match git_head_file_readback_verdict(
+  git_head_file_readback_verdict(
     read_success: read.success,
     read_content: read.content,
     read_error: read.error,
     read_error_kind: read.error_kind,
-  ) {
-    GitHeadFileAbsent => true
-    GitHeadFilePresent { content: _ } => false
-    GitHeadFileUnreadable { error: _, error_kind: _ } => false
+  )
+}
+
+// The accepted arm here is ABSENCE, so "present" is the refusal carrying what was read: a transition
+// that initialized over the stray file is witnessed with the HEAD text it wrote, not a bare false.
+fn git_head_file_readback_diagnostic(verdict: GitHeadFileReadback) -> String {
+  match verdict {
+    GitHeadFileAbsent => ""
+    GitHeadFilePresent { content: content } => join([".git/HEAD was written: ", content], "")
+    GitHeadFileUnreadable { error: error, error_kind: error_kind } => join([".git/HEAD: unreadable (", error_kind, "): ", error], "")
   }
 }
 
@@ -381,20 +404,58 @@ fn remove_scratch(s: BootstrapScratch) -> Bool {
   fixture_remove_tree(path: s.root)
 }
 
+// THE CAUSES ARE READ ON THE EXECUTING ROUTE (review 82686). These two tests answer with
+// ProcessExit, and the witness's own failure reason is the joined text of whatever the probes
+// carried: the op's own stderr on an unreadable observation, the observed value on a wrong one, the
+// differing paths on a dirty worktree. claim_batch prints that reason on its FAIL row (std.process's
+// 2026-09-13 note: "printed on the claim_batch FAIL row"), so a stall is reported WITH the
+// observation that shows it — no operator re-runs anything to learn which of the facts was wrong,
+// and "could not observe" never reaches CI as a bare false. A Bool return would discard the payload
+// the verdict types carry, which is what §3c calls a declaration whose consumer is missing.
+fn join_refusals(causes: List<String>) -> String {
+  join(filter(causes, (cause) => cause != ""), "; ")
+}
+
+fn refusal_or_success(refusals: List<String>) -> ProcessExit {
+  let refusal = join_refusals(causes: refusals)
+  if refusal == "" {
+    ExitSuccess
+  } else {
+    exit_failure(reason: refusal)
+  }
+}
+
 // THE READBACK IS THE CLAIM. Exit success alone would only say the transition believed itself; these
 // three facts are what the stall names, checked from outside the transition: HEAD at the candidate,
-// an index that reports no difference against it, and the tracked file holding the candidate's own
-// bytes rather than an empty checkout.
-test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_revision() -> Bool {
+// a worktree that reports no difference against the candidate's tree, and the tracked file holding
+// the candidate's own bytes rather than an empty checkout.
+test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_revision() -> ProcessExit {
   match bootstrap_scratch(populated: false) {
-    Absent => false
+    Absent => exit_failure(reason: "scratch could not be built (mktemp, mkdir, or the fixture refused); the pre-state the witness claims to observe was never established")
     Present { value: s } => {
       let outcome = run_bootstrap(s: s)
-      let read_back = probe_head_matches(repo: s.repo, expected: s.candidate)
-        && probe_worktree_matches_candidate(repo: s.repo, candidate: s.candidate)
-        && probe_file_bytes(path: concat(s.repo, "/tracked"), expected: "candidate-bytes")
+      let head_observed = probe_head_matches(repo: s.repo, expected: s.candidate)
+      // THE OBSERVATION THAT DOES THE WORKING: HEAD says one thing and the worktree says another is
+      // the stall, and it is caught HERE, before the gate is consulted — under the old bridge this
+      // probe agreed with whatever HEAD had been moved to and the witness reported success while the
+      // tree was a different revision.
+      let worktree_observed = probe_worktree_matches_candidate(repo: s.repo, candidate: s.candidate)
+      let tracked_path = concat(s.repo, "/tracked")
+      let tracked_observed = probe_file_bytes(path: tracked_path, expected: "candidate-bytes")
       let cleaned = remove_scratch(s: s)
-      match outcome { ExitSuccess => read_back && cleaned  ExitFailure { reason: _ } => false }
+      // THE GATE IS STILL DEMANDED: an accept is an accept, not an absence of an observed fault —
+      // the arm a pure no-op transition cannot survive (its red is the acceptance-must-be-demanded
+      // mutation, see the file header's RED list in the PR body).
+      refusal_or_success(refusals: [
+        match outcome {
+          ExitSuccess => ""
+          ExitFailure { code: code, reason: reason } => join(["transition did not report acceptance (exit ", to_string(code), "): ", reason], "")
+        },
+        head_readback_diagnostic(verdict: head_observed, expected: s.candidate),
+        worktree_readback_diagnostic(verdict: worktree_observed),
+        bytes_readback_diagnostic(verdict: tracked_observed, path: tracked_path),
+        if cleaned { "" } else { "scratch root could not be removed" },
+      ])
     }
   }
 }
@@ -402,16 +463,26 @@ test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_re
 // THE DISCRIMINATOR, and without it the arm above would pass just as well if the bootstrap had
 // simply replaced the pre-state refusal. A directory holding a stray file is not empty, so it is
 // not a bootstrap subject, and the transition must still refuse -- leaving the stray file untouched,
-// which is what proves nothing was initialized over somebody else's bytes.
-test fn a_root_holding_content_without_a_repository_still_refuses_and_is_not_initialized() -> Bool {
+// which is what proves nothing was initialized over somebody else's bytes. The refusal arms carry
+// their own evidence: the stray file's actual bytes, or the HEAD text a repository wrote.
+test fn a_root_holding_content_without_a_repository_still_refuses_and_is_not_initialized() -> ProcessExit {
   match bootstrap_scratch(populated: true) {
-    Absent => false
+    Absent => exit_failure(reason: "scratch could not be built (mktemp, mkdir, fixture, or the stray-file write refused); the populated pre-state was never established")
     Present { value: s } => {
       let outcome = run_bootstrap(s: s)
-      let untouched = probe_file_bytes(path: concat(s.repo, "/stray-file"), expected: "stray")
-        && probe_not_initialized(git_head_path: concat(s.repo, "/.git/HEAD"))
+      let stray_path = concat(s.repo, "/stray-file")
+      let stray_observed = probe_file_bytes(path: stray_path, expected: "stray")
+      let git_head_observed = probe_not_initialized(git_head_path: concat(s.repo, "/.git/HEAD"))
       let cleaned = remove_scratch(s: s)
-      match outcome { ExitFailure { reason: _ } => untouched && cleaned  ExitSuccess => false }
+      refusal_or_success(refusals: [
+        match outcome {
+          ExitSuccess => "the transition ACCEPTED a root that held content without a repository"
+          ExitFailure { reason: _ } => ""
+        },
+        bytes_readback_diagnostic(verdict: stray_observed, path: stray_path),
+        git_head_file_readback_diagnostic(verdict: git_head_observed),
+        if cleaned { "" } else { "scratch root could not be removed" },
+      ])
     }
   }
 }
