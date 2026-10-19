@@ -12,6 +12,10 @@ import gunbc.rung_drop_removal {
 }
 import gunbc.rung_drop_removal.roster { rung_drop_removal_roster }
 import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.rung_drop { RungDrop }
+import gunbc.design_ledgers { rung_drop_removal_blocks }
+import std.markdown { MarkdownDocument }
+import extdeps.languages.markdown { serialize_markdown_source }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -145,4 +149,21 @@ test fn every_rostered_removal_holds_at_head() -> Bool {
     RemovalHolds => true
     _ => false
   })
+}
+
+fn rendered_removals_of(identity: String) -> String {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: flat_map(
+    filter(rung_drop_roster, d => (d.identity as String) == identity),
+    d => rung_drop_removal_blocks(d: d),
+  ) })
+}
+
+// THE LEDGER CONSUMES THE ROSTER. A drop with a record renders its deleting commit and path; a drop
+// without one renders nothing, so a renderer that printed every record under every drop is caught.
+test fn the_rung_drop_ledger_renders_a_drops_removal_and_only_its_own() -> Bool {
+  let shown = rendered_removals_of(identity: "regen_producer")
+  shown.contains("3b431f34a9e829809e07621d80ae9429e80f2e17")
+    && shown.contains("src/v1/stage0/src/bin/regen_stage0.rs")
+    && !shown.contains("d3bebd0072feed2afeb7e45f07aa7fc6da69453b")
+    && rendered_removals_of(identity: "floor_cut_heal") == ""
 }

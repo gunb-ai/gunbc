@@ -2,6 +2,7 @@ module gunbc.rung_drop_removal
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, GitRef }
 import std.algebra { trim, FreeSemigroup, non_empty_to_list }
+import std.integer { int_to_decimal_string }
 import extdeps.git.plumbing
 import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
 import extdeps.git.inspect
@@ -180,4 +181,16 @@ fn every_removal_names_a_rostered_drop(removals: List<SubjectRemoval>, drop_iden
   fold(removals, init: true, f: fn(acc, r) {
     acc && length(xs: filter(drop_identities, i => i == (r.drop_identity as String))) == 1
   })
+}
+
+fn removed_paths_text(r: SubjectRemoval) -> String {
+  fold(non_empty_to_list(xs: r.removed_paths), init: "", f: fn(acc, p) {
+    if acc == "" { concat("`", concat(p as String, "`")) } else { concat(acc, concat(", `", concat(p as String, "`"))) }
+  })
+}
+
+// WHAT THE LEDGER PRINTS FOR A REMOVAL. It states the record, not the verification: the law is
+// observed_removal_verdict, executed by test.claim.rung_drop_removal_witness against a repository.
+fn rung_drop_removal_message(r: SubjectRemoval) -> String {
+  join(["**Cited artifacts removed** by commit `", r.commit as String, "` (gunbc#", int_to_decimal_string(value: r.pr), "): ", removed_paths_text(r: r)], "")
 }

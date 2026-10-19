@@ -42,3 +42,8 @@ data rung_drop_removal_roster: List<SubjectRemoval> = [
     removed_paths: FreeSemigroup { head: ".github/workflows/ci.yml", tail: [] },
   },
 ]
+
+// THE JOIN THE PROJECTION FOLDS, so a drop's removals are selected in one place (as amendments_for_drop).
+fn removals_for_drop(identity: NonEmptyStr) -> List<SubjectRemoval> {
+  filter(rung_drop_removal_roster, r => (r.drop_identity as String) == (identity as String))
+}
