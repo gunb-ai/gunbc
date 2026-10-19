@@ -546,6 +546,7 @@ import extdeps.tools.gnu_coreutils {
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
+import extdeps.rust.cargo { cargo_default_release_dir }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -5006,7 +5007,7 @@ fn approval_broker_tree_install_observed(
   let after_binary = tree_run_step(state: after_files, step: TreeStepInstallBinary, transport: transport, command: sudo_elevate_command(
     command: coreutils_install_file_owned_argv(
       mode: install_executable_shared_mode, owner: owner, group: owner,
-      source: join([source_root, "/target/release/", gunbc_release_bin_name], ""),
+      source: join([cargo_default_release_dir(build_root: source_root), "/", gunbc_release_bin_name], ""),
       dest: join([locus, "/", gunbc_release_bin_name], ""))))
   match after_binary {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
@@ -5014,7 +5015,7 @@ fn approval_broker_tree_install_observed(
       match observe_tree_hashes(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepReadback, reason: why }
         TreeObserved { entries: installed } =>
-          match sha256_disagreement_text(agreement: tree_binary_agreement(source_path: join([source_root, "/target/release/", gunbc_release_bin_name], ""), installed_path: join([locus, "/", gunbc_release_bin_name], ""), transport: transport)) {
+          match sha256_disagreement_text(agreement: tree_binary_agreement(source_path: join([cargo_default_release_dir(build_root: source_root), "/", gunbc_release_bin_name], ""), installed_path: join([locus, "/", gunbc_release_bin_name], ""), transport: transport)) {
             Present { value: why } =>
               TreeInstallRefused { step: TreeStepReadback, reason: join(["the installed binary ", gunbc_release_bin_name, " under ", locus, " does not hash equal to the source binary (", why, "); no receipt was written"], "") }
             Absent =>

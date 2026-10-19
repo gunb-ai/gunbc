@@ -10,6 +10,7 @@ import std.content_hash {
   serialize_content_hash,
 }
 import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, systemd_unit_active_state_wire_label }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // A DEPLOYMENT CONVERGES ON IDENTITIES, NOT ON PATHS. gunbc.live_deploy.emit deployment_apply_plan
 // reconciles the desired roster against `observed: []`, so every member is an add on every apply
@@ -312,7 +313,7 @@ fn member_refusal_text(c: MemberRefusalCause) -> String {
       ], "")
     DecisionFiledUnderAnotherMember { found } => join(["decision slot holds a decision about ", converged_member_label(m: found)], "")
     DesiredExecutableUnreadable { cause } => join(["the release executable could not be read in the deploying checkout: ", cause], "")
-    DesiredExecutableAbsent => "the release executable target/release/gunbc is absent from the deploying checkout; build before deploying"
+    DesiredExecutableAbsent => join(["the release executable ", cargo_default_release_dir_rel, "/gunbc is absent from the deploying checkout; build before deploying"], "")
     DesiredIdentityUnavailable => "this member has no desired identity in the current placement; fabricating a placeholder identity is refused"
   }
 }

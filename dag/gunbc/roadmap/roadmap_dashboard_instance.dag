@@ -83,6 +83,7 @@ import gunbc.host.host_layout {
   srv1_host_layout,
   srv2_host_layout,
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 type DashboardActuationPosture
   = DashboardObserveOnly
@@ -2051,7 +2052,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       controller_repo: dashboard_instance_controller_workdir(instance: instance),
       built_binary: dashboard_instance_child(
         root: dashboard_instance_controller_workdir(instance: instance),
-        child: "target/release/gunbc",
+        child: cargo_default_release_dir_rel,
       ),
       path: instance.serve_binary,
     },
