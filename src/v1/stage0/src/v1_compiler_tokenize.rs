@@ -1535,9 +1535,9 @@ pub fn drop_last(stack: Rc<Vec<i64>>) -> Rc<Vec<i64>> {
         .cloned()
         .fold(Rc::new(vec![]), |result: Rc<Vec<i64>>, pair: (i64, i64)| {
             if (pair.0.clone() < v1_rt::int_sub(len.clone(), 1)) {
-                Rc::new(v1_rt::append(result.clone(), pair.1.clone()))
+                Rc::new(v1_rt::append(result, pair.1.clone()))
             } else {
-                result.clone()
+                result
             }
         })
     }
@@ -1553,10 +1553,24 @@ pub fn replace_last(stack: Rc<Vec<i64>>, value: i64) -> Rc<Vec<i64>> {
 pub fn skip_spaces(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<TokPos> {
     {
         let p = source_skip_ws(source.clone(), pos.pos.clone());
-        Rc::new(TokPos {
-            pos: p.clone(),
-            interp_depth: pos.interp_depth.clone(),
-        })
+        {
+            let __rb_0_0 = p.clone();
+            let __rb_1_0 = pos.interp_depth.clone();
+            let mut __rb_h = pos;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.pos = __rb_0_0;
+                    __rb_r.interp_depth = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(TokPos {
+                        pos: __rb_0_0,
+                        interp_depth: __rb_1_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 

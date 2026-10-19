@@ -1588,25 +1588,10 @@ pub fn cross_file_binding_provenance_fold_step(
         let projection =
             cross_file_binding_provenance_from_provider(provider.clone(), acc.module_files.clone());
         match (*projection.clone()).clone() {
-    CrossFileBindingProvenanceProjection::CrossFileBindingProvenanceProjectionBound { provenance: provenance, .. } => Rc::new(CrossFileBindingProvenanceBuild {
-    module_files: acc.module_files.clone(),
-    provenances_reversed: v1_rt::concat(Rc::new(vec![provenance.clone()]), acc.provenances_reversed.clone()),
-    first_failure: acc.first_failure.clone(),
-    more_failures_reversed: acc.more_failures_reversed.clone(),
-}),
+    CrossFileBindingProvenanceProjection::CrossFileBindingProvenanceProjectionBound { provenance: provenance, .. } => { let __rb_0_0 = acc.module_files.clone(); let __rb_1_0 = v1_rt::concat(Rc::new(vec![provenance.clone()]), acc.provenances_reversed.clone()); let __rb_2_0 = acc.first_failure.clone(); let __rb_3_0 = acc.more_failures_reversed.clone(); let mut __rb_h = acc; match Rc::get_mut(&mut __rb_h) { Some(__rb_r) => { __rb_r.module_files = __rb_0_0; __rb_r.provenances_reversed = __rb_1_0; __rb_r.first_failure = __rb_2_0; __rb_r.more_failures_reversed = __rb_3_0; } None => { __rb_h = Rc::new(CrossFileBindingProvenanceBuild { module_files: __rb_0_0, provenances_reversed: __rb_1_0, first_failure: __rb_2_0, more_failures_reversed: __rb_3_0 }); } } __rb_h },
     CrossFileBindingProvenanceProjection::CrossFileBindingProvenanceProjectionFilePathMissing { module_path: _, .. } => match acc.first_failure.clone() {
-    std::option::Option::None => Rc::new(CrossFileBindingProvenanceBuild {
-    module_files: acc.module_files.clone(),
-    provenances_reversed: acc.provenances_reversed.clone(),
-    first_failure: Some(projection.clone()),
-    more_failures_reversed: acc.more_failures_reversed.clone(),
-}),
-    Some(_) => Rc::new(CrossFileBindingProvenanceBuild {
-    module_files: acc.module_files.clone(),
-    provenances_reversed: acc.provenances_reversed.clone(),
-    first_failure: acc.first_failure.clone(),
-    more_failures_reversed: v1_rt::concat(Rc::new(vec![projection.clone()]), acc.more_failures_reversed.clone()),
-}),
+    std::option::Option::None => { let __rb_0_0 = acc.module_files.clone(); let __rb_1_0 = acc.provenances_reversed.clone(); let __rb_2_0 = Some(projection.clone()); let __rb_3_0 = acc.more_failures_reversed.clone(); let mut __rb_h = acc; match Rc::get_mut(&mut __rb_h) { Some(__rb_r) => { __rb_r.module_files = __rb_0_0; __rb_r.provenances_reversed = __rb_1_0; __rb_r.first_failure = __rb_2_0; __rb_r.more_failures_reversed = __rb_3_0; } None => { __rb_h = Rc::new(CrossFileBindingProvenanceBuild { module_files: __rb_0_0, provenances_reversed: __rb_1_0, first_failure: __rb_2_0, more_failures_reversed: __rb_3_0 }); } } __rb_h },
+    Some(_) => { let __rb_0_0 = acc.module_files.clone(); let __rb_1_0 = acc.provenances_reversed.clone(); let __rb_2_0 = acc.first_failure.clone(); let __rb_3_0 = v1_rt::concat(Rc::new(vec![projection.clone()]), acc.more_failures_reversed.clone()); let mut __rb_h = acc; match Rc::get_mut(&mut __rb_h) { Some(__rb_r) => { __rb_r.module_files = __rb_0_0; __rb_r.provenances_reversed = __rb_1_0; __rb_r.first_failure = __rb_2_0; __rb_r.more_failures_reversed = __rb_3_0; } None => { __rb_h = Rc::new(CrossFileBindingProvenanceBuild { module_files: __rb_0_0, provenances_reversed: __rb_1_0, first_failure: __rb_2_0, more_failures_reversed: __rb_3_0 }); } } __rb_h },
 },
 }
     }
