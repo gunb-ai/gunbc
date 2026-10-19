@@ -238,7 +238,7 @@ type DriftPopulation
 // workflow beside five ordinary artifacts would publish NOTHING.
 //
 // THAT SHAPE IS COMMON, NOT EXOTIC: one edit to gunbc.ci.ci_spec regenerates witnesses.yml AND
-// docs/design-rung-drops.md together, which is exactly what the change introducing this filter did.
+// `gunbc.design_ledgers` `expected_design_rung_drops_md` together, which is exactly what the change introducing this filter did.
 // The heal job this replaced pushed what it could and bundled the rest for the author; proposing the
 // unpublishable path and being refused wholesale is strictly worse than either.
 //

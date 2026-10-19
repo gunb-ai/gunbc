@@ -623,7 +623,7 @@ fn capture_source_snapshot(
 // class never held higher here: the route is new, and its first honest reading is the one written
 // above. So it is rostered as `gunbc.recurring_failure_mode`
 // `a_pathname_reresolves_its_ancestry_between_calls` -- found at mitigatable, ceiling structurally
-// impossible, trigger as stated -- and nothing is owed to `docs/design-rung-drops.md`.
+// impossible, trigger as stated -- and nothing is owed to `gunbc.design_ledgers` `expected_design_rung_drops_md`.
 type ProviderWorkspace sole_constructor {
   root: NonEmptyStr
 }

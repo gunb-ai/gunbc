@@ -113,7 +113,7 @@ type CallSiteDemandCause
 // the projection rule would decline at a finer grain -- never one the fold without this rule would
 // have declined -- so it is a missed refusal with a located population, not a widening; its
 // next-rung trigger is the dependency read
-// set of demand-engine M1 (docs/plans/demand-engine-program.md), which carries every projection a
+// set of demand-engine M1 (`gunbc.plans.demand_engine_program`), which carries every projection a
 // consumer reads off a value rather than only the immediate one.
 //   ProjectionFieldNameUnreadable -- the call is a field access's base, and reading the field's
 //                                    name failed: a projection of unknown grain.

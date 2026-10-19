@@ -9,7 +9,7 @@ import gunbc.design_ruling { project_documentation_projections_are_not_checkout_
 fn resolver_type_name_collision_wall_body() -> List<MarkdownBlock> {
   [
     p(text: "Status: **MODEL — SIGNED (parent bright-stag, 2026-06-23).** The model (mechanism + Q2 policy + activation) is signed; **no resolver edit lands** until the §4 grounding de-fork is clean — the resolver guard is a separate, operator-gated future PR that lands on the de-forked tree. This document is the signed model; §3/§4 record the final ruling."),
-    p(text: "Owner: jolly-ant-231 (deepest resolver context from the A1 diagnosis). Capstone of the std de-fork lane. Q2 evidence: `docs/plans/dag-v2-defork-audit.md` §2A (executed distribution)."),
+    p(text: "Owner: jolly-ant-231 (deepest resolver context from the A1 diagnosis). Capstone of the std de-fork lane. Q2 evidence: `gunbc.plans.dag_v2_defork_audit` §2A (executed distribution)."),
     hr(),
     h2(text: "1. The hole this wall closes (grounding)"),
     p(text: "The A1 (#5615) incident — `type 'EqualsClaim' not found in scope` on `src/v2/workflow/affected_set_floor_runner_test.dag` — was a **fail-OPEN in the resolver** (DESIGN §5): a wrong type resolution passed silently as a different, plausible binding."),
@@ -78,7 +78,7 @@ fn resolver_type_name_collision_wall_body() -> List<MarkdownBlock> {
       ],
     },
     h3(text: "RULED — `flag-ANY` (parent bright-stag, signed 2026-06-23)"),
-    p(text: "**`require_structural_divergence = FALSE`.** Settled against the measured distribution (the executed per-basename audit in `docs/plans/dag-v2-defork-audit.md` §2A — `structural_inequality` run over all 9 std basename pairs + a 351-entry floor-closure reachability BFS). The audit confirmed the cant-unify-yet set (basenames needing a milestone *later than* the grounding de-fork) is **\{node, coercion\} exactly** — no third stuck mirror — so flag-ANY does not block on an un-unifiable pair."),
+    p(text: "**`require_structural_divergence = FALSE`.** Settled against the measured distribution (the executed per-basename audit in `gunbc.plans.dag_v2_defork_audit` §2A — `structural_inequality` run over all 9 std basename pairs + a 351-entry floor-closure reachability BFS). The audit confirmed the cant-unify-yet set (basenames needing a milestone *later than* the grounding de-fork) is **\{node, coercion\} exactly** — no third stuck mirror — so flag-ANY does not block on an un-unifiable pair."),
     p(text: "Two consequences parent reconfirmed:"),
     ul(items: [
       li(text: "**flag-ANY FIRES on byte-identical mirror shared type-names too** (the audit's 3 in `algebra`, 3 in `integer`, 1 in `float`), not only on differing ones. This is **intended**: a byte-identical mirror is still *two homes for one type* = the §3 single-authority violation and a writable re-fork surface. So the de-fork must **merge even the mirrors** (delete the v2 copy, repoint imports), and flag-ANY is exactly what forces that. flag-DIVERGENT would *tolerate* the byte-mirrors — a standing §3 hole — so it is strictly worse here (it also still fires on every grounding, sparing nothing). Mirrors are therefore **resolved by the de-fork, not exempted**."),
@@ -110,7 +110,7 @@ fn resolver_type_name_collision_wall_body() -> List<MarkdownBlock> {
     ]),
     h2(text: "7. Open items"),
     ul(items: [
-      li(text: "**RESOLVED** — Q2 policy: `flag-ANY` signed (§3); per-basename audit executed and homed in `docs/plans/dag-v2-defork-audit.md` §2A; activation gate set to the five-basename grounding de-fork (§4). Roster: deliberately empty (§3)."),
+      li(text: "**RESOLVED** — Q2 policy: `flag-ANY` signed (§3); per-basename audit executed and homed in `gunbc.plans.dag_v2_defork_audit` §2A; activation gate set to the five-basename grounding de-fork (§4). Roster: deliberately empty (§3)."),
       li(text: "Carried to the future resolver PR (not this model): confirm both import-binding assembly sites (~11761, ~12355) are the only type-binding merge loci (the `std.types`-special-cased branch folds key-by-key already and is naturally covered by the same checked-merge helper)."),
       li(text: "Dependency owned elsewhere: the five-basename grounding de-fork (`algebra` authority ruled; `nat`/`integer`/`float` via #5428 numeric tower; `effects` axis decision) must complete before the guard PR can land green. `\{node, coercion\}` basename de-fork stays on the Route-C / v1-delete surface (audit category-(c)), unaffected by this guard."),
     ]),

@@ -39,6 +39,20 @@ test fn witness_the_design_document_is_in_neither_roster() -> Bool {
     && !any(tier_o_artifacts(), a => artifact_path(a: a) == "DESIGN.md")
 }
 
+// INHABITANCE PAIRING for the heal witnesses, which SUPPLY committed artifact paths rather than derive them.
+// The real producer commits the design document, the gitignore and the workflow projections, and does
+// NOT commit the documentation projections gunbc.generated_artifact marks NotCommitted. A supplied
+// list naming one of those would be a hypothesis the real path contradicts; deleting this claim
+// would let the fixtures drift from committed_generated_artifact_paths again.
+test fn witness_the_committed_paths_the_heal_witnesses_supply_inhabit_the_real_producer() -> Bool {
+  registry_commits(path: "DESIGN.md")
+    && registry_commits(path: ".gitignore")
+    && registry_commits(path: ".github/workflows/witnesses.yml")
+    && !registry_commits(path: "ROADMAP.md")
+    && !registry_commits(path: "docs/design-rung-drops.md")
+    && !registry_commits(path: "docs/onboarding.md")
+}
+
 test fn witness_the_two_rosters_share_no_artifact() -> Bool {
   !any(seed_build_artifacts(), a => any(tier_o_artifacts(), b => artifact_path(a: b) == artifact_path(a: a)))
 }

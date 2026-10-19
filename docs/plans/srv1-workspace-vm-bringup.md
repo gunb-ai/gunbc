@@ -480,7 +480,7 @@ previous permanent masks. The pre-maintenance unit census is retained as evidenc
 
 This is ordinary domain composition using the existing `ensure` decision and
 fleet plan, not a claim that the generic completion/elaboration engine proposed
-in `docs/plans/ensure-closure-design.md` has been implemented.
+in `gunbc.plans.ensure_closure_design` has been implemented.
 
 The read-only package simulation on srv1 selects Ubuntu's arm64 HWE meta-package
 `linux-generic-hwe-24.04=7.0.0-38.38~24.04.4`. It adds eight packages, upgrades

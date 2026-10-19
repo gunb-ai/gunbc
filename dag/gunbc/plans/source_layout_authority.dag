@@ -211,7 +211,7 @@ fn source_layout_authority_design_and_plan() -> List<MarkdownBlock> {
     ul(items: [
       li(text: "`docs/plans/namespace-resolution-design.md` — §10 (a module's position is declared, never inferred from storage; the `module` header is placement sugar that ends as a projection) is satisfied by declaring the rule; §13's unique-on-chain resolution is R1."),
       li(text: "`docs/plans/namespace-cut-replacement-plan.md` — its \"parse-then-derive\" closure mechanism is §4.5; stage XL-3 overlaps C2."),
-      li(text: "`docs/plans/demand-engine-program.md` — §1's unruled next derivation (\"an authority cheaper than full ingestion … a source-root manifest … the module dependency closure of the requested targets\") and M3a's context-assembly note are C3."),
+      li(text: "`gunbc.plans.demand_engine_program` — §1's unruled next derivation (\"an authority cheaper than full ingestion … a source-root manifest … the module dependency closure of the requested targets\") and M3a's context-assembly note are C3."),
       li(text: "`docs/plans/replacement-migration-doctrine.md` — the whole PR is one replacement migration; it deletes what it replaces."),
       li(text: "gunb-ai/gunbc#13674 — independent of this plan (R9)."),
       li(text: "`gunbc.generated_artifact_registry` — unchanged; not consulted by the check."),

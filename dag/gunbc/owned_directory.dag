@@ -41,7 +41,7 @@ import std.realization_reconcile {
   classify_reconciled,
 }
 
-// THE OwnedDirectory TARGET OF D14 (docs/plans/ensure-closure-design.md section 3.1), built corpus-only
+// THE OwnedDirectory TARGET OF D14 (`gunbc.plans.ensure_closure_design` section 3.1), built corpus-only
 // for the dashboard instance's directories ahead of D14 step 4. A target is a desired environmental
 // fact at a placement: a directory at a path, owned by a principal, at a mode. The host is the
 // placement of whatever realizes the target -- the dashboard apply's target exec or the live_deploy

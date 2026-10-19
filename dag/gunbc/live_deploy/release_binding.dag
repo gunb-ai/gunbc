@@ -73,7 +73,7 @@ import gunbc.live_deploy.deployed_tree_observation {
 // nothing observable differs. What remains genuinely open is executable-bytes provenance: two
 // binaries agreeing on this tree's rendered surface are not thereby the same binary. That stays a
 // declared future refinement dependent on something observing the binary's bytes, exactly as
-// before, and docs/plans/deploy-convergence-observed-side.md's reason for NOT authoring an
+// before, and `gunbc.plans.deploy_convergence_observed_side`'s reason for NOT authoring an
 // `executable_identity` field today is unchanged by this change.
 //
 // RUNG: mitigatable. The climb is in what the fold requires, not in how it is enforced.
