@@ -8458,9 +8458,20 @@ fn infer_operand_literal(lit_expr: Node, other: Node, scope: InferScope) -> Infe
   infer_expr_body(texpr: lit_expr, scope: scope, expected: other_type)
 }
 
+fn expr_is_none_literal(expr: Node) -> Bool {
+  match expr.expr_data {
+    ExprLiteral { value: lit } =>
+      match lit {
+        LitNull => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
 fn infer_binop_operands(left_expr: Node, right_expr: Node, scope: InferScope) -> BinopOperands {
-  let left_is_literal = expr_is_any_literal(expr: left_expr)
-  let right_is_literal = expr_is_any_literal(expr: right_expr)
+  let left_is_literal = expr_is_any_literal(expr: left_expr) || expr_is_none_literal(expr: left_expr)
+  let right_is_literal = expr_is_any_literal(expr: right_expr) || expr_is_none_literal(expr: right_expr)
   if right_is_literal && !left_is_literal {
     let l = infer_expr(texpr: left_expr, scope: scope, expected: none)
     BinopOperands { left: l, right: infer_operand_literal(lit_expr: right_expr, other: l.typed, scope: scope) }
