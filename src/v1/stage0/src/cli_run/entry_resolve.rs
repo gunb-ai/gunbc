@@ -211,20 +211,32 @@ pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
     build_module_path_index(&default_source_roots())
 }
 
-/// THE PANICKING WRAPPER, RETAINED FOR CALLERS WHOSE INPUTS ARE ALREADY
-/// INVARIANT-ESTABLISHED. New callers on a user-supplied path must use
-/// `try_build_module_index` -- a missing root, an unreadable directory or a non-UTF-8
-/// source is an ORDINARY, USER-CAUSED condition and owes a typed located refusal, not a
-/// panic four frames down (DESIGN §5).
-pub(crate) fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
-    try_build_module_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
+/// The refusing form of `try_build_module_index`: a missing root, an unreadable directory, a
+/// non-UTF-8 source or a directory named like a `.dag` is an ordinary, user-caused condition and
+/// owes a typed located refusal, so it prints the cause and exits 1, the exit class the other
+/// infallible index consumers already carry (`refuse_module_index`). It never panics.
+pub(crate) fn build_module_index_or_refuse(source_roots: &[String]) -> ModuleSourceIndex {
+    match try_build_module_index(source_roots) {
+        Ok(index) => index,
+        Err(refusal) => refuse_module_index_build(&refusal),
+    }
 }
 
 /// `primary-precedence` pool indexing: the first root is authoritative; later roots
 /// fill only modules not already present (matches `gunbc compile --dependency-pool-index
 /// primary-precedence` in `dag_compile_clean_transport`).
-pub(crate) fn build_module_index_primary_precedence(source_roots: &[String]) -> ModuleSourceIndex {
-    try_build_module_index_primary_precedence(source_roots).unwrap_or_else(|e| panic!("{e}"))
+pub(crate) fn build_module_index_primary_precedence_or_refuse(
+    source_roots: &[String],
+) -> ModuleSourceIndex {
+    match try_build_module_index_primary_precedence(source_roots) {
+        Ok(index) => index,
+        Err(refusal) => refuse_module_index_build(&refusal),
+    }
+}
+
+fn refuse_module_index_build(refusal: &str) -> ! {
+    eprintln!("module index refused: {refusal}");
+    std::process::exit(1)
 }
 
 fn file_key_in_workspace(workspace: &Path, rel: &str) -> String {
@@ -2371,7 +2383,7 @@ pub fn whole_tree_strict_sources(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<WholeTreeStrictSources, String> {
-    let index = build_module_index(source_roots);
+    let index = build_module_index_or_refuse(source_roots);
     let total = index.len();
     let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
         .iter()

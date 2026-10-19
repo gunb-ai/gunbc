@@ -11698,7 +11698,7 @@ pub struct MultiEntryIndex {
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    new_multi_entry_index_shell(build_module_index(source_roots), source_roots)
+    new_multi_entry_index_shell(build_module_index_or_refuse(source_roots), source_roots)
 }
 
 /// Primary-precedence `MultiEntryIndex` — the index shape the compile-clean gate
@@ -11712,7 +11712,7 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
     #[cfg(test)]
     yield_live_pool_before_building_another();
     new_multi_entry_index_shell(
-        build_module_index_primary_precedence(source_roots),
+        build_module_index_primary_precedence_or_refuse(source_roots),
         source_roots,
     )
 }
@@ -12292,7 +12292,10 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v2".to_string(),
         "src/v1".to_string(),
     ];
-    new_multi_entry_index_shell(build_module_index_primary_precedence(&roots), &roots)
+    new_multi_entry_index_shell(
+        build_module_index_primary_precedence_or_refuse(&roots),
+        &roots,
+    )
 }
 
 /// Per-entry stage attribution for the one-lump `resolve_nanos` (run-stability
@@ -15906,7 +15909,7 @@ pub fn precompute_whole_tree_published_mock_keys(
         return Ok(std::collections::HashSet::new());
     }
     let t2a = std::time::Instant::now();
-    let index = build_module_index(&dag_roots);
+    let index = build_module_index_or_refuse(&dag_roots);
     eprintln!(
         "[floor-phase] phase=module-index state=completed wall_ms={} modules={}",
         t2a.elapsed().as_millis(),
@@ -29563,13 +29566,13 @@ mod module_path_index_tests {
         ];
         // RED control: same module declared in two files refuses loudly.
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index(&roots)
+            super::build_module_index_or_refuse(&roots)
         }))
         .is_err();
         // GREEN control: distinct modules build fine.
         std::fs::write(root_b.join("m.dag"), "module collision.other\n").unwrap();
         let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index(&roots)
+            super::build_module_index_or_refuse(&roots)
         }))
         .is_ok();
         std::fs::remove_dir_all(&dir).ok();
@@ -29592,13 +29595,13 @@ mod module_path_index_tests {
         // target/func_env_semantic_baseline_corpus tripped the collision wall).
         std::fs::write(root.join("Cargo.toml"), "[package]\n").unwrap();
         let indexed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index(&roots)
+            super::build_module_index_or_refuse(&roots)
         }));
         // RED control: without Cargo.toml the same layout is two source files
         // declaring one module — the wall must still refuse.
         std::fs::remove_file(root.join("Cargo.toml")).unwrap();
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index(&roots)
+            super::build_module_index_or_refuse(&roots)
         }))
         .is_err();
         std::fs::remove_dir_all(&dir).ok();
@@ -31354,7 +31357,7 @@ fn serialize_untagged_variant(
 #[cfg(test)]
 mod import_closure_equivalence_tests {
     use super::{
-        build_module_graph_facts_live, build_module_index, build_multi_entry_index,
+        build_module_graph_facts_live, build_module_index_or_refuse, build_multi_entry_index,
         closure_subject_for_entry, default_source_roots, import_closure_live_paths,
         load_sources_for_entry_with_index, module_graph_facts_build_count_for_test,
         reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
@@ -31421,7 +31424,7 @@ mod import_closure_equivalence_tests {
     }
 
     fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
-        let index = build_module_index(pool_roots);
+        let index = build_module_index_or_refuse(pool_roots);
         let facts = super::build_module_graph_facts_live(pool_roots);
         assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
     }
@@ -32880,7 +32883,7 @@ pub struct SourceCorpusRead {
 }
 
 pub fn read_source_corpus_once(source_roots: &[String]) -> SourceCorpusRead {
-    let index = build_module_index(source_roots);
+    let index = build_module_index_or_refuse(source_roots);
     let inventory = floor_source_inventory(&index);
     SourceCorpusRead { index, inventory }
 }
