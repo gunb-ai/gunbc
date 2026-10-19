@@ -1,4 +1,5 @@
 module test.claim.long.site_style_ownership_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 import gunbc.site.document { site_document_over, site_styles, site_styles_rules, site_styles_css, ApprovalShell }
 import std.list { distinct_by_key }
 import gunbc.site.layout { site_layout_rules }
@@ -57,7 +58,7 @@ test fn emitted_rogue_shadow_and_length_are_rejected_by_censuses() -> Bool {
     && count(untokened_length_decls(rules: rules)) == 1
 }
 test fn approval_shell_has_no_application_runtime_or_session_controls() -> Bool {
-  let page = serialize_html_source(node: site_document_over(title: "Approval", heading: "approval", styles: site_styles(rules: []), content: [], navigation: [], shell: ApprovalShell))
+  let page = render_html(serialize_html_source(node: site_document_over(title: "Approval", heading: "approval", styles: site_styles(rules: []), content: [], navigation: [], shell: ApprovalShell)))
   !string_contains(s: page, pattern: "<script")
     && !string_contains(s: page, pattern: "data-account-session")
     && !string_contains(s: page, pattern: "<button")

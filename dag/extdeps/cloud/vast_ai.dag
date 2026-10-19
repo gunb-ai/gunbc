@@ -221,6 +221,7 @@ type VastAiOfferQuery {
   cpu_ram_min: ByteSize
   inet_down_min: Bandwidth
   verified: Bool
+  num_gpus: Nat
 }
 
 // THE WIRE UNITS of Vast's search and offer vocabulary, converted only here: RAM counts are MB, taken as
@@ -263,6 +264,7 @@ service vast_ai.SearchOffers {
       cpu_ram_min_mb: Int
       inet_down_min_mbps: Int
       verified: Bool
+      num_gpus: Int
     }
     output {
       offers: List<VastAiOffer> from "offers"
@@ -280,6 +282,7 @@ service vast_ai.SearchOffers {
         cpu_ram: { gte: cpu_ram_min_mb },
         inet_down: { gte: inet_down_min_mbps },
         verified: { eq: verified },
+        num_gpus: { eq: num_gpus },
         rentable: { eq: true }
       }
     }
@@ -299,7 +302,9 @@ data vast_ai_search_type_bid: String = "bid"
 data vast_ai_search_type_ondemand: String = "ondemand"
 data vast_ai_search_limit_default: Int = 100
 
-// ONE INSTANCE from GET /api/v1/instances. id is the contract (create-instance returns it as
+// ONE INSTANCE from GET /api/v1/instances/ (the trailing slash is the served path: a live flex_pass on srv1,
+// fleet-converge run 39214273788, read /api/v1/instances without it and the walk refused, while a manual
+// GET of /api/v1/instances/ on 2026-10-18 answered the account's instances). id is the contract (create-instance returns it as
 // new_contract). machine_id is the host the offer named. gpu_ram is MB. min_bid / dph_total are
 // ExactDecimal for the same reason offers are. actual_status is optional: the document types it
 // string | null. No create or destroy operation is declared in this module.
@@ -354,7 +359,7 @@ service vast_ai.Instances {
     readonly
     transport rest {
       method: GET,
-      path: "/instances",
+      path: "/instances/",
       query: { select_filters: select_filters, limit: limit, after_token: after_token }
     }
     response {

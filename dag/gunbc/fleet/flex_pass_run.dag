@@ -160,7 +160,7 @@ fn flex_search(key: Secret, q: VastAiOfferQuery) -> FlexOfferSearch uses net: Ne
   match vast_ai.SearchOffers.Search(
     api_key: key, search_type: q.search_type, limit: q.limit,
     gpu_ram_min_mb: vast_ai_wire_mb(b: q.gpu_ram_min), cuda_max_good_min: q.cuda_max_good_min as Int, cpu_ram_min_mb: vast_ai_wire_mb(b: q.cpu_ram_min),
-    inet_down_min_mbps: vast_ai_wire_mbps(b: q.inet_down_min), verified: q.verified,
+    inet_down_min_mbps: vast_ai_wire_mbps(b: q.inet_down_min), verified: q.verified, num_gpus: q.num_gpus as Int,
   ) {
     RestAnswered { answer: a } => FlexOffersAnswered { offers: a.offers, hosts: a.hosts }
     RestRefused { refusal: r } => FlexOffersRefused { cause: flex_rest_refusal_text(r: r) }
@@ -251,6 +251,13 @@ fn flex_screened_line(s: FlexScreenedOffer) -> String {
   ], "")
 }
 
+fn flex_walk_refusal_wire(refused: String?) -> String {
+  match refused {
+    Absent => ""
+    Present { value: c } => concat(" refused: ", c)
+  }
+}
+
 fn flex_instances_wire(s: FlexInstancesStanding) -> String {
   match s {
     FlexInstancesUnobserved => "instances=unobserved"
@@ -282,16 +289,18 @@ fn flex_member_line(m: FlexMemberWalls) -> String {
 
 // ---- THE PASS.
 fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) -> String uses net: Network {
-  let instances = flex_instances_standing(walk: flex_walk_instances(key: key, after: none, walk: FlexInstanceWalk { pages: [], refused: none }, budget: flex_walk_page_budget))
+  let instance_walk = flex_walk_instances(key: key, after: none, walk: FlexInstanceWalk { pages: [], refused: none }, budget: flex_walk_page_budget)
+  let instances = flex_instances_standing(walk: instance_walk)
   let filter = vast_ai_charges_day_filter(range: VastAiChargesDayRange { gte: flex_trial_charges_from / milliseconds_per_second(), lte: now / milliseconds_per_second() })
-  let charges = flex_charges_standing(walk: flex_walk_charges(key: key, filter: filter, after: none, walk: FlexChargeWalk { pages: [], refused: none }, budget: flex_walk_page_budget))
+  let charge_walk = flex_walk_charges(key: key, filter: filter, after: none, walk: FlexChargeWalk { pages: [], refused: none }, budget: flex_walk_page_budget)
+  let charges = flex_charges_standing(walk: charge_walk)
   match flex_vast_offer_query(recipe: flex_serving_recipe) {
     Absent =>
-      join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), "\n", flex_charges_wire(s: charges), "\noffers=unsearched (the recipe has no Vast host filters)"], "")
+      join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n", flex_charges_wire(s: charges), "\noffers=unsearched (the recipe has no Vast host filters)"], "")
     Present { value: query } =>
   match flex_search(key: key, q: query) {
     FlexOffersRefused { cause: c } =>
-      join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), "\n", flex_charges_wire(s: charges), "\noffers=refused ", c], "")
+      join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n", flex_charges_wire(s: charges), "\noffers=refused ", c], "")
     FlexOffersAnswered { offers: offers, hosts: hosts } =>
       let screened = map(offers, o => FlexScreenedOffer {
         offer: o,
@@ -319,8 +328,8 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
       let outcome = flex_run_pass(input: input, api_key: key, releasing: none)
       join([
         "key=live secret_manager version=", resolved_version as String, "\n",
-        flex_instances_wire(s: instances), "\n",
-        flex_charges_wire(s: charges), "\n",
+        flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n",
+        flex_charges_wire(s: charges), flex_walk_refusal_wire(refused: charge_walk.refused), "\n",
         "offers=", int_to_decimal_string(value: length(offers)), " members=", int_to_decimal_string(value: length(members)), "\n",
         join(map(members, m => flex_member_line(m: m)), "\n"), "\n",
         "selection=needs-evidence (select_supply unwired: product.fabric.flex_vast_loop flex_select_supply_consumer_frontier)\n",
