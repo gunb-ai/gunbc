@@ -61,12 +61,18 @@ case $PC in
 esac
 hard_of(){ # <file> -> hard-diagnostic count for that one file, or UNKNOWN
   local d; d=$(mktemp -d); cp "$1" "$d/04_infer.dag"
-  timeout 300 gunbc compile --source-dir "$d" --output-dir "$d/out" --target rust 2>&1 \
+  timeout 300 "$GUNBC_BIN" compile --source-dir "$d" --output-dir "$d/out" --target rust 2>&1 \
     | grep -aoE "produced [0-9]+ hard" | grep -oE "[0-9]+" | head -1 || true
   rm -rf "$d"
 }
-if command -v gunbc >/dev/null 2>&1; then
-  H_PRE=$(hard_of "$LOGS/infer.pristine"); H_POST=$(hard_of "$LOGS/infer.patched")
+GUNBC_BIN=$(command -v gunbc 2>/dev/null || true)
+# The ctrl-build shim is not a compiler here -- it forwards, and on the runner that means
+# asking the runner to compile through itself. Only a real local binary may be used; the
+# remote dispatch relies on the same neutrality check run locally before it is sent.
+case "$GUNBC_BIN" in ""|*ctrl-build-shims*) GUNBC_BIN="" ;; esac
+if [ -n "$GUNBC_BIN" ]; then
+  H_PRE=$("$GUNBC_BIN" --version >/dev/null 2>&1 && hard_of "$LOGS/infer.pristine")
+  H_POST=$(hard_of "$LOGS/infer.patched")
   echo "HARD_DIAG pristine=${H_PRE:-UNKNOWN} patched=${H_POST:-UNKNOWN}"
   if [ -n "${H_PRE:-}" ] && [ -n "${H_POST:-}" ] && [ "$H_PRE" != "$H_POST" ]; then
     echo "HARD_DIAG_UNSAFE the repair changed this file's hard-diagnostic count by $((H_POST-H_PRE));"
