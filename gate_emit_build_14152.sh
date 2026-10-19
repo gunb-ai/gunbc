@@ -38,7 +38,7 @@ echo "build rc=$brc binary=${bin:-NONE} exists=$([ -x "$bin" ] && echo yes || ec
 echo "T=$(date +%T) self-host test begin"
 ( cd "$d" && "$bin" test //gunbc/instruments:self-host ) > "$WORK/self_host.log" 2>&1
 rc=$?
-echo "SELFWOST_RC=$rc lines=$(wc -l < "$WORK/self_host.log")"
+echo "SELF_HOST_RC=$rc lines=$(wc -l < "$WORK/self_host.log")"
 echo "=== refusal lines ==="
 grep -aoE "V2-NATIVE REFUSAL cause=[A-Za-z]+ first_error=[^@]*@ [^ ]+" "$WORK/self_host.log" | sed 's/^[^ ]*@ //' | sort -u | head -12
 grep -ac "EmittedCompilerBuildFailed" "$WORK/self_host.log" | sed 's/^/EMITTED_BUILD_FAILED_LINES=/'
