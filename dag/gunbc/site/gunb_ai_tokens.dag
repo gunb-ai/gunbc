@@ -23,6 +23,9 @@ import gunbc.design.gunb_ai_hues {
   gunb_ai_hues, near_black, soot, graphite, sand, taupe, umber, warm_white, off_white,
   moss, moss_deep, clay, clay_deep, brass, brass_deep,
 }
+import gunbc.design.gunb_ai_live_scale {
+  live_scale_token, live_measure_page, live_measure_wide, live_measure_title, live_gap_md, live_gap_lg, live_gap_xl,
+}
 import gunbc.design.scale {
   ScaleToken, LengthValue, FontStackValue, scale_decl, scale_value_wire, scale_var,
   scale_border, named_length_token, border_1, measure_prose,
@@ -125,15 +128,15 @@ fn token_binding_complete() -> Bool {
 // containers are gunb.ai's own widths, so they carry the site prefix in both the
 // Rust name and the custom property — distinct facts, distinct names. The parity
 // audit compares the rendered result.
-data gunb_measure_page: ScaleToken = named_length_token(name: "gunb-measure-page", px: 896)
-data gunb_measure_wide: ScaleToken = named_length_token(name: "gunb-measure-wide", px: 992)
-data measure_title: ScaleToken = ScaleToken { name: "measure-title", value: LengthValue { length: css_ch(n: 16) } }
+data gunb_measure_page: ScaleToken = live_scale_token(name: "gunb-measure-page", m: live_measure_page)
+data gunb_measure_wide: ScaleToken = live_scale_token(name: "gunb-measure-wide", m: live_measure_wide)
+data measure_title: ScaleToken = live_scale_token(name: "measure-title", m: live_measure_title)
 
 data gap_xs: ScaleToken = named_length_token(name: "gap-xs", px: 6)
 data gap_sm: ScaleToken = named_length_token(name: "gap-sm", px: 14)
-data gap_md: ScaleToken = named_length_token(name: "gap-md", px: 20)
-data gap_lg: ScaleToken = named_length_token(name: "gap-lg", px: 40)
-data gap_xl: ScaleToken = named_length_token(name: "gap-xl", px: 64)
+data gap_md: ScaleToken = live_scale_token(name: "gap-md", m: live_gap_md)
+data gap_lg: ScaleToken = live_scale_token(name: "gap-lg", m: live_gap_lg)
+data gap_xl: ScaleToken = live_scale_token(name: "gap-xl", m: live_gap_xl)
 
 // The operator's pick (option B — compact), relayed 2026-10-17; the review site
 // rendered options A editorial (52/24/17/14/12) and B compact before the pick, and

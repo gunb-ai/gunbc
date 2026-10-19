@@ -1,0 +1,83 @@
+module gunbc.design.gunb_ai_live_scale
+
+import std.types { String, Int, List, Bool }
+import extdeps.languages.css.values {
+  CssLength, CssLengthUnit, Rem, Ch, CssDecimal, CssDecimalLength, css_px, css_ch,
+  CssFontStack, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif, GenericMonospace,
+}
+import gunbc.design.scale { ScaleToken, ScaleValue, LengthValue, named_length_token }
+
+// THE LIVE MEASURES AND TYPE FAMILIES, AS THE SERVED SHEET STATES THEM. Single authority for the
+// gunb.ai measure, gap and family values (review 82669 on gunbc#14448, the same ruling as
+// gunbc.design.gunb_ai_hues for colour): the served :root spells each once, in rem/ch, and the
+// stylesheet wire (gunbc.site.gunb_ai_css) and the site tokens (gunbc.site.gunb_ai_tokens) both read
+// these rows. A token that is meant to differ from its live source is a LiveScaleDeparture row with
+// its reason; no site token may differ silently.
+// Re-derive from `:root` in gunb-ai/frontend assets/site.css.
+
+type LiveMeasure {
+  name: String
+  length: CssDecimalLength
+}
+
+data root_font_size_px: Int = 16
+
+data live_measure_page: LiveMeasure = LiveMeasure { name: "measure-page", length: CssDecimalLength { magnitude: CssDecimal { milli: 56000 }, unit: Rem } }
+data live_measure_wide: LiveMeasure = LiveMeasure { name: "measure-wide", length: CssDecimalLength { magnitude: CssDecimal { milli: 62000 }, unit: Rem } }
+data live_measure_prose: LiveMeasure = LiveMeasure { name: "measure-prose", length: CssDecimalLength { magnitude: CssDecimal { milli: 42000 }, unit: Rem } }
+data live_measure_title: LiveMeasure = LiveMeasure { name: "measure-title", length: CssDecimalLength { magnitude: CssDecimal { milli: 16000 }, unit: Ch } }
+
+data live_gap_xs: LiveMeasure = LiveMeasure { name: "gap-xs", length: CssDecimalLength { magnitude: CssDecimal { milli: 400 }, unit: Rem } }
+data live_gap_sm: LiveMeasure = LiveMeasure { name: "gap-sm", length: CssDecimalLength { magnitude: CssDecimal { milli: 850 }, unit: Rem } }
+data live_gap_md: LiveMeasure = LiveMeasure { name: "gap-md", length: CssDecimalLength { magnitude: CssDecimal { milli: 1250 }, unit: Rem } }
+data live_gap_lg: LiveMeasure = LiveMeasure { name: "gap-lg", length: CssDecimalLength { magnitude: CssDecimal { milli: 2500 }, unit: Rem } }
+data live_gap_xl: LiveMeasure = LiveMeasure { name: "gap-xl", length: CssDecimalLength { magnitude: CssDecimal { milli: 4000 }, unit: Rem } }
+
+data live_measures: List<LiveMeasure> = [
+  live_measure_page, live_measure_wide, live_measure_prose, live_measure_title,
+  live_gap_xs, live_gap_sm, live_gap_md, live_gap_lg, live_gap_xl,
+]
+
+data live_font_mono: CssFontStack = CssFontStack {
+  families: [NamedFamily { name: "JetBrains Mono" }, GenericFamily { kind: GenericUiMonospace }, GenericFamily { kind: GenericMonospace }],
+}
+
+data live_font_sans: CssFontStack = CssFontStack {
+  families: [NamedFamily { name: "Noto Sans" }, GenericFamily { kind: GenericSystemUi }, GenericFamily { kind: GenericSansSerif }],
+}
+
+// The whole-pixel / whole-character length a live measure denotes, for the integer ScaleToken grain.
+// rem is read at the browser-default root size; a measure that is not a whole count of its unit is
+// the case live_measure_whole_px_exact tells apart, so a truncating division is never silent.
+fn live_measure_scale_length(m: LiveMeasure) -> CssLength {
+  match m.length.unit {
+    Rem => css_px(n: m.length.magnitude.milli * root_font_size_px / 1000)
+    Ch => css_ch(n: m.length.magnitude.milli / 1000)
+    _ => css_px(n: m.length.magnitude.milli / 1000)
+  }
+}
+
+fn live_measure_scale_exact(m: LiveMeasure) -> Bool {
+  match m.length.unit {
+    Rem => m.length.magnitude.milli * root_font_size_px % 1000 == 0
+    Ch => m.length.magnitude.milli % 1000 == 0
+    _ => m.length.magnitude.milli % 1000 == 0
+  }
+}
+
+fn live_scale_token(name: String, m: LiveMeasure) -> ScaleToken {
+  ScaleToken { name: name, value: LengthValue { length: live_measure_scale_length(m: m) } }
+}
+
+type LiveScaleDeparture {
+  live_name: String
+  token_name: String
+  reason: String
+}
+
+data live_scale_departures: List<LiveScaleDeparture> = [
+  LiveScaleDeparture { live_name: "gap-xs", token_name: "gap-xs", reason: "0.4rem is 6.4px; the token has been 6px since the tokens landed and the site sheet rounds the live fractional-pixel gap to whole pixels" },
+  LiveScaleDeparture { live_name: "gap-sm", token_name: "gap-sm", reason: "0.85rem is 13.6px; the token has been 14px since the tokens landed" },
+  LiveScaleDeparture { live_name: "measure-prose", token_name: "measure-prose", reason: "the live 42rem prose measure is a different fact from gunbc.design.scale.measure_prose (80ch), which the workspace sites share; the token consumes the shared row" },
+  LiveScaleDeparture { live_name: "font-sans", token_name: "font-body", reason: "the live font-sans stack leads with the Noto Sans web font; the token is the system-only stack the review surface renders (no web fonts shipped)" },
+]

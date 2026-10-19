@@ -18,8 +18,12 @@ import std.algebra { string_contains }
 import std.optional { Absent, Present }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.css.values { CssDecimal, css_decimal_wire, css_hsl_wire }
-import gunbc.design.gunb_ai_hues { live_color_tokens }
-import gunbc.site.gunb_ai_css { render_sheet, SheetRender, SheetRendered, SheetRefused, sheet_live_color, decl_resolves }
+import gunbc.design.gunb_ai_hues { live_color_tokens, live_token_css }
+import extdeps.color.srgb { Srgb8 }
+import gunbc.design.gunb_ai_hues { moss, moss_deep, clay, brass_deep, near_black, sand, warm_white }
+import gunbc.design.gunb_ai_live_scale { live_measure_scale_exact, live_gap_md, live_gap_xl, live_gap_xs, live_measure_page, live_scale_departures }
+import gunbc.site.gunb_ai_tokens { gap_md }
+import gunbc.site.gunb_ai_css { render_sheet }
 
 data served_sheet_path: String = "dag/test/fixture/gunb_ai/live_site.css"
 
@@ -29,10 +33,7 @@ fn served_sheet() -> String {
 }
 
 fn rendered_sheet() -> String {
-  match render_sheet() {
-    SheetRendered { bytes: b } => b
-    SheetRefused { reason: _ } => ""
-  }
+  render_sheet()
 }
 
 // The parity claim. The fixture is checked non-empty first (a missing file reads "" and a render
@@ -47,7 +48,7 @@ test fn witness_generated_sheet_is_a_prefix_of_the_served_sheet() -> Bool {
 // the next section's banner, so a render that merely stopped early inside the :root block is red.
 test fn witness_render_ends_at_a_section_boundary() -> Bool {
   rendered_sheet().ends_with(suffix: "}\n")
-    && served_sheet().substring(start: rendered_sheet().length(), end: rendered_sheet().length() + 9) == "\n\n/* ╔══ R"
+    && served_sheet().substring(start: rendered_sheet().length(), end: rendered_sheet().length() + 10) == "\n\n/* ╔══ R"
 }
 
 // Supplied values at the interface the decimal wire answers for: the shortest decimal denoting the
@@ -66,17 +67,29 @@ test fn witness_decimal_wire_is_the_shortest_decimal() -> Bool {
 // spelled hsla (the alpha arm), the rest hsl.
 test fn witness_every_live_colour_token_is_in_the_served_sheet_as_its_wire() -> Bool {
   all(live_color_tokens, t => string_contains(s: served_sheet(), pattern: join(["--", t.name, ":"], ""))
-    && string_contains(s: served_sheet(), pattern: css_hsl_wire(c: t.color)))
+    && string_contains(s: served_sheet(), pattern: css_hsl_wire(c: live_token_css(t: t))))
 }
 
-// A token the hues module does not carry is refused, not rendered empty.
-test fn witness_unknown_colour_token_does_not_resolve() -> Bool {
-  !decl_resolves(d: sheet_live_color(token: "no-such-colour")) && decl_resolves(d: sheet_live_color(token: "moss"))
+// Review 82669: the Srgb8 swatches are derived from the live hsl parameters. The expected triples are
+// the literals the swatches held before the derivation (an independent referent: they were typed from
+// the palette, not computed), so a wrong hsl->srgb8 conversion is red here.
+test fn witness_swatches_derive_from_live_hsl_parameters() -> Bool {
+  moss.color == Srgb8 { r: 78, g: 166, b: 99 }
+    && moss_deep.color == Srgb8 { r: 59, g: 125, b: 74 }
+    && clay.color == Srgb8 { r: 166, g: 83, b: 78 }
+    && brass_deep.color == Srgb8 { r: 131, g: 114, b: 73 }
+    && near_black.color == Srgb8 { r: 13, g: 13, b: 13 }
+    && sand.color == Srgb8 { r: 206, g: 197, b: 182 }
+    && warm_white.color == Srgb8 { r: 244, g: 241, b: 236 }
 }
 
-test fn witness_render_is_not_refused() -> Bool {
-  match render_sheet() {
-    SheetRendered { bytes: _ } => true
-    SheetRefused { reason: _ } => false
-  }
+// Every live measure the served sheet writes is either the source of its site token or has a
+// departure row; the whole-unit conversion is exact for every derived token.
+test fn witness_live_measures_are_exact_or_departures() -> Bool {
+  gap_md.name == "gap-md"
+    && live_measure_scale_exact(m: live_gap_md)
+    && live_measure_scale_exact(m: live_gap_xl)
+    && live_measure_scale_exact(m: live_measure_page)
+    && !live_measure_scale_exact(m: live_gap_xs)
+    && live_scale_departures.length() == 4
 }
