@@ -22,7 +22,6 @@ module test.claim.census.claim_coverage_census_s1_live_pairing_wet_witness
 // pipeline's budget and the trigger that retires it are recorded.
 
 import std.types { String, Bool }
-import std.algebra { any }
 import gunbc.claim_coverage_census_s1 { GroundedCover, S1Composed, S1InputsUnread, classifier_member_text }
 import gunbc.claim_coverage_census_s1_live { s1_compose_scoped }
 

@@ -25,7 +25,7 @@ import gunbc.claim_coverage_census_s1 {
   IdentityMember, DeclaredMember, FileMember,
   ExactMemberMatch, SubstringMemberMatch, classifier_member_text,
   S1Census, ClassifierStanding, GroundedCover, S1Composed, S1InputsUnread,
-  classify_rows, derive_executed, s1_uncovered, s1_census_lines,
+  classify_rows, derive_executed, s1_uncovered, s1_census_lines, s1_stamp_head,
   s1_block, S1Standing, S1Held, S1DidNotHold, S1Unread
 }
 import gunbc.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
@@ -136,6 +136,18 @@ fn line_names(lines: List<String>, needle: String) -> Bool {
   any(lines, s => string_contains(s: s, pattern: needle))
 }
 
+// THE LOCATOR IS BESIDE THE CENSUS, NOT INSIDE IT (warm-wolf-570: the head is a locator, not an input, and
+// the host-native route cannot run git). Both halves are asserted, because either one alone lets the
+// regression back in: a census that still took a head would print a locator itself, and a stamp that was
+// optional or filled with a placeholder would print none. So -- the census's own lines contain NO locator,
+// and stamping prepends EXACTLY ONE carrying the revision it was given.
+fn head_stamped_beside(lines: List<String>) -> Bool {
+  let stamped = s1_stamp_head(lines: lines, head: "fixturehead")
+  !any(lines, line => string_contains(s: line, pattern: "S1-CENSUS head:"))
+    && any(stamped, line => line == "S1-CENSUS head:fixturehead")
+    && (stamped |> filter(line => string_contains(s: line, pattern: "S1-CENSUS head:")) |> count == 1)
+}
+
 // A row's verdict, read from its carrier+member -- the standing carries the row it judged, so the witness
 // asks the same question a reader of the receipt asks: which row, and how did it stand.
 fn stale_stands(stands: List<ClassifierStanding>, member: String) -> Bool {
@@ -200,12 +212,12 @@ test fn a_fixture_whose_claims_are_all_covered_holds_and_exits_zero() -> Bool {
     ],
     produced: ["m.a"]
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [] })
   match block.standing { S1Held => true, _ => false }
     && covered(census: census, identity: "m.a")
     && covered(census: census, identity: "m.b")
     && covered(census: census, identity: "other.c")
-    && any(block.lines, line => line == "S1-CENSUS head:fixturehead")
+    && head_stamped_beside(lines: block.lines)
     && !line_names(lines: block.lines, needle: "UNCOVERED ")
     && !line_names(lines: block.lines, needle: "STALE-ENROLLED")
     && !line_names(lines: block.lines, needle: "UNGROUNDED-DROP-MEMBER")
@@ -226,13 +238,16 @@ test fn removing_a_covered_claim_from_its_drop_makes_the_census_name_it() -> Boo
     ],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && (s1_uncovered(census: census) == ["m.b"])
     && line_names(lines: block.lines, needle: "UNCOVERED m.b")
     && !line_names(lines: block.lines, needle: "UNCOVERED m.a")
     && !line_names(lines: block.lines, needle: "UNCOVERED other.c")
-    && string_contains(s: block.reason, pattern: "did not hold")
+    && match block.standing {
+         S1DidNotHold { reason: reason } => string_contains(s: reason, pattern: "did not hold")
+         _ => false
+       }
 }
 
 // AN EXPECTATION EXCUSES NOTHING. floor_expected_red rows carry EnrollmentRole, so naming an uncovered
@@ -251,7 +266,7 @@ test fn a_floor_expected_red_row_never_covers_a_claim() -> Bool {
     ],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && (s1_uncovered(census: census) == ["m.b"])
     && !line_names(lines: block.lines, needle: "UNCOVERED m.a")
@@ -276,11 +291,11 @@ test fn the_three_prefix_fill_debt_rows_are_stale_enrolled_by_name() -> Bool {
     covers: map(stale, member => cover_identity(carrier: fill_debt_carrier, member: member)),
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && all(stale, member => line_names(lines: block.lines, needle: concat("STALE-ENROLLED ", concat(fill_debt_carrier, concat(" ", member)))))
     && all(stale, member => stale_stands(stands: census.stands, member: member))
-    && any(block.lines, line => line == "S1-CENSUS head:fixturehead")
+    && head_stamped_beside(lines: block.lines)
 }
 
 // THE SAME CARRIER, POST-FIX: NOTHING IS STALE, AND THE RENAMED CLAIM IS GROUNDED. Two halves in one
@@ -304,7 +319,7 @@ test fn the_prefix_row_is_stale_while_its_renamed_successor_is_grounded() -> Boo
     ],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [] })
   stale_stands(stands: census.stands, member: prefix)
     && line_names(lines: block.lines, needle: concat("STALE-ENROLLED ", concat(fill_debt_carrier, concat(" ", prefix))))
     && !line_names(lines: block.lines, needle: concat("STALE-ENROLLED ", concat(fill_debt_carrier, concat(" ", successor))))
@@ -327,7 +342,7 @@ test fn a_fully_resolving_carrier_prints_no_stale_row_and_holds() -> Bool {
     ],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [] })
   !line_names(lines: block.lines, needle: "STALE-ENROLLED")
     && match block.standing { S1Held => true, _ => false }
     && all(fixture_universe(), id => grounded_cover(stands: census.stands, member: id))
@@ -352,7 +367,7 @@ test fn a_claim_the_universe_holds_is_never_stale_enrolled_when_rows_are_filtere
       ]
     )
   }
-  !line_names(lines: s1_census_lines(census: census, head: "h"), needle: "STALE-ENROLLED m.a")
+  !line_names(lines: s1_census_lines(census: census), needle: "STALE-ENROLLED m.a")
     && covered(census: census, identity: "m.a")
     && covered(census: census, identity: "m.b")
 }
@@ -377,7 +392,7 @@ test fn a_drop_member_that_is_neither_path_nor_identity_is_an_ungrounded_refusal
     covers: map(ungroundable, member => declared_member(carrier: "gunbc.rung_drop.t.drop", text: member)),
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && all(ungroundable, member => line_names(lines: block.lines, needle: concat("UNGROUNDED-DROP-MEMBER gunbc.rung_drop.t.drop ", member)))
     && all(ungroundable, member => ungrounded_stands(stands: census.stands, member: member))
@@ -451,7 +466,7 @@ test fn an_untyped_drop_member_grounds_in_either_population_and_neither_by_spell
     ],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [] })
   (covers_of(stands: census.stands, member: "other.c") == ["other.c"])
     && (covers_of(stands: census.stands, member: "m.dag") == ["m.a", "m.b"])
     && ungrounded_stands(stands: census.stands, member: "the whole long-lane class is excused")
@@ -470,7 +485,7 @@ test fn an_exact_file_member_selecting_no_discovered_claim_is_refused() -> Bool 
     covers: [cover_file(carrier: "t.drop", member: "renamed_away.dag")],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && line_names(lines: block.lines, needle: "UNGROUNDED-DROP-MEMBER t.drop renamed_away.dag")
     && ungrounded_stands(stands: census.stands, member: "renamed_away.dag")
@@ -524,8 +539,8 @@ test fn a_producer_naming_an_undiscovered_claim_executes_nothing() -> Bool {
   )
   (census.executed == ["m.a", "m.b"])
     && (s1_uncovered(census: census) == ["other.c"])
-    && line_names(lines: s1_census_lines(census: census, head: "h"), needle: "UNCOVERED other.c")
-    && !line_names(lines: s1_census_lines(census: census, head: "h"), needle: "UNCOVERED m.a")
+    && line_names(lines: s1_census_lines(census: census), needle: "UNCOVERED other.c")
+    && !line_names(lines: s1_census_lines(census: census), needle: "UNCOVERED m.a")
 }
 
 // A PRODUCER THAT EXPOSES NO CLAIM SET LEAVES THE UNIVERSE UNCOVERED, and that IS the finding: nothing is
@@ -533,7 +548,7 @@ test fn a_producer_naming_an_undiscovered_claim_executes_nothing() -> Bool {
 test fn a_producer_exposing_no_claim_set_leaves_the_universe_uncovered_and_is_a_finding() -> Bool {
   let rows = fixture_rows()
   let census = census_over(rows: rows, universe: fixture_universe(), covers: [], produced: [])
-  let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && all(fixture_universe(), id => line_names(lines: block.lines, needle: concat("UNCOVERED ", id)))
 }
@@ -545,8 +560,7 @@ test fn a_producer_exposing_no_claim_set_leaves_the_universe_uncovered_and_is_a_
 // been merged and the exit-2 arm has become a fake green.
 test fn an_unread_input_exits_two_and_reports_no_claim_population() -> Bool {
   let block = s1_block(
-    s1: S1InputsUnread { causes: ["m.dag: unreadable", "the dag grammar did not prepare: the marker channel cannot answer"] },
-    head: "fixturehead"
+    s1: S1InputsUnread { causes: ["m.dag: unreadable", "the dag grammar did not prepare: the marker channel cannot answer"] }
   )
   match block.standing { S1Unread { reason: _ } => true, _ => false }
     && line_names(lines: block.lines, needle: "S1-CENSUS INPUT UNREAD m.dag: unreadable")
@@ -554,7 +568,10 @@ test fn an_unread_input_exits_two_and_reports_no_claim_population() -> Bool {
     && !line_names(lines: block.lines, needle: "UNCOVERED ")
     && !line_names(lines: block.lines, needle: "STALE-ENROLLED")
     && !line_names(lines: block.lines, needle: "UNGROUNDED-DROP-MEMBER")
-    && string_contains(s: block.reason, pattern: "could not be read")
+    && match block.standing {
+         S1Unread { reason: reason } => string_contains(s: reason, pattern: "could not be read")
+         _ => false
+       }
 }
 
 // A NOTE TRAVELS WITH THE RECEIPT. An unbound or doubled required-job label changes what `executed` can
@@ -573,7 +590,7 @@ test fn an_unattributable_required_job_label_prints_beside_clean_standings() -> 
     produced: []
   )
   let note = "REQUIRED-JOB LABEL UNBOUND //gunbc/instruments:t.thing (no producer binds it: nothing it runs is attributable)"
-  let block = s1_block(s1: S1Composed { census: census, notes: [note] }, head: "fixturehead")
+  let block = s1_block(s1: S1Composed { census: census, notes: [note] })
   line_names(lines: block.lines, needle: "REQUIRED-JOB LABEL UNBOUND")
     && match block.standing { S1Held => true, _ => false }
 }

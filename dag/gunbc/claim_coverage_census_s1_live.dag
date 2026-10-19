@@ -495,9 +495,7 @@ fn census_head_reading() -> String {
 }
 
 // THE LIVE ENTRY'S BLOCK: the one pure exit policy (`gunbc.claim_coverage_census_s1 s1_block`) applied to
-// what this checkout actually says, at the head it was read at. Composed here so the fold's unread channel,
-// the standings and the head all pass through the single policy function -- the live entry never decides an
-// exit itself, and a witness never has to read this module to assert one.
-fn s1_live_block() -> S1Block {
-  s1_block(s1: s1_compose(), head: census_head_reading())
-}
+// what this checkout actually says. Composed here so the fold's unread channel and the standings both pass
+// through the single policy function -- the live entry never decides an exit itself, and a witness never has
+// to read this module to assert one. It takes NO head: the census is a pure function of the tree, and the
+// revision is stamped beside its output by whoever ran it (see `s1_head_receipt_line`).

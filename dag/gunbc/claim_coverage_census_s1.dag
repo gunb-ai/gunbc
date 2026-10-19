@@ -324,9 +324,12 @@ fn s1_ungrounded_rows(census: S1Census) -> List<ClassifierRow> {
   })
 }
 
-// THE RECEIPT: verdict lines, each located, and the head the facts were read at (executed evidence
-// at the printed head). Lengths are never emitted — the lines themselves are the population.
-fn s1_census_lines(census: S1Census, head: String) -> List<String> {
+// THE RECEIPT: the verdict lines, each located. Lengths are never emitted — the lines themselves are the
+// population. NO HEAD HERE: the census is a pure function of the tree (warm-wolf-570), because which
+// revision the facts were read at is a LOCATOR on the evidence, not an input to the verdict -- and a
+// census that took it could not run where a revision cannot be asked (the host-native route has no git).
+// Whoever runs the census stamps the locator beside its output, with `s1_stamp_head` below.
+fn s1_census_lines(census: S1Census) -> List<String> {
   let stale_lines = map(
     s1_stale_rows(census: census),
     row => concat(concat(concat("STALE-ENROLLED ", row.carrier), " "), classifier_member_text(row: row))
@@ -339,10 +342,15 @@ fn s1_census_lines(census: S1Census, head: String) -> List<String> {
     s1_uncovered(census: census),
     id => concat("UNCOVERED ", id)
   )
-  concat(
-    concat(concat(["S1-CENSUS head:" + head], stale_lines), ungrounded_lines),
-    uncovered_lines
-  )
+  concat(concat(stale_lines, ungrounded_lines), uncovered_lines)
+}
+
+// THE LOCATOR, APPLIED BESIDE THE OUTPUT BY WHOEVER RUNS THE CENSUS. Separate from the census on purpose:
+// the census's verdicts must not depend on a revision read, and the native runner that cannot ask one must
+// still be able to run the census. Not optional and not a placeholder -- the live entry calls this and the
+// witness asserts both halves: the census's own lines carry no locator, and stamping prepends exactly one.
+fn s1_stamp_head(lines: List<String>, head: String) -> List<String> {
+  concat(["S1-CENSUS head:" + head], lines)
 }
 
 // THE COMPOSITION'S ANSWER IN TWO CHANNELS: the census (with the located findings that are not
@@ -364,7 +372,7 @@ type S1Composition
 // it is not a census that failed, it is a census that cannot answer, and reporting a claim failure would
 // read as if the population had been decided. A composed census answers 1 exactly when a finding is
 // printed: a stale enrollment, an ungroundable drop member, or an uncovered discovered claim. Zero is
-// answered only when the fold found nothing to complain about, which -- at this head, with the live
+// answered only when the fold found nothing to complain about, which -- on the live tree, as the
 // population -- it will not: the findings ARE the result.
 // THE OUTCOME, AS A DECLARED THREE-ARM SUM (review 82914, DESIGN §5 and §6b; ctrl's hand-rolled-sum
 // rule). It was `exit_code: Int` chosen from three `data ... : Int` constants with a `reason` beside them,
@@ -396,7 +404,7 @@ fn s1_process_exit_code(standing: S1Standing) -> Int {
   }
 }
 
-fn s1_block(s1: S1Composition, head: String) -> S1Block {
+fn s1_block(s1: S1Composition) -> S1Block {
   match s1 {
     S1InputsUnread { causes: causes } => S1Block {
       lines: map(causes, cause => concat("S1-CENSUS INPUT UNREAD ", cause)),
@@ -405,7 +413,7 @@ fn s1_block(s1: S1Composition, head: String) -> S1Block {
       }
     }
     S1Composed { census: census, notes: notes } => {
-      let lines = concat(notes, s1_census_lines(census: census, head: head))
+      let lines = concat(notes, s1_census_lines(census: census))
       let findings = count(s1_stale_rows(census: census))
         + count(s1_ungrounded_rows(census: census))
         + count(s1_uncovered(census: census))

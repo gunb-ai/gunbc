@@ -15,7 +15,7 @@ import gunbc.claim_coverage_census {
   ClaimCoverageHeld, ClaimCoverageDidNotHold,
   claim_coverage, claim_coverage_standing, claim_coverage_receipt_lines,
 }
-import gunbc.claim_coverage_census_s1_live { s1_live_block }
+import gunbc.claim_coverage_census_s1_live { s1_live_block, s1_head_receipt_line }
 import gunbc.claim_coverage_census_s1 { S1Standing, S1Held, S1DidNotHold, S1Unread, s1_process_exit_code }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -123,9 +123,13 @@ fn claim_coverage_composed_exit(
 fn claim_coverage_census_exit() -> CliWireResponse {
   let c = claim_coverage(inputs: ClaimCoverageInputs { sources: claim_sources(), jobs: claim_executors() })
   let s1 = s1_live_block()
+  // THE LOCATOR IS STAMPED BESIDE THE OUTPUT BY THIS RUNNER (warm-wolf-570): the census is a pure function
+  // of the tree, so the revision is the runner's business -- and a runner that cannot ask (the host-native
+  // route has no git) omits the line rather than printing a placeholder.
+  let s1_lines = concat([s1_head_receipt_line()], s1.lines)
   let bytes = concat(
     concat(claim_coverage_receipt_lines(c: c) |> join(separator: "\n"), "\n"),
-    concat(s1.lines |> join(separator: "\n"), "\n")
+    concat(s1_lines |> join(separator: "\n"), "\n")
   )
   claim_coverage_composed_exit(
     bytes: bytes,
