@@ -246,15 +246,19 @@ fn host_cap_plan(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, fi
 }
 
 fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files_differ: Bool, extras: List<NonEmptyStr>, pending_reload: Bool, retirement_cause: String?) -> HostCapPlan {
-  if !files_differ && !any(standings, x => host_cap_standing_differs(s: x.standing)) {
+  // PENDING IS CHECKED FIRST, BEFORE ANY ARM THAT OPENS A RELOAD OR AN ACTIVATION, THE LEAVE-IN-PLACE ARM
+  // INCLUDED. "Nothing differs" covers only the managed files and the current values; a reload applies
+  // every source the manager has pending (a hand-placed instance drop-in with a lower MemoryMax among
+  // them), so a pending or unknown reload withholds whatever the managed files say.
+  if pending_reload && any(map(standings, x => x.unit), u => host_cap_bracket_reloads(unit: u)) {
+    HostCapsWithheld { cause: "a unit-file change is pending reload (or an instance could not be read), and a reload applies every pending source to every running slot, undrained: the managed cap files settling does not cover it" }
+  } else if !files_differ && !any(standings, x => host_cap_standing_differs(s: x.standing)) {
     HostCapsLeaveInPlace
   } else {
     match retirement_cause {
       Present { value: why } => HostCapsWithheld { cause: concat("a surplus slot has not retired, so the host is not quiescent: ", why) }
       Absent =>
-        if pending_reload && any(map(standings, x => x.unit), u => host_cap_bracket_reloads(unit: u)) {
-          HostCapsWithheld { cause: "a unit-file change is pending reload (or an instance could not be read), and every drain step reloads the manager: it would load before the other slots are drained" }
-        } else if length(extras) > 0 {
+        if length(extras) > 0 {
           HostCapsWithheld { cause: concat("loaded runner instances outside the declared sets would receive the template reload and are not drained or activated by this route: ", join(map(extras, x => x as String), " ")) }
         } else {
           match gate {

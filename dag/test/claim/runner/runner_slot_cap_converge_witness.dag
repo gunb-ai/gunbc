@@ -307,13 +307,23 @@ test fn the_typed_steps_render_the_actuators_argv() -> Bool {
     && systemctl_stop_step(unit: u).argv == systemctl_stop_argv(unit: u)
 }
 
-// RED (2): a differing cap with a unit-file change pending withholds -- the first slot's mask would load
-// the pending lower-cap file before the others drain. With nothing differing, a pending reload is not a
-// cap hazard and the caps are left in place.
-test fn a_pending_unit_file_change_withholds_a_differing_cap_and_not_a_settled_one() -> Bool {
+// RED (2): a pending or unknown unit-file change withholds in EVERY case -- differing caps, and also
+// managed files settled with live caps at desired. A hand-placed instance drop-in
+// (actions-runner@srv3-01.service.d/90-lower.conf, smaller MemoryMax, NeedDaemonReload=yes) is outside
+// the four managed files, so "nothing differs" cannot vouch for it: the ordinary reload would load it
+// onto a busy slot with no drain.
+test fn a_pending_unit_file_change_always_withholds() -> Bool {
   plan_withheld_naming(p: host_cap_plan(standings: one_old(), gate: all_idle(), files: CapFilesDiffer, pending_reload: true, retirement_cause: none, extras: []), needle: "pending reload")
     && plan_withheld_naming(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesDiffer, pending_reload: true, retirement_cause: none, extras: []), needle: "pending reload")
-    && plan_leaves(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reload: true, retirement_cause: none, extras: []))
+    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reload: true, retirement_cause: none, extras: []), needle: "pending reload")
+}
+
+// RED: the instance-drop-in counterexample exactly -- managed files settled, live caps at desired, a
+// pending reload, and a BUSY slot. It must withhold (and so bar the ordinary reload), not leave in place.
+test fn a_hand_placed_instance_dropin_pending_on_a_busy_slot_bars_the_reload() -> Bool {
+  let busy = host_cap_idle_gate(readings: [busy_of(u: unit(n: "01"))])
+  let plan = host_cap_plan(standings: one_at(), gate: busy, files: CapFilesSettled, pending_reload: true, retirement_cause: none, extras: [])
+  plan_withheld_naming(p: plan, needle: "pending reload") && !plan_leaves(p: plan)
 }
 
 test fn the_pending_reload_reading_counts_an_unread_instance_as_pending() -> Bool {
