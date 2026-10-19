@@ -25,15 +25,11 @@ import v2.compiler.module_acquisition {
 import v2.cli.population_verbs { PopulationReport, check_layout, parse_population, select_spelled_modules, parse_verdict_reuse_off, parse_verdict_reuse_requested }
 import v2.cli.parse_verdict_reuse { parse_verdict_base_read }
 import extdeps.filesystem.filesystem_io { Filesystem }
-<<<<<<< HEAD
 import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population, cli_verb_select_spelled_modules }
-=======
-import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population }
 import v2.cli.parse_verdict_invocation {
   cli_option_compiler, cli_option_reuse_from, cli_option_write_identity, cli_option_receipts,
   cli_option_source_root
 }
->>>>>>> origin/main
 import v2.cli.repository_layout { repository_storage_layout }
 import gunbc.source_layout_namespaces { layout_namespaces }
 import v2.cli.source_root_bindings {

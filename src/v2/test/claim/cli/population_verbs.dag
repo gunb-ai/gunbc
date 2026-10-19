@@ -464,6 +464,7 @@ test fn a_selection_reports_the_selected_names_and_holds() -> Bool {
 test fn an_unreadable_module_refuses_the_whole_selection_holds() -> Bool {
   let report = select_spelled_report(selection: SpelledRefused { module: "a.m3", cause: "unreadable" })
   !report.held && report.text == "a.m3: unreadable"
+}
 
 // THE DECLARED COUNTS SHAPE IS BOUND TO THE PRINTED LINE, BYTE FOR BYTE. The fleet's reuse walk reads
 // this line back and its only contract on it is a shell exit code, so the field set IS the contract
