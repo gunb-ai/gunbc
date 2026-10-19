@@ -855,7 +855,7 @@ fn occurrence_transport_validate(
       match role_index_build.refusal {
         Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
         Absent =>
-          let declaration_refusal = fold(
+          let declaration_refusal: OccurrenceTransportRefusal? = fold(
             transport.declarations,
             init: none,
             f: (refusal, declaration) =>
@@ -871,7 +871,7 @@ fn occurrence_transport_validate(
           match declaration_refusal {
             Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
             Absent =>
-              let reference_refusal = fold(
+              let reference_refusal: OccurrenceTransportRefusal? = fold(
                 transport.references,
                 init: none,
                 f: (refusal, reference) =>

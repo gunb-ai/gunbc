@@ -1771,7 +1771,8 @@ fn floor_phase_step(acc: FloorPhaseFold, r: FloorBeatReading) -> FloorPhaseFold 
 }
 
 fn floor_phase_attribution(readings: List<FloorBeatReading>) -> FloorPhaseAttribution {
-  match fold(readings, init: PhaseFoldRunning { closed: [], open: none }, f: (acc, r) => floor_phase_step(acc: acc, r: r)) {
+  let initial: FloorPhaseFold = PhaseFoldRunning { closed: [], open: none }
+  match fold(readings, init: initial, f: (acc, r) => floor_phase_step(acc: acc, r: r)) {
     PhaseFoldRefused { beat: n, token: t } => FloorPhaseSeamUnknown { beat: n, token: t }
     PhaseFoldNegative { beat: n } => FloorPhaseReadingNegative { beat: n }
     PhaseFoldRunning { closed: closed, open: open } => FloorPhasesAttributed { phases: floor_phase_closed(closed: closed, open: open) }

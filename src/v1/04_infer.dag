@@ -8631,16 +8631,19 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
-      // `none` is the Absent arm of the Optional the expected type supplies (operator ruling H3); with no
-      // expected Optional it stays an underived type variable and never defaults to Unit.
+      // `none` is the Absent arm of the Optional the expected type supplies (operator ruling H3). With no
+      // expected Optional there is nothing to type it by: it refuses, never defaults (no Unit, no variable).
       let literal_type = match lit {
-        LitNull =>
-          match expected_optional_instance(expected: expected, scope: scope) {
-            Present { value: instance } => instance
-            Absent => infer_literal_node(lit: lit)
-          }
+        LitNull => expected_optional_instance(expected: expected, scope: scope)
         _ => infer_literal_node(lit: lit)
       }
+      match literal_type {
+        Absent =>
+          InferResult {
+            typed: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: CompilerError { message: "`none` has no expected Optional<T> to lower to", span: span } }, span: span),
+            diagnostics: [inference_error(message: "`none` has no expected Optional<T> to lower to: its position supplies no optional type, and it never defaults", span: span, module_name: scope.module_name)]
+          }
+        Present { value: literal_type } =>
       let plain = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: literal_type } }, span: span)
       match literal_boundary_elaboration(lit: lit, expected: expected, scope: scope) {
         LiteralBoundaryPlain => ok_infer(texpr: plain)
@@ -8654,6 +8657,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           ))
         LiteralBoundaryRefused { message: m } =>
           InferResult { typed: plain, diagnostics: [inference_error(message: m, span: span, module_name: scope.module_name)] }
+      }
       }
 
     ExprElaboratedLiteral { value: _, elaboration: _ } =>

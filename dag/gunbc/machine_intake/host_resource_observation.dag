@@ -295,11 +295,11 @@ fn thread_deviations(goal: HostTopologyGoal, t: HardwareThreadCount) -> List<Hos
 // An unexpected reduction is a FINDING. It never removes the observed threads from the evidence or
 // from the offer; it is what the eligibility policy reads.
 fn host_topology_assessment(goal: HostTopologyGoal, observed: HostResourceObservation) -> HostTopologyAssessment {
-  let threads = match observed.threads {
+  let threads: HardwareThreadCount? = match observed.threads {
     ObservationEstablished { observed: t } => Present { value: t }
     ObservationRefused { cause: _ } => none
   }
-  let nodes = match observed.numa {
+  let nodes: Nat? = match observed.numa {
     ObservationEstablished { observed: ns } => Present { value: populated_nodes(nodes: ns) }
     ObservationRefused { cause: _ } => none
   }

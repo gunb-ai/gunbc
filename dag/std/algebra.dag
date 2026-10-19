@@ -512,7 +512,7 @@ fn template_receiver_position(t: AlgebraFieldTemplate) -> Int? {
 // is the type the step returns. A row whose step returns the receiver, or that has no step, has no
 // accumulator slot and answers Absent.
 fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
-  let step_return = fold(t.param_types, init: none, f: fn(acc, p) {
+  let step_return: AlgebraTypeTemplate? = fold(t.param_types, init: none, f: fn(acc, p) {
     match acc {
       Present { value: _ } => acc
       Absent =>

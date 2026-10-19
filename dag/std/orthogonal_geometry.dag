@@ -397,7 +397,7 @@ fn bounding_box3(points: List<Point3>) -> OrthogonalConstruction<BoundingBox3> {
   match points |> first {
     Absent => OrthogonalRefused { cause: BoundingBoxHasNoPoints }
     Present { value: head } =>
-      let frame_mismatch = fold(points, init: none, f: (acc, p) =>
+      let frame_mismatch: CoordinateFrameIdentity? = fold(points, init: none, f: (acc, p) =>
         match acc {
           Present { value: _ } => acc
           Absent => if coordinate_frame_identity_eq(a: head.frame, b: p.frame) { none } else { Present { value: p.frame } }
@@ -565,7 +565,7 @@ fn loop_edge_axis_of(e: LoopEdge) -> Axis2? {
 }
 
 fn any_edge_unaligned(edges: List<LoopEdge>) -> Bool {
-  fold(edges, init: false, f: (acc, e) => acc || loop_edge_axis_of(e: e) == none)
+  fold(edges, init: false, f: (acc, e) => acc || match loop_edge_axis_of(e: e) { Absent => true  Present { value: _ } => false })
 }
 
 // PERPENDICULARITY IS READ OFF CONSECUTIVE EDGES IN ONE PASS, closing edge included: the fold
@@ -611,7 +611,7 @@ fn orthogonal_loop2(vertices: List<Point2>) -> OrthogonalConstruction<Orthogonal
     match vertices |> first {
       Absent => OrthogonalRefused { cause: LoopTooFewVertices { supplied: n } }
       Present { value: head } =>
-        let frame_mismatch = fold(vertices, init: none, f: (acc, p) =>
+        let frame_mismatch: CoordinateFrameIdentity? = fold(vertices, init: none, f: (acc, p) =>
           match acc {
             Present { value: _ } => acc
             Absent => if coordinate_frame_identity_eq(a: head.frame, b: p.frame) { none } else { Present { value: p.frame } }
