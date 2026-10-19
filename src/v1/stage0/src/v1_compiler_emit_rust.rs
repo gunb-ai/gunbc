@@ -27993,7 +27993,7 @@ pub fn emit_machine_word_lowered_call(
                     std::option::Option::None
                 } else {
                     {
-                        let si = scope.type_env.clone().source_indices.clone();
+                        let si = scope.type_env.source_indices.clone();
                         let op_arg = crate::v1_std_core::arg_value(
                             ordered
                                 .clone()
