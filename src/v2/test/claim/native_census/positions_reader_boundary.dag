@@ -1,0 +1,92 @@
+module v2.test.claim.native_census.positions_reader_boundary
+
+import v2.compiler.source_root_eval {
+  NativeCensusModule,
+  NativeInferCensusInferRefused,
+  NativeInferCensusInferred,
+  NativeInferCensusFileRefused,
+  NativeInferCensusPositionsNotBuilt,
+  NativeInferCensusResolveRefused,
+  NativeInferCensusOutcome,
+  native_census_module_inference,
+  native_lane_file_refusal_index,
+  NativeTestContext,
+  native_test_context_from_ingest
+}
+import std.optional { Absent, Optional, Present, optional_absent }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE READERS TAKE THE BUILT TABLE, SO A NOT-BUILT VALUE CANNOT REACH THEM (review 82670).
+// The real subject is v2.compiler.source_root_eval: native_census_owner_of,
+// native_node_authored_locus and native_census_binding_loci take NativeCensusPositionTable, and
+// only the NativeCensusPositions holder (Built | NotBuilt) can be unbuilt. A probe cannot import
+// that module (the ingest holds only the bytes supplied here, so no import may leave it), so this
+// claim holds the SAME SHAPE through the real native inference route: a table type, a
+// Built | NotBuilt holder of it, a reader of the table type, and a caller handing the reader the
+// holder. It covers the generic law at the real route; the real signatures' own RED (calling
+// native_census_owner_of with NativeCensusPositionsNotBuilt) was executed once by hand and is
+// refused by resolve with RefusedProductCoproductHeadMismatch.
+data reader_given_holder_source: String = "module v2.cl.reader_given_holder\n\ntype ProbeTable { files: Int }\n\ntype ProbeHolder\n  = ProbeHolderBuilt { table: ProbeTable }\n  | ProbeHolderNotBuilt\n\nfn probe_reader(t: ProbeTable) -> Int { t.files }\n\nfn probe_caller(h: ProbeHolder) -> Int {\n  probe_reader(t: h)\n}\n"
+
+data reader_given_table_source: String = "module v2.cl.reader_given_table\n\ntype ProbeTable { files: Int }\n\ntype ProbeHolder\n  = ProbeHolderBuilt { table: ProbeTable }\n  | ProbeHolderNotBuilt\n\nfn probe_reader(t: ProbeTable) -> Int { t.files }\n\nfn probe_caller(h: ProbeHolder) -> Int {\n  match h {\n    ProbeHolderBuilt { table: t } => probe_reader(t: t)\n    ProbeHolderNotBuilt => 0 - 1\n  }\n}\n"
+
+fn reader_read(source: String, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data reader_ingest: SourceRootIngest = Cons {
+  head: reader_read(source: reader_given_holder_source, unit: ^cl_holder_cu, path: "fixtures/census_located_refusal/v2/cl/reader_given_holder.dag"),
+  tail: Cons {
+    head: reader_read(source: reader_given_table_source, unit: ^cl_table_cu, path: "fixtures/census_located_refusal/v2/cl/reader_given_table.dag"),
+    tail: Empty
+  }
+}
+
+data reader_context: Optional<NativeTestContext> = match native_test_context_from_ingest(ingest: reader_ingest) {
+  Rejected { diagnostics: _ } => optional_absent()
+  Accepted { value: c, diagnostics: _ } => Present { value: c }
+}
+
+fn reader_inference(module: String, unit: Symbol) -> Int {
+  match reader_context {
+    Absent => -2
+    Present { value: context0 } =>
+      match native_census_module_inference(
+        context: context0,
+        refusal_index: native_lane_file_refusal_index(refusals: context0.file_refusals),
+        entry: NativeCensusModule { module: module, path: unit }
+      ).outcome {
+        NativeInferCensusInferRefused { resolved: _, chain: _, loci: _ } => 0
+        NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } => 1
+        NativeInferCensusFileRefused => -4
+        NativeInferCensusPositionsNotBuilt => -5
+        NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: _, loci: _, unbound: _ } => -6
+      }
+  }
+}
+
+// RED: the reader handed the Built | NotBuilt holder is refused at inference.
+test fn a_reader_given_the_unbuilt_capable_holder_refuses_holds() -> Bool {
+  reader_inference(module: "v2.cl.reader_given_holder", unit: ^cl_holder_cu) == 0
+}
+
+// POSITIVE CONTROL: the same reader handed the table out of the Built arm is inferred.
+test fn the_same_reader_given_the_built_table_infers_holds() -> Bool {
+  reader_inference(module: "v2.cl.reader_given_table", unit: ^cl_table_cu) == 1
+}
