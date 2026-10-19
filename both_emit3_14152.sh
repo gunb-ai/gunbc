@@ -25,17 +25,24 @@ run_side() { # $1 sha  $2 tag  $3 targetdir
   echo "[$tag] build rc=$rc exists=$([ -x "$bin" ] && echo yes || echo no)"
   [ $rc -eq 0 ] && [ -x "$bin" ] || { grep -aE "^error" "$w/build.log" | head -6; return 6; }
   local s="$w/src"; mkdir -p "$s"
-  tar -C "$d" --exclude='./docs/measurements' --exclude='./target' --exclude='./.git' -cf - . 2>/dev/null | tar -C "$s" -xf -
+  tar -C "$d" --exclude='./target' --exclude='./.git' -cf - . 2>/dev/null | tar -C "$s" -xf -
+  # rm -rf, NOT --exclude: the tar exclude silently left the fixture (collisions=1) and the emit then
+  # refused with a module-path collision before writing anything -- a void that looked like an emit bug.
+  rm -rf "$s/docs/measurements"
   echo "[$tag] staged_dags=$(find "$s" -name '*.dag' | wc -l) collisions=$(find "$s" -path '*value_position_block_nests*' | wc -l)"
   mkdir -p "$w/emit"
   ( cd "$s" && "$bin" compile --source-dir . --output-dir "$w/emit" --target rust --entry src/v2/compiler/source_root_eval.dag ) > "$w/emit.log" 2>&1
   echo "[$tag] EMIT_RC=$? $(grep -aoE 'produced [0-9]+ hard diagnostic' "$w/emit.log" | head -1)"
+  echo "[$tag] --- emit log (first 25 lines) ---"; head -25 "$w/emit.log"
   local f=$(find "$w/emit" -name std_realization_measurement.rs | head -1)
   if [ -z "$f" ]; then echo "[$tag] VOID_NO_EMITTED_FILE"; find "$w/emit" -maxdepth 2 2>/dev/null | head -8; return 5; fi
   echo "[$tag] EMITTED sha256=$(sha256sum "$f" | cut -c1-16) lines=$(wc -l < "$f")"
   echo "[$tag] S_clone_bound=$(grep -ac 'S: Clone' "$f") clone_calls=$(grep -ac '\.clone()' "$f") mint_ids=$(grep -acE '[A-Za-z]+@[^ (]*:[0-9]+-[0-9]+' "$f")"
-  echo "[$tag] --- blamed function verbatim ---"
+  echo "[$tag] --- blamed CALLER verbatim ---"
   awk '/fn witness_measured_rollup_differs_from_predicted_zero/,/^}/' "$f" | head -18 | cut -c1-210
+  echo "[$tag] --- CALLEE signatures (the decisive lines: Rc wrapper present or not) ---"
+  grep -n "pub fn cost_account_measured_from_time\|pub fn cost_account_time_count" "$f" | cut -c1-210
+  echo "[$tag] line 341 of the emitted file:"; sed -n '341p' "$f" | cut -c1-210
   cp "$f" "/tmp/emitted_$tag.rs"
   return 0
 }
