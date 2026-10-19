@@ -8867,11 +8867,14 @@ fn target_primitive_arguments_to_tokens(
                     outcome_accepted(
                       TargetPrimitiveArgumentFold {
                         tokens: list_append(
-                          left: match state.count {
-                            0 => Empty
-                            _ => Cons { head: FixedToken { token_class: separator }, tail: Empty }
-                          },
-                          right: list_append(left: target_primitive_argument_prefix_tokens(argument: shape), right: et)
+                          left: state.tokens,
+                          right: list_append(
+                            left: match state.count {
+                              0 => Empty
+                              _ => Cons { head: FixedToken { token_class: separator }, tail: Empty }
+                            },
+                            right: list_append(left: target_primitive_argument_prefix_tokens(argument: shape), right: et)
+                          )
                         ),
                         pending_arguments: rest,
                         count: state.count + 1
