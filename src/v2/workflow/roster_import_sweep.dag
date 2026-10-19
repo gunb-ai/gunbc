@@ -1253,7 +1253,7 @@ fn roster_control_called_parameter(prepared: PreparedGrammar, lex: PreparedLexRu
 }
 
 // A NESTED CALL'S LABEL IS NOT THE OUTER CALL'S: chars(s: g(s: x)) relabels only chars's own direct argument; the inner g's
-// s: is an argument of g (the stopping rule of v2.extdeps.languages.dag dag_call_direct_args).
+// s: is an argument of g (the stopping rule of v2.extdeps.languages.dag dag_call_direct_arg_slots).
 fn roster_control_nested_call_label(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.nested\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: g(s: x)))\n}\n"
   let after = "module c.nested\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: g(s: x)))\n}\n"

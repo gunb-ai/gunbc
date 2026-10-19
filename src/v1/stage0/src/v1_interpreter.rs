@@ -21859,6 +21859,10 @@ pub(crate) fn json_container_depth(json: &serde_json::Value) -> usize {
 /// The largest decimal exponent an i64-unit decimal can carry: i64::MAX has 19 digits, 18 of them free.
 const EXACT_DECIMAL_MAX_DECIMAL_EXPONENT: u64 = 18;
 
+/// The largest scale (fraction digits) a decoded ExactDecimal may carry: 18 free significant digits whose
+/// leading digit lies at most 18 places past the point.
+const EXACT_DECIMAL_MAX_SCALE: i64 = 2 * EXACT_DECIMAL_MAX_DECIMAL_EXPONENT as i64;
+
 /// The exact `(units, fraction_digits)` of a JSON number's decimal text: `-?D+(.D+)?([eE][+-]?D+)?`.
 /// `units` is the signed mantissa digits and `fraction_digits` the count of digits after the point less
 /// the exponent; a negative scale is folded into `units`. `None` when the text is not that grammar or
@@ -21876,6 +21880,12 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
     // exponent beyond that either overflows the units or names a scale no Int-unit decimal carries. Without
     // the bound a zero mantissa (`0e9223372036854775807`) never overflows and the scaling loop below does
     // not return, and `1e-999999999` would be accepted with a billion fraction digits (review 82479).
+    // The scale is capped separately, because the exponent bound does not limit it: `parse::<i64>` accepts
+    // leading zeros, so `0.` followed by ten thousand zeros and a `1` has exponent 0 and scale 10001
+    // (review 82586). The cap is EXACT_DECIMAL_MAX_SCALE (36): at most 18 free significant digits whose
+    // leading digit lies at most 18 places past the point. An earlier cap at 19 refused a live price with 17
+    // significant digits at 20 fraction digits (`0.00026041666666666666`, fleet-converge run 39222150650)
+    // and with it the whole offer page.
     if exponent.unsigned_abs() > EXACT_DECIMAL_MAX_DECIMAL_EXPONENT {
         return None;
     }
@@ -21892,7 +21902,7 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
     let digits = format!("{}{}", int_part, frac_part);
     let mut units: i64 = digits.parse::<i64>().ok()?;
     let mut fraction_digits: i64 = (frac_part.len() as i64).checked_sub(exponent)?;
-    if fraction_digits > EXACT_DECIMAL_MAX_DECIMAL_EXPONENT as i64 + 1 {
+    if fraction_digits > EXACT_DECIMAL_MAX_SCALE {
         return None;
     }
     while fraction_digits < 0 {

@@ -423,10 +423,10 @@ pub fn record_suppressed(
     identity: String,
     ground: ExpectedRedSuppressionGround,
 ) -> Rc<ExpectedRedRosterJoinReport> {
-    Rc::new(ExpectedRedRosterJoinReport {
-        run_head: report.run_head.clone(),
-        run_note: report.run_note.clone(),
-        rows: Rc::new({
+    {
+        let __rb_0_0 = report.run_head.clone();
+        let __rb_1_0 = report.run_note.clone();
+        let __rb_2_0 = Rc::new({
             let mut __result = Vec::new();
             for row in report.rows.clone().iter().cloned() {
                 __result.push(if (row.identity.clone() == identity.clone()) {
@@ -442,8 +442,24 @@ pub fn record_suppressed(
                 });
             }
             __result
-        }),
-    })
+        });
+        let mut __rb_h = report;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.run_head = __rb_0_0;
+                __rb_r.run_note = __rb_1_0;
+                __rb_r.rows = __rb_2_0;
+            }
+            None => {
+                __rb_h = Rc::new(ExpectedRedRosterJoinReport {
+                    run_head: __rb_0_0,
+                    run_note: __rb_1_0,
+                    rows: __rb_2_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn row_with_recorded_verdict(
@@ -452,11 +468,27 @@ pub fn row_with_recorded_verdict(
 ) -> Rc<ExpectedRedRosterJoinRow> {
     {
         let classification = classify_verdict(verdict.clone());
-        Rc::new(ExpectedRedRosterJoinRow {
-            identity: row.identity.clone(),
-            disposition: classification.disposition.clone(),
-            detail: classification.detail.clone(),
-        })
+        {
+            let __rb_0_0 = row.identity.clone();
+            let __rb_1_0 = classification.disposition.clone();
+            let __rb_2_0 = classification.detail.clone();
+            let mut __rb_h = row;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.identity = __rb_0_0;
+                    __rb_r.disposition = __rb_1_0;
+                    __rb_r.detail = __rb_2_0;
+                }
+                None => {
+                    __rb_h = Rc::new(ExpectedRedRosterJoinRow {
+                        identity: __rb_0_0,
+                        disposition: __rb_1_0,
+                        detail: __rb_2_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 
@@ -465,10 +497,10 @@ pub fn record_observed(
     identity: String,
     verdict: Rc<WitnessEvalVerdict>,
 ) -> Rc<ExpectedRedRosterJoinReport> {
-    Rc::new(ExpectedRedRosterJoinReport {
-        run_head: report.run_head.clone(),
-        run_note: report.run_note.clone(),
-        rows: Rc::new({
+    {
+        let __rb_0_0 = report.run_head.clone();
+        let __rb_1_0 = report.run_note.clone();
+        let __rb_2_0 = Rc::new({
             let mut __result = Vec::new();
             for row in report.rows.clone().iter().cloned() {
                 __result.push(if (row.identity.clone() == identity.clone()) {
@@ -478,8 +510,24 @@ pub fn record_observed(
                 });
             }
             __result
-        }),
-    })
+        });
+        let mut __rb_h = report;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.run_head = __rb_0_0;
+                __rb_r.run_note = __rb_1_0;
+                __rb_r.rows = __rb_2_0;
+            }
+            None => {
+                __rb_h = Rc::new(ExpectedRedRosterJoinReport {
+                    run_head: __rb_0_0,
+                    run_note: __rb_1_0,
+                    rows: __rb_2_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn is_not_observed(disposition: Rc<ExpectedRedJoinDisposition>) -> bool {
@@ -510,10 +558,10 @@ pub fn row_finalized_if_not_observed(
 pub fn finalize_not_observed(
     report: Rc<ExpectedRedRosterJoinReport>,
 ) -> Rc<ExpectedRedRosterJoinReport> {
-    Rc::new(ExpectedRedRosterJoinReport {
-        run_head: report.run_head.clone(),
-        run_note: report.run_note.clone(),
-        rows: Rc::new(
+    {
+        let __rb_0_0 = report.run_head.clone();
+        let __rb_1_0 = report.run_note.clone();
+        let __rb_2_0 = Rc::new(
             report
                 .rows
                 .clone()
@@ -521,8 +569,24 @@ pub fn finalize_not_observed(
                 .cloned()
                 .map(row_finalized_if_not_observed)
                 .collect::<Vec<_>>(),
-        ),
-    })
+        );
+        let mut __rb_h = report;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.run_head = __rb_0_0;
+                __rb_r.run_note = __rb_1_0;
+                __rb_r.rows = __rb_2_0;
+            }
+            None => {
+                __rb_h = Rc::new(ExpectedRedRosterJoinReport {
+                    run_head: __rb_0_0,
+                    run_note: __rb_1_0,
+                    rows: __rb_2_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
