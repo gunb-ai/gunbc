@@ -20,6 +20,7 @@ import gunbc.rust_emitted_edge { rust_module_emit_filename }
 import extdeps.rust.cargo { CargoTarget, Lib, Bin, cargo_target_source_path }
 import gunbc.stage0.stage0_emitted_population_manifest {
   emitted_population_paths_from_manifest,
+  emitted_population_manifest_basename,
   self_host_frontier_verdict_passed_word,
   self_host_frontier_verdict_not_passed_word
 }
@@ -575,6 +576,7 @@ type FrontierStanding
   = SelfEmitted { crate_relative_path: String, source_module: String, receipt: ProducerEmissionReceipt }
   | EmittedUnexecuted { crate_relative_path: String, source_module: String }
   | SeedRetained { row: SeedRetentionFrontierRow }
+  | GeneratedCensusArtifact { crate_relative_path: String }
   | Unclassified { crate_relative_path: String }
 
 type SelfHostFrontier {
@@ -632,7 +634,9 @@ fn frontier_path_standing(
   path: String
 ) -> FrontierStanding {
   match emitted_row_for_path(rows: emitted, path: path) {
-    Cons { head: row, tail: _ } => if frontier_path_is_crate_entry(path: path) {
+    Cons { head: row, tail: _ } => if path == frontier_census_manifest_path() {
+      GeneratedCensusArtifact { crate_relative_path: path }
+    } else if frontier_path_is_crate_entry(path: path) {
       EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
     } else {
       frontier_emitted_standing(
@@ -682,18 +686,20 @@ type FrontierCounts {
   emitted_unexecuted: Int
   seed_retained: Int
   unclassified: Int
+  generated_census_artifacts: Int
 }
 
 fn frontier_counts(frontier: SelfHostFrontier) -> FrontierCounts {
   fold(
     frontier.standings,
-    init: FrontierCounts { self_emitted: 0, emitted_unexecuted: 0, seed_retained: 0, unclassified: 0 },
+    init: FrontierCounts { self_emitted: 0, emitted_unexecuted: 0, seed_retained: 0, unclassified: 0, generated_census_artifacts: 0 },
     f: fn(acc, standing) {
       match standing {
-        SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => FrontierCounts { self_emitted: acc.self_emitted + 1, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified }
-        EmittedUnexecuted { crate_relative_path: _, source_module: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted + 1, seed_retained: acc.seed_retained, unclassified: acc.unclassified }
-        SeedRetained { row: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained + 1, unclassified: acc.unclassified }
-        Unclassified { crate_relative_path: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified + 1 }
+        SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => FrontierCounts { self_emitted: acc.self_emitted + 1, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts }
+        EmittedUnexecuted { crate_relative_path: _, source_module: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted + 1, seed_retained: acc.seed_retained, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts }
+        SeedRetained { row: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained + 1, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts }
+        Unclassified { crate_relative_path: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified + 1, generated_census_artifacts: acc.generated_census_artifacts }
+        GeneratedCensusArtifact { crate_relative_path: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts + 1 }
       }
     }
   )
@@ -716,6 +722,7 @@ fn frontier_retained_count_where(frontier: SelfHostFrontier, predicate: fn(SeedR
         SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => acc
         EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
         Unclassified { crate_relative_path: _ } => acc
+        GeneratedCensusArtifact { crate_relative_path: _ } => acc
       }
     }
   )
@@ -789,6 +796,13 @@ fn frontier_crate_entry_paths() -> List<String> {
   )
 }
 
+// The manifest is a build artifact of this census (v1.compiler.emit_rust emit_emitted_population_manifest
+// writes it into every emission), not a compiler module: counting it SelfEmitted would read one
+// self-emitted file where the truth is none. It is its own counted standing, never dropped.
+fn frontier_census_manifest_path() -> String {
+  concat("src/", emitted_population_manifest_basename)
+}
+
 fn frontier_path_is_crate_entry(path: String) -> Bool {
   length(xs: filter(xs: frontier_crate_entry_paths(), predicate: fn(entry) { entry == path })) > 0
 }
@@ -835,7 +849,8 @@ fn frontier_summary_line(frontier: SelfHostFrontier) -> String {
     " unclassified=", int_to_decimal_string(value: counts.unclassified),
     " stale_rows=", int_to_decimal_string(value: length(xs: frontier.stale_rows)),
     " reason_not_yet_declared=", int_to_decimal_string(value: frontier_undeclared_reason_count(frontier: frontier)),
-    " unbound_dissolution=", int_to_decimal_string(value: frontier_unbound_dissolution_count(frontier: frontier))
+    " unbound_dissolution=", int_to_decimal_string(value: frontier_unbound_dissolution_count(frontier: frontier)),
+    " generated_census_artifacts=", int_to_decimal_string(value: counts.generated_census_artifacts)
   )
 }
 
@@ -850,6 +865,7 @@ fn frontier_standing_lines(frontier: SelfHostFrontier) -> List<String> {
           SelfEmitted { crate_relative_path: path, source_module: module, receipt: _ } => concat(acc, [concat("[self-host-frontier] self-emitted: ", concat(path, concat(" <- ", module)))])
           EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
           SeedRetained { row: _ } => acc
+          GeneratedCensusArtifact { crate_relative_path: _ } => acc
         }
       }
     ),
