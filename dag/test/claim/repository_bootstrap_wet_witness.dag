@@ -119,7 +119,7 @@ fn run_bootstrap(s: BootstrapScratch) -> ProcessExit {
 // describable as merely "HEAD is not the candidate".
 type HeadReadback
   = HeadAtCandidate { observed: String }
-  | HeadWrong { observed: String }
+  | HeadWrong { observed: String, expected: String }
   | HeadUnreadable { stderr: String }
 
 fn head_readback_verdict(head_success: Bool, head_sha: String, head_stderr: String, expected: String) -> HeadReadback {
@@ -128,7 +128,10 @@ fn head_readback_verdict(head_success: Bool, head_sha: String, head_stderr: Stri
   } else if trim(s: head_sha) == expected {
     HeadAtCandidate { observed: trim(s: head_sha) }
   } else {
-    HeadWrong { observed: trim(s: head_sha) }
+    // The arm carries BOTH sides of the comparison that failed, so the refusal reason is by
+    // construction the check the witness ran -- a diagnostic that re-read `expected` from the call
+    // site could render a refusal claiming observed == expected.
+    HeadWrong { observed: trim(s: head_sha), expected: expected }
   }
 }
 
@@ -146,10 +149,10 @@ fn probe_head_matches(repo: String, expected: String) -> HeadReadback {
 // witness's own failure reason, which claim_batch prints ("FAIL <fn> (... code <n>: <reason>)"), so an
 // unreadable observation reaches the operator as the op's own stderr and a wrong observation as the
 // value it saw. The accepted arm renders ""; the tests treat non-empty as the refusal.
-fn head_readback_diagnostic(verdict: HeadReadback, expected: String) -> String {
+fn head_readback_diagnostic(verdict: HeadReadback) -> String {
   match verdict {
     HeadAtCandidate { observed: _ } => ""
-    HeadWrong { observed: observed } => join(["head: observed ", observed, ", expected ", expected], "")
+    HeadWrong { observed: observed, expected: expected } => join(["head: observed ", observed, ", expected ", expected], "")
     HeadUnreadable { stderr: stderr } => join(["head: unreadable: ", stderr], "")
   }
 }
@@ -304,7 +307,10 @@ test fn readback_verdicts_keep_unreadable_distinct_from_wrong() -> Bool {
     expected: "0000000000000000000000000000000000000000",
   )
   let head_arms = match head_wrong {
-    HeadWrong { observed: "1111111111111111111111111111111111111111" } => true
+    HeadWrong {
+      observed: "1111111111111111111111111111111111111111",
+      expected: "0000000000000000000000000000000000000000",
+    } => true
     _ => false
   } && match head_unknown {
     HeadUnreadable { stderr: "fatal: not a git repository" } => true
@@ -457,7 +463,7 @@ test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_re
       let cleanup_refusal = if cleaned { "" } else { "scratch root could not be removed" }
       refusal_or_success(refusals: [
         gate_refusal,
-        head_readback_diagnostic(verdict: head_observed, expected: s.candidate),
+        head_readback_diagnostic(verdict: head_observed),
         worktree_readback_diagnostic(verdict: worktree_observed),
         bytes_readback_diagnostic(verdict: tracked_observed, path: tracked_path),
         cleanup_refusal,
