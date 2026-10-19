@@ -37,8 +37,8 @@ import gunbc.auth.approval_request_submission { approval_submission_mac_key_secr
 import gunbc.cloudflare.r2_mint_secret_access { r2_mint_custody_grants }
 import gunbc.auth.fleet_secret_accessor_roster { FleetAccessorGrantRow, fleet_accessor_grant_roster, fleet_version_adder_grant_roster, fleet_accessor_grant, fleet_version_adder_grant }
 import gunbc.auth.gcp_iam_trust_roots { ceremony_trust_root_secret }
-import gunbc.assimilate.bmc_wif_delegation_chain { bmc_wif_canary_grant, bmc_srv3_admin_access_grant, bmc_srv3_admin_legacy_binding }
-import gunbc.assimilate.bmc_token_federation { bmc_assimilator_sa_email }
+import gunbc.assimilate.bmc_wif_delegation_chain { bmc_wif_signed_grants }
+import gunbc.auth.secret_access_grant { grant_member }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
@@ -320,26 +320,32 @@ type GrantSet {
 data gcp_iam_converge_grant_sets: List<GrantSet> = [
   GrantSet { label: "r2 mint custody cells", grants: r2_mint_custody_grants(), member: grant_member_resolution() },
   GrantSet { label: "fleet roster cells", grants: fleet_roster_grants(), member: grant_member_resolution() },
-  GrantSet { label: "bmc assimilator cells", grants: bmc_assimilator_grants(), member: GrantMemberResolved { member: federated_service_account_member(email: bmc_assimilator_sa_email) } },
-]
+] + bmc_assimilator_grant_sets_over(grants: bmc_wif_signed_grants())
 
 fn fleet_roster_grants() -> List<SecretAccessGrant> {
   map(filter(fleet_accessor_grant_roster, r => !ceremony_trust_root_secret(secret: r.target.secret)), r => fleet_accessor_grant(row: r))
     + map(filter(fleet_version_adder_grant_roster, r => !ceremony_trust_root_secret(secret: r.target.secret)), r => fleet_version_adder_grant(row: r))
 }
 
-// THE BMC ASSIMILATOR'S CELLS (gunbc.assimilate.bmc_wif_delegation_chain), carried as the cells they
-// declare: a cell is (secret, role, member), so the srv3 legacy binding, equal to the srv3 admin grant on
-// all three, is that one cell and not a second row; any grant differing on one of them stays its own.
-fn bmc_assimilator_grants() -> List<SecretAccessGrant> {
-  distinct_by_key(
-    xs: [
-      SecretAccessGrant { target: bmc_wif_canary_grant.secret_ref, role: bmc_wif_canary_grant.role, condition: none },
-      SecretAccessGrant { target: bmc_srv3_admin_access_grant.secret_ref, role: bmc_srv3_admin_access_grant.role, condition: none },
-      SecretAccessGrant { target: bmc_srv3_admin_legacy_binding.secret_ref, role: bmc_srv3_admin_legacy_binding.role, condition: none },
-    ],
+// THE BMC ASSIMILATOR'S CELLS are the ones its declarer selects to apply
+// (gunbc.assimilate.bmc_wif_delegation_chain bmc_wif_signed_grants): an Unsigned grant is a pending
+// keep-or-retire decision, made by signing it in reviewed code, never by an approval tap, so it reaches
+// no set. The legacy binding (bmc_wif_legacy_grants, AppliedOutOfBand) is not converged. The member is
+// each grant's own principal (gunbc.auth.secret_access_grant grant_member); grants naming different
+// principals are one set no single member serves, so the set refuses typed. No signed grant, no set.
+// A cell is (secret, role, member), so grants equal on all three are one cell.
+fn bmc_assimilator_grant_sets_over(grants: List<gunbc.auth.secret_access_grant.SecretAccessGrant>) -> List<GrantSet> {
+  let members = distinct_by_key(xs: map(grants, g => grant_member(grant: g)), key: m => m)
+  let cells = distinct_by_key(
+    xs: map(grants, g => SecretAccessGrant { target: g.secret_ref, role: g.role, condition: none }),
     key: g => concat(concat(g.target.secret as String, " "), g.role),
   )
+  if count(cells) == 0 { [] } else {
+    let member = if count(members) == 1 { GrantMemberResolved { member: join(members, "") } } else {
+      GrantMemberUnresolved { cause: concat("bmc assimilator grants name more than one principal: ", join(members, ", ")) }
+    }
+    [GrantSet { label: "bmc assimilator cells", grants: cells, member: member }]
+  }
 }
 
 // ONE SECRET CARRIES SEVERAL CELLS (viewer, versionAdder, accessor), so a grant set is planned and

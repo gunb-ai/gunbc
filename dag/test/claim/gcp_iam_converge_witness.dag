@@ -661,12 +661,12 @@ test fn no_grant_set_names_a_trust_root() -> Bool {
     && any(ceremony_trust_root_secrets(), t => ceremony_trust_root_secret(secret: t.secret))
 }
 
-// THE BMC ASSIMILATOR'S CELLS NAME ITS OWN ACCOUNT, resolved, never the fleet principal; the srv3 legacy
-// binding is the srv3 admin cell (equal on secret, role and member), so the set holds two cells.
-test fn the_bmc_assimilator_set_names_its_account_and_merges_the_equal_cell() -> Bool {
+// THE BMC ASSIMILATOR'S CELLS ARE ITS SIGNED GRANTS' (today the canary alone; the srv3 admin grant and
+// the legacy binding are Unsigned), resolved to the grants' own principal, never the fleet principal.
+test fn the_bmc_assimilator_set_is_its_signed_grants_under_its_own_account() -> Bool {
   match grant_set_named(label: "bmc assimilator cells") {
     Absent => false
-    Present { value: g } => count(g.grants) == 2 && match g.member {
+    Present { value: g } => count(g.grants) == 1 && all(g.grants, x => (x.target.secret as String) == "wif-canary") && match g.member {
       GrantMemberResolved { member: m } => m == federated_service_account_member(email: bmc_assimilator_sa_email)
       GrantMemberUnresolved { cause: _ } => false
     }

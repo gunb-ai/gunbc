@@ -580,8 +580,16 @@ data gcp_iam_approval_enforced_in_reviewed_code: DivergenceReason = DivergenceRe
 
 // STRUCTURAL, AND BOUND TO THE THING THAT MAKES IT STRUCTURAL: the reason retires only if the
 // approval loop stops having a provisioned submission MAC key to bootstrap.
+// THE GUNBAI-CI APP KEY IS A CEREMONY TRUST ROOT (gunbc.auth.gcp_iam_trust_roots gate_app_root_reason,
+// ceremony OrgAdminAppKeyAccessConverge), so its binder is the ceremony's and no approval adapter may
+// replace it: the dissolution is the gate App decision, not an adapter landing.
+data gate_app_key_ceremony_trust_root: DivergenceReason = DivergenceReason {
+  statement: "the gunbai-ci App private key may answer the gcp-iam-bootstrap deployment protection rule, so it is a ceremony trust root and only the first-time root ceremony binds its accessor cell; an approval-gated route binding it could open the gate it answers" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "gunbc.auth.deployment_gate_authorization names the gate App on main; if that App is not gunbai-ci, this key leaves gunbc.auth.gcp_iam_trust_roots and its cell joins the converge's grant sets, and this row's site is deleted" as NonEmptyStr),
+}
+
 data approval_bootstrap_circularity: DivergenceReason = DivergenceReason {
-  statement: "the approval loop's own MAC keys cannot be provisioned by the approval loop; this is the one ceremony that is structurally the operator's, and it ran once on 2026-09-17" as NonEmptyStr,
+  statement: "the approval loop's own MAC keys cannot be provisioned by the approval loop; this is the one ceremony that is structurally the operator's, and it ran once on 2026-09-17. All three are ceremony trust roots (gunbc.auth.gcp_iam_trust_roots, ceremony ApprovalMacKeyProvision), so no approval-gated route may bind their readers" as NonEmptyStr,
   dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "approval_submission_mac_key_secret_ref")),
 }
 
@@ -1034,7 +1042,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_admin_app_key_access_converge_with_supplied_token"),
     effect: accessor_grant(subject: "gunbai-ci App key accessor cell" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+    divergence_reason: Present { value: gate_app_key_ceremony_trust_root },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.heal_publisher_provision", decl_name: "heal_publisher_federation_provision_with_supplied_token"),
@@ -1054,7 +1062,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.approval_mac_key_provision", decl_name: "provision_approval_mac_keys"),
     effect: PrivilegedEffect {
-      subject: "create the two approval MAC key secrets, add their first versions, bind their accessor cells" as NonEmptyStr,
+      subject: "create the three approval MAC key secrets (capability, submission, store receipt), add their first versions, bind their accessor cells" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,

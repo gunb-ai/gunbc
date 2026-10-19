@@ -14,7 +14,7 @@ import gunbc.auth.gcp_iam_converge {
 }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, impersonation_cells, StandingPoolImpersonation, standing_impersonation_cell }
 import gunbc.auth.gcp_secret_access { secret_access_desired_cells }
-import gunbc.auth.gcp_iam_trust_roots { CeremonyTrustRootSecret, ceremony_trust_root_secrets, ceremony_trust_root_secret }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, CeremonyTrustRootSecret, ceremony_trust_root_secrets, ceremony_trust_root_secret }
 import gunbc.auth.gcp_iam_bootstrap_federation {
   iam_bootstrap_service_account, iam_bootstrap_service_account_id, gcp_iam_bootstrap_wif_pool_id, gcp_iam_bootstrap_wif_provider_id,
   gcp_iam_bootstrap_wif_pool_display_name, gcp_iam_bootstrap_wif_attribute_mapping, gcp_iam_bootstrap_wif_attribute_condition, gcp_iam_bootstrap_wif_principal_set,
@@ -319,13 +319,13 @@ fn iam_bootstrap_delta_deny_rules() -> List<GcpDenyPolicyRule> {
 // so an approval-gated route must never own their IAM; only the first-time root ceremony binds them.
 type SecretIamOwner
   = BootstrapRostered
-  | CeremonyTrustRoot { reason: NonEmptyStr }
+  | CeremonyTrustRoot { reason: NonEmptyStr, ceremony: TrustRootCeremony }
 
 // ABSENT IS THE RED: a declared secret neither rostered nor a trust root is one whose cells still need
 // an operator by hand, which the operator's ruling forbids.
 fn secret_iam_owner(secret: NonEmptyStr) -> SecretIamOwner? {
   match filter(ceremony_trust_root_secrets(), t => (t.secret as String) == (secret as String)).first() {
-    Present { value: t } => Present { value: CeremonyTrustRoot { reason: t.reason } }
+    Present { value: t } => Present { value: CeremonyTrustRoot { reason: t.reason, ceremony: t.ceremony } }
     Absent => if any(iam_bootstrap_bound_secrets(), s => (s as String) == (secret as String)) { Present { value: BootstrapRostered } } else { none }
   }
 }
