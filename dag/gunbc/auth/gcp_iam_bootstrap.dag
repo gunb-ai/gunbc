@@ -506,7 +506,7 @@ fn iam_bootstrap_ensure_fenced_binding(binding: IamBootstrapBinding, token: Secr
 // test.claim.gcp_iam_bootstrap_population_split_witness reads the same selectors.
 fn iam_bootstrap_stage_bindings_over(stage: IamBootstrapStage, targets: List<DedicatedFederation>, grant_set_secrets: List<NonEmptyStr>) -> List<IamBootstrapBinding> {
   match stage {
-    BootstrapCapabilities => iam_bootstrap_capability_bindings_over(targets: targets, grant_set_secrets: grant_set_secrets)
+    BootstrapCapabilities => iam_bootstrap_root_ceremony_bindings_over(targets: targets, grant_set_secrets: grant_set_secrets)
     BootstrapServices => []  BootstrapIdentities => []  BootstrapRoles => []  BootstrapDeny => []  BootstrapAuthorityCleanup => []
     BootstrapProbeAuthority => []  BootstrapPrivilegeReadback => []  BootstrapProbeCleanup => []  BootstrapWorkflowTrust => []
   }
@@ -514,7 +514,7 @@ fn iam_bootstrap_stage_bindings_over(stage: IamBootstrapStage, targets: List<Ded
 
 fn iam_bootstrap_stage_identities_over(stage: IamBootstrapStage, targets: List<DedicatedFederation>) -> List<IamBootstrapIdentity> {
   match stage {
-    BootstrapIdentities => iam_bootstrap_identity_population_over(targets: targets)
+    BootstrapIdentities => iam_bootstrap_ceremony_identity_population_over(targets: targets)
     BootstrapServices => []  BootstrapCapabilities => []  BootstrapRoles => []  BootstrapDeny => []  BootstrapAuthorityCleanup => []
     BootstrapProbeAuthority => []  BootstrapPrivilegeReadback => []  BootstrapProbeCleanup => []  BootstrapWorkflowTrust => []
   }
