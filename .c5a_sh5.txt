@@ -1,9 +1,0 @@
-src/v2/test/claim/body_lowering/anonymous_record.dag
-src/v2/test/claim/compiler/collection_concat_realization.dag
-src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness.dag
-src/v2/test/claim/execution/infer_atom_grounding_rules.dag
-src/v2/test/claim/manual/value_null_split_witness.dag
-src/v2/test/claim/namespace_xl0/value_read_direct.dag
-src/v2/test/claim/parse/expression_bodied_fn_decl_parse.dag
-src/v2/test/claim/round_trip/source_authority_contract.dag
-src/v2/workflow/orchestration_while_emit.dag

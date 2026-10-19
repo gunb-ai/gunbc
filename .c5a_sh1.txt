@@ -1,9 +1,0 @@
-src/v2/compiler/dependency_demand_census.dag
-src/v2/test/claim/body_lowering/qualified_construct.dag
-src/v2/test/claim/dag_acceptance.dag
-src/v2/test/claim/execution/emit_on_demand_kernel_witness.dag
-src/v2/test/claim/generated/coproduct_exhaustiveness.dag
-src/v2/test/claim/name_resolve/admission_fail_closed.dag
-src/v2/test/claim/occurrence_binding_partial_validity.dag
-src/v2/test/claim/parse/parse_test_grammar_expect.dag
-src/v2/test/claim/self_host/production_qualification_origin_probe_witness.dag

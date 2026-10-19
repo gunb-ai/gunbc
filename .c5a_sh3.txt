@@ -1,9 +1,0 @@
-src/v2/compiler/source_root_eval.dag
-src/v2/test/claim/cli/population_verbs.dag
-src/v2/test/claim/demand_engine/native_demand_schedule.dag
-src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness.dag
-src/v2/test/claim/long/native_routing_membership_receipt.dag
-src/v2/test/claim/namespace_xl0/reference_conservation.dag
-src/v2/test/claim/parse/choice_plan.dag
-src/v2/test/claim/parse/request_authentication_witness_parse_probe.dag
-src/v2/test/claim/tokenize/lex_rule_dispatch.dag

@@ -67,7 +67,7 @@ test fn a_same_line_call_keeps_the_call_reading_holds() -> Bool {
 // THE RETENTION CONTROL: a tree that really is not normalized is still refused. A record initializer
 // opening the line after its type name is read across the break, leaves the let with no body and
 // retains its shell -- the failure class the guard repairs for `(` and does not repair for `{` here
-// (reported separately), so this is evidence the retention check itself was not widened.
+// (Charter 5 work item C5-F, node://adhoc-0acbcf32-85e), so this is evidence the retention check itself was not widened.
 test fn the_retention_check_still_refuses_an_unnormalized_tree_holds() -> Bool {
   normalized_ok(tag: "brace", text: next_line_brace_source) == false
 }

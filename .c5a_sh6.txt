@@ -1,8 +1,0 @@
-src/v2/test/claim/body_lowering/arrow_body_form_witness.dag
-src/v2/test/claim/compiler/dependency_demand_census.dag
-src/v2/test/claim/execution/emit_on_demand_complement_family_witness.dag
-src/v2/test/claim/execution/infer_product_introduction.dag
-src/v2/test/claim/module_acquisition.dag
-src/v2/test/claim/native_frontier_ratchet_witness.dag
-src/v2/test/claim/parse/layout_line_break.dag
-src/v2/test/claim/self_host/closure_emission.dag
