@@ -590,7 +590,8 @@ test fn the_real_fill_debt_carrier_yields_its_named_active_member_as_an_identity
   let rows = s1_all_classifier_rows()
   any(rows, row => row.carrier == fill_debt_carrier && classifier_member_text(row: row) == named)
     && any(rows, row => match row.member {
-         IdentityMember { identity: identity } => identity == named && row.cover
+         IdentityMember { identity: identity } =>
+           identity == named && match row.role { CoverRole => true, EnrollmentRole => false }
          _ => false
        })
 }
@@ -602,7 +603,9 @@ test fn the_real_fill_debt_carrier_yields_its_named_active_member_as_an_identity
 // drop that stopped contributing rows at all is a witness failure and not a silent shrink.
 test fn a_real_rung_drop_member_arrives_under_its_own_drop_carrier() -> Bool {
   let rows = s1_all_classifier_rows()
-  any(rows, row => string_contains(s: row.carrier, pattern: "gunbc.rung_drop.") && row.cover)
+  any(rows, row =>
+    string_contains(s: row.carrier, pattern: "gunbc.rung_drop.")
+      && match row.role { CoverRole => true, EnrollmentRole => false })
     && any(rows, row => match row.member {
          DeclaredMember { text: text } => text != "" && string_contains(s: row.carrier, pattern: "gunbc.rung_drop.")
          _ => false
