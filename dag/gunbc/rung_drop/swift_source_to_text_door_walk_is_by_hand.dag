@@ -1,0 +1,33 @@
+module gunbc.rung_drop.swift_source_to_text_door_walk_is_by_hand
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP (DESIGN 4b(3)) FOR THE SOURCE-TO-SWIFT-TEXT PATH OF THE CLOSURE-EMIT DOOR.
+// The v2-native-cli door walk lives in seed Rust (src/v1/stage0/src/cli_run/native_lane_runner.rs)
+// and walks only the Rust probe `gunbc.native_cli_door_probe`. A `.dag` source reaching Swift text
+// through the door (`emit --target swift`) is therefore established by two supplied-input claims that
+// meet at one shared node (v2.test.claim.coproduct_fixture: the lowering claim asserts it as OUTPUT,
+// the Swift emit claim takes it as INPUT) plus a by-hand door receipt on the PR, and no instrument
+// executes the whole route. Growing the seed's walk to Swift was refused because DESIGN 7 has the seed
+// shrinking.
+data swift_source_to_text_door_walk_is_by_hand: RungDrop = RungDrop {
+  identity: "swift_source_to_text_door_walk_is_by_hand" as NonEmptyStr,
+
+  subject: "the source -> Swift text route of the closure-emit door (v2.cli.compile_cli emit --target swift): no instrument walks it end to end",
+
+  declared: "2026-10-19",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "a substrate-owned door instrument: the door walk declared as rows in .dag rather than in seed Rust, walking a source fixture per emit target" },
+    population: [
+      "every emit target the door wires beyond Rust; at declaration swift (gunbc.native_cli_door_probe is the only walked subject, Rust only)"
+    ],
+    restoration_trigger: "the v2-native-cli door walk is a substrate-owned instrument that emits a fixture source through --target swift and compares the printed declaration order and text with the golden. SUFFICIENT FOR: a 5-arm coproduct and an Int-field record fixture printed as Swift by the built door binary under a test label, with a control in which the lowering is reverted and the order assertion goes red. Observed at retirement, not asserted."
+  }
+}
