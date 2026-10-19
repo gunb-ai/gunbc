@@ -3514,6 +3514,26 @@ fn rebuild_scope_decision(
     .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
 }
 
+fn stage_rebuild_is_whole_compiler(
+    source_roots: &[String],
+    boundary_files: &[String],
+) -> Result<bool, String> {
+    match rebuild_scope_decision(
+        source_roots,
+        "stage0_stage_rebuild_is_whole_compiler",
+        vec![(
+            Some("boundary_files".to_string()),
+            model_string_list(boundary_files),
+        )],
+    )? {
+        ModelValue::Bool(value) => Ok(value),
+        other => Err(format!(
+            "refusal: stage0_stage_rebuild_is_whole_compiler returned {} instead of Bool",
+            other.type_label_public()
+        )),
+    }
+}
+
 fn regen_convergence_generation_bound(source_roots: &[String]) -> Result<i64, String> {
     match rebuild_scope_decision(
         source_roots,
@@ -5375,6 +5395,7 @@ fn install_convergence_stage(
     candidate_tree_id: &str,
     candidate_tree_digest: &str,
     dependency_closure_id: &str,
+    whole_compiler: bool,
 ) -> Result<(RegenConvergenceStageReceipt, bool), String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
     // The generated shell declares the emitted modules not owned by a partition.
@@ -5406,6 +5427,7 @@ fn install_convergence_stage(
         &subject,
         |workspace| match &partition_move {
             Some(outcome) => partition_move_rebuild(workspace, &subject, outcome),
+            None if whole_compiler => seed_cargo_build(workspace, "round.rebuild_from_installed"),
             None => partitioned_rebuild_from_installed(workspace, &actuation),
         },
         || next_pass_executable_digest(workspace),
@@ -6314,6 +6336,35 @@ pub fn run_regen_round_cost(
         .map_err(|failure| {
             format!("install boundary population disagrees with the stage partition: {failure}")
         })?;
+        // THE BOUNDARY POPULATION JOINS THE STAGE THAT IS ALREADY PENDING. The post-install
+        // binary's own producer names the boundary files it would change; when a mirror stage is
+        // pending anyway they install in THE SAME install, so that stage's one rebuild covers
+        // both and no separate boundary rebuild or regeneration runs. Only boundary drift that
+        // first shows after the mirrors converged takes the tail arm above.
+        let stage_boundary = if partition_moved {
+            match built_seed_boundary_drift(&workspace) {
+                Ok(paths) => paths,
+                Err(failure) => {
+                    restore_regen_convergence_journal(&workspace)?;
+                    return Err(format!("{failure}; checkpoint restored"));
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        let stage_whole_compiler = stage_rebuild_is_whole_compiler(source_roots, &stage_boundary)?;
+        if !stage_boundary.is_empty() {
+            round_records.push(format!(
+                "generation {generation_ordinal}: boundary drift under the post-install producer \
+                 {stage_boundary:?} installs with the pending mirrors"
+            ));
+            if let Err(failure) = install_built_seed_boundary(&workspace, &stage_boundary) {
+                restore_regen_convergence_journal(&workspace)?;
+                return Err(format!(
+                    "boundary install refused; checkpoint restored: {failure}"
+                ));
+            }
+        }
         let drifted_entering_stage = drifted.clone();
         v1_rt::trace_mark("round.install.begin".to_string());
         let stage_result = install_convergence_stage(
@@ -6332,6 +6383,7 @@ pub fn run_regen_round_cost(
             &candidate_tree_id,
             &candidate_digest,
             &dependency_closure_id,
+            stage_whole_compiler,
         );
         v1_rt::trace_mark("round.install.done".to_string());
         let mut stage = match stage_result {

@@ -666,6 +666,16 @@ fn stage0_partition_move_explained_by_changed_paths(changed_paths: List<String>)
   rebuild_scope_list_has(items: changed_paths, item: stage0_partition_authority_storage_path())
 }
 
+// A STAGE THAT CARRIES BOUNDARY FILES MOVES THE PARTITION CRATES. The boundary files the built
+// producer emitted install in the same install as the pending mirrors (one rebuild covers both),
+// so the stage is partition-moving by what it installs, whatever its mirrors say: the partitioned
+// route's excluded-package refusal would otherwise fire on a correct build. This is the existing
+// whole-compiler arm selected by a second cause, not a widened catch-all; an unexplained
+// partition move still refuses at the host (PartitionMoveUnexplained).
+fn stage0_stage_rebuild_is_whole_compiler(boundary_files: List<String>) -> Bool {
+  list_length(items: boundary_files) > 0
+}
+
 // THE ROUND BOUND of the regen convergence loop, a declared policy row. Exceeding it is a typed
 // refusal carrying per-round records (required_regen_host RegenConvergenceBoundExceeded), never a
 // widened or unbounded loop.
