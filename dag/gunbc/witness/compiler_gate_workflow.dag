@@ -132,6 +132,11 @@ import gunbc.witness.compiler_gate_contract_stamp {
   compiler_gate_contract_stamp_guard_script_is_renderable,
   compiler_gate_contract_stamp_is_derived,
   compiler_gate_contract_stamp_underived_reason,
+  // The three invariants the generation gate enforces. Called in the gate below and listed by name in its
+  // refusal, so the dependency is written down rather than left to universe-wide resolution.
+  compiler_gate_contract_stamp_literal_shape_holds,
+  compiler_gate_contract_stamp_preimage_discriminator_holds,
+  compiler_gate_contract_stamp_output_population_is_exact,
   compiler_gate_contract_stamp_evidence_step_name,
   compiler_gate_contract_stamp_step_name,
   compiler_gate_contract_stamp_yaml_value
