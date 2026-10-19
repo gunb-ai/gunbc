@@ -21,6 +21,7 @@
 # files in the repo ROOT. And "the emitter produced it" is not a licence to install: a mirror can
 # carry a DECLARED divergence where candidate != tree is expected.
 set -uo pipefail
+export GIT_PAGER=cat PAGER=cat GIT_TERMINAL_PROMPT=0
 
 REF=${REF:?REF required, e.g. refs/heads/probe/pr1-producer-repair}
 REPO=${REPO:-https://github.com/gunb-ai/gunbc.git}
@@ -105,31 +106,28 @@ while :; do
   fi
 done
 
-# HAND THE ARTIFACT BACK AS A VERIFIABLE DIFF, NOT AS BASE64 OF THE WHOLE FILE.
-# The base64 of a ~2 MB mirror does not survive the output path: a `tail -c` on the dispatch cut it
-# and left an undecodable stub, so the round cost 25 minutes and yielded nothing. What is needed is
-# (a) the emitter's own verdict, (b) the final hash, and (c) enough of the change to apply locally.
-# Hash equality after applying the patch is the proof of byte-identity -- stronger than trusting a
-# copy, because a truncated or corrupted hand-back shows up as a hash mismatch instead of a bad file.
+# HAND THE ARTIFACT BACK AS A VERIFIABLE PATCH.
+# Never a colourised whole-file base64 blob: the first attempt filled the output tail, cut every
+# verdict line, and left an undecodable stub; and a bare `git diff` in a non-interactive dispatch
+# OPENS A PAGER and hangs the job at the client cap. So: GIT_PAGER=cat, --no-pager, --no-color, the
+# patch goes to a file, and what is printed is the verdict lines plus a gzipped base64 of the patch.
+# Byte-identity is proved by the HASH AFTER APPLYING, not by trusting a copy.
 FINAL=$(sha256sum src/v1/stage0/src/v1_compiler_infer.rs | cut -c1-16)
+git --no-pager diff --no-color -- src/v1/stage0/src/v1_compiler_infer.rs > "$LOGS/mirror.patch" 2>/dev/null
+PLINES=$(wc -l < "$LOGS/mirror.patch")
 echo "FINAL_MIRROR_SHA256 $FINAL"
+echo "MIRROR_BEFORE $MIRROR_BEFORE"
+echo "PATCH_LINES $PLINES"
 if [ "$FINAL" = "$MIRROR_BEFORE" ]; then
   echo "MIRROR_CHANGED no -- the committed mirror already IS the emitter's output"
 else
   echo "MIRROR_CHANGED yes"
-  git diff --stat -- src/v1/stage0/src/v1_compiler_infer.rs | tail -2
-  DIFFLINES=$(git diff -U3 -- src/v1/stage0/src/v1_compiler_infer.rs | wc -l)
-  echo "DIFF_LINES $DIFFLINES"
-  if [ "$DIFFLINES" -le 4000 ]; then
-    echo "DIFF_BEGIN"
-    git diff -U3 -- src/v1/stage0/src/v1_compiler_infer.rs
-    echo "DIFF_END"
-  else
-    # Too big to inline: gzip+base64 it and let the caller page through the persisted output file.
-    echo "DIFF_TAR_GZ_BEGIN"
-    git diff -U3 -- src/v1/stage0/src/v1_compiler_infer.rs | gzip -9 | base64 -w0
-    echo
-    echo "DIFF_TAR_GZ_END"
-  fi
+  # The few lines that matter, printed plainly so a human can eyeball the emitted repair without
+  # decoding anything: the minting statement and the merged substitution.
+  echo "EMITTED_REPAIR_MARKERS"
+  grep -n "uninstantiated_call_generics\|fresh_call_variables\|map_merge(call_subst" src/v1/stage0/src/v1_compiler_infer.rs | head -12
+  echo "PATCH_GZIP_B64_BEGIN"
+  gzip -9 < "$LOGS/mirror.patch" | base64 -w0; echo
+  echo "PATCH_GZIP_B64_END"
 fi
 stamp "done"
