@@ -20,64 +20,6 @@ import v2.extdeps.languages.bash {
   bash_word_cmdsubst_source_text
 }
 
-fn bash_orch_procedure_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_procedure_name },
-    FixedToken { token_class: ^bash_token_orch_procedure_open },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_procedure_body },
-    FixedToken { token_class: ^bash_token_orch_procedure_close }
-  ]
-}
-data bash_orch_procedure_tokens_carried: List<ConcreteSyntaxToken> = bash_orch_procedure_tokens()
-
-
-data bash_orch_procedure_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_orch_procedure_tokens_carried
-)
-
-fn bash_orch_procedure_source_text(name: String, body: String) -> String {
-  concat(name, concat("() {\n  ", concat(body, "\n}")))
-}
-
-fn bash_orch_procedure_lex() -> LexRules {
-  phrase_to_lex_rules(p: phrase([
-    span(text: "() {\n  ", class: ^bash_token_orch_procedure_open),
-    span(text: "\n}", class: ^bash_token_orch_procedure_close)
-  ]))
-}
-data bash_orch_procedure_lex_carried: LexRules = bash_orch_procedure_lex()
-
-
-fn bash_orch_procedure_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_orch_procedure,
-    lhs: ^bash_production_orch_procedure,
-    tokens: bash_orch_procedure_tokens_carried,
-    emitted: bash_orch_procedure_emitted
-  )
-}
-data bash_orch_procedure_translation_rules_node_carried: Node = bash_orch_procedure_translation_rules_node()
-
-
-fn bash_orch_procedure_binding_spellings(name: String, body: String) -> Map<Symbol, String> {
-  map_insert(
-    map_insert(empty_map(), ^bash_orch_procedure_name, name),
-    ^bash_orch_procedure_body, body
-  )
-}
-
-fn bash_orch_procedure_target_model(name: String, body: String) -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_orch_procedure_translation_rules_node_carried,
-    source_literal: ^bash_orch_procedure_source_literal,
-    production_name: ^bash_production_orch_procedure,
-    tokens: bash_orch_procedure_tokens_carried,
-    source_text: bash_orch_procedure_source_text(name: name, body: body),
-    lex: bash_orch_procedure_lex_carried,
-    binding_spellings: bash_orch_procedure_binding_spellings(name: name, body: body)
-  )
-}
-
 fn bash_orch_call_tokens() -> List<ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_call_spelling }
@@ -125,10 +67,6 @@ fn bash_orch_call_target_model(spelling: String) -> TargetModel {
     lex: bash_orch_call_lex(spelling: spelling),
     binding_spellings: bash_orch_call_binding_spellings(spelling: spelling)
   )
-}
-
-fn orch_procedure_target_model(name: String, body: String) -> TargetModel {
-  bash_orch_procedure_target_model(name: name, body: body)
 }
 
 fn orch_call_target_model(callee: String, args_spelling: String) -> TargetModel {

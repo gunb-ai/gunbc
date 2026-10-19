@@ -8,11 +8,10 @@ import extdeps.communication.medium { Medium }
 import v2.compiler.target_serialize { grammar_relation_row_for_emitted, target_bundle_child, target_serialize_source_from_selected_row, target_translation_rules_budget }
 import v2.compiler.translate { translate }
 import v2.std.node_query { find_named_child }
-import v2.std.orchestration_emit { OrchEmitCarried, OrchEmitPrepared, OrchEmitPreparedRow, OrchestrationEmitMedium, OrchRunEmitPlan, orch_construct_run_rawline, orch_construct_retry, orch_construct_retry_1level, orch_construct_seq2, orch_construct_if, orch_construct_if_else, orch_construct_if_block, orch_construct_if_else_block, orch_construct_while, orch_construct_procedure, orch_construct_call, orch_construct_cmdsubst_assign, orch_construct_let_assign }
+import v2.std.orchestration_emit { OrchEmitCarried, OrchEmitPrepared, OrchEmitPreparedRow, OrchestrationEmitMedium, OrchRunEmitPlan, orch_construct_run_rawline, orch_construct_retry, orch_construct_retry_1level, orch_construct_seq2, orch_construct_if, orch_construct_if_else, orch_construct_if_block, orch_construct_if_else_block, orch_construct_while, orch_construct_cmdsubst_assign, orch_construct_let_assign }
 import v2.extdeps.languages.bash { bash_stmt_negation_emitted, bash_stmt_negation_target_model, bash_stmt_andor_emitted, bash_stmt_andor_target_model, bash_stmt_with_redir_emitted, bash_stmt_with_redir_target_model, bash_stmt_exit_emitted, bash_stmt_exit_target_model, bash_redir_stdout_and_stderr_null_emitted, bash_redir_stdout_and_stderr_null_target_model, bash_redir_stderr_null_emitted, bash_redir_stderr_null_target_model, bash_redir_stdout_to_stderr_emitted, bash_redir_stdout_to_stderr_target_model, bash_redir_stdout_null_emitted, bash_redir_stdout_null_target_model, bash_redir_to_file_emitted, bash_redir_to_file_target_model }
-import v2.extdeps.languages.bash_orch_tier2 { bash_orch_call_emitted }
 import v2.extdeps.languages.bash_orch_if { bash_test_str_eq_emitted, bash_test_str_eq_target_model, bash_test_str_empty_emitted, bash_test_str_empty_target_model, bash_test_str_nonempty_emitted, bash_test_str_nonempty_target_model, bash_test_int_ne_emitted, bash_test_int_ne_target_model, bash_log_matches_grep_emitted, bash_log_matches_grep_target_model, bash_stmt_or_ignore_fail_emitted, bash_stmt_or_ignore_fail_target_model }
-import v2.std.orchestration { Run, PipelineStep, Do, If, Let, Call, While, Pipeline, Procedure, Expr, ExprLit, ExprVarRef, ExprCmdSubst, EscalationLevel, Predicate, ExitZero, LogMatches, StrEq, StrEmpty, StrNonempty, IntNe, Not, And, Or, RedirectSpec, CaptureSpec, DiscardAll, DiscardErr, DiscardOut, StdoutAndStderr, ToFile, IgnoreFail, ExitStatus, TeeTo, CmdSubst, Comment, Exit }
+import v2.std.orchestration { Run, PipelineStep, Do, If, Let, While, Pipeline, Expr, ExprLit, ExprVarRef, ExprCmdSubst, EscalationLevel, Predicate, ExitZero, LogMatches, StrEq, StrEmpty, StrNonempty, IntNe, Not, And, Or, RedirectSpec, CaptureSpec, DiscardAll, DiscardErr, DiscardOut, StdoutAndStderr, ToFile, IgnoreFail, ExitStatus, TeeTo, CmdSubst, Comment, Exit }
 import std.env_binding { EnvBinding }
 import std.algebra { FreeMonoid, list_head, list_tail, is_empty, length, empty_map, map_insert, map_lookup }
 import extdeps.posix.shell_command_language { posix_name_ok }
@@ -554,48 +553,6 @@ fn orch_emit_let_step(
   }
 }
 
-fn orch_emit_call_step(
-  callee: String,
-  args: List<String>,
-  medium: OrchestrationEmitMedium,
-  prepared: OrchEmitPrepared
-) -> Outcome<OrchEmitCarried> {
-  orch_emit_from_prepared(
-    prepared: prepared,
-    medium: medium,
-    construct_tag: orch_construct_call,
-    target: medium.realize_call(callee, orch_emit_call_args(args: args))
-  )
-}
-
-fn orch_emit_procedure_prepared(
-  proc: Procedure,
-  medium: OrchestrationEmitMedium,
-  prepared: OrchEmitPrepared
-) -> Outcome<OrchEmitCarried> {
-  bind_outcome(
-    o: orch_emit_pipeline_prepared(p: proc.body, medium: medium, prepared: prepared),
-    f: fn(body) {
-      orch_emit_from_prepared(
-        prepared: body.prepared,
-        medium: medium,
-        construct_tag: orch_construct_procedure,
-        target: medium.realize_procedure(proc.name, body.text)
-      )
-    }
-  )
-}
-
-fn orch_emit_procedure(
-  proc: Procedure,
-  medium: OrchestrationEmitMedium
-) -> Outcome<extdeps.communication.medium.Medium<String>> {
-  bind_outcome(
-    o: orch_emit_procedure_prepared(proc: proc, medium: medium, prepared: orch_emit_prepared_empty),
-    f: fn(c) { outcome_accepted(lossless_source(text: c.text)) }
-  )
-}
-
 // bash_stmt_if_(else_)_tokens (bash_orch_if.dag / bash.dag) spell their then/else bodies with no
 // newline tokens, so a body is inherently a single line. orch_emit_pipeline newline-joins every
 // step of a multi-step then_/else_ Pipeline (orch_seq2) before this fn binds .carried into the row;
@@ -809,8 +766,6 @@ fn orch_emit_step_prepared(
       orch_emit_retry(body: b, escalations: e, on_exhausted: x, medium: medium, prepared: prepared)
     Let { name: n, value: v } =>
       orch_emit_let_step(name: n, value: v, medium: medium, prepared: prepared)
-    Call { callee: c, args: a } =>
-      orch_emit_call_step(callee: c, args: a, medium: medium, prepared: prepared)
   }
 }
 
@@ -850,8 +805,6 @@ fn orch_retry_step_run(s: PipelineStep) -> Outcome<Run> {
     Retry { body: _, escalations: _, on_exhausted: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     Let { name: _, value: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    Call { callee: _, args: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
   }
 }

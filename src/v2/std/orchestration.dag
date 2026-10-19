@@ -105,11 +105,6 @@ type Expr
   | ExprVarRef { name: String }
   | ExprCmdSubst { callee: String, args: List<String> }
 
-type Procedure {
-  name: String
-  body: Pipeline
-}
-
 type PipelineStep
   = Do { run: Run }
   | Comment { text: String }
@@ -123,7 +118,6 @@ type PipelineStep
       on_exhausted: Pipeline
     }
   | Let { name: String, value: Expr }
-  | Call { callee: String, args: List<String> }
 
 // Comment { text } is a non-command PipelineStep (comment body WITHOUT the leading "# "). Emission
 // reuses the existing orch_construct_run_rawline / realize_run_rawline path
