@@ -2,10 +2,10 @@ module test.claim.runner.runner_slot_cap_converge_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.optional { Absent, Present }
+import std.algebra { string_contains }
 import std.measure { byte_size_count }
 import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
-import gunbc.runner.runner_slot_actuation { DrainPendingJobRunning }
 import gunbc.runner.runner_slot_cap_converge {
   SlotCapLive,
   SlotCapStanding,
@@ -13,18 +13,22 @@ import gunbc.runner.runner_slot_cap_converge {
   SlotCapsNeedRestart,
   SlotCapsReadingsDisagree,
   SlotCapsUnread,
-  SlotCapPlan,
-  CapsLeaveInPlace,
-  CapsRestart,
-  CapsKeepOldShape,
-  CapsRefuse,
+  SlotCapUnitStanding,
+  HostCapPlan,
+  HostCapsLeaveInPlace,
+  HostCapsDrainWriteRestart,
+  HostCapsWithheld,
+  HostCapIdleGate,
+  HostCapsAllIdle,
+  HostCapsBusy,
+  SlotIdleReading,
+  host_cap_idle_gate,
+  host_cap_plan,
   SlotCapOutcome,
   SlotCapsLeftInPlace,
   SlotCapsRestartedAndRead,
-  SlotCapsKeptOldShape,
   SlotCapsRefused,
   slot_cap_standing,
-  slot_cap_plan,
   slot_cap_live_of_show,
   slot_cap_outcome_settled,
 }
@@ -75,32 +79,50 @@ fn old_shape_live() -> SlotCapLive {
   }
 }
 
-fn plan_restarts(p: SlotCapPlan) -> Bool { match p { CapsRestart => true CapsLeaveInPlace => false CapsKeepOldShape { cause: _ } => false CapsRefuse { step: _, reason: _ } => false } }
-fn plan_keeps_old(p: SlotCapPlan) -> Bool { match p { CapsKeepOldShape { cause: _ } => true CapsRestart => false CapsLeaveInPlace => false CapsRefuse { step: _, reason: _ } => false } }
-fn plan_leaves(p: SlotCapPlan) -> Bool { match p { CapsLeaveInPlace => true CapsRestart => false CapsKeepOldShape { cause: _ } => false CapsRefuse { step: _, reason: _ } => false } }
-fn plan_refuses(p: SlotCapPlan) -> Bool { match p { CapsRefuse { step: _, reason: _ } => true CapsRestart => false CapsKeepOldShape { cause: _ } => false CapsLeaveInPlace => false } }
+fn unit(n: String) -> NonEmptyStr { concat("actions-runner@srv3-", n, ".service") as NonEmptyStr }
 
-// RED: a differing cgroup on an idle slot restarts (the effect drains first); the same slot busy does not.
-test fn a_differing_cap_row_on_an_idle_slot_restarts() -> Bool {
-  plan_restarts(p: slot_cap_plan(standing: slot_cap_standing(live: old_shape_live(), desired: desired()), activity: SlotIdle))
+fn standing_of(u: NonEmptyStr, live: SlotCapLive) -> SlotCapUnitStanding {
+  SlotCapUnitStanding { unit: u, standing: slot_cap_standing(live: live, desired: desired()) }
 }
 
-// RED: a busy slot does not restart, and the refusal is typed (KeptOldShape naming the cause), and it
-// leaves the run unsettled so the terminal refuses.
-test fn a_busy_slot_is_not_restarted_and_the_refusal_is_typed() -> Bool {
-  plan_keeps_old(p: slot_cap_plan(standing: slot_cap_standing(live: old_shape_live(), desired: desired()), activity: SlotHasLiveWorker))
-    && !slot_cap_outcome_settled(o: SlotCapsKeptOldShape { unit: "actions-runner@srv3-01.service" as NonEmptyStr, cause: DrainPendingJobRunning })
+fn idle_of(u: NonEmptyStr) -> SlotIdleReading { SlotIdleReading { unit: u, activity: SlotIdle } }
+fn busy_of(u: NonEmptyStr) -> SlotIdleReading { SlotIdleReading { unit: u, activity: SlotHasLiveWorker } }
+
+fn plan_drains(p: HostCapPlan) -> Bool { match p { HostCapsDrainWriteRestart => true HostCapsLeaveInPlace => false HostCapsWithheld { cause: _ } => false } }
+fn plan_leaves(p: HostCapPlan) -> Bool { match p { HostCapsLeaveInPlace => true HostCapsDrainWriteRestart => false HostCapsWithheld { cause: _ } => false } }
+fn plan_withheld_naming(p: HostCapPlan, needle: String) -> Bool { match p { HostCapsWithheld { cause: c } => string_contains(s: c, pattern: needle) HostCapsLeaveInPlace => false HostCapsDrainWriteRestart => false } }
+
+// RED: a differing cap on an all-idle host plans the drain-bracketed write (drain, write, reload,
+// activate, read back), never a bare restart.
+test fn a_differing_cap_row_on_an_idle_host_drains_writes_and_restarts() -> Bool {
+  plan_drains(p: host_cap_plan(
+    standings: [standing_of(u: unit(n: "01"), live: old_shape_live()), standing_of(u: unit(n: "02"), live: old_shape_live())],
+    gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), idle_of(u: unit(n: "02"))]),
+  ))
 }
 
-// Positive: identical caps are left in place whatever the activity, so no restart is ever issued.
+// RED (operator ruling): ONE busy slot withholds the WHOLE host -- no write, no reload -- because the
+// template drop-in re-applies to every running instance on reload. The refusal names the busy slot, and
+// an unproven-idle slot is the same refusal.
+test fn one_busy_slot_means_no_write_and_no_reload_for_the_host() -> Bool {
+  let standings = [standing_of(u: unit(n: "01"), live: old_shape_live()), standing_of(u: unit(n: "02"), live: old_shape_live())]
+  plan_withheld_naming(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), busy_of(u: unit(n: "02"))])), needle: "actions-runner@srv3-02.service")
+    && !plan_drains(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), busy_of(u: unit(n: "02"))])))
+    && plan_withheld_naming(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), SlotIdleReading { unit: unit(n: "02"), activity: SlotActivityUnobserved { cause: "no attribution" as NonEmptyStr } }])), needle: "actions-runner@srv3-02.service")
+}
+
+// Positive: identical caps are left in place whatever the activity, so nothing is drained, written,
+// reloaded or restarted.
 test fn identical_caps_are_left_in_place() -> Bool {
-  plan_leaves(p: slot_cap_plan(standing: slot_cap_standing(live: at_desired_live(), desired: desired()), activity: SlotHasLiveWorker))
-    && plan_leaves(p: slot_cap_plan(standing: slot_cap_standing(live: at_desired_live(), desired: desired()), activity: SlotIdle))
-    && slot_cap_outcome_settled(o: SlotCapsLeftInPlace { unit: "actions-runner@srv3-01.service" as NonEmptyStr })
+  plan_leaves(p: host_cap_plan(
+    standings: [standing_of(u: unit(n: "01"), live: at_desired_live()), standing_of(u: unit(n: "02"), live: at_desired_live())],
+    gate: host_cap_idle_gate(readings: [busy_of(u: unit(n: "01")), idle_of(u: unit(n: "02"))]),
+  ))
+    && slot_cap_outcome_settled(o: SlotCapsLeftInPlace { unit: unit(n: "01") })
 }
 
-// Positive: a live-cgroup readback that disagrees with the unit's view refuses, and so does a restarted
-// slot whose cgroup is still old; unproven idleness refuses rather than restarts.
+// Positive: a live-cgroup readback that disagrees with the unit's view withholds the host, and a
+// restarted slot whose cgroup is still old is a refused (unsettled) outcome.
 test fn a_readback_mismatch_refuses() -> Bool {
   let disagree = SlotCapLive {
     unit_memory_max: "27917287424",
@@ -111,9 +133,8 @@ test fn a_readback_mismatch_refuses() -> Bool {
     cgroup_memory_max: Present { value: concat(to_string(byte_size_count(b: desired().memory_max)), "\n") },
     cgroup_swap_max: Present { value: "0\n" },
   }
-  plan_refuses(p: slot_cap_plan(standing: slot_cap_standing(live: disagree, desired: desired()), activity: SlotIdle))
-    && plan_refuses(p: slot_cap_plan(standing: slot_cap_standing(live: old_shape_live(), desired: desired()), activity: SlotActivityUnobserved { cause: "no attribution" as NonEmptyStr }))
-    && !slot_cap_outcome_settled(o: SlotCapsRefused { unit: "actions-runner@srv3-01.service" as NonEmptyStr, step: "live-readback", reason: "x" })
+  plan_withheld_naming(p: host_cap_plan(standings: [standing_of(u: unit(n: "01"), live: disagree)], gate: HostCapsAllIdle), needle: "disagree")
+    && !slot_cap_outcome_settled(o: SlotCapsRefused { unit: unit(n: "01"), step: "live-readback", reason: "x" })
 }
 
 // The cgroup row is the slot's own file: a job's descendant cgroup line can never answer for the slot.

@@ -33,7 +33,8 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsKeptOldShape, SlotCapsRefused, converge_runner_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, host_cap_plan, read_host_cap_standings_over, read_host_idleness_over, drain_all_slots_over, drain_all_settled, drain_all_cause, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
+import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
   HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
@@ -2020,14 +2021,17 @@ fn runner_host_cap_phase_text(phase: RunnerHostCapPhase) -> String {
         join(map(fs, r => runner_host_file_result_line(r: r)), ""),
         "caps-reload=", runner_host_manager_reload_wire(reload: rl), "\n",
         join(map(ss, o => concat(slot_cap_outcome_wire(o: o), "\n")), ""),
-        "caps-slots-on-old-shape=", join(map(filter(ss, o => !slot_cap_outcome_settled(o: o)), o => match o { SlotCapsLeftInPlace { unit: u } => u as String SlotCapsRestartedAndRead { unit: u } => u as String SlotCapsKeptOldShape { unit: u, cause: _ } => u as String SlotCapsRefused { unit: u, step: _, reason: _ } => u as String }), " "), "\n",
+        "caps-slots-on-old-shape=", join(map(filter(ss, o => !slot_cap_outcome_settled(o: o)), o => match o { SlotCapsLeftInPlace { unit: u } => u as String SlotCapsRestartedAndRead { unit: u } => u as String SlotCapsRefused { unit: u, step: _, reason: _ } => u as String }), " "), "\n",
       ], "")
   }
 }
 
-// ORDER: the gate reads the slot population, the cap files are written (and the manager reloaded when one
-// was), then EACH slot is converged on its own live cgroup. A slot that is busy or refuses stays on the
-// old shape and is named; the other slots still converge.
+// ORDER, HOST-WIDE (ruling of clever-crane-830): the drop-ins are template-level, so write + daemon-reload
+// re-applies the caps to every running instance and can OOM-kill a busy slot's job. Therefore: the
+// retirement gate, then EVERY slot's live caps and idleness are read with no mutation. One busy or
+// unproven slot (or an unreadable or disagreeing reading) refuses the WHOLE host, no write, no reload.
+// Caps all at desired are left in place. Otherwise every slot is drained and masked, the files are
+// written, the manager reloaded, every slot activated, and each one's live cgroup read back.
 fn run_runner_host_cap_phase(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -2042,17 +2046,36 @@ fn run_runner_host_cap_phase(
       match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: subject.retired_units, population: population)) {
         Present { value: why } => CapPhaseWithheld { cause: why }
         Absent => {
-          let files = map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
-          let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
-          let written = all(files, r => runner_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
-          CapPhaseRan {
-            files: files,
-            reload: reload,
-            slots: if written {
-              map(subject.desired_units, u => converge_runner_slot_caps_over(target: subject.target, context: context, unit: u, desired: gunbc_runner_slot_desired()))
-            } else {
-              map(subject.desired_units, u => SlotCapsRefused { unit: u, step: "write", reason: "the cap drop-ins did not converge or the manager reload did not settle, so no slot was restarted" })
-            },
+          let desired = gunbc_runner_slot_desired()
+          let standings = read_host_cap_standings_over(target: subject.target, context: context, units: subject.desired_units, desired: desired)
+          let gate = read_host_idleness_over(target: subject.target, context: context, units: subject.desired_units)
+          match host_cap_plan(standings: standings, gate: gate) {
+            HostCapsWithheld { cause: c } => CapPhaseWithheld { cause: c }
+            HostCapsLeaveInPlace => CapPhaseRan {
+              files: [],
+              reload: ManagerReloadNotOwed,
+              slots: map(subject.desired_units, u => SlotCapsLeftInPlace { unit: u }),
+            }
+            HostCapsDrainWriteRestart => {
+              let drained = drain_all_slots_over(target: subject.target, context: context, units: subject.desired_units)
+              if !drain_all_settled(rows: drained) {
+                let restored = map(subject.desired_units, u => activate_runner_slot_over(target: subject.target, context: context, unit: u))
+                CapPhaseWithheld { cause: join(["a slot did not drain, so no cap was written and no reload ran: ", drain_all_cause(rows: drained), "; restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
+              } else {
+                let files = map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
+                let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
+                let written = all(files, r => runner_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
+                CapPhaseRan {
+                  files: files,
+                  reload: reload,
+                  slots: map(subject.desired_units, u => if written {
+                    activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
+                  } else {
+                    SlotCapsRefused { unit: u, step: "write", reason: "the cap drop-ins did not converge or the manager reload did not settle; the slot is left masked-drained for the operator" }
+                  }),
+                }
+              }
+            }
           }
         }
       }

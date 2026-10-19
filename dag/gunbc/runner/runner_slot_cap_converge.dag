@@ -18,9 +18,6 @@ import gunbc.runner.runner_slot_desired { RunnerSlotDesired }
 import gunbc.runner.runner_slot_retirement { retirement_cgroup_unescaped_root }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome,
-  SlotActuationNoop, SlotActivated, SlotNotInstalled, SlotDrainedAndMasked, SlotDrainPending, SlotActuationRefused,
-  SlotDrainPendingCause,
-  DrainPendingJobRunning,
   SlotRead,
   SlotReadRefused,
   read_slot_over,
@@ -116,39 +113,83 @@ fn slot_cap_standing(live: SlotCapLive, desired: RunnerSlotDesired) -> SlotCapSt
   }
 }
 
-type SlotCapPlan
-  = CapsLeaveInPlace
-  | CapsRestart
-  | CapsKeepOldShape { cause: SlotDrainPendingCause }
-  | CapsRefuse { step: String, reason: String }
+// THE HOST GATE, PURE. The drop-ins are template-level, so write + daemon-reload is a HOST-WIDE effect:
+// systemd re-applies MemoryMax/MemorySwapMax to every running instance on reload, and a shrinking cap
+// or a removed swap can OOM-kill a busy slot's live job. The write is therefore admitted only when EVERY
+// slot of the host is idle (operator ruling, clever-crane-830); one busy or unproven slot refuses the
+// WHOLE host before any write or reload, naming the slots that stay on the old shape.
+type HostCapIdleGate
+  = HostCapsAllIdle
+  | HostCapsBusy { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr> }
 
-// THE RESTART DECISION, PURE. A restart fires only on a differing cgroup and only on an idle slot;
-// unproven idleness refuses rather than restarts.
-fn slot_cap_plan(standing: SlotCapStanding, activity: SlotActivityObservation) -> SlotCapPlan {
-  match standing {
-    SlotCapsAtDesired => CapsLeaveInPlace
-    SlotCapsReadingsDisagree { detail: d } => CapsRefuse { step: "readback", reason: d }
-    SlotCapsUnread { cause: c } => CapsRefuse { step: "read", reason: c }
-    SlotCapsNeedRestart { detail: _ } =>
-      match activity {
-        SlotHasLiveWorker => CapsKeepOldShape { cause: DrainPendingJobRunning }
-        SlotIdle => CapsRestart
-        SlotActivityUnobserved { cause: c } => CapsRefuse { step: "idleness", reason: c as String }
+type SlotIdleReading {
+  unit: NonEmptyStr
+  activity: SlotActivityObservation
+}
+
+fn host_cap_idle_gate(readings: List<SlotIdleReading>) -> HostCapIdleGate {
+  let busy = map(filter(readings, r => match r.activity { SlotHasLiveWorker => true SlotIdle => false SlotActivityUnobserved { cause: _ } => false }), r => r.unit)
+  let unproven = map(filter(readings, r => match r.activity { SlotActivityUnobserved { cause: _ } => true SlotHasLiveWorker => false SlotIdle => false }), r => r.unit)
+  if length(busy) == 0 && length(unproven) == 0 { HostCapsAllIdle } else { HostCapsBusy { busy: busy, unproven: unproven } }
+}
+
+// THE HOST PLAN, PURE: one decision for the whole host from every slot's standing and the idle gate.
+// Unread or disagreeing readings withhold (nothing is known well enough to touch); all at desired leaves
+// the caps in place; a differing cap runs only when every slot is idle, and the write+reload is then
+// bracketed by drain_and_mask and activate on every slot.
+type HostCapPlan
+  = HostCapsLeaveInPlace
+  | HostCapsDrainWriteRestart
+  | HostCapsWithheld { cause: String }
+
+fn host_cap_standing_problem(unit: NonEmptyStr, s: SlotCapStanding) -> String? {
+  match s {
+    SlotCapsAtDesired => none
+    SlotCapsNeedRestart { detail: _ } => none
+    SlotCapsReadingsDisagree { detail: d } => Present { value: join([unit as String, ": the unit and the cgroup disagree: ", d], "") }
+    SlotCapsUnread { cause: c } => Present { value: join([unit as String, ": the live caps were not read: ", c], "") }
+  }
+}
+
+fn host_cap_standing_differs(s: SlotCapStanding) -> Bool {
+  match s {
+    SlotCapsNeedRestart { detail: _ } => true
+    SlotCapsAtDesired => false
+    SlotCapsReadingsDisagree { detail: _ } => false
+    SlotCapsUnread { cause: _ } => false
+  }
+}
+
+type SlotCapUnitStanding {
+  unit: NonEmptyStr
+  standing: SlotCapStanding
+}
+
+fn host_cap_plan(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate) -> HostCapPlan {
+  let problems = filter(map(standings, x => match host_cap_standing_problem(unit: x.unit, s: x.standing) { Present { value: v } => v Absent => "" }), v => v != "")
+  if length(problems) > 0 {
+    HostCapsWithheld { cause: join(problems, "; ") }
+  } else if !any(standings, x => host_cap_standing_differs(s: x.standing)) {
+    HostCapsLeaveInPlace
+  } else {
+    match gate {
+      HostCapsAllIdle => HostCapsDrainWriteRestart
+      HostCapsBusy { busy: b, unproven: u } => HostCapsWithheld {
+        cause: join(["the cap drop-ins are template-level, so write + reload reaches every running slot; no write and no reload while a job may be live. busy=", join(map(b, x => x as String), " "), " idleness-unproven=", join(map(u, x => x as String), " ")], ""),
       }
+    }
   }
 }
 
 type SlotCapOutcome
   = SlotCapsLeftInPlace { unit: NonEmptyStr }
   | SlotCapsRestartedAndRead { unit: NonEmptyStr }
-  | SlotCapsKeptOldShape { unit: NonEmptyStr, cause: SlotDrainPendingCause }
   | SlotCapsRefused { unit: NonEmptyStr, step: String, reason: String }
 
 fn slot_cap_outcome_settled(o: SlotCapOutcome) -> Bool {
   match o {
     SlotCapsLeftInPlace { unit: _ } => true
     SlotCapsRestartedAndRead { unit: _ } => true
-    SlotCapsKeptOldShape { unit: _, cause: _ } => false
     SlotCapsRefused { unit: _, step: _, reason: _ } => false
   }
 }
@@ -157,7 +198,6 @@ fn slot_cap_outcome_wire(o: SlotCapOutcome) -> String {
   match o {
     SlotCapsLeftInPlace { unit: u } => join(["caps ", u as String, " at-desired-left-in-place"], "")
     SlotCapsRestartedAndRead { unit: u } => join(["caps ", u as String, " restarted-and-live-cgroup-read-back"], "")
-    SlotCapsKeptOldShape { unit: u, cause: _ } => join(["caps ", u as String, " KEPT-OLD-SHAPE a job is running; the slot was not restarted"], "")
     SlotCapsRefused { unit: u, step: st, reason: r } => join(["caps ", u as String, " REFUSED step=", st, " ", r], "")
   }
 }
@@ -269,56 +309,66 @@ fn slot_cap_standing_over(target: SshTarget, context: FleetSshExecutionContext, 
   }
 }
 
-// ── The per-slot effect ─────────────────────────────────────────────────────────────────────────
+// ── The effects ─────────────────────────────────────────────────────────────────────────────────
 
-// READ, DECIDE, ACT, READ BACK. The standing is read, then (only for a differing slot) idleness, so an
-// at-desired slot issues no mutation and a busy one is refused before anything is changed. The restart
-// is the existing drain-then-activate, and convergence is the SECOND live reading: a slot that comes back
-// without both cgroup files at the desired caps and the unit view agreeing refuses, typed.
-fn converge_runner_slot_caps_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired) -> SlotCapOutcome
+// IDLENESS IS READ BEFORE ANYTHING IS CHANGED, from the same sensors the drain uses. An inactive slot has
+// no worker; an active one is idle only when its own process listing proves it.
+fn read_slot_idleness_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotIdleReading
 {
-  let standing = slot_cap_standing_over(target: target, context: context, unit: unit, desired: desired)
-  let activity = match standing {
-    SlotCapsNeedRestart { detail: _ } =>
-      match read_slot_over(target: target, context: context, unit: unit) {
-        SlotReadRefused { reason: why } => SlotActivityUnobserved { cause: why as NonEmptyStr }
-        SlotRead { reading: r } => if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle }
-      }
-    SlotCapsAtDesired => SlotIdle
-    SlotCapsReadingsDisagree { detail: _ } => SlotIdle
-    SlotCapsUnread { cause: _ } => SlotIdle
-  }
-  match slot_cap_plan(standing: standing, activity: activity) {
-    CapsLeaveInPlace => SlotCapsLeftInPlace { unit: unit }
-    CapsKeepOldShape { cause: c } => SlotCapsKeptOldShape { unit: unit, cause: c }
-    CapsRefuse { step: st, reason: why } => SlotCapsRefused { unit: unit, step: st, reason: why }
-    CapsRestart => restart_slot_for_caps_over(target: target, context: context, unit: unit, desired: desired)
+  SlotIdleReading {
+    unit: unit,
+    activity: match read_slot_over(target: target, context: context, unit: unit) {
+      SlotReadRefused { reason: why } => SlotActivityUnobserved { cause: why as NonEmptyStr }
+      SlotRead { reading: r } => if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle }
+    },
   }
 }
 
-fn restart_slot_for_caps_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired) -> SlotCapOutcome
+// AFTER THE WRITE AND RELOAD: activate the drained slot (the existing activate effect), then converge on
+// its LIVE cgroup. A slot that comes back without both cgroup files at the desired caps and the unit view
+// agreeing refuses, typed.
+fn activate_and_read_back_slot_caps_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired) -> SlotCapOutcome
 {
-  let drained = drain_and_mask_runner_slot_over(target: target, context: context, unit: unit)
-  if !slot_actuation_settled(o: drained) {
-    match drained {
-      SlotActuationRefused { unit: _, step: st, reason: why } => SlotCapsRefused { unit: unit, step: concat("drain/", st), reason: why }
-      SlotDrainPending { unit: _, cause: c } => SlotCapsKeptOldShape { unit: unit, cause: c }
-      SlotActuationNoop { unit: _, state: _ } => SlotCapsRefused { unit: unit, step: "drain", reason: "unreachable settled arm" }
-      SlotActivated { unit: _ } => SlotCapsRefused { unit: unit, step: "drain", reason: "unreachable settled arm" }
-      SlotNotInstalled { unit: _ } => SlotCapsRefused { unit: unit, step: "drain", reason: "unreachable settled arm" }
-      SlotDrainedAndMasked { unit: _ } => SlotCapsRefused { unit: unit, step: "drain", reason: "unreachable settled arm" }
-    }
+  let activated = activate_runner_slot_over(target: target, context: context, unit: unit)
+  if !slot_actuation_settled(o: activated) {
+    SlotCapsRefused { unit: unit, step: "activate", reason: slot_actuation_outcome_wire(o: activated) }
   } else {
-    let activated = activate_runner_slot_over(target: target, context: context, unit: unit)
-    if !slot_actuation_settled(o: activated) {
-      SlotCapsRefused { unit: unit, step: "activate", reason: slot_actuation_outcome_wire(o: activated) }
-    } else {
-      match slot_cap_standing_over(target: target, context: context, unit: unit, desired: desired) {
-        SlotCapsAtDesired => SlotCapsRestartedAndRead { unit: unit }
-        SlotCapsNeedRestart { detail: d } => SlotCapsRefused { unit: unit, step: "live-readback", reason: concat("the restarted slot's cgroup does not show the desired caps: ", d) }
-        SlotCapsReadingsDisagree { detail: d } => SlotCapsRefused { unit: unit, step: "live-readback", reason: d }
-        SlotCapsUnread { cause: c } => SlotCapsRefused { unit: unit, step: "live-readback", reason: c }
-      }
+    match slot_cap_standing_over(target: target, context: context, unit: unit, desired: desired) {
+      SlotCapsAtDesired => SlotCapsRestartedAndRead { unit: unit }
+      SlotCapsNeedRestart { detail: d } => SlotCapsRefused { unit: unit, step: "live-readback", reason: concat("the restarted slot's cgroup does not show the desired caps: ", d) }
+      SlotCapsReadingsDisagree { detail: d } => SlotCapsRefused { unit: unit, step: "live-readback", reason: d }
+      SlotCapsUnread { cause: c } => SlotCapsRefused { unit: unit, step: "live-readback", reason: c }
     }
   }
+}
+
+// THE DRAIN BRACKET. Every slot is drained and masked first (the existing actuator); a slot whose drain is
+// not settled (a job started after the idleness read) is the same refusal as a busy one, and the caller
+// activates the already-drained slots again so no write happened.
+type SlotDrainRow {
+  unit: NonEmptyStr
+  outcome: SlotActuationOutcome
+}
+
+fn drain_all_slots_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> List<SlotDrainRow>
+{
+  map(units, u => SlotDrainRow { unit: u, outcome: drain_and_mask_runner_slot_over(target: target, context: context, unit: u) })
+}
+
+fn drain_all_settled(rows: List<SlotDrainRow>) -> Bool {
+  all(rows, r => slot_actuation_settled(o: r.outcome))
+}
+
+fn drain_all_cause(rows: List<SlotDrainRow>) -> String {
+  join(map(filter(rows, r => !slot_actuation_settled(o: r.outcome)), r => join([r.unit as String, " ", slot_actuation_outcome_wire(o: r.outcome)], "")), "; ")
+}
+
+fn read_host_cap_standings_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, desired: RunnerSlotDesired) -> List<SlotCapUnitStanding>
+{
+  map(units, u => SlotCapUnitStanding { unit: u, standing: slot_cap_standing_over(target: target, context: context, unit: u, desired: desired) })
+}
+
+fn read_host_idleness_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> HostCapIdleGate
+{
+  host_cap_idle_gate(readings: map(units, u => read_slot_idleness_over(target: target, context: context, unit: u)))
 }
