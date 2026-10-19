@@ -1,9 +1,9 @@
 module v2.compiler.self_host.seed_retention_frontier
 
-import std.types { List }
+import std.types { List, FilePathParts }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, dissolution_is_bound, unbound_dissolution }
-import std.algebra { length, list_map }
+import std.algebra { length, list_map, collection_join_shape }
 import std.optional { Absent, Present }
 import v2.compiler.self_host.emitter_producer_provenance {
   BuildGreen,
@@ -17,6 +17,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
 }
 import std.integer { int_to_decimal_string }
 import gunbc.rust_emitted_edge { rust_module_emit_filename }
+import extdeps.rust.cargo { CargoTarget, Lib, Bin, cargo_target_source_path }
 import gunbc.stage0.stage0_emitted_population_manifest { emitted_population_paths_from_manifest }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -703,7 +704,33 @@ fn frontier_nonempty_lines(text: String) -> List<String> {
 // A manifest path is emission-shaped iff it is `src/<stem>.rs` and the stem is a fixed point of the
 // emitter's own naming rule (rust_module_emit_filename), so a nested path, a dotted stem or the
 // crate's own main.rs can never be quietly keyed to a basename no verdict line can equal.
+//
+// The crate's own entry files are emitted too but are not module outputs: their paths come from
+// extdeps.rust.cargo cargo_target_source_path (the library root and the package's binary), and they
+// are never in the executed closure (the host excludes those stems), so they stand EmittedUnexecuted.
+fn frontier_file_path(parts: FilePathParts) -> String {
+  parts.segments |> join(separator: "/")
+}
+
+fn frontier_crate_entry_paths() -> List<String> {
+  list_map(
+    xs: [
+      cargo_target_source_path(target: Lib, package_name: "p"),
+      cargo_target_source_path(target: Bin { name: "p" }, package_name: "p")
+    ],
+    f: fn(parts) { frontier_file_path(parts: parts) }
+  )
+}
+
 fn frontier_path_is_emit_shaped(path: String) -> Bool {
+  if length(xs: filter(xs: frontier_crate_entry_paths(), predicate: fn(entry) { entry == path })) > 0 {
+    true
+  } else {
+    frontier_module_path_is_emit_shaped(path: path)
+  }
+}
+
+fn frontier_module_path_is_emit_shaped(path: String) -> Bool {
   let len = string_length(s: path)
   if (len > 7) && (substring(s: path, start: 0, end: 4) == "src/") && (substring(s: path, start: len - 3, end: len) == ".rs") {
     let stem = substring(s: path, start: 4, end: len - 3)
