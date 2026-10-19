@@ -658,105 +658,76 @@ pub fn lookup_variant_in_type(
                         node_lookup_failed(Rc::new(vec![]))
                     } else {
                         {
-                            let optional_cardinality_subject = (scrut_opt.clone()
-                                && (crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    scrut_node.clone(),
-                                ) != "Optional".to_string()));
                             let witness_subject =
                                 (is_witness_type_name(crate::v1_std_core::authored_name_at(
                                     source_indices.clone(),
                                     scrut_node.clone(),
                                 )) && ((scrut_node.children.clone().len() as i64) == 1));
-                            if (optional_cardinality_subject.clone()
-                                && (variant_name.clone() == "Present".to_string()))
+                            if (witness_subject.clone()
+                                && (variant_name.clone() == "Holds".to_string()))
                             {
-                                node_lookup_resolved(synthesize_optional_present_variant(
+                                node_lookup_resolved(synthesize_witness_holds_variant(
                                     scrut_node.clone(),
                                 ))
                             } else {
-                                if (optional_cardinality_subject.clone()
-                                    && (variant_name.clone() == "Absent".to_string()))
+                                if (witness_subject.clone()
+                                    && (variant_name.clone() == "Violates".to_string()))
                                 {
-                                    node_lookup_resolved(none_type())
+                                    node_lookup_resolved(synthesize_witness_violates_variant(
+                                        scrut_node.clone(),
+                                    ))
                                 } else {
-                                    if (witness_subject.clone()
-                                        && (variant_name.clone() == "Holds".to_string()))
                                     {
-                                        node_lookup_resolved(synthesize_witness_holds_variant(
+                                        let scrut_name = crate::v1_std_core::authored_name_at(
+                                            source_indices.clone(),
                                             scrut_node.clone(),
-                                        ))
-                                    } else {
-                                        if (witness_subject.clone()
-                                            && (variant_name.clone() == "Violates".to_string()))
-                                        {
-                                            node_lookup_resolved(
-                                                synthesize_witness_violates_variant(
-                                                    scrut_node.clone(),
-                                                ),
-                                            )
+                                        );
+                                        let optional_coproduct_subject = (scrut_opt.clone()
+                                            && ((variant_name.clone() == "Present".to_string())
+                                                || (variant_name.clone() == "Absent".to_string())));
+                                        let direct_match = find_variant_child_keyed(
+                                            scrut_node.clone(),
+                                            variant_name.clone(),
+                                            source_indices.clone(),
+                                        );
+                                        let record_destructure = (((field_binding_count.clone()
+                                            > 0)
+                                            && (scrut_node.connective.clone()
+                                                == Connective::Conj))
+                                            && (crate::v1_std_core::qualified_last_segment(
+                                                scrut_name.clone(),
+                                            ) == variant_name.clone()));
+                                        let fallback = if record_destructure.clone() {
+                                            node_lookup_resolved(scrut_node.clone())
                                         } else {
+                                            if (optional_coproduct_subject.clone()
+                                                && (variant_name.clone() == "Present".to_string()))
                                             {
-                                                let scrut_name =
-                                                    crate::v1_std_core::authored_name_at(
-                                                        source_indices.clone(),
+                                                node_lookup_resolved(
+                                                    synthesize_optional_present_variant(
                                                         scrut_node.clone(),
-                                                    );
-                                                let optional_coproduct_subject = ((scrut_name
-                                                    .clone()
-                                                    == "Optional".to_string())
-                                                    && ((variant_name.clone()
-                                                        == "Present".to_string())
-                                                        || (variant_name.clone()
-                                                            == "Absent".to_string())));
-                                                let direct_match = find_variant_child_keyed(
-                                                    scrut_node.clone(),
-                                                    variant_name.clone(),
-                                                    source_indices.clone(),
-                                                );
-                                                let record_destructure = (((field_binding_count
-                                                    .clone()
-                                                    > 0)
-                                                    && (scrut_node.connective.clone()
-                                                        == Connective::Conj))
-                                                    && (crate::v1_std_core::qualified_last_segment(
-                                                        scrut_name.clone(),
-                                                    )
-                                                        == variant_name.clone()));
-                                                let fallback = if record_destructure.clone() {
-                                                    node_lookup_resolved(scrut_node.clone())
+                                                    ),
+                                                )
+                                            } else {
+                                                if (optional_coproduct_subject.clone()
+                                                    && (variant_name.clone()
+                                                        == "Absent".to_string()))
+                                                {
+                                                    node_lookup_resolved(none_type())
                                                 } else {
-                                                    if (optional_coproduct_subject.clone()
-                                                        && (variant_name.clone()
-                                                            == "Present".to_string()))
-                                                    {
-                                                        node_lookup_resolved(
-                                                            synthesize_optional_present_variant(
-                                                                scrut_node.clone(),
-                                                            ),
-                                                        )
-                                                    } else {
-                                                        if (optional_coproduct_subject.clone()
-                                                            && (variant_name.clone()
-                                                                == "Absent".to_string()))
-                                                        {
-                                                            node_lookup_resolved(none_type())
-                                                        } else {
-                                                            variant_not_found_result(
-                                                                scrut_node.clone(),
-                                                                variant_name.clone(),
-                                                                site.clone(),
-                                                                module_name.clone(),
-                                                                source_indices.clone(),
-                                                            )
-                                                        }
-                                                    }
-                                                };
-                                                match direct_match.clone() {
-                                                    Some(v) => node_lookup_resolved(v.clone()),
-                                                    std::option::Option::None => fallback,
+                                                    variant_not_found_result(
+                                                        scrut_node.clone(),
+                                                        variant_name.clone(),
+                                                        site.clone(),
+                                                        module_name.clone(),
+                                                        source_indices.clone(),
+                                                    )
                                                 }
                                             }
+                                        };
+                                        match direct_match.clone() {
+                                            Some(v) => node_lookup_resolved(v.clone()),
+                                            std::option::Option::None => fallback,
                                         }
                                     }
                                 }

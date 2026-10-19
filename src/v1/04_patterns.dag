@@ -279,6 +279,11 @@ fn variant_not_found_result(scrut: Node, variant_name: String, site: SourceSpan,
 // is where the bound NODE comes from once admission succeeds -- the scrutinee
 // when it carries that variant, the declaration otherwise, which is the
 // pre-existing answer for a scrutinee that does not.
+//
+// The std.optional instance is recognized by its declaration identity (type_is_optional), never by its
+// spelling: a qualified spelling reaches the lookup as the expanded coproduct and finds its variants by
+// direct_match, and an unexpanded application is read by the same identity. A cardinality wrapper has no
+// producer left, so none is synthesized from.
 fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: SourceSpan, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
@@ -312,20 +317,15 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: Sou
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         node_lookup_failed(diagnostics: [])
       } else {
-        let optional_cardinality_subject = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
         let witness_subject = is_witness_type_name(name: authored_name_at(source_indices: source_indices, node: scrut_node)) && scrut_node.children |> count == 1
-        if optional_cardinality_subject && variant_name == "Present" {
-          node_lookup_resolved(node: synthesize_optional_present_variant(scrut: scrut_node))
-        } else if optional_cardinality_subject && variant_name == "Absent" {
-          node_lookup_resolved(node: none_type)
-        } else if witness_subject && variant_name == "Holds" {
+        if witness_subject && variant_name == "Holds" {
           node_lookup_resolved(node: synthesize_witness_holds_variant(scrut: scrut_node))
         } else if witness_subject && variant_name == "Violates" {
           node_lookup_resolved(node: synthesize_witness_violates_variant(scrut: scrut_node))
         } else {
           let scrut_name = authored_name_at(source_indices: source_indices, node: scrut_node)
 
-          let optional_coproduct_subject = scrut_name == "Optional"
+          let optional_coproduct_subject = scrut_opt
             && (variant_name == "Present" || variant_name == "Absent")
           let direct_match = find_variant_child_keyed(n: scrut_node, variant_name: variant_name, source_indices: source_indices)
 
