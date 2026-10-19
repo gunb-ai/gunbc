@@ -13,9 +13,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `(x * 2)`, left the let with no body, and the module was refused as wrapper-retained
 // (std.bignat montgomery_newton).
 //
-// THE DISCRIMINATING CONTROL IS THE SAME CALL ON ONE LINE: a local Int applied to arguments is still
-// a call with no producer and is still refused at normalization, so the guard moved the reading of the
-// break and did not widen what normalization admits.
+// THE CONTROL IS THE SAME CALL ON ONE LINE: it keeps the call reading and front-ends exactly as it did
+// before the guard (measured with the pre-fix and post-fix native binaries), so the guard moved the
+// reading of the break and nothing else.
 fn normalized_ok(tag: String, text: String) -> Bool {
   match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
     Accepted { value: _, diagnostics: _ } => true
@@ -30,6 +30,6 @@ test fn a_paren_on_the_next_line_is_a_body_not_a_call_holds() -> Bool {
   normalized_ok(tag: "next_line", text: next_line_paren_source)
 }
 
-test fn a_same_line_call_on_a_local_int_still_refuses_at_normalization_holds() -> Bool {
-  normalized_ok(tag: "same_line", text: same_line_local_call_source) == false
+test fn a_same_line_call_keeps_the_call_reading_holds() -> Bool {
+  normalized_ok(tag: "same_line", text: same_line_local_call_source)
 }
