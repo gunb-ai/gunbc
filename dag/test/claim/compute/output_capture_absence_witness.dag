@@ -4,12 +4,14 @@ module test.claim.compute.output_capture_absence_witness
 //
 // The build-output capture -- compute_return_outputs in gunbc.compute.work_provider_local -- is
 // what turns a declared output that is NOT THERE into a refusal (OutputsMismatch) rather than a
-// success with a hole. Before this witness NO control executed that refusal: the capture runs
-// inside compute_spawn_and_collect, whose neighbours execute systemd-run and the host transport,
-// and the hermetic envelope refuses that transport (no mock_response for operation Run; adding a
-// mock arm is forbidden -- operator ruling of 2026-08-23, relayed in the task brief; no
-// gunbc.design_ruling symbol carries it). Measured on origin/main 6ae9b3b959: 0
-// dag/test rows touched the capture, its carriers, or its verdicts.
+// success with a hole. Before this witness no control executed that refusal by reaching the capture
+// through production: the capture runs inside compute_spawn_and_collect, whose neighbours reach the
+// host transport, and the hermetic claim run refuses a route that reaches an effect the hermetic
+// route has no arm for (it names the operation; the ground it reports for the wet twin's identities
+// is recorded row by row in v2.workflow.floor_route_gap). No mock arm is added to that transport to
+// change that -- see `gunbc.design_ruling capture_witness_never_adds_a_transport_mock_arm`. The
+// population this witness was written against is read from the instrument, not transcribed here: the
+// inhabittance rows below walk the static call graph from production's own roots.
 //
 // WHAT MAKES THE REFUSAL CONTROLLABLE. For one declared output the capture runs two executions --
 // `git hash-object <output>`, then the install that stages it -- and their outcomes are the sum

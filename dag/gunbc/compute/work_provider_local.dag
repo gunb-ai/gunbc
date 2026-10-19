@@ -1112,12 +1112,15 @@ fn compute_capture_readings_of_output(instance: HostDashboardInstance, layout: C
 // mismatch, never a success with a hole.
 // COST SHAPE (DESIGN 6): one continuation call and one producer call per declared output, on the
 // previous verdict -- no accumulated readings list re-folded, no verdict computed twice for one
-// input. WHAT HERMETIC CONTROLS CANNOT REACH: the effects themselves (compute_exec ->
-// WitnessBin.Run, refused by the envelope -- no mock_response for operation Run -- and no new mock
-// arm may be added (operator ruling of 2026-08-23, relayed in the task brief; no gunbc.design_ruling
-// symbol carries it). The hermetic rows in test.claim.compute.output_capture_absence_witness therefore
-// drive the SAME continuation and step -- production's own decision sites -- with readings supplied
-// as data.
+// input. WHAT HERMETIC CONTROLS CANNOT REACH: the effects themselves. The instrument that says so is
+// the hermetic claim run itself -- `gunbc run --claim-run --dry-run --function <row>` refuses a row
+// whose route reaches a host effect the hermetic route has no arm for, naming the operation -- and
+// what it names for these rows is recorded, row by row, in v2.workflow.floor_route_gap beside the
+// identities of test.claim.compute.output_capture_absence_witness's wet twin. No mock arm is added to
+// that transport to make this reachable hermetically: see
+// `gunbc.design_ruling capture_witness_never_adds_a_transport_mock_arm`. The hermetic rows in
+// test.claim.compute.output_capture_absence_witness therefore drive the SAME continuation and step --
+// production's own decision sites -- with readings supplied as data.
 fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
   fold(declared, init: capture_verdict_over_no_outputs, f: (verdict, d) =>
     compute_capture_verdict_continue(verdict: verdict, readings_of: fn() { compute_capture_readings_of_output(instance: instance, layout: layout, d: d) }))

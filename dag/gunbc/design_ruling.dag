@@ -298,7 +298,10 @@ data runner_host_sudoers_is_installed: DesignRuling = DesignRuling {
 // `test.claim.compute.output_capture_absence_wet_witness`, scheduled wet in
 // v2.workflow.local_repo_wet_terminal and excluded from hermetic discovery by gunbc.ci.ci_layer_roots.
 data capture_witness_never_adds_a_transport_mock_arm: DesignRuling = DesignRuling {
-  reference: "capture witness never adds a transport mock arm",
+  reference: decl_ref(
+    module_path: "gunbc.design_ruling",
+    decl_name: "capture_witness_never_adds_a_transport_mock_arm",
+  ),
   decided: "2026-08-23",
   section: "5",
   provenance: "Operator ruling of 2026-08-23, relayed again by snappy-bat-554 on 2026-10-19 while this was decided: a witness that must run a real binary goes WET (the wet lane, its own cgroup); `gunbc.WitnessBin.Run` stays without a mock arm, and no mock arm is added to the transport to make a wet effect hermetically runnable. Cause: a transport mock arm would let any claim report that it ran a binary, which is precisely what the hermetic envelope exists to refuse.",
