@@ -244,7 +244,7 @@ fn collection_step_slot_name(form: CollectionRosterForm) -> Symbol {
 // step body FROM the shape arm) and the direction (callback_step_shape_iteration_direction, the one
 // total match over CallbackStepShape) READ that row. The contradiction class -- a cons-shaped step
 // declared to iterate left to right -- has no constructor: the direction is read from the shape, never
-// carried beside it (the manager ruling, clever-crane-830, 2026-10-19; gunbc.recurring_failure_mode
+// carried beside it -- construction over validation, DESIGN section 5 (gunbc.recurring_failure_mode
 // fold_realized_loop_carries_no_iteration_direction is the failure home and records the rung).
 //
 // filter and any were the std.algebra declarations of those names; they are RETIRED onto these rows
@@ -283,8 +283,8 @@ type CallbackInitShape
 // realization the sum declares but this function has no row for does not COMPILE (v2.compiler.infer
 // infer_match_non_exhaustive refuses the non-exhaustive arm set), so a rowless realization is not a
 // runtime refusal to remember -- it is unwritable, and no coverage claim over a population is needed to
-// keep the two sides in step (DESIGN section 5, construction over validation; the manager ruling,
-// clever-crane-830, 2026-10-19). v2.compiler.body_lowering_fold body_lower_callback_step_body CONSTRUCTS the step body
+// keep the two sides in step (DESIGN section 5, construction over validation: exhaustiveness is
+// checked by the compiler, so a missing row is unwritable rather than policed). v2.compiler.body_lowering_fold body_lower_callback_step_body CONSTRUCTS the step body
 // from step_shape -- each shape arm builds its body, so there is no free choice left between what a step
 // is and what order it claims to visit in -- and callback_step_shape_iteration_direction is the one
 // total match reading the direction off the shape.
@@ -1254,8 +1254,9 @@ type FoldIterationDirection
 // THE ONE SHAPE -> DIRECTION MATCH. Its correctness is exercised by execution, not by a fixture:
 // ccr_map_direction_is_read_from_its_step_shape measures red when the cons arm of this match is
 // flipped and green at the unmutated sha, and ccr_filter_and_any_directions covers the keep and join
-// arms through the realized path (the manager ruling, clever-crane-830, 2026-10-19; the flip runs, with
-// shas, are recorded on gunbc.recurring_failure_mode fold_realized_loop_carries_no_iteration_direction).
+// arms through the realized path (execution, not fixture, is the evidence for a total match's correctness;
+// the flip runs, with shas, are recorded on gunbc.recurring_failure_mode
+// fold_realized_loop_carries_no_iteration_direction).
 // The map-fixture claims (ccr_map_loop_iterates_right_to_left and siblings) are pre-existing red on the
 // collection-map binding frontier and cannot discriminate this match (review 82832 on the PR, 2026-10-19).
 fn callback_step_shape_iteration_direction(s: CallbackStepShape) -> FoldIterationDirection {
@@ -1268,7 +1269,7 @@ fn callback_step_shape_iteration_direction(s: CallbackStepShape) -> FoldIteratio
 
 // The realization's direction is read through its step row. The reading is TOTAL because the row is
 // total: callback_step_row has no missing arm to write (infer_match_non_exhaustive refuses one), so there
-// is no absent row to default (DESIGN section 5; the manager ruling, clever-crane-830, 2026-10-19).
+// is no absent row to default (DESIGN section 5: the total match makes the default unwritable).
 fn callback_realization_iteration_direction(r: CallbackRealization) -> FoldIterationDirection {
   callback_step_shape_iteration_direction(s: callback_step_row(r: r).step_shape)
 }
