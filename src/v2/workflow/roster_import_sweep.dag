@@ -1569,3 +1569,41 @@ fn roster_control_spellings(root_dir: String) -> String {
     "CONTROL-FAIL spellings: scratch answered " + scratch + ", subdirectory answered " + sub + "\n"
   }
 }
+
+fn zz_probe_exit(stage: Int, path: String) -> ProcessExit {
+  exit_failure(reason: "PROBE " + int_to_decimal_string(n: stage) + " " + zz_probe(stage: stage, path: path))
+}
+
+fn zz_probe(stage: Int, path: String) -> String {
+  let text = Filesystem.Read(path: path).content
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "grammar"
+    Accepted { value: prepared, diagnostics: _ } =>
+      let lex = dag_prepared_lex()
+      if stage == 0 { "loaded" } else {
+      match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
+        Rejected { diagnostics: _ } => "tok-refused"
+        Accepted { value: stream, diagnostics: _ } =>
+          if stage == 1 { "tokenized" } else {
+          match parse_module_prepared(tokens: stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => "parse-refused"
+            Accepted { value: artifact, diagnostics: _ } =>
+              if stage == 2 { "parsed" } else {
+              match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+                Rejected { diagnostics: _ } => "norm-refused"
+                Accepted { value: scoped, diagnostics: _ } =>
+                  if stage == 3 { "normalized" }
+                  else if stage == 4 { int_to_decimal_string(n: length(xs: collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites)) }
+                  else if stage == 5 { int_to_decimal_string(n: length(xs: node_subtree_nodes(root: artifact.tree))) }
+                  else if stage == 6 { int_to_decimal_string(n: length(xs: node_subtree_nodes(root: scoped.tree.root))) }
+                  else if stage == 7 { if roster_name_locally_bound(normalized_root: scoped.tree.root, call: "chars") { "bound" } else { "free" } }
+                  else if stage == 8 { int_to_decimal_string(n: length(xs: roster_primary_heads(parse_root: artifact.tree, call: "chars"))) }
+                  else { roster_render_outcome(path: path, outcome: roster_sweep_text_scoped(path: path, text: text, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") })) }
+              }
+              }
+          }
+          }
+      }
+      }
+  }
+}
